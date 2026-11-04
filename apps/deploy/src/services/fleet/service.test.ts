@@ -4,7 +4,7 @@ import {createServer} from 'node:http'
 import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, Schema, pipe} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
 import {TestClock} from 'effect/testing'
@@ -130,6 +130,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const cold = yield* fleet.current({minutes: 60})
 				assert.isTrue(Option.getOrThrow(Array.get(cold, 1)).stale)
 				assert.isEmpty(Option.getOrThrow(Array.get(cold, 1)).samples)
+				// A worker with no cached history has no cpuModel to name, and the metrics response still encodes.
+				assert.doesNotThrow(() => {
+					Schema.encodeSync(Schema.Array(MachineHistory))(cold)
+				})
 				const currentMetrics = yield* fleet.metrics({minutes: 60})
 				const immediate = yield* fleet.current({minutes: 60})
 				assert.strictEqual(Option.getOrThrow(Array.get(immediate, 1)).worker, 'desktop')
@@ -145,6 +149,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				assert.strictEqual(Option.getOrThrow(Array.get(timedOut, 1)).cpuModel, 'Fixture CPU')
 				yield* Ref.set(hanging, false)
 				yield* Ref.set(unavailable, true)
+				// A worker that failed before its first sample has no cpuModel to name, and the response still encodes.
+				const uncached = yield* (yield* fleetWith('shared-key')).metrics({minutes: 60})
+				assert.doesNotThrow(() => {
+					Schema.encodeSync(Schema.Array(MachineHistory))(uncached)
+				})
 				const staleMetrics = yield* fleet.metrics({minutes: 60})
 				assert.isTrue(staleMetrics[1]?.stale)
 				assert.strictEqual(staleMetrics[1].cpuModel, 'Fixture CPU')

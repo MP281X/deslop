@@ -125,9 +125,9 @@ export function processReadings(
 				const process: Process = {
 					...record.process,
 					...Record.getSomes({
-						cpu: Option.map(
+						cpu: Option.flatMap(
 							Option.filter(Option.fromUndefinedOr(known[record.process.pid]), value => value.start === record.start),
-							value => value.process.cpu
+							value => Option.fromUndefinedOr(value.process.cpu)
 						)
 					})
 				}
