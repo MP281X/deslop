@@ -473,7 +473,7 @@ function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: 
 			<summary
 				className={cn(
 					'text-muted-foreground cursor-pointer',
-					props.compact &&
+					props.compact === true &&
 						'absolute top-0 right-0 z-10 flex size-11 list-none items-center justify-center [&::-webkit-details-marker]:hidden'
 				)}
 			>
@@ -958,7 +958,7 @@ function WorldConfiguration() {
 	return (
 		<div role="status" className="text-warning px-3 pb-2 text-xs">
 			{Array.join(
-				Array.map(notices, notice => String.split(' · ')(notice)[0] ?? notice),
+				Array.map(notices, notice => String.split(' · ')(notice)[0]),
 				' · '
 			)}
 		</div>
@@ -1847,7 +1847,10 @@ function World(props: {seed: number; view: View}) {
 				})
 			)
 			renderer.aim(aimOf(current, registry.get(teamAtom), latest.current.view, active))
-			renderer.focus(Option.flatMap(current.id, cast.objectOf), teamColor(registry.get(teamAtom)))
+			renderer.focus(
+				Option.flatMap(current.id, id => cast.objectOf(id)),
+				teamColor(registry.get(teamAtom))
+			)
 		})
 		// Once the camera has moved: health pips and the hover card follow their units. Zoomed far out, pips only clutter, so they hide.
 		renderer.onDrawn(() => {

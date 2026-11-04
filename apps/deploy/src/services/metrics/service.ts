@@ -237,7 +237,7 @@ export class Metrics extends Context.Service<
 							)
 							yield* Ref.set(collectError, '')
 						}),
-						Effect.catch(cause => Ref.set(collectError, `${cause}`))
+						Effect.catch(cause => Ref.set(collectError, cause.message))
 					)
 					const persist = pipe(
 						Effect.gen(function* () {
@@ -273,7 +273,7 @@ export class Metrics extends Context.Service<
 							)
 							yield* Ref.set(persistError, '')
 						}),
-						Effect.catch(cause => Ref.set(persistError, `${cause}`))
+						Effect.catch(cause => Ref.set(persistError, cause.message))
 					)
 					yield* refreshStorage
 					yield* collect

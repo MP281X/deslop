@@ -240,7 +240,10 @@ function triangle(name: Sink, points: [Vec, Vec, Vec], colours: [Rgb, Rgb, Rgb])
 	const nx = ab[1] * ac[2] - ab[2] * ac[1]
 	const ny = ab[2] * ac[0] - ab[0] * ac[2]
 	const nz = ab[0] * ac[1] - ab[1] * ac[0]
-	const length = Math.hypot(nx, ny, nz) || 1
+	const length = Option.getOrElse(
+		Option.liftPredicate(Math.hypot(nx, ny, nz), value => value !== 0),
+		() => 1
+	)
 	const normal = [nx / length, ny / length, nz / length] satisfies Vec
 	vertex(name, a, normal, colours[0])
 	vertex(name, points[1], normal, colours[1])

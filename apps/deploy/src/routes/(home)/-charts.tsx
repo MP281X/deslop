@@ -125,7 +125,7 @@ export function Cores(props: {history: MachineHistory; minutes: number}) {
 								),
 								run => (
 									<polyline
-										key={run[0]?.x}
+										key={run[0].x}
 										points={Array.join(
 											Array.map(widen(run), point => {
 												const usage = Option.flatMap(

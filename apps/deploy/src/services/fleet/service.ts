@@ -194,7 +194,7 @@ export class Fleet extends Context.Service<
 										const all = yield* Ref.get(lastMetrics)
 										return {
 											cpuModel: all[`${worker.name}:${query.minutes}`]?.cpuModel,
-											error: `${cause}`,
+											error: cause.message,
 											samples: history(all[`${worker.name}:${query.minutes}`]?.samples ?? [], query.minutes, time),
 											stale: true,
 											time,
@@ -256,7 +256,7 @@ export class Fleet extends Context.Service<
 													detail: `${item.detail}\nLast successful sample: ${rows[worker.name]?.time}`,
 													state: `stale · ${item.state}`
 												})),
-												sources: [{error: `${cause}`, name: worker.name}],
+												sources: [{error: cause.message, name: worker.name}],
 												time: 0
 											})
 										),

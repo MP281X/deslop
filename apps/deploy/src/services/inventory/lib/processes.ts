@@ -14,7 +14,10 @@ function processStatus(status: string) {
 		)
 	}
 	return {
-		memory: Schema.decodeSync(Schema.FiniteFromString)((String.split(field('VmRSS'), /\s+/u)[0] ?? '') || '0') * 1024,
+		memory:
+			Schema.decodeSync(Schema.FiniteFromString)(
+				Option.getOrElse(Option.liftPredicate(String.split(field('VmRSS'), /\s+/u)[0], String.isNonEmpty), () => '0')
+			) * 1024,
 		name: field('Name'),
 		parent: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('PPid')),
 		pid: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('Pid'))
@@ -25,7 +28,7 @@ function processStatus(status: string) {
 function commandArgs(cmdline: string) {
 	const args = Array.take(Array.filter(String.split(cmdline, '\0'), String.isNonEmpty), 40)
 	return Array.map(args, (arg, index) => {
-		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0] ?? '')) {
+		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0])) {
 			return `${String.split(arg, '=')[0]}=…`
 		}
 		if (index > 0 && SECRET.test(args[index - 1] ?? '') && String.startsWith('-')(args[index - 1] ?? '')) return '…'
@@ -38,10 +41,7 @@ export const processes = Effect.gen(function* () {
 	const fs = yield* FileSystem.FileSystem
 	const counts = yield* Schema.decodeEffect(Schema.Array(Schema.FiniteFromString))(
 		Array.take(
-			Array.drop(
-				String.split(String.trim(String.split(yield* fs.readFileString('/proc/stat'), '\n')[0] ?? ''), /\s+/u),
-				1
-			),
+			Array.drop(String.split(String.trim(String.split(yield* fs.readFileString('/proc/stat'), '\n')[0]), /\s+/u), 1),
 			8
 		)
 	)

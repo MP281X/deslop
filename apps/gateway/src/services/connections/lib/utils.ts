@@ -17,10 +17,10 @@ export function mcpClient() {
 }
 
 // A finished upstream session says goodbye within a bound, then closes; either failure only warns.
-export function endSession<E>(
+export function endSession(
 	transport: Pick<StreamableHTTPClientTransport, 'terminateSession'>,
 	client: Pick<Client, 'close'>,
-	fail: (cause: unknown) => E,
+	fail: (cause: unknown) => AuthError | UpstreamError,
 	kind: 'upstream' | 'anonymous'
 ) {
 	return pipe(

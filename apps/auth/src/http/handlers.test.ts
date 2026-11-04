@@ -523,7 +523,7 @@ const exchange = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
 	code: string,
-	forwardedFor = '93.184.216.34'
+	forwardedFor: string = '93.184.216.34'
 ) {
 	return yield* send(web, '/api/auth/oauth2/token', {
 		body: UrlParams.toString(
@@ -1464,7 +1464,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.notStrictEqual(rotated.refresh_token, token.refresh_token)
 			// The family is the public prefix of every bearer, so it alone revokes nothing and proves no replay.
-			const family = String.split(token.access_token, '.')[0] ?? ''
+			const family = String.split(token.access_token, '.')[0]
 			assert.strictEqual(
 				(yield* send(web.issuer, '/api/auth/oauth2/revoke', {
 					body: UrlParams.toString(

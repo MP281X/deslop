@@ -10,6 +10,7 @@ import {seatPose, spatialBlend} from './-pose.ts'
 import type {Renderer} from './-renderer.ts'
 import {disposeSurveyCore, surveyCore} from './-survey-core.ts'
 
+import {isMesh} from '#lib/three.ts'
 import {FRAME_HZ, HOME_SIGHT, ORE_ITEM, TEAMS} from '#services/game/lib/utils.ts'
 import type {Act, BuildingView, Frame, ItemId, UnitView} from '#services/game/schema.ts'
 import {ORES} from '#services/world/lib/utils.ts'
@@ -137,7 +138,9 @@ function tintOf(cargo: Option.Option<THREE.Object3D>) {
 
 function nodesOf(root: THREE.Object3D) {
 	const found = MutableList.make<THREE.Object3D>()
-	root.traverse(child => MutableList.append(found, child))
+	root.traverse(child => {
+		MutableList.append(found, child)
+	})
 	return MutableList.toArray(found)
 }
 
@@ -222,7 +225,7 @@ function portraitOf(gltf: Pick<GLTF, 'animations' | 'scene'>, painter: THREE.Web
 	// Framed to the posed vertices between their 3rd and 97th percentile on each axis: some rigs park spare parts or effects far off the body.
 	const points = MutableList.make<THREE.Vector3>()
 	object.traverseVisible(node => {
-		if (!(node instanceof THREE.Mesh)) return
+		if (!isMesh(node)) return
 		const position = node.geometry.getAttribute('position')
 		for (const index of Array.range(0, position.count - 1)) {
 			const point = new THREE.Vector3().fromBufferAttribute(position, index)
@@ -538,7 +541,7 @@ export function createCast(view: Renderer) {
 		const corePortrait = surveyCore(portraitPaint, portraitPaint, false)
 		MutableHashMap.set(portraits.painted, `home:${index}`, portraitOf({animations: [], scene: corePortrait}, painter))
 		corePortrait.traverse(object => {
-			if (object instanceof THREE.Mesh) object.geometry.dispose()
+			if (isMesh(object)) object.geometry.dispose()
 		})
 		disposeSurveyCore(corePortrait)
 		portraitPaint.dispose()
@@ -819,7 +822,7 @@ export function createCast(view: Renderer) {
 		for (const building of list) {
 			const signature = `${building.kind}:${Number.round(building.built, 2)}`
 			const before = Option.getOrUndefined(MutableHashMap.get(drawn, building.id))
-			if (before !== undefined && before.signature === signature) {
+			if (before?.signature === signature) {
 				if (before.view.item !== building.item) {
 					Option.match(before.item, {onNone: () => undefined, onSome: mesh => mesh.removeFromParent()})
 					const item = itemOn(building)
@@ -844,7 +847,7 @@ export function createCast(view: Renderer) {
 
 	// The unit under a pixel: the nearest middle within a few dozen pixels.
 	function pick(x: number, y: number) {
-		return pickActor(Array.fromIterable(MutableHashMap.values(actors)), view.project, x, y)
+		return pickActor(Array.fromIterable(MutableHashMap.values(actors)), (px, py, pz) => view.project(px, py, pz), x, y)
 	}
 
 	function screenOf(id: number) {

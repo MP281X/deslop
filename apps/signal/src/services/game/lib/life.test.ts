@@ -118,9 +118,7 @@ it('does not invent footprints for pollution or flying bodies and keeps provider
 		tokens: {cost: 0.1}
 	})
 	assert.notInclude(life.local(UNIT, 141, true).state, 'Provider accounting only')
-	assert.isTrue(
-		Array.some(life.local(UNIT, 141, true).experience ?? [], entry => entry.text === 'An unidentified impact.')
-	)
+	assert.isTrue(Array.some(life.local(UNIT, 141, true).experience, entry => entry.text === 'An unidentified impact.'))
 	const restored = makeLife(life.snapshot(), life.drain())
 	assert.deepStrictEqual(restored.drain(), life.drain())
 	assert.strictEqual(Option.getOrThrow(Array.last(restored.drain())).tokens?.cost, 0.1)

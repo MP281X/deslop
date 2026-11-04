@@ -281,13 +281,15 @@ function compactText(text: string) {
 }
 
 export function eventSummary(entry: Experience) {
-	return compactText(eventText(entry)) || fieldName(entry.kind)
+	return Option.getOrElse(Option.liftPredicate(compactText(eventText(entry)), String.isNonEmpty), () =>
+		fieldName(entry.kind)
+	)
 }
 
 export function roundSummary(entry: Pick<Entry, 'commands' | 'text'>) {
 	return {
 		failed: Array.countBy(entry.commands, outcome => !outcome.ok),
-		text: compactText(entry.text) || 'Response data',
+		text: Option.getOrElse(Option.liftPredicate(compactText(entry.text), String.isNonEmpty), () => 'Response data'),
 		unreadable: Array.countBy(String.split('\n')(entry.text), line => String.startsWith('Unreadable tool call:')(line))
 	}
 }

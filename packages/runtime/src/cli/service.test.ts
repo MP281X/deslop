@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Effect, FileSystem, Ref, Sink, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Effect, FileSystem, Option, Predicate, Ref, Sink, Stream, pipe} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -19,7 +19,15 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 					if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die('Unexpected pipeline')
 					yield* Ref.update(commands, rows => [
 						...rows,
-						Array.join([command.command, ...Array.map(command.args, arg => `${arg}`)], ' ')
+						Array.join(
+							[
+								command.command,
+								...Array.map(command.args, arg =>
+									Option.getOrElse(Option.liftPredicate(arg, Predicate.isString), () => '<redacted>')
+								)
+							],
+							' '
+						)
 					])
 					return ChildProcessSpawner.makeHandle({
 						all: Stream.empty,

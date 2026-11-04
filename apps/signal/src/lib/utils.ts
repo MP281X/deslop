@@ -210,7 +210,7 @@ export const hudAtom = Atom.keepAlive(
 )
 
 export const historyAtom = Atom.family((key: string) => {
-	const [actor = 'all', encodedBefore = '0'] = String.split(':')(key)
+	const [actor, encodedBefore = '0'] = String.split(':')(key)
 	const before = Option.getOrElse(Number.parse(encodedBefore), () => 0)
 	const request = Effect.flatMap(RpcClient, client =>
 		client('signal.history', {

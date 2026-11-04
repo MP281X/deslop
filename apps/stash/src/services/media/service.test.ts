@@ -52,7 +52,7 @@ function handle(stdout: string, exitCode = 0, stderr = '') {
 
 const open = Effect.fnUntraced(function* (
 	spawner: typeof ChildProcessSpawner.ChildProcessSpawner.Service,
-	client = HttpClient.make(() => Effect.die('Captions must not call hosted speech'))
+	client: HttpClient.HttpClient = HttpClient.make(() => Effect.die('Captions must not call hosted speech'))
 ) {
 	return Context.get(
 		yield* Layer.build(

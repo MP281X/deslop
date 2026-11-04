@@ -208,7 +208,12 @@ export const lint: OxlintConfig = {
 		{files: ['**/*.test.ts'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
 		{
 			files: ['**/*.tsx'],
-			rules: {'effecttsgo/async-function': 'off', 'eslint/require-await': 'error', 'unicorn/no-null': 'off'}
+			rules: {
+				'effecttsgo/async-function': 'off',
+				'eslint/require-await': 'error',
+				'typescript/strict-void-return': 'off',
+				'unicorn/no-null': 'off'
+			}
 		}
 	],
 	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn', 'vitest'],
@@ -330,7 +335,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/schema-number': 'error',
 		'effecttsgo/schema-struct-with-tag': 'error',
 		'effecttsgo/service-not-as-class': 'error',
-		'effecttsgo/strict-boolean-expressions': 'error',
 		'effecttsgo/suspend-fail-to-fail-sync': 'error',
 		'effecttsgo/sync-to-succeed': 'error',
 		'effecttsgo/timeout-catch-tag-to-timeout-or-else': 'error',
@@ -739,7 +743,7 @@ export const lint: OxlintConfig = {
 		'shadcn/no-unknown-classes': 'error',
 		'shadcn/require-static-classes': 'error',
 
-		// TypeScript syntax; no type-aware rules
+		// TypeScript syntax
 		'typescript/ban-ts-comment': ['error', {'ts-nocheck': true}],
 		'typescript/consistent-generic-constructors': 'error',
 		'typescript/consistent-indexed-object-style': 'error',
@@ -755,7 +759,7 @@ export const lint: OxlintConfig = {
 		'typescript/no-explicit-any': 'error',
 		'typescript/no-extraneous-class': 'error',
 		'typescript/no-import-type-side-effects': 'error',
-		'typescript/no-inferrable-types': 'error',
+		'typescript/no-inferrable-types': ['error', {ignoreParameters: true}],
 		'typescript/no-misused-new': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: true}],
 		'typescript/no-non-null-assertion': 'error',
@@ -787,6 +791,47 @@ export const lint: OxlintConfig = {
 		'typescript/prefer-function-type': 'error',
 		'typescript/triple-slash-reference': 'error',
 		'typescript/unified-signatures': 'error',
+
+		// TypeScript type-aware
+		'typescript/await-thenable': 'error',
+		'typescript/consistent-type-exports': 'error',
+		'typescript/dot-notation': 'error',
+		'typescript/no-array-delete': 'error',
+		'typescript/no-base-to-string': 'error',
+		'typescript/no-confusing-void-expression': ['error', {ignoreVoidReturningFunctions: true}],
+		'typescript/no-deprecated': 'error',
+		'typescript/no-duplicate-type-constituents': 'error',
+		'typescript/no-floating-promises': 'error',
+		'typescript/no-for-in-array': 'error',
+		'typescript/no-generated-empty-object-type': 'error',
+		'typescript/no-misused-promises': ['error', {checksVoidReturn: {attributes: false}}],
+		'typescript/no-misused-spread': 'error',
+		'typescript/no-redundant-type-constituents': 'error',
+		'typescript/no-unnecessary-boolean-literal-compare': 'error',
+		'typescript/no-unnecessary-condition': 'error',
+		'typescript/no-unnecessary-qualifier': 'error',
+		'typescript/no-unnecessary-template-expression': 'error',
+		'typescript/no-unnecessary-type-arguments': 'error',
+		'typescript/no-unnecessary-type-assertion': 'error',
+		'typescript/no-unnecessary-type-conversion': 'error',
+		'typescript/no-unnecessary-type-parameters': 'error',
+		'typescript/no-unsafe-argument': 'error',
+		'typescript/no-unsafe-assignment': 'error',
+		'typescript/no-unsafe-call': 'error',
+		'typescript/no-unsafe-member-access': 'error',
+		'typescript/no-unsafe-return': 'error',
+		'typescript/no-unsafe-unary-minus': 'error',
+		'typescript/no-useless-default-assignment': 'error',
+		'typescript/prefer-nullish-coalescing': ['error', {ignoreTernaryTests: true}],
+		'typescript/prefer-optional-chain': 'error',
+		'typescript/restrict-plus-operands': 'error',
+		'typescript/restrict-template-expressions': 'error',
+		'typescript/strict-boolean-expressions': [
+			'error',
+			{allowNullableObject: false, allowNumber: false, allowString: false}
+		],
+		'typescript/strict-void-return': 'error',
+		'typescript/unbound-method': 'error',
 
 		// Unicorn
 		'unicorn/consistent-function-scoping': 'error',

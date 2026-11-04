@@ -1250,7 +1250,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'}',
 							'export function asserted() {',
 							'	const method = obj.method',
-							'	return method!()',
+							'	return method()',
 							'}',
 							'export function pattern() {',
 							'	obj.first()',

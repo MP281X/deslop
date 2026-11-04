@@ -226,7 +226,7 @@ export class Core extends Context.Service<
 					const summary = Option.getOrUndefined(Array.head(compacted.choices))
 					if (
 						summary?.finish_reason !== 'stop' ||
-						!Predicate.isString(summary?.message.content) ||
+						!Predicate.isString(summary.message.content) ||
 						String.isEmpty(summary.message.content)
 					) {
 						return yield* GameError.make({message: 'Compaction did not finish; original history was kept.'})
@@ -501,7 +501,7 @@ export class Core extends Context.Service<
 							if (message === undefined) {
 								return yield* GameError.make({message: 'The provider returned no Core response.'})
 							}
-							const decoded = Array.map(message?.tool_calls ?? [], call => ({
+							const decoded = Array.map(message.tool_calls ?? [], call => ({
 								call,
 								command: Option.flatMap(
 									Array.findFirst(Record.toEntries(CODECS), entry => entry[0] === call.function.name),
@@ -513,7 +513,7 @@ export class Core extends Context.Service<
 								)
 							}))
 							const text = Option.getOrElse(
-								Option.liftPredicate(message?.content, value => Predicate.isString(value)),
+								Option.liftPredicate(message.content, value => Predicate.isString(value)),
 								() => ''
 							)
 							const output: Turn = {
@@ -538,7 +538,7 @@ export class Core extends Context.Service<
 									Array.filter(decoded, entry => Option.isNone(entry.command)),
 									entry => `${entry.call.function.name}(${entry.call.function.arguments})`
 								),
-								reasoning: message?.reasoning ?? undefined,
+								reasoning: message.reasoning ?? undefined,
 								text,
 								tokens: Option.getOrUndefined(usage)
 							} satisfies Thought

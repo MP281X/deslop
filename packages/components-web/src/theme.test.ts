@@ -21,7 +21,7 @@ it.layer(NodeServices.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const design = lint(yield* fs.readFileString(`${ROOT}/DESIGN.md`))
-			const [light = '', dark = ''] = String.split(
+			const [light, dark = ''] = String.split(
 				yield* fs.readFileString(`${import.meta.dirname}/theme.css`),
 				'@media screen and (prefers-color-scheme: dark)'
 			)

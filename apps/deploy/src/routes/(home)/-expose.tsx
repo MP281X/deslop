@@ -71,7 +71,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			{/* Who reaches it, as tabs over the address: the tailnet's is fixed, a public one is typed. */}
 			<Tabs
 				value={kind}
-				onValueChange={value => {
+				onValueChange={(value: string) => {
 					if (value === 'public' || value === 'tailnet') setKind(value)
 				}}
 			>

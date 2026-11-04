@@ -17,7 +17,7 @@ export function nameFlag(description: string) {
 
 // The program that runs a generator's command, described and versioned by the package beside its bundle; its bin provides the entry point's services.
 export function generatorProgram<Name extends string, Input, E, R>(options: {
-	command: Command.Command<Name, Input, Record<never, never>, E, R>
+	command: Command.Command<Name, Input, Record<string, unknown>, E, R>
 	description: string
 	version: string
 }) {
