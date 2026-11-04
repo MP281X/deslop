@@ -1,6 +1,6 @@
-import {Array, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
+import {Array, Number, Option, Order, Predicate, Record, Schema, String, Struct, pipe} from 'effect'
 
-import type {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
+import type {Counters, MachineHistory, MachineSummary, Sample} from '#services/metrics/schema.ts'
 
 // How long samples stay at each spacing: seconds for a minute, ten seconds for ten minutes, minutes for an hour, quarter-hours for a day, hours for a week.
 const TIERS = [
@@ -76,8 +76,8 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 }
 
 function rate(current: number, seconds: number, previous?: number) {
-	if (previous === undefined || current < previous || seconds <= 0 || seconds > 90) return
-	return (current - previous) / seconds
+	if (previous === undefined || current < previous || seconds <= 0 || seconds > 90) return Option.none<number>()
+	return Option.some((current - previous) / seconds)
 }
 
 function cpuUsage(current: {idle: number; total: number}, seconds: number, previous?: {idle: number; total: number}) {
@@ -88,12 +88,14 @@ function cpuUsage(current: {idle: number; total: number}, seconds: number, previ
 		seconds <= 0 ||
 		seconds > 90
 	) {
-		return
+		return Option.none<number>()
 	}
-	return Number.clamp((1 - (current.idle - previous.idle) / (current.total - previous.total)) * 100, {
-		maximum: 100,
-		minimum: 0
-	})
+	return Option.some(
+		Number.clamp((1 - (current.idle - previous.idle) / (current.total - previous.total)) * 100, {
+			maximum: 100,
+			minimum: 0
+		})
+	)
 }
 
 export function sample(current: Counters, memory: string, disk: string, previous?: Counters, load?: string) {
@@ -106,22 +108,28 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
 	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
 	const old = Option.getOrUndefined(baseline)
-	return {
+	const reading: Sample = {
 		cores: Array.map(current.cores ?? [], core => ({
 			id: core.id,
-			usage: cpuUsage(
-				core,
-				seconds,
-				Option.getOrUndefined(Array.findFirst(old?.cores ?? [], candidate => candidate.id === core.id))
-			)
+			...Record.getSomes({
+				usage: cpuUsage(
+					core,
+					seconds,
+					Option.getOrUndefined(Array.findFirst(old?.cores ?? [], candidate => candidate.id === core.id))
+				)
+			})
 		})),
-		cpu: cpuUsage(
-			{idle: current.cpuIdle, total: current.cpuTotal},
-			seconds,
-			Option.getOrUndefined(Option.map(baseline, value => ({idle: value.cpuIdle, total: value.cpuTotal})))
-		),
-		diskRead: rate(current.diskRead, seconds, old?.diskRead),
-		diskWrite: rate(current.diskWrite, seconds, old?.diskWrite),
+		...Record.getSomes({
+			cpu: cpuUsage(
+				{idle: current.cpuIdle, total: current.cpuTotal},
+				seconds,
+				Option.getOrUndefined(Option.map(baseline, value => ({idle: value.cpuIdle, total: value.cpuTotal})))
+			),
+			diskRead: rate(current.diskRead, seconds, old?.diskRead),
+			diskWrite: rate(current.diskWrite, seconds, old?.diskWrite),
+			networkReceive: rate(current.networkReceive, seconds, old?.networkReceive),
+			networkSend: rate(current.networkSend, seconds, old?.networkSend)
+		}),
 		disks: pipe(
 			disk,
 			String.trim,
@@ -145,13 +153,12 @@ export function sample(current: Counters, memory: string, disk: string, previous
 		memoryCached: (values['Cached:'] ?? 0) + (values['SReclaimable:'] ?? 0),
 		memoryTotal: values['MemTotal:'] ?? 0,
 		memoryUsed: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0),
-		networkReceive: rate(current.networkReceive, seconds, old?.networkReceive),
-		networkSend: rate(current.networkSend, seconds, old?.networkSend),
 		swapTotal: values['SwapTotal:'] ?? 0,
 		swapUsed: (values['SwapTotal:'] ?? 0) - (values['SwapFree:'] ?? 0),
 		time: current.time,
 		uptime: current.uptime
-	} satisfies Sample
+	}
+	return reading
 }
 
 // A range's slot width: every range draws 60 slots.
@@ -174,10 +181,10 @@ function mean(bucket: readonly Sample[], read: (point: Sample) => unknown) {
 			}))
 		)
 	)
-	if (Array.isReadonlyArrayEmpty(known)) return
-	return (
+	if (Array.isReadonlyArrayEmpty(known)) return Option.none<number>()
+	return Option.some(
 		Array.reduce(known, 0, (sum, entry) => sum + entry.value * entry.weight) /
-		Array.reduce(known, 0, (sum, entry) => sum + entry.weight)
+			Array.reduce(known, 0, (sum, entry) => sum + entry.weight)
 	)
 }
 
@@ -190,37 +197,55 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 	if (bucket.length === 1) return bucket[0]
 	const reported = Array.filter(bucket, value => value.apps !== undefined)
 	const last = Array.lastNonEmpty(bucket)
-	return {
+	const merged: Sample = {
 		...last,
 		// An app missing from a point that reported apps used nothing then; one just started has no CPU reading yet.
-		apps: Array.match(reported, {
-			onEmpty: () => undefined,
-			onNonEmpty: () =>
-				Array.map(Array.dedupe(Array.flatMap(reported, value => Array.map(value.apps ?? [], app => app.id))), id => ({
-					cpu: mean(reported, point => Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.cpu})),
-					id,
-					memory: Number.round(
-						mean(reported, point => Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.memory})) ??
-							0,
-						0
-					)
-				}))
+		...Array.match(reported, {
+			onEmpty: () => ({}),
+			onNonEmpty: () => ({
+				apps: Array.map(
+					Array.dedupe(Array.flatMap(reported, value => Array.map(value.apps ?? [], app => app.id))),
+					id => ({
+						...Record.getSomes({
+							cpu: mean(reported, point => Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.cpu}))
+						}),
+						id,
+						memory: Number.round(
+							Option.getOrElse(
+								mean(reported, point =>
+									Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.memory})
+								),
+								() => 0
+							),
+							0
+						)
+					})
+				)
+			})
 		}),
 		cores: Array.map(last.cores ?? [], core => ({
 			id: core.id,
-			usage: mean(
-				bucket,
-				point => Option.getOrUndefined(Array.findFirst(point.cores ?? [], entry => entry.id === core.id))?.usage
-			)
+			...Record.getSomes({
+				usage: mean(
+					bucket,
+					point => Option.getOrUndefined(Array.findFirst(point.cores ?? [], entry => entry.id === core.id))?.usage
+				)
+			})
 		})),
-		cpu: mean(bucket, point => point.cpu),
-		diskRead: mean(bucket, point => point.diskRead),
-		diskWrite: mean(bucket, point => point.diskWrite),
-		memoryUsed: mean(bucket, point => point.memoryUsed) ?? last.memoryUsed,
-		networkReceive: mean(bucket, point => point.networkReceive),
-		networkSend: mean(bucket, point => point.networkSend),
+		...Record.getSomes({
+			cpu: mean(bucket, point => point.cpu),
+			diskRead: mean(bucket, point => point.diskRead),
+			diskWrite: mean(bucket, point => point.diskWrite),
+			networkReceive: mean(bucket, point => point.networkReceive),
+			networkSend: mean(bucket, point => point.networkSend)
+		}),
+		memoryUsed: Option.getOrElse(
+			mean(bucket, point => point.memoryUsed),
+			() => last.memoryUsed
+		),
 		since: bucket[0].since ?? bucket[0].time
-	} satisfies Sample
+	}
+	return merged
 }
 
 export function compact(samples: readonly Sample[], now: number) {
@@ -258,23 +283,22 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 	// Every point keeps its cores and apps, which the charts split by; mounts and load stay on the latest only.
 	return Array.map(selected, (value, index) => {
 		if (index === selected.length - 1) return value
-		return {
-			...value,
+		const point: Sample = {
+			...pipe(value, Struct.omit(['load', 'uptime'])),
 			disks: [],
-			load: undefined,
-			storageUsed: value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used),
-			uptime: undefined
+			storageUsed: value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used)
 		}
+		return point
 	})
 }
 
 export function compactHistory(machine: MachineHistory, minutes: number) {
-	return {
-		cpuModel: machine.cpuModel,
-		current: Option.getOrUndefined(Array.last(machine.samples)),
+	const summary: MachineSummary = {
+		...Record.getSomes({cpuModel: Option.fromUndefinedOr(machine.cpuModel)}),
+		...Record.getSomes({current: Array.last(machine.samples)}),
 		error: machine.error,
 		intervalSeconds: resolution(minutes) / 1000,
-		recordedSince: machine.samples[0]?.since ?? machine.samples[0]?.time,
+		...Record.getSomes({recordedSince: Option.fromUndefinedOr(machine.samples[0]?.since ?? machine.samples[0]?.time)}),
 		series: {
 			cpu: Array.map(machine.samples, value => Option.map(Option.fromUndefinedOr(value.cpu), Number.round(1))),
 			diskRead: Array.map(machine.samples, value =>
@@ -301,6 +325,7 @@ export function compactHistory(machine: MachineHistory, minutes: number) {
 		time: machine.time,
 		worker: machine.worker
 	}
+	return summary
 }
 
 // A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or the slice a user manager names `app-<name>.slice` for what its sibling `<name>.service` starts, like T3 Code's agents; a template's instances share such a slice without that sibling, so it's walked into.

@@ -6,7 +6,9 @@ export const HistoryQuery = Schema.Struct({minutes: Schema.Literals([1, 10, 60, 
 
 export type Counters = typeof Counters.Type
 export const Counters = Schema.Struct({
-	cores: Schema.optional(Schema.Array(Schema.Struct({id: Schema.String, idle: Schema.Finite, total: Schema.Finite}))),
+	cores: Schema.optionalKey(
+		Schema.Array(Schema.Struct({id: Schema.String, idle: Schema.Finite, total: Schema.Finite}))
+	),
 	cpuIdle: Schema.Finite,
 	cpuTotal: Schema.Finite,
 	diskRead: Schema.Finite,
@@ -20,33 +22,33 @@ export const Counters = Schema.Struct({
 export type Sample = typeof Sample.Type
 export const Sample = Schema.Struct({
 	// Each service or container's memory and its CPU as a share of the whole machine, from its cgroup, keyed like `itemOwner`.
-	apps: Schema.optional(
-		Schema.Array(Schema.Struct({cpu: Schema.optional(Schema.Finite), id: Schema.String, memory: Schema.Finite}))
+	apps: Schema.optionalKey(
+		Schema.Array(Schema.Struct({cpu: Schema.optionalKey(Schema.Finite), id: Schema.String, memory: Schema.Finite}))
 	),
-	cores: Schema.optional(Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optional(Schema.Finite)}))),
-	cpu: Schema.optional(Schema.Finite),
-	diskRead: Schema.optional(Schema.Finite),
-	diskWrite: Schema.optional(Schema.Finite),
+	cores: Schema.optionalKey(Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optionalKey(Schema.Finite)}))),
+	cpu: Schema.optionalKey(Schema.Finite),
+	diskRead: Schema.optionalKey(Schema.Finite),
+	diskWrite: Schema.optionalKey(Schema.Finite),
 	disks: Schema.Array(Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})),
-	load: Schema.optional(Schema.Array(Schema.Finite)),
-	memoryAvailable: Schema.optional(Schema.Finite),
-	memoryBuffers: Schema.optional(Schema.Finite),
-	memoryCached: Schema.optional(Schema.Finite),
+	load: Schema.optionalKey(Schema.Array(Schema.Finite)),
+	memoryAvailable: Schema.optionalKey(Schema.Finite),
+	memoryBuffers: Schema.optionalKey(Schema.Finite),
+	memoryCached: Schema.optionalKey(Schema.Finite),
 	memoryTotal: Schema.Finite,
 	memoryUsed: Schema.Finite,
-	networkReceive: Schema.optional(Schema.Finite),
-	networkSend: Schema.optional(Schema.Finite),
-	since: Schema.optional(Schema.Finite),
-	storageUsed: Schema.optional(Schema.Finite),
+	networkReceive: Schema.optionalKey(Schema.Finite),
+	networkSend: Schema.optionalKey(Schema.Finite),
+	since: Schema.optionalKey(Schema.Finite),
+	storageUsed: Schema.optionalKey(Schema.Finite),
 	swapTotal: Schema.Finite,
 	swapUsed: Schema.Finite,
 	time: Schema.Finite,
-	uptime: Schema.optional(Schema.Finite)
+	uptime: Schema.optionalKey(Schema.Finite)
 })
 
 export type MachineHistory = typeof MachineHistory.Type
 export const MachineHistory = Schema.Struct({
-	cpuModel: Schema.optional(Schema.String),
+	cpuModel: Schema.optionalKey(Schema.String),
 	error: Schema.String,
 	samples: Schema.Array(Sample),
 	stale: Schema.Boolean,
@@ -56,11 +58,11 @@ export const MachineHistory = Schema.Struct({
 
 export type MachineSummary = typeof MachineSummary.Type
 export const MachineSummary = Schema.Struct({
-	cpuModel: Schema.optional(Schema.String),
-	current: Schema.optional(Sample),
+	cpuModel: Schema.optionalKey(Schema.String),
+	current: Schema.optionalKey(Sample),
 	error: Schema.String,
 	intervalSeconds: Schema.Finite,
-	recordedSince: Schema.optional(Schema.Finite),
+	recordedSince: Schema.optionalKey(Schema.Finite),
 	series: Schema.Struct({
 		cpu: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
 		diskRead: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),

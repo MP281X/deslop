@@ -97,19 +97,16 @@ it('measures individual logical cores, memory detail, load and uptime without br
 		first,
 		'1.5 2.5 3.5 1/20 123'
 	)
-	assert.deepStrictEqual(value.cores, [
-		{id: 'cpu0', usage: 50},
-		{id: 'cpu1', usage: undefined}
-	])
+	assert.deepStrictEqual(value.cores, [{id: 'cpu0', usage: 50}, {id: 'cpu1'}])
 	assert.strictEqual(value.memoryCached, 48 * 1024)
 	assert.strictEqual(value.memoryAvailable, 256 * 1024)
 	assert.strictEqual(value.memoryBuffers, 8 * 1024)
 	assert.deepStrictEqual(value.load, [1.5, 2.5, 3.5])
 	assert.strictEqual(value.uptime, 130)
-	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cores[0]?.usage)
-	assert.isUndefined(sample({...current, time: 100_000}, MEMORY, STORAGE, first).cores[0]?.usage)
+	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cores?.[0]?.usage)
+	assert.isUndefined(sample({...current, time: 100_000}, MEMORY, STORAGE, first).cores?.[0]?.usage)
 	assert.isUndefined(
-		sample({...current, cores: [{id: 'cpu0', idle: 1, total: 1000}]}, MEMORY, STORAGE, first).cores[0]?.usage
+		sample({...current, cores: [{id: 'cpu0', idle: 1, total: 1000}]}, MEMORY, STORAGE, first).cores?.[0]?.usage
 	)
 })
 
