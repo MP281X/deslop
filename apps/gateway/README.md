@@ -1,4 +1,4 @@
-# Deslop Gateway
+# Gateway
 
 One MCP endpoint for every MCP server you connect; add servers on its page.
 

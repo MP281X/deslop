@@ -21,7 +21,7 @@ export default defineConfig({lint: {extends: [lint]}})
 {
 	"scripts": {
 		"prepare": "effect-tsgo patch --no-typescript --tsrs",
-		"typecheck": "tsrs --noEmit --checkerAssignment go",
+		"typecheck": "tsrs --checkerAssignment go --pretty false",
 		"check": "vp check && vp run typecheck"
 	}
 }

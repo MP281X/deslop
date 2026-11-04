@@ -1,33 +1,14 @@
 import type {Stream} from 'effect'
-import {
-	Array,
-	Boolean,
-	Config,
-	Context,
-	Effect,
-	Layer,
-	Option,
-	Order,
-	Schema,
-	String,
-	SubscriptionRef,
-	pipe
-} from 'effect'
+import {Array, Boolean, Config, Context, Effect, Layer, Option, Order, String, SubscriptionRef, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {rejected} from '@deslop/runtime/auth/utils'
 import {RuntimeConfig} from '@deslop/runtime/schema'
 
 import {App, Catalog} from '#services/apps/schema.ts'
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
-}
 
 export class Apps extends Context.Service<
 	Apps,

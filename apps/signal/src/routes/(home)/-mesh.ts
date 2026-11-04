@@ -14,6 +14,11 @@ import {
 	ORE_REF,
 	STRATA,
 	chunkOf,
+	clamp,
+	highest,
+	lowest,
+	mix,
+	smoothstep,
 	tileGround,
 	tileKey
 } from '#services/world/lib/utils.ts'
@@ -159,27 +164,6 @@ const QUATERNION = new THREE.Quaternion()
 function flag(value: boolean) {
 	if (value) return 1
 	return 0
-}
-
-function mix(from: number, to: number, t: number) {
-	return from + (to - from) * t
-}
-
-function clamp(value: number, low: number, high: number) {
-	return Number.min(Number.max(value, low), high)
-}
-
-function highest(values: number[]) {
-	return Array.reduce(values, -Infinity, (best, value) => Number.max(best, value))
-}
-
-function lowest(values: number[]) {
-	return Array.reduce(values, Infinity, (best, value) => Number.min(best, value))
-}
-
-function smoothstep(from: number, to: number, x: number) {
-	const t = clamp((x - from) / (to - from), 0, 1)
-	return t * t * (3 - 2 * t)
 }
 
 function blend(from: Rgb, to: Rgb, t: number) {

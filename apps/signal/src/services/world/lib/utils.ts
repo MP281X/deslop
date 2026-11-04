@@ -743,15 +743,15 @@ function fbm(seed: number, x: number, z: number) {
 	return 0.55 * noise(seed, x, z) + 0.3 * noise(seed + 1, x * 2.03, z * 2.03) + 0.15 * noise(seed + 2, x * 4.1, z * 4.1)
 }
 
-function clamp(value: number, low: number, high: number) {
+export function clamp(value: number, low: number, high: number) {
 	return Number.min(Number.max(value, low), high)
 }
 
-function mix(from: number, to: number, t: number) {
+export function mix(from: number, to: number, t: number) {
 	return from + (to - from) * t
 }
 
-function smoothstep(from: number, to: number, value: number) {
+export function smoothstep(from: number, to: number, value: number) {
 	const t = clamp((value - from) / (to - from), 0, 1)
 	return t * t * (3 - 2 * t)
 }

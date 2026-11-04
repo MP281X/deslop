@@ -35,6 +35,7 @@
 	},
 	"scripts": {
 		"build": "vp pack",
+		"preview": "vp run build && node --env-file-if-exists=.env ./dist/server.js",
 		"test": "vp test --config ../../vite.config.ts",
 		"typecheck": "tsrs --checkerAssignment go --pretty false"
 	},

@@ -12,7 +12,6 @@ import {
 	Order,
 	Record,
 	Ref,
-	Schema,
 	Stream,
 	String,
 	SubscriptionRef,
@@ -27,6 +26,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import type {Resource, User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {rejected} from '@deslop/runtime/auth/utils'
 
 import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
 import type {
@@ -47,13 +47,6 @@ export const SESSION_COOKIE = '__Secure-session'
 type Code = {
 	expiresAt: number
 	state: {_tag: 'Fresh'; request: ClientRequest; user: User} | {_tag: 'Used'; family: string}
-}
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
 }
 
 const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})

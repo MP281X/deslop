@@ -23,7 +23,7 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {localAuth} from '@deslop/runtime/auth/utils'
+import {localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
@@ -32,13 +32,6 @@ import {Members, Person, SignedAccount} from '#services/people/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
-}
 
 function memberOf(github: GitHubUser, since: number, status: MemberRow['status']) {
 	return {fullName: github.name ?? '', id: `github:${github.id}`, name: github.login, since, status}

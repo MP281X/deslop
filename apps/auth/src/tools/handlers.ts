@@ -1,14 +1,11 @@
-import {Effect, Layer, pipe} from 'effect'
-
-import {McpServer} from 'effect/ai'
+import {Effect} from 'effect'
 
 import {CurrentUser} from '@deslop/runtime/auth/utils'
-import * as ServerRuntime from '@deslop/runtime/server'
 
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tools} from '#tools/contracts.ts'
 
-const ToolHandlers = Tools.toLayer(
+export const ToolHandlers = Tools.toLayer(
 	Effect.gen(function* () {
 		const signIns = yield* SignIns
 		return Tools.of({
@@ -18,8 +15,3 @@ const ToolHandlers = Tools.toLayer(
 		})
 	})
 )
-
-export const layerMcp = ServerRuntime.layerMcp({
-	instructions: 'Approve a sign-in you started with answer_request.',
-	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
-})

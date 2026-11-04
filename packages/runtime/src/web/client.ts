@@ -1,4 +1,4 @@
-import {Effect, Layer, Predicate, pipe} from 'effect'
+import {Effect, Layer, Predicate, Schedule, Stream, pipe} from 'effect'
 
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
@@ -31,6 +31,16 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 			scrollRestoration: true
 		})
 	}
+}
+
+// A live stream opens again after the socket drops; its other failures reach the screen.
+export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
+	return Stream.retry(stream, $ =>
+		pipe(
+			$(Schedule.spaced('1 second')),
+			Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+		)
+	)
 }
 
 // The RPC socket alone, without the page's telemetry, so Scope's page never traces itself.

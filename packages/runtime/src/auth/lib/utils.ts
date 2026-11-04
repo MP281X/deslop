@@ -23,6 +23,14 @@ export function needsSignIn(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable' && error.error !== 'access_denied'
 }
 
+// A failure that already carries its answer stays as it is; anything else becomes the message the caller names.
+export function rejected(message: string) {
+	return Effect.mapError(cause => {
+		if (Schema.is(AuthError)(cause)) return cause
+		return AuthError.make({cause, message})
+	})
+}
+
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/auth/lib/utils/CurrentUser') {}
 
 // Contracts add it with `.middleware(RpcAuth)`; the server's `Auth.layer` verifies each request.

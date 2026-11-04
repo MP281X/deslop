@@ -1,4 +1,4 @@
-import {Boolean, Effect, Option, Schedule, Schema, Stream, pipe} from 'effect'
+import {Boolean, Effect, Option, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -22,26 +22,16 @@ export function connectUrl(id: string) {
 	return `/oauth/connect?${new URLSearchParams({id})}`
 }
 
-// Opened again after the socket drops; a sign-in or admin failure reaches the screen.
-function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
-	return Stream.retry(stream, $ =>
-		pipe(
-			$(Schedule.spaced('1 second')),
-			Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
-		)
-	)
-}
-
 export const serversAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
-		reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))))
+		WebRuntime.reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))))
 	)
 )
 
 // Every tool call through the gateway, numbered, so a server called twice in a row lights twice.
 const callsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
-		reconnecting(
+		WebRuntime.reconnecting(
 			Stream.zipWithIndex(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.calls', undefined))))
 		)
 	)

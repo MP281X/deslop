@@ -5,7 +5,7 @@ import {RateLimiter} from 'effect/persistence'
 
 import {AuthError, User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {AUTH_URL, localAuth} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import {App, AppParams} from '#services/apps/schema.ts'
 import {Apps} from '#services/apps/service.ts'
@@ -47,13 +47,6 @@ const ISSUER = `${AUTH_URL}/api/auth`
 function sessionCookie(local: boolean) {
 	if (local) return {...COOKIE, domain: undefined}
 	return {...COOKIE, domain: cookieDomain(AUTH_URL)}
-}
-
-function rejected(message: string) {
-	return Effect.mapError(cause => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message})
-	})
 }
 
 // OAuth endpoints answer failures as RFC 6749 JSON and are never cached.
