@@ -693,9 +693,9 @@ export class Game extends Context.Service<
 				})
 			)
 			const state = Effect.map(process.snapshot, snapshot => ({
+				...Record.getSomes({problem: Option.map(MutableRef.get(fault), error => error.message)}),
 				coreConfigured,
 				localDecisions: localBudget > 0,
-				problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message)),
 				running: RunStates.matches(snapshot.state, 'Running') && Option.isNone(MutableRef.get(fault))
 			}))
 			const pause = advancement.withPermit(
@@ -927,7 +927,7 @@ export class Game extends Context.Service<
 											Option.map(sim.frame(id, now), frame => ({
 												...frame,
 												paused: !current.running,
-												problem: Option.getOrUndefined(Option.map(MutableRef.get(fault), error => error.message))
+												...Record.getSomes({problem: Option.map(MutableRef.get(fault), error => error.message)})
 											}))
 										)
 									})

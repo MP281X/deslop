@@ -4010,10 +4010,10 @@ export const makeSim = Effect.fnUntraced(
 		/* ───────── views: frames for spectators ───────── */
 
 		function unitView(unit: Unit) {
-			return {
+			const view: UnitView = {
 				act: unit.act,
 				aim: unit.aim,
-				cargo: Option.getOrUndefined(Array.head(itemsIn(unit.cargo))),
+				...Record.getSomes({cargo: Array.head(itemsIn(unit.cargo))}),
 				doing: unit.doing,
 				health: unit.health / markOf(unit).health,
 				id: unit.id,
@@ -4023,7 +4023,8 @@ export const makeSim = Effect.fnUntraced(
 				x: unit.x,
 				yaw: unit.yaw,
 				z: unit.z
-			} satisfies UnitView
+			}
+			return view
 		}
 
 		function mobView(mob: Mob) {
@@ -4056,23 +4057,24 @@ export const makeSim = Effect.fnUntraced(
 
 		function buildingView(building: Building) {
 			const size = sizeOf(building.kind)
-			return {
+			const view: BuildingView = {
 				built: builtOf(building),
 				d: size.d,
 				dir: building.dir,
 				id: building.id,
 				// A structure shows the item riding on it.
-				item: Option.getOrUndefined(
-					Array.head(Array.filter(itemsIn(building.stock), () => Schema.is(StructureKind)(building.kind)))
-				),
+				...Record.getSomes({
+					item: Array.head(Array.filter(itemsIn(building.stock), () => Schema.is(StructureKind)(building.kind)))
+				}),
 				kind: building.kind,
-				recipe: building.recipe,
+				...Record.getSomes({recipe: Option.fromUndefinedOr(building.recipe)}),
 				status: buildingLine(building),
 				team: building.team,
 				w: size.w,
 				x: building.x,
 				z: building.z
-			} satisfies BuildingView
+			}
+			return view
 		}
 
 		function teamView(team: Team) {
@@ -4109,7 +4111,7 @@ export const makeSim = Effect.fnUntraced(
 			traces: MutableHashMap.MutableHashMap<number, string>
 		}) {
 			const at = Math.floor(state.tick / TICK_HZ)
-			if (connection.sent && connection.tracesAt === at) return undefined
+			if (connection.sent && connection.tracesAt === at) return {}
 			if (traceCache.at !== at) {
 				traceCache.at = at
 				traceCache.values = Array.filter(
@@ -4141,7 +4143,7 @@ export const makeSim = Effect.fnUntraced(
 					MutableList.append(changes, {...tileOf(key), fresh: 0, smog: 0, wear: 0, yaw: 0})
 				}
 			}
-			return MutableList.toArray(changes)
+			return {traces: MutableList.toArray(changes)}
 		}
 
 		// A spectator: the revisions of the tiles, props, buildings, teams and zones it has, and the version of each explored chunk it was sent.
@@ -4220,33 +4222,37 @@ export const makeSim = Effect.fnUntraced(
 				building => Schema.is(StructureKind)(building.kind) && Array.contains(BELTS, building.kind)
 			)
 
-			const result = {
+			const result: Frame = {
 				at,
-				buildings: Boolean.match(
-					first || connection.buildings !== revision.buildings || (beltsRun && state.tick % 10 === 0),
-					{onFalse: () => undefined, onTrue: () => Array.map(allBuildings(), buildingView)}
-				),
+				...Boolean.match(first || connection.buildings !== revision.buildings || (beltsRun && state.tick % 10 === 0), {
+					onFalse: () => ({}),
+					onTrue: () => ({buildings: Array.map(allBuildings(), buildingView)})
+				}),
 				changes,
 				cleared: props,
 				environment: life.environment(state.tick),
 				explored: newChunks,
 				shots: MutableList.toArray(shots),
-				teams: Boolean.match(first || !SAME_TEAMS(connection.teams, teamViews), {
-					onFalse: () => undefined,
-					onTrue: () => teamViews
+				...Boolean.match(first || !SAME_TEAMS(connection.teams, teamViews), {
+					onFalse: () => ({}),
+					onTrue: () => ({teams: teamViews})
 				}),
 				tick: state.tick,
-				traces: traceFrame(connection),
+				...traceFrame(connection),
 				units: [
 					...Array.map(allUnits(), unitView),
 					...Array.map(allEnemies(), enemyView),
 					...Array.map(Array.fromIterable(MutableHashMap.values(mobs)), mobView)
 				],
-				world: Boolean.match(first, {onFalse: () => undefined, onTrue: () => ({generator: GENERATOR, seed})}),
-				zones: Boolean.match(first || connection.zones !== revision.zones, {
-					onFalse: () => undefined,
-					onTrue: () =>
-						Array.map(Array.fromIterable(visited), entry => ({...chunkFrom(entry[0]), teams: entry[1]}) satisfies Zone)
+				...Boolean.match(first, {onFalse: () => ({}), onTrue: () => ({world: {generator: GENERATOR, seed}})}),
+				...Boolean.match(first || connection.zones !== revision.zones, {
+					onFalse: () => ({}),
+					onTrue: () => ({
+						zones: Array.map(
+							Array.fromIterable(visited),
+							entry => ({...chunkFrom(entry[0]), teams: entry[1]}) satisfies Zone
+						)
+					})
 				})
 			}
 			connection.sent = true
