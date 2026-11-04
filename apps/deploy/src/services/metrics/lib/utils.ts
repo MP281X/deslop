@@ -364,10 +364,7 @@ export function appShares(current: AppReading, previous?: AppReading) {
 					onEmpty: () => ({}),
 					onNonEmpty: () => ({
 						cpu: Number.round(
-							Number.clamp((Array.reduce(deltas, 0, (sum, delta) => sum + delta) / 10_000 / elapsed) * 100, {
-								maximum: 100,
-								minimum: 0
-							}),
+							Number.clamp((Number.sumAll(deltas) / 10_000 / elapsed) * 100, {maximum: 100, minimum: 0}),
 							2
 						)
 					})
