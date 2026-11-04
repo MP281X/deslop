@@ -245,15 +245,11 @@ function inherited(previous: {fluid: Option.Option<ItemId>; pipes: number[]; sto
 }
 
 function itemsText(items: Items) {
-	return Option.getOrElse(
-		Option.liftPredicate(
-			Array.join(
-				Array.map(itemsIn(items), item => `${Number.round(countOf(items, item), 1)} ${item}`),
-				', '
-			),
-			String.isNonEmpty
-		),
-		() => 'nothing'
+	return (
+		Array.join(
+			Array.map(itemsIn(items), item => `${Number.round(countOf(items, item), 1)} ${item}`),
+			', '
+		) || 'nothing'
 	)
 }
 
@@ -2758,12 +2754,7 @@ export const makeSim = Effect.fnUntraced(
 						if (team === undefined || problem !== '') {
 							unit.upgrade = false
 							unit.order = {_tag: 'Go', x: Math.floor(unit.x), z: Math.floor(unit.z)}
-							life.event(
-								living(unit),
-								state.tick,
-								'action',
-								`Refit refused: ${Option.getOrElse(Option.liftPredicate(problem, String.isNonEmpty), () => 'no workshop')}.`
-							)
+							life.event(living(unit), state.tick, 'action', `Refit refused: ${problem || 'no workshop'}.`)
 							return
 						}
 						if (!Array.some(team.line, entry => entry.unit === id)) {
@@ -2802,7 +2793,7 @@ export const makeSim = Effect.fnUntraced(
 								living(unit),
 								state.tick,
 								'action',
-								`Construction proposal refused: ${Option.getOrElse(Option.liftPredicate(problem, String.isNonEmpty), () => 'only Builders stake sites')}.`
+								`Construction proposal refused: ${problem || 'only Builders stake sites'}.`
 							)
 							unit.order = {_tag: 'Go', x: Math.floor(unit.x), z: Math.floor(unit.z)}
 							return
@@ -4006,16 +3997,12 @@ export const makeSim = Effect.fnUntraced(
 						...Array.map(
 							Array.reverse(Array.sortWith(knowledge.facts, fact => fact.tick, Number.Order)),
 							fact =>
-								`#${fact.id} at ${place2(fact)} [observed tick ${fact.tick}, source #${fact.source}; ${Option.getOrElse(
-									Option.liftPredicate(
-										Array.join(
-											Array.map(fact.via ?? [], relay => `reported by #${relay.from} at tick ${relay.tick}`),
-											'; '
-										),
-										String.isNonEmpty
-									),
-									() => 'direct observation'
-								)}]: ${fact.text}`
+								`#${fact.id} at ${place2(fact)} [observed tick ${fact.tick}, source #${fact.source}; ${
+									Array.join(
+										Array.map(fact.via ?? [], relay => `reported by #${relay.from} at tick ${relay.tick}`),
+										'; '
+									) || 'direct observation'
+								}]: ${fact.text}`
 						)
 					],
 					'\n'

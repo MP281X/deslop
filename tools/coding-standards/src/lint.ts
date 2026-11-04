@@ -545,7 +545,6 @@ export const lint: OxlintConfig = {
 		'eslint/no-with': 'error',
 		'eslint/object-shorthand': 'error',
 		'eslint/prefer-arrow-callback': 'error',
-		'eslint/prefer-const': ['error', {destructuring: 'all'}],
 		'eslint/prefer-template': 'error',
 		'eslint/preserve-caught-error': 'error',
 		'eslint/require-yield': 'error',
@@ -828,7 +827,8 @@ export const lint: OxlintConfig = {
 		'typescript/restrict-template-expressions': 'error',
 		'typescript/strict-boolean-expressions': [
 			'error',
-			{allowNullableObject: false, allowNumber: false, allowString: false}
+			// A non-empty fallback such as `name || 'missing'` is the house idiom; nullable booleans, numbers and objects stay explicit.
+			{allowNullableObject: false, allowNullableString: true, allowNumber: false, allowString: true}
 		],
 		'typescript/strict-void-return': 'error',
 		'typescript/unbound-method': 'error',

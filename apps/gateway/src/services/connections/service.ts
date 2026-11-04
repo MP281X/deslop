@@ -401,7 +401,7 @@ export class Connections extends Context.Service<
 					if (Array.some(Record.values(current), row => row.url === url)) {
 						return yield* AuthError.make({message: 'This MCP has already been added.'})
 					}
-					const base = Option.getOrElse(Option.liftPredicate(serverName(url), String.isNonEmpty), () => 'mcp')
+					const base = serverName(url) || 'mcp'
 					const suffix = String.slice(0, 6)(String.toLowerCase(yield* nonce))
 					const id = Option.match(Record.get(current, base), {onNone: () => base, onSome: () => `${base}_${suffix}`})
 					const connection = yield* discover({

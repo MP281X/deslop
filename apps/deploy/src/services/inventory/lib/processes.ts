@@ -14,10 +14,7 @@ function processStatus(status: string) {
 		)
 	}
 	return {
-		memory:
-			Schema.decodeSync(Schema.FiniteFromString)(
-				Option.getOrElse(Option.liftPredicate(String.split(field('VmRSS'), /\s+/u)[0], String.isNonEmpty), () => '0')
-			) * 1024,
+		memory: Schema.decodeSync(Schema.FiniteFromString)(String.split(field('VmRSS'), /\s+/u)[0] || '0') * 1024,
 		name: field('Name'),
 		parent: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('PPid')),
 		pid: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('Pid'))

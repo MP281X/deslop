@@ -120,7 +120,7 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 			return InventoryItem.make({
 				...Option.getOrElse(response, () => ({http: false, ui: false})),
 				address,
-				detail: `${address} · ${Option.getOrElse(Option.liftPredicate(process, String.isNonEmpty), () => 'process unavailable')}`,
+				detail: `${address} · ${process || 'process unavailable'}`,
 				id: `${worker}:port:${fields[0]}:${address}`,
 				kind: 'port',
 				name: address,
