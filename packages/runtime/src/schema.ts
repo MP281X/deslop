@@ -64,6 +64,9 @@ export const RuntimeConfig = Schema.Struct({
 	version: AppVersion
 })
 
+// The socket every app serves its contracts on and every client opens: web, iOS and a peer worker.
+export const RPC_PATH = '/api/rpc'
+
 // Who the app bar's account menu shows; `signOut` is false without an issuer, where everyone is the developer.
 export type Account = typeof Account.Type
 export const Account = Schema.Struct({...User.fields, signOut: Schema.Boolean})

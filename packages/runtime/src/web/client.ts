@@ -9,7 +9,7 @@ import {Socket} from 'effect/socket'
 
 import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
-import {RuntimeConfig} from '#schema.ts'
+import {RPC_PATH, RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
@@ -49,7 +49,7 @@ export const layerProtocol = pipe(
 	Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
 	Layer.provide(
 		pipe(
-			Socket.layerWebSocket(Effect.sync(() => `${location.origin}/api/rpc`)),
+			Socket.layerWebSocket(Effect.sync(() => `${location.origin}${RPC_PATH}`)),
 			Layer.provide(Socket.layerWebSocketConstructorGlobal)
 		)
 	),

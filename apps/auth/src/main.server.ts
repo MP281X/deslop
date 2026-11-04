@@ -5,7 +5,6 @@ import {Effect, Layer, Schema, pipe} from 'effect'
 import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
-import {RpcServer} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -41,10 +40,7 @@ CliRuntime.runApp({
 	routes: pipe(
 		Layer.mergeAll(
 			HttpHandlers,
-			pipe(
-				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-				Layer.provide(RpcHandlers)
-			),
+			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
 				instructions: 'Approve a sign-in you started with answer_request.',
 				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))

@@ -1,7 +1,5 @@
 import {Layer, Schema, pipe} from 'effect'
 
-import {RpcServer} from 'effect/rpc'
-
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
@@ -17,8 +15,7 @@ const Count = Schema.String.check(Schema.isPattern(/^\d+$/u))
 CliRuntime.runApp({
 	icon,
 	routes: pipe(
-		RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-		Layer.provide(RpcHandlers),
+		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(Game.layer),
 		Layer.provide(Core.layer),
 		Layer.provide(ServerRuntime.layerDataStore)

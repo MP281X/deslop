@@ -1,7 +1,6 @@
 import {Array, Clock, Effect, Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
-import {RpcServer} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -30,10 +29,7 @@ CliRuntime.runApp({
 	routes: pipe(
 		Layer.mergeAll(
 			HttpHandlers,
-			pipe(
-				RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-				Layer.provide(RpcHandlers)
-			),
+			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			// The instructions name each connected server by the first sentence of its own, read when the gateway starts.
 			Layer.unwrap(
 				Effect.gen(function* () {

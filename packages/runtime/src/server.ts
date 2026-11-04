@@ -41,9 +41,10 @@ import {
 	HttpStaticServer
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
-import {RpcSerialization} from 'effect/rpc'
+import {RpcSerialization, RpcServer} from 'effect/rpc'
+import type {Rpc, RpcGroup} from 'effect/rpc'
 
-import {Account, PackageMetadata, RuntimeConfig} from '#schema.ts'
+import {Account, PackageMetadata, RPC_PATH, RuntimeConfig} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 import {localAuth} from '#auth/lib/utils.ts'
@@ -372,6 +373,23 @@ export const layerWeb = Layer.unwrap(
 		)
 	})
 )
+
+// An app's RPC socket: one path and protocol, which its web, iOS and peer-worker clients also open.
+export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
+	disableTracing?: boolean
+	group: RpcGroup.RpcGroup<Rpcs>
+	handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+}) {
+	return pipe(
+		RpcServer.layerHttp({
+			disableTracing: options.disableTracing,
+			group: options.group,
+			path: RPC_PATH,
+			protocol: 'websocket'
+		}),
+		Layer.provide(options.handlers)
+	)
+}
 
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
 export function layerMcp<RA, RE, RR>(options: {instructions: string; registrations: Layer.Layer<RA, RE, RR>}) {

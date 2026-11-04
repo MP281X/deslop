@@ -4,7 +4,7 @@ import {Array, Effect, Layer, Schema, String, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
-import {RpcSerialization, RpcServer} from 'effect/rpc'
+import {RpcSerialization} from 'effect/rpc'
 
 import {HttpAuth} from '@deslop/runtime/auth/service'
 import * as CliRuntime from '@deslop/runtime/cli'
@@ -65,8 +65,7 @@ const routes = HttpRouter.use(router =>
 
 // Binary frames failed to reopen a cancelled watch.
 const rpc = pipe(
-	RpcServer.layerHttp({group: RpcContracts, path: '/api/rpc', protocol: 'websocket'}),
-	Layer.provide(RpcHandlers),
+	ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 	Layer.provide(RpcSerialization.layerJson)
 )
 

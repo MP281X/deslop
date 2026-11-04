@@ -9,6 +9,7 @@ import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
 import {AppState} from 'react-native'
 
+import {RPC_PATH} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
@@ -23,7 +24,7 @@ export function layer(applicationName: string) {
 		pipe(
 			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
 			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-			Layer.provide(Socket.layerWebSocket(pipe(new URL('/api/rpc', server).href, String.replace(/^http/u, 'ws')))),
+			Layer.provide(Socket.layerWebSocket(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws')))),
 			Layer.provide(Socket.layerWebSocketConstructorGlobal),
 			Layer.provide(RpcSerialization.layerJson)
 		)

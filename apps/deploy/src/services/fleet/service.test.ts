@@ -7,7 +7,6 @@ import {assert, it} from '@effect/vitest'
 import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, pipe} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
-import {RpcServer} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -58,9 +57,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					pipe(
 						HttpRouter.serve(
 							pipe(
-								RpcServer.layerHttp({group, path: '/api/rpc', protocol: 'websocket'}),
-								Layer.provide(
-									group.toLayer({
+								ServerRuntime.layerRpc({
+									group,
+									handlers: group.toLayer({
 										'deploy.history': Effect.fnUntraced(function* () {
 											if (yield* Ref.get(hanging)) {
 												yield* Deferred.succeed(entered, undefined)
@@ -75,7 +74,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 												return Effect.succeed(snapshot)
 											})
 									})
-								),
+								}),
 								// No person is signed in: only a worker holding the shared key gets through.
 								Layer.provide(layerPeerAuth),
 								Layer.provide(
