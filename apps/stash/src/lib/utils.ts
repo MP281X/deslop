@@ -14,7 +14,6 @@ import {brands} from '@deslop/components-mobile/icons'
 import {hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 
@@ -56,11 +55,7 @@ export const session = MobileSession.make('Stash', SERVER, {
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: pipe(
-		MobileRuntime.layer('@deslop/stash')(SERVER),
-		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
-		Layer.provide(FetchHttpClient.layer)
-	)
+	protocol: MobileRuntime.layerSignedIn('@deslop/stash', session.accessToken)(SERVER)
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.

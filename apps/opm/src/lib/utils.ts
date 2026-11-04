@@ -1,6 +1,5 @@
-import {Array, Effect, HashSet, Layer, Option, Order, Schema, Stream, pipe} from 'effect'
+import {Array, Effect, HashSet, Option, Order, Schema, Stream, pipe} from 'effect'
 
-import {FetchHttpClient} from 'effect/http'
 import {AtomRpc, Atom} from 'effect/reactivity'
 import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
@@ -8,7 +7,6 @@ import * as Notifications from 'expo-notifications'
 
 import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
-import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -29,11 +27,7 @@ export const session = MobileSession.make('opm', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: pipe(
-		MobileRuntime.layer('@deslop/opm')(SERVER),
-		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
-		Layer.provide(FetchHttpClient.layer)
-	)
+	protocol: MobileRuntime.layerSignedIn('@deslop/opm', session.accessToken)(SERVER)
 }) {}
 
 // Chapters

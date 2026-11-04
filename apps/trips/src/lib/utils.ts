@@ -18,7 +18,6 @@ import {
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {FetchHttpClient} from 'effect/http'
 import {AsyncResult, AtomRpc, Atom} from 'effect/reactivity'
 import * as Application from 'expo-application'
 import * as Calendar from 'expo-calendar'
@@ -34,7 +33,6 @@ import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipbo
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {colors, hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
-import {RpcAuth} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -78,11 +76,7 @@ export const session = MobileSession.make('Trips', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: pipe(
-		MobileRuntime.layer('@deslop/trips')(SERVER),
-		Layer.provideMerge(RpcAuth.layerClient(session.accessToken)),
-		Layer.provide(FetchHttpClient.layer)
-	)
+	protocol: MobileRuntime.layerSignedIn('@deslop/trips', session.accessToken)(SERVER)
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.

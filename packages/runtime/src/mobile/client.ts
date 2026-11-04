@@ -2,6 +2,7 @@ import {Boolean, DateTime, Duration, Effect, Layer, Option, Schema, String, pipe
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
+import {FetchHttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
 import {RpcClient, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
@@ -11,6 +12,9 @@ import {AppState} from 'react-native'
 
 import {RPC_PATH} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
+
+import {RpcAuth} from '#auth/lib/utils.ts'
+import type {AuthError} from '#auth/schema.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
 
@@ -27,6 +31,16 @@ export function layer(applicationName: string) {
 			Layer.provide(Socket.layerWebSocket(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws')))),
 			Layer.provide(Socket.layerWebSocketConstructorGlobal),
 			Layer.provide(RpcSerialization.layerJson)
+		)
+}
+
+// A signed-in app's socket: the account's bearer on every request, read again for each one.
+export function layerSignedIn<R>(applicationName: string, token: Effect.Effect<string, AuthError, R>) {
+	return (server: string) =>
+		pipe(
+			layer(applicationName)(server),
+			Layer.provideMerge(RpcAuth.layerClient(token)),
+			Layer.provide(FetchHttpClient.layer)
 		)
 }
 
