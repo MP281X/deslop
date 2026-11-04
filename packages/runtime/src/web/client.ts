@@ -1,4 +1,4 @@
-import {Effect, Layer, Predicate, Schedule, Stream, pipe} from 'effect'
+import {Array, Effect, Layer, Predicate, Record, Schedule, Stream, String, pipe} from 'effect'
 
 import {createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, RouterOptions} from '@tanstack/react-router'
@@ -31,6 +31,13 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 			scrollRestoration: true
 		})
 	}
+}
+
+// Every app's icon by its folder, from the icon glob a page runs four levels above its own routes.
+export function appIcons(icons: Record<string, string>) {
+	return Record.fromEntries(
+		Array.map(Record.toEntries(icons), entry => [String.split(entry[0], '/')[4] ?? '', entry[1]] as const)
+	)
 }
 
 // A live stream opens again after the socket drops; its other failures reach the screen.

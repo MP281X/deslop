@@ -32,6 +32,7 @@ import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {ageOf, arrivalsAtom, durationOf, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
@@ -55,14 +56,9 @@ const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema
 type Wrapped = typeof Wrapped.Type
 const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
-// Each Deslop app's mark by its folder, for the app a trace came from.
-const marks: Record<string, string> = Record.fromEntries(
-	Array.map(
-		Record.toEntries(
-			import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-		),
-		entry => [String.split(entry[0], '/')[4] ?? '', entry[1]]
-	)
+// Each Deslop app's mark, for the app a trace came from.
+const marks = WebRuntime.appIcons(
+	import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
 )
 
 // A failure the page can't show as data: sign-in, then anything else as an error with a reload.

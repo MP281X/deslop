@@ -210,6 +210,16 @@ function covers(have: Items, need: Items) {
 	return Array.every(itemsIn(need), item => countOf(have, item) >= countOf(need, item))
 }
 
+// What a storage holds now: its input stock and its output counted together.
+function contentsOf(building: Building) {
+	return Record.fromEntries(
+		Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
+			item,
+			countOf(building.stock, item) + countOf(building.output, item)
+		])
+	)
+}
+
 // What a pipe network inherits from the networks before it: each old network's fluid shared out by how many of its pipes it keeps, so a split divides the fluid and a join adds it; the most-held fluid stays.
 function inherited(previous: {fluid: Option.Option<ItemId>; pipes: number[]; stock: number}[], ids: number[]) {
 	const shares = Array.getSomes(
@@ -942,12 +952,7 @@ export const makeSim = Effect.fnUntraced(
 					kind: 'storage',
 					stage: building.site.state.path,
 					...centreOf(building),
-					items: Record.fromEntries(
-						Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
-							item,
-							countOf(building.stock, item) + countOf(building.output, item)
-						])
-					),
+					items: contentsOf(building),
 					text: `#${building.id} ${building.kind} inspected: stock ${itemsText(building.stock)}; output ${itemsText(building.output)}.`
 				},
 				state.tick
@@ -3784,12 +3789,7 @@ export const makeSim = Effect.fnUntraced(
 						id: building.id,
 						kind: 'storage',
 						...centreOf(building),
-						items: Record.fromEntries(
-							Array.map(Array.dedupe([...itemsIn(building.stock), ...itemsIn(building.output)]), item => [
-								item,
-								countOf(building.stock, item) + countOf(building.output, item)
-							])
-						),
+						items: contentsOf(building),
 						source: team.home,
 						text: `Inspected #${building.id}: stock ${itemsText(building.stock)}; output ${itemsText(building.output)}.`,
 						tick: state.tick

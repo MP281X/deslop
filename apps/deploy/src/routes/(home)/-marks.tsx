@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, Record, String} from 'effect'
+import {Array, Boolean, Option, String} from 'effect'
 
 import {Box, SquareTerminal} from 'lucide-react'
 
@@ -14,18 +14,14 @@ import {T3Light} from '@deslop/components-web/ui/svgs/t3Light'
 import {TurborepoIconDark} from '@deslop/components-web/ui/svgs/turborepoIconDark'
 import {TurborepoIconLight} from '@deslop/components-web/ui/svgs/turborepoIconLight'
 import {Vite} from '@deslop/components-web/ui/svgs/vite'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import icon from '#routes/icon.svg'
 
-// Every app's mark by its folder; Vite names Deploy's own as a path inside this app, so it joins by name.
+// Vite names Deploy's own mark as a path inside this app, so it joins by name.
 const apps: Record<string, string> = {
-	...Record.fromEntries(
-		Array.map(
-			Record.toEntries(
-				import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-			),
-			entry => [String.split(entry[0], '/')[4] ?? '', entry[1]]
-		)
+	...WebRuntime.appIcons(
+		import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
 	),
 	deploy: icon
 }
