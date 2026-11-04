@@ -22,8 +22,7 @@
 		"./web": "./src/web/client.tsx"
 	},
 	"scripts": {
-		"test": "vp test --config ../../vite.config.ts",
-		"typecheck": "tsrs --checkerAssignment go --pretty false"
+		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
 		"@deslop/components-web": "workspace:*",

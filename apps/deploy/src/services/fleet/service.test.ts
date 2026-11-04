@@ -1,4 +1,4 @@
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- A real scoped loopback server proves the worker RPC transport.
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- A real scoped loopback server proves the worker RPC transport.
 import {createServer} from 'node:http'
 
 import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'

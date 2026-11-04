@@ -122,7 +122,7 @@ export class Fleet extends Context.Service<
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
 					return yield* pipe(
 						Effect.flatMap(makeRemoteClient, client => use(client, peerHeaders)),
-						// @effect-diagnostics-next-line strictEffectProvide:off -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
+						// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
 						Effect.provide(
 							pipe(
 								RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),

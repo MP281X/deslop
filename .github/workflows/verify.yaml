@@ -24,7 +24,7 @@ jobs:
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
       - name: Format, lint, types and dead code
-        run: vp check && vp run check
+        run: vp run check
 
   test:
     name: Test

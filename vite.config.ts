@@ -56,11 +56,12 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
+		// Templates install no dependencies, so the typed gate cannot resolve them; a generated app is checked after creation.
+		ignorePatterns: ['**/*.gen.ts', 'tools/*/template/**', 'packages/components-web/src/ui/**'],
 		overrides: [
 			{
 				// React Native styles are objects with no Tailwind classes to check.
-				files: ['apps/{opm,stash,trips}/**', 'packages/components-mobile/**', 'tools/create-app/template/mobile/**'],
+				files: ['apps/{opm,stash,trips}/**', 'packages/components-mobile/**'],
 				rules: {
 					'shadcn/no-arbitrary-values': 'off',
 					'shadcn/no-inline-styles': 'off',
@@ -69,20 +70,15 @@ export default defineConfig({
 					'shadcn/no-unknown-classes': 'off',
 					'shadcn/require-static-classes': 'off'
 				}
-			},
-			{
-				// The web template is no workspace package, so its stylesheet cannot resolve the theme's own utilities.
-				files: ['tools/create-app/template/web/**'],
-				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		]
 	},
 	run: {
-		// Each package's typecheck and test scripts replay from the cache while their inputs are unchanged; a stopped preview server exits 130, so it is never cached.
+		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.
 		cache: true,
 		tasks: {
-			// Format and lint run before it as `vp check`, or `vp check --fix` in Verify, so nothing is checked twice. A package's typecheck and tests read its dependencies' sources, never their output, so every package starts at once.
-			check: ['vp run -r --parallel typecheck', 'vp run fallow'],
+			// Oxfmt, then Oxlint on tsrs with the Effect rules and TypeScript diagnostics; `fix` writes the fixes instead of only reporting them.
+			check: ['effect-tsgo --tsrs-lint vp check', 'vp run fallow'],
 			// Fallow judges exports and dependencies across packages, so it reads the whole workspace whichever package it reports on.
 			fallow: {
 				cache: {input: [{auto: true}, '!.fallow/**'], output: []},
@@ -93,6 +89,7 @@ export default defineConfig({
 					'fallow health --complexity --format human --quiet'
 				]
 			},
+			fix: {cache: false, command: ['effect-tsgo --tsrs-lint vp check --fix', 'vp run fallow']},
 			test: 'vp run -r --parallel test'
 		}
 	},

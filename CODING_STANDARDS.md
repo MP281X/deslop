@@ -59,8 +59,9 @@ Each app is an npm package run as a user service on its worker, at its own defau
 - **Libraries** only through published releases and public API, as documented. No patches, forks, vendored copies, dependency overrides or shims, upgrades included. When a library falls short, change this design, pick another library or ask the user.
 - **Metadata exception**: a release's wrong package metadata (an undeclared dependency, a stale pin) may be corrected in `pnpm-workspace.yaml` with `packageExtensions` or an override, beside a comment naming the upstream defect, removed once a release fixes it.
 - **Lint policy** in `@deslop/coding-standards`:
-  - **Once**: each policy defined once; tests only for custom rules; native rules picked by name with every category off, so a tool upgrade opts into nothing; a declined rule stays `off` with its reason.
-  - **No overlap**: each check in the one tool covering it best, proven with the custom rule's failing cases; the compiler and Effect diagnostics own theirs; no rule for a form the preset already bans.
-  - **Reach**: only checks that can fire here, preventive ones included for patterns t3code and Dual already hit; type-aware lint and `exactOptionalPropertyTypes` off.
+  - **Once**: each policy defined once; tests only for custom rules; native rules picked by name with every category off, so a tool upgrade opts into nothing; a declined rule is left out.
+  - **No overlap**: each check in the one tool covering it best, proven with the custom rule's failing cases; the compiler and the Effect Oxlint rules own theirs; no rule for a form the preset already bans.
+  - **One gate**: `check`, and `fix` in Verify, run Oxfmt, then Oxlint on tsrs with the Effect rules and TypeScript diagnostics, then Fallow; no package keeps a typecheck script, and the templates, which install nothing, stay outside it.
+  - **Reach**: only checks that can fire here, preventive ones included for patterns t3code and Dual already hit; `exactOptionalPropertyTypes` off.
   - **Custom rules** earn their place with coverage or a safe fix no native rule offers.
   - **Combined gate**: intended forms stay accepted, fixes converge.

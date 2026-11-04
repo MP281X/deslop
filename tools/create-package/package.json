@@ -12,8 +12,7 @@
 		"./cli": "./src/cli.ts"
 	},
 	"scripts": {
-		"test": "vp test --config ../../vite.config.ts",
-		"typecheck": "tsrs --checkerAssignment go --pretty false"
+		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
 		"@effect/platform-node": "latest",

@@ -11,12 +11,12 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Commands
 
-- **Verify**: `vp check --fix && vp run check && vp run test`.
-  - `vp check --fix`: format and lint fixes, fails on leftovers; CI runs plain `vp check`.
-  - `check`: each package's `typecheck`, then Fallow. `test`: each package's tests.
-  - **Task cache**: same `typecheck` and `test` scripts in every `package.json`, root caches scripts; per worktree, since `vp test` and `vp check` keys hold the absolute path.
+- **Verify**: `vp run fix && vp run test`.
+  - `fix`: Oxfmt, then Oxlint on tsrs with the Effect rules and TypeScript diagnostics, writing fixes and failing on leftovers, then Fallow. CI runs `check`, the same without `--fix`.
+  - `check`: the gate and Fallow. `test`: each package's tests.
+  - **Task cache**: same `test` scripts in every `package.json`, root caches scripts; per worktree, since `vp test` and `vp check` keys hold the absolute path.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `RELEASING.md`, **Publish an iOS app**.
-- **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count hits per rule with `tsrs` in each package, since `vp run check` stops at the first failure; ask before one that reverses a house form or rewrites hundreds of sites, with a bad/good pair and its count.
+- **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad/good pair and its count.
 - **Releases.** `RELEASING.md`: Simulator builds, deploy and its checks, publishing packages and iOS apps.
 - **Agent configuration.**
   - `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; they replace the provider prompts with goals and local facts the harness, T3 and tool descriptions don't say, and name each injected rule they override.

@@ -298,7 +298,7 @@ export const clipboardAtom = AtomMachine.bind(
 											Effect.flatMap(get.result(RpcClient.runtime), context =>
 												Effect.provideContext(saveLink, context)
 											),
-										// @effect-diagnostics-next-line strictEffectProvide:off -- The RPC runtime exposes only its client, so the upload brings its own fetch.
+										// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
 										onTrue: () => Effect.provide(saveImage(), FetchHttpClient.layer)
 									})
 							})
