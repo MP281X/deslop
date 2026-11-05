@@ -18,7 +18,7 @@ import {
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Globe, Server, Smartphone, Workflow} from 'lucide-react'
+import {ChevronRight, Copy, Globe, Server, Smartphone, Workflow} from 'lucide-react'
 import {Suspense, useState} from 'react'
 import type {ReactElement} from 'react'
 
@@ -46,6 +46,20 @@ import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#service
 // The side an operation starts on, in words, so a search or a row can name it.
 const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
+const STATUS: Record<string, string> = {
+	400: 'Bad Request',
+	401: 'Unauthorized',
+	403: 'Forbidden',
+	404: 'Not Found',
+	409: 'Conflict',
+	422: 'Unprocessable',
+	429: 'Too Many Requests',
+	500: 'Server Error',
+	502: 'Bad Gateway',
+	503: 'Unavailable',
+	504: 'Gateway Timeout'
+}
+
 // The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone, a server or CI.
 const DEVICES: Record<Runtime, ReactElement> = {
 	ci: <Workflow role="img" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
@@ -54,6 +68,14 @@ const DEVICES: Record<Runtime, ReactElement> = {
 	unknown: <Server aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
 	web: <Globe role="img" aria-label="web" data-side="web" className="size-3.5 shrink-0 text-(--side)" />
 }
+
+const clock = new Intl.DateTimeFormat(undefined, {
+	hour: '2-digit',
+	hourCycle: 'h23',
+	minute: '2-digit',
+	second: '2-digit'
+})
+const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 
 type Attributes = typeof Attributes.Type
 const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
@@ -96,17 +118,21 @@ function valueOf(value: Schema.Json) {
 	)
 }
 
-// What a span says beyond its row: attributes, without anything that only repeats its name, such as code.function.
+// What a span says beyond its row: attributes, without anything that only repeats its name, such as code.function, or the status code the error line already carries.
 function attributesOf(span: Trace['spans'][number]) {
-	return Array.filter(
-		Array.map(
-			Array.filter(
-				Option.getOrElse(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), () => []),
-				attribute => attribute.key !== 'service.name'
-			),
-			attribute => ({key: attribute.key, value: valueOf(attribute.value)})
+	const attributes = Array.map(
+		Array.filter(
+			Option.getOrElse(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), () => []),
+			attribute => attribute.key !== 'service.name'
 		),
-		attribute => attribute.value !== span.name
+		attribute => ({key: attribute.key, value: valueOf(attribute.value)})
+	)
+	const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
+	return Array.filter(
+		attributes,
+		attribute =>
+			attribute.value !== span.name &&
+			(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
 	)
 }
 
@@ -122,6 +148,29 @@ function errorOf(span: Trace['spans'][number]) {
 	)
 }
 
+// Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
+function ErrorText(props: {message: string}) {
+	return Option.match(String.match(/^StatusCode error \((\d{3}) (\w+) (https?:\/\/[^\s)]+)\)$/u)(props.message), {
+		onNone: () => <span className="break-words">{props.message}</span>,
+		onSome: parts => {
+			const code = parts[1] ?? ''
+			const method = parts[2] ?? ''
+			const url = parts[3] ?? ''
+			return (
+				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
+					<span className="font-medium">
+						{code} {Option.getOrElse(Record.get(STATUS, code), () => '')}
+					</span>
+					<span>{method}</span>
+					<a href={url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+						{String.replace(/^https?:\/\//u, '')(url)}
+					</a>
+				</span>
+			)
+		}
+	})
+}
+
 // A span opens only when it has something its row doesn't already show.
 function hasDetail(span: Trace['spans'][number]) {
 	return (
@@ -133,10 +182,10 @@ function hasDetail(span: Trace['spans'][number]) {
 
 // Where a span's name starts: past the trace rows' age column, one step further per level.
 function indentOf(span: Trace['spans'][number]) {
-	return `calc(var(--spacing) * 10 + ${Number.max(0, span.depth - 1) * 12}px)`
+	return `calc(var(--spacing) * 6 + ${Number.max(0, span.depth - 1) * 12}px)`
 }
 
-// The picked span's error, attributes and logs, each a line on the same columns as the rows: key under the name, value ending under the duration.
+// The picked span's error, attributes and logs, each key over its value so a long key or URL never truncates.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	return (
 		<dl className="flex flex-col pb-1 font-mono text-xs">
@@ -152,21 +201,24 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				(line, index) => (
 					<div
 						key={`${line.key}:${index}`}
-						className="flex items-baseline gap-3 py-1 pr-1 pl-(--indent)"
+						className="flex flex-col gap-0.5 py-1 pr-1 pl-(--indent)"
 						style={{'--indent': indentOf(props.span)}}
 					>
-						<dt className="text-muted-foreground shrink-0">{line.key}</dt>
-						<dd className={cn('min-w-0 flex-1 text-right break-all select-text', line.failed && 'text-destructive')}>
-							{Boolean.match(line.key === 'url.full' && String.startsWith('https://')(line.value), {
-								onFalse: () => line.value,
-								onTrue: () => (
-									<a href={line.value} target="_blank" rel="noreferrer" className="text-primary">
-										{line.value}
-									</a>
-								)
+						<dt className={cn('text-muted-foreground', line.failed && 'text-destructive')}>{line.key}</dt>
+						<dd className={cn('min-w-0 break-words select-text', line.failed && 'text-destructive')}>
+							{Boolean.match(line.key === 'error', {
+								onFalse: () =>
+									Boolean.match(line.key === 'url.full' && String.startsWith('https://')(line.value), {
+										onFalse: () => line.value,
+										onTrue: () => (
+											<a href={line.value} target="_blank" rel="noreferrer" className="text-primary">
+												{line.value}
+											</a>
+										)
+									}),
+								onTrue: () => <ErrorText message={line.value} />
 							})}
 						</dd>
-						<span className="size-3.5 shrink-0" />
 					</div>
 				)
 			)}
@@ -179,7 +231,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 	return (
 		<>
 			<span
-				className="flex w-36 shrink-0 items-center gap-1.5 pl-(--indent) text-left"
+				className="flex w-40 shrink-0 items-center gap-1.5 pl-(--indent) text-left"
 				style={{'--indent': indentOf(props.span)}}
 			>
 				{Option.match(props.mark, {
@@ -188,11 +240,11 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 				})}
 				<span className="truncate">{props.span.name}</span>
 			</span>
-			<span className="relative h-2 flex-1">
+			<span className="bg-muted/60 relative h-1.5 flex-1 rounded-full">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-2 w-(--length) min-w-0.5',
+						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5 rounded-full',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -225,6 +277,37 @@ function brokeAt(spans: Trace['spans']) {
 	return Array.findFirst(failed, span => !Array.some(parents, parent => String.toLowerCase(parent) === span.spanId))
 }
 
+// One span row: a plain line when it has nothing more to show, an accordion with its attributes and logs when it has.
+function SpanRow(props: {
+	focus?: string
+	mark: (span: Trace['spans'][number]) => Option.Option<string>
+	onPick: (id: string) => void
+	span: Trace['spans'][number]
+}) {
+	const open = props.focus === props.span.spanId
+	if (!hasDetail(props.span)) {
+		return (
+			<div className="flex h-8 w-full items-center gap-3 pr-1 text-xs">
+				<SpanLine mark={props.mark(props.span)} span={props.span} />
+			</div>
+		)
+	}
+	return (
+		<Collapsible
+			open={open}
+			onOpenChange={value => props.onPick(Boolean.match(value, {onFalse: () => '', onTrue: () => props.span.spanId}))}
+			className="data-open:bg-muted/60"
+		>
+			<CollapsibleTrigger className="hover:bg-muted/50 flex h-8 w-full cursor-pointer items-center gap-3 pr-1 text-left text-xs">
+				<SpanLine mark={props.mark(props.span)} span={props.span} open={open} />
+			</CollapsibleTrigger>
+			<CollapsibleContent>
+				<SpanDetail span={props.span} />
+			</CollapsibleContent>
+		</Collapsible>
+	)
+}
+
 // A trace's spans under its root, each on the trace's time scale; where it broke starts picked, else the root's own details show.
 function Spans(props: {id: string; size: number}) {
 	const result = useAtomSuspense(traceAtom(`${props.id}:${props.size}`), {includeFailure: true})
@@ -253,40 +336,16 @@ function Spans(props: {id: string; size: number}) {
 		}),
 		hasDetail
 	)
+	const focusId = Option.getOrUndefined(Option.map(focus, span => span.spanId))
 	return (
 		<div className="flex flex-col pb-2" style={{'--trace-total': `${Number.max(trace.durationMs, 1)}`}}>
-			{Option.match(
-				Option.filter(focus, span => Option.exists(root, top => top.spanId === span.spanId)),
-				{onNone: () => null, onSome: span => <SpanDetail span={span} />}
-			)}
-			{Array.map(below, span =>
-				Boolean.match(hasDetail(span), {
-					onFalse: () => (
-						<div key={span.spanId} className="flex h-8 w-full items-center gap-3 pr-1 text-xs">
-							<SpanLine mark={mark(span)} span={span} />
-						</div>
-					),
-					onTrue: () => (
-						<Collapsible
-							key={span.spanId}
-							open={Option.exists(focus, current => current.spanId === span.spanId)}
-							onOpenChange={open => setPicked(Boolean.match(open, {onFalse: () => '', onTrue: () => span.spanId}))}
-							className="data-open:bg-muted/60"
-						>
-							<CollapsibleTrigger className="hover:bg-muted/50 flex h-8 w-full cursor-pointer items-center gap-3 pr-1 text-left text-xs">
-								<SpanLine
-									mark={mark(span)}
-									span={span}
-									open={Option.exists(focus, current => current.spanId === span.spanId)}
-								/>
-							</CollapsibleTrigger>
-							<CollapsibleContent>
-								<SpanDetail span={span} />
-							</CollapsibleContent>
-						</Collapsible>
-					)
-				})
-			)}
+			{Option.match(root, {
+				onNone: () => null,
+				onSome: span => <SpanRow focus={focusId} mark={mark} onPick={id => setPicked(id)} span={span} />
+			})}
+			{Array.map(below, span => (
+				<SpanRow key={span.spanId} focus={focusId} mark={mark} onPick={id => setPicked(id)} span={span} />
+			))}
 		</div>
 	)
 }
@@ -307,7 +366,7 @@ function SpansSkeleton() {
 // An app's mark, name and newest release at the top of its operations.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-8 shrink-0 items-center gap-2 border-b px-2">
+		<div className="bg-background sticky top-8 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2">
 			{Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
 				onNone: () =>
 					Boolean.match(
@@ -373,7 +432,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 					className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-lg:hidden"
 					title="Runs"
 				>
-					{props.operation.count}×<span className="sr-only"> runs</span>
+					{count.format(props.operation.count)}×<span className="sr-only"> runs</span>
 				</span>
 				<span
 					className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums"
@@ -399,6 +458,16 @@ function OperationsPane(props: {
 			aria-label="Operations"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
+			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-3">
+				<span className="text-sm font-semibold">Operations</span>
+				<span className="text-muted-foreground font-mono text-xs">
+					{count.format(Array.reduce(props.overview.apps, 0, (sum, app) => sum + app.operations.length))}
+				</span>
+				<span className="ml-auto flex items-center gap-1">
+					<span className="text-muted-foreground w-10 text-right text-xs max-lg:hidden">Runs</span>
+					<span className="text-muted-foreground w-12 text-right text-xs">Typical</span>
+				</span>
+			</header>
 			{Array.match(props.overview.apps, {
 				onEmpty: () => (
 					<Empty>
@@ -462,7 +531,9 @@ function TraceListRow(props: {
 					<span className="text-muted-foreground w-8 shrink-0 font-mono text-xs">
 						{ageOf(props.trace.time, props.now)}
 					</span>
-					<span className="flex-1" />
+					<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						{String.slice(0, 8)(props.trace.id)}
+					</span>
 					{props.trace.failure !== undefined && (
 						<Badge
 							variant="destructive"
@@ -504,25 +575,28 @@ function TracesPane(props: {
 				aria-label="Traces"
 				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 			>
-				<header className="bg-background sticky top-0 z-20 flex shrink-0 flex-col gap-1 border-b px-3 py-2">
-					<div className="flex min-w-0 items-center gap-2">
-						{Option.match(Option.fromUndefinedOr(marks[active.app.name]), {
-							onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
-							onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-						})}
-						<span className="min-w-0 flex-1 truncate text-sm font-semibold">{active.operation.name}</span>
-						{active.operation.failures > 0 && (
-							<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
-								{active.operation.failures}
-								<span className="sr-only"> failed</span>
-							</Badge>
-						)}
-					</div>
-					<span className="text-muted-foreground truncate font-mono text-xs">
-						{active.app.name} · {SIDES[active.operation.runtime] || 'unknown'} · {durationOf(active.operation.p50Ms)}{' '}
-						typical
+				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+					{Option.match(Option.fromUndefinedOr(marks[active.app.name]), {
+						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
+						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
+					})}
+					<span className="min-w-0 flex-1 truncate text-sm font-semibold">{active.operation.name}</span>
+					{active.operation.failures > 0 && (
+						<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
+							{active.operation.failures}
+							<span className="sr-only"> failed</span>
+						</Badge>
+					)}
+					<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+						{durationOf(active.operation.p50Ms)} typical
 					</span>
 				</header>
+				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-1 border-b px-2.5 text-xs">
+					<span className="w-8">Age</span>
+					<span className="min-w-0 flex-1">Trace</span>
+					<span className="w-32 text-right">Failure</span>
+					<span className="w-14 text-right">Duration</span>
+				</div>
 				<div role="list">
 					{Array.map(active.operation.traces, trace => (
 						<TraceListRow
@@ -557,23 +631,33 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 				aria-label="Trace"
 				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 			>
-				<header className="bg-background sticky top-0 z-20 flex shrink-0 items-center gap-2 border-b px-3 py-2">
-					<span className="text-muted-foreground w-8 shrink-0 font-mono text-xs">{ageOf(trace.time, props.now)}</span>
+				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+					<span className="text-muted-foreground w-14 shrink-0 font-mono text-xs" title={ageOf(trace.time, props.now)}>
+						{clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(trace.time)), () => props.now))}
+					</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-xs">{trace.id}</span>
-					{trace.failure !== undefined && (
-						<Badge
-							variant="destructive"
-							className="max-w-32 shrink-0 font-mono"
-							title={`Failed at ${trace.failure.span}`}
-						>
-							<span className="truncate">{trace.failure.span}</span>
-						</Badge>
-					)}
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						aria-label="Copy trace ID"
+						title="Copy trace ID"
+						onClick={async () => {
+							await navigator.clipboard.writeText(trace.id)
+						}}
+					>
+						<Copy />
+					</Button>
 					<span className="shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
 						{durationOf(trace.durationMs)}
 					</span>
 				</header>
-				<div className="min-w-0 px-3 pt-2">
+				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-3 border-b pr-4 pl-3 text-xs">
+					<span className="w-40 pl-6">Span</span>
+					<span className="min-w-0 flex-1">Timeline</span>
+					<span className="w-14 text-right">Duration</span>
+					<span className="size-3.5" />
+				</div>
+				<div className="min-w-0 px-3">
 					<Suspense fallback={<SpansSkeleton />}>
 						<Spans key={trace.id} id={trace.id} size={trace.durationMs} />
 					</Suspense>
@@ -696,9 +780,7 @@ function Home() {
 						pipe(
 							Match.value(pane),
 							Match.when('operations', () => 'scope'),
-							Match.when('traces', () =>
-								Option.match(activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
-							),
+							Match.when('traces', () => 'Traces'),
 							Match.orElse(() => 'Trace')
 						)
 				})}

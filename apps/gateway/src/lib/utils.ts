@@ -11,7 +11,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 
-const ENDPOINT = `${window.location.origin}/mcp`
+export const ENDPOINT = `${window.location.origin}/mcp`
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
 	group: RpcContracts,

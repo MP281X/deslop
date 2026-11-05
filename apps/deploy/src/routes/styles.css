@@ -10,13 +10,16 @@
 	--primary: var(--blue);
 }
 
-/* Each machine's section draws its charts, swatches and live dots in its own hue. */
+/* Each machine's charts and swatches draw in its own hue; the app's primary stays Deploy's blue. */
 @utility machine {
 	--machine: var(--blue);
-	--primary: var(--blue);
 
 	&[data-machine='desktop'] {
 		--machine: var(--purple);
-		--primary: var(--purple);
 	}
+}
+
+/* A machine metric that uses a shadcn component's primary token: only that component takes the machine hue. */
+@utility machine-metric {
+	--primary: var(--machine);
 }

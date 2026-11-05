@@ -1,7 +1,8 @@
 import {Array, Boolean, Option, Record} from 'effect'
 
 import {defaultFilter} from 'cmdk'
-import {Search} from 'lucide-react'
+import {AppWindow, Search} from 'lucide-react'
+import {useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
@@ -12,18 +13,19 @@ import {
 	CommandGroup,
 	CommandInput,
 	CommandItem,
-	CommandList
+	CommandList,
+	CommandSeparator
 } from '#components/ui/command.tsx'
 import {Kbd} from '#components/ui/kbd.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
 const APPS = [
-	{abbr: 'DP', hue: '#4385be', name: 'deploy', url: 'https://deploy.mp281x.xyz'},
-	{abbr: 'SC', hue: '#3aa99f', name: 'scope', url: 'https://scope.mp281x.xyz'},
-	{abbr: 'GW', hue: '#8b7ec8', name: 'gateway', url: 'https://gateway.mp281x.xyz'},
-	{abbr: 'AU', hue: '#da702c', name: 'auth', url: 'https://auth.mp281x.xyz'},
-	{abbr: 'SG', hue: '#ce5d97', name: 'signal', url: 'https://signal.mp281x.xyz'},
-	{abbr: 'PF', hue: '#da702c', name: 'portfolio', url: 'https://mp281x.xyz'}
+	{name: 'deploy', url: 'https://deploy.mp281x.xyz'},
+	{name: 'scope', url: 'https://scope.mp281x.xyz'},
+	{name: 'gateway', url: 'https://gateway.mp281x.xyz'},
+	{name: 'auth', url: 'https://auth.mp281x.xyz'},
+	{name: 'signal', url: 'https://signal.mp281x.xyz'},
+	{name: 'portfolio', url: 'https://mp281x.xyz'}
 ] as const
 
 // `id` is the record's stable identity: cmdk selects by `value`, so it must not change when a label or detail updates.
@@ -38,16 +40,18 @@ export type PaletteItem = {
 
 export type PaletteGroup = {items: readonly PaletteItem[]; label: string}
 
-// The app's own pixel mark, at the size a command row gives it.
-function AppMark(props: {abbr: string; hue: string}) {
+// Another web tool's own mark; a tool whose icon doesn't load falls back to a window rather than a broken image.
+function AppIcon(props: {name: string; url: string}) {
+	const [failed, setFailed] = useState(false)
+	if (failed) return <AppWindow className="text-muted-foreground size-4" />
 	return (
-		<span
-			aria-hidden="true"
-			className="flex size-4 shrink-0 scale-75 items-center justify-center rounded-xs border border-(--mark-hue)/45 bg-(--mark-hue)/15 font-mono text-xs font-medium text-(--mark-hue)"
-			style={{'--mark-hue': props.hue}}
-		>
-			{props.abbr}
-		</span>
+		<img
+			src={`${props.url}/icon`}
+			alt=""
+			className="pixelated size-4"
+			onError={() => setFailed(true)}
+			title={props.name}
+		/>
 	)
 }
 
@@ -86,7 +90,7 @@ export function CommandPalette(props: {
 					] as const
 			)
 		),
-		...Array.map(APPS, app => [`Deslop:${app.name}`, `${app.name} ${app.abbr} ${new URL(app.url).hostname}`] as const)
+		...Array.map(APPS, app => [`Deslop:${app.name}`, `${app.name} ${new URL(app.url).hostname}`] as const)
 	])
 	return (
 		<CommandDialog
@@ -95,7 +99,7 @@ export function CommandPalette(props: {
 			title="Search or run a command"
 			description="Jump to a record, run an action, or open another Deslop tool."
 			showCloseButton
-			className="sm:max-w-xl"
+			className="sm:max-w-lg"
 		>
 			<Command
 				filter={(value, search) =>
@@ -105,61 +109,76 @@ export function CommandPalette(props: {
 					)
 				}
 			>
-				<CommandInput autoFocus placeholder="Search or run a command…" />
-				<div className="flex min-h-0 flex-1 flex-col">
-					<CommandList className="max-h-80">
-						<CommandEmpty>No match.</CommandEmpty>
-						{Array.map(
-							Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
-							group => (
-								<CommandGroup key={group.label} heading={group.label}>
-									{Array.map(group.items, item => (
-										<Item
-											key={`${group.label}:${item.id ?? item.label}`}
-											group={group.label}
-											item={item}
-											onSelect={() => run(item)}
-										/>
-									))}
-								</CommandGroup>
-							)
-						)}
-						<CommandGroup heading="Other apps">
-							{Array.map(APPS, app => {
-								const item = {
-									detail: `${new URL(app.url).hostname}${Boolean.match(app.name === props.current, {
-										onFalse: () => '',
-										onTrue: () => ' · current'
-									})}`,
-									icon: <AppMark abbr={app.abbr} hue={app.hue} />,
-									keywords: app.abbr,
-									label: app.name,
-									run: () => {
-										location.assign(app.url)
-									}
+				<CommandInput autoFocus placeholder={`Search ${props.current ?? 'Deslop'}…`} />
+				<CommandList className="max-h-96">
+					<CommandEmpty>No results.</CommandEmpty>
+					{Array.map(
+						Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
+						group => (
+							<CommandGroup key={group.label} heading={group.label}>
+								{Array.map(group.items, item => (
+									<Item
+										key={`${group.label}:${item.id ?? item.label}`}
+										group={group.label}
+										item={item}
+										onSelect={() => run(item)}
+									/>
+								))}
+							</CommandGroup>
+						)
+					)}
+					<CommandSeparator />
+					<CommandGroup heading="Other apps">
+						{Array.map(APPS, app => {
+							const item = {
+								detail: `${new URL(app.url).hostname}${Boolean.match(app.name === props.current, {
+									onFalse: () => '',
+									onTrue: () => ' · current'
+								})}`,
+								icon: <AppIcon name={app.name} url={app.url} />,
+								keywords: new URL(app.url).hostname,
+								label: app.name,
+								run: () => {
+									location.assign(app.url)
 								}
-								return <Item key={app.name} group="Deslop" item={item} onSelect={() => run(item)} />
-							})}
-						</CommandGroup>
-					</CommandList>
+							}
+							return <Item key={app.name} group="Deslop" item={item} onSelect={() => run(item)} />
+						})}
+					</CommandGroup>
+				</CommandList>
+				<div className="text-muted-foreground hidden items-center justify-between border-t px-3 py-2 text-xs sm:flex">
+					<span className="flex items-center gap-1">
+						<Kbd>↑</Kbd>
+						<Kbd>↓</Kbd>
+						<span>navigate</span>
+					</span>
+					<span className="flex items-center gap-1">
+						<Kbd>↵</Kbd>
+						<span>open</span>
+						<Kbd>esc</Kbd>
+						<span>close</span>
+					</span>
 				</div>
 			</Command>
 		</CommandDialog>
 	)
 }
 
-// The bar's field, styled like an input but opening the palette; the mobile form is the search icon alone.
+// The bar's search, shaped like the input it stands in for; the mobile form is the search icon alone.
 export function CommandTrigger(props: {label: string; onClick: () => void}) {
 	return (
 		<Button
-			variant="search"
+			variant="outline"
+			size="lg"
 			aria-label={props.label}
 			onClick={props.onClick}
-			className="mx-auto hidden w-full max-w-sm justify-start sm:flex lg:absolute lg:left-1/2 lg:-translate-x-1/2"
+			className="hidden w-64 justify-start sm:flex lg:absolute lg:top-2 lg:left-1/2 lg:-translate-x-1/2"
 		>
 			<Search className="size-3.5" />
-			<span className="min-w-0 flex-1 truncate text-left">Search or run a command</span>
-			<Kbd className="ml-auto">⌘K</Kbd>
+			<span className="min-w-0 flex-1 truncate text-left">Search</span>
+			<span className="ml-auto">
+				<Kbd>⌘K</Kbd>
+			</span>
 		</Button>
 	)
 }
@@ -167,13 +186,7 @@ export function CommandTrigger(props: {label: string; onClick: () => void}) {
 // The same field as an icon before the bar's actions on a phone.
 export function CommandIcon(props: {label: string; onClick: () => void}) {
 	return (
-		<Button
-			variant="ghost"
-			size="icon-sm"
-			aria-label={props.label}
-			onClick={props.onClick}
-			className="ml-auto sm:hidden"
-		>
+		<Button variant="ghost" size="icon" aria-label={props.label} onClick={props.onClick} className="sm:hidden">
 			<Search />
 		</Button>
 	)

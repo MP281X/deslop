@@ -244,9 +244,9 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 	)
 }
 
-function CursorLabel(input: {label: string}) {
+function CursorLabel(input: {flip?: boolean; label: string}) {
 	return (
-		<div className="flex items-center gap-1">
+		<div className={cn('flex items-center gap-1', input.flip === true && 'flex-row-reverse')}>
 			<MousePointer2 className="size-4 text-(--cursor-color)" />
 			<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
 				{input.label}
@@ -289,7 +289,10 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform) will-change-transform"
 			style={{'--cursor-color': input.cursor.color}}
 		>
-			<CursorLabel label={input.cursor.name} />
+			<CursorLabel
+				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
+				label={input.cursor.name}
+			/>
 		</div>
 	)
 }
@@ -305,7 +308,7 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 				'--cursor-transform': `translate3d(var(--pointer-x, ${input.cursor.x * input.viewport.width}px), var(--pointer-y, ${input.cursor.y * input.viewport.height}px), 0)`
 			}}
 		>
-			<CursorLabel label={`${input.cursor.name} (you)`} />
+			<CursorLabel label="You" />
 		</div>
 	)
 }
@@ -343,6 +346,22 @@ function HeroSection() {
 				<p className="text-primary font-mono text-sm">{profile.title}</p>
 				<p className="text-foreground/90 text-base">{summary}</p>
 				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
+				<div className="flex flex-wrap gap-3 font-mono text-xs">
+					<a href={contacts.email.href} className="text-primary hover:underline">
+						email
+					</a>
+					<a
+						href={contacts.github.href}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-primary hover:underline"
+					>
+						github
+					</a>
+					<a href="/cv" className="text-primary hover:underline">
+						cv
+					</a>
+				</div>
 			</Panel>
 		</Section>
 	)
@@ -466,7 +485,7 @@ function EducationSection() {
 
 function ContactSection() {
 	return (
-		<Section>
+		<Section className="pb-20 max-sm:pb-6">
 			<SectionBody title="contact">
 				{Array.map(
 					[
@@ -531,7 +550,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 
 	return (
 		<>
-			<div className="trail-grid pointer-events-none fixed inset-0 z-1" />
+			<div className="trail-grid pointer-events-none fixed inset-0 z-1 w-screen" />
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
 			{Array.map(portfolio.value.visitors, cursor => {
@@ -545,7 +564,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 				return <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />
 			})}
 
-			<div className="border-border bg-background pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs sm:bottom-4 sm:left-4">
+			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs max-sm:hidden sm:bottom-4 sm:left-4">
 				<span
 					className="size-1.5 rounded-full bg-(--identity-color)"
 					style={{
@@ -709,7 +728,7 @@ function PortfolioRoute() {
 				onClick={() => {
 					setShowShortcuts(show => !show)
 				}}
-				className="fixed right-3 bottom-3 z-50 sm:right-4 sm:bottom-4"
+				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-3 z-50 max-sm:hidden sm:right-4 sm:bottom-4"
 			>
 				?
 			</Button>

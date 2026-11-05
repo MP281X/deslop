@@ -6,7 +6,7 @@ import {createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Copy, Plus, Server} from 'lucide-react'
+import {Check, ChevronRight, Copy, Plus, Server, Trash2, Wrench} from 'lucide-react'
 import {useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
@@ -15,6 +15,7 @@ import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
+import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
@@ -38,7 +39,7 @@ import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
-import {addAtom, connectUrl, copyEndpointAtom, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
+import {addAtom, connectUrl, copyEndpointAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
@@ -107,20 +108,22 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 }
 
 // Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
-function FirstImage(props: {sources: string[]}) {
+function FirstImage(props: {className?: string; sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-5 shrink-0 items-center justify-center">
+		<span className={cn('flex size-5 shrink-0 items-center justify-center', props.className)}>
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <Server className="text-muted-foreground size-4" />,
-				onSome: src => <img src={src} alt="" className="size-5 object-contain" onError={() => setFailed(failed + 1)} />
+				onSome: src => (
+					<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
+				)
 			})}
 		</span>
 	)
 }
 
 // Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
-function ServerIcon(props: {server: ConnectionInfo}) {
+function ServerIcon(props: {large?: boolean; server: ConnectionInfo}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
 		...Array.map(
@@ -133,7 +136,50 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
-	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
+	return (
+		<FirstImage
+			key={Array.join(sources, ' ')}
+			className={Boolean.match(props.large === true, {onFalse: () => undefined, onTrue: () => 'size-8'})}
+			sources={sources}
+		/>
+	)
+}
+
+// A one-value copy, its icon turning into a tick in the same place so nothing moves; a named copy says what it copies.
+function CopyText(props: {label: string; text?: string; value: string}) {
+	const [copied, setCopied] = useState(false)
+	async function copy() {
+		await navigator.clipboard.writeText(props.value)
+		setCopied(true)
+	}
+	const mark = Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})
+	if (props.text !== undefined) {
+		return (
+			<Button
+				variant="outline"
+				size="sm"
+				aria-label={props.label}
+				title={props.label}
+				onClick={copy}
+				onPointerLeave={() => setCopied(false)}
+			>
+				{mark}
+				{props.text}
+			</Button>
+		)
+	}
+	return (
+		<Button
+			variant="ghost"
+			size="icon-xs"
+			aria-label={props.label}
+			title={props.label}
+			onClick={copy}
+			onPointerLeave={() => setCopied(false)}
+		>
+			{mark}
+		</Button>
+	)
 }
 
 // A state that needs the user takes the host's place; a reported failure shows in full beneath the row.
@@ -168,12 +214,12 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 							onClick={props.onSelect}
 						>
 							<ServerIcon server={props.server} />
-							<span className="min-w-0 shrink-0 truncate font-medium">{props.server.name}</span>
+							<span className="min-w-0 shrink-0 truncate text-sm font-medium">{props.server.name}</span>
 							<span className="flex min-w-0 flex-1">
 								<Reason server={props.server} />
 							</span>
 							{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-								<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden" title="Tools">
+								<span className="text-muted-foreground shrink-0 font-mono text-xs" title="Tools">
 									{Boolean.match(props.server.tools.length === 1, {
 										onFalse: () => `${props.server.tools.length} tools`,
 										onTrue: () => '1 tool'
@@ -188,6 +234,7 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 							>
 								<Status server={props.server} />
 							</span>
+							<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
 						</Button>
 					}
 				/>
@@ -216,7 +263,7 @@ function ServersPane(props: {
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
 			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-				<span className="text-sm font-medium">Servers</span>
+				<span className="text-sm font-semibold">Servers</span>
 				<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
 			</header>
 			{Array.match(props.servers, {
@@ -246,7 +293,7 @@ function ServersPane(props: {
 }
 
 // The chosen server: where it lives, its light and fix, its full error, and every tool it offers.
-function ServerPane(props: {className?: string; server?: ConnectionInfo}) {
+function ServerPane(props: {className?: string; server?: ConnectionInfo; showName?: boolean}) {
 	const [confirm, setConfirm] = useState(false)
 	return Option.match(Option.fromUndefinedOr(props.server), {
 		onNone: () => (
@@ -258,41 +305,23 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo}) {
 				</Empty>
 			</section>
 		),
-		onSome: server => (
-			<section
-				aria-label={server.name}
-				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-			>
-				<RemoveDialog open={confirm} onOpenChange={setConfirm} server={server} />
-				<ContextMenu>
-					<ContextMenuTrigger
-						render={<header className="bg-background sticky top-0 z-20 flex shrink-0 flex-col gap-2 border-b p-3" />}
-					>
-						<div className="flex min-w-0 items-start gap-3">
-							<ServerIcon server={server} />
-							<div className="min-w-0 flex-1">
-								<h2 className="truncate text-sm font-semibold">{server.name}</h2>
-								<a
-									href={server.url}
-									target="_blank"
-									rel="noreferrer"
-									className="text-muted-foreground block truncate font-mono text-xs hover:underline"
-									title={server.url}
-								>
-									{new URL(server.url).hostname}
-								</a>
-							</div>
-							<span
-								role="img"
-								title={server.status}
-								aria-label={server.status}
-								className="flex size-3 shrink-0 items-center justify-center"
-							>
-								<Status server={server} />
-							</span>
-						</div>
-						<div className="flex flex-wrap items-center gap-2">
-							{(server.status !== 'Connected' || server.error !== undefined) && (
+		onSome: server => {
+			const connected = server.status === 'Connected'
+			const title = Boolean.match(props.showName === false, {onFalse: () => server.name, onTrue: () => 'Connection'})
+			return (
+				<section
+					aria-label={server.name}
+					className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+				>
+					<RemoveDialog open={confirm} onOpenChange={setConfirm} server={server} />
+					<ContextMenu>
+						<ContextMenuTrigger
+							render={
+								<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3" />
+							}
+						>
+							<span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+							{(!connected || server.error !== undefined) && (
 								<Button size="sm" onClick={() => location.assign(connectUrl(server.id))}>
 									{Boolean.match(server.status === 'Not connected', {
 										onFalse: () => 'Reconnect',
@@ -300,51 +329,96 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo}) {
 									})}
 								</Button>
 							)}
-							<span className="text-muted-foreground text-xs">{server.status}</span>
-							{Array.isReadonlyArrayNonEmpty(server.tools) && (
-								<span className="text-muted-foreground text-xs">
-									· {server.tools.length} tool
-									{Boolean.match(server.tools.length === 1, {onFalse: () => 's', onTrue: () => ''})}
-								</span>
-							)}
+							<Button
+								variant="ghost"
+								size="sm"
+								aria-label={`Remove ${server.name}`}
+								title="Remove server"
+								onClick={() => setConfirm(true)}
+							>
+								<Trash2 />
+								<span className="max-sm:hidden">Remove</span>
+							</Button>
+						</ContextMenuTrigger>
+						<ContextMenuContent className="w-auto min-w-36">
+							<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
+								Remove
+							</ContextMenuItem>
+						</ContextMenuContent>
+					</ContextMenu>
+					<div className="flex items-start gap-3 border-b p-3">
+						<ServerIcon large server={server} />
+						<div className="min-w-0 flex-1">
+							<a
+								href={server.url}
+								target="_blank"
+								rel="noreferrer"
+								className="text-muted-foreground hover:text-foreground block truncate font-mono text-xs hover:underline"
+								title={server.url}
+							>
+								{new URL(server.url).hostname}
+							</a>
+							<div className="mt-2 flex flex-wrap items-center gap-2">
+								<Badge variant="secondary">
+									<Status server={server} />
+									{server.status}
+								</Badge>
+							</div>
 						</div>
-						{server.error !== undefined && <FieldError className="wrap-anywhere">{server.error}</FieldError>}
-					</ContextMenuTrigger>
-					<ContextMenuContent className="w-auto min-w-36">
-						<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
-							Remove
-						</ContextMenuItem>
-					</ContextMenuContent>
-				</ContextMenu>
-				<section aria-label="Tools" className="flex min-h-0 flex-col gap-1 p-3">
-					<h3 className="text-muted-foreground text-xs font-medium">Tools</h3>
-					{Array.match(server.tools, {
-						onEmpty: () => (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>No tools yet</EmptyTitle>
-									<EmptyDescription>
-										{Boolean.match(server.status === 'Connected', {
-											onFalse: () => 'Connect the server to discover its tools.',
-											onTrue: () => 'This server reports no tools.'
-										})}
-									</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
-						),
-						onNonEmpty: tools => (
-							<ul aria-label={`Tools of ${server.name}`}>
-								{Array.map(tools, tool => (
-									<li key={tool} className="border-b py-2 font-mono text-xs select-text">
-										{tool}
-									</li>
-								))}
-							</ul>
-						)
-					})}
+						<CopyText label="Copy server URL" text="Copy URL" value={server.url} />
+					</div>
+					{server.error !== undefined && (
+						<div className="px-3 pt-3">
+							<FieldError className="wrap-anywhere">{server.error}</FieldError>
+						</div>
+					)}
+					<section aria-label="Tools" className="flex flex-col">
+						<header className="flex h-8 items-center gap-2 border-b px-3">
+							<span className="text-sm font-semibold">Tools</span>
+							<span className="text-muted-foreground font-mono text-xs">{server.tools.length}</span>
+						</header>
+						{Array.match(server.tools, {
+							onEmpty: () => (
+								<Empty>
+									<EmptyHeader>
+										<EmptyTitle>No tools yet</EmptyTitle>
+										<EmptyDescription>
+											{Boolean.match(server.status === 'Connected', {
+												onFalse: () => 'Connect the server to discover its tools.',
+												onTrue: () => 'This server reports no tools.'
+											})}
+										</EmptyDescription>
+									</EmptyHeader>
+								</Empty>
+							),
+							onNonEmpty: tools => (
+								<ul aria-label={`Tools of ${server.name}`} className="select-text">
+									{Array.map(tools, tool => (
+										<li key={tool} className="flex h-8 items-center gap-2 border-b px-3 font-mono text-xs">
+											<Wrench className="text-muted-foreground size-3.5 shrink-0" />
+											<span className="min-w-0 flex-1 truncate">{tool}</span>
+											<CopyText label={`Copy ${tool}`} value={tool} />
+										</li>
+									))}
+								</ul>
+							)
+						})}
+					</section>
+					<section aria-label="Gateway endpoint" className="border-t p-3">
+						<h3 className="text-sm font-semibold">Gateway endpoint</h3>
+						<p className="text-muted-foreground mt-1 text-xs">
+							Point an agent at this URL; every connected tool is offered.
+						</p>
+						<div className="mt-2 flex items-center gap-2">
+							<code className="bg-muted min-w-0 flex-1 truncate rounded-md px-2 py-1.5 font-mono text-xs select-text">
+								{ENDPOINT}
+							</code>
+							<CopyText label="Copy MCP URL" text="Copy" value={ENDPOINT} />
+						</div>
+					</section>
 				</section>
-			</section>
-		)
+			)
+		}
 	})
 }
 
@@ -506,7 +580,7 @@ function Home() {
 					onFalse: () => undefined,
 					onTrue: () => ({label: 'Servers', onClick: () => setPane('servers')})
 				})}
-				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [needsYou, all, actions], onTrue: () => []})}
+				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [actions, needsYou, all], onTrue: () => []})}
 				action={
 					<>
 						<AppBarAction icon={<Copy />} label="Copy MCP URL" variant="outline" onClick={() => copy()} />
@@ -544,7 +618,11 @@ function Home() {
 										pipe(
 											Match.value(pane),
 											Match.when('server', () => (
-												<ServerPane className="min-h-0 flex-1" server={Option.getOrUndefined(active)} />
+												<ServerPane
+													className="min-h-0 flex-1"
+													server={Option.getOrUndefined(active)}
+													showName={false}
+												/>
 											)),
 											Match.orElse(() => (
 												<ServersPane

@@ -16,6 +16,7 @@ import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
+import {Card, CardContent} from '@deslop/components-web/ui/card'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -36,7 +37,7 @@ import {
 	EmptyMedia,
 	EmptyTitle
 } from '@deslop/components-web/ui/empty'
-import {FieldError} from '@deslop/components-web/ui/field'
+import {FieldError, FieldSeparator} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
 import {AccountAvatar, AppIcon, AppList, QrCode} from '#lib/components.tsx'
@@ -345,24 +346,50 @@ function SignIn() {
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="flex flex-1 flex-col justify-center gap-2 pb-12" aria-label="Sign in">
-			<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-				{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-				Sign in with GitHub
-			</Button>
-			<Button size="lg" variant="outline" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
-				{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
-				Sign in with a passkey
-			</Button>
-			<Button
-				size="lg"
-				variant="outline"
-				disabled={AsyncResult.isWaiting(codeSignIn)}
-				onClick={() => startCodeSignIn()}
-			>
-				Sign in with a code
-			</Button>
-			<Failures />
+		<section className="flex flex-1 flex-col items-center justify-center gap-6 pb-12 text-center" aria-label="Sign in">
+			<div className="flex flex-col gap-1">
+				<h1 className="text-2xl font-semibold tracking-tight">Sign in to Deslop</h1>
+				<p className="text-muted-foreground text-sm">One account for every tool.</p>
+				{Option.match(
+					Option.flatMap(Option.fromNullishOr(new URLSearchParams(location.search).get('next')), next => {
+						try {
+							return Option.some(new URL(next).hostname)
+						} catch {
+							return Option.none<string>()
+						}
+					}),
+					{
+						onNone: () => null,
+						onSome: host => (
+							<p className="text-muted-foreground text-xs">
+								You’ll return to <span className="font-mono">{host}</span>.
+							</p>
+						)
+					}
+				)}
+			</div>
+			<Card className="w-full max-w-sm">
+				<CardContent className="flex flex-col gap-2">
+					<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+						{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+						Continue with GitHub
+					</Button>
+					<FieldSeparator>or</FieldSeparator>
+					<Button size="lg" variant="outline" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
+						{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
+						Continue with a passkey
+					</Button>
+					<Button
+						size="lg"
+						variant="ghost"
+						disabled={AsyncResult.isWaiting(codeSignIn)}
+						onClick={() => startCodeSignIn()}
+					>
+						Use a sign-in code
+					</Button>
+					<Failures />
+				</CardContent>
+			</Card>
 		</section>
 	)
 }
@@ -464,7 +491,7 @@ function Shell() {
 				icon={icon}
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
-				palette={groups}
+				palette={Option.match(account, {onNone: () => undefined, onSome: () => groups})}
 				tabs={
 					Option.exists(account, signed => signed.role === 'Admin') && (
 						<Suspense fallback={null}>

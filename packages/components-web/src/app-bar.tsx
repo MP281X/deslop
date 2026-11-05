@@ -121,17 +121,17 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-4">
+			<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" className="-ml-1 flex shrink-0 items-center gap-1.5">
+						<a href="/" className="flex shrink-0 items-center gap-2">
 							<img src={props.icon} alt="" className="pixelated size-8" />
-							<span className="font-mono text-sm font-medium">{props.name}</span>
+							<span className="text-sm font-semibold">{props.name}</span>
 						</a>
 					),
 					// The leading slot keeps its width on every pane, so the title and the right controls never move.
 					onSome: title => (
-						<div className="-ml-1 flex min-w-0 shrink items-center gap-1.5">
+						<div className="flex min-w-0 shrink items-center gap-1.5">
 							{Option.match(Option.fromUndefinedOr(props.back), {
 								onNone: () => (
 									<a href="/" aria-label={props.name} className="flex size-8 shrink-0 items-center justify-center">
@@ -139,36 +139,32 @@ export function AppBar(props: {
 									</a>
 								),
 								onSome: back => (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										aria-label={back.label}
-										onClick={back.onClick}
-										className="size-8 shrink-0"
-									>
-										<ChevronLeft className="size-5" />
+									<Button variant="ghost" size="icon" aria-label={back.label} onClick={back.onClick}>
+										<ChevronLeft className="size-4" />
 									</Button>
 								)
 							})}
-							<span className="max-w-40 min-w-0 truncate font-mono text-sm font-medium">{title}</span>
+							<span className="max-w-40 min-w-0 truncate text-sm font-medium">{title}</span>
 						</div>
 					)
 				})}
 				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="ml-2 flex items-center gap-1">
+					<nav aria-label="Sections" className="flex items-center gap-1">
 						{props.tabs}
 					</nav>
 				)}
-				{Option.match(Option.fromUndefinedOr(props.palette), {
-					onNone: () => <span className="flex-1" />,
-					onSome: () => (
-						<>
-							<CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
-							<CommandIcon label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
-						</>
-					)
-				})}
-				<div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+				<div className="flex min-w-0 flex-1 items-center justify-end sm:justify-center">
+					{Option.match(Option.fromUndefinedOr(props.palette), {
+						onNone: () => null,
+						onSome: () => (
+							<>
+								<CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+								<CommandIcon label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+							</>
+						)
+					})}
+				</div>
+				<div className="flex shrink-0 items-center gap-1.5">
 					{props.action}
 					{props.account ?? <AccountMenu />}
 				</div>

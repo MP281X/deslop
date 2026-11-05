@@ -16,11 +16,11 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 	return (
 		<span
 			className={cn(
-				'flex h-7 min-w-0 items-center gap-2 pl-(--indent) text-xs',
+				'flex h-8 min-w-0 items-center gap-2 pl-(--indent) text-xs',
 				props.node.small && 'text-muted-foreground'
 			)}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
-			title={`${mib.format(props.node.memory / 1024 ** 2)} MiB${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
+			title={`${mib.format(props.node.memory / 1024 ** 2)} MiB including child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 		>
 			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
 				onFalse: () => <span className="size-3.5 shrink-0" />,
@@ -34,7 +34,7 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 				)
 			})}
 			<ApplicationIcon name={props.node.name} small />
-			<span className="max-w-1/3 shrink-0 truncate font-mono">{props.node.name}</span>
+			<span className="max-w-2/5 shrink-0 truncate font-mono">{props.node.name}</span>
 			{Array.isArrayNonEmpty(props.node.children) && (
 				<span className="text-muted-foreground shrink-0 font-mono">{props.node.children.length}</span>
 			)}
