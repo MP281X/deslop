@@ -29,7 +29,7 @@ function Enter(props: {
 }) {
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex max-w-xl flex-col gap-4">
+		<section className="flex max-w-sm flex-col gap-4">
 			<Field data-invalid={invalid}>
 				<FieldTitle>Sign-in code</FieldTitle>
 				<InputOTP

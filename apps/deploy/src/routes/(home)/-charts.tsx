@@ -44,14 +44,7 @@ export function UsageChart(props: {
 					onSome: value => <span className="font-mono tabular-nums">{value}</span>
 				})}
 			</figcaption>
-			<div className="flex min-h-0 flex-1 gap-2">
-				<div
-					aria-hidden
-					className="text-muted-foreground flex flex-col justify-between font-mono text-xs leading-none tabular-nums"
-				>
-					<span>100%</span>
-					<span>0</span>
-				</div>
+			<div className="flex min-h-0 flex-1">
 				<div className="min-h-0 flex-1 pr-1">
 					<svg
 						viewBox={`0 0 100 ${HEIGHT}`}
@@ -146,7 +139,7 @@ export function Cores(props: {history: MachineHistory}) {
 				onEmpty: () => <span className="text-muted-foreground text-xs">No readings</span>,
 				onNonEmpty: entries => (
 					<div
-						className="grid grid-cols-(--cores) gap-1"
+						className="grid grid-cols-(--cores) items-end gap-1"
 						style={{'--cores': `repeat(${Number.min(32, Number.max(1, entries.length))}, minmax(0, 1fr))`}}
 					>
 						{Array.map(entries, core => (
@@ -155,11 +148,13 @@ export function Cores(props: {history: MachineHistory}) {
 								role="img"
 								title={`${core.id} · ${formatPercent.format(core.usage ?? 0)}%`}
 								aria-label={`${core.id} use ${formatPercent.format(core.usage ?? 0)} percent`}
-								className="border-border/60 h-5 rounded-sm border bg-(--machine) opacity-(--core-opacity)"
-								style={{
-									'--core-opacity': 0.12 + (Number.clamp(core.usage ?? 0, {maximum: 100, minimum: 0}) / 100) * 0.88
-								}}
-							/>
+								className="bg-muted flex h-4 items-end overflow-hidden rounded-sm"
+							>
+								<span
+									className="h-(--core-height) w-full rounded-sm bg-(--machine)"
+									style={{'--core-height': `${Number.clamp(core.usage ?? 0, {maximum: 100, minimum: 0})}%`}}
+								/>
+							</span>
 						))}
 					</div>
 				)

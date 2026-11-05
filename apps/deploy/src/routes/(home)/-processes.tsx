@@ -35,9 +35,6 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 			})}
 			<ApplicationIcon name={props.node.name} small />
 			<span className="max-w-2/5 shrink-0 truncate font-mono">{props.node.name}</span>
-			{Array.isArrayNonEmpty(props.node.children) && (
-				<span className="text-muted-foreground shrink-0 font-mono">{props.node.children.length}</span>
-			)}
 			<span
 				className="text-muted-foreground min-w-0 flex-1 truncate font-mono"
 				title={Array.join(props.node.command ?? [], ' ')}
@@ -53,6 +50,9 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 					' '
 				)}
 			</span>
+			{Array.isArrayNonEmpty(props.node.children) && (
+				<span className="text-muted-foreground w-6 shrink-0 text-right font-mono">+{props.node.children.length}</span>
+			)}
 			<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
 				{mib.format(props.node.memory / 1024 ** 2)} MiB
 			</span>

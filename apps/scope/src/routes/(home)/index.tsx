@@ -519,6 +519,7 @@ function OperationsPane(props: {
 					{count.format(Array.reduce(props.overview.apps, 0, (sum, app) => sum + app.operations.length))}
 				</span>
 				<span className="ml-auto flex items-center gap-1">
+					<span className="text-muted-foreground w-8 text-right text-xs max-lg:hidden">Failed</span>
 					<span className="text-muted-foreground w-10 text-right text-xs max-lg:hidden">Runs</span>
 					<span className="text-muted-foreground w-12 text-right text-xs">Typical</span>
 				</span>
@@ -689,6 +690,7 @@ function CopyTrace(props: {id: string}) {
 			<Button
 				variant="ghost"
 				size="icon-xs"
+				className="max-sm:size-11"
 				aria-label={Boolean.match(copied, {onFalse: () => 'Copy trace ID', onTrue: () => 'Copied'})}
 				title="Copy trace ID"
 				onClick={() => copyText(props.id)}
@@ -719,7 +721,7 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 				aria-label="Trace"
 				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 			>
-				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 					<span
 						className="text-muted-foreground w-14 shrink-0 font-mono text-xs"
 						title={clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(trace.time)), () => props.now))}
@@ -734,7 +736,7 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 						{durationOf(trace.durationMs)}
 					</span>
 				</header>
-				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-3 border-b pr-4 pl-3 text-xs">
+				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-3 border-b pr-4 pl-3 text-xs max-sm:top-11">
 					<span className="w-40 pl-6">Span</span>
 					<span className="min-w-0 flex-1">Timeline</span>
 					<span className="w-14 text-right">Duration</span>
@@ -863,8 +865,15 @@ function Home() {
 						pipe(
 							Match.value(pane),
 							Match.when('operations', () => 'scope'),
-							Match.when('traces', () => 'Traces'),
-							Match.orElse(() => 'Trace')
+							Match.when('traces', () =>
+								Option.match(activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
+							),
+							Match.orElse(() =>
+								Option.match(activeTrace, {
+									onNone: () => 'Trace',
+									onSome: trace => `${ageOf(trace.time, now)} · ${durationOf(trace.durationMs)}`
+								})
+							)
 						)
 				})}
 				back={Boolean.match(isMobile && pane !== 'operations', {

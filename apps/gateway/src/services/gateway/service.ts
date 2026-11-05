@@ -286,6 +286,14 @@ export class Gateway extends Context.Service<
 						onNone: () => ({}),
 						onSome: instructions => ({instructions})
 					}),
+					toolDescriptions: Record.fromEntries(
+						Array.flatMap(found.tools, tool =>
+							Option.match(Option.fromUndefinedOr(tool.description), {
+								onNone: () => [],
+								onSome: description => [[tool.name, description] as const]
+							})
+						)
+					),
 					tools: Array.map(found.tools, tool => tool.name)
 				})
 			})

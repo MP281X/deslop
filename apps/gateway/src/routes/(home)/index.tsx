@@ -35,11 +35,12 @@ import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/componen
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Input} from '@deslop/components-web/ui/input'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
-import {addAtom, connectUrl, copyEndpointAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
+import {addAtom, connectUrl, copyAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
@@ -145,40 +146,38 @@ function ServerIcon(props: {large?: boolean; server: ConnectionInfo}) {
 	)
 }
 
-// A one-value copy, its icon turning into a tick in the same place so nothing moves; a named copy says what it copies.
+// A copy's tick is announced while it shows, so a screen reader hears the confirmation too.
+function CopiedStatus(props: {copied: boolean}) {
+	return (
+		<span role="status" className="sr-only">
+			{props.copied && 'Copied'}
+		</span>
+	)
+}
+
+// A one-value copy, its icon turning into a tick in the same place for a moment, on touch too; a named copy says what it copies.
 function CopyText(props: {label: string; text?: string; value: string}) {
-	const [copied, setCopied] = useState(false)
-	async function copy() {
-		await navigator.clipboard.writeText(props.value)
-		setCopied(true)
-	}
+	const [copy, copyText] = useAtom(copyAtom(props.value))
+	const copied = AsyncResult.isWaiting(copy)
 	const mark = Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})
 	if (props.text !== undefined) {
 		return (
-			<Button
-				variant="outline"
-				size="sm"
-				aria-label={props.label}
-				title={props.label}
-				onClick={copy}
-				onPointerLeave={() => setCopied(false)}
-			>
-				{mark}
-				{props.text}
-			</Button>
+			<>
+				<Button variant="outline" size="sm" aria-label={props.label} title={props.label} onClick={() => copyText()}>
+					{mark}
+					{props.text}
+				</Button>
+				<CopiedStatus copied={copied} />
+			</>
 		)
 	}
 	return (
-		<Button
-			variant="ghost"
-			size="icon-xs"
-			aria-label={props.label}
-			title={props.label}
-			onClick={copy}
-			onPointerLeave={() => setCopied(false)}
-		>
-			{mark}
-		</Button>
+		<>
+			<Button variant="ghost" size="icon-xs" aria-label={props.label} title={props.label} onClick={() => copyText()}>
+				{mark}
+			</Button>
+			<CopiedStatus copied={copied} />
+		</>
 	)
 }
 
@@ -214,12 +213,12 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 							onClick={props.onSelect}
 						>
 							<ServerIcon server={props.server} />
-							<span className="min-w-0 shrink-0 truncate text-sm font-medium">{props.server.name}</span>
+							<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
 							<span className="flex min-w-0 flex-1">
 								<Reason server={props.server} />
 							</span>
 							{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-								<span className="text-muted-foreground shrink-0 font-mono text-xs" title="Tools">
+								<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden" title="Tools">
 									{Boolean.match(props.server.tools.length === 1, {
 										onFalse: () => `${props.server.tools.length} tools`,
 										onTrue: () => '1 tool'
@@ -234,7 +233,7 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 							>
 								<Status server={props.server} />
 							</span>
-							<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
+							<ChevronRight className="text-muted-foreground size-3.5 shrink-0" />
 						</Button>
 					}
 				/>
@@ -320,7 +319,29 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 								<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3" />
 							}
 						>
-							<span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+							{Boolean.match(props.showName === false, {
+								onFalse: () => (
+									<>
+										<ServerIcon server={server} />
+										<span className="max-w-56 min-w-0 shrink truncate text-sm font-semibold">{server.name}</span>
+										<a
+											href={server.url}
+											target="_blank"
+											rel="noreferrer"
+											className="text-muted-foreground hover:text-foreground min-w-0 flex-1 truncate font-mono text-xs hover:underline"
+											title={server.url}
+										>
+											{new URL(server.url).hostname}
+										</a>
+										<Badge variant="secondary">
+											<Status server={server} />
+											{server.status}
+										</Badge>
+										<CopyText label="Copy server URL" text="Copy server URL" value={server.url} />
+									</>
+								),
+								onTrue: () => <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+							})}
 							{(!connected || server.error !== undefined) && (
 								<Button size="sm" onClick={() => location.assign(connectUrl(server.id))}>
 									{Boolean.match(server.status === 'Not connected', {
@@ -346,27 +367,32 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							</ContextMenuItem>
 						</ContextMenuContent>
 					</ContextMenu>
-					<div className="flex items-start gap-3 border-b p-3">
-						<ServerIcon large server={server} />
-						<div className="min-w-0 flex-1">
-							<a
-								href={server.url}
-								target="_blank"
-								rel="noreferrer"
-								className="text-muted-foreground hover:text-foreground block truncate font-mono text-xs hover:underline"
-								title={server.url}
-							>
-								{new URL(server.url).hostname}
-							</a>
-							<div className="mt-2 flex flex-wrap items-center gap-2">
-								<Badge variant="secondary">
-									<Status server={server} />
-									{server.status}
-								</Badge>
+					{Boolean.match(props.showName === false, {
+						onFalse: () => null,
+						onTrue: () => (
+							<div className="flex items-start gap-3 border-b p-3">
+								<ServerIcon large server={server} />
+								<div className="min-w-0 flex-1">
+									<a
+										href={server.url}
+										target="_blank"
+										rel="noreferrer"
+										className="text-muted-foreground hover:text-foreground block truncate font-mono text-xs hover:underline"
+										title={server.url}
+									>
+										{new URL(server.url).hostname}
+									</a>
+									<div className="mt-2 flex flex-wrap items-center gap-2">
+										<Badge variant="secondary">
+											<Status server={server} />
+											{server.status}
+										</Badge>
+									</div>
+								</div>
+								<CopyText label="Copy server URL" text="Copy server URL" value={server.url} />
 							</div>
-						</div>
-						<CopyText label="Copy server URL" text="Copy URL" value={server.url} />
-					</div>
+						)
+					})}
 					{server.error !== undefined && (
 						<div className="px-3 pt-3">
 							<FieldError className="wrap-anywhere">{server.error}</FieldError>
@@ -394,10 +420,18 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							onNonEmpty: tools => (
 								<ul aria-label={`Tools of ${server.name}`} className="select-text">
 									{Array.map(tools, tool => (
-										<li key={tool} className="flex h-8 items-center gap-2 border-b px-3 font-mono text-xs">
-											<Wrench className="text-muted-foreground size-3.5 shrink-0" />
-											<span className="min-w-0 flex-1 truncate">{tool}</span>
-											<CopyText label={`Copy ${tool}`} value={tool} />
+										<li key={tool.name} className="flex items-start gap-2 border-b px-3 py-1.5 font-mono text-xs">
+											<Wrench className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
+											<div className="flex min-w-0 flex-1 flex-col">
+												<span className="truncate">{tool.name}</span>
+												{Option.match(Option.fromUndefinedOr(tool.description), {
+													onNone: () => null,
+													onSome: description => (
+														<span className="text-muted-foreground line-clamp-2 font-sans text-xs">{description}</span>
+													)
+												})}
+											</div>
+											<CopyText label={`Copy ${tool.name}`} value={tool.name} />
 										</li>
 									))}
 								</ul>
@@ -409,12 +443,9 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 						<p className="text-muted-foreground mt-1 text-xs">
 							Point an agent at this URL; every connected tool is offered.
 						</p>
-						<div className="mt-2 flex items-center gap-2">
-							<code className="bg-muted min-w-0 flex-1 truncate rounded-md px-2 py-1.5 font-mono text-xs select-text">
-								{ENDPOINT}
-							</code>
-							<CopyText label="Copy MCP URL" text="Copy" value={ENDPOINT} />
-						</div>
+						<code className="bg-muted mt-2 block min-w-0 truncate rounded-md px-2 py-1.5 font-mono text-xs select-text">
+							{ENDPOINT}
+						</code>
 					</section>
 				</section>
 			)
@@ -501,9 +532,42 @@ function FailureContent(props: {error: unknown}) {
 	return <SignIn href={signInUrl(location.href)} />
 }
 
+// The two panes' headers and rows while the servers load, so the split is already the final one.
+function GatewaySkeleton(props: {isMobile: boolean}) {
+	if (props.isMobile) {
+		return (
+			<div className="p-4">
+				<ItemListSkeleton label="MCP servers" media rows={4} />
+			</div>
+		)
+	}
+	return (
+		<div className="grid-cols-gateway grid min-h-0 flex-1">
+			<section aria-busy="true" role="status" aria-label="MCP servers" className="flex min-h-0 flex-col border-r">
+				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+					<Skeleton className="h-4 w-20" />
+				</header>
+				<div className="p-2">
+					<ItemListSkeleton label="MCP servers" media rows={5} />
+				</div>
+			</section>
+			<section aria-busy="true" role="status" aria-label="Server" className="flex min-h-0 flex-col">
+				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+					<Skeleton className="h-4 w-24" />
+				</header>
+				<div className="flex flex-col gap-4 p-3">
+					<Skeleton className="h-16 w-full" />
+					<ItemListSkeleton label="Tools" media rows={3} />
+				</div>
+			</section>
+		</div>
+	)
+}
+
 function Home() {
 	const send = useAtomSet(addAtom.send)
-	const copy = useAtomSet(copyEndpointAtom)
+	const [copy, copyText] = useAtom(copyAtom(ENDPOINT))
+	const copied = AsyncResult.isWaiting(copy)
 	const isMobile = useIsMobile()
 	const [pane, setPane] = useState<'server' | 'servers'>('servers')
 	const [selection, setSelection] = useState<string>()
@@ -545,7 +609,10 @@ function Home() {
 			detail: new URL(server.url).hostname,
 			icon: <ServerIcon server={server} />,
 			id: server.id,
-			keywords: `${server.name} ${server.url} ${Array.join(server.tools, ' ')}`,
+			keywords: `${server.name} ${server.url} ${Array.join(
+				Array.map(server.tools, tool => tool.name),
+				' '
+			)}`,
 			label: server.name,
 			run: () => selectServer(server)
 		})),
@@ -557,7 +624,11 @@ function Home() {
 				onFalse: () => [],
 				onTrue: () => [{icon: <Plus />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
 			}),
-			{icon: <Copy />, label: 'Copy MCP URL', run: () => copy()}
+			{
+				icon: Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />}),
+				label: 'Copy gateway URL',
+				run: () => copyText()
+			}
 		],
 		label: 'Actions'
 	}
@@ -583,7 +654,12 @@ function Home() {
 				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [actions, needsYou, all], onTrue: () => []})}
 				action={
 					<>
-						<AppBarAction icon={<Copy />} label="Copy MCP URL" variant="outline" onClick={() => copy()} />
+						<AppBarAction
+							icon={Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
+							label="Copy gateway URL"
+							variant="outline"
+							onClick={() => copyText()}
+						/>
 						{ready && <AppBarAction icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />}
 					</>
 				}
@@ -593,18 +669,14 @@ function Home() {
 					Option.match(value, {
 						onNone: () =>
 							Option.match(error, {
-								onNone: () => (
-									<div className="p-4">
-										<ItemListSkeleton label="MCP servers" media rows={4} />
-									</div>
-								),
+								onNone: () => <GatewaySkeleton isMobile={isMobile} />,
 								onSome: cause => <FailureContent error={cause} />
 							}),
 						onSome: () => (
 							<div className="flex min-h-0 flex-1">
 								{Boolean.match(isMobile, {
 									onFalse: () => (
-										<div className="grid min-h-0 flex-1 grid-cols-2">
+										<div className="grid-cols-gateway grid min-h-0 flex-1">
 											<ServersPane
 												activeId={Option.getOrUndefined(active)?.id}
 												className="min-w-0 border-r"

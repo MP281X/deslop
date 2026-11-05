@@ -9,6 +9,7 @@ import {useState, useTransition} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
@@ -332,13 +333,23 @@ function RemoveFailure(props: {item: InventoryItem}) {
 	)
 }
 
-// One app in the list: its mark, name, ports or reason, its memory or next run, its light, and the whole row opens.
+// A long container name keeps its distinguishing end on a phone.
+function middle(value: string) {
+	if (String.length(value) <= 28) return value
+	return `${String.slice(0, 12)(value)}…${String.slice(-12)(value)}`
+}
+
+// One app in the list: its mark, name, ports or reason, its memory, its chart swatch and light, and the whole row opens.
 function AppListRow(props: {
+	compact: boolean
 	free: readonly InventoryItem[]
+	hovered?: string
 	now: number
+	onHover: (id?: string) => void
 	onSelect: () => void
 	row: ReturnType<typeof workloads>[number]
 	selected: boolean
+	swatches: Record<string, number>
 }) {
 	const [requested, setRequested] = useState(() => Option.none<number>())
 	const processes = props.row.item.processes ?? []
@@ -362,6 +373,15 @@ function AppListRow(props: {
 			entry => entry.name
 		)
 	)
+	const band = Option.getOrUndefined(owner(props.row))
+	const swatch = Option.flatMap(Option.fromUndefinedOr(band), id => Record.get(props.swatches, id))
+	const highlighted = band !== undefined && props.hovered === band
+	const fullName = workloadName(props.row.item)
+	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middle(fullName)})
+	const next = Boolean.match(running, {
+		onFalse: () => nextRun(props.row.item.next ?? props.now, props.now),
+		onTrue: () => 'running'
+	})
 	return (
 		<>
 			<ContextMenu disabled={Array.isArrayEmpty(owned)}>
@@ -372,27 +392,32 @@ function AppListRow(props: {
 							role="listitem"
 							className={cn(
 								'hover:bg-muted/50 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3',
+								highlighted && 'bg-muted/60',
 								props.selected && 'bg-muted'
 							)}
+							onPointerEnter={() => props.onHover(band)}
+							onPointerLeave={() => props.onHover()}
 						/>
 					}
 				>
 					<Button
 						variant="ghost"
 						size="sm"
-						aria-label={`Open ${workloadName(props.row.item)}`}
+						aria-label={`Open ${fullName}`}
 						className="absolute inset-0 h-full w-full rounded-sm p-0"
 						onClick={props.onSelect}
 					/>
 					<span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-2">
-						<ApplicationIcon
-							name={workloadName(props.row.item)}
-							process={process}
-							container={props.row.item.kind === 'container'}
-						/>
-						<span className="min-w-0 flex-1 truncate text-sm font-medium" title={props.row.item.name}>
-							{workloadName(props.row.item)}
+						<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
+						<span className="min-w-0 flex-1 truncate text-sm font-medium" title={fullName}>
+							{name}
 						</span>
+						{scheduled && (
+							<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs">
+								<Clock className="size-3" />
+								{next}
+							</span>
+						)}
 						<span
 							className={cn(
 								'pointer-events-auto flex max-w-28 shrink-0 items-center gap-1 overflow-hidden',
@@ -417,23 +442,29 @@ function AppListRow(props: {
 								)
 							})}
 						</span>
-						<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
-							{Boolean.match(scheduled, {
-								onFalse: () => bytes(usage.memory),
-								onTrue: () =>
-									Boolean.match(running, {
-										onFalse: () => nextRun(props.row.item.next ?? props.now, props.now),
-										onTrue: () => 'running'
-									})
-							})}
+						<span className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs tabular-nums">
+							{Boolean.match(scheduled, {onFalse: () => bytes(usage.memory), onTrue: () => null})}
 						</span>
+						{Option.match(swatch, {
+							onNone: () => null,
+							onSome: opacity => (
+								<span
+									aria-hidden
+									className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
+									style={{'--swatch-opacity': opacity}}
+								/>
+							)
+						})}
 						<span
 							title={state}
 							aria-label={state}
 							role="img"
 							className="flex size-3 shrink-0 items-center justify-center"
 						>
-							<StatusDot status={light} />
+							<StatusDot
+								status={light}
+								className={Boolean.match(light === 'live', {onFalse: () => undefined, onTrue: () => 'bg-(--machine)'})}
+							/>
 						</span>
 					</span>
 					<span className="pointer-events-auto relative z-10 flex size-4 shrink-0 items-center justify-center">
@@ -464,13 +495,18 @@ function AppListRow(props: {
 // The apps on one machine, failures first; jobs keep their row at the end.
 function AppsPane(props: {
 	className?: string
+	compact: boolean
 	free: readonly InventoryItem[]
+	hovered?: string
 	now: number
+	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
+	swatches: Record<string, number>
 }) {
 	const apps = Array.filter(props.rows, row => row.item.scheduled !== true)
+	const jobs = Array.filter(props.rows, row => row.item.scheduled === true)
 	return (
 		<section
 			aria-label="Apps"
@@ -481,7 +517,11 @@ function AppsPane(props: {
 				<span className="text-muted-foreground font-mono text-xs" title={countLabel(apps.length, 'app', 'apps')}>
 					{apps.length}
 				</span>
+				{Array.isReadonlyArrayNonEmpty(jobs) && (
+					<span className="text-muted-foreground font-mono text-xs">· {countLabel(jobs.length, 'job', 'jobs')}</span>
+				)}
 				<span className="text-muted-foreground ml-auto w-14 text-right text-xs">Memory</span>
+				<span className="w-2" />
 				<span className="w-3" />
 				<span className="w-4" />
 			</header>
@@ -498,11 +538,15 @@ function AppsPane(props: {
 						{Array.map(rows, row => (
 							<AppListRow
 								key={row.item.id}
+								compact={props.compact}
 								free={props.free}
+								hovered={props.hovered}
 								now={props.now}
+								onHover={props.onHover}
 								onSelect={() => props.onSelect(row)}
 								row={row}
 								selected={props.selectedId === row.item.id}
+								swatches={props.swatches}
 							/>
 						))}
 					</div>
@@ -571,7 +615,10 @@ function ProcessPane(props: {
 							role="img"
 							className="flex size-3 shrink-0 items-center justify-center"
 						>
-							<StatusDot status={light} />
+							<StatusDot
+								status={light}
+								className={Boolean.match(light === 'live', {onFalse: () => undefined, onTrue: () => 'bg-(--machine)'})}
+							/>
 						</span>
 						{Boolean.match(props.showName === false, {onFalse: () => null, onTrue: () => <span className="flex-1" />})}
 						<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
@@ -607,10 +654,11 @@ function MachinePane(props: {
 	available: boolean
 	className?: string
 	history?: MachineHistory
+	hovered?: string
 	minutes: HistoryQuery['minutes']
+	onHover: (id?: string) => void
 	worker?: string
 }) {
-	const [hovered, setHovered] = useState<string>()
 	return Option.match(Option.fromUndefinedOr(props.worker), {
 		onNone: () => (
 			<section className={cn('flex min-h-0 flex-col', props.className)}>
@@ -629,8 +677,9 @@ function MachinePane(props: {
 							<MachineIcon worker={worker} />
 							<span className="text-sm font-semibold">Machine</span>
 						</header>
-						<div className="p-3">
-							<Skeleton className="h-64 w-full" />
+						<div className="flex flex-col gap-4 p-3">
+							<Skeleton className="h-40 w-full" />
+							<Skeleton className="h-36 w-full" />
 						</div>
 					</section>
 				),
@@ -691,26 +740,16 @@ function MachinePane(props: {
 								})}
 							</header>
 							<div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pt-3 pb-3">
-								<UsageChart
-									className="min-h-40 flex-1"
-									history={history}
-									minutes={props.minutes}
-									hovered={hovered}
-									label="Memory"
-									layers={Array.map(all, band => ({...band, values: band.memory}))}
-									names={bandName}
-									onHover={setHovered}
-									recorded={() => true}
-									value={Option.getOrUndefined(memory)}
-								/>
-								<div className="grid grid-cols-3 gap-2 text-xs">
-									{Array.map(memoryTop, band => (
-										<span key={band.id} className="flex min-w-0 items-center gap-1">
+								<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+									{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
+										<span key={band.id} className="flex min-w-0 items-center gap-1.5">
 											<span
 												className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
 												style={{'--swatch-opacity': band.opacity}}
 											/>
-											<span className="text-muted-foreground min-w-0 flex-1 truncate">{bandName(band.id)}</span>
+											<span className="text-muted-foreground max-w-40 truncate" title={bandName(band.id)}>
+												{bandName(band.id)}
+											</span>
 											<span className="font-mono tabular-nums">
 												{size.format(Option.getOrElse(Array.last(band.memory), () => 0))}%
 											</span>
@@ -718,14 +757,26 @@ function MachinePane(props: {
 									))}
 								</div>
 								<UsageChart
+									className="min-h-40 flex-1"
+									history={history}
+									minutes={props.minutes}
+									hovered={props.hovered}
+									label="Memory"
+									layers={Array.map(all, band => ({...band, values: band.memory}))}
+									names={bandName}
+									onHover={props.onHover}
+									recorded={() => true}
+									value={Option.getOrUndefined(memory)}
+								/>
+								<UsageChart
 									className="min-h-36 flex-1"
 									history={history}
 									minutes={props.minutes}
-									hovered={hovered}
+									hovered={props.hovered}
 									label="CPU"
 									layers={Array.map(all, band => ({...band, values: band.cpu}))}
 									names={bandName}
-									onHover={setHovered}
+									onHover={props.onHover}
 									recorded={sample => sample.cpu !== undefined}
 									value={Option.getOrUndefined(cpu)}
 								/>
@@ -736,7 +787,11 @@ function MachinePane(props: {
 										<div className="machine-metric">
 											<Progress value={(storage.used / storage.total) * 100}>
 												<ProgressLabel>Disk</ProgressLabel>
-												<ProgressValue>{() => `${bytes(storage.used)} of ${bytes(storage.total)}`}</ProgressValue>
+												<ProgressValue>
+													{() =>
+														`${bytes(storage.used)} of ${bytes(storage.total)} · ${size.format((storage.used / storage.total) * 100)}%`
+													}
+												</ProgressValue>
 											</Progress>
 										</div>
 									)
@@ -801,7 +856,10 @@ function MachineStrip(props: {
 								)}
 							</span>
 							<span className="ml-auto flex size-3 shrink-0 items-center justify-center">
-								<StatusDot status={Boolean.match(failed, {onFalse: () => 'live', onTrue: () => 'off'})} />
+								<StatusDot
+									status={Boolean.match(failed, {onFalse: () => 'live', onTrue: () => 'off'})}
+									className={Boolean.match(failed, {onFalse: () => 'bg-(--machine)', onTrue: () => undefined})}
+								/>
 							</span>
 						</Button>
 					)
@@ -828,7 +886,7 @@ function RangeMenu(props: {
 				disabled={props.pending}
 				aria-label="History range"
 			>
-				<Clock className="size-3.5" />
+				{Boolean.match(props.pending, {onFalse: () => <Clock className="size-3.5" />, onTrue: () => <Spinner />})}
 				{label}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-32">
@@ -860,6 +918,76 @@ function FailureContent(props: {error: unknown}) {
 	return <Error error={props.error} reset={() => location.reload()} />
 }
 
+// A pane's header and rows while the first snapshot loads, so the shell keeps its columns.
+function PaneSkeleton(props: {className?: string; label: string; rows: number}) {
+	return (
+		<section
+			aria-busy="true"
+			role="status"
+			aria-label={props.label}
+			className={cn('flex min-h-0 flex-col', props.className)}
+		>
+			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<Skeleton className="h-4 w-24" />
+			</header>
+			<div className="p-2">
+				<ItemListSkeleton label={props.label} media rows={props.rows} />
+			</div>
+		</section>
+	)
+}
+
+function MachineSkeleton(props: {className?: string}) {
+	return (
+		<section
+			aria-busy="true"
+			role="status"
+			aria-label="Machine"
+			className={cn('flex min-h-0 flex-col', props.className)}
+		>
+			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<Skeleton className="h-4 w-20" />
+			</header>
+			<div className="flex flex-col gap-4 p-3">
+				<Skeleton className="h-40 w-full" />
+				<Skeleton className="h-36 w-full" />
+			</div>
+		</section>
+	)
+}
+
+function StripSkeleton() {
+	return (
+		<div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+			<Skeleton className="size-4" />
+			<Skeleton className="h-4 w-24" />
+			<Skeleton className="h-3 w-32" />
+			<Skeleton className="ml-auto size-3 rounded-full" />
+		</div>
+	)
+}
+
+function DeploySkeleton(props: {isMobile: boolean}) {
+	if (props.isMobile) {
+		return (
+			<div className="flex min-h-0 flex-1 flex-col">
+				<StripSkeleton />
+				<PaneSkeleton className="min-h-0 flex-1" label="Apps" rows={8} />
+			</div>
+		)
+	}
+	return (
+		<div className="flex min-h-0 flex-1 flex-col">
+			<StripSkeleton />
+			<div className="grid-cols-split grid min-h-0 flex-1">
+				<PaneSkeleton className="min-w-0 border-r" label="Apps" rows={8} />
+				<PaneSkeleton className="min-w-0 border-r" label="Processes" rows={5} />
+				<MachineSkeleton className="min-w-0" />
+			</div>
+		</div>
+	)
+}
+
 function Home() {
 	const isMobile = useIsMobile()
 	const [minutes, setMinutes] = useState<HistoryQuery['minutes']>(60)
@@ -868,6 +996,8 @@ function Home() {
 	const [selection, setSelection] = useState<Selection>()
 	const [pane, setPane] = useState<Pane>('apps')
 	const [machineBack, setMachineBack] = useState<Pane>('apps')
+	const [hovered, setHovered] = useState<string>()
+	const [held, setHeld] = useState<readonly MachineHistory[]>([])
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom(minutes))
 	const snapshot = AsyncResult.value(inventory)
@@ -879,18 +1009,33 @@ function Home() {
 	const authFailure = Option.orElse(Option.filter(inventoryError, Schema.is(AuthError)), () =>
 		Option.filter(metricsError, Schema.is(AuthError))
 	)
+	// A new range keeps the previous samples on screen, dimmed, until its first reading arrives.
+	const shownHistories = Boolean.match(Array.isReadonlyArrayNonEmpty(histories), {
+		onFalse: () => held,
+		onTrue: () => histories
+	})
+	const refreshing =
+		Array.isReadonlyArrayEmpty(histories) && Array.isReadonlyArrayNonEmpty(held) && Option.isNone(metricsError)
 
 	const workers = Array.dedupe([
 		...Option.getOrElse(
 			Option.map(snapshot, value => value.workers ?? Array.map(value.items, item => item.worker)),
 			() => []
 		),
-		...Array.map(histories, machine => machine.worker)
+		...Array.map(shownHistories, machine => machine.worker)
 	])
 	const active = Option.getOrElse(Option.fromUndefinedOr(worker), () => Option.getOrUndefined(Array.head(workers)))
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
-		Array.findFirst(histories, machine => machine.worker === current)
+		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
+	const swatches = Option.match(history, {
+		onNone: () => ({}),
+		onSome: current =>
+			Record.fromEntries(Array.map(bands(current), band => [band.id, band.opacity] as const)) satisfies Record<
+				string,
+				number
+			>
+	})
 	const rows = Option.getOrElse(
 		Option.map(snapshot, value => workloads(value.items)),
 		() => []
@@ -935,7 +1080,13 @@ function Home() {
 	function selectWorker(next: string) {
 		setWorker(next)
 		setSelection(undefined)
+		setHovered(undefined)
 		setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const}))
+	}
+
+	function changeRange(next: HistoryQuery['minutes']) {
+		setHeld(histories)
+		transition(() => setMinutes(next))
 	}
 
 	function showMachine() {
@@ -1045,7 +1196,7 @@ function Home() {
 				})}
 				action={
 					<>
-						<RangeMenu minutes={minutes} pending={pending} onChange={next => transition(() => setMinutes(next))} />
+						<RangeMenu minutes={minutes} pending={pending || refreshing} onChange={changeRange} />
 						{Boolean.match(isMobile, {
 							onFalse: () => null,
 							onTrue: () => (
@@ -1068,18 +1219,14 @@ function Home() {
 					Option.match(snapshot, {
 						onNone: () =>
 							Boolean.match(inventoryFailure, {
-								onFalse: () => (
-									<div className="p-4">
-										<Skeleton className="h-64 w-full" />
-									</div>
-								),
+								onFalse: () => <DeploySkeleton isMobile={isMobile} />,
 								onTrue: () => <FailureContent error={Option.getOrUndefined(inventoryError)} />
 							}),
 						onSome: () => (
 							<div className="flex min-h-0 flex-1 flex-col">
 								<MachineStrip
 									active={active}
-									histories={histories}
+									histories={shownHistories}
 									inventoryFailure={inventoryFailure}
 									onSelect={selectWorker}
 									sources={sources}
@@ -1126,19 +1273,29 @@ function Home() {
 										onFalse: () => (
 											<div className="grid-cols-split grid min-h-0 flex-1">
 												<AppsPane
-													className="min-w-0 border-r"
+													className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
 													free={free}
+													compact={isMobile}
+													hovered={hovered}
+													onHover={setHovered}
+													swatches={swatches}
 													now={now}
 													onSelect={selectRow}
 													rows={sorted}
 													selectedId={selectedRow?.item.id}
 												/>
-												<ProcessPane className="min-w-0 border-r" now={now} row={selectedRow} />
+												<ProcessPane
+													className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
+													now={now}
+													row={selectedRow}
+												/>
 												<MachinePane
 													available={activeAvailable}
-													className="min-w-0"
+													className={cn('min-w-0', refreshing && 'opacity-60')}
 													history={Option.getOrUndefined(history)}
 													minutes={minutes}
+													hovered={hovered}
+													onHover={setHovered}
 													worker={active}
 												/>
 											</div>
@@ -1149,8 +1306,12 @@ function Home() {
 													Match.value(pane),
 													Match.when('apps', () => (
 														<AppsPane
-															className="min-h-0 flex-1"
+															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 															free={free}
+															compact={isMobile}
+															hovered={hovered}
+															onHover={setHovered}
+															swatches={swatches}
 															now={now}
 															onSelect={selectRow}
 															rows={sorted}
@@ -1158,14 +1319,21 @@ function Home() {
 														/>
 													)),
 													Match.when('process', () => (
-														<ProcessPane className="min-h-0 flex-1" now={now} row={selectedRow} showName={false} />
+														<ProcessPane
+															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
+															now={now}
+															row={selectedRow}
+															showName={false}
+														/>
 													)),
 													Match.orElse(() => (
 														<MachinePane
 															available={activeAvailable}
-															className="min-h-0 flex-1"
+															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 															history={Option.getOrUndefined(history)}
 															minutes={minutes}
+															hovered={hovered}
+															onHover={setHovered}
 															worker={active}
 														/>
 													))

@@ -364,19 +364,25 @@ function HeroSection() {
 				<p className="text-primary font-mono text-sm">{profile.title}</p>
 				<p className="text-foreground/90 text-base">{summary}</p>
 				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
-				<div className="flex flex-wrap gap-3 font-mono text-xs">
-					<a href={contacts.email.href} className="text-primary hover:underline">
+				<div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+					<a
+						href={contacts.email.href}
+						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
+					>
 						email
 					</a>
 					<a
 						href={contacts.github.href}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="text-primary hover:underline"
+						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
 					>
 						github
 					</a>
-					<a href="/cv" className="text-primary hover:underline">
+					<a
+						href="/cv"
+						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
+					>
 						cv
 					</a>
 				</div>
@@ -604,6 +610,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 						onTrue: () => 'visitor'
 					})}
 				</span>
+				<span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>
 			</div>
 		</>
 	)

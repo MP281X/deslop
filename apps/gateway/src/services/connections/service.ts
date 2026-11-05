@@ -342,6 +342,14 @@ export class Connections extends Context.Service<
 					link: {_tag: 'Connected'},
 					mode: 'public',
 					name: anonymous.getServerVersion()?.name ?? initial.name,
+					toolDescriptions: Record.fromEntries(
+						Array.flatMap(tools.tools, tool =>
+							Option.match(Option.fromUndefinedOr(tool.description), {
+								onNone: () => [],
+								onSome: description => [[tool.name, description] as const]
+							})
+						)
+					),
 					tools: Array.map(tools.tools, tool => tool.name)
 				} satisfies Connection
 			}
@@ -518,8 +526,8 @@ export class Connections extends Context.Service<
 					update(id, generation, found =>
 						Match.valueTags(outcome, {
 							Discovered: discovered => ({
-								...Struct.omit(found, ['error', 'instructions']),
-								...Struct.pick(discovered, ['icons', 'instructions']),
+								...Struct.omit(found, ['error', 'instructions', 'toolDescriptions']),
+								...Struct.pick(discovered, ['icons', 'instructions', 'toolDescriptions']),
 								tools: discovered.tools
 							}),
 							Failed: failure => ({...found, error: failure.error})

@@ -371,18 +371,30 @@ function SignIn() {
 			</div>
 			<Card className="w-full max-w-sm">
 				<CardContent className="flex flex-col gap-2">
-					<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+					<Button
+						size="lg"
+						className="max-sm:h-11"
+						disabled={AsyncResult.isWaiting(signIn)}
+						onClick={() => startSignIn()}
+					>
 						{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
 						Continue with GitHub
 					</Button>
 					<FieldSeparator>or</FieldSeparator>
-					<Button size="lg" variant="outline" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
+					<Button
+						size="lg"
+						variant="outline"
+						className="max-sm:h-11"
+						disabled={AsyncResult.isWaiting(passkey)}
+						onClick={() => startPasskey()}
+					>
 						{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
 						Continue with a passkey
 					</Button>
 					<Button
 						size="lg"
 						variant="ghost"
+						className="max-sm:h-11"
 						disabled={AsyncResult.isWaiting(codeSignIn)}
 						onClick={() => startCodeSignIn()}
 					>

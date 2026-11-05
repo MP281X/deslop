@@ -105,16 +105,13 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
-// Copied from the bar's button or command field, so a toast says whether it worked.
-export const copyEndpointAtom = Atom.fn(() =>
-	Effect.match(
-		Effect.tryPromise({
-			catch: cause => UpstreamError.make({cause}),
-			try: () => navigator.clipboard.writeText(ENDPOINT)
-		}),
-		{
-			onFailure: () => toast.add({description: ENDPOINT, title: 'Cannot copy the MCP URL', type: 'error'}),
-			onSuccess: () => toast.add({title: 'MCP URL copied'})
-		}
+// A copy confirms in place for a moment, on touch too; a failure says why in a toast.
+export const copyAtom = Atom.family((value: string) =>
+	Atom.fn(() =>
+		pipe(
+			Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => navigator.clipboard.writeText(value)}),
+			Effect.tapError(() => Effect.sync(() => toast.add({description: value, title: 'Cannot copy', type: 'error'}))),
+			Effect.andThen(Effect.sleep('1500 millis'))
+		)
 	)
 )
