@@ -301,7 +301,7 @@ function SpanRow(props: {
 	const open = props.focus === props.span.spanId
 	if (!hasDetail(props.span)) {
 		return (
-			<div className="flex h-8 w-full items-center gap-3 pr-1 text-xs">
+			<div className="flex h-8 w-full items-center gap-3 pr-1 text-xs max-sm:h-11">
 				<SpanLine mark={props.mark(props.span)} span={props.span} />
 			</div>
 		)
@@ -312,7 +312,7 @@ function SpanRow(props: {
 			onOpenChange={value => props.onPick(Boolean.match(value, {onFalse: () => '', onTrue: () => props.span.spanId}))}
 			className="data-open:bg-muted/60"
 		>
-			<CollapsibleTrigger className="hover:bg-muted/50 flex h-8 w-full cursor-pointer items-center gap-3 pr-1 text-left text-xs">
+			<CollapsibleTrigger className="hover:bg-muted/50 flex h-8 w-full cursor-pointer items-center gap-3 pr-1 text-left text-xs max-sm:h-11">
 				<SpanLine mark={props.mark(props.span)} span={props.span} open={open} />
 			</CollapsibleTrigger>
 			<CollapsibleContent>
@@ -471,7 +471,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 			<Button
 				size="lg"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="w-full justify-start text-left"
+				className="w-full justify-start text-left max-sm:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
@@ -496,6 +496,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 					<span className="sr-only">typical </span>
 					{durationOf(props.operation.p50Ms)}
 				</span>
+				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
 			</Button>
 		</div>
 	)
@@ -590,7 +591,7 @@ function TraceListRow(props: {
 				<Button
 					size="lg"
 					variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-					className="w-full justify-start text-left"
+					className="w-full justify-start text-left max-sm:h-11"
 					aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 					onClick={props.onSelect}
 				>
@@ -612,6 +613,7 @@ function TraceListRow(props: {
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
+					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
 				</Button>
 			</div>
 		</div>

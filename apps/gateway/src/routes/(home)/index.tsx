@@ -208,7 +208,7 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 								onFalse: () => 'ghost' as const,
 								onTrue: () => 'secondary' as const
 							})}
-							className="w-full justify-start text-left"
+							className="w-full justify-start text-left max-sm:h-11"
 							aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 							onClick={props.onSelect}
 						>
@@ -233,7 +233,7 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 							>
 								<Status server={props.server} />
 							</span>
-							<ChevronRight className="text-muted-foreground size-3.5 shrink-0" />
+							<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
 						</Button>
 					}
 				/>
@@ -261,7 +261,7 @@ function ServersPane(props: {
 			aria-label="MCP servers"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 				<span className="text-sm font-semibold">Servers</span>
 				<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
 			</header>
@@ -316,7 +316,7 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 					<ContextMenu>
 						<ContextMenuTrigger
 							render={
-								<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3" />
+								<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11" />
 							}
 						>
 							{Boolean.match(props.showName === false, {
@@ -343,7 +343,7 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 								onTrue: () => <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
 							})}
 							{(!connected || server.error !== undefined) && (
-								<Button size="sm" onClick={() => location.assign(connectUrl(server.id))}>
+								<Button size="sm" className="max-sm:h-11" onClick={() => location.assign(connectUrl(server.id))}>
 									{Boolean.match(server.status === 'Not connected', {
 										onFalse: () => 'Reconnect',
 										onTrue: () => 'Connect'
@@ -353,7 +353,8 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							<Button
 								variant="ghost"
 								size="sm"
-								aria-label={`Remove ${server.name}`}
+								className="max-sm:h-11"
+								aria-label="Remove "
 								title="Remove server"
 								onClick={() => setConfirm(true)}
 							>
@@ -420,7 +421,10 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							onNonEmpty: tools => (
 								<ul aria-label={`Tools of ${server.name}`} className="select-text">
 									{Array.map(tools, tool => (
-										<li key={tool.name} className="flex items-start gap-2 border-b px-3 py-1.5 font-mono text-xs">
+										<li
+											key={tool.name}
+											className="flex items-start gap-2 border-b px-3 py-1.5 font-mono text-xs max-sm:min-h-11"
+										>
 											<Wrench className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
 											<div className="flex min-w-0 flex-1 flex-col">
 												<span className="truncate">{tool.name}</span>

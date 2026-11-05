@@ -1,10 +1,13 @@
 import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
 
+import {useState} from 'react'
+
 import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
+import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const HEIGHT = 64
@@ -35,14 +38,38 @@ export function UsageChart(props: {
 	recorded: (sample: Sample) => boolean
 	value?: string
 }) {
+	const [pointer, setPointer] = useState<number>()
+	const window = chartWindow(props.minutes, props.history.time)
+	const pointerSample = Option.flatMap(Option.fromUndefinedOr(pointer), index =>
+		Option.map(Array.get(props.history.samples, index), sample => ({index, sample}))
+	)
+	const hoveredBand = Option.flatMap(Option.fromUndefinedOr(props.hovered), id =>
+		Array.findFirst(props.layers, layer => layer.id === id)
+	)
+	const valueText = Option.getOrElse(
+		Option.map(pointerSample, point => {
+			const total = Array.reduce(props.layers, 0, (sum, layer) => sum + (layer.values[point.index] ?? 0))
+			const value = Option.map(hoveredBand, band => band.values[point.index] ?? 0)
+			const at = pipe(
+				Match.value(props.minutes),
+				Match.when(10_080, () => date.format(point.sample.time)),
+				Match.orElse(() => time.format(point.sample.time))
+			)
+			return Option.match(value, {
+				onNone: () => `${at} · ${formatPercent.format(total)}% total`,
+				onSome: current =>
+					`${at} · ${props.names(props.hovered ?? '')} ${formatPercent.format(current)}% (${formatPercent.format(Boolean.match(total === 0, {onFalse: () => (current / total) * 100, onTrue: () => 0}))}%) · ${formatPercent.format(total)}% total`
+			})
+		}),
+		() => props.value ?? ''
+	)
 	return (
 		<figure className={cn('flex flex-col', props.className)} aria-label={props.label}>
 			<figcaption className="mb-1 flex items-baseline justify-between gap-2 text-xs">
 				<span className="text-muted-foreground font-medium">{props.label}</span>
-				{Option.match(Option.fromUndefinedOr(props.value), {
-					onNone: () => null,
-					onSome: value => <span className="font-mono tabular-nums">{value}</span>
-				})}
+				<span className="min-w-0 truncate font-mono tabular-nums" title={valueText}>
+					{valueText}
+				</span>
 			</figcaption>
 			<div className="flex min-h-0 flex-1">
 				<div className="min-h-0 flex-1 pr-1">
@@ -52,6 +79,17 @@ export function UsageChart(props: {
 						className="size-full overflow-visible"
 						role="img"
 						aria-label={`${props.label} over time; blank time is unrecorded`}
+						onPointerMove={event => {
+							const at =
+								window.start +
+								((event.clientX - event.currentTarget.getBoundingClientRect().left) /
+									event.currentTarget.getBoundingClientRect().width) *
+									(window.end - window.start)
+							setPointer(
+								Option.getOrUndefined(Array.findFirstIndex(props.history.samples, sample => sample.time >= at))
+							)
+						}}
+						onPointerLeave={() => setPointer(undefined)}
 					>
 						{Array.map(chartTicks(props.minutes, props.history.time), tick => (
 							<line
@@ -122,6 +160,23 @@ export function UsageChart(props: {
 								))
 							}
 						)}
+						{Option.match(pointerSample, {
+							onNone: () => null,
+							onSome: point => {
+								const x = ((point.sample.time - window.start) / (window.end - window.start)) * 100
+								return (
+									<line
+										x1={x}
+										x2={x}
+										y1="0"
+										y2={HEIGHT}
+										stroke="var(--foreground)"
+										strokeOpacity="0.35"
+										vectorEffect="non-scaling-stroke"
+									/>
+								)
+							}
+						})}
 						<line x1="0" x2="100" y1={HEIGHT} y2={HEIGHT} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
 					</svg>
 				</div>

@@ -391,7 +391,7 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							className={cn(
-								'hover:bg-muted/50 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3',
+								'hover:bg-muted/50 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3 max-sm:h-11',
 								highlighted && 'bg-muted/60',
 								props.selected && 'bg-muted'
 							)}
@@ -469,7 +469,7 @@ function AppListRow(props: {
 					</span>
 					<span className="pointer-events-auto relative z-10 flex size-4 shrink-0 items-center justify-center">
 						{Boolean.match(scheduled, {
-							onFalse: () => <ChevronRight className="text-muted-foreground size-3.5" />,
+							onFalse: () => <ChevronRight className="text-muted-foreground size-3.5 sm:hidden" />,
 							onTrue: () => (
 								<RunNow busy={running} item={props.row.item} onRun={() => setRequested(Option.some(props.now))} />
 							)
@@ -882,7 +882,7 @@ function RangeMenu(props: {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				className={cn(buttonVariants({size: 'sm', variant: 'ghost'}), 'gap-1 font-mono text-xs')}
+				className={cn(buttonVariants({size: 'sm', variant: 'ghost'}), 'gap-1 font-mono text-xs max-sm:h-11')}
 				disabled={props.pending}
 				aria-label="History range"
 			>

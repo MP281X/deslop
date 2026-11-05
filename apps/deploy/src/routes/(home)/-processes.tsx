@@ -16,7 +16,7 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 	return (
 		<span
 			className={cn(
-				'flex h-8 min-w-0 items-center gap-2 pl-(--indent) text-xs',
+				'flex h-8 min-w-0 items-center gap-2 pl-(--indent) text-xs max-sm:h-11',
 				props.node.small && 'text-muted-foreground'
 			)}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
@@ -27,7 +27,7 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 				onTrue: () => (
 					<ChevronRight
 						className={cn(
-							'text-muted-foreground size-3.5 shrink-0 transition-transform',
+							'text-muted-foreground size-3.5 shrink-0 transition-transform sm:hidden',
 							props.open === true && 'rotate-90'
 						)}
 					/>
@@ -68,7 +68,10 @@ function Node(props: {depth: number; node: ProcessNode}) {
 	}
 	return (
 		<Collapsible open={open} onOpenChange={setOpen}>
-			<CollapsibleTrigger className="w-full cursor-pointer text-left" aria-label={`${props.node.name} processes`}>
+			<CollapsibleTrigger
+				className="hover:bg-muted/50 w-full cursor-pointer text-left"
+				aria-label={`${props.node.name} processes`}
+			>
 				<Line depth={props.depth} node={props.node} open={open} />
 			</CollapsibleTrigger>
 			<CollapsibleContent>

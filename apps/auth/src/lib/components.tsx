@@ -415,7 +415,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 					<div className="flex flex-col gap-3">
 						<Table aria-label="Apps and the clients signed in to them">
 							<TableHeader>
-								<TableRow>
+								<TableRow className="max-sm:h-11">
 									<TableHead className="bg-background sticky left-0 z-10">
 										<span className="sr-only">App</span>
 									</TableHead>
@@ -426,7 +426,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							</TableHeader>
 							<TableBody>
 								{Array.map(rows, row => (
-									<TableRow key={row.origin}>
+									<TableRow key={row.origin} className="max-sm:h-11">
 										<TableHead scope="row" className="bg-background sticky left-0 z-10">
 											{Option.match(row.open, {
 												onNone: () => (

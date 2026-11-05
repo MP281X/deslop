@@ -48,7 +48,7 @@ function Identity(props: {person: Person}) {
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
 		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-8 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-10">
+			<div className="flex h-8 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-11">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -67,7 +67,7 @@ function AskingRow(props: {person: Person}) {
 			</span>
 			<Button
 				size="sm"
-				className="shrink-0 max-sm:h-8"
+				className="shrink-0 max-sm:h-11"
 				disabled={AsyncResult.isWaiting(admit)}
 				onClick={() => answer(true)}
 			>
@@ -76,7 +76,7 @@ function AskingRow(props: {person: Person}) {
 			<Button
 				size="sm"
 				variant="outline"
-				className="shrink-0 max-sm:h-8"
+				className="shrink-0 max-sm:h-11"
 				disabled={AsyncResult.isWaiting(admit)}
 				onClick={() => answer(false)}
 			>
@@ -110,7 +110,7 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-8 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-10"
+							className="hover:bg-muted/50 flex h-8 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-11"
 						/>
 					}
 				>

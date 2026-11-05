@@ -186,7 +186,13 @@ export function CommandTrigger(props: {label: string; onClick: () => void}) {
 // The same field as an icon before the bar's actions on a phone.
 export function CommandIcon(props: {label: string; onClick: () => void}) {
 	return (
-		<Button variant="ghost" size="icon" aria-label={props.label} onClick={props.onClick} className="sm:hidden">
+		<Button
+			variant="ghost"
+			size="icon"
+			aria-label={props.label}
+			onClick={props.onClick}
+			className="max-sm:size-11 sm:hidden"
+		>
 			<Search />
 		</Button>
 	)

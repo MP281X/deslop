@@ -315,7 +315,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				aria-label="Account"
-				className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2"
+				className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2 max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
 			>
 				<AccountAvatar id={props.account.id} name={props.account.name} />
 			</DropdownMenuTrigger>

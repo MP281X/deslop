@@ -22,6 +22,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
+import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
 // The signed-in account every Deslop server answers at /auth/user; without an issuer it is the developer, who cannot sign out.
@@ -41,7 +42,7 @@ function AccountMenu() {
 	if (!AsyncResult.isSuccess(account)) return null
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger aria-label="Account">
+			<DropdownMenuTrigger aria-label="Account" className="flex items-center justify-center max-sm:size-11">
 				<Avatar size="sm">
 					<AvatarImage
 						src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(account.value.id)}?s=96`}
@@ -73,9 +74,12 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
-			className: buttonVariants({
-				variant: Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})
-			})
+			className: cn(
+				buttonVariants({
+					variant: Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})
+				}),
+				'max-sm:h-11'
+			)
 		},
 		render: props.render
 	})
@@ -90,7 +94,13 @@ export function AppBarAction(props: {
 	variant?: 'default' | 'outline'
 }) {
 	return (
-		<Button aria-label={props.label} variant={props.variant} disabled={props.disabled} onClick={props.onClick}>
+		<Button
+			aria-label={props.label}
+			className="max-sm:h-11"
+			variant={props.variant}
+			disabled={props.disabled}
+			onClick={props.onClick}
+		>
 			{props.icon}
 			<span className="max-sm:hidden">{props.label}</span>
 		</Button>
@@ -134,12 +144,22 @@ export function AppBar(props: {
 						<div className="flex min-w-0 shrink items-center gap-1.5">
 							{Option.match(Option.fromUndefinedOr(props.back), {
 								onNone: () => (
-									<a href="/" aria-label={props.name} className="flex size-8 shrink-0 items-center justify-center">
+									<a
+										href="/"
+										aria-label={props.name}
+										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
+									>
 										<img src={props.icon} alt="" className="pixelated size-8" />
 									</a>
 								),
 								onSome: back => (
-									<Button variant="ghost" size="icon" aria-label={back.label} onClick={back.onClick}>
+									<Button
+										variant="ghost"
+										size="icon"
+										className="max-sm:size-11"
+										aria-label={back.label}
+										onClick={back.onClick}
+									>
 										<ChevronLeft className="size-4" />
 									</Button>
 								)
