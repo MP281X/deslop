@@ -127,83 +127,18 @@
 	--radius-2xl: calc(var(--radius) + 8px);
 	--radius-3xl: calc(var(--radius) + 12px);
 	--radius-4xl: calc(var(--radius) + 16px);
+	/* The installed app's insets. The bottom is the home indicator's own inset, with nothing added. */
+	--spacing-safe-top: env(safe-area-inset-top);
+	--spacing-safe-right: env(safe-area-inset-right);
+	--spacing-safe-bottom: env(safe-area-inset-bottom);
+	--spacing-safe-left: env(safe-area-inset-left);
+	/* Deploy's machine identity, used by machine labels and icons. */
+	--color-machine-dev: var(--blue);
+	--color-machine-desktop: var(--purple);
 	/* DESIGN.md, Motion: the stock curves are too weak, so `ease-out` and `ease-in-out` take these. */
 	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 	--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-/* DESIGN.md, Motion: a pressed button scales to 0.97 in 150ms instead of shadcn's 1px nudge. Unlayered, so it wins over the
-   utilities in ui/button.tsx, which stays exactly what the CLI writes; `group/button` comes from buttonVariants, so links
-   styled as buttons press the same way. */
-[class~='group/button'] {
-	transition-property: color, background-color, border-color, box-shadow, opacity, scale;
-	transition-duration: 150ms;
-	transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-[class~='group/button']:active {
-	translate: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-	[class~='group/button']:active:not([aria-haspopup]) {
-		scale: 0.97;
-	}
-}
-
-/* DESIGN.md, Layout: a row's text gives way to its trailing status or action; a long unbroken name wraps, from the start
-   even when the row renders as a button, instead of widening the row. */
-[data-slot='item-content'] {
-	min-width: 0;
-}
-
-/* Leading marks stay centered with the whole row, including wrapped details. */
-[data-slot='item-media'] {
-	align-self: center;
-	transform: none;
-	translate: none;
-}
-
-[data-slot='item-media'][data-align='start'] {
-	align-self: flex-start;
-}
-
-/* DESIGN.md, Components: badges are square like the controls around them, not pills. */
-[data-slot='badge'] {
-	border-radius: var(--radius-sm);
-}
-
-/* DESIGN.md, Shapes: a dialog rounds like the menus and popovers it sits beside, not more. */
-[data-slot='dialog-content'],
-[data-slot='alert-dialog-content'] {
-	border-radius: var(--radius-lg);
-}
-
-[data-slot='input-group-control'][role='combobox'] {
-	text-overflow: ellipsis;
-}
-
-/* A page's list rows start where its heading and fields do; a row that is a button keeps its inset for its highlight. */
-[data-slot='item-group'] > [data-slot='item'] {
-	padding-inline: 0;
-}
-
-[data-slot='item-title'],
-[data-slot='item-description'] {
-	max-width: 100%;
-	overflow-wrap: anywhere;
-	text-align: start;
-}
-
-/* An installed web app draws under the iPhone's status bar, so its root keeps clear of it and the side notches. */
-@utility safe-area {
-	padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-}
-
-/* A scrolling page runs under the home indicator, as native lists do, and its end scrolls clear of it. */
-@utility pb-safe {
-	padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
 }
 
 /* Pixel art keeps its hard edges when scaled. */
@@ -240,6 +175,29 @@
 			height: auto;
 			overflow: visible;
 		}
+	}
+
+	/* A plain link shows keyboard focus; the button-shaped ones bring their own ring. */
+	a:focus-visible {
+		@apply outline-ring outline-2 outline-offset-2;
+	}
+
+	a[data-slot='button']:focus-visible {
+		outline: none;
+	}
+
+	button:focus-visible {
+		@apply outline-ring outline-2 outline-offset-2;
+	}
+
+	button[data-slot='button']:focus-visible {
+		outline: none;
+	}
+
+	/* Pressables scale, as DESIGN's motion rule says; the stock translate stays as the base-ui hint. */
+	button:not(:disabled):active,
+	a[data-slot='button']:active {
+		scale: 0.97;
 	}
 
 	::selection {

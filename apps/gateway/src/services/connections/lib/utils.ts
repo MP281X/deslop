@@ -1,4 +1,4 @@
-import {Array, Boolean, Config, Effect, Match, Option, Predicate, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Config, Effect, Match, Option, Predicate, Record, Schema, String, Struct, pipe} from 'effect'
 
 import {Client} from '@modelcontextprotocol/client'
 import type {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
@@ -59,9 +59,18 @@ export function connectionStatus(connection: Connection, now: number) {
 export function connectionInfo(connection: Connection, now: number) {
 	return {
 		...Option.match(Option.fromUndefinedOr(connection.error), {onNone: () => ({}), onSome: error => ({error})}),
-		...Struct.pick(connection, ['id', 'name', 'tools', 'url']),
+		...Struct.pick(connection, ['id', 'name', 'url']),
 		icons: connection.icons ?? [],
-		status: connectionStatus(connection, now)
+		status: connectionStatus(connection, now),
+		tools: Array.map(connection.tools, name => ({
+			name,
+			...Option.match(
+				Option.flatMap(Option.fromUndefinedOr(connection.toolDescriptions), descriptions =>
+					Record.get(descriptions, name)
+				),
+				{onNone: () => ({}), onSome: description => ({description})}
+			)
+		}))
 	} satisfies ConnectionInfo
 }
 

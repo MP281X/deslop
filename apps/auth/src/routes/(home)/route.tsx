@@ -8,6 +8,7 @@ import {Check, Copy, KeyRound, Plus} from 'lucide-react'
 import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
+import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
@@ -36,15 +37,17 @@ import {
 	EmptyTitle
 } from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
-import {AccountAvatar, AppList, QrCode} from '#lib/components.tsx'
+import {AccountAvatar, AppIcon, AppList, QrCode} from '#lib/components.tsx'
 import {
 	ADDING_PASSKEY,
 	APP_ROWS,
 	accountAtom,
 	approveLink,
 	addPasskeyAtom,
+	catalogAtom,
 	codeSignInAtom,
 	confirmForPasskeyAtom,
 	passkeySignInAtom,
@@ -208,25 +211,22 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 	)
 }
 
-// Admins switch between sign-ins and people in the app bar; people waiting for access show as a count.
-function Tabs() {
+// Signed-in accounts see their sign-ins; admins also see people, with those waiting as a count.
+function Tabs(props: {admin: boolean; waiting: number}) {
 	const matchRoute = useMatchRoute()
-	return Array.map(
-		[
-			{count: 0, label: 'Sign-ins', to: '/'},
-			{
-				count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
-				label: 'People',
-				to: '/people'
-			}
-		] as const,
-		tab => (
-			<AppBarTab key={tab.to} active={matchRoute({to: tab.to}) !== false} render={<Link to={tab.to} />}>
-				{tab.label}
-				{tab.count > 0 && <Badge>{tab.count}</Badge>}
-			</AppBarTab>
-		)
-	)
+	const tabs: {count: number; label: string; to: '/' | '/people'}[] = [
+		{count: 0, label: 'Sign-ins', to: '/'},
+		...Boolean.match(props.admin, {
+			onFalse: () => [],
+			onTrue: () => [{count: props.waiting, label: 'People', to: '/people' as const}]
+		})
+	]
+	return Array.map(tabs, tab => (
+		<AppBarTab key={tab.to} active={matchRoute({to: tab.to}) !== false} render={<Link to={tab.to} />}>
+			{tab.label}
+			{tab.count > 0 && <Badge>{tab.count}</Badge>}
+		</AppBarTab>
+	))
 }
 
 function Signed(props: {account: SignedAccount}) {
@@ -311,7 +311,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				aria-label="Account"
-				className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2"
+				className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2 max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
 			>
 				<AccountAvatar id={props.account.id} name={props.account.name} />
 			</DropdownMenuTrigger>
@@ -343,24 +343,38 @@ function SignIn() {
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="flex flex-1 flex-col justify-center gap-2 pb-12" aria-label="Sign in">
-			<Button size="lg" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
-				{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-				Sign in with GitHub
-			</Button>
-			<Button size="lg" variant="outline" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
-				{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
-				Sign in with a passkey
-			</Button>
-			<Button
-				size="lg"
-				variant="outline"
-				disabled={AsyncResult.isWaiting(codeSignIn)}
-				onClick={() => startCodeSignIn()}
-			>
-				Sign in with a code
-			</Button>
-			<Failures />
+		<section className="flex flex-1 flex-col items-center justify-center pb-12" aria-label="Sign in">
+			<div className="flex w-full max-w-sm flex-col gap-2">
+				<Button
+					size="lg"
+					className="max-sm:h-11"
+					disabled={AsyncResult.isWaiting(signIn)}
+					onClick={() => startSignIn()}
+				>
+					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+					Continue with GitHub
+				</Button>
+				<Button
+					size="lg"
+					variant="outline"
+					className="max-sm:h-11"
+					disabled={AsyncResult.isWaiting(passkey)}
+					onClick={() => startPasskey()}
+				>
+					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
+					Continue with a passkey
+				</Button>
+				<Button
+					size="lg"
+					variant="ghost"
+					className="max-sm:h-11"
+					disabled={AsyncResult.isWaiting(codeSignIn)}
+					onClick={() => startCodeSignIn()}
+				>
+					Use a sign-in code
+				</Button>
+				<Failures />
+			</div>
 		</section>
 	)
 }
@@ -396,25 +410,76 @@ function SigningOut() {
 // A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
 	const account = useAtomSuspense(accountAtom).value
+	const catalog = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
+	const people = AsyncResult.getOrElse(useAtomValue(peopleAtom), () => [])
+	const endSession = useAtomSet(menuSignOutAtom)
+	const admin = Option.exists(account, signed => signed.role === 'Admin')
+	const waiting = Array.countBy(people, person => person.role === 'Waiting')
+	const groups: PaletteGroup[] = [
+		{
+			items: Array.map(catalog, app => ({
+				detail: new URL(app.origin).hostname,
+				icon: <AppIcon origin={app.origin} small />,
+				id: app.origin,
+				keywords: app.name,
+				label: app.name,
+				run: () => {
+					location.assign(app.open)
+				}
+			})),
+			label: 'Apps'
+		},
+		{
+			items: Boolean.match(admin, {
+				onFalse: () => [],
+				onTrue: () =>
+					Array.map(people, person => ({
+						detail: `@${person.name} · ${person.role}`,
+						icon: <AccountAvatar id={person.id} name={person.name} />,
+						id: person.id,
+						keywords: `${person.fullName ?? ''} ${person.name}`,
+						label: person.fullName ?? person.name,
+						run: () => {
+							location.assign(`/people#person-${person.id}`)
+						}
+					}))
+			}),
+			label: 'People'
+		},
+		{
+			items: [
+				{label: 'Sign-ins', run: () => location.assign('/')},
+				...Boolean.match(admin, {
+					onFalse: () => [],
+					onTrue: () => [
+						{
+							detail: Boolean.match(waiting > 0, {onFalse: () => undefined, onTrue: () => `${waiting} waiting`}),
+							label: 'People',
+							run: () => location.assign('/people')
+						}
+					]
+				})
+			],
+			label: 'Go to'
+		},
+		{
+			items: Option.match(account, {
+				onNone: () => [],
+				onSome: () => [{label: 'Sign out of every app', run: () => endSession()}]
+			}),
+			label: 'Account'
+		}
+	]
 	return (
 		<>
 			<AppBar
 				icon={icon}
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
-				tabs={
-					Option.exists(account, signed => signed.role === 'Admin') && (
-						<Suspense fallback={null}>
-							<Tabs />
-						</Suspense>
-					)
-				}
-				commands={Option.match(
-					Option.filter(account, signed => signed.role !== 'Waiting'),
-					{onNone: () => undefined, onSome: () => []}
-				)}
+				palette={Option.match(account, {onNone: () => undefined, onSome: () => groups})}
+				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} waiting={waiting} />}
 			/>
-			<Page className="max-w-xl">
+			<Page>
 				{signingOut && <SigningOut />}
 				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 				{Option.match(account, {
@@ -430,15 +495,31 @@ function Shell() {
 	)
 }
 
-// Until the account is known: the app bar and the page's shape, never a blank page with a spinner.
+// Until the account is known: the app bar and the sign-in card's shape, never a blank page with a spinner.
 function HomeLayout() {
 	return (
 		<Suspense
 			fallback={
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
-					<Page className="max-w-xl">
-						<ItemListSkeleton label="Apps" media rows={APP_ROWS} />
+					<Page>
+						<section
+							aria-busy="true"
+							aria-label="Sign in"
+							role="status"
+							className="flex flex-1 flex-col items-center justify-center gap-6 pb-12"
+						>
+							<div className="flex flex-col items-center gap-2">
+								<Skeleton className="h-7 w-52" />
+								<Skeleton className="h-4 w-44" />
+							</div>
+							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+								<Skeleton className="h-11 w-full" />
+								<Skeleton className="h-4 w-8 self-center" />
+								<Skeleton className="h-11 w-full" />
+								<Skeleton className="h-11 w-full" />
+							</div>
+						</section>
 					</Page>
 				</>
 			}

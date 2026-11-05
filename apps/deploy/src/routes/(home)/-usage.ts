@@ -4,7 +4,14 @@ import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 // One stacked band, in % of the whole machine at each sample: an app, the small apps together, or what the machine holds beyond the apps.
-export type Band = {cpu: number[]; id: string; kind: 'app' | 'other' | 'system'; memory: number[]; opacity: number}
+export type Band = {
+	cpu: number[]
+	id: string
+	kind: 'app' | 'other' | 'system'
+	members: readonly string[]
+	memory: number[]
+	opacity: number
+}
 
 function peak(values: readonly number[]) {
 	return Array.reduce(values, 0, Number.max)
@@ -51,7 +58,12 @@ export function bands(history: MachineHistory) {
 	const ranked = Array.map(
 		large,
 		// The machine's hue, strongest for the heaviest app and fading evenly by size down to a fifth.
-		(app, rank) => ({...app, kind: 'app' as const, opacity: 0.85 - (rank * 0.65) / Number.max(1, large.length - 1)})
+		(app, rank) => ({
+			...app,
+			kind: 'app' as const,
+			members: [app.id],
+			opacity: 0.85 - (rank * 0.65) / Number.max(1, large.length - 1)
+		})
 	)
 	const other = Array.match(small, {
 		onEmpty: () => [],
@@ -60,6 +72,7 @@ export function bands(history: MachineHistory) {
 				cpu: Array.map(history.samples, (_, index) => total(group, index, 'cpu')),
 				id: 'other',
 				kind: 'other' as const,
+				members: Array.map(group, app => app.id),
 				memory: Array.map(history.samples, (_, index) => total(group, index, 'memory')),
 				opacity: 0.35
 			}
@@ -72,6 +85,7 @@ export function bands(history: MachineHistory) {
 			cpu: Array.map(history.samples, (sample, index) => Number.max(0, (sample.cpu ?? 0) - total(apps, index, 'cpu'))),
 			id: 'system',
 			kind: 'system',
+			members: [],
 			memory: Array.map(history.samples, (sample, index) =>
 				Number.max(0, (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100 - total(apps, index, 'memory'))
 			),

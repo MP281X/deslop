@@ -7,7 +7,6 @@ import {AppWindow, Globe, Network, Server} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
-import {useCommandQuery} from '@deslop/components-web/app-bar'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
@@ -22,6 +21,7 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldDescription} from '@deslop/components-web/ui/field'
+import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 import {cn} from '@deslop/components-web/utils'
 
@@ -86,7 +86,7 @@ export function AccountAvatar(props: {id: string; name: string}) {
 }
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-function AppIcon(props: {origin: string; small?: boolean}) {
+export function AppIcon(props: {origin: string; small?: boolean}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
 		<span
@@ -187,11 +187,15 @@ function ColumnHead(props: {column: Column; now: number}) {
 	const name = `${props.column.label}, ${detail}`
 	return (
 		<TableHead className="px-0.5">
-			<span className="flex justify-center">
+			<span className="flex flex-col items-center gap-0.5">
 				{Boolean.match(props.column.pending, {
 					onFalse: () => (
 						<DropdownMenu>
-							<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title={name} aria-label={name} />}>
+							<DropdownMenuTrigger
+								render={
+									<Button variant="ghost" size="icon-sm" className="max-sm:size-11" title={name} aria-label={name} />
+								}
+							>
 								<ClientIcon client={props.column.client} />
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-auto min-w-48">
@@ -241,7 +245,7 @@ function holds(column: Column, row: Row) {
 function Cell(props: {column: Column; row: Row}) {
 	const held = holds(props.column, props.row)
 	return (
-		<TableCell className="w-7 px-0">
+		<TableCell className="w-7 px-0 max-sm:w-14">
 			<span className="flex justify-center">
 				{Boolean.match(held, {
 					onFalse: () => <StatusDot status="off" />,
@@ -263,6 +267,8 @@ function Cell(props: {column: Column; row: Row}) {
 // A failed answer stays above the grid to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
+	const [choice, setChoice] = useState<boolean>()
+	const waiting = AsyncResult.isWaiting(consent)
 	return (
 		<>
 			<FieldDescription>
@@ -283,17 +289,25 @@ function Answer(props: {request: PendingAuthorization}) {
 				<Button
 					size="lg"
 					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
-					disabled={AsyncResult.isWaiting(consent)}
-					onClick={() => respond({accept: true, request: props.request})}
+					disabled={waiting}
+					onClick={() => {
+						setChoice(true)
+						respond({accept: true, request: props.request})
+					}}
 				>
+					{Boolean.match(waiting && choice === true, {onFalse: () => null, onTrue: () => <Spinner />})}
 					Approve
 				</Button>
 				<Button
 					size="lg"
 					variant="outline"
-					disabled={AsyncResult.isWaiting(consent)}
-					onClick={() => respond({accept: false, request: props.request})}
+					disabled={waiting}
+					onClick={() => {
+						setChoice(false)
+						respond({accept: false, request: props.request})
+					}}
 				>
+					{Boolean.match(waiting && choice === false, {onFalse: () => null, onTrue: () => <Spinner />})}
 					Deny
 				</Button>
 			</div>
@@ -359,31 +373,23 @@ function columnsOf(
 // Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const catalog = useAtomSuspense(catalogAtom).value
+	// Every sign-in is a column: an app's client, or Claude Code on an agent's machine.
 	const signIns = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
-	const query = useCommandQuery()
-	function shown(name: string) {
-		return String.includes(query)(String.toLowerCase(name))
-	}
 	const rows: Row[] = [
-		...Array.map(
-			Array.filter(catalog, app => shown(app.name)),
-			app => ({
-				name: app.name,
-				open: Option.some(app.open),
-				origin: app.origin,
-				web: String.startsWith('https://')(app.open)
-			})
-		),
+		...Array.map(catalog, app => ({
+			name: app.name,
+			open: Option.some(app.open),
+			origin: app.origin,
+			web: String.startsWith('https://')(app.open)
+		})),
 		...pipe(
 			[
 				...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
 				...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
 			],
 			Array.dedupe,
-			Array.filter(
-				origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin) && shown(origin)
-			),
+			Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin)),
 			Array.sort(String.Order),
 			Array.map(origin => ({
 				name: Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin),
@@ -394,9 +400,8 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		)
 	]
 	// Narrowing the apps narrows the clients to those holding one, so no column stands empty.
-	const columns = Array.filter(
-		columnsOf(props.pending, signIns, catalog),
-		column => column.pending || Array.some(rows, row => holds(column, row))
+	const columns = Array.filter(columnsOf(props.pending, signIns, catalog), column =>
+		Array.some(rows, row => holds(column, row))
 	)
 	return (
 		<section className="flex flex-1 flex-col gap-3" aria-label="Apps">
@@ -414,59 +419,55 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				onEmpty: () => (
 					<Empty>
 						<EmptyHeader>
-							<EmptyTitle>
-								{Boolean.match(String.isEmpty(query), {
-									onFalse: () => `No app matches “${query}”`,
-									onTrue: () => 'No apps yet'
-								})}
-							</EmptyTitle>
+							<EmptyTitle>No apps yet</EmptyTitle>
 						</EmptyHeader>
 					</Empty>
 				),
 				onNonEmpty: () => (
-					<Table aria-label="Apps and the clients signed in to them">
-						<TableHeader>
-							<TableRow>
-								<TableHead>
-									<span className="sr-only">App</span>
-								</TableHead>
-								{Array.map(columns, column => (
-									<ColumnHead key={column.key} column={column} now={now} />
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{Array.map(rows, row => (
-								<TableRow key={row.origin}>
-									<TableHead scope="row">
-										{Option.match(row.open, {
-											onNone: () => (
-												<span className="flex items-center gap-2 text-sm font-medium">
-													<AppIcon origin={row.origin} />
-													{row.name}
-												</span>
-											),
-											onSome: url => (
-												<a
-													href={url}
-													target="_blank"
-													rel="noreferrer"
-													title={`Open ${row.name}`}
-													className="flex items-center gap-2 text-sm font-medium"
-												>
-													<AppIcon origin={row.origin} />
-													{row.name}
-												</a>
-											)
-										})}
+					<div className="flex flex-col gap-3">
+						<Table aria-label="Apps and the clients signed in to them" className="w-auto border-b">
+							<TableHeader>
+								<TableRow className="max-sm:h-11">
+									<TableHead className="bg-background sticky left-0 z-10 w-40">
+										<span className="text-muted-foreground text-xs">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
-										<Cell key={column.key} column={column} row={row} />
+										<ColumnHead key={column.key} column={column} now={now} />
 									))}
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+							</TableHeader>
+							<TableBody>
+								{Array.map(rows, row => (
+									<TableRow key={row.origin} className="max-sm:h-11">
+										<TableHead scope="row" className="bg-background sticky left-0 z-10 w-40">
+											{Option.match(row.open, {
+												onNone: () => (
+													<span className="flex items-center gap-2 text-sm font-medium">
+														<AppIcon origin={row.origin} />
+														{row.name}
+													</span>
+												),
+												onSome: url => (
+													<a
+														href={url}
+														target="_blank"
+														rel="noreferrer"
+														className="flex h-full w-full items-center gap-2 text-sm font-medium hover:underline"
+													>
+														<AppIcon origin={row.origin} />
+														{row.name}
+													</a>
+												)
+											})}
+										</TableHead>
+										{Array.map(columns, column => (
+											<Cell key={column.key} column={column} row={row} />
+										))}
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
 				)
 			})}
 		</section>

@@ -1,24 +1,25 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+@theme {
+	/* The two sidebars hold equal width; the processes between them are the narrower, secondary pane. */
+	--grid-template-columns-split: 35% 30% 35%;
+}
+
 :root {
 	--primary: var(--blue);
-	--machine: var(--blue);
 }
 
-/* Each machine's section draws its charts, swatches and live dots in its own hue. */
-.deploy-machine[data-machine='dev'] {
-	--primary: var(--blue);
+/* Each machine's charts and swatches draw in its own hue; the app's primary stays Deploy's blue. */
+@utility machine {
 	--machine: var(--blue);
-}
-.deploy-machine[data-machine='desktop'] {
-	--primary: var(--purple);
-	--machine: var(--purple);
+
+	&[data-machine='desktop'] {
+		--machine: var(--purple);
+	}
 }
 
-.deploy-machine-icon[data-machine='dev'] {
-	color: var(--blue);
-}
-.deploy-machine-icon[data-machine='desktop'] {
-	color: var(--purple);
+/* A machine metric that uses a shadcn component's primary token: only that component takes the machine hue. */
+@utility machine-metric {
+	--primary: var(--machine);
 }

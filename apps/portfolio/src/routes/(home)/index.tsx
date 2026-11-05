@@ -152,12 +152,20 @@ function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: nu
 	const deltaX = motion.targetX - motion.x
 	const deltaY = motion.targetY - motion.y
 	const catchUp = Number.min(1, (1 - Math.exp(-frameDelta / 130)) * (1 + Math.hypot(deltaX, deltaY) / 220))
+	// Reduced motion keeps the colour and drops the glide, as every other transition on the page does.
+	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 	return {
 		...motion,
 		lastFrameAt: now,
-		x: approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
-		y: approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY})
+		x: Boolean.match(reduced, {
+			onFalse: () => approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
+			onTrue: () => motion.targetX
+		}),
+		y: Boolean.match(reduced, {
+			onFalse: () => approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY}),
+			onTrue: () => motion.targetY
+		})
 	}
 }
 
@@ -194,9 +202,9 @@ function subscribeToResize(onStoreChange: () => void) {
 	}
 }
 
-// The page's content over the trail grid: one opaque column, rows split by hairlines.
+// The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
 function Panel(input: {className?: string; children: React.ReactNode}) {
-	return <div className={cn('bg-background', input.className)}>{input.children}</div>
+	return <div className={cn('bg-background border-border border select-text', input.className)}>{input.children}</div>
 }
 
 function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
@@ -244,15 +252,28 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 	)
 }
 
-function CursorLabel(input: {label: string}) {
+// The pointer stays, the name only where it would not sit over the page's reading column.
+function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 	return (
-		<div className="flex items-center gap-1">
+		<div className={cn('flex items-center gap-1', input.flip === true && '-translate-x-full flex-row-reverse')}>
 			<MousePointer2 className="size-4 text-(--cursor-color)" />
-			<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
-				{input.label}
-			</span>
+			{Boolean.match(input.show === false, {
+				onFalse: () => (
+					<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
+						{input.label}
+					</span>
+				),
+				onTrue: () => null
+			})}
 		</div>
 	)
+}
+
+// Whether a cursor sits over the centered reading column, where its name would cover the text.
+function overContent(x: number, viewport: {width: number}) {
+	const left = (viewport.width - 768) / 2
+	const right = (viewport.width + 768) / 2
+	return x * viewport.width >= left && x * viewport.width <= right
 }
 
 // Another visitor's cursor glides behind the page towards each position the server reports.
@@ -289,7 +310,11 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform) will-change-transform"
 			style={{'--cursor-color': input.cursor.color}}
 		>
-			<CursorLabel label={input.cursor.name} />
+			<CursorLabel
+				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
+				label={input.cursor.name}
+				show={!overContent(input.cursor.x, input.viewport)}
+			/>
 		</div>
 	)
 }
@@ -305,7 +330,11 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 				'--cursor-transform': `translate3d(var(--pointer-x, ${input.cursor.x * input.viewport.width}px), var(--pointer-y, ${input.cursor.y * input.viewport.height}px), 0)`
 			}}
 		>
-			<CursorLabel label={`${input.cursor.name} (you)`} />
+			<CursorLabel
+				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
+				label="You"
+				show={!overContent(input.cursor.x, input.viewport)}
+			/>
 		</div>
 	)
 }
@@ -343,6 +372,28 @@ function HeroSection() {
 				<p className="text-primary font-mono text-sm">{profile.title}</p>
 				<p className="text-foreground/90 text-base">{summary}</p>
 				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
+				<div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+					<a
+						href={contacts.email.href}
+						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
+					>
+						email
+					</a>
+					<a
+						href={contacts.github.href}
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
+					>
+						github
+					</a>
+					<a
+						href="/cv"
+						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
+					>
+						cv
+					</a>
+				</div>
 			</Panel>
 		</Section>
 	)
@@ -379,7 +430,7 @@ function ProjectRow(input: {project: {description: string; href: string; name: s
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label={`View ${input.project.name} on GitHub`}
-					className="text-primary hover:text-primary/80 transition-colors"
+					className="text-primary hover:text-primary/80 transition-colors max-sm:inline-flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
 				>
 					<ArrowUpRight className="size-4" />
 				</a>
@@ -466,7 +517,7 @@ function EducationSection() {
 
 function ContactSection() {
 	return (
-		<Section>
+		<Section className="pb-20 max-sm:pb-6">
 			<SectionBody title="contact">
 				{Array.map(
 					[
@@ -476,21 +527,24 @@ function ContactSection() {
 						contacts.github,
 						{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
 					],
-					item => (
-						<a
-							key={item.label}
-							href={item.href}
-							className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm transition-colors"
-							target="_blank"
-							rel="noopener noreferrer"
-						>
-							<span className="text-muted-foreground">{item.label}</span>
-							<span className="font-mono text-xs break-all">{item.value}</span>
-						</a>
-					)
+					item => {
+						const internal = String.startsWith('/')(item.href)
+						return (
+							<a
+								key={item.label}
+								href={item.href}
+								className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm transition-colors"
+								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
+								rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
+							>
+								<span className="text-muted-foreground">{item.label}</span>
+								<span className="font-mono text-xs break-all">{item.value}</span>
+							</a>
+						)
+					}
 				)}
 			</SectionBody>
-			<p className="text-muted-foreground mt-4 font-mono text-xs">
+			<p className="bg-background text-muted-foreground mt-4 font-mono text-xs">
 				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
 			</p>
 		</Section>
@@ -513,7 +567,7 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 					<KbdGroup>
 						<Kbd>1</Kbd>–<Kbd>6</Kbd>
 					</KbdGroup>
-					<span>jump to section</span>
+					<span>1 hero · 2 skills · 3 experience · 4 projects · 5 education · 6 contact</span>
 					<Kbd>r</Kbd>
 					<span>change cursor color</span>
 					<Kbd>?</Kbd>
@@ -526,42 +580,63 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 	)
 }
 
+// The live count, its dot in the local cursor's colour; the fixed HUD adds the shortcut hint.
+function VisitorCount(props: {hint?: boolean; visitors: PortfolioVisitors}) {
+	return (
+		<>
+			<span
+				className="size-1.5 rounded-full bg-(--identity-color)"
+				style={{
+					'--identity-color': pipe(
+						Array.findFirst(props.visitors, visitor => visitor.id === identity.id),
+						Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
+					)
+				}}
+			/>
+			<span className="text-primary">{Array.length(props.visitors)}</span>
+			<span className="text-muted-foreground">
+				{Boolean.match(Array.length(props.visitors) === 1, {onFalse: () => 'visitors', onTrue: () => 'visitor'})}
+			</span>
+			{props.hint === true && <span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>}
+		</>
+	)
+}
+
 function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 	const portfolio = useAtomSuspense(portfolioAtom)
 
 	return (
 		<>
-			<div className="trail-grid pointer-events-none fixed inset-0 z-1" />
+			<div className="trail-grid pointer-events-none fixed inset-0 z-1 w-screen" />
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
-			{Array.map(portfolio.value.visitors, cursor => {
-				if (cursor.id === identity.id) {
-					return (
-						<div key={cursor.id} className="own-cursor">
-							<OwnCursor cursor={cursor} viewport={input.viewport} />
-						</div>
-					)
-				}
-				return <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />
-			})}
-
-			<div className="border-border bg-background pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs sm:bottom-4 sm:left-4">
-				<span
-					className="size-1.5 rounded-full bg-(--identity-color)"
-					style={{
-						'--identity-color': pipe(
-							Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
-							Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
-						)
-					}}
+			<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+				<OwnCursor
+					cursor={Option.getOrElse(
+						Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
+						() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5})
+					)}
+					viewport={input.viewport}
 				/>
-				<span className="text-primary">{Array.length(portfolio.value.visitors)}</span>
-				<span className="text-muted-foreground">
-					{Boolean.match(Array.length(portfolio.value.visitors) === 1, {
-						onFalse: () => 'visitors',
-						onTrue: () => 'visitor'
-					})}
-				</span>
+			</div>
+			<div className="max-sm:hidden">
+				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+					{Array.map(portfolio.value.visitors, cursor =>
+						Boolean.match(cursor.id === identity.id, {
+							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
+							onTrue: () => null
+						})
+					)}
+				</div>
+			</div>
+
+			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs max-sm:hidden sm:bottom-4 sm:left-4">
+				<VisitorCount hint visitors={portfolio.value.visitors} />
+			</div>
+			<div className="relative z-10 flex justify-center px-3 pb-6 sm:hidden">
+				<Panel className="flex w-full max-w-3xl items-center gap-2 px-4 py-3 font-mono text-xs">
+					<VisitorCount visitors={portfolio.value.visitors} />
+				</Panel>
 			</div>
 		</>
 	)
@@ -605,7 +680,13 @@ function PortfolioRoute() {
 		const target = sections()[index]
 		if (Predicate.isUndefined(target)) return
 
-		target.scrollIntoView({behavior: 'smooth', block: 'start'})
+		target.scrollIntoView({
+			behavior: Boolean.match(window.matchMedia('(prefers-reduced-motion: reduce)').matches, {
+				onFalse: () => 'smooth' as const,
+				onTrue: () => 'auto' as const
+			}),
+			block: 'start'
+		})
 		currentSectionRef.current = index
 	}
 
@@ -678,7 +759,7 @@ function PortfolioRoute() {
 	return (
 		<div
 			ref={containerRef}
-			className="portfolio-scroll relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll"
+			className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
 			onPointerMove={updatePointer}
 			onScroll={event => {
 				const viewportMiddle = event.currentTarget.scrollTop + event.currentTarget.clientHeight / 2
@@ -696,7 +777,16 @@ function PortfolioRoute() {
 			<EducationSection />
 			<ContactSection />
 
-			<Suspense fallback={null}>
+			<Suspense
+				fallback={
+					<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+						<OwnCursor
+							cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
+							viewport={viewport}
+						/>
+					</div>
+				}
+			>
 				<RealtimeLayer viewport={viewport} />
 			</Suspense>
 
@@ -709,7 +799,7 @@ function PortfolioRoute() {
 				onClick={() => {
 					setShowShortcuts(show => !show)
 				}}
-				className="fixed right-3 bottom-3 z-50 sm:right-4 sm:bottom-4"
+				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-3 z-50 max-sm:hidden sm:right-4 sm:bottom-4"
 			>
 				?
 			</Button>

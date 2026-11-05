@@ -82,12 +82,18 @@ export const Connection = Schema.Struct({
 	mode: Schema.Literals(['oauth', 'public']),
 	name: Schema.NonEmptyString,
 	oauth: Schema.optionalKey(OAuth),
+	// The tools a server offers, by name; the descriptions a later discovery found, kept apart so older rows still read.
+	toolDescriptions: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 	tools: Schema.Array(Schema.String),
 	url: ServerUrl
 })
 
 export type ConnectionStore = typeof ConnectionStore.Type
 export const ConnectionStore = Schema.Record(Schema.String, Connection)
+
+// One tool as the gateway offers it, with the server's own description when it has one.
+export type ToolInfo = typeof ToolInfo.Type
+export const ToolInfo = Schema.Struct({description: Schema.optionalKey(Schema.String), name: Schema.NonEmptyString})
 
 export type ConnectionInfo = typeof ConnectionInfo.Type
 export const ConnectionInfo = Schema.Struct({
@@ -96,7 +102,7 @@ export const ConnectionInfo = Schema.Struct({
 	id: ServerId,
 	name: Schema.NonEmptyString,
 	status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
-	tools: Schema.Array(Schema.String),
+	tools: Schema.Array(ToolInfo),
 	url: ServerUrl
 })
 
@@ -106,6 +112,7 @@ export const Discovery = Schema.TaggedUnion({
 	Discovered: {
 		icons: Schema.Array(ServerIcon),
 		instructions: Schema.optionalKey(Schema.String),
+		toolDescriptions: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 		tools: Schema.Array(Schema.String)
 	},
 	Failed: {error: Schema.String}

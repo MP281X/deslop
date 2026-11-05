@@ -177,6 +177,22 @@ export class Tokens extends Context.Service<
 				) {
 					return yield* AuthError.make({message: 'The token is not valid for this app'})
 				}
+				// Touch the grant at most once a minute, so a token's last use shows without a write per tool call.
+				if (found.now - found.grant.lastActive > 60_000) {
+					yield* change(current =>
+						Effect.succeed([
+							undefined,
+							Option.match(Record.get(current, found.family), {
+								onNone: () => current,
+								onSome: grant =>
+									Boolean.match(found.now - grant.lastActive > 60_000, {
+										onFalse: () => current,
+										onTrue: () => ({...current, [found.family]: {...grant, lastActive: found.now}})
+									})
+							})
+						] as const)
+					)
+				}
 				return found.grant.user
 			}, rejected('Sign in first'))
 			const mint = Effect.fnUntraced(function* (
@@ -368,7 +384,9 @@ export class Tokens extends Context.Service<
 						entry =>
 							({
 								client: entry[1].client,
+								createdAt: entry[1].createdAt,
 								device: entry[1].device,
+								expiresAt: entry[1].credential.expiresAt,
 								family: entry[0],
 								kind: entry[1].credential._tag,
 								lastActive: entry[1].lastActive,

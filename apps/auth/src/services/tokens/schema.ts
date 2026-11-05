@@ -129,7 +129,9 @@ export type SignedInApp = typeof SignedInApp.Type
 export const SignedInApp = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
 	client: Schema.String,
+	createdAt: Schema.Finite,
 	device: Schema.String,
+	expiresAt: Schema.Finite,
 	family: Schema.NonEmptyString,
 	kind: Schema.Literals(['App', 'Browser']),
 	lastActive: Schema.Finite,

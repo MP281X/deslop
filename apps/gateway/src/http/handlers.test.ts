@@ -807,7 +807,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.deepStrictEqual(yield* listServers(gateway.web), [])
 			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			assert.strictEqual(publicServer.status, 'Connected')
-			assert.deepStrictEqual(publicServer.tools, ['search'])
+			assert.deepStrictEqual(publicServer.tools, [{description: 'Search example', name: 'search'}])
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
 			const external = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
 			const collision = yield* addMcp(gateway.web, 'https://mcp.example.net/mcp')
@@ -1041,7 +1041,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			assert.deepStrictEqual(
 				Array.map(yield* listServers(gateway.web), server => [server.status, server.tools]),
-				[['Connected', ['search']]]
+				[['Connected', [{description: 'Search example', name: 'search'}]]]
 			)
 			// An agent's read hangs on Mobbin, having listed the servers before Stash connects.
 			yield* Ref.set(gateway.stall, true)
@@ -1064,8 +1064,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					server => [server.id, server.tools]
 				),
 				[
-					['mobbin', ['search']],
-					[stash.id, ['search']]
+					['mobbin', [{description: 'Search example', name: 'search'}]],
+					[stash.id, [{description: 'Search example', name: 'search'}]]
 				]
 			)
 		})

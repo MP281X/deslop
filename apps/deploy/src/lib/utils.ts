@@ -34,6 +34,8 @@ export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 		Effect.tap(() => Effect.sync(() => get.set(exposeTargetAtom, Option.none())))
 	)
 )
+
+// Removes an endpoint this app exposed, on its own worker when it is remote.
 export const hideAtom = Atom.family((target: string) =>
 	Atom.family((name: string) =>
 		RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('deploy.hide', {name, target})))
