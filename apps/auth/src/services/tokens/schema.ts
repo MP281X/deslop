@@ -141,16 +141,15 @@ export const SignedInApp = Schema.Struct({
 	resources: Schema.Array(Resource)
 })
 
-// An agent token is a long-lived access token for one app's MCP endpoint, made without a browser on the agent's machine.
+// An agent token is a long-lived access token for one app's MCP endpoint, made without a browser on the agent's machine; it lives until revoked.
 export type AgentParams = typeof AgentParams.Type
 export const AgentParams = Schema.Struct({
-	days: Schema.Literals([30, 90, 365]),
 	name: Schema.NonEmptyString.check(Schema.isMaxLength(60)),
 	resource: Resource
 })
 
 export type AgentToken = typeof AgentToken.Type
-export const AgentToken = Schema.Struct({expiresAt: Schema.Finite, token: Schema.NonEmptyString})
+export const AgentToken = Schema.Struct({token: Schema.NonEmptyString})
 
 export type FamilyParams = typeof FamilyParams.Type
 export const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})

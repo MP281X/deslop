@@ -419,7 +419,7 @@ function ScopeSkeleton(props: {isMobile: boolean}) {
 // An app's mark, name and newest release at the top of its operations.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-8 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2">
+		<div className="bg-background sticky top-8 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2.5">
 			{Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
 				onNone: () =>
 					Boolean.match(
@@ -437,27 +437,6 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 				onSome: mark => <img src={mark} alt="" className="pixelated size-5" />
 			})}
 			<span className="min-w-0 truncate text-xs font-semibold">{props.app.name}</span>
-			{Option.match(Array.head(props.app.versions), {
-				onNone: () => null,
-				onSome: newest => (
-					<span
-						className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums"
-						title={Array.join(
-							Array.map(
-								props.app.versions,
-								release =>
-									`${Array.join(
-										Array.map(release.runtimes, runtime => SIDES[runtime]),
-										', '
-									)} ${release.version}`
-							),
-							'\n'
-						)}
-					>
-						{newest.version}
-					</span>
-				)
-			})}
 		</div>
 	)
 }
@@ -514,7 +493,7 @@ function OperationsPane(props: {
 			aria-label="Operations"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-3">
+			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-2.5">
 				<span className="text-sm font-semibold">Operations</span>
 				<span className="text-muted-foreground font-mono text-xs">
 					{count.format(Array.reduce(props.overview.apps, 0, (sum, app) => sum + app.operations.length))}
@@ -651,7 +630,7 @@ function TracesPane(props: {
 				aria-label="Traces"
 				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 			>
-				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2.5">
 					{Option.match(Option.fromUndefinedOr(marks[active.app.name]), {
 						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
 						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />

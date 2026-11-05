@@ -307,11 +307,6 @@ export function dayLabel(time: number) {
 	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({day: 'numeric', month: 'short'}))
 }
 
-// A date with its year, for when an agent token expires.
-export function dateLabel(time: number) {
-	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({day: 'numeric', month: 'short', year: 'numeric'}))
-}
-
 // Accounts are keyed "provider:id"; GitHub serves every account's picture by its numeric id.
 export function avatarUrl(id: string) {
 	return `https://avatars.githubusercontent.com/u/${String.replace('github:', '')(id)}?s=96`

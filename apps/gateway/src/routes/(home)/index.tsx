@@ -6,7 +6,7 @@ import {createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, ChevronRight, Copy, Plus, Server, Trash2, Wrench} from 'lucide-react'
+import {Check, ChevronRight, Copy, Plus, Server, Trash2} from 'lucide-react'
 import {useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
@@ -15,16 +15,7 @@ import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {
-	CodeBlock,
-	CodeBlockActions,
-	CodeBlockContent,
-	CodeBlockCopyButton,
-	CodeBlockHeader,
-	CodeBlockTitle
-} from '@deslop/components-web/ui/code-block'
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -46,7 +37,7 @@ import {Input} from '@deslop/components-web/ui/input'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {addAtom, connectUrl, copyAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
@@ -151,47 +142,6 @@ function ServerIcon(props: {large?: boolean; server: ConnectionInfo}) {
 			className={Boolean.match(props.large === true, {onFalse: () => undefined, onTrue: () => 'size-8'})}
 			sources={sources}
 		/>
-	)
-}
-
-// A copy's tick is announced while it shows, so a screen reader hears the confirmation too.
-function CopiedStatus(props: {copied: boolean}) {
-	return (
-		<span role="status" className="sr-only">
-			{props.copied && 'Copied'}
-		</span>
-	)
-}
-
-// A one-value copy, its icon turning into a tick in the same place for a moment, on touch too; a named copy says what it copies.
-function CopyText(props: {label: string; text?: string; value: string}) {
-	const [copy, copyText] = useAtom(copyAtom(props.value))
-	const copied = AsyncResult.isWaiting(copy)
-	const mark = Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})
-	if (props.text !== undefined) {
-		return (
-			<>
-				<Button variant="outline" className="max-sm:h-11" aria-label={props.label} onClick={() => copyText()}>
-					{mark}
-					{props.text}
-				</Button>
-				<CopiedStatus copied={copied} />
-			</>
-		)
-	}
-	return (
-		<>
-			<Button
-				variant="ghost"
-				size="icon"
-				className="max-sm:size-11"
-				aria-label={props.label}
-				onClick={() => copyText()}
-			>
-				{mark}
-			</Button>
-			<CopiedStatus copied={copied} />
-		</>
 	)
 }
 
@@ -347,11 +297,6 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 										>
 											{new URL(server.url).hostname}
 										</a>
-										<Badge variant="secondary">
-											<Status server={server} />
-											{server.status}
-										</Badge>
-										<CopyText label="Copy server URL" text="Copy server URL" value={server.url} />
 									</>
 								),
 								onTrue: () => <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
@@ -383,26 +328,17 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 					{Boolean.match(props.showName === false, {
 						onFalse: () => null,
 						onTrue: () => (
-							<div className="flex items-start gap-3 border-b p-3">
+							<div className="flex items-center gap-3 border-b p-3">
 								<ServerIcon large server={server} />
-								<div className="min-w-0 flex-1">
-									<a
-										href={server.url}
-										target="_blank"
-										rel="noreferrer"
-										className="text-muted-foreground hover:text-foreground block truncate font-mono text-xs hover:underline"
-										title={server.url}
-									>
-										{new URL(server.url).hostname}
-									</a>
-									<div className="mt-2 flex flex-wrap items-center gap-2">
-										<Badge variant="secondary">
-											<Status server={server} />
-											{server.status}
-										</Badge>
-									</div>
-								</div>
-								<CopyText label="Copy server URL" text="Copy server URL" value={server.url} />
+								<a
+									href={server.url}
+									target="_blank"
+									rel="noreferrer"
+									className="text-muted-foreground hover:text-foreground min-w-0 flex-1 truncate font-mono text-xs hover:underline"
+									title={server.url}
+								>
+									{new URL(server.url).hostname}
+								</a>
 							</div>
 						)
 					})}
@@ -411,70 +347,6 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							<FieldError className="wrap-anywhere">{server.error}</FieldError>
 						</div>
 					)}
-					<section aria-label="Tools" className="flex flex-col">
-						<header className="flex h-8 items-center gap-2 border-b px-3">
-							<span className="text-sm font-semibold">Tools</span>
-							<span className="text-muted-foreground font-mono text-xs">{server.tools.length}</span>
-						</header>
-						{Array.match(server.tools, {
-							onEmpty: () => (
-								<Empty>
-									<EmptyHeader>
-										<EmptyTitle>No tools yet</EmptyTitle>
-										<EmptyDescription>
-											{Boolean.match(server.status === 'Connected', {
-												onFalse: () => 'Connect the server to discover its tools.',
-												onTrue: () => 'This server reports no tools.'
-											})}
-										</EmptyDescription>
-									</EmptyHeader>
-								</Empty>
-							),
-							onNonEmpty: tools => (
-								<ul aria-label={`Tools of ${server.name}`} className="select-text">
-									{Array.map(tools, tool => (
-										<li
-											key={tool.name}
-											className="flex items-start gap-2 border-b px-3 py-1.5 font-mono text-xs max-sm:min-h-11"
-										>
-											<Wrench className="text-muted-foreground mt-0.5 size-3.5 shrink-0" />
-											<div className="flex min-w-0 flex-1 flex-col">
-												<span className="truncate">{tool.name}</span>
-												{Option.match(Option.fromUndefinedOr(tool.description), {
-													onNone: () => null,
-													onSome: description => (
-														<span className="text-muted-foreground line-clamp-2 font-sans text-xs">{description}</span>
-													)
-												})}
-											</div>
-											<CopyText label={`Copy ${tool.name}`} value={tool.name} />
-										</li>
-									))}
-								</ul>
-							)
-						})}
-					</section>
-					<section aria-label="MCP endpoint" className="border-t p-3">
-						<h3 className="text-sm font-semibold">MCP endpoint</h3>
-						<p className="text-muted-foreground mt-1 max-w-prose text-xs">
-							Point an agent at this URL; every connected tool is offered. An agent on another machine signs in with{' '}
-							<a href={`${AUTH_URL}/agents`} className="text-primary hover:underline">
-								an agent token
-							</a>
-							.
-						</p>
-						<CodeBlock size="sm" className="mt-2">
-							<CodeBlockHeader>
-								<CodeBlockTitle>MCP URL</CodeBlockTitle>
-								<CodeBlockActions>
-									<CodeBlockCopyButton aria-label="Copy MCP URL" value={ENDPOINT} />
-								</CodeBlockActions>
-							</CodeBlockHeader>
-							<CodeBlockContent wrap>
-								<span className="min-w-0 wrap-anywhere">{ENDPOINT}</span>
-							</CodeBlockContent>
-						</CodeBlock>
-					</section>
 				</section>
 			)
 		}

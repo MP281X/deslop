@@ -205,7 +205,7 @@ function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Badge
 			variant="default"
-			className="text-primary-foreground relative max-w-32 shrink-0 bg-(--machine) font-mono hover:bg-(--machine)/80 max-sm:overflow-visible"
+			className="text-primary-foreground relative max-w-28 shrink-0 bg-(--machine) font-mono hover:bg-(--machine)/80 max-sm:overflow-visible"
 			render={
 				<a
 					href={props.item.url}
@@ -425,7 +425,7 @@ function AppListRow(props: {
 						)}
 						<span
 							className={cn(
-								'pointer-events-auto flex max-w-28 shrink-0 items-center gap-1 overflow-hidden max-sm:h-11',
+								'pointer-events-auto flex w-28 shrink-0 items-center gap-1 overflow-hidden max-sm:h-11',
 								props.row.item.scheduled === true && 'text-muted-foreground'
 							)}
 						>
@@ -541,9 +541,29 @@ function AppsPane(props: {
 						</EmptyHeader>
 					</Empty>
 				),
-				onNonEmpty: rows => (
+				onNonEmpty: () => (
 					<div role="list">
-						{Array.map(rows, row => (
+						{Array.map(apps, row => (
+							<AppListRow
+								key={row.item.id}
+								bandOf={props.bandOf}
+								compact={props.compact}
+								free={props.free}
+								hovered={props.hovered}
+								now={props.now}
+								onHover={props.onHover}
+								onSelect={() => props.onSelect(row)}
+								row={row}
+								selected={props.selectedId === row.item.id}
+								swatches={props.swatches}
+							/>
+						))}
+						{Array.isReadonlyArrayNonEmpty(jobs) && (
+							<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center border-b px-3 text-xs">
+								Scheduled
+							</div>
+						)}
+						{Array.map(jobs, row => (
 							<AppListRow
 								key={row.item.id}
 								bandOf={props.bandOf}

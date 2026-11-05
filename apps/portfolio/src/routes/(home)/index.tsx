@@ -204,7 +204,7 @@ function subscribeToResize(onStoreChange: () => void) {
 
 // The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
 function Panel(input: {className?: string; children: React.ReactNode}) {
-	return <div className={cn('bg-background select-text', input.className)}>{input.children}</div>
+	return <div className={cn('bg-background border-border border select-text', input.className)}>{input.children}</div>
 }
 
 function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {

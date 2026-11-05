@@ -449,7 +449,8 @@ export class Tokens extends Context.Service<
 					const accessSecret = yield* secret(32)
 					const refreshSecret = yield* secret(32)
 					const now = yield* Clock.currentTimeMillis
-					const expiresAt = now + input.days * 86_400_000
+					// An agent token never expires; it is replaced or revoked from Auth's Agents page.
+					const expiresAt = 9_007_199_254_740_991
 					const grant: Grant = {
 						agent: input.name,
 						client: 'Agent token',
@@ -469,7 +470,7 @@ export class Tokens extends Context.Service<
 						user
 					}
 					yield* change(current => Effect.succeed([undefined, {...current, [family]: grant}] as const))
-					return {expiresAt, token: `${family}.${accessSecret}`}
+					return {token: `${family}.${accessSecret}`}
 				}, rejected('Cannot create the agent token')),
 				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, user: User) {
 					yield* change(current =>

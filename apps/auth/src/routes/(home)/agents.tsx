@@ -28,7 +28,6 @@ import {
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldDescription, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 import {MCP_PATH} from '@deslop/runtime/schema'
@@ -38,26 +37,15 @@ import {
 	appsAtom,
 	catalogAtom,
 	createAgentAtom,
-	dateLabel,
 	dayLabel,
 	minuteAtom,
 	minutesSince,
 	revokeAgentAtom
 } from '#lib/utils.ts'
-import type {AgentParams, SignedInApp} from '#services/tokens/schema.ts'
-
-const EXPIRY = [
-	{days: 30, label: '30 days'},
-	{days: 90, label: '90 days'},
-	{days: 365, label: '1 year'}
-] as const
-
-type Days = AgentParams['days']
-
-const EXPIRY_ITEMS = Array.map(EXPIRY, option => ({label: option.label, value: `${option.days}`}))
+import type {SignedInApp} from '#services/tokens/schema.ts'
 
 // The token is shown once, with the command that adds the gateway to an agent's machine; Auth keeps only its hash.
-function CreatedToken(props: {expiresAt: number; onDone: () => void; resource: string; token: string}) {
+function CreatedToken(props: {onDone: () => void; resource: string; token: string}) {
 	const command = Array.join(
 		[
 			'claude mcp remove gateway',
@@ -69,7 +57,7 @@ function CreatedToken(props: {expiresAt: number; onDone: () => void; resource: s
 		<Card>
 			<CardHeader>
 				<CardTitle>Token created</CardTitle>
-				<CardDescription>Shown once. Expires {dateLabel(props.expiresAt)}.</CardDescription>
+				<CardDescription>Shown once. It does not expire; revoke it from the list when you replace it.</CardDescription>
 				<CardAction>
 					<Button variant="ghost" size="sm" onClick={props.onDone}>
 						Done
@@ -104,7 +92,7 @@ function CreatedToken(props: {expiresAt: number; onDone: () => void; resource: s
 	)
 }
 
-// A name and an expiry, then the token and its command; the resource is the gateway's own MCP endpoint, so the token reaches nothing else.
+// A name, then the token and its command; the resource is the gateway's own MCP endpoint, so the token reaches nothing else.
 function CreateAgent() {
 	// The form renders at once; the gateway's resource only gates its submit.
 	const resource = Option.map(
@@ -115,7 +103,6 @@ function CreateAgent() {
 		app => new URL(MCP_PATH, app.origin).href
 	)
 	const [name, setName] = useState('')
-	const [days, setDays] = useState<Days>(365)
 	const [created, create] = useAtom(createAgentAtom)
 	const [dismissed, setDismissed] = useState<string>()
 	const waiting = AsyncResult.isWaiting(created)
@@ -133,7 +120,7 @@ function CreateAgent() {
 							event.preventDefault()
 							Option.match(resource, {
 								onNone: () => undefined,
-								onSome: target => create({days, name: String.trim(name), resource: target})
+								onSome: target => create({name: String.trim(name), resource: target})
 							})
 						}}
 					>
@@ -151,32 +138,6 @@ function CreateAgent() {
 									onChange={event => setName(event.target.value)}
 								/>
 								<FieldDescription>The machine or agent this token is for.</FieldDescription>
-							</Field>
-							<Field>
-								<FieldLabel htmlFor="agent-expiry">Expires</FieldLabel>
-								<Select
-									items={EXPIRY_ITEMS}
-									value={`${days}`}
-									onValueChange={value => {
-										Option.match(
-											Option.flatMap(Option.fromNullishOr(value), current =>
-												Array.findFirst(EXPIRY, option => `${option.days}` === current)
-											),
-											{onNone: () => undefined, onSome: option => setDays(option.days)}
-										)
-									}}
-								>
-									<SelectTrigger id="agent-expiry" className="w-full max-sm:h-11">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{Array.map(EXPIRY, option => (
-											<SelectItem key={option.days} value={`${option.days}`}>
-												{option.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
 							</Field>
 						</FieldGroup>
 						{Option.match(resource, {
@@ -201,7 +162,6 @@ function CreateAgent() {
 					Boolean.match(dismissed === token.token, {
 						onFalse: () => (
 							<CreatedToken
-								expiresAt={token.expiresAt}
 								onDone={() => setDismissed(token.token)}
 								resource={Option.getOrElse(resource, () => '')}
 								token={token.token}
@@ -222,7 +182,7 @@ function usedLabel(app: SignedInApp, now: number) {
 	return `${ageLabel(minutes)} ago`
 }
 
-// One line per token: its name, when it was made, when it was last used and when it expires; its context menu revokes it.
+// One line per token: its name, when it was made and when it was last used; Revoke in its row, and its context menu.
 function AgentRow(props: {app: SignedInApp; now: number}) {
 	const [revoking, revoke] = useAtom(revokeAgentAtom)
 	const name = Option.getOrElse(Option.fromUndefinedOr(props.app.agent), () => props.app.device)
@@ -230,13 +190,7 @@ function AgentRow(props: {app: SignedInApp; now: number}) {
 	return (
 		<ContextMenu>
 			<ContextMenuTrigger
-				render={
-					<TableRow
-						tabIndex={0}
-						aria-haspopup="menu"
-						aria-label={`${name}, last used ${used}, expires ${dateLabel(props.app.expiresAt)}`}
-					/>
-				}
+				render={<TableRow tabIndex={0} aria-haspopup="menu" aria-label={`${name}, last used ${used}`} />}
 			>
 				<TableCell>
 					<span className="flex min-w-0 items-center gap-2">
@@ -246,7 +200,17 @@ function AgentRow(props: {app: SignedInApp; now: number}) {
 				</TableCell>
 				<TableCell className="text-muted-foreground font-mono max-sm:hidden">{dayLabel(props.app.createdAt)}</TableCell>
 				<TableCell className="text-muted-foreground font-mono">{used}</TableCell>
-				<TableCell className="text-muted-foreground font-mono">{dateLabel(props.app.expiresAt)}</TableCell>
+				<TableCell className="text-right">
+					<Button
+						variant="destructive"
+						size="sm"
+						className="max-sm:h-11"
+						disabled={AsyncResult.isWaiting(revoking)}
+						onClick={() => revoke(props.app.family)}
+					>
+						Revoke
+					</Button>
+				</TableCell>
 			</ContextMenuTrigger>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
@@ -283,7 +247,7 @@ function AgentList() {
 							<TableHead>Agent</TableHead>
 							<TableHead className="max-sm:hidden">Created</TableHead>
 							<TableHead>Last used</TableHead>
-							<TableHead>Expires</TableHead>
+							<TableHead className="text-right">Revoke</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>

@@ -18,10 +18,10 @@ const layer = pipe(
 )
 
 it.effect(
-	'an agent token reaches only its own MCP resource, and leaves the list when it expires',
+	'an agent token reaches only its own MCP resource and never expires',
 	Effect.fnUntraced(function* () {
 		const tokens = Context.get(yield* Layer.build(layer), Tokens)
-		const created = yield* tokens.createAgent(USER, {days: 90, name: 'desktop', resource: RESOURCE})
+		const created = yield* tokens.createAgent(USER, {name: 'desktop', resource: RESOURCE})
 		assert.deepStrictEqual(
 			yield* tokens.access(Headers.fromInput({authorization: `Bearer ${created.token}`}), RESOURCE),
 			USER
@@ -37,7 +37,7 @@ it.effect(
 				client: 'Agent token',
 				createdAt: 0,
 				device: 'desktop',
-				expiresAt: 90 * 86_400_000,
+				expiresAt: 9_007_199_254_740_991,
 				family: Option.getOrThrow(Array.head(String.split(created.token, '.'))),
 				kind: 'App',
 				lastActive: 0,
@@ -45,7 +45,11 @@ it.effect(
 			}
 		])
 		yield* TestClock.adjust('90 days')
-		assert.deepStrictEqual(Option.getOrThrow(yield* Stream.runHead(tokens.apps(USER))), [])
+		assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(tokens.apps(USER))).length, 1)
+		assert.deepStrictEqual(
+			yield* tokens.access(Headers.fromInput({authorization: `Bearer ${created.token}`}), RESOURCE),
+			USER
+		)
 	})
 )
 
@@ -53,7 +57,7 @@ it.effect(
 	'records an agent token’s last use at most once a minute',
 	Effect.fnUntraced(function* () {
 		const tokens = Context.get(yield* Layer.build(layer), Tokens)
-		const created = yield* tokens.createAgent(USER, {days: 365, name: 'desktop', resource: RESOURCE})
+		const created = yield* tokens.createAgent(USER, {name: 'desktop', resource: RESOURCE})
 		yield* TestClock.adjust('2 minutes')
 		yield* tokens.access(Headers.fromInput({authorization: `Bearer ${created.token}`}), RESOURCE)
 		assert.strictEqual(
@@ -79,7 +83,7 @@ it.effect(
 	'revokes an agent token only for the account that made it',
 	Effect.fnUntraced(function* () {
 		const tokens = Context.get(yield* Layer.build(layer), Tokens)
-		const created = yield* tokens.createAgent(USER, {days: 30, name: 'desktop', resource: RESOURCE})
+		const created = yield* tokens.createAgent(USER, {name: 'desktop', resource: RESOURCE})
 		const family = Option.getOrThrow(Array.head(String.split(created.token, '.')))
 		assert.isTrue(
 			(yield* Effect.result(tokens.disconnect(family, {id: 'github:7', name: 'stranger'})))._tag === 'Failure'
