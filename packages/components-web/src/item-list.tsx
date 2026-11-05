@@ -7,7 +7,7 @@ export function ItemListSkeleton(props: {label: string; media?: boolean; rows: n
 	return (
 		<div aria-busy="true" aria-label={props.label} role="status">
 			{Array.map(Array.range(1, props.rows), row => (
-				<div key={row} aria-hidden className="flex h-10 items-center gap-3 border-b px-1">
+				<div key={row} aria-hidden className="flex h-8 items-center gap-3 border-b px-1 max-sm:h-11">
 					{props.media === true && <Skeleton className="size-5" />}
 					<Skeleton className="h-4 w-1/3" />
 				</div>

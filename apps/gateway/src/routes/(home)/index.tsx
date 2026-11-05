@@ -163,7 +163,14 @@ function CopyText(props: {label: string; text?: string; value: string}) {
 	if (props.text !== undefined) {
 		return (
 			<>
-				<Button variant="outline" size="sm" aria-label={props.label} title={props.label} onClick={() => copyText()}>
+				<Button
+					variant="outline"
+					size="sm"
+					className="max-sm:h-11"
+					aria-label={props.label}
+					title={props.label}
+					onClick={() => copyText()}
+				>
 					{mark}
 					{props.text}
 				</Button>
@@ -173,7 +180,14 @@ function CopyText(props: {label: string; text?: string; value: string}) {
 	}
 	return (
 		<>
-			<Button variant="ghost" size="icon-xs" aria-label={props.label} title={props.label} onClick={() => copyText()}>
+			<Button
+				variant="ghost"
+				size="icon-xs"
+				className="max-sm:size-11"
+				aria-label={props.label}
+				title={props.label}
+				onClick={() => copyText()}
+			>
 				{mark}
 			</Button>
 			<CopiedStatus copied={copied} />
@@ -261,7 +275,7 @@ function ServersPane(props: {
 			aria-label="MCP servers"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
 				<span className="text-sm font-semibold">Servers</span>
 				<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
 			</header>
@@ -353,8 +367,8 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							<Button
 								variant="ghost"
 								size="sm"
-								className="max-sm:h-11"
-								aria-label="Remove "
+								className="max-sm:size-11"
+								aria-label="Remove server"
 								title="Remove server"
 								onClick={() => setConfirm(true)}
 							>
@@ -442,8 +456,8 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							)
 						})}
 					</section>
-					<section aria-label="Gateway endpoint" className="border-t p-3">
-						<h3 className="text-sm font-semibold">Gateway endpoint</h3>
+					<section aria-label="MCP endpoint" className="border-t p-3">
+						<h3 className="text-sm font-semibold">MCP endpoint</h3>
 						<p className="text-muted-foreground mt-1 text-xs">
 							Point an agent at this URL; every connected tool is offered. An agent on another machine signs in with{' '}
 							<a href={`${AUTH_URL}/agents`} className="text-primary hover:underline">
@@ -544,8 +558,13 @@ function FailureContent(props: {error: unknown}) {
 function GatewaySkeleton(props: {isMobile: boolean}) {
 	if (props.isMobile) {
 		return (
-			<div className="p-4">
-				<ItemListSkeleton label="MCP servers" media rows={4} />
+			<div className="flex min-h-0 flex-1 flex-col">
+				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+					<Skeleton className="h-4 w-20" />
+				</header>
+				<div className="p-2">
+					<ItemListSkeleton label="MCP servers" media rows={5} />
+				</div>
 			</div>
 		)
 	}
@@ -634,7 +653,7 @@ function Home() {
 			}),
 			{
 				icon: Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />}),
-				label: 'Copy gateway URL',
+				label: 'Copy MCP URL',
 				run: () => copyText()
 			}
 		],
@@ -664,7 +683,7 @@ function Home() {
 					<>
 						<AppBarAction
 							icon={Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
-							label="Copy gateway URL"
+							label="Copy MCP URL"
 							variant="outline"
 							onClick={() => copyText()}
 						/>

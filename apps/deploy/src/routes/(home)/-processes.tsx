@@ -27,7 +27,7 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 				onTrue: () => (
 					<ChevronRight
 						className={cn(
-							'text-muted-foreground size-3.5 shrink-0 transition-transform sm:hidden',
+							'text-muted-foreground size-3.5 shrink-0 transition-transform',
 							props.open === true && 'rotate-90'
 						)}
 					/>

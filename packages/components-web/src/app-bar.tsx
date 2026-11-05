@@ -79,7 +79,8 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 					variant: Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})
 				}),
 				'max-sm:h-11'
-			)
+			),
+			'data-slot': 'button'
 		},
 		render: props.render
 	})
@@ -96,7 +97,7 @@ export function AppBarAction(props: {
 	return (
 		<Button
 			aria-label={props.label}
-			className="max-sm:h-11"
+			className="max-sm:size-11"
 			variant={props.variant}
 			disabled={props.disabled}
 			onClick={props.onClick}

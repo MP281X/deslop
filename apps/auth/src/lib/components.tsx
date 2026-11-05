@@ -414,10 +414,10 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				),
 				onNonEmpty: () => (
 					<div className="flex flex-col gap-3">
-						<Table aria-label="Apps and the clients signed in to them">
+						<Table aria-label="Apps and the clients signed in to them" className="w-auto border-b">
 							<TableHeader>
 								<TableRow className="max-sm:h-11">
-									<TableHead className="bg-background sticky left-0 z-10">
+									<TableHead className="bg-background sticky left-0 z-10 w-40">
 										<span className="sr-only">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
@@ -428,7 +428,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							<TableBody>
 								{Array.map(rows, row => (
 									<TableRow key={row.origin} className="max-sm:h-11">
-										<TableHead scope="row" className="bg-background sticky left-0 z-10">
+										<TableHead scope="row" className="bg-background sticky left-0 z-10 w-40">
 											{Option.match(row.open, {
 												onNone: () => (
 													<span className="flex items-center gap-2 text-sm font-medium">
@@ -442,7 +442,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 														target="_blank"
 														rel="noreferrer"
 														title={`Open ${row.name}`}
-														className="flex items-center gap-2 text-sm font-medium"
+														className="flex items-center gap-2 text-sm font-medium hover:underline"
 													>
 														<AppIcon origin={row.origin} />
 														{row.name}
@@ -462,7 +462,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 								<StatusDot /> signed in
 							</span>
 							<span className="flex items-center gap-1.5">
-								<StatusDot status="off" /> not
+								<StatusDot status="off" /> not signed in
 							</span>
 						</p>
 					</div>

@@ -1,4 +1,4 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Option, String} from 'effect'
 
@@ -106,8 +106,12 @@ function CreatedToken(props: {expiresAt: number; onDone: () => void; resource: s
 
 // A name and an expiry, then the token and its command; the resource is the gateway's own MCP endpoint, so the token reaches nothing else.
 function CreateAgent() {
+	// The form renders at once; the gateway's resource only gates its submit.
 	const resource = Option.map(
-		Array.findFirst(useAtomSuspense(catalogAtom).value, app => app.name === 'gateway'),
+		Array.findFirst(
+			AsyncResult.getOrElse(useAtomValue(catalogAtom), () => []),
+			app => app.name === 'gateway'
+		),
 		app => new URL(MCP_PATH, app.origin).href
 	)
 	const [name, setName] = useState('')
@@ -139,8 +143,9 @@ function CreateAgent() {
 								<Input
 									id="agent-name"
 									autoComplete="off"
+									className="max-sm:h-11"
 									maxLength={60}
-									placeholder="desktop"
+									placeholder="e.g. desktop"
 									required
 									value={name}
 									onChange={event => setName(event.target.value)}
@@ -161,7 +166,7 @@ function CreateAgent() {
 										)
 									}}
 								>
-									<SelectTrigger id="agent-expiry" className="w-full">
+									<SelectTrigger id="agent-expiry" className="w-full max-sm:h-11">
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -181,7 +186,7 @@ function CreateAgent() {
 						<ResultError result={created} />
 						<Button
 							type="submit"
-							className="w-full"
+							className="w-full max-sm:h-11"
 							disabled={waiting || String.trim(name) === '' || Option.isNone(resource)}
 						>
 							{Boolean.match(waiting, {onFalse: () => <Plus />, onTrue: () => <Spinner />})}
@@ -272,7 +277,7 @@ function AgentList() {
 				</Empty>
 			),
 			onNonEmpty: tokens => (
-				<Table aria-label="Agent tokens">
+				<Table aria-label="Agent tokens" className="border-b">
 					<TableHeader>
 						<TableRow>
 							<TableHead>Agent</TableHead>
@@ -304,12 +309,4 @@ function Agents() {
 	)
 }
 
-function AgentsRoute() {
-	return (
-		<Suspense fallback={<ItemListSkeleton label="Agent tokens" media rows={3} />}>
-			<Agents />
-		</Suspense>
-	)
-}
-
-export const Route = createFileRoute('/(home)/agents')({component: AgentsRoute})
+export const Route = createFileRoute('/(home)/agents')({component: Agents})

@@ -177,6 +177,15 @@
 		}
 	}
 
+	/* A plain link shows keyboard focus; the button-shaped ones bring their own ring. */
+	a:focus-visible {
+		@apply outline-ring outline-2 outline-offset-2;
+	}
+
+	a[data-slot='button']:focus-visible {
+		outline: none;
+	}
+
 	::selection {
 		background-color: color-mix(in srgb, var(--primary) 30%, transparent);
 	}

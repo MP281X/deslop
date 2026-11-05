@@ -176,9 +176,7 @@ function ErrorText(props: {message: string}) {
 						{code} {Option.getOrElse(Record.get(STATUS, code), () => '')}
 					</span>
 					<span>{method}</span>
-					<a href={url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-						{String.replace(/^https?:\/\//u, '')(url)}
-					</a>
+					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>
 				</span>
 			)
 		}
@@ -477,12 +475,14 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 			>
 				{DEVICES[props.operation.runtime]}
 				<span className="min-w-0 flex-1 truncate">{props.operation.name}</span>
-				{props.operation.failures > 0 && (
-					<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
-						{props.operation.failures}
-						<span className="sr-only"> failed</span>
-					</Badge>
-				)}
+				<span className="flex w-8 shrink-0 justify-end">
+					{props.operation.failures > 0 && (
+						<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
+							{props.operation.failures}
+							<span className="sr-only"> failed</span>
+						</Badge>
+					)}
+				</span>
 				<span
 					className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-lg:hidden"
 					title="Runs"
@@ -520,9 +520,10 @@ function OperationsPane(props: {
 					{count.format(Array.reduce(props.overview.apps, 0, (sum, app) => sum + app.operations.length))}
 				</span>
 				<span className="ml-auto flex items-center gap-1">
-					<span className="text-muted-foreground w-8 text-right text-xs max-lg:hidden">Failed</span>
+					<span className="text-muted-foreground w-8 text-right text-xs">Failed</span>
 					<span className="text-muted-foreground w-10 text-right text-xs max-lg:hidden">Runs</span>
 					<span className="text-muted-foreground w-12 text-right text-xs">Typical</span>
+					<span className="size-3.5 sm:hidden" />
 				</span>
 			</header>
 			{Array.match(props.overview.apps, {
@@ -567,7 +568,11 @@ function failureLabel(failure: NonNullable<OperationTrace['failure']>, operation
 	if (failure.span !== operation) return failure.span
 	return Option.match(String.match(/StatusCode error \((\d{3})/u)(failure.message), {
 		onNone: () => 'Failed',
-		onSome: parts => parts[1] ?? 'Failed'
+		onSome: parts =>
+			Option.match(Option.fromUndefinedOr(parts[1]), {
+				onNone: () => 'Failed',
+				onSome: code => String.trim(`${code} ${Option.getOrElse(Record.get(STATUS, code), () => '')}`)
+			})
 	})
 }
 
@@ -601,15 +606,17 @@ function TraceListRow(props: {
 					<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
 						{String.slice(0, 8)(props.trace.id)}
 					</span>
-					{props.trace.failure !== undefined && (
-						<Badge
-							variant="destructive"
-							className="max-w-32 shrink-0 font-mono"
-							title={`Failed at ${props.trace.failure.span}: ${props.trace.failure.message}`}
-						>
-							<span className="truncate">{failureLabel(props.trace.failure, props.operation)}</span>
-						</Badge>
-					)}
+					<span className="flex w-32 shrink-0 justify-end">
+						{props.trace.failure !== undefined && (
+							<Badge
+								variant="destructive"
+								className="max-w-32 shrink-0 font-mono"
+								title={`Failed at ${props.trace.failure.span}: ${props.trace.failure.message}`}
+							>
+								<span className="truncate">{failureLabel(props.trace.failure, props.operation)}</span>
+							</Badge>
+						)}
+					</span>
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
@@ -648,15 +655,17 @@ function TracesPane(props: {
 						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
 						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 					})}
-					<span className="min-w-0 flex-1 truncate text-sm font-semibold">{active.operation.name}</span>
-					{active.operation.failures > 0 && (
-						<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
-							{active.operation.failures}
-							<span className="sr-only"> failed</span>
-						</Badge>
-					)}
-					<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-						{durationOf(active.operation.p50Ms)} typical
+					<span className="min-w-0 flex-1 truncate text-sm font-semibold max-sm:hidden">{active.operation.name}</span>
+					<span className="flex shrink-0 items-center gap-2 max-sm:ml-auto">
+						{active.operation.failures > 0 && (
+							<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
+								{active.operation.failures}
+								<span className="sr-only"> failed</span>
+							</Badge>
+						)}
+						<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+							{durationOf(active.operation.p50Ms)} typical
+						</span>
 					</span>
 				</header>
 				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-1 border-b px-2.5 text-xs">
@@ -664,6 +673,7 @@ function TracesPane(props: {
 					<span className="min-w-0 flex-1">Trace</span>
 					<span className="w-32 text-right">Failure</span>
 					<span className="w-14 text-right">Duration</span>
+					<span className="size-3.5 sm:hidden" />
 				</div>
 				<div role="list">
 					{Array.map(active.operation.traces, trace => (
@@ -728,7 +738,10 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 						className="text-muted-foreground w-14 shrink-0 font-mono text-xs"
 						title={clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(trace.time)), () => props.now))}
 					>
-						{ageOf(trace.time, props.now)}
+						{Boolean.match(ageOf(trace.time, props.now) === 'now', {
+							onFalse: () => `${ageOf(trace.time, props.now)} ago`,
+							onTrue: () => 'now'
+						})}
 					</span>
 					<span className="min-w-0 flex-1 truncate font-mono text-xs" title={trace.id}>
 						{String.slice(0, 8)(trace.id)}
@@ -870,12 +883,7 @@ function Home() {
 							Match.when('traces', () =>
 								Option.match(activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
 							),
-							Match.orElse(() =>
-								Option.match(activeTrace, {
-									onNone: () => 'Trace',
-									onSome: trace => `${ageOf(trace.time, now)} · ${durationOf(trace.durationMs)}`
-								})
-							)
+							Match.orElse(() => 'Trace')
 						)
 				})}
 				back={Boolean.match(isMobile && pane !== 'operations', {

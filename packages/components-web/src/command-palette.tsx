@@ -1,8 +1,8 @@
-import {Array, Boolean, Option, Record} from 'effect'
+import {Array, Boolean, Option, Record, String} from 'effect'
 
 import {defaultFilter} from 'cmdk'
 import {AppWindow, Search} from 'lucide-react'
-import {useState} from 'react'
+import {useState, useSyncExternalStore} from 'react'
 import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
@@ -166,10 +166,17 @@ export function CommandPalette(props: {
 
 // The bar's search, shaped like the input it stands in for; the mobile form is the search icon alone.
 export function CommandTrigger(props: {label: string; onClick: () => void}) {
+	// The handler takes Meta or Control, so the label and the announced shortcut name the key the reader actually has.
+	const mac = useSyncExternalStore(
+		() => () => {},
+		() => Option.isSome(String.match(/Mac|iPhone|iPad/u)(navigator.userAgent)),
+		() => true
+	)
 	return (
 		<Button
 			variant="outline"
 			size="lg"
+			aria-keyshortcuts={Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'})}
 			aria-label={props.label}
 			onClick={props.onClick}
 			className="hidden w-64 justify-start sm:flex lg:absolute lg:top-2 lg:left-1/2 lg:-translate-x-1/2"
@@ -177,7 +184,7 @@ export function CommandTrigger(props: {label: string; onClick: () => void}) {
 			<Search className="size-3.5" />
 			<span className="min-w-0 flex-1 truncate text-left">Search</span>
 			<span className="ml-auto">
-				<Kbd>⌘K</Kbd>
+				<Kbd>{Boolean.match(mac, {onFalse: () => 'Ctrl K', onTrue: () => '⌘K'})}</Kbd>
 			</span>
 		</Button>
 	)

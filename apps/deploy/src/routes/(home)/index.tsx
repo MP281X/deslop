@@ -205,7 +205,7 @@ function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Badge
 			variant="secondary"
-			className="relative max-w-32 shrink-0 font-mono"
+			className="relative max-w-32 shrink-0 font-mono max-sm:overflow-visible"
 			render={
 				<a
 					href={props.item.url}
@@ -216,6 +216,7 @@ function Endpoint(props: {item: InventoryItem}) {
 				/>
 			}
 		>
+			<span aria-hidden className="absolute inset-x-0 -inset-y-3 sm:hidden" />
 			<span className="truncate">
 				{Boolean.match(props.item.publicAccess === true, {
 					onFalse: () => `:${props.item.port}`,
@@ -254,7 +255,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								<Badge
 									key={listener.id}
 									variant="outline"
-									className="relative shrink-0 font-mono"
+									className="relative shrink-0 font-mono max-sm:overflow-visible"
 									render={
 										<button
 											type="button"
@@ -263,7 +264,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 										/>
 									}
 								>
-									:{listener.port}
+									<span aria-hidden className="absolute inset-x-0 -inset-y-3 sm:hidden" />:{listener.port}
 								</Badge>
 							)
 						}
@@ -333,14 +334,15 @@ function RemoveFailure(props: {item: InventoryItem}) {
 	)
 }
 
-// A long container name keeps its distinguishing end on a phone.
+// A long container name keeps its distinguishing end on a phone, short enough to fit even a row with two ports.
 function middle(value: string) {
 	if (String.length(value) <= 28) return value
-	return `${String.slice(0, 12)(value)}…${String.slice(-12)(value)}`
+	return `${String.slice(0, 4)(value)}…${String.slice(-4)(value)}`
 }
 
 // One app in the list: its mark, name, ports or reason, its memory, its chart swatch and light, and the whole row opens.
 function AppListRow(props: {
+	bandOf: Record<string, string>
 	compact: boolean
 	free: readonly InventoryItem[]
 	hovered?: string
@@ -373,9 +375,9 @@ function AppListRow(props: {
 			entry => entry.name
 		)
 	)
-	const band = Option.getOrUndefined(owner(props.row))
-	const swatch = Option.flatMap(Option.fromUndefinedOr(band), id => Record.get(props.swatches, id))
-	const highlighted = band !== undefined && props.hovered === band
+	const band = Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id))
+	const swatch = Option.flatMap(owner(props.row), id => Record.get(props.swatches, id))
+	const highlighted = Option.exists(band, id => props.hovered === id)
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middle(fullName)})
 	const next = Boolean.match(running, {
@@ -395,7 +397,7 @@ function AppListRow(props: {
 								highlighted && 'bg-muted/60',
 								props.selected && 'bg-muted'
 							)}
-							onPointerEnter={() => props.onHover(band)}
+							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
 					}
@@ -420,7 +422,7 @@ function AppListRow(props: {
 						)}
 						<span
 							className={cn(
-								'pointer-events-auto flex max-w-28 shrink-0 items-center gap-1 overflow-hidden',
+								'pointer-events-auto flex max-w-28 shrink-0 items-center gap-1 overflow-hidden max-sm:h-11',
 								props.row.item.scheduled === true && 'text-muted-foreground'
 							)}
 						>
@@ -442,18 +444,22 @@ function AppListRow(props: {
 								)
 							})}
 						</span>
-						<span className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs tabular-nums">
+						<span className="text-muted-foreground w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
 							{Boolean.match(scheduled, {onFalse: () => bytes(usage.memory), onTrue: () => null})}
 						</span>
 						{Option.match(swatch, {
 							onNone: () => null,
-							onSome: opacity => (
-								<span
-									aria-hidden
-									className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
-									style={{'--swatch-opacity': opacity}}
-								/>
-							)
+							onSome: opacity =>
+								Boolean.match(props.compact, {
+									onFalse: () => (
+										<span
+											aria-hidden
+											className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
+											style={{'--swatch-opacity': opacity}}
+										/>
+									),
+									onTrue: () => null
+								})
 						})}
 						<span
 							title={state}
@@ -469,7 +475,7 @@ function AppListRow(props: {
 					</span>
 					<span className="pointer-events-auto relative z-10 flex size-4 shrink-0 items-center justify-center">
 						{Boolean.match(scheduled, {
-							onFalse: () => <ChevronRight className="text-muted-foreground size-3.5 sm:hidden" />,
+							onFalse: () => <ChevronRight className="text-muted-foreground size-3.5" />,
 							onTrue: () => (
 								<RunNow busy={running} item={props.row.item} onRun={() => setRequested(Option.some(props.now))} />
 							)
@@ -494,6 +500,7 @@ function AppListRow(props: {
 
 // The apps on one machine, failures first; jobs keep their row at the end.
 function AppsPane(props: {
+	bandOf: Record<string, string>
 	className?: string
 	compact: boolean
 	free: readonly InventoryItem[]
@@ -520,8 +527,8 @@ function AppsPane(props: {
 				{Array.isReadonlyArrayNonEmpty(jobs) && (
 					<span className="text-muted-foreground font-mono text-xs">· {countLabel(jobs.length, 'job', 'jobs')}</span>
 				)}
-				<span className="text-muted-foreground ml-auto w-14 text-right text-xs">Memory</span>
-				<span className="w-2" />
+				<span className="text-muted-foreground ml-auto w-20 text-right text-xs">Memory</span>
+				<span className="w-2 max-sm:hidden" />
 				<span className="w-3" />
 				<span className="w-4" />
 			</header>
@@ -538,6 +545,7 @@ function AppsPane(props: {
 						{Array.map(rows, row => (
 							<AppListRow
 								key={row.item.id}
+								bandOf={props.bandOf}
 								compact={props.compact}
 								free={props.free}
 								hovered={props.hovered}
@@ -831,7 +839,7 @@ function MachineStrip(props: {
 							data-machine={machineName(worker)}
 							className={cn(
 								'machine flex h-12 min-w-0 flex-1 items-center justify-start gap-2 rounded-none border-b-2 px-3 text-left',
-								Boolean.match(props.active === worker, {
+								Boolean.match(props.active === worker && workers.length > 1, {
 									onFalse: () => 'border-transparent hover:bg-muted/40',
 									onTrue: () => 'border-b-(--machine) bg-muted/40'
 								})
@@ -1028,14 +1036,14 @@ function Home() {
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
-	const swatches = Option.match(history, {
-		onNone: () => ({}),
-		onSome: current =>
-			Record.fromEntries(Array.map(bands(current), band => [band.id, band.opacity] as const)) satisfies Record<
-				string,
-				number
-			>
-	})
+	// A row lights its own band, or the one band every small app joins.
+	const chartBands = Option.getOrElse(Option.map(history, bands), () => [])
+	const bandOf = Record.fromEntries(
+		Array.flatMap(chartBands, band => Array.map(band.members, member => [member, band.id] as const))
+	) satisfies Record<string, string>
+	const swatches = Record.fromEntries(
+		Array.flatMap(chartBands, band => Array.map(band.members, member => [member, band.opacity] as const))
+	) satisfies Record<string, number>
 	const rows = Option.getOrElse(
 		Option.map(snapshot, value => workloads(value.items)),
 		() => []
@@ -1273,6 +1281,7 @@ function Home() {
 										onFalse: () => (
 											<div className="grid-cols-split grid min-h-0 flex-1">
 												<AppsPane
+													bandOf={bandOf}
 													className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
 													free={free}
 													compact={isMobile}
@@ -1306,6 +1315,7 @@ function Home() {
 													Match.value(pane),
 													Match.when('apps', () => (
 														<AppsPane
+															bandOf={bandOf}
 															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 															free={free}
 															compact={isMobile}

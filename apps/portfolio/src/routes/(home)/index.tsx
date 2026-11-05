@@ -152,12 +152,20 @@ function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: nu
 	const deltaX = motion.targetX - motion.x
 	const deltaY = motion.targetY - motion.y
 	const catchUp = Number.min(1, (1 - Math.exp(-frameDelta / 130)) * (1 + Math.hypot(deltaX, deltaY) / 220))
+	// Reduced motion keeps the colour and drops the glide, as every other transition on the page does.
+	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 	return {
 		...motion,
 		lastFrameAt: now,
-		x: approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
-		y: approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY})
+		x: Boolean.match(reduced, {
+			onFalse: () => approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
+			onTrue: () => motion.targetX
+		}),
+		y: Boolean.match(reduced, {
+			onFalse: () => approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY}),
+			onTrue: () => motion.targetY
+		})
 	}
 }
 
@@ -194,9 +202,9 @@ function subscribeToResize(onStoreChange: () => void) {
 	}
 }
 
-// The page's content over the trail grid: one opaque column, rows split by hairlines.
+// The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
 function Panel(input: {className?: string; children: React.ReactNode}) {
-	return <div className={cn('bg-background', input.className)}>{input.children}</div>
+	return <div className={cn('bg-background select-text', input.className)}>{input.children}</div>
 }
 
 function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
@@ -519,21 +527,24 @@ function ContactSection() {
 						contacts.github,
 						{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
 					],
-					item => (
-						<a
-							key={item.label}
-							href={item.href}
-							className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm transition-colors"
-							target="_blank"
-							rel="noopener noreferrer"
-						>
-							<span className="text-muted-foreground">{item.label}</span>
-							<span className="font-mono text-xs break-all">{item.value}</span>
-						</a>
-					)
+					item => {
+						const internal = String.startsWith('/')(item.href)
+						return (
+							<a
+								key={item.label}
+								href={item.href}
+								className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm transition-colors"
+								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
+								rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
+							>
+								<span className="text-muted-foreground">{item.label}</span>
+								<span className="font-mono text-xs break-all">{item.value}</span>
+							</a>
+						)
+					}
 				)}
 			</SectionBody>
-			<p className="text-muted-foreground mt-4 font-mono text-xs">
+			<p className="bg-background text-muted-foreground mt-4 font-mono text-xs">
 				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
 			</p>
 		</Section>
@@ -569,6 +580,28 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 	)
 }
 
+// The live count, its dot in the local cursor's colour; the fixed HUD adds the shortcut hint.
+function VisitorCount(props: {hint?: boolean; visitors: PortfolioVisitors}) {
+	return (
+		<>
+			<span
+				className="size-1.5 rounded-full bg-(--identity-color)"
+				style={{
+					'--identity-color': pipe(
+						Array.findFirst(props.visitors, visitor => visitor.id === identity.id),
+						Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
+					)
+				}}
+			/>
+			<span className="text-primary">{Array.length(props.visitors)}</span>
+			<span className="text-muted-foreground">
+				{Boolean.match(Array.length(props.visitors) === 1, {onFalse: () => 'visitors', onTrue: () => 'visitor'})}
+			</span>
+			{props.hint === true && <span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>}
+		</>
+	)
+}
+
 function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 	const portfolio = useAtomSuspense(portfolioAtom)
 
@@ -593,24 +626,13 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 				})
 			)}
 
-			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs sm:bottom-4 sm:left-4">
-				<span
-					className="size-1.5 rounded-full bg-(--identity-color)"
-					style={{
-						'--identity-color': pipe(
-							Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
-							Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
-						)
-					}}
-				/>
-				<span className="text-primary">{Array.length(portfolio.value.visitors)}</span>
-				<span className="text-muted-foreground">
-					{Boolean.match(Array.length(portfolio.value.visitors) === 1, {
-						onFalse: () => 'visitors',
-						onTrue: () => 'visitor'
-					})}
-				</span>
-				<span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>
+			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs max-sm:hidden sm:bottom-4 sm:left-4">
+				<VisitorCount hint visitors={portfolio.value.visitors} />
+			</div>
+			<div className="relative z-10 flex justify-center px-3 pb-6 sm:hidden">
+				<Panel className="flex w-full max-w-3xl items-center gap-2 px-4 py-3 font-mono text-xs">
+					<VisitorCount visitors={portfolio.value.visitors} />
+				</Panel>
 			</div>
 		</>
 	)
@@ -751,7 +773,16 @@ function PortfolioRoute() {
 			<EducationSection />
 			<ContactSection />
 
-			<Suspense fallback={null}>
+			<Suspense
+				fallback={
+					<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+						<OwnCursor
+							cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
+							viewport={viewport}
+						/>
+					</div>
+				}
+			>
 				<RealtimeLayer viewport={viewport} />
 			</Suspense>
 
