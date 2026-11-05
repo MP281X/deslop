@@ -292,14 +292,15 @@ function AgentList() {
 	)
 }
 
+// The grid's page is wide for many clients; this form keeps to the design's form width.
 function Agents() {
 	return (
-		<>
+		<div className="mx-auto flex w-full max-w-xl flex-col gap-4">
 			<CreateAgent />
 			<Suspense fallback={<ItemListSkeleton label="Agent tokens" media rows={2} />}>
 				<AgentList />
 			</Suspense>
-		</>
+		</div>
 	)
 }
 
