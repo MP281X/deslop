@@ -204,8 +204,8 @@ function failedFor(
 function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Badge
-			variant="secondary"
-			className="relative max-w-32 shrink-0 font-mono max-sm:overflow-visible"
+			variant="default"
+			className="text-primary-foreground relative max-w-32 shrink-0 bg-(--machine) font-mono hover:bg-(--machine)/80 max-sm:overflow-visible"
 			render={
 				<a
 					href={props.item.url}
@@ -255,7 +255,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								<Badge
 									key={listener.id}
 									variant="outline"
-									className="relative shrink-0 font-mono max-sm:overflow-visible"
+									className="hover:bg-muted relative shrink-0 cursor-pointer font-mono max-sm:overflow-visible"
 									render={
 										<button
 											type="button"
@@ -285,12 +285,11 @@ function RunNow(props: {busy: boolean; item: InventoryItem; onRun: () => void}) 
 		<Button
 			size="icon-xs"
 			variant="ghost"
-			className="relative shrink-0"
+			className="relative shrink-0 max-sm:size-11"
 			aria-label={Boolean.match(working, {
 				onFalse: () => `Run ${workloadName(props.item)} now`,
 				onTrue: () => `${workloadName(props.item)} is running`
 			})}
-			title={Boolean.match(working, {onFalse: () => 'Run now', onTrue: () => 'Running'})}
 			disabled={working}
 			onClick={() => {
 				props.onRun()
@@ -334,10 +333,10 @@ function RemoveFailure(props: {item: InventoryItem}) {
 	)
 }
 
-// A long container name keeps its distinguishing end on a phone, short enough to fit even a row with two ports.
+// A long container name keeps its distinguishing end on a phone, short enough to fit the row.
 function middle(value: string) {
 	if (String.length(value) <= 28) return value
-	return `${String.slice(0, 4)(value)}…${String.slice(-4)(value)}`
+	return `${String.slice(0, 7)(value)}…${String.slice(-7)(value)}`
 }
 
 // One app in the list: its mark, name, ports or reason, its memory, its chart swatch and light, and the whole row opens.
@@ -355,7 +354,6 @@ function AppListRow(props: {
 }) {
 	const [requested, setRequested] = useState(() => Option.none<number>())
 	const processes = props.row.item.processes ?? []
-	const usage = appUsage(processes)
 	const state = status(props.row.item)
 	const light = dot(props.row.item, state)
 	const scheduled = props.row.item.scheduled === true
@@ -393,9 +391,9 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							className={cn(
-								'hover:bg-muted/50 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3 max-sm:h-11',
+								'hover:bg-muted/50 focus-within:ring-ring/30 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3 focus-within:ring-2 focus-within:ring-inset max-sm:h-11',
 								highlighted && 'bg-muted/60',
-								props.selected && 'bg-muted'
+								props.selected && 'bg-secondary'
 							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
@@ -409,7 +407,12 @@ function AppListRow(props: {
 						className="absolute inset-0 h-full w-full rounded-sm p-0"
 						onClick={props.onSelect}
 					/>
-					<span className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-2">
+					<span
+						className={cn(
+							'pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-2',
+							scheduled && 'opacity-60'
+						)}
+					>
 						<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
 						<span className="min-w-0 flex-1 truncate text-sm font-medium" title={fullName}>
 							{name}
@@ -444,9 +447,6 @@ function AppListRow(props: {
 								)
 							})}
 						</span>
-						<span className="text-muted-foreground w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-							{Boolean.match(scheduled, {onFalse: () => bytes(usage.memory), onTrue: () => null})}
-						</span>
 						{Option.match(swatch, {
 							onNone: () => null,
 							onSome: opacity =>
@@ -473,7 +473,12 @@ function AppListRow(props: {
 							/>
 						</span>
 					</span>
-					<span className="pointer-events-auto relative z-10 flex size-4 shrink-0 items-center justify-center">
+					<span
+						className={cn(
+							'pointer-events-auto relative z-10 flex size-4 shrink-0 items-center justify-center',
+							scheduled && 'max-sm:size-11'
+						)}
+					>
 						{Boolean.match(scheduled, {
 							onFalse: () => <ChevronRight className="text-muted-foreground size-3.5" />,
 							onTrue: () => (
@@ -527,10 +532,6 @@ function AppsPane(props: {
 				{Array.isReadonlyArrayNonEmpty(jobs) && (
 					<span className="text-muted-foreground font-mono text-xs">· {countLabel(jobs.length, 'job', 'jobs')}</span>
 				)}
-				<span className="text-muted-foreground ml-auto w-20 text-right text-xs">Memory</span>
-				<span className="w-2 max-sm:hidden" />
-				<span className="w-3" />
-				<span className="w-4" />
 			</header>
 			{Array.match(props.rows, {
 				onEmpty: () => (
@@ -663,6 +664,7 @@ function MachinePane(props: {
 	className?: string
 	history?: MachineHistory
 	hovered?: string
+	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
 	onHover: (id?: string) => void
 	worker?: string
@@ -724,6 +726,7 @@ function MachinePane(props: {
 					function bandName(id: string) {
 						return (
 							names[id] ??
+							props.labels[id] ??
 							String.replaceAll(
 								/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
 								''
@@ -829,6 +832,10 @@ function MachineStrip(props: {
 				{Array.map(workers, worker => {
 					const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 					const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
+					const storage = {
+						total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
+						used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
+					}
 					const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 					return (
 						<Button
@@ -848,6 +855,12 @@ function MachineStrip(props: {
 						>
 							<MachineIcon worker={worker} />
 							<span className="min-w-0 truncate text-sm font-medium">{machineName(worker)}</span>
+							<span className="flex size-3 shrink-0 items-center justify-center">
+								<StatusDot
+									status={Boolean.match(failed, {onFalse: () => 'live', onTrue: () => 'off'})}
+									className={Boolean.match(failed, {onFalse: () => 'bg-(--machine)', onTrue: () => undefined})}
+								/>
+							</span>
 							<span className="text-muted-foreground truncate font-mono text-xs">
 								{Array.join(
 									[
@@ -858,16 +871,14 @@ function MachineStrip(props: {
 										...Boolean.match(latest === undefined, {
 											onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
 											onTrue: () => []
+										}),
+										...Boolean.match(storage.total > 0, {
+											onFalse: () => [],
+											onTrue: () => [`${size.format((storage.used / storage.total) * 100)}% disk`]
 										})
 									],
 									' · '
 								)}
-							</span>
-							<span className="ml-auto flex size-3 shrink-0 items-center justify-center">
-								<StatusDot
-									status={Boolean.match(failed, {onFalse: () => 'live', onTrue: () => 'off'})}
-									className={Boolean.match(failed, {onFalse: () => 'bg-(--machine)', onTrue: () => undefined})}
-								/>
 							</span>
 						</Button>
 					)
@@ -1064,6 +1075,11 @@ function Home() {
 		onNone: () => [],
 		onSome: current => Array.filter(rows, row => row.item.worker === current)
 	})
+	const bandNames = Record.fromEntries(
+		Array.flatMap(activeRows, row =>
+			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
+		)
+	) satisfies Record<string, string>
 	const searchable = Array.sort(activeRows, order)
 	const sorted = Array.sort(ranged(activeRows, minutes, Option.getOrUndefined(history)), order)
 	const selectedRow = Option.getOrElse(
@@ -1302,6 +1318,7 @@ function Home() {
 													available={activeAvailable}
 													className={cn('min-w-0', refreshing && 'opacity-60')}
 													history={Option.getOrUndefined(history)}
+													labels={bandNames}
 													minutes={minutes}
 													hovered={hovered}
 													onHover={setHovered}
@@ -1341,6 +1358,7 @@ function Home() {
 															available={activeAvailable}
 															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 															history={Option.getOrUndefined(history)}
+															labels={bandNames}
 															minutes={minutes}
 															hovered={hovered}
 															onHover={setHovered}

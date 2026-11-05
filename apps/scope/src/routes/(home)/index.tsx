@@ -250,7 +250,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					onNone: () => null,
 					onSome: mark => <img src={mark} alt={appName(props.span.service)} className="pixelated size-3.5 shrink-0" />
 				})}
-				<span className="truncate">{props.span.name}</span>
+				<span className="truncate font-mono">{props.span.name}</span>
 			</span>
 			<span className="bg-muted/60 relative h-1.5 flex-1 rounded-full">
 				<span
@@ -465,7 +465,7 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
 	return (
-		<div className="border-b">
+		<div role="listitem" className="border-b">
 			<Button
 				size="lg"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -474,7 +474,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 				onClick={props.onSelect}
 			>
 				{DEVICES[props.operation.runtime]}
-				<span className="min-w-0 flex-1 truncate">{props.operation.name}</span>
+				<span className="min-w-0 flex-1 truncate font-mono">{props.operation.name}</span>
 				<span className="flex w-8 shrink-0 justify-end">
 					{props.operation.failures > 0 && (
 						<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
@@ -587,6 +587,7 @@ function TraceListRow(props: {
 }) {
 	return (
 		<div
+			role="listitem"
 			className={cn(
 				props.arrived &&
 					'grid-rows-single animate-grow-in grid motion-reduce:animate-none [&>*]:min-h-0 [&>*]:overflow-clip'
@@ -701,10 +702,9 @@ function CopyTrace(props: {id: string}) {
 		<>
 			<Button
 				variant="ghost"
-				size="icon-xs"
+				size="icon"
 				className="max-sm:size-11"
 				aria-label={Boolean.match(copied, {onFalse: () => 'Copy trace ID', onTrue: () => 'Copied'})}
-				title="Copy trace ID"
 				onClick={() => copyText(props.id)}
 			>
 				{Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}

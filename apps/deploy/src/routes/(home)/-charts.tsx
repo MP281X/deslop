@@ -185,7 +185,7 @@ export function UsageChart(props: {
 	)
 }
 
-// Each core's latest use as one cell of a heat map, so a busy core reads at a glance and every cell names itself on hover.
+// Each core's use across the range as a small line, so a core that spiked or idled reads in its history, not only its last reading.
 export function Cores(props: {history: MachineHistory}) {
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
@@ -197,20 +197,41 @@ export function Cores(props: {history: MachineHistory}) {
 						className="grid grid-cols-(--cores) items-end gap-1"
 						style={{'--cores': `repeat(${Number.min(32, Number.max(1, entries.length))}, minmax(0, 1fr))`}}
 					>
-						{Array.map(entries, core => (
-							<span
-								key={core.id}
-								role="img"
-								title={`${core.id} · ${formatPercent.format(core.usage ?? 0)}%`}
-								aria-label={`${core.id} use ${formatPercent.format(core.usage ?? 0)} percent`}
-								className="bg-muted flex h-4 items-end overflow-hidden rounded-sm"
-							>
-								<span
-									className="h-(--core-height) w-full rounded-sm bg-(--machine)"
-									style={{'--core-height': `${Number.clamp(core.usage ?? 0, {maximum: 100, minimum: 0})}%`}}
-								/>
-							</span>
-						))}
+						{Array.map(entries, core => {
+							const values = Array.map(props.history.samples, sample =>
+								Option.getOrElse(
+									Option.map(
+										Array.findFirst(sample.cores ?? [], entry => entry.id === core.id),
+										entry => entry.usage ?? 0
+									),
+									() => 0
+								)
+							)
+							const points = Array.map(
+								values,
+								(value, index) =>
+									`${(index / Number.max(1, values.length - 1)) * 100},${100 - Number.clamp(value, {maximum: 100, minimum: 0})}`
+							)
+							return (
+								<svg
+									key={core.id}
+									role="img"
+									aria-label={`${core.id} use ${formatPercent.format(core.usage ?? 0)} percent`}
+									viewBox="0 0 100 100"
+									preserveAspectRatio="none"
+									className="h-4 w-full text-(--machine)"
+								>
+									<title>{`${core.id} · ${formatPercent.format(core.usage ?? 0)}%`}</title>
+									<polyline
+										points={Array.join(points, ' ')}
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="1.5"
+										vectorEffect="non-scaling-stroke"
+									/>
+								</svg>
+							)
+						})}
 					</div>
 				)
 			})}

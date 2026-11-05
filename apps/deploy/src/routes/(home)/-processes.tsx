@@ -22,17 +22,6 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
 			title={`${mib.format(props.node.memory / 1024 ** 2)} MiB including child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 		>
-			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
-				onFalse: () => <span className="size-3.5 shrink-0" />,
-				onTrue: () => (
-					<ChevronRight
-						className={cn(
-							'text-muted-foreground size-3.5 shrink-0 transition-transform',
-							props.open === true && 'rotate-90'
-						)}
-					/>
-				)
-			})}
 			<ApplicationIcon name={props.node.name} small />
 			<span className="max-w-2/5 shrink-0 truncate font-mono">{props.node.name}</span>
 			<span
@@ -56,6 +45,17 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 			<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
 				{mib.format(props.node.memory / 1024 ** 2)} MiB
 			</span>
+			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
+				onFalse: () => <span className="size-3.5 shrink-0" />,
+				onTrue: () => (
+					<ChevronRight
+						className={cn(
+							'text-muted-foreground size-3.5 shrink-0 transition-transform',
+							props.open === true && 'rotate-90'
+						)}
+					/>
+				)
+			})}
 		</span>
 	)
 }

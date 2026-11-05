@@ -21,6 +21,7 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldDescription} from '@deslop/components-web/ui/field'
+import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 import {cn} from '@deslop/components-web/utils'
 
@@ -186,7 +187,7 @@ function ColumnHead(props: {column: Column; now: number}) {
 	const name = `${props.column.label}, ${detail}`
 	return (
 		<TableHead className="px-0.5">
-			<span className="flex justify-center">
+			<span className="flex flex-col items-center gap-0.5">
 				{Boolean.match(props.column.pending, {
 					onFalse: () => (
 						<DropdownMenu>
@@ -225,6 +226,9 @@ function ColumnHead(props: {column: Column; now: number}) {
 						</span>
 					)
 				})}
+				<span className="text-muted-foreground hidden max-w-14 truncate text-xs leading-none max-sm:block">
+					{props.column.client.name}
+				</span>
 			</span>
 		</TableHead>
 	)
@@ -244,7 +248,7 @@ function holds(column: Column, row: Row) {
 function Cell(props: {column: Column; row: Row}) {
 	const held = holds(props.column, props.row)
 	return (
-		<TableCell className="w-7 px-0">
+		<TableCell className="w-7 px-0 max-sm:w-14">
 			<span className="flex justify-center">
 				{Boolean.match(held, {
 					onFalse: () => <StatusDot status="off" />,
@@ -266,6 +270,8 @@ function Cell(props: {column: Column; row: Row}) {
 // A failed answer stays above the grid to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
+	const [choice, setChoice] = useState<boolean>()
+	const waiting = AsyncResult.isWaiting(consent)
 	return (
 		<>
 			<FieldDescription>
@@ -286,17 +292,25 @@ function Answer(props: {request: PendingAuthorization}) {
 				<Button
 					size="lg"
 					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
-					disabled={AsyncResult.isWaiting(consent)}
-					onClick={() => respond({accept: true, request: props.request})}
+					disabled={waiting}
+					onClick={() => {
+						setChoice(true)
+						respond({accept: true, request: props.request})
+					}}
 				>
+					{Boolean.match(waiting && choice === true, {onFalse: () => null, onTrue: () => <Spinner />})}
 					Approve
 				</Button>
 				<Button
 					size="lg"
 					variant="outline"
-					disabled={AsyncResult.isWaiting(consent)}
-					onClick={() => respond({accept: false, request: props.request})}
+					disabled={waiting}
+					onClick={() => {
+						setChoice(false)
+						respond({accept: false, request: props.request})
+					}}
 				>
+					{Boolean.match(waiting && choice === false, {onFalse: () => null, onTrue: () => <Spinner />})}
 					Deny
 				</Button>
 			</div>
@@ -418,7 +432,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							<TableHeader>
 								<TableRow className="max-sm:h-11">
 									<TableHead className="bg-background sticky left-0 z-10 w-40">
-										<span className="sr-only">App</span>
+										<span className="text-muted-foreground text-xs">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
 										<ColumnHead key={column.key} column={column} now={now} />
@@ -441,8 +455,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 														href={url}
 														target="_blank"
 														rel="noreferrer"
-														title={`Open ${row.name}`}
-														className="flex items-center gap-2 text-sm font-medium hover:underline"
+														className="flex h-full w-full items-center gap-2 text-sm font-medium hover:underline"
 													>
 														<AppIcon origin={row.origin} />
 														{row.name}

@@ -186,6 +186,20 @@
 		outline: none;
 	}
 
+	button:focus-visible {
+		@apply outline-ring outline-2 outline-offset-2;
+	}
+
+	button[data-slot='button']:focus-visible {
+		outline: none;
+	}
+
+	/* Pressables scale, as DESIGN's motion rule says; the stock translate stays as the base-ui hint. */
+	button:not(:disabled):active,
+	a[data-slot='button']:active {
+		scale: 0.97;
+	}
+
 	::selection {
 		background-color: color-mix(in srgb, var(--primary) 30%, transparent);
 	}

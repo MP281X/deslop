@@ -522,7 +522,7 @@ function Shell() {
 	)
 }
 
-// Until the account is known: the app bar and the page's shape, never a blank page with a spinner.
+// Until the account is known: the app bar and the sign-in card's shape, never a blank page with a spinner.
 function HomeLayout() {
 	return (
 		<Suspense
@@ -530,8 +530,23 @@ function HomeLayout() {
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
 					<Page>
-						<Skeleton className="h-11 w-full max-w-xl" />
-						<ItemListSkeleton label="Apps" media rows={APP_ROWS} />
+						<section
+							aria-busy="true"
+							aria-label="Sign in"
+							role="status"
+							className="flex flex-1 flex-col items-center justify-center gap-6 pb-12"
+						>
+							<div className="flex flex-col items-center gap-2">
+								<Skeleton className="h-7 w-52" />
+								<Skeleton className="h-4 w-44" />
+							</div>
+							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+								<Skeleton className="h-11 w-full" />
+								<Skeleton className="h-4 w-8 self-center" />
+								<Skeleton className="h-11 w-full" />
+								<Skeleton className="h-11 w-full" />
+							</div>
+						</section>
 					</Page>
 				</>
 			}

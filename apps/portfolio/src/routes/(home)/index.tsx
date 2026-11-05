@@ -430,7 +430,7 @@ function ProjectRow(input: {project: {description: string; href: string; name: s
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label={`View ${input.project.name} on GitHub`}
-					className="text-primary hover:text-primary/80 transition-colors"
+					className="text-primary hover:text-primary/80 transition-colors max-sm:inline-flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
 				>
 					<ArrowUpRight className="size-4" />
 				</a>
@@ -619,12 +619,16 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 					viewport={input.viewport}
 				/>
 			</div>
-			{Array.map(portfolio.value.visitors, cursor =>
-				Boolean.match(cursor.id === identity.id, {
-					onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
-					onTrue: () => null
-				})
-			)}
+			<div className="max-sm:hidden">
+				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+					{Array.map(portfolio.value.visitors, cursor =>
+						Boolean.match(cursor.id === identity.id, {
+							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
+							onTrue: () => null
+						})
+					)}
+				</div>
+			</div>
 
 			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs max-sm:hidden sm:bottom-4 sm:left-4">
 				<VisitorCount hint visitors={portfolio.value.visitors} />

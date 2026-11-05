@@ -150,7 +150,7 @@ function CreateAgent() {
 									value={name}
 									onChange={event => setName(event.target.value)}
 								/>
-								<FieldDescription>Which machine or agent it is for; revoke it any time.</FieldDescription>
+								<FieldDescription>The machine or agent this token is for.</FieldDescription>
 							</Field>
 							<Field>
 								<FieldLabel htmlFor="agent-expiry">Expires</FieldLabel>

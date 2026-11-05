@@ -18,6 +18,14 @@ import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {
+	CodeBlock,
+	CodeBlockActions,
+	CodeBlockContent,
+	CodeBlockCopyButton,
+	CodeBlockHeader,
+	CodeBlockTitle
+} from '@deslop/components-web/ui/code-block'
+import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
@@ -163,14 +171,7 @@ function CopyText(props: {label: string; text?: string; value: string}) {
 	if (props.text !== undefined) {
 		return (
 			<>
-				<Button
-					variant="outline"
-					size="sm"
-					className="max-sm:h-11"
-					aria-label={props.label}
-					title={props.label}
-					onClick={() => copyText()}
-				>
+				<Button variant="outline" className="max-sm:h-11" aria-label={props.label} onClick={() => copyText()}>
 					{mark}
 					{props.text}
 				</Button>
@@ -182,10 +183,9 @@ function CopyText(props: {label: string; text?: string; value: string}) {
 		<>
 			<Button
 				variant="ghost"
-				size="icon-xs"
+				size="icon"
 				className="max-sm:size-11"
 				aria-label={props.label}
-				title={props.label}
 				onClick={() => copyText()}
 			>
 				{mark}
@@ -211,7 +211,7 @@ function Reason(props: {server: ConnectionInfo}) {
 function ServerRow(props: {active: boolean; onSelect: () => void; server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	return (
-		<div className="border-b">
+		<div role="listitem" className="border-b">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
 				<ContextMenuTrigger
@@ -357,7 +357,7 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 								onTrue: () => <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
 							})}
 							{(!connected || server.error !== undefined) && (
-								<Button size="sm" className="max-sm:h-11" onClick={() => location.assign(connectUrl(server.id))}>
+								<Button className="max-sm:h-11" onClick={() => location.assign(connectUrl(server.id))}>
 									{Boolean.match(server.status === 'Not connected', {
 										onFalse: () => 'Reconnect',
 										onTrue: () => 'Connect'
@@ -366,10 +366,8 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 							)}
 							<Button
 								variant="ghost"
-								size="sm"
 								className="max-sm:size-11"
 								aria-label="Remove server"
-								title="Remove server"
 								onClick={() => setConfirm(true)}
 							>
 								<Trash2 />
@@ -458,16 +456,24 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 					</section>
 					<section aria-label="MCP endpoint" className="border-t p-3">
 						<h3 className="text-sm font-semibold">MCP endpoint</h3>
-						<p className="text-muted-foreground mt-1 text-xs">
+						<p className="text-muted-foreground mt-1 max-w-prose text-xs">
 							Point an agent at this URL; every connected tool is offered. An agent on another machine signs in with{' '}
 							<a href={`${AUTH_URL}/agents`} className="text-primary hover:underline">
 								an agent token
 							</a>
 							.
 						</p>
-						<code className="bg-muted mt-2 block min-w-0 truncate rounded-md px-2 py-1.5 font-mono text-xs select-text">
-							{ENDPOINT}
-						</code>
+						<CodeBlock size="sm" className="mt-2">
+							<CodeBlockHeader>
+								<CodeBlockTitle>MCP URL</CodeBlockTitle>
+								<CodeBlockActions>
+									<CodeBlockCopyButton aria-label="Copy MCP URL" value={ENDPOINT} />
+								</CodeBlockActions>
+							</CodeBlockHeader>
+							<CodeBlockContent wrap>
+								<span className="min-w-0 wrap-anywhere">{ENDPOINT}</span>
+							</CodeBlockContent>
+						</CodeBlock>
 					</section>
 				</section>
 			)
