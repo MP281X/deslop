@@ -64,18 +64,7 @@ function CreatedToken(props: {onDone: () => void; resource: string; token: strin
 					</Button>
 				</CardAction>
 			</CardHeader>
-			<CardContent className="flex flex-col gap-2">
-				<CodeBlock size="sm">
-					<CodeBlockHeader>
-						<CodeBlockTitle>Token</CodeBlockTitle>
-						<CodeBlockActions>
-							<CodeBlockCopyButton aria-label="Copy the token" value={props.token} />
-						</CodeBlockActions>
-					</CodeBlockHeader>
-					<CodeBlockContent wrap>
-						<span className="min-w-0 wrap-anywhere">{props.token}</span>
-					</CodeBlockContent>
-				</CodeBlock>
+			<CardContent>
 				<CodeBlock size="sm">
 					<CodeBlockHeader>
 						<CodeBlockTitle>Claude Code, on the agent’s machine</CodeBlockTitle>

@@ -209,7 +209,7 @@ A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Gl
 
 ## Shapes
 
-4px controls, pill badges, 6px surfaces, menus, popovers and dialogs, full circles for dots and avatars. iOS keeps the system's shapes.
+4px controls and badges, 6px surfaces, menus, popovers and dialogs, full circles for dots and avatars. iOS keeps the system's shapes.
 
 ## Components
 

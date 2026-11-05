@@ -6,7 +6,7 @@ import {createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, ChevronRight, Copy, Plus, Server, Trash2} from 'lucide-react'
+import {Check, Copy, Plus, Server} from 'lucide-react'
 import {useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
@@ -32,10 +32,8 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
-import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Input} from '@deslop/components-web/ui/input'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -108,10 +106,10 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 }
 
 // Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
-function FirstImage(props: {className?: string; sources: string[]}) {
+function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className={cn('flex size-5 shrink-0 items-center justify-center', props.className)}>
+		<span className="flex size-5 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <Server className="text-muted-foreground size-4" />,
 				onSome: src => (
@@ -123,7 +121,7 @@ function FirstImage(props: {className?: string; sources: string[]}) {
 }
 
 // Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
-function ServerIcon(props: {large?: boolean; server: ConnectionInfo}) {
+function ServerIcon(props: {server: ConnectionInfo}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
 		...Array.map(
@@ -136,13 +134,7 @@ function ServerIcon(props: {large?: boolean; server: ConnectionInfo}) {
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
-	return (
-		<FirstImage
-			key={Array.join(sources, ' ')}
-			className={Boolean.match(props.large === true, {onFalse: () => undefined, onTrue: () => 'size-8'})}
-			sources={sources}
-		/>
-	)
+	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
 // A state that needs the user takes the host's place; a reported failure shows in full beneath the row.
@@ -157,50 +149,68 @@ function Reason(props: {server: ConnectionInfo}) {
 	)
 }
 
-// One line per server: its icon, name, host or why it needs the user, its tool count and its light; the row selects it, its context menu removes it.
-function ServerRow(props: {active: boolean; onSelect: () => void; server: ConnectionInfo}) {
+// The page has no detail pane, so a palette pick brings its row into view.
+function focusServer(server: ConnectionInfo) {
+	const row = document.getElementById(`server-${server.id}`)
+	row?.focus()
+	row?.scrollIntoView({block: 'center'})
+}
+
+// One line per server: its icon, name, host or why it needs the user, its tool count, its light, and Connect when it needs one; its context menu removes it.
+function ServerRow(props: {server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
+	const connected = props.server.status === 'Connected'
 	return (
 		<div role="listitem" className="border-b">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
 				<ContextMenuTrigger
 					render={
-						<Button
-							size="lg"
-							variant={Boolean.match(props.active, {
-								onFalse: () => 'ghost' as const,
-								onTrue: () => 'secondary' as const
-							})}
-							className="w-full justify-start text-left max-sm:h-11"
-							aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
-							onClick={props.onSelect}
-						>
-							<ServerIcon server={props.server} />
-							<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-							<span className="flex min-w-0 flex-1">
-								<Reason server={props.server} />
-							</span>
-							{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-								<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden" title="Tools">
-									{Boolean.match(props.server.tools.length === 1, {
-										onFalse: () => `${props.server.tools.length} tools`,
-										onTrue: () => '1 tool'
-									})}
-								</span>
-							)}
-							<span
-								role="img"
-								title={props.server.status}
-								aria-label={props.server.status}
-								className="flex size-3 shrink-0 items-center justify-center"
-							>
-								<Status server={props.server} />
-							</span>
-							<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
-						</Button>
+						<div
+							id={`server-${props.server.id}`}
+							role="button"
+							tabIndex={0}
+							aria-haspopup="menu"
+							aria-label={`${props.server.name}, ${reasonText(props.server)}`}
+							className="hover:bg-muted/50 focus-visible:ring-ring/30 flex h-8 items-center gap-2 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset max-sm:h-11"
+						/>
 					}
-				/>
+				>
+					<ServerIcon server={props.server} />
+					<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
+					<span className="flex min-w-0 flex-1">
+						<Reason server={props.server} />
+					</span>
+					{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+						<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden" title="Tools">
+							{Boolean.match(props.server.tools.length === 1, {
+								onFalse: () => `${props.server.tools.length} tools`,
+								onTrue: () => '1 tool'
+							})}
+						</span>
+					)}
+					<span
+						role="img"
+						title={props.server.status}
+						aria-label={props.server.status}
+						className="flex size-3 shrink-0 items-center justify-center"
+					>
+						<Status server={props.server} />
+					</span>
+					{(!connected || props.server.error !== undefined) && (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="max-sm:h-11"
+							onClick={() => location.assign(connectUrl(props.server.id))}
+						>
+							{Boolean.match(props.server.status === 'Not connected', {
+								onFalse: () => 'Reconnect',
+								onTrue: () => 'Connect'
+							})}
+						</Button>
+					)}
+				</ContextMenuTrigger>
 				<ContextMenuContent className="w-auto min-w-36">
 					<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
 						Remove
@@ -214,143 +224,35 @@ function ServerRow(props: {active: boolean; onSelect: () => void; server: Connec
 	)
 }
 
-function ServersPane(props: {
-	activeId?: string
-	className?: string
-	onSelect: (server: ConnectionInfo) => void
-	servers: readonly ConnectionInfo[]
-}) {
+// The page is the list: one column of servers, centered at reading width on a wide screen.
+function ServersPane(props: {servers: readonly ConnectionInfo[]}) {
 	return (
-		<section
-			aria-label="MCP servers"
-			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-				<span className="text-sm font-semibold">Servers</span>
-				<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
-			</header>
-			{Array.match(props.servers, {
-				onEmpty: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No servers yet</EmptyTitle>
-							<EmptyDescription>Add one from the bar to offer its tools.</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				),
-				onNonEmpty: servers => (
-					<div role="list" aria-label="MCP servers">
-						{Array.map(servers, server => (
-							<ServerRow
-								key={server.id}
-								active={props.activeId === server.id}
-								onSelect={() => props.onSelect(server)}
-								server={server}
-							/>
-						))}
-					</div>
-				)
-			})}
+		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-col overflow-y-auto">
+			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+					<span className="text-sm font-semibold">Servers</span>
+					<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
+				</header>
+				{Array.match(props.servers, {
+					onEmpty: () => (
+						<Empty>
+							<EmptyHeader>
+								<EmptyTitle>No servers yet</EmptyTitle>
+								<EmptyDescription>Add one from the bar to offer its tools.</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
+					),
+					onNonEmpty: servers => (
+						<div role="list" aria-label="MCP servers">
+							{Array.map(servers, server => (
+								<ServerRow key={server.id} server={server} />
+							))}
+						</div>
+					)
+				})}
+			</div>
 		</section>
 	)
-}
-
-// The chosen server: where it lives, its light and fix, its full error, and every tool it offers.
-function ServerPane(props: {className?: string; server?: ConnectionInfo; showName?: boolean}) {
-	const [confirm, setConfirm] = useState(false)
-	return Option.match(Option.fromUndefinedOr(props.server), {
-		onNone: () => (
-			<section aria-label="Server" className={cn('flex min-h-0 flex-col', props.className)}>
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>Select a server</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			</section>
-		),
-		onSome: server => {
-			const connected = server.status === 'Connected'
-			const title = Boolean.match(props.showName === false, {onFalse: () => server.name, onTrue: () => 'Connection'})
-			return (
-				<section
-					aria-label={server.name}
-					className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-				>
-					<RemoveDialog open={confirm} onOpenChange={setConfirm} server={server} />
-					<ContextMenu>
-						<ContextMenuTrigger
-							render={
-								<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11" />
-							}
-						>
-							{Boolean.match(props.showName === false, {
-								onFalse: () => (
-									<>
-										<ServerIcon server={server} />
-										<span className="max-w-56 min-w-0 shrink truncate text-sm font-semibold">{server.name}</span>
-										<a
-											href={server.url}
-											target="_blank"
-											rel="noreferrer"
-											className="text-muted-foreground hover:text-foreground min-w-0 flex-1 truncate font-mono text-xs hover:underline"
-											title={server.url}
-										>
-											{new URL(server.url).hostname}
-										</a>
-									</>
-								),
-								onTrue: () => <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
-							})}
-							{(!connected || server.error !== undefined) && (
-								<Button className="max-sm:h-11" onClick={() => location.assign(connectUrl(server.id))}>
-									{Boolean.match(server.status === 'Not connected', {
-										onFalse: () => 'Reconnect',
-										onTrue: () => 'Connect'
-									})}
-								</Button>
-							)}
-							<Button
-								variant="ghost"
-								className="max-sm:size-11"
-								aria-label="Remove server"
-								onClick={() => setConfirm(true)}
-							>
-								<Trash2 />
-								<span className="max-sm:hidden">Remove</span>
-							</Button>
-						</ContextMenuTrigger>
-						<ContextMenuContent className="w-auto min-w-36">
-							<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
-								Remove
-							</ContextMenuItem>
-						</ContextMenuContent>
-					</ContextMenu>
-					{Boolean.match(props.showName === false, {
-						onFalse: () => null,
-						onTrue: () => (
-							<div className="flex items-center gap-3 border-b p-3">
-								<ServerIcon large server={server} />
-								<a
-									href={server.url}
-									target="_blank"
-									rel="noreferrer"
-									className="text-muted-foreground hover:text-foreground min-w-0 flex-1 truncate font-mono text-xs hover:underline"
-									title={server.url}
-								>
-									{new URL(server.url).hostname}
-								</a>
-							</div>
-						)
-					})}
-					{server.error !== undefined && (
-						<div className="px-3 pt-3">
-							<FieldError className="wrap-anywhere">{server.error}</FieldError>
-						</div>
-					)}
-				</section>
-			)
-		}
-	})
 }
 
 function AddForm(props: {url: string; error: string; adding: boolean}) {
@@ -432,11 +334,16 @@ function FailureContent(props: {error: unknown}) {
 	return <SignIn href={signInUrl(location.href)} />
 }
 
-// The two panes' headers and rows while the servers load, so the split is already the final one.
-function GatewaySkeleton(props: {isMobile: boolean}) {
-	if (props.isMobile) {
-		return (
-			<div className="flex min-h-0 flex-1 flex-col">
+// The list's header and rows while the servers load, so the page is already its final shape.
+function GatewaySkeleton() {
+	return (
+		<section
+			aria-busy="true"
+			role="status"
+			aria-label="MCP servers"
+			className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+		>
+			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
 				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
 					<Skeleton className="h-4 w-20" />
 				</header>
@@ -444,28 +351,7 @@ function GatewaySkeleton(props: {isMobile: boolean}) {
 					<ItemListSkeleton label="MCP servers" media rows={5} />
 				</div>
 			</div>
-		)
-	}
-	return (
-		<div className="grid-cols-gateway grid min-h-0 flex-1">
-			<section aria-busy="true" role="status" aria-label="MCP servers" className="flex min-h-0 flex-col border-r">
-				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-					<Skeleton className="h-4 w-20" />
-				</header>
-				<div className="p-2">
-					<ItemListSkeleton label="MCP servers" media rows={5} />
-				</div>
-			</section>
-			<section aria-busy="true" role="status" aria-label="Server" className="flex min-h-0 flex-col">
-				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-					<Skeleton className="h-4 w-24" />
-				</header>
-				<div className="flex flex-col gap-4 p-3">
-					<Skeleton className="h-16 w-full" />
-					<ItemListSkeleton label="Tools" media rows={3} />
-				</div>
-			</section>
-		</div>
+		</section>
 	)
 }
 
@@ -473,9 +359,6 @@ function Home() {
 	const send = useAtomSet(addAtom.send)
 	const [copy, copyText] = useAtom(copyAtom(ENDPOINT))
 	const copied = AsyncResult.isWaiting(copy)
-	const isMobile = useIsMobile()
-	const [pane, setPane] = useState<'server' | 'servers'>('servers')
-	const [selection, setSelection] = useState<string>()
 	const servers = useAtomValue(serversAtom)
 	const value = AsyncResult.value(servers)
 	const error = AsyncResult.error(servers)
@@ -484,16 +367,7 @@ function Home() {
 		Option.getOrElse(value, () => Array.empty<ConnectionInfo>()),
 		urgency
 	)
-	const active = Option.orElse(
-		Option.flatMap(Option.fromUndefinedOr(selection), id => Array.findFirst(sorted, server => server.id === id)),
-		() => Array.head(sorted)
-	)
 	const ready = Option.isNone(authFailure) && Option.isSome(value)
-
-	function selectServer(server: ConnectionInfo) {
-		setSelection(server.id)
-		setPane('server')
-	}
 
 	const needsYou: PaletteGroup = {
 		items: Array.map(
@@ -504,7 +378,7 @@ function Home() {
 				id: server.id,
 				keywords: `${server.name} ${server.url}`,
 				label: server.name,
-				run: () => selectServer(server)
+				run: () => focusServer(server)
 			})
 		),
 		label: 'Needs you'
@@ -519,7 +393,7 @@ function Home() {
 				' '
 			)}`,
 			label: server.name,
-			run: () => selectServer(server)
+			run: () => focusServer(server)
 		})),
 		label: 'Servers'
 	}
@@ -543,19 +417,6 @@ function Home() {
 			<AppBar
 				icon={icon}
 				name="gateway"
-				title={Boolean.match(isMobile, {
-					onFalse: () => undefined,
-					onTrue: () =>
-						pipe(
-							Match.value(pane),
-							Match.when('server', () => Option.match(active, {onNone: () => 'Server', onSome: server => server.name})),
-							Match.orElse(() => 'gateway')
-						)
-				})}
-				back={Boolean.match(isMobile && pane === 'server', {
-					onFalse: () => undefined,
-					onTrue: () => ({label: 'Servers', onClick: () => setPane('servers')})
-				})}
 				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [actions, needsYou, all], onTrue: () => []})}
 				action={
 					<>
@@ -574,45 +435,10 @@ function Home() {
 					Option.match(value, {
 						onNone: () =>
 							Option.match(error, {
-								onNone: () => <GatewaySkeleton isMobile={isMobile} />,
+								onNone: () => <GatewaySkeleton />,
 								onSome: cause => <FailureContent error={cause} />
 							}),
-						onSome: () => (
-							<div className="flex min-h-0 flex-1">
-								{Boolean.match(isMobile, {
-									onFalse: () => (
-										<div className="grid-cols-gateway grid min-h-0 flex-1">
-											<ServersPane
-												activeId={Option.getOrUndefined(active)?.id}
-												className="min-w-0 border-r"
-												onSelect={selectServer}
-												servers={sorted}
-											/>
-											<ServerPane className="min-w-0" server={Option.getOrUndefined(active)} />
-										</div>
-									),
-									onTrue: () =>
-										pipe(
-											Match.value(pane),
-											Match.when('server', () => (
-												<ServerPane
-													className="min-h-0 flex-1"
-													server={Option.getOrUndefined(active)}
-													showName={false}
-												/>
-											)),
-											Match.orElse(() => (
-												<ServersPane
-													activeId={Option.getOrUndefined(active)?.id}
-													className="min-h-0 flex-1"
-													onSelect={selectServer}
-													servers={sorted}
-												/>
-											))
-										)
-								})}
-							</div>
-						)
+						onSome: () => <ServersPane servers={sorted} />
 					}),
 				onSome: cause => <FailureContent error={cause} />
 			})}
