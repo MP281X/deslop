@@ -246,7 +246,7 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 
 function CursorLabel(input: {flip?: boolean; label: string}) {
 	return (
-		<div className={cn('flex items-center gap-1', input.flip === true && 'flex-row-reverse')}>
+		<div className={cn('flex items-center gap-1', input.flip === true && '-translate-x-full flex-row-reverse')}>
 			<MousePointer2 className="size-4 text-(--cursor-color)" />
 			<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
 				{input.label}
