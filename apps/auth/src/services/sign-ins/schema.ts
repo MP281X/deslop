@@ -29,18 +29,16 @@ export const AuthorizationStatus = Schema.TaggedUnion({
 	Waiting: {request: PendingAuthorization}
 })
 
-// Where an approval goes: an app's checked authorization request, an agent's own token, or the page a browser returns to.
+// Where an approval goes: an app's checked authorization request, or the page a browser returns to.
 export type Delivery = typeof Delivery.Type
 export const Delivery = Schema.TaggedUnion({
-	Agent: {name: Schema.NonEmptyString.check(Schema.isMaxLength(60)), resource: Resource},
 	Browser: {next: Schema.optionalKey(Schema.String)},
 	Client: {request: ClientRequest}
 })
 
-// What /auth/continue answers: a redirect, a session for the waiting browser, an agent's token, or still waiting.
+// What /auth/continue answers: a redirect, a session for the waiting browser, or still waiting.
 export type Collected = typeof Collected.Type
 export const Collected = Schema.TaggedUnion({
-	Agent: {denied: Schema.optionalKey(Schema.Boolean), token: Schema.optionalKey(Schema.String)},
 	Redirect: {url: Schema.NonEmptyString},
 	Session: {next: Schema.optionalKey(Schema.String), seconds: Schema.Int, token: Schema.NonEmptyString},
 	Waiting: {}
@@ -57,10 +55,6 @@ export const BrowserParams = Schema.Struct({
 
 export type RequestParams = typeof RequestParams.Type
 export const RequestParams = Schema.Struct({request: Schema.NonEmptyString.check(Schema.isMaxLength(20))})
-
-// What an agent sends to start its own sign-in: the machine's name and the MCP resource it will use.
-export type AgentStart = typeof AgentStart.Type
-export const AgentStart = Schema.Struct({name: Schema.NonEmptyString.check(Schema.isMaxLength(60)), resource: Resource})
 
 export type CodeParams = typeof CodeParams.Type
 export const CodeParams = Schema.Struct({code: Schema.NonEmptyString.check(Schema.isMaxLength(20))})

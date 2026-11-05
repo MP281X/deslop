@@ -226,9 +226,6 @@ function ColumnHead(props: {column: Column; now: number}) {
 						</span>
 					)
 				})}
-				<span className="text-muted-foreground hidden max-w-14 truncate text-xs leading-none max-sm:block">
-					{props.column.client.name}
-				</span>
 			</span>
 		</TableHead>
 	)
@@ -470,14 +467,6 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 								))}
 							</TableBody>
 						</Table>
-						<p className="text-muted-foreground flex items-center gap-3 text-xs">
-							<span className="flex items-center gap-1.5">
-								<StatusDot /> signed in
-							</span>
-							<span className="flex items-center gap-1.5">
-								<StatusDot status="off" /> not signed in
-							</span>
-						</p>
 					</div>
 				)
 			})}

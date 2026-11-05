@@ -100,8 +100,6 @@ export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
 // One signed-in app or browser, keyed by its family: what the signed-in list shows and what signing it out removes.
 export type Grant = typeof Grant.Type
 export const Grant = Schema.Struct({
-	// The name an agent token was created with; absent on a sign-in a client started.
-	agent: Schema.optionalKey(Schema.String),
 	client: Schema.String,
 	createdAt: Schema.Finite,
 	credential: Schema.TaggedUnion({
@@ -130,7 +128,6 @@ export const Grants = Schema.Record(Schema.String, Grant)
 export type SignedInApp = typeof SignedInApp.Type
 export const SignedInApp = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
-	agent: Schema.optionalKey(Schema.String),
 	client: Schema.String,
 	createdAt: Schema.Finite,
 	device: Schema.String,
@@ -140,16 +137,6 @@ export const SignedInApp = Schema.Struct({
 	lastActive: Schema.Finite,
 	resources: Schema.Array(Resource)
 })
-
-// An agent token is a long-lived access token for one app's MCP endpoint, made without a browser on the agent's machine; it lives until revoked.
-export type AgentParams = typeof AgentParams.Type
-export const AgentParams = Schema.Struct({
-	name: Schema.NonEmptyString.check(Schema.isMaxLength(60)),
-	resource: Resource
-})
-
-export type AgentToken = typeof AgentToken.Type
-export const AgentToken = Schema.Struct({token: Schema.NonEmptyString})
 
 export type FamilyParams = typeof FamilyParams.Type
 export const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})

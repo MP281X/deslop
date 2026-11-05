@@ -30,8 +30,6 @@ import {rejected} from '@deslop/runtime/auth/utils'
 
 import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
 import type {
-	AgentParams,
-	AgentToken,
 	AuthorizeClient,
 	ClientRequest,
 	Grant,
@@ -89,7 +87,6 @@ export class Tokens extends Context.Service<
 		// Each saved change to the signed-in apps and browsers, starting with the current state.
 		readonly changes: Stream.Stream<void>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
-		readonly createAgent: (user: User, input: AgentParams) => Effect.Effect<AgentToken, AuthError>
 		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
 		readonly endSession: (headers: Headers.Headers) => Effect.Effect<void, AuthError>
 		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
@@ -386,10 +383,7 @@ export class Tokens extends Context.Service<
 					Array.map(
 						entry =>
 							({
-								client: Option.match(Option.fromUndefinedOr(entry[1].agent), {
-									onNone: () => entry[1].client,
-									onSome: () => 'Claude Code'
-								}),
+								client: entry[1].client,
 								createdAt: entry[1].createdAt,
 								device: entry[1].device,
 								expiresAt: entry[1].credential.expiresAt,
@@ -402,10 +396,6 @@ export class Tokens extends Context.Service<
 										if (entry[1].credential._tag === 'App') return entry[1].credential.resources
 										return []
 									}
-								}),
-								...Option.match(Option.fromUndefinedOr(entry[1].agent), {
-									onNone: () => ({}),
-									onSome: agent => ({agent})
 								}),
 								...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
 									onNone: () => ({}),
@@ -447,34 +437,6 @@ export class Tokens extends Context.Service<
 					)
 					return {clientName: client.name, redirectUri}
 				}),
-				createAgent: Effect.fn('Tokens.createAgent')(function* (user: User, input: AgentParams) {
-					const family = yield* secret(16)
-					const accessSecret = yield* secret(32)
-					const refreshSecret = yield* secret(32)
-					const now = yield* Clock.currentTimeMillis
-					// An agent token never expires; it is signed out from its column in the Sign-ins grid.
-					const expiresAt = 9_007_199_254_740_991
-					const grant: Grant = {
-						agent: input.name,
-						client: 'Claude Code',
-						createdAt: now,
-						credential: {
-							_tag: 'App',
-							access: [{expiresAt, hash: yield* hash(accessSecret), resources: [input.resource]}],
-							clientId: 'agent',
-							expiresAt,
-							generation: 0,
-							hash: yield* hash(refreshSecret),
-							resources: [input.resource]
-						},
-						device: input.name,
-						lastActive: now,
-						origin: {userAgent: 'Claude Code'},
-						user
-					}
-					yield* change(current => Effect.succeed([undefined, {...current, [family]: grant}] as const))
-					return {token: `${family}.${accessSecret}`}
-				}, rejected('Cannot create the agent token')),
 				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, user: User) {
 					yield* change(current =>
 						Effect.gen(function* () {
