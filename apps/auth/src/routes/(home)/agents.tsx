@@ -1,24 +1,14 @@
-import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Option} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {KeyRound, Plus} from 'lucide-react'
-import {Suspense, useState} from 'react'
+import {KeyRound} from 'lucide-react'
+import {Suspense} from 'react'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle} from '@deslop/components-web/ui/card'
-import {
-	CodeBlock,
-	CodeBlockActions,
-	CodeBlockContent,
-	CodeBlockCopyButton,
-	CodeBlockHeader,
-	CodeBlockTitle
-} from '@deslop/components-web/ui/code-block'
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -26,142 +16,10 @@ import {
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
 import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
-import {Field, FieldDescription, FieldGroup, FieldLabel} from '@deslop/components-web/ui/field'
-import {Input} from '@deslop/components-web/ui/input'
-import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
-import {MCP_PATH} from '@deslop/runtime/schema'
 
-import {
-	ageLabel,
-	appsAtom,
-	catalogAtom,
-	createAgentAtom,
-	dayLabel,
-	minuteAtom,
-	minutesSince,
-	revokeAgentAtom
-} from '#lib/utils.ts'
+import {ageLabel, appsAtom, dayLabel, minuteAtom, minutesSince, revokeAgentAtom} from '#lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
-
-// The token is shown once, with the command that adds the gateway to an agent's machine; Auth keeps only its hash.
-function CreatedToken(props: {onDone: () => void; resource: string; token: string}) {
-	const command = Array.join(
-		[
-			'claude mcp remove gateway',
-			`claude mcp add --transport http gateway ${props.resource} --header "Authorization: Bearer ${props.token}"`
-		],
-		'\n'
-	)
-	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Token created</CardTitle>
-				<CardDescription>Shown once. It does not expire; revoke it from the list when you replace it.</CardDescription>
-				<CardAction>
-					<Button variant="ghost" size="sm" onClick={props.onDone}>
-						Done
-					</Button>
-				</CardAction>
-			</CardHeader>
-			<CardContent>
-				<CodeBlock size="sm">
-					<CodeBlockHeader>
-						<CodeBlockTitle>Claude Code, on the agent’s machine</CodeBlockTitle>
-						<CodeBlockActions>
-							<CodeBlockCopyButton aria-label="Copy the command" value={command} />
-						</CodeBlockActions>
-					</CodeBlockHeader>
-					<CodeBlockContent wrap>
-						<span className="min-w-0 wrap-anywhere">{command}</span>
-					</CodeBlockContent>
-				</CodeBlock>
-			</CardContent>
-		</Card>
-	)
-}
-
-// A name, then the token and its command; the resource is the gateway's own MCP endpoint, so the token reaches nothing else.
-function CreateAgent() {
-	// The form renders at once; the gateway's resource only gates its submit.
-	const resource = Option.map(
-		Array.findFirst(
-			AsyncResult.getOrElse(useAtomValue(catalogAtom), () => []),
-			app => app.name === 'gateway'
-		),
-		app => new URL(MCP_PATH, app.origin).href
-	)
-	const [name, setName] = useState('')
-	const [created, create] = useAtom(createAgentAtom)
-	const [dismissed, setDismissed] = useState<string>()
-	const waiting = AsyncResult.isWaiting(created)
-	return (
-		<>
-			<Card>
-				<CardHeader>
-					<CardTitle>Create an agent token</CardTitle>
-					<CardDescription>For the Gateway’s MCP endpoint, from a machine without a browser.</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<form
-						className="flex flex-col gap-4"
-						onSubmit={event => {
-							event.preventDefault()
-							Option.match(resource, {
-								onNone: () => undefined,
-								onSome: target => create({name: String.trim(name), resource: target})
-							})
-						}}
-					>
-						<FieldGroup>
-							<Field>
-								<FieldLabel htmlFor="agent-name">Name</FieldLabel>
-								<Input
-									id="agent-name"
-									autoComplete="off"
-									className="max-sm:h-11"
-									maxLength={60}
-									placeholder="e.g. desktop"
-									required
-									value={name}
-									onChange={event => setName(event.target.value)}
-								/>
-								<FieldDescription>The machine or agent this token is for.</FieldDescription>
-							</Field>
-						</FieldGroup>
-						{Option.match(resource, {
-							onNone: () => <FieldDescription>The gateway has not announced itself to Auth yet.</FieldDescription>,
-							onSome: () => null
-						})}
-						<ResultError result={created} />
-						<Button
-							type="submit"
-							className="w-full max-sm:h-11"
-							disabled={waiting || String.trim(name) === '' || Option.isNone(resource)}
-						>
-							{Boolean.match(waiting, {onFalse: () => <Plus />, onTrue: () => <Spinner />})}
-							Create token
-						</Button>
-					</form>
-				</CardContent>
-			</Card>
-			{Option.match(AsyncResult.value(created), {
-				onNone: () => null,
-				onSome: token =>
-					Boolean.match(dismissed === token.token, {
-						onFalse: () => (
-							<CreatedToken
-								onDone={() => setDismissed(token.token)}
-								resource={Option.getOrElse(resource, () => '')}
-								token={token.token}
-							/>
-						),
-						onTrue: () => null
-					})
-			})}
-		</>
-	)
-}
 
 // "never" until its first call, then relative while it is recent, as the sign-ins grid names activity.
 function usedLabel(app: SignedInApp, now: number) {
@@ -171,7 +29,7 @@ function usedLabel(app: SignedInApp, now: number) {
 	return `${ageLabel(minutes)} ago`
 }
 
-// One line per token: its name, when it was made and when it was last used; Revoke in its row, and its context menu.
+// One line per token: the machine that made it, when, and when it was last used; Revoke in its row, and its context menu.
 function AgentRow(props: {app: SignedInApp; now: number}) {
 	const [revoking, revoke] = useAtom(revokeAgentAtom)
 	const name = Option.getOrElse(Option.fromUndefinedOr(props.app.agent), () => props.app.device)
@@ -193,7 +51,6 @@ function AgentRow(props: {app: SignedInApp; now: number}) {
 					<Button
 						variant="destructive"
 						size="sm"
-						className="max-sm:h-11"
 						disabled={AsyncResult.isWaiting(revoking)}
 						onClick={() => revoke(props.app.family)}
 					>
@@ -214,7 +71,7 @@ function AgentRow(props: {app: SignedInApp; now: number}) {
 	)
 }
 
-// Every token this account made, newest use first, as the apps stream sorts it.
+// Every token agents made for themselves, newest use first, as the apps stream sorts it.
 function AgentList() {
 	const apps = useAtomSuspense(appsAtom).value
 	const now = useAtomSuspense(minuteAtom).value
@@ -225,7 +82,7 @@ function AgentList() {
 				<Empty>
 					<EmptyHeader>
 						<EmptyTitle>No agent tokens</EmptyTitle>
-						<EmptyDescription>Create one above to connect an agent on another machine.</EmptyDescription>
+						<EmptyDescription>An agent gets one by running the command above.</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			),
@@ -250,11 +107,17 @@ function AgentList() {
 	)
 }
 
-// The grid's page is wide for many clients; this form keeps to the design's form width.
+// The command an agent runs is the only way a token is made; this page lists what agents have made.
 function Agents() {
 	return (
 		<div className="mx-auto flex w-full max-w-xl flex-col gap-4">
-			<CreateAgent />
+			<p className="text-muted-foreground text-sm">
+				An agent runs{' '}
+				<code className="bg-muted rounded-sm px-1 py-0.5 font-mono text-xs">
+					curl -fsSL https://auth.mp281x.xyz/agent | sh
+				</code>{' '}
+				and you approve it here.
+			</p>
 			<Suspense fallback={<ItemListSkeleton label="Agent tokens" media rows={2} />}>
 				<AgentList />
 			</Suspense>

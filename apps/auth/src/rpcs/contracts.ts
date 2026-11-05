@@ -15,7 +15,7 @@ import {
 	PendingAuthorization,
 	RequestParams
 } from '#services/sign-ins/schema.ts'
-import {AgentParams, AgentToken, FamilyParams, SignedInApp} from '#services/tokens/schema.ts'
+import {FamilyParams, SignedInApp} from '#services/tokens/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.lookup', {
@@ -30,7 +30,6 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.remove', {error: AuthError, payload: PersonParams, success: Person}),
 	Rpc.make('auth.apps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp)}),
 	Rpc.make('auth.catalog', {error: AuthError, stream: true, success: Catalog}),
-	Rpc.make('auth.createAgent', {error: AuthError, payload: AgentParams, success: AgentToken}),
 	Rpc.make('auth.disconnect', {error: AuthError, payload: FamilyParams}),
 	Rpc.make('auth.passkeys', {error: AuthError, stream: true, success: Schema.Array(Passkey)}),
 	Rpc.make('auth.passkeyOptions', {error: AuthError, success: CreationOptions}),

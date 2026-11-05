@@ -49,6 +49,14 @@ const deliver = Effect.fnUntraced(function* (input: {delivery: Delivery; origin:
 		Effect.flatMap(Effect.fromOption(Option.fromUndefinedOr(input.user)), people.allowed)
 	)
 	return yield* Match.valueTags(input.delivery, {
+		Agent: agent =>
+			Option.match(approver, {
+				onNone: () => Effect.succeed(Collected.cases.Agent.make({denied: true})),
+				onSome: user =>
+					Effect.map(tokens.createAgent(user, {name: agent.name, resource: agent.resource}), created =>
+						Collected.cases.Agent.make({token: created.token})
+					)
+			}),
 		Browser: browser =>
 			Option.match(approver, {
 				onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
@@ -284,6 +292,12 @@ export class SignIns extends Context.Service<
 								onSome: address => ({address})
 							}),
 							...Match.valueTags(delivery, {
+								Agent: agent => ({
+									clientName: agent.name,
+									device: deviceLabel(origin),
+									kind: 'App' as const,
+									resources: [agent.resource]
+								}),
 								Browser: () => ({
 									clientName: browserLabel(origin),
 									device: deviceLabel(origin),

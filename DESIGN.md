@@ -188,7 +188,7 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens in `theme.ts`, nothing bundled. Machine text (hosts, ids, times, counts, codes, shortcuts) is Geist Mono or SF Mono; prose never is. Sentence case, no uppercase or letter-spaced labels.
 
 - **Numbers that change** use tabular figures, so they don't jitter.
-- **Display.** Auth's sign-in title and the Portfolio's hero sit above the product titles: 24px on the sign-in, 36/48px on the Portfolio. The Portfolio is the one editorial exception: its mono role and lowercase mono section labels are its own voice; everything else follows the scale.
+- **Display.** The Portfolio's hero sits above the product titles: 36/48px. The Portfolio is the one editorial exception: its mono role and lowercase mono section labels are its own voice; everything else follows the scale.
 - **Times** read relative for a week ("3h ago"), then as a date; counts pluralize through `Intl.PluralRules`.
 - **Prose** stops at about 65 characters a line.
 

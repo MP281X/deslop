@@ -24,7 +24,7 @@ import {PasskeySignIn} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {typedCode} from '#services/sign-ins/lib/utils.ts'
-import {BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
+import {AgentStart, BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import {
 	addressGroup,
@@ -50,6 +50,36 @@ import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
+
+// What an agent runs to get its own token: start, show the approve link, wait, then write the gateway into Claude Code.
+const AGENT_LOGIN = `#!/bin/sh
+set -eu
+AUTH=${AUTH_URL}
+MCP=https://gateway.mp281x.xyz/mcp
+name=$(hostname 2>/dev/null || echo agent)
+jar=$(mktemp)
+trap 'rm -f "$jar"' EXIT
+start=$(curl -fsS -c "$jar" -G --data-urlencode "name=$name" --data-urlencode "resource=$MCP" "$AUTH/api/agent/start")
+code=$(printf '%s' "$start" | sed -n 's/.*"code":"\\([^"]*\\)".*/\\1/p')
+[ -n "$code" ] || { echo "Could not start the agent sign-in." >&2; exit 1; }
+echo "Open $AUTH/?code=$code on your phone and approve $name."
+token=
+denied=
+i=0
+while [ "$i" -lt 600 ]; do
+	out=$(curl -sS -b "$jar" "$AUTH/auth/continue?request=$code" 2>/dev/null || true)
+	token=$(printf '%s' "$out" | sed -n 's/.*"token":"\\([^"]*\\)".*/\\1/p')
+	[ -n "$token" ] && break
+	denied=$(printf '%s' "$out" | sed -n 's/.*"denied":true.*/1/p')
+	[ -n "$denied" ] && { echo "The sign-in was denied." >&2; exit 1; }
+	i=$((i + 1))
+	sleep 1
+done
+[ -n "$token" ] || { echo "The sign-in expired; run the command again." >&2; exit 1; }
+claude mcp remove gateway >/dev/null 2>&1 || true
+claude mcp add --transport http gateway "$MCP" --header "Authorization: Bearer $token"
+echo "Gateway connected as $name."
+`
 
 // The shared session reaches every app on the parent domain, for as long as its grant lasts; without an issuer it stays on its own host.
 function sessionCookie(local: boolean) {
@@ -90,6 +120,16 @@ function answered<E, R>(answer: Effect.Effect<User, E, R>) {
 function waitingAt(started: {code: string; receiver: string}) {
 	return HttpServerResponse.setCookieUnsafe(
 		HttpServerResponse.redirect(`/?request=${started.code}`),
+		`${REQUEST_COOKIE}${started.code}`,
+		started.receiver,
+		{...COOKIE, maxAge: '11 minutes'}
+	)
+}
+
+// An agent's sign-in starts with its code in JSON, under the same cookie that later collects its token.
+function agentAt(started: {code: string; receiver: string}) {
+	return HttpServerResponse.setCookieUnsafe(
+		HttpServerResponse.jsonUnsafe({code: started.code}),
 		`${REQUEST_COOKIE}${started.code}`,
 		started.receiver,
 		{...COOKIE, maxAge: '11 minutes'}
@@ -453,6 +493,38 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
+		// An agent starts its own sign-in: the user approves the machine's name on their phone, and the command collects its token.
+		yield* router.add(
+			'GET',
+			'/api/agent/start',
+			limited(
+				'agent',
+				20
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const request = yield* HttpServerRequest.HttpServerRequest
+						const params = yield* pipe(
+							HttpServerRequest.schemaSearchParams(AgentStart),
+							rejected('Name the agent and its resource')
+						)
+						return agentAt(
+							yield* signIns.start({_tag: 'Agent', name: params.name, resource: params.resource}, originOf(request))
+						)
+					})
+				)
+			)
+		)
+		// The command an agent runs: start, show the approve link, wait for the token, then write the gateway into Claude Code.
+		yield* router.add(
+			'GET',
+			'/agent',
+			Effect.succeed(
+				HttpServerResponse.text(AGENT_LOGIN, {
+					headers: {'cache-control': 'no-store', 'content-type': 'text/x-shellscript; charset=utf-8'}
+				})
+			)
+		)
 		// A passkey signs this browser in at once. Its options name no account, since each passkey holds its own.
 		yield* router.add(
 			'GET',
@@ -505,6 +577,17 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const collected = yield* signIns.collect(params.request, request.headers)
 					const cookie = `${REQUEST_COOKIE}${typedCode(params.request)}`
 					return Match.valueTags(collected, {
+						Agent: found =>
+							HttpServerResponse.expireCookieUnsafe(
+								HttpServerResponse.jsonUnsafe(
+									Option.match(Option.fromUndefinedOr(found.token), {
+										onNone: () => ({denied: true}),
+										onSome: token => ({token})
+									})
+								),
+								cookie,
+								COOKIE
+							),
 						Redirect: found =>
 							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(found.url), cookie, COOKIE),
 						Session: found =>

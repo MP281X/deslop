@@ -1847,6 +1847,55 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	)
 
 	test.effect(
+		'gives an agent a token after the user approves the machine it names',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const session = cookie(yield* signIn(web.issuer, 'octocat'))
+			const started = yield* send(
+				web.issuer,
+				`/api/agent/start?${UrlParams.toString(UrlParams.fromInput({name: 'desktop', resource: APPROVALS}))}`
+			)
+			const startedJson = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({code: Schema.String})))(
+				yield* Effect.promise(() => started.text())
+			)
+			assert.strictEqual((yield* answer(web.issuer, session, startedJson.code, true)).status, 204)
+			const collected = yield* send(web.issuer, `/auth/continue?request=${startedJson.code}`, {
+				headers: {cookie: cookie(started)}
+			})
+			const collectedJson = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({token: Schema.String})))(
+				yield* Effect.promise(() => collected.text())
+			)
+			assert.isTrue(String.length(collectedJson.token) > 0)
+			// The token is listed as the machine's agent token.
+			const listed = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
+			const apps = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+				yield* Effect.promise(() => listed.text())
+			)
+			const agent = Array.findFirst(apps, app => app.agent === 'desktop')
+			assert.isTrue(Option.isSome(agent))
+			assert.strictEqual(Option.getOrThrow(agent).client, 'Agent token')
+			// A denied agent gets no token.
+			const declinedStart = yield* send(
+				web.issuer,
+				`/api/agent/start?${UrlParams.toString(UrlParams.fromInput({name: 'laptop', resource: APPROVALS}))}`
+			)
+			const declinedJson = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({code: Schema.String})))(
+				yield* Effect.promise(() => declinedStart.text())
+			)
+			assert.strictEqual((yield* answer(web.issuer, session, declinedJson.code, false)).status, 204)
+			const denied = yield* send(web.issuer, `/auth/continue?request=${declinedJson.code}`, {
+				headers: {cookie: cookie(declinedStart)}
+			})
+			assert.deepStrictEqual(
+				yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({denied: Schema.Boolean})))(
+					yield* Effect.promise(() => denied.text())
+				),
+				{denied: true}
+			)
+		})
+	)
+
+	test.effect(
 		'delivers a command’s sign-in to its loopback callback once approved, answering 408 while it waits',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
