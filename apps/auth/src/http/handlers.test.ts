@@ -1873,7 +1873,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			const agent = Array.findFirst(apps, app => app.agent === 'desktop')
 			assert.isTrue(Option.isSome(agent))
-			assert.strictEqual(Option.getOrThrow(agent).client, 'Agent token')
+			assert.strictEqual(Option.getOrThrow(agent).client, 'Claude Code')
 			// A denied agent gets no token.
 			const declinedStart = yield* send(
 				web.issuer,

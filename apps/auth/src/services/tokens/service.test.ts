@@ -34,7 +34,7 @@ it.effect(
 		assert.deepStrictEqual(Option.getOrThrow(yield* Stream.runHead(tokens.apps(USER))), [
 			{
 				agent: 'desktop',
-				client: 'Agent token',
+				client: 'Claude Code',
 				createdAt: 0,
 				device: 'desktop',
 				expiresAt: 9_007_199_254_740_991,

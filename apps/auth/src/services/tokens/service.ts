@@ -386,7 +386,10 @@ export class Tokens extends Context.Service<
 					Array.map(
 						entry =>
 							({
-								client: entry[1].client,
+								client: Option.match(Option.fromUndefinedOr(entry[1].agent), {
+									onNone: () => entry[1].client,
+									onSome: () => 'Claude Code'
+								}),
 								createdAt: entry[1].createdAt,
 								device: entry[1].device,
 								expiresAt: entry[1].credential.expiresAt,
@@ -449,11 +452,11 @@ export class Tokens extends Context.Service<
 					const accessSecret = yield* secret(32)
 					const refreshSecret = yield* secret(32)
 					const now = yield* Clock.currentTimeMillis
-					// An agent token never expires; it is replaced or revoked from Auth's Agents page.
+					// An agent token never expires; it is signed out from its column in the Sign-ins grid.
 					const expiresAt = 9_007_199_254_740_991
 					const grant: Grant = {
 						agent: input.name,
-						client: 'Agent token',
+						client: 'Claude Code',
 						createdAt: now,
 						credential: {
 							_tag: 'App',
@@ -466,7 +469,7 @@ export class Tokens extends Context.Service<
 						},
 						device: input.name,
 						lastActive: now,
-						origin: {userAgent: 'Agent token'},
+						origin: {userAgent: 'Claude Code'},
 						user
 					}
 					yield* change(current => Effect.succeed([undefined, {...current, [family]: grant}] as const))

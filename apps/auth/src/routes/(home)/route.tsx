@@ -211,12 +211,11 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 	)
 }
 
-// Signed-in accounts switch between their sign-ins and agent tokens; admins also see people, with those waiting as a count.
+// Signed-in accounts see their sign-ins; admins also see people, with those waiting as a count.
 function Tabs(props: {admin: boolean; waiting: number}) {
 	const matchRoute = useMatchRoute()
-	const tabs: {count: number; label: string; to: '/' | '/agents' | '/people'}[] = [
+	const tabs: {count: number; label: string; to: '/' | '/people'}[] = [
 		{count: 0, label: 'Sign-ins', to: '/'},
-		{count: 0, label: 'Agents', to: '/agents'},
 		...Boolean.match(props.admin, {
 			onFalse: () => [],
 			onTrue: () => [{count: props.waiting, label: 'People', to: '/people' as const}]
@@ -451,7 +450,6 @@ function Shell() {
 		{
 			items: [
 				{label: 'Sign-ins', run: () => location.assign('/')},
-				{label: 'Agents', run: () => location.assign('/agents')},
 				...Boolean.match(admin, {
 					onFalse: () => [],
 					onTrue: () => [

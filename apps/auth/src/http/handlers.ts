@@ -62,7 +62,9 @@ trap 'rm -f "$jar"' EXIT
 start=$(curl -fsS -c "$jar" -G --data-urlencode "name=$name" --data-urlencode "resource=$MCP" "$AUTH/api/agent/start")
 code=$(printf '%s' "$start" | sed -n 's/.*"code":"\\([^"]*\\)".*/\\1/p')
 [ -n "$code" ] || { echo "Could not start the agent sign-in." >&2; exit 1; }
-echo "Open $AUTH/?code=$code on your phone and approve $name."
+short=$(printf '%s' "$code" | cut -c1-4)-$(printf '%s' "$code" | cut -c5-8)
+echo "Sign-in code: $short"
+echo "Approve it at $AUTH from any signed-in browser or phone."
 token=
 denied=
 i=0

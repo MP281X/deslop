@@ -170,14 +170,6 @@ export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
 	)
 )
 
-// An agent token's row revokes its grant; the toast names the token, not a sign-out.
-export const revokeAgentAtom = RpcClient.runtime.fn((family: string) =>
-	pipe(
-		Effect.flatMap(RpcClient, client => client('auth.disconnect', {family})),
-		failedWith('Cannot revoke the token')
-	)
-)
-
 // One per person, so a failed answer or removal shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
