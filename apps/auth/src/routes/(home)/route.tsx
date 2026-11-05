@@ -36,7 +36,7 @@ import {
 	EmptyMedia,
 	EmptyTitle
 } from '@deslop/components-web/ui/empty'
-import {FieldError, FieldSeparator} from '@deslop/components-web/ui/field'
+import {FieldError} from '@deslop/components-web/ui/field'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
@@ -354,7 +354,6 @@ function SignIn() {
 					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
 					Continue with GitHub
 				</Button>
-				<FieldSeparator>or</FieldSeparator>
 				<Button
 					size="lg"
 					variant="outline"
