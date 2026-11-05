@@ -1,4 +1,4 @@
-import {useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {
 	Array,
@@ -18,13 +18,14 @@ import {
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Copy, Globe, Server, Smartphone, Workflow} from 'lucide-react'
+import {Check, ChevronRight, Copy, Globe, Server, Smartphone, Workflow} from 'lucide-react'
 import {Suspense, useState} from 'react'
 import type {ReactElement} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
@@ -38,7 +39,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {ageOf, arrivalsAtom, durationOf, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
+import {ageOf, arrivalsAtom, copyAtom, durationOf, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
@@ -59,6 +60,17 @@ const STATUS: Record<string, string> = {
 	503: 'Unavailable',
 	504: 'Gateway Timeout'
 }
+
+// The HTTP attributes a failed span's error line already reads, so its details do not repeat them.
+const HTTP_ATTRIBUTES = [
+	'http.request.method',
+	'http.response.status_code',
+	'server.address',
+	'server.port',
+	'url.full',
+	'url.path',
+	'url.scheme'
+] as const
 
 // The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone, a server or CI.
 const DEVICES: Record<Runtime, ReactElement> = {
@@ -118,8 +130,21 @@ function valueOf(value: Schema.Json) {
 	)
 }
 
+// A failed span's own error message, which its details lead with.
+function errorOf(span: Trace['spans'][number]) {
+	return pipe(
+		Option.liftPredicate(span, current => current.status === 2),
+		Option.flatMap(current => Option.fromNullishOr(current.payload['status'])),
+		Option.filter(Predicate.isObject),
+		Option.flatMap(status => Option.fromNullishOr(pipe(Record.get(status, 'message'), Option.getOrUndefined))),
+		Option.filter(String.isString),
+		Option.filter(String.isNonEmpty)
+	)
+}
+
 // What a span says beyond its row: attributes, without anything that only repeats its name, such as code.function, or the status code the error line already carries.
 function attributesOf(span: Trace['spans'][number]) {
+	const failed = Option.isSome(errorOf(span))
 	const attributes = Array.map(
 		Array.filter(
 			Option.getOrElse(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), () => []),
@@ -132,19 +157,8 @@ function attributesOf(span: Trace['spans'][number]) {
 		attributes,
 		attribute =>
 			attribute.value !== span.name &&
+			!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
 			(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
-	)
-}
-
-// A failed span's own error message, which its details lead with.
-function errorOf(span: Trace['spans'][number]) {
-	return pipe(
-		Option.liftPredicate(span, current => current.status === 2),
-		Option.flatMap(current => Option.fromNullishOr(current.payload['status'])),
-		Option.filter(Predicate.isObject),
-		Option.flatMap(status => Option.fromNullishOr(pipe(Record.get(status, 'message'), Option.getOrUndefined))),
-		Option.filter(String.isString),
-		Option.filter(String.isNonEmpty)
 	)
 }
 
@@ -363,6 +377,47 @@ function SpansSkeleton() {
 	)
 }
 
+// A pane's header and rows while the overview loads, so the shell keeps its three columns.
+function PaneSkeleton(props: {className?: string; label: string; rows: number}) {
+	return (
+		<section
+			aria-busy="true"
+			role="status"
+			aria-label={props.label}
+			className={cn('flex min-h-0 flex-col', props.className)}
+		>
+			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<Skeleton className="h-4 w-24" />
+			</header>
+			<div className="p-2">
+				<ItemListSkeleton label={props.label} media rows={props.rows} />
+			</div>
+		</section>
+	)
+}
+
+function TraceSkeleton(props: {className?: string}) {
+	return (
+		<section aria-busy="true" role="status" aria-label="Trace" className={cn('flex min-h-0 flex-col', props.className)}>
+			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				<Skeleton className="h-4 w-32" />
+			</header>
+			<SpansSkeleton />
+		</section>
+	)
+}
+
+function ScopeSkeleton(props: {isMobile: boolean}) {
+	if (props.isMobile) return <PaneSkeleton className="min-h-0 flex-1" label="Operations" rows={8} />
+	return (
+		<div className="grid-cols-scope grid min-h-0 flex-1">
+			<PaneSkeleton className="min-w-0 border-r" label="Operations" rows={8} />
+			<PaneSkeleton className="min-w-0 border-r" label="Traces" rows={6} />
+			<TraceSkeleton className="min-w-0" />
+		</div>
+	)
+}
+
 // An app's mark, name and newest release at the top of its operations.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
@@ -388,7 +443,7 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 				onNone: () => null,
 				onSome: newest => (
 					<span
-						className="text-muted-foreground ml-auto shrink-0 font-mono text-xs tabular-nums"
+						className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums"
 						title={Array.join(
 							Array.map(
 								props.app.versions,
@@ -505,12 +560,22 @@ function OperationsPane(props: {
 	)
 }
 
+// Where it broke: the failing span's name, or its status when that span is the operation itself.
+function failureLabel(failure: NonNullable<OperationTrace['failure']>, operation: string) {
+	if (failure.span !== operation) return failure.span
+	return Option.match(String.match(/StatusCode error \((\d{3})/u)(failure.message), {
+		onNone: () => 'Failed',
+		onSome: parts => parts[1] ?? 'Failed'
+	})
+}
+
 // One trace of the operation: its age, where it broke and its duration; the row selects it.
 function TraceListRow(props: {
 	arrived: boolean
 	active: boolean
 	now: number
 	onSelect: () => void
+	operation: string
 	trace: OperationTrace
 }) {
 	return (
@@ -538,9 +603,9 @@ function TraceListRow(props: {
 						<Badge
 							variant="destructive"
 							className="max-w-32 shrink-0 font-mono"
-							title={`Failed at ${props.trace.failure.span}`}
+							title={`Failed at ${props.trace.failure.span}: ${props.trace.failure.message}`}
 						>
-							<span className="truncate">{props.trace.failure.span}</span>
+							<span className="truncate">{failureLabel(props.trace.failure, props.operation)}</span>
 						</Badge>
 					)}
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
@@ -605,6 +670,7 @@ function TracesPane(props: {
 							arrived={Array.contains(props.arrived, trace.id)}
 							now={props.now}
 							onSelect={() => props.onSelect(trace)}
+							operation={active.operation.name}
 							trace={trace}
 						/>
 					))}
@@ -612,6 +678,28 @@ function TracesPane(props: {
 			</section>
 		)
 	})
+}
+
+// The trace's full id copies from its short form, the button confirming in place.
+function CopyTrace(props: {id: string}) {
+	const [copy, copyText] = useAtom(copyAtom)
+	const copied = AsyncResult.isWaiting(copy)
+	return (
+		<>
+			<Button
+				variant="ghost"
+				size="icon-xs"
+				aria-label={Boolean.match(copied, {onFalse: () => 'Copy trace ID', onTrue: () => 'Copied'})}
+				title="Copy trace ID"
+				onClick={() => copyText(props.id)}
+			>
+				{Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
+			</Button>
+			<span role="status" className="sr-only">
+				{copied && 'Copied'}
+			</span>
+		</>
+	)
 }
 
 // The picked trace: its age, failure and duration, then its spans and the picked span's detail.
@@ -632,21 +720,16 @@ function TracePane(props: {className?: string; now: number; trace?: OperationTra
 				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 			>
 				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-					<span className="text-muted-foreground w-14 shrink-0 font-mono text-xs" title={ageOf(trace.time, props.now)}>
-						{clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(trace.time)), () => props.now))}
-					</span>
-					<span className="min-w-0 flex-1 truncate font-mono text-xs">{trace.id}</span>
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						aria-label="Copy trace ID"
-						title="Copy trace ID"
-						onClick={async () => {
-							await navigator.clipboard.writeText(trace.id)
-						}}
+					<span
+						className="text-muted-foreground w-14 shrink-0 font-mono text-xs"
+						title={clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(trace.time)), () => props.now))}
 					>
-						<Copy />
-					</Button>
+						{ageOf(trace.time, props.now)}
+					</span>
+					<span className="min-w-0 flex-1 truncate font-mono text-xs" title={trace.id}>
+						{String.slice(0, 8)(trace.id)}
+					</span>
+					<CopyTrace id={trace.id} />
 					<span className="shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
 						{durationOf(trace.durationMs)}
 					</span>
@@ -801,11 +884,7 @@ function Home() {
 					Option.match(value, {
 						onNone: () =>
 							Option.match(overviewError, {
-								onNone: () => (
-									<div className="p-4">
-										<Skeleton className="h-64 w-full" />
-									</div>
-								),
+								onNone: () => <ScopeSkeleton isMobile={isMobile} />,
 								onSome: error => <FailureContent error={error} />
 							}),
 						onSome: current => (

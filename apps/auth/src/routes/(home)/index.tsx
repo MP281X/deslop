@@ -8,8 +8,9 @@ import {Check, X} from 'lucide-react'
 import {Suspense} from 'react'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {FieldError} from '@deslop/components-web/ui/field'
+import {Field, FieldDescription, FieldError, FieldTitle} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
+import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 
 import {AppList} from '#lib/components.tsx'
@@ -28,40 +29,60 @@ function Enter(props: {
 }) {
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex flex-col gap-4">
-			<InputOTP
-				id="code"
-				aria-label="Code of a sign-in to approve"
-				maxLength={CODE_LENGTH}
-				value={props.typed}
-				onChange={value => {
-					props.onType(typedCode(value))
-				}}
-				pasteTransformer={typedCode}
-				pattern="^[A-Za-z]+$"
-				inputMode="text"
-				autoFocus
-				autoComplete="off"
-				autoCapitalize="characters"
-				disabled={props.state === 'Checking'}
-				aria-invalid={invalid}
-				aria-describedby="code-error"
-				containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
-			>
-				<InputOTPGroup className="flex-1">
-					{Array.map(Array.range(0, 3), index => (
-						<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1 font-mono text-lg" />
-					))}
-				</InputOTPGroup>
-				<InputOTPSeparator />
-				<InputOTPGroup className="flex-1">
-					{Array.map(Array.range(4, 7), index => (
-						<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1 font-mono text-lg" />
-					))}
-				</InputOTPGroup>
-			</InputOTP>
-			{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
-			{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
+		<section className="flex max-w-xl flex-col gap-4">
+			<Field data-invalid={invalid}>
+				<FieldTitle>Sign-in code</FieldTitle>
+				<InputOTP
+					id="code"
+					aria-label="Code of a sign-in to approve"
+					maxLength={CODE_LENGTH}
+					value={props.typed}
+					onChange={value => {
+						props.onType(typedCode(value))
+					}}
+					pasteTransformer={typedCode}
+					pattern="^[A-Za-z]+$"
+					inputMode="text"
+					autoFocus={new URLSearchParams(location.search).has('code')}
+					autoComplete="off"
+					autoCapitalize="characters"
+					disabled={props.state === 'Checking'}
+					aria-invalid={invalid}
+					aria-describedby="code-description code-error"
+					containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
+				>
+					<InputOTPGroup className="flex-1">
+						{Array.map(Array.range(0, 3), index => (
+							<InputOTPSlot
+								key={index}
+								index={index}
+								aria-invalid={invalid}
+								className="h-11 flex-1 font-mono text-lg"
+							/>
+						))}
+					</InputOTPGroup>
+					<InputOTPSeparator />
+					<InputOTPGroup className="flex-1">
+						{Array.map(Array.range(4, 7), index => (
+							<InputOTPSlot
+								key={index}
+								index={index}
+								aria-invalid={invalid}
+								className="h-11 flex-1 font-mono text-lg"
+							/>
+						))}
+					</InputOTPGroup>
+				</InputOTP>
+				<FieldDescription id="code-description">From the app or device you are approving.</FieldDescription>
+				{props.state === 'Checking' && (
+					<p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
+						<Spinner />
+						Checking…
+					</p>
+				)}
+				{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
+				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
+			</Field>
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (

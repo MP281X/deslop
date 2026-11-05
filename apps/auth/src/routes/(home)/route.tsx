@@ -38,6 +38,7 @@ import {
 	EmptyTitle
 } from '@deslop/components-web/ui/empty'
 import {FieldError, FieldSeparator} from '@deslop/components-web/ui/field'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 
 import {AccountAvatar, AppIcon, AppList, QrCode} from '#lib/components.tsx'
@@ -500,7 +501,7 @@ function Shell() {
 					)
 				}
 			/>
-			<Page className="max-w-xl">
+			<Page>
 				{signingOut && <SigningOut />}
 				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 				{Option.match(account, {
@@ -523,7 +524,8 @@ function HomeLayout() {
 			fallback={
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
-					<Page className="max-w-xl">
+					<Page>
+						<Skeleton className="h-11 w-full max-w-xl" />
 						<ItemListSkeleton label="Apps" media rows={APP_ROWS} />
 					</Page>
 				</>

@@ -2,6 +2,8 @@ import {Array, Clock, Effect, Number, Option, Stream, String, pipe} from 'effect
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
+import {toast} from '@deslop/components-web/ui/toast'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -44,6 +46,20 @@ export const traceAtom = Atom.family((key: string) =>
 
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))
+
+// Copies a trace id; the result waits a moment after, while the button shows it was copied.
+export const copyAtom = Atom.fn((text: string) =>
+	pipe(
+		Effect.tryPromise({
+			catch: cause => AuthError.make({cause, message: 'Cannot copy the trace ID'}),
+			try: () => navigator.clipboard.writeText(text)
+		}),
+		Effect.tapError(failure =>
+			Effect.sync(() => toast.add({description: failure.message, title: 'Cannot copy the trace ID', type: 'error'}))
+		),
+		Effect.andThen(Effect.sleep('1500 millis'))
+	)
+)
 
 // "now", "40s", "12m", "3h" or "2d" since a nanosecond timestamp.
 export function ageOf(time: string, now: number) {

@@ -244,15 +244,28 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 	)
 }
 
-function CursorLabel(input: {flip?: boolean; label: string}) {
+// The pointer stays, the name only where it would not sit over the page's reading column.
+function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 	return (
 		<div className={cn('flex items-center gap-1', input.flip === true && '-translate-x-full flex-row-reverse')}>
 			<MousePointer2 className="size-4 text-(--cursor-color)" />
-			<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
-				{input.label}
-			</span>
+			{Boolean.match(input.show === false, {
+				onFalse: () => (
+					<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
+						{input.label}
+					</span>
+				),
+				onTrue: () => null
+			})}
 		</div>
 	)
+}
+
+// Whether a cursor sits over the centered reading column, where its name would cover the text.
+function overContent(x: number, viewport: {width: number}) {
+	const left = (viewport.width - 768) / 2
+	const right = (viewport.width + 768) / 2
+	return x * viewport.width >= left && x * viewport.width <= right
 }
 
 // Another visitor's cursor glides behind the page towards each position the server reports.
@@ -292,6 +305,7 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 			<CursorLabel
 				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
 				label={input.cursor.name}
+				show={!overContent(input.cursor.x, input.viewport)}
 			/>
 		</div>
 	)
@@ -308,7 +322,11 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 				'--cursor-transform': `translate3d(var(--pointer-x, ${input.cursor.x * input.viewport.width}px), var(--pointer-y, ${input.cursor.y * input.viewport.height}px), 0)`
 			}}
 		>
-			<CursorLabel label="You" />
+			<CursorLabel
+				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
+				label="You"
+				show={!overContent(input.cursor.x, input.viewport)}
+			/>
 		</div>
 	)
 }
@@ -532,7 +550,7 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 					<KbdGroup>
 						<Kbd>1</Kbd>–<Kbd>6</Kbd>
 					</KbdGroup>
-					<span>jump to section</span>
+					<span>1 hero · 2 skills · 3 experience · 4 projects · 5 education · 6 contact</span>
 					<Kbd>r</Kbd>
 					<span>change cursor color</span>
 					<Kbd>?</Kbd>
@@ -553,18 +571,23 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 			<div className="trail-grid pointer-events-none fixed inset-0 z-1 w-screen" />
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
-			{Array.map(portfolio.value.visitors, cursor => {
-				if (cursor.id === identity.id) {
-					return (
-						<div key={cursor.id} className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-							<OwnCursor cursor={cursor} viewport={input.viewport} />
-						</div>
-					)
-				}
-				return <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />
-			})}
+			<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+				<OwnCursor
+					cursor={Option.getOrElse(
+						Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
+						() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5})
+					)}
+					viewport={input.viewport}
+				/>
+			</div>
+			{Array.map(portfolio.value.visitors, cursor =>
+				Boolean.match(cursor.id === identity.id, {
+					onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
+					onTrue: () => null
+				})
+			)}
 
-			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs max-sm:hidden sm:bottom-4 sm:left-4">
+			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs sm:bottom-4 sm:left-4">
 				<span
 					className="size-1.5 rounded-full bg-(--identity-color)"
 					style={{
@@ -624,7 +647,13 @@ function PortfolioRoute() {
 		const target = sections()[index]
 		if (Predicate.isUndefined(target)) return
 
-		target.scrollIntoView({behavior: 'smooth', block: 'start'})
+		target.scrollIntoView({
+			behavior: Boolean.match(window.matchMedia('(prefers-reduced-motion: reduce)').matches, {
+				onFalse: () => 'smooth' as const,
+				onTrue: () => 'auto' as const
+			}),
+			block: 'start'
+		})
 		currentSectionRef.current = index
 	}
 

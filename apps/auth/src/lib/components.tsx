@@ -190,7 +190,11 @@ function ColumnHead(props: {column: Column; now: number}) {
 				{Boolean.match(props.column.pending, {
 					onFalse: () => (
 						<DropdownMenu>
-							<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title={name} aria-label={name} />}>
+							<DropdownMenuTrigger
+								render={
+									<Button variant="ghost" size="icon-sm" className="max-sm:size-11" title={name} aria-label={name} />
+								}
+							>
 								<ClientIcon client={props.column.client} />
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="w-auto min-w-48">
@@ -408,49 +412,59 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 					</Empty>
 				),
 				onNonEmpty: () => (
-					<Table aria-label="Apps and the clients signed in to them">
-						<TableHeader>
-							<TableRow>
-								<TableHead>
-									<span className="sr-only">App</span>
-								</TableHead>
-								{Array.map(columns, column => (
-									<ColumnHead key={column.key} column={column} now={now} />
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{Array.map(rows, row => (
-								<TableRow key={row.origin}>
-									<TableHead scope="row">
-										{Option.match(row.open, {
-											onNone: () => (
-												<span className="flex items-center gap-2 text-sm font-medium">
-													<AppIcon origin={row.origin} />
-													{row.name}
-												</span>
-											),
-											onSome: url => (
-												<a
-													href={url}
-													target="_blank"
-													rel="noreferrer"
-													title={`Open ${row.name}`}
-													className="flex items-center gap-2 text-sm font-medium"
-												>
-													<AppIcon origin={row.origin} />
-													{row.name}
-												</a>
-											)
-										})}
+					<div className="flex flex-col gap-3">
+						<Table aria-label="Apps and the clients signed in to them">
+							<TableHeader>
+								<TableRow>
+									<TableHead className="bg-background sticky left-0 z-10">
+										<span className="sr-only">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
-										<Cell key={column.key} column={column} row={row} />
+										<ColumnHead key={column.key} column={column} now={now} />
 									))}
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+							</TableHeader>
+							<TableBody>
+								{Array.map(rows, row => (
+									<TableRow key={row.origin}>
+										<TableHead scope="row" className="bg-background sticky left-0 z-10">
+											{Option.match(row.open, {
+												onNone: () => (
+													<span className="flex items-center gap-2 text-sm font-medium">
+														<AppIcon origin={row.origin} />
+														{row.name}
+													</span>
+												),
+												onSome: url => (
+													<a
+														href={url}
+														target="_blank"
+														rel="noreferrer"
+														title={`Open ${row.name}`}
+														className="flex items-center gap-2 text-sm font-medium"
+													>
+														<AppIcon origin={row.origin} />
+														{row.name}
+													</a>
+												)
+											})}
+										</TableHead>
+										{Array.map(columns, column => (
+											<Cell key={column.key} column={column} row={row} />
+										))}
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+						<p className="text-muted-foreground flex items-center gap-3 text-xs">
+							<span className="flex items-center gap-1.5">
+								<StatusDot /> signed in
+							</span>
+							<span className="flex items-center gap-1.5">
+								<StatusDot status="off" /> not
+							</span>
+						</p>
+					</div>
 				)
 			})}
 		</section>
