@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as homeRouteRouteImport } from './routes/(home)/route'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
+import { Route as homeAgentsRouteImport } from './routes/(home)/agents'
 import { Route as homePeopleRouteImport } from './routes/(home)/people'
 
 const homeRouteRoute = homeRouteRouteImport.update({
@@ -22,6 +23,11 @@ const homeIndexRoute = homeIndexRouteImport.update({
   path: '/',
   getParentRoute: () => homeRouteRoute,
 } as any)
+const homeAgentsRoute = homeAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => homeRouteRoute,
+} as any)
 const homePeopleRoute = homePeopleRouteImport.update({
   id: '/people',
   path: '/people',
@@ -29,25 +35,28 @@ const homePeopleRoute = homePeopleRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/agents': typeof homeAgentsRoute
   '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesByTo {
+  '/agents': typeof homeAgentsRoute
   '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(home)': typeof homeRouteRouteWithChildren
+  '/(home)/agents': typeof homeAgentsRoute
   '/(home)/people': typeof homePeopleRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/people' | '/'
+  fullPaths: '/agents' | '/people' | '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/people' | '/'
-  id: '__root__' | '/(home)' | '/(home)/people' | '/(home)/'
+  to: '/agents' | '/people' | '/'
+  id: '__root__' | '/(home)' | '/(home)/agents' | '/(home)/people' | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -70,6 +79,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof homeIndexRouteImport
       parentRoute: typeof homeRouteRoute
     }
+    '/(home)/agents': {
+      id: '/(home)/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof homeAgentsRouteImport
+      parentRoute: typeof homeRouteRoute
+    }
     '/(home)/people': {
       id: '/(home)/people'
       path: '/people'
@@ -81,11 +97,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface homeRouteRouteChildren {
+  homeAgentsRoute: typeof homeAgentsRoute
   homePeopleRoute: typeof homePeopleRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 const homeRouteRouteChildren: homeRouteRouteChildren = {
+  homeAgentsRoute: homeAgentsRoute,
   homePeopleRoute: homePeopleRoute,
   homeIndexRoute: homeIndexRoute,
 }

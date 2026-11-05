@@ -212,25 +212,23 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 	)
 }
 
-// Admins switch between sign-ins and people in the app bar; people waiting for access show as a count.
-function Tabs() {
+// Signed-in accounts switch between their sign-ins and agent tokens; admins also see people, with those waiting as a count.
+function Tabs(props: {admin: boolean; waiting: number}) {
 	const matchRoute = useMatchRoute()
-	return Array.map(
-		[
-			{count: 0, label: 'Sign-ins', to: '/'},
-			{
-				count: Array.countBy(useAtomSuspense(peopleAtom).value, person => person.role === 'Waiting'),
-				label: 'People',
-				to: '/people'
-			}
-		] as const,
-		tab => (
-			<AppBarTab key={tab.to} active={matchRoute({to: tab.to}) !== false} render={<Link to={tab.to} />}>
-				{tab.label}
-				{tab.count > 0 && <Badge>{tab.count}</Badge>}
-			</AppBarTab>
-		)
-	)
+	const tabs: {count: number; label: string; to: '/' | '/agents' | '/people'}[] = [
+		{count: 0, label: 'Sign-ins', to: '/'},
+		{count: 0, label: 'Agents', to: '/agents'},
+		...Boolean.match(props.admin, {
+			onFalse: () => [],
+			onTrue: () => [{count: props.waiting, label: 'People', to: '/people' as const}]
+		})
+	]
+	return Array.map(tabs, tab => (
+		<AppBarTab key={tab.to} active={matchRoute({to: tab.to}) !== false} render={<Link to={tab.to} />}>
+			{tab.label}
+			{tab.count > 0 && <Badge>{tab.count}</Badge>}
+		</AppBarTab>
+	))
 }
 
 function Signed(props: {account: SignedAccount}) {
@@ -477,6 +475,7 @@ function Shell() {
 		{
 			items: [
 				{label: 'Sign-ins', run: () => location.assign('/')},
+				{label: 'Agents', run: () => location.assign('/agents')},
 				...Boolean.match(admin, {
 					onFalse: () => [],
 					onTrue: () => [
@@ -505,13 +504,7 @@ function Shell() {
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
 				palette={Option.match(account, {onNone: () => undefined, onSome: () => groups})}
-				tabs={
-					Option.exists(account, signed => signed.role === 'Admin') && (
-						<Suspense fallback={null}>
-							<Tabs />
-						</Suspense>
-					)
-				}
+				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} waiting={waiting} />}
 			/>
 			<Page>
 				{signingOut && <SigningOut />}

@@ -31,7 +31,7 @@ import type {SignedAccount} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {returnable} from '#services/tokens/lib/utils.ts'
-import type {SignedInApp} from '#services/tokens/schema.ts'
+import type {AgentParams, SignedInApp} from '#services/tokens/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
@@ -152,6 +152,11 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
+// The token is returned once, for the page to show and the user to copy; it is never stored in the browser.
+export const createAgentAtom = RpcClient.runtime.fn((input: AgentParams) =>
+	Effect.flatMap(RpcClient, client => client('auth.createAgent', input))
+)
+
 // An action from the account menu or a column's menu has no row to answer under, so it says how it failed in a toast (DESIGN.md, Errors).
 function failedWith(title: string) {
 	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
@@ -167,6 +172,14 @@ export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
 			Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
 		),
 		failedWith('Cannot sign out')
+	)
+)
+
+// An agent token's row revokes its grant; the toast names the token, not a sign-out.
+export const revokeAgentAtom = RpcClient.runtime.fn((family: string) =>
+	pipe(
+		Effect.flatMap(RpcClient, client => client('auth.disconnect', {family})),
+		failedWith('Cannot revoke the token')
 	)
 )
 
@@ -292,6 +305,11 @@ export function newest(apps: readonly SignedInApp[]) {
 
 export function dayLabel(time: number) {
 	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({day: 'numeric', month: 'short'}))
+}
+
+// A date with its year, for when an agent token expires.
+export function dateLabel(time: number) {
+	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({day: 'numeric', month: 'short', year: 'numeric'}))
 }
 
 // Accounts are keyed "provider:id"; GitHub serves every account's picture by its numeric id.

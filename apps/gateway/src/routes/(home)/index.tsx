@@ -38,7 +38,7 @@ import {Input} from '@deslop/components-web/ui/input'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {addAtom, connectUrl, copyAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
@@ -445,7 +445,11 @@ function ServerPane(props: {className?: string; server?: ConnectionInfo; showNam
 					<section aria-label="Gateway endpoint" className="border-t p-3">
 						<h3 className="text-sm font-semibold">Gateway endpoint</h3>
 						<p className="text-muted-foreground mt-1 text-xs">
-							Point an agent at this URL; every connected tool is offered.
+							Point an agent at this URL; every connected tool is offered. An agent on another machine signs in with{' '}
+							<a href={`${AUTH_URL}/agents`} className="text-primary hover:underline">
+								an agent token
+							</a>
+							.
 						</p>
 						<code className="bg-muted mt-2 block min-w-0 truncate rounded-md px-2 py-1.5 font-mono text-xs select-text">
 							{ENDPOINT}

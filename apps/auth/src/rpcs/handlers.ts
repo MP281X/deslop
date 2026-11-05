@@ -36,6 +36,9 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'auth.apps': () => Stream.unwrap(Effect.map(CurrentUser, tokens.apps)),
 			'auth.catalog': () => apps.catalog,
+			'auth.createAgent': Effect.fnUntraced(function* (input) {
+				return yield* tokens.createAgent(yield* CurrentUser, input)
+			}),
 			'auth.disconnect': Effect.fnUntraced(function* (input) {
 				return yield* tokens.disconnect(input.family, yield* CurrentUser)
 			}),

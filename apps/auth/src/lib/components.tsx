@@ -362,7 +362,8 @@ function columnsOf(
 // Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const catalog = useAtomSuspense(catalogAtom).value
-	const signIns = useAtomSuspense(appsAtom).value
+	// Agent tokens are managed on their own page, not as columns of the sign-ins grid.
+	const signIns = Array.filter(useAtomSuspense(appsAtom).value, signIn => signIn.agent === undefined)
 	const now = useAtomSuspense(minuteAtom).value
 	const rows: Row[] = [
 		...Array.map(catalog, app => ({
