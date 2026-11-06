@@ -12,6 +12,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('notes.search', {
 		error: NotesError,
 		payload: Schema.Struct({query: Schema.String}),
+		stream: true,
 		success: Schema.Array(NoteId)
 	}),
 	Rpc.make('notes.capture', {error: NotesError, payload: Capture, success: Note}),

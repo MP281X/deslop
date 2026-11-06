@@ -6,6 +6,7 @@ import {
 	Context,
 	DateTime,
 	Effect,
+	Equivalence,
 	FiberMap,
 	FileSystem,
 	HashSet,
@@ -94,7 +95,7 @@ export class Notes extends Context.Service<
 		readonly list: Effect.Effect<Note[]>
 		readonly regenerate: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
-		readonly search: (input: {query: string}) => Effect.Effect<Note['id'][]>
+		readonly search: (input: {query: string}) => Stream.Stream<readonly Note['id'][]>
 		readonly tags: Effect.Effect<TagEntry[]>
 	}
 >()('@deslop/stash/services/notes/service/Notes') {
@@ -577,9 +578,12 @@ export class Notes extends Context.Service<
 						yield* pipe(fs.remove(path.join(images, input.id), {force: true}), storageFailed)
 						yield* pipe(fs.remove(path.join(files, input.id), {force: true}), storageFailed)
 					}),
-					search: Effect.fn('Notes.search')(function* (input) {
-						return Array.map(findNotes(yield* SubscriptionRef.get(state), input.query), note => note.id)
-					}),
+					search: input =>
+						pipe(
+							SubscriptionRef.changes(state),
+							Stream.map(all => Array.map(findNotes(all, input.query), note => note.id)),
+							Stream.changesWith(Array.makeEquivalence(Equivalence.String))
+						),
 					tags: tagEntries
 				})
 			})

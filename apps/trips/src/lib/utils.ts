@@ -98,7 +98,7 @@ const apply = listReducer(byStart)
 // The copy on the iPhone opens the trip at the gate even without a network.
 export const bookingsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.succeed(Array.empty<Booking>())
+		if (!session.signedIn(get)) return Stream.never
 		return cachedList(
 			get,
 			bookingsFile,

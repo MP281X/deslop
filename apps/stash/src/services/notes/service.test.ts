@@ -14,6 +14,7 @@ import {
 	Option,
 	PlatformError,
 	Predicate,
+	Queue,
 	Ref,
 	Schema,
 	Stream,
@@ -107,6 +108,35 @@ function counting(calls: Ref.Ref<number>) {
 }
 
 it.layer(NodeServices.layer)('Notes', test => {
+	test.effect(
+		'pushes matching full-text search results through organization and removal without changing the query',
+		Effect.fnUntraced(function* () {
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					organize: () =>
+						Effect.succeed({
+							body: 'A secret ingredient.',
+							definitions: [],
+							screenText: '',
+							summary: '',
+							tags: [],
+							title: 'Soup',
+							topics: ''
+						})
+				}),
+				sources: recipe
+			})
+			const updates = yield* Queue.unbounded<readonly string[]>()
+			yield* Effect.forkChild(Stream.runForEach(notes.search({query: 'secret'}), ids => Queue.offer(updates, ids)))
+			assert.deepStrictEqual(yield* Queue.take(updates), [])
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
+			assert.deepStrictEqual(yield* Queue.take(updates), [IDS[0]])
+			yield* notes.remove({id: IDS[0]})
+			assert.deepStrictEqual(yield* Queue.take(updates), [])
+		})
+	)
+
 	test.effect(
 		'saves the original first, tags it once, and keeps the result across a restart',
 		Effect.fnUntraced(function* () {

@@ -1,4 +1,4 @@
-import {Array, Effect, FiberHandle, Option, Schema, Stream, pipe} from 'effect'
+import {Effect, FiberHandle, Option, Schema, Stream, pipe} from 'effect'
 
 import {createModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -39,10 +39,8 @@ export function cachedList<S extends Schema.Top, E, R>(
 	live: Stream.Stream<Schema.$Array<S>['Type'], E, R>
 ) {
 	const json = Schema.fromJsonString(Schema.Array(item))
-	// The empty list shown while the session loads is not a list on screen.
-	const shown = Option.exists(
-		get.self<AsyncResult.AsyncResult<Schema.$Array<S>['Type']>>(),
-		result => AsyncResult.isSuccess(result) && Array.isReadonlyArrayNonEmpty(result.value)
+	const shown = Option.isSome(
+		Option.flatMap(get.self<AsyncResult.AsyncResult<Schema.$Array<S>['Type']>>(), AsyncResult.value)
 	)
 	return Stream.concat(
 		// Only a cold start reads the copy, since a list on screen is newer; without one the app waits for the server rather than open on nothing.
@@ -54,9 +52,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 			Effect.flatMap(Schema.decodeEffect(json)),
 			Effect.option,
 			Stream.fromEffect,
-			Stream.flatMap(cached =>
-				Stream.fromIterable(Option.toArray(Option.filter(cached, Array.isReadonlyArrayNonEmpty)))
-			),
+			Stream.flatMap(cached => Stream.fromIterable(Option.toArray(cached))),
 			Stream.when(Effect.succeed(!shown))
 		),
 		Stream.unwrap(

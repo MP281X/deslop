@@ -113,7 +113,7 @@ const apply = listReducer(newestFirst)
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.succeed(Array.empty<NoteItem>())
+		if (!session.signedIn(get)) return Stream.never
 		return cachedList(
 			get,
 			listFile,
@@ -135,14 +135,16 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 
 export const queryAtom = Atom.make('')
 
-// One atom for every query keeps the previous results on screen; each keystroke restarts the wait, so the server searches once typing pauses.
+// Debounce typing once, then the server keeps the same full-text query current as notes change.
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
-	if (String.isEmpty(query)) return Effect.succeedNone
+	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
 	return pipe(
 		Effect.sleep('250 millis'),
-		Effect.andThen(Effect.flatMap(RpcClient, client => client('notes.search', {query}))),
-		Effect.map(ids => Option.some(HashSet.fromIterable(ids)))
+		Effect.andThen(Effect.map(RpcClient, client => client('notes.search', {query}))),
+		Stream.unwrap,
+		Stream.map(ids => Option.some(HashSet.fromIterable(ids))),
+		session.renewing
 	)
 })
 

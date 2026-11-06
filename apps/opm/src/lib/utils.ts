@@ -46,7 +46,7 @@ function apply(chapters: ChapterList, event: ChaptersEvent) {
 // The copy on the iPhone opens the app at once; without one the app waits for the server rather than open on nothing.
 export const chaptersAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.succeed(Array.empty<ChapterItem>())
+		if (!session.signedIn(get)) return Stream.never
 		// A page turn changes one chapter, and the copy is written once the reader pauses.
 		return cachedList(
 			get,
