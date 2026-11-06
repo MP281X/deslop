@@ -37,12 +37,12 @@
 		"@tanstack/router-plugin": "latest",
 		"@typeonce/effect-machine": "latest",
 		"@vitejs/plugin-react": "latest",
-		"expo": "^58.0.23",
-		"expo-auth-session": "^58.0.17",
-		"expo-constants": "^58.0.15",
-		"expo-secure-store": "^58.0.2",
-		"expo-updates": "^58.0.21",
-		"oxc-transform-react": "^0.156.0",
+		"expo": "^58.0",
+		"expo-auth-session": "^58.0",
+		"expo-constants": "^58.0",
+		"expo-secure-store": "^58.0",
+		"expo-updates": "^58.0",
+		"oxc-transform-react": "^0.156",
 		"react-native": "0.88.1"
 	}
 }

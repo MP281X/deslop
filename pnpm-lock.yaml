@@ -333,7 +333,7 @@ importers:
   apps/opm:
     dependencies:
       expo:
-        specifier: ^58.0.23
+        specifier: ^58.0
         version: 58.0.23(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.27)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       react:
         specifier: latest
@@ -355,7 +355,7 @@ importers:
         specifier: latest
         version: 4.1.2(effect@4.1.2)(redis@6.3.1)
       '@expo/ui':
-        specifier: ^58.0.27
+        specifier: ^58.0
         version: 58.0.27(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       cheerio:
         specifier: latest
@@ -364,25 +364,25 @@ importers:
         specifier: latest
         version: 4.1.2
       expo-auth-session:
-        specifier: ^58.0.17
+        specifier: ^58.0
         version: 58.0.17(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-constants:
-        specifier: ^58.0.15
+        specifier: ^58.0
         version: 58.0.15(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(supports-color@8.1.1)
       expo-file-system:
-        specifier: ^58.0.13
+        specifier: ^58.0
         version: 58.0.13(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-notifications:
-        specifier: ^58.1.8
+        specifier: ^58.1
         version: 58.1.8(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-secure-store:
-        specifier: ^58.0.2
+        specifier: ^58.0
         version: 58.0.2(expo@58.0.23)
       expo-updates:
-        specifier: ^58.0.21
+        specifier: ^58.0
         version: 58.0.21(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-web-browser:
-        specifier: ^58.0.7
+        specifier: ^58.0
         version: 58.0.7(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
 
   apps/portfolio:
@@ -493,7 +493,7 @@ importers:
   apps/stash:
     dependencies:
       expo:
-        specifier: ^58.0.23
+        specifier: ^58.0
         version: 58.0.23(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.27)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       react:
         specifier: latest
@@ -524,7 +524,7 @@ importers:
         specifier: latest
         version: 4.1.2(effect@4.1.2)(redis@6.3.1)
       '@expo/ui':
-        specifier: ^58.0.27
+        specifier: ^58.0
         version: 58.0.27(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
@@ -542,28 +542,28 @@ importers:
         specifier: latest
         version: 4.1.2
       expo-auth-session:
-        specifier: ^58.0.17
+        specifier: ^58.0
         version: 58.0.17(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-clipboard:
-        specifier: ^58.0.4
+        specifier: ^58.0
         version: 58.0.4(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       expo-crypto:
-        specifier: ^58.0.7
+        specifier: ^58.0
         version: 58.0.7(expo@58.0.23)
       expo-file-system:
-        specifier: ^58.0.13
+        specifier: ^58.0
         version: 58.0.13(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-updates:
-        specifier: ^58.0.21
+        specifier: ^58.0
         version: 58.0.21(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-web-browser:
-        specifier: ^58.0.7
+        specifier: ^58.0
         version: 58.0.7(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
 
   apps/trips:
     dependencies:
       expo:
-        specifier: ^58.0.23
+        specifier: ^58.0
         version: 58.0.23(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.27)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       react:
         specifier: latest
@@ -588,7 +588,7 @@ importers:
         specifier: latest
         version: 4.1.2(effect@4.1.2)(redis@6.3.1)
       '@expo/ui':
-        specifier: ^58.0.27
+        specifier: ^58.0
         version: 58.0.27(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
@@ -600,37 +600,37 @@ importers:
         specifier: latest
         version: 4.1.2
       expo-application:
-        specifier: ^58.1.2
+        specifier: ^58.1
         version: 58.1.2(expo@58.0.23)
       expo-auth-session:
-        specifier: ^58.0.17
+        specifier: ^58.0
         version: 58.0.17(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-calendar:
-        specifier: ^58.0.6
+        specifier: ^58.0
         version: 58.0.6(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-clipboard:
-        specifier: ^58.0.4
+        specifier: ^58.0
         version: 58.0.4(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       expo-file-system:
-        specifier: ^58.0.13
+        specifier: ^58.0
         version: 58.0.13(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-location:
-        specifier: ^58.0.20
+        specifier: ^58.0
         version: 58.0.20(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-notifications:
-        specifier: ^58.1.8
+        specifier: ^58.1
         version: 58.1.8(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-secure-store:
-        specifier: ^58.0.2
+        specifier: ^58.0
         version: 58.0.2(expo@58.0.23)
       expo-updates:
-        specifier: ^58.0.21
+        specifier: ^58.0
         version: 58.0.21(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-web-browser:
-        specifier: ^58.0.7
+        specifier: ^58.0
         version: 58.0.7(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       expo-widgets:
-        specifier: ^58.0.27
+        specifier: ^58.0
         version: 58.0.27(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
 
   packages/components-mobile:
@@ -639,7 +639,7 @@ importers:
         specifier: latest
         version: 4.1.2(effect@4.1.2)(react@19.3.1)(scheduler@0.27.0)
       '@expo/ui':
-        specifier: ^58.0.27
+        specifier: ^58.0
         version: 58.0.27(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
       '@typeonce/effect-machine':
         specifier: latest
@@ -651,10 +651,10 @@ importers:
         specifier: latest
         version: 4.1.2
       expo-asset:
-        specifier: ^58.0.20
+        specifier: ^58.0
         version: 58.0.20(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-file-system:
-        specifier: ^58.0.13
+        specifier: ^58.0
         version: 58.0.13(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
       react:
         specifier: ^19
@@ -667,7 +667,7 @@ importers:
         specifier: latest
         version: 4.1.2(effect@4.1.2)(redis@6.3.1)
       expo:
-        specifier: ^58.0.23
+        specifier: ^58.0
         version: 58.0.23(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.27)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       react-native:
         specifier: 0.88.1
@@ -780,22 +780,22 @@ importers:
         specifier: latest
         version: 6.2.1(@voidzero-dev/vite-plus-core@1.4.0(@types/node@26.6.6)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))(babel-plugin-react-compiler@1.0.0)(oxc-transform-react@0.156.0)
       expo:
-        specifier: ^58.0.23
+        specifier: ^58.0
         version: 58.0.23(@babel/core@7.29.13(supports-color@8.1.1))(expo-widgets@58.0.27)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-auth-session:
-        specifier: ^58.0.17
+        specifier: ^58.0
         version: 58.0.17(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       expo-constants:
-        specifier: ^58.0.15
+        specifier: ^58.0
         version: 58.0.15(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(supports-color@8.1.1)
       expo-secure-store:
-        specifier: ^58.0.2
+        specifier: ^58.0
         version: 58.0.2(expo@58.0.23)
       expo-updates:
-        specifier: ^58.0.21
+        specifier: ^58.0
         version: 58.0.21(expo@58.0.23)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       oxc-transform-react:
-        specifier: ^0.156.0
+        specifier: ^0.156
         version: 0.156.0
       react-native:
         specifier: 0.88.1
