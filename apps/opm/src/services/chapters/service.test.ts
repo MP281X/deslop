@@ -9,9 +9,11 @@ import {
 	Fiber,
 	FileSystem,
 	Layer,
+	Logger,
 	Option,
 	Queue,
 	Ref,
+	Schema,
 	Stream,
 	String,
 	pipe
@@ -27,6 +29,73 @@ import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
 it.layer(NodeServices.layer)(test => {
+	test.effect(
+		'keeps a chapter in the outbox until Expo returns exactly one ticket per device',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const store = yield* openStore(directory)
+			yield* store.save([
+				Chapter.make({
+					notified: false,
+					number: 1,
+					pages: ['https://example.test/page.png'],
+					postedAt: 0,
+					series: 'manga',
+					source: '',
+					title: ''
+				})
+			])
+			yield* store.addDevice('ExpoPushToken[device00000001]')
+			yield* store.addDevice('ExpoPushToken[device00000002]')
+			const count = yield* Ref.make(0)
+			const rounds = yield* Queue.unbounded<void>()
+			yield* Layer.build(
+				pipe(
+					Chapters.layer(directory),
+					Layer.provide(
+						Layer.succeed(
+							HttpClient.HttpClient,
+							HttpClient.make(request =>
+								Effect.gen(function* () {
+									if (request.url === 'https://exp.host/--/api/v2/push/send') {
+										return HttpClientResponse.fromWeb(
+											request,
+											Response.json({data: Array.makeBy(yield* Ref.get(count), () => ({status: 'ok'}))})
+										)
+									}
+									return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+								})
+							)
+						)
+					),
+					Layer.provide(
+						Logger.layer([
+							Logger.make(options => {
+								for (const message of Option.getOrElse(
+									Schema.decodeUnknownOption(Schema.Array(Schema.Unknown))(options.message),
+									() => []
+								)) {
+									if (
+										message === 'Chapter manga:1 was not announced yet' ||
+										message === 'Announced chapter manga:1 to 2 iPhones'
+									) {
+										Queue.offerUnsafe(rounds, undefined)
+									}
+								}
+							})
+						])
+					)
+				)
+			)
+			for (const received of [0, 1, 3, 2]) {
+				yield* Ref.set(count, received)
+				if (received !== 0) yield* TestClock.adjust('6 hours')
+				yield* Queue.take(rounds)
+				assert.strictEqual((yield* store.load)[0]?.notified, received === 2)
+			}
+		})
+	)
+
 	test.effect(
 		'backfills the webcomic beside existing manga and scopes releases, revisions and reading by series',
 		Effect.fnUntraced(function* () {

@@ -245,6 +245,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const rejectReady = yield* Queue.make<true>()
 	const rejectContinue = yield* Queue.make<true>()
 	const toolNames = yield* Ref.make(['search'])
+	const providerName = yield* Ref.make('legacy-provider')
 	const challengeMethods = yield* Ref.make(Option.some(['S256']))
 	const metadataUnavailable = yield* Ref.make(false)
 	const stall = yield* Ref.make(false)
@@ -309,7 +310,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 								serverInfo: {
 									// A page shows only HTTPS and inline image icons.
 									icons: [{src: 'https://example.com/icon.png', theme: 'dark'}, {src: 'javascript:alert(1)'}],
-									name: 'legacy-provider',
+									name: yield* Ref.get(providerName),
 									version: '1'
 								}
 							}
@@ -536,6 +537,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		grants,
 		metadataUnavailable,
 		pauseReject,
+		providerName,
 		ready,
 		registrations,
 		rejectAccess,
@@ -890,8 +892,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'adds arbitrary MCP URLs without a catalog and isolates removed and re-added servers',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
+			yield* Ref.set(gateway.providerName, '   ')
 			assert.deepStrictEqual(yield* listServers(gateway.web), [])
 			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			assert.strictEqual(publicServer.name, 'Public')
 			assert.strictEqual(publicServer.status, 'Connected')
 			assert.deepStrictEqual(publicServer.tools, [{description: 'Search example', name: 'search'}])
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)

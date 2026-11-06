@@ -346,7 +346,12 @@ export class Connections extends Context.Service<
 					icons: serverIcons(anonymous.getServerVersion()),
 					link: {_tag: 'Connected'},
 					mode: 'public',
-					name: anonymous.getServerVersion()?.name ?? initial.name,
+					name: pipe(
+						Option.fromUndefinedOr(anonymous.getServerVersion()?.name),
+						Option.map(String.trim),
+						Option.filter(String.isNonEmpty),
+						Option.getOrElse(() => initial.name)
+					),
 					toolDescriptions: Record.fromEntries(
 						Array.flatMap(tools.tools, tool =>
 							Option.match(Option.fromUndefinedOr(tool.description), {
@@ -363,7 +368,12 @@ export class Connections extends Context.Service<
 				...initial,
 				link: {_tag: 'Disconnected'},
 				mode: 'oauth',
-				name: discovery.resourceMetadata?.resource_name ?? initial.name,
+				name: pipe(
+					Option.fromUndefinedOr(discovery.resourceMetadata?.resource_name),
+					Option.map(String.trim),
+					Option.filter(String.isNonEmpty),
+					Option.getOrElse(() => initial.name)
+				),
 				oauth: {
 					client: yield* register(metadata, initial.id),
 					metadata,

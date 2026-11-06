@@ -260,11 +260,6 @@ export class Gateway extends Context.Service<
 					const upstreamName = tool.name
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
 					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
-					if (Option.isNone(String.match(/^[a-zA-Z0-9_-]{1,64}$/u)(name))) {
-						return yield* AuthError.make({
-							message: `${server.name} has a tool name that cannot be namespaced: ${tool.name}`
-						})
-					}
 					if ((yield* Ref.get(installed))[name]?.fingerprint !== `${server.generation}:${fingerprint}`) {
 						yield* registry.addTool({
 							annotations: Context.empty(),

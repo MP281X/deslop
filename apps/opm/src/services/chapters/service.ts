@@ -18,6 +18,7 @@ import {
 	Record,
 	Result,
 	Schedule,
+	Schema,
 	Stream,
 	String,
 	Struct,
@@ -67,10 +68,6 @@ const ARCHIVE_POSTS = Array.map(
 
 const newestFirst = Order.flip(byNumber)
 
-function failed(message: string) {
-	return Effect.mapError((cause: unknown) => ChaptersError.make({cause, message}))
-}
-
 function indexUrl(series: Series) {
 	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
 }
@@ -117,7 +114,7 @@ export class Chapters extends Context.Service<
 			this,
 			Effect.gen(function* () {
 				const client = yield* HttpClient.HttpClient
-				const exit = yield* pipe(Config.option(Config.String('OPM_PROXY')), failed('OPM_PROXY is unreadable.'))
+				const exit = yield* Config.option(Config.String('OPM_PROXY'))
 				const store = yield* openStore(directory)
 				const state = yield* SubscriptionRef.make(Array.sort(yield* store.load, newestFirst))
 				function series(url: string) {
@@ -341,7 +338,15 @@ export class Chapters extends Context.Service<
 						),
 						Effect.flatMap(request => client.execute(request)),
 						Effect.flatMap(HttpClientResponse.filterStatusOk),
-						Effect.flatMap(HttpClientResponse.schemaBodyJson(PushTickets)),
+						Effect.flatMap(
+							HttpClientResponse.schemaBodyJson(
+								PushTickets.check(
+									Schema.makeFilter(received => received.data.length === tokens.length, {
+										message: 'Expo must return exactly one ticket per message'
+									})
+								)
+							)
+						),
 						Effect.timeout('20 seconds')
 					)
 					// Expo answers with one ticket per message; an uninstalled app's token never works again.
@@ -446,5 +451,11 @@ export class Chapters extends Context.Service<
 }
 
 export const layerChapters = Layer.unwrap(
-	pipe(ServerRuntime.dataDirectory, failed('The chapters folder could not be read.'), Effect.map(Chapters.layer))
+	pipe(
+		ServerRuntime.dataDirectory,
+		Effect.mapBoth({
+			onFailure: cause => ChaptersError.make({cause, message: 'The chapters folder could not be read.'}),
+			onSuccess: Chapters.layer
+		})
+	)
 )
