@@ -1,6 +1,6 @@
 import {Schema, pipe} from 'effect'
 
-// A visitor's cursor and trail take one of the apps' hues from DESIGN.md, so the page stays in the same palette.
+// A visitor's cursor and trail stay in theme.css's palette.
 export type PortfolioColor = typeof PortfolioColor.Type
 export const PortfolioColor = Schema.Literals(['#da702c', '#d0a215', '#3aa99f', '#4385be', '#8b7ec8', '#ce5d97'])
 

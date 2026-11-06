@@ -9,12 +9,4 @@ npm install --global @deslop/<app>
 <app> service status | update | uninstall
 ```
 
-| Flag       | Env        | Use                                                    |
-| ---------- | ---------- | ------------------------------------------------------ |
-| `--url`    | `APP_URL`  | The address people reach it at, such as its HTTPS name |
-| `--auth`   | `AUTH_URL` | Deslop Auth; without it there is no sign-in            |
-| `--traces` | `OTEL_URL` | Scope, to send traces and logs to                      |
-| `--port`   | `PORT`     | Listen port; each app has its own default              |
-| `--host`   | `HOST`     | Listen address; `127.0.0.1` by default                 |
-
-`<app> --help` lists the app's own flags. Secrets go in `~/.deslop/<app>.env`, and data lives in `~/.deslop/<app>/`.
+`<app> --help` lists flags, environment names in brackets and defaults, including the app's own settings. Secrets go in `~/.deslop/<app>.env`, and data lives in `~/.deslop/<app>/`.

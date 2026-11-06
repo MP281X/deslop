@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Option, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, String, pipe} from 'effect'
 
 const ROOT = `${import.meta.dirname}/../../..`
 
@@ -72,38 +72,6 @@ it.layer(NodeServices.layer)(test => {
 			assert.includeMembers(
 				Array.map(declarations(light), entry => entry[0]),
 				hues
-			)
-		})
-	)
-
-	test.effect(
-		"each web app's primary is its hue in DESIGN.md's table",
-		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const table = Array.map(
-				Array.fromIterable(
-					String.matchAll(/^\| ([a-z]+) +\| ([a-z]+) +\|/gmu)(yield* fs.readFileString(`${ROOT}/DESIGN.md`))
-				),
-				match => ({app: match[1] ?? '', hue: match[2] ?? ''})
-			)
-			const web = yield* Effect.filter(table, row => fs.exists(`${ROOT}/apps/${row.app}/src/routes/styles.css`))
-			assert.isNotEmpty(web)
-			assert.deepStrictEqual(
-				yield* Effect.forEach(
-					web,
-					row =>
-						Effect.map(fs.readFileString(`${ROOT}/apps/${row.app}/src/routes/styles.css`), css => ({
-							app: row.app,
-							// An app without its own --primary takes the theme's orange.
-							hue: pipe(
-								String.match(/--primary: var\(--([a-z]+)\)/u)(css),
-								Option.flatMap(match => Option.fromUndefinedOr(match[1])),
-								Option.getOrElse(() => 'orange')
-							)
-						})),
-					{concurrency: 'unbounded'}
-				),
-				web
 			)
 		})
 	)

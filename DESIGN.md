@@ -9,23 +9,11 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 ## Colors
 
 - **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
-- **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
+- **One hue per app**: the one action per view, focus, selection and anything live. Its only owner is `--primary` in the app's `styles.css` on the web, or `primary` in `lib/utils.ts` on iOS. A new app takes an unused hue, or orange.
 - **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
 - **Deploy machine identity.** Dev uses blue, desktop purple, consistently in device icons, charts, swatches and live dots. Its stacked charts are the one place a hue steps by opacity: the heaviest app strongest, fading by size.
 - **Scope side identity.** Where a span ran: server blue, web magenta, iOS green, CI purple, consistently in an operation's device icon, a span's bar and the side named where a trace crosses over.
 - Portfolio visitor cursors and Signal team identities may use the palette's other hues; team colour never fills message cards.
-
-| App       | Hue     |
-| --------- | ------- |
-| portfolio | orange  |
-| opm       | orange  |
-| auth      | orange  |
-| deploy    | blue    |
-| gateway   | purple  |
-| scope     | cyan    |
-| signal    | magenta |
-| stash     | yellow  |
-| trips     | blue    |
 
 ## Typography
 
