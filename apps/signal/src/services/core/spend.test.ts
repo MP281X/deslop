@@ -1,6 +1,20 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, Exit, Layer, MutableList, Option, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Context,
+	Effect,
+	Exit,
+	Layer,
+	MutableList,
+	Option,
+	Record,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -271,7 +285,10 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			)
 			assert.isTrue(Exit.hasFails(yield* Effect.exit(core.choose(9, request(10, [1])))))
 			const group = Option.getOrThrow(
-				Array.findFirst(Record.values((yield* core.usage).groups), value => value.kind === 'local')
+				Array.findFirst(
+					Record.values((yield* Effect.flatMap(Stream.runHead(core.usage), Effect.fromOption)).groups),
+					value => value.kind === 'local'
+				)
 			)
 			assert.strictEqual(group.calls, 1)
 			assert.strictEqual(group.values.cost.reported, 1)

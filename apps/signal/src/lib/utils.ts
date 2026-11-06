@@ -55,8 +55,22 @@ export const runStateAtom = Atom.keepAlive(
 export const usageAtom = Atom.setIdleTTL(
 	RpcClient.runtime.atom(
 		pipe(
-			Stream.tick('30 seconds'),
-			Stream.mapEffect(() => Effect.flatMap(RpcClient, client => client('signal.usage', undefined)))
+			RpcClient,
+			Effect.map(client => client('signal.usage', undefined)),
+			Stream.unwrap,
+			WebRuntime.reconnecting
+		)
+	),
+	0
+)
+
+const changesAtom = Atom.setIdleTTL(
+	RpcClient.runtime.atom(
+		pipe(
+			RpcClient,
+			Effect.map(client => client('signal.changes', undefined)),
+			Stream.unwrap,
+			WebRuntime.reconnecting
 		)
 	),
 	0
@@ -226,11 +240,8 @@ export const historyAtom = Atom.family((key: string) => {
 	)
 	if (before > 0) return RpcClient.runtime.atom(request)
 	return Atom.setIdleTTL(
-		RpcClient.runtime.atom(
-			pipe(
-				Stream.tick('5 seconds'),
-				Stream.mapEffect(() => request)
-			)
+		RpcClient.runtime.atom(get =>
+			pipe(get.result(changesAtom), Effect.andThen(request), Stream.fromEffect, WebRuntime.reconnecting)
 		),
 		0
 	)
@@ -266,11 +277,8 @@ export const cursorAtom = Atom.make(get => {
 
 // Event navigation freezes the spectator, not the live log or its paging cursors.
 export const threadFeedAtom = Atom.setIdleTTL(
-	RpcClient.runtime.atom(
-		pipe(
-			Stream.tick('5 seconds'),
-			Stream.mapEffect(() => requestFeed(-1))
-		)
+	RpcClient.runtime.atom(get =>
+		pipe(get.result(changesAtom), Effect.andThen(requestFeed(-1)), Stream.fromEffect, WebRuntime.reconnecting)
 	),
 	0
 )

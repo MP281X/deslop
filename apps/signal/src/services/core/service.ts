@@ -16,8 +16,10 @@ import {
 	Record,
 	Schema,
 	Semaphore,
+	Stream,
 	String,
 	Struct,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -94,7 +96,7 @@ export class Core extends Context.Service<
 			discovered: boolean
 		) => Effect.Effect<Thought, GameError>
 		readonly choose: (seed: number, request: LocalDecision) => Effect.Effect<LocalChoice, GameError>
-		readonly usage: Effect.Effect<UsageLedger, GameError>
+		readonly usage: Stream.Stream<UsageLedger, GameError>
 		readonly recall: (seed: number, team: number, before: number, offset?: number) => Effect.Effect<string, GameError>
 	}
 >()('@deslop/signal/services/core/service/Core') {
@@ -118,36 +120,40 @@ export class Core extends Context.Service<
 				})
 				const ledger = KeyValueStore.toSchemaStore(kv, UsageLedger)
 				const accounting = yield* Semaphore.make(1)
+				const revision = yield* SubscriptionRef.make(0)
 				const account = Effect.fn('Core.account')(function* (
 					kind: UsageLedger['groups'][string]['kind'],
 					model: string,
 					values?: Usage
 				) {
 					yield* accounting.withPermit(
-						Effect.gen(function* () {
-							const previous: UsageLedger = Option.getOrElse(yield* ledger.get('usage'), () => ({groups: {}}))
-							const key = `${mode}:${kind}:${model}`
-							const group = previous.groups[key]
-							yield* ledger.set('usage', {
-								groups: {
-									...previous.groups,
-									[key]: {
-										calls:
-											(group?.calls ?? 0) + Boolean.match(values === undefined, {onFalse: () => 0, onTrue: () => 1}),
-										kind,
-										mode,
-										model,
-										values: Record.map(Usage.fields, (_schema, field) => ({
-											reported:
-												(group?.values[field].reported ?? 0) +
-												Boolean.match(values?.[field] !== undefined, {onFalse: () => 0, onTrue: () => 1}),
-											total: (group?.values[field].total ?? 0) + (values?.[field] ?? 0)
-										}))
-									}
-								},
-								since: previous.since ?? (yield* Clock.currentTimeMillis)
+						Effect.uninterruptible(
+							Effect.gen(function* () {
+								const previous: UsageLedger = Option.getOrElse(yield* ledger.get('usage'), () => ({groups: {}}))
+								const key = `${mode}:${kind}:${model}`
+								const group = previous.groups[key]
+								yield* ledger.set('usage', {
+									groups: {
+										...previous.groups,
+										[key]: {
+											calls:
+												(group?.calls ?? 0) + Boolean.match(values === undefined, {onFalse: () => 0, onTrue: () => 1}),
+											kind,
+											mode,
+											model,
+											values: Record.map(Usage.fields, (_schema, field) => ({
+												reported:
+													(group?.values[field].reported ?? 0) +
+													Boolean.match(values?.[field] !== undefined, {onFalse: () => 0, onTrue: () => 1}),
+												total: (group?.values[field].total ?? 0) + (values?.[field] ?? 0)
+											}))
+										}
+									},
+									since: previous.since ?? (yield* Clock.currentTimeMillis)
+								})
+								yield* SubscriptionRef.update(revision, value => value + 1)
 							})
-						})
+						)
 					)
 				})
 
@@ -566,11 +572,16 @@ export class Core extends Context.Service<
 						Effect.mapError(cause => GameError.make({cause, message: 'The conversation archive could not be read.'}))
 					),
 					usage: pipe(
-						ledger.get('usage'),
-						Effect.mapBoth({
-							onFailure: cause => GameError.make({cause, message: 'Provider usage could not be read.'}),
-							onSuccess: found => Option.getOrElse(found, () => ({groups: {}}))
-						})
+						SubscriptionRef.changes(revision),
+						Stream.mapEffect(() =>
+							pipe(
+								ledger.get('usage'),
+								Effect.mapBoth({
+									onFailure: cause => GameError.make({cause, message: 'Provider usage could not be read.'}),
+									onSuccess: found => Option.getOrElse(found, () => ({groups: {}}))
+								})
+							)
+						)
 					)
 				})
 			})

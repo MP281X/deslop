@@ -73,7 +73,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 								choose: () => Effect.never,
 								decide: () => Effect.never,
 								recall: () => Effect.succeed(''),
-								usage: Effect.succeed({groups: {}})
+								usage: Stream.succeed({groups: {}})
 							})
 						)
 					)
@@ -131,7 +131,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 										return Effect.never
 									},
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),
@@ -140,6 +140,15 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				),
 				Game
 			)
+			const updates = yield* Queue.unbounded<readonly Entry[]>()
+			yield* Effect.forkScoped(
+				pipe(
+					game.revisions,
+					Stream.mapEffect(() => game.thread(1, Option.some(4))),
+					Stream.runForEach(value => Queue.offer(updates, value))
+				)
+			)
+			assert.deepStrictEqual(yield* Queue.take(updates), [])
 			yield* Effect.ensuring(
 				Effect.gen(function* () {
 					yield* game.control(true)
@@ -163,6 +172,18 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					assert.strictEqual(applied.status, 'done')
 					assert.include(applied.text, 'Completed during pause.')
 					assert.strictEqual(applied.commands[0]?.command._tag, 'Catalog')
+					const pushed = Option.getOrThrow(
+						yield* Stream.runHead(
+							pipe(
+								Stream.fromQueue(updates),
+								Stream.filter(rows => Array.some(rows, row => row.round === 3 && row.status === 'done'))
+							)
+						)
+					)
+					assert.deepStrictEqual(
+						Array.findFirst(pushed, row => row.round === 3),
+						Option.some(applied)
+					)
 				}),
 				Deferred.succeed(release, undefined)
 			)
@@ -201,7 +222,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									choose: () => Effect.die('No model calls allowed'),
 									decide: () => Effect.die('No model calls allowed'),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						)
@@ -240,7 +261,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 						}
 					}),
 					recall: () => Effect.succeed(''),
-					usage: Effect.succeed({groups: {}})
+					usage: Stream.succeed({groups: {}})
 				})
 			)
 			const layer = pipe(
@@ -294,7 +315,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 							choose: () => Effect.never,
 							decide: () => Effect.never,
 							recall: () => Effect.succeed(''),
-							usage: Effect.succeed({groups: {}})
+							usage: Stream.succeed({groups: {}})
 						})
 					)
 				),
@@ -344,7 +365,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									}),
 									decide: () => Effect.succeed({commands: [], invalid: [], text: ''}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						)
@@ -426,7 +447,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 											return {commands: [], invalid: [], text: ''}
 										}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),
@@ -482,7 +503,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 							return {commands: [], invalid: [], text: ''}
 						}),
 					recall: () => Effect.succeed(''),
-					usage: Effect.succeed({groups: {}})
+					usage: Stream.succeed({groups: {}})
 				})
 			)
 			const game = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
@@ -554,7 +575,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 										return yield* GameError.make({message: 'Offline provider failure.'})
 									}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),
@@ -667,7 +688,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									choose: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
 									decide: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						)
@@ -720,7 +741,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			const strategy = pipe(
 				Layer.succeed(
 					Core,
-					Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Effect.succeed({groups: {}})})
+					Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Stream.succeed({groups: {}})})
 				),
 				Layer.merge(Layer.succeed(Random.Random, {nextDoubleUnsafe: () => 42 / 2_000_000_001, nextIntUnsafe: () => 42}))
 			)
@@ -797,7 +818,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									choose: () => Effect.fail(GameError.make({message: 'No local inference in this fixture.'})),
 									decide: () => Effect.succeed({commands: [], invalid: [], text: 'A considered response.'}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),

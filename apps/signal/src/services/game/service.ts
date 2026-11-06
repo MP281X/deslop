@@ -21,6 +21,7 @@ import {
 	Semaphore,
 	Stream,
 	String,
+	SubscriptionRef,
 	Trie,
 	pipe
 } from 'effect'
@@ -120,6 +121,7 @@ export class Game extends Context.Service<
 	Game,
 	{
 		readonly status: Stream.Stream<RunState>
+		readonly revisions: Stream.Stream<number>
 		readonly control: (running: boolean) => Effect.Effect<RunState, GameError>
 		readonly join: Stream.Stream<Frame>
 		// The world as it was from a tick on, played at a multiple of real time (0 holds still), up to the live tick.
@@ -127,7 +129,7 @@ export class Game extends Context.Service<
 		// A team's thread, newest last: the rounds before `before`, or the latest.
 		readonly thread: (team: number, before: Option.Option<number>) => Effect.Effect<Entry[], GameError>
 		readonly timeline: Effect.Effect<Timeline>
-		readonly usage: Effect.Effect<UsageLedger, GameError>
+		readonly usage: Stream.Stream<UsageLedger, GameError>
 		readonly history: (
 			actor: number | 'all',
 			before: Option.Option<number>,
@@ -140,6 +142,7 @@ export class Game extends Context.Service<
 		Effect.gen(function* () {
 			const initiallyRunning = (yield* pipe(Config.String('SIGNAL_RUN'), Config.withDefault('paused'))) === 'running'
 			const kv = yield* KeyValueStore.KeyValueStore
+			const revision = yield* SubscriptionRef.make(0)
 			const worlds = KeyValueStore.toSchemaStore(kv, Saved)
 			const entries = KeyValueStore.toSchemaStore(kv, Entry)
 			const journals = KeyValueStore.toSchemaStore(kv, Journal)
@@ -352,6 +355,7 @@ export class Game extends Context.Service<
 					// Every canonical page and reference is durable before the one visible frontier advances.
 					yield* indexes.set('history/index', index)
 					MutableRef.set(historyIndex, index)
+					if (index['@through'] !== committed['@through']) yield* SubscriptionRef.update(revision, value => value + 1)
 					if (Array.isArrayNonEmpty(pending)) sim.acknowledge(Option.getOrThrow(Array.last(pending)).id)
 				},
 				Effect.mapError(cause =>
@@ -385,6 +389,7 @@ export class Game extends Context.Service<
 					Array.takeRight([...Option.getOrElse(MutableHashMap.get(recent, entry.team), () => []), entry], 60)
 				)
 				MutableRef.update(threadKeys, Trie.insert(keyOf(entry.team, entry.round), true))
+				yield* SubscriptionRef.update(revision, value => value + 1)
 			})
 
 			// The world as a boundary leaves it, for replays to start from; the one six hours (720 rounds) older goes unless it is one of every forty kept for good.
@@ -762,6 +767,7 @@ export class Game extends Context.Service<
 									const anchor = Math.floor(sim.tick() / ROUND / CHECKPOINT) * CHECKPOINT
 									if (Option.isNone(yield* worlds.get(replayKey('checkpoint', anchor)))) yield* checkpoint(anchor)
 									MutableRef.set(prepared, true)
+									yield* SubscriptionRef.update(revision, value => value + 1)
 								}
 								MutableRef.set(started, {at: yield* Clock.currentTimeMillis, tick: sim.tick()})
 								yield* process.send({_tag: 'Run'})
@@ -987,6 +993,7 @@ export class Game extends Context.Service<
 							)
 						})
 					),
+				revisions: SubscriptionRef.changes(revision),
 				status: pipe(
 					process.changes,
 					Stream.mapEffect(() => state),
