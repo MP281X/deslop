@@ -86,6 +86,7 @@ export function CommandPalette(props: {
 		props.onOpenChange(false)
 		item.run()
 	}
+	const apps = Array.filter(APPS, app => app.name !== props.current)
 	// cmdk keeps an item's first keywords, so the filter reads this render's text instead: stable value, current search.
 	const searchable: Record<string, string> = Record.fromEntries([
 		...Array.flatMap(props.groups, group =>
@@ -98,18 +99,19 @@ export function CommandPalette(props: {
 					] as const
 			)
 		),
-		...Array.map(APPS, app => [`Deslop:${app.name}`, `${app.name} ${new URL(app.url).hostname}`] as const)
+		...Array.map(apps, app => [`Deslop:${app.name}`, `${app.name} ${new URL(app.url).hostname}`] as const)
 	])
 	return (
 		<Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogPortal>
 				<DialogOverlay />
-				<Dialog.Popup className="bg-popover text-popover-foreground ring-foreground/10 fixed inset-x-4 top-1/3 z-50 mx-auto overflow-hidden rounded-lg ring-1 outline-none sm:max-w-lg">
+				<Dialog.Popup className="bg-popover text-popover-foreground ring-foreground/10 fixed inset-x-4 top-1/2 z-50 mx-auto flex max-h-dvh -translate-y-1/2 flex-col overflow-hidden rounded-lg ring-1 outline-none sm:max-w-lg">
 					<DialogHeader className="sr-only">
 						<DialogTitle>Search or run a command</DialogTitle>
 						<DialogDescription>Jump to a record, run an action, or open another Deslop tool.</DialogDescription>
 					</DialogHeader>
 					<Command
+						className="min-h-0"
 						filter={(value, search) =>
 							defaultFilter(
 								Option.getOrElse(Record.get(searchable, value), () => value),
@@ -118,7 +120,7 @@ export function CommandPalette(props: {
 						}
 					>
 						<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
-						<CommandList className="max-h-96">
+						<CommandList className="min-h-0">
 							<CommandEmpty>No results.</CommandEmpty>
 							{Array.map(
 								Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
@@ -137,12 +139,9 @@ export function CommandPalette(props: {
 							)}
 							<CommandSeparator />
 							<CommandGroup heading="Other apps">
-								{Array.map(APPS, app => {
+								{Array.map(apps, app => {
 									const item = {
-										detail: `${new URL(app.url).hostname}${Boolean.match(app.name === props.current, {
-											onFalse: () => '',
-											onTrue: () => ' · current'
-										})}`,
+										detail: new URL(app.url).hostname,
 										icon: <AppIcon name={app.name} url={app.url} />,
 										keywords: new URL(app.url).hostname,
 										label: app.name,

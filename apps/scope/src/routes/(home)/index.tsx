@@ -19,7 +19,7 @@ import {
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Check, ChevronRight, Copy, Globe, Server, Smartphone, Workflow} from 'lucide-react'
-import {Suspense, useState} from 'react'
+import {Suspense, useState, useSyncExternalStore} from 'react'
 import type {ReactElement} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -30,7 +30,6 @@ import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
-import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
@@ -46,6 +45,8 @@ import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#service
 
 // The side an operation starts on, in words, so a search or a row can name it.
 const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
+
+const COMPACT_LAYOUT = '(width < 80rem)'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -475,7 +476,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 					<span className="sr-only">typical </span>
 					{durationOf(props.operation.p50Ms)}
 				</span>
-				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
+				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 			</Button>
 		</div>
 	)
@@ -502,7 +503,7 @@ function OperationsPane(props: {
 					<span className="text-muted-foreground w-8 text-right text-xs">Failed</span>
 					<span className="text-muted-foreground w-10 text-right text-xs max-lg:hidden">Runs</span>
 					<span className="text-muted-foreground w-12 text-right text-xs">Typical</span>
-					<span className="size-3.5 sm:hidden" />
+					<span className="size-3.5 xl:hidden" />
 				</span>
 			</header>
 			{Array.match(props.overview.apps, {
@@ -600,7 +601,7 @@ function TraceListRow(props: {
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
-					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
+					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 				</Button>
 			</div>
 		</div>
@@ -635,7 +636,7 @@ function TracesPane(props: {
 						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
 						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 					})}
-					<span className="min-w-0 flex-1 truncate text-sm font-semibold max-sm:hidden">{active.operation.name}</span>
+					<span className="min-w-0 flex-1 truncate text-sm font-semibold max-xl:hidden">{active.operation.name}</span>
 					<span className="flex shrink-0 items-center gap-2 max-sm:ml-auto">
 						{active.operation.failures > 0 && (
 							<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
@@ -653,7 +654,7 @@ function TracesPane(props: {
 					<span className="min-w-0 flex-1">Trace</span>
 					<span className="w-32 text-right">Failure</span>
 					<span className="w-14 text-right">Duration</span>
-					<span className="size-3.5 sm:hidden" />
+					<span className="size-3.5 xl:hidden" />
 				</div>
 				<div role="list">
 					{Array.map(active.operation.traces, trace => (
@@ -759,7 +760,16 @@ function findOperation(overview: Overview, key: OperationKey) {
 }
 
 function Home() {
-	const isMobile = useIsMobile()
+	// Three panes need readable trace and failure columns, not merely a non-phone viewport.
+	const isMobile = useSyncExternalStore(
+		onChange => {
+			const query = window.matchMedia(COMPACT_LAYOUT)
+			query.addEventListener('change', onChange)
+			return () => query.removeEventListener('change', onChange)
+		},
+		() => window.matchMedia(COMPACT_LAYOUT).matches,
+		() => false
+	)
 	const [pane, setPane] = useState<Pane>('operations')
 	const [selection, setSelection] = useState<OperationKey>()
 	const [selectedTrace, setSelectedTrace] = useState<OperationTrace>()
