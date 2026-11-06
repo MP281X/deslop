@@ -2,7 +2,7 @@ import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
 
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {AppWindow, Globe, Network, Server} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
@@ -370,14 +370,15 @@ function columnsOf(
 	]
 }
 
+const appListAtom = Atom.make(get =>
+	AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)})
+)
+
 // Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
-	const catalog = useAtomSuspense(catalogAtom).value
-	// Every sign-in is a column: an app's client, or Claude Code on an agent's machine.
-	const signIns = useAtomSuspense(appsAtom).value
-	const now = useAtomSuspense(minuteAtom).value
+	const data = useAtomSuspense(appListAtom).value
 	const rows: Row[] = [
-		...Array.map(catalog, app => ({
+		...Array.map(data.catalog, app => ({
 			name: app.name,
 			open: Option.some(app.open),
 			origin: app.origin,
@@ -385,11 +386,11 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		})),
 		...pipe(
 			[
-				...Array.flatMap(signIns, signIn => appOrigins(signIn.resources)),
+				...Array.flatMap(data.signIns, signIn => appOrigins(signIn.resources)),
 				...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
 			],
 			Array.dedupe,
-			Array.filter(origin => origin !== 'browser' && !Array.some(catalog, app => app.origin === origin)),
+			Array.filter(origin => origin !== 'browser' && !Array.some(data.catalog, app => app.origin === origin)),
 			Array.sort(String.Order),
 			Array.map(origin => ({
 				name: Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin),
@@ -400,7 +401,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		)
 	]
 	// Narrowing the apps narrows the clients to those holding one, so no column stands empty.
-	const columns = Array.filter(columnsOf(props.pending, signIns, catalog), column =>
+	const columns = Array.filter(columnsOf(props.pending, data.signIns, data.catalog), column =>
 		Array.some(rows, row => holds(column, row))
 	)
 	return (
@@ -432,7 +433,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 										<span className="text-muted-foreground text-xs">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
-										<ColumnHead key={column.key} column={column} now={now} />
+										<ColumnHead key={column.key} column={column} now={data.now} />
 									))}
 								</TableRow>
 							</TableHeader>
