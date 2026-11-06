@@ -46,7 +46,6 @@ const create = Command.make(
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template', input.kind),
 			rewrite: flow(
-				String.replaceAll('@deslop/template-app', `@deslop/${input.name}`),
 				String.replaceAll('template-app', input.name),
 				String.replaceAll('"port": 5100', `"port": ${Array.reduce(ports, 5100, Number.max) + 1}`)
 			),
