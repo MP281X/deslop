@@ -373,7 +373,33 @@ function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
 }
 
 // A kept trace as the operation it ran, and the app, side (server, web or iOS) and release that started it.
-type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace; version: string}
+type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
+
+function spanAttributes(entry: Entry) {
+	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(Attribute))(entry.payload['attributes']), () => [])
+}
+
+function markedStream(entry: Entry) {
+	return Array.some(
+		spanAttributes(entry),
+		attribute => attribute.key === 'rpc.stream' && attribute.value['boolValue'] === true
+	)
+}
+
+// A subscription's lifetime is not action latency. A nested subscription does not turn its owning action into one.
+function subscription(root: Entry, spans: readonly Entry[]) {
+	if (markedStream(root)) return true
+	const method = resourceString({attributes: spanAttributes(root)}, 'rpc.method')
+	return Array.some(
+		spans,
+		span =>
+			parentId(span) === root.spanId &&
+			((root.name === 'POST /mcp' && String.includes('/subscriptions/listen')(span.name)) ||
+				(method !== '' &&
+					method === resourceString({attributes: spanAttributes(span)}, 'rpc.method') &&
+					markedStream(span)))
+	)
+}
 
 function failureCount(group: readonly Traced[]) {
 	return Array.countBy(group, item => item.trace.failure !== undefined)
@@ -410,6 +436,7 @@ function traced(records: readonly Entry[], now: number) {
 					60_000
 			if (!settled) return Option.none()
 			const root = rootOf(spans)
+			if (subscription(root, spans)) return Option.none()
 			return Option.some({
 				app: appName(root.service),
 				name: root.name,
@@ -433,8 +460,7 @@ function traced(records: readonly Entry[], now: number) {
 					}),
 					id: root.traceId,
 					time: timing.time
-				},
-				version: versionOf(root)
+				}
 			} satisfies Traced)
 		}
 	)
@@ -515,23 +541,7 @@ export function overview(entries: readonly Entry[], keep: number, now: number) {
 					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => group.length)
 				)
 			),
-			group => ({
-				name: Array.headNonEmpty(group).app,
-				operations: operationsOf(group, keep),
-				// Server and web ship together, an iOS app on its own, so an app can run more than one release at once.
-				versions: Array.sort(
-					Array.map(
-						Record.toEntries(
-							Array.groupBy(
-								Array.filter(group, item => item.version !== ''),
-								item => item.version
-							)
-						),
-						entry => ({runtimes: Array.dedupe(Array.map(entry[1], item => item.runtime)), version: entry[0]})
-					),
-					Order.mapInput(Order.flip(byRelease), (release: {version: string}) => release.version)
-				)
-			})
+			group => ({name: Array.headNonEmpty(group).app, operations: operationsOf(group, keep)})
 		)
 	} satisfies Overview
 }

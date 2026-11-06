@@ -140,6 +140,8 @@ export const Entry = Schema.Struct({
 	id: Schema.NonEmptyString,
 	name: Schema.String,
 	payload: Schema.JsonObject,
+	// Absent on the immediately previous release's stored entries.
+	receivedAt: Schema.optionalKey(Schema.Natural),
 	resource: Resource,
 	resourceSchemaUrl: Schema.String,
 	scope: Resource,
@@ -247,13 +249,7 @@ export const Operation = Schema.Struct({
 // Each app with its server, web and iOS operations together, named as `appName` reads a service, and the release each side runs.
 export type Overview = typeof Overview.Type
 export const Overview = Schema.Struct({
-	apps: Schema.Array(
-		Schema.Struct({
-			name: Schema.String,
-			operations: Schema.Array(Operation),
-			versions: Schema.Array(Schema.Struct({runtimes: Schema.Array(Runtime), version: Schema.String}))
-		})
-	)
+	apps: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
 })
 
 export type Stats = typeof Stats.Type

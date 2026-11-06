@@ -242,7 +242,19 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 // Binary RPC frames unless an app picks JSON; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
 export const layerProtocol = Layer.mergeAll(
 	RpcSerialization.layerSchemaBinary(),
-	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))
+	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10)),
+	Layer.effect(
+		HttpMiddleware.TracerDisabledWhen,
+		Effect.map(HttpMiddleware.TracerDisabledWhen, previous => request => {
+			const path = Array.headNonEmpty(String.split(request.url, '?'))
+			return (
+				previous(request) ||
+				(path === RPC_PATH && String.toLowerCase(request.headers['upgrade'] ?? '') === 'websocket') ||
+				String.startsWith('/assets/')(path) ||
+				Array.contains(['/icon', '/favicon.ico', '/apple-touch-icon.png', MANIFEST_PATH], path)
+			)
+		})
+	)
 )
 
 // Traces and logs go to Scope when `--traces` names it, under the package name its web and iOS clients also use.

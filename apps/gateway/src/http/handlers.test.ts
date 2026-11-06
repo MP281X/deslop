@@ -246,6 +246,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const rejectContinue = yield* Queue.make<true>()
 	const toolNames = yield* Ref.make(['search'])
 	const challengeMethods = yield* Ref.make(Option.some(['S256']))
+	const metadataUnavailable = yield* Ref.make(false)
 	const stall = yield* Ref.make(false)
 	const stallReady = yield* Queue.make<true>()
 	const upstreamRequests = MutableList.make<{url: string; method: string; authorization: string; body: unknown}>()
@@ -264,6 +265,9 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's FetchLike contract requires a Promise<Response>.
 		return Effect.runPromise(
 			Effect.gen(function* () {
+				if (yield* Ref.get(metadataUnavailable)) {
+					return new Response(undefined, {status: 503})
+				}
 				const metadata = upstreamHttpResponse(request, Option.getOrUndefined(yield* Ref.get(challengeMethods)))
 				if (metadata !== undefined) return metadata
 				if (request.method === 'DELETE') {
@@ -530,6 +534,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	return {
 		challengeMethods,
 		grants,
+		metadataUnavailable,
 		pauseReject,
 		ready,
 		registrations,
@@ -659,6 +664,52 @@ const modern = Effect.fnUntraced(function* (
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
+	test.effect(
+		'keeps live authorizations when unknown callbacks arrive and exchanges a state only once',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			const start = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
+			const state = new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''
+			for (const index of Array.range(0, 64)) {
+				const unknown = `unknown-${index}`
+				yield* send(
+					gateway.web,
+					`/oauth/callback/mobbin?state=${unknown}&code=approved&iss=${encodeURIComponent(PROVIDERS.mobbin.issuer)}`,
+					{headers: {cookie: `${SESSION}; __Host-mcp-${unknown}=${unknown}`}}
+				)
+			}
+			const callback = `/oauth/callback/mobbin?state=${state}&code=approved&iss=${encodeURIComponent(PROVIDERS.mobbin.issuer)}`
+			yield* Effect.all(
+				[
+					send(gateway.web, callback, {headers: {cookie: `${SESSION}; ${cookie(start)}`}}),
+					send(gateway.web, callback, {headers: {cookie: `${SESSION}; ${cookie(start)}`}})
+				],
+				{concurrency: 'unbounded'}
+			)
+			assert.strictEqual(gateway.grants.length, 1)
+		})
+	)
+	test.effect(
+		'shows fresh discovery failures on the connection and recovers on the next attempt',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* Ref.set(gateway.metadataUnavailable, true)
+			const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
+			assert.strictEqual(response.status, 302)
+			assert.strictEqual(response.headers.get('location'), '/')
+			assert.isNotEmpty((yield* listServers(gateway.web))[0]?.error ?? '')
+			assert.strictEqual(gateway.registrations.length, 1)
+			assert.strictEqual(gateway.grants.length, 0)
+			yield* Ref.set(gateway.metadataUnavailable, false)
+			assert.include(
+				(yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})).headers.get('location') ??
+					'',
+				'code_challenge_method=S256'
+			)
+		})
+	)
 	test.effect(
 		'refuses authorization unless the provider currently advertises S256 PKCE',
 		Effect.fnUntraced(function* () {

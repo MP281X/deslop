@@ -121,6 +121,7 @@ export class Connections extends Context.Service<
 			lookup: () => Effect.fail(AuthError.make({message: 'The connection expired; connect it again'})),
 			timeToLive: '10 minutes'
 		})
+		const callbacks = yield* Semaphore.make(1)
 		const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
 		// Every change saves the next connections before memory and the live views see them.
 		const change = Effect.fnUntraced(function* <E>(
@@ -437,78 +438,79 @@ export class Connections extends Context.Service<
 				Effect.timeout('20 seconds'),
 				failed('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
 			),
-			begin: Effect.fn('Connections.begin')(
-				function* (id: ServerId, user: User) {
-					yield* admin(user)
-					const connection = yield* get(id)
-					const oauth = connection.oauth
-					if (oauth === undefined) {
-						yield* update(id, connection.generation, found => ({
-							...Struct.omit(found, ['error']),
-							link: {_tag: 'Connected'}
-						}))
-						return {state: Option.none<string>(), url: '/'}
-					}
-					// Check the provider's current capabilities before authorization, including connections saved by the previous release.
-					const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
-						yield* Effect.tryPromise({
+			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
+				yield* admin(user)
+				const connection = yield* get(id)
+				const oauth = connection.oauth
+				if (oauth === undefined) {
+					yield* update(id, connection.generation, found => ({
+						...Struct.omit(found, ['error']),
+						link: {_tag: 'Connected'}
+					}))
+					return {state: Option.none<string>(), url: '/'}
+				}
+				return yield* pipe(
+					Effect.gen(function* () {
+						// Check the provider's current capabilities before authorization, including connections saved by the previous release.
+						const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
+							yield* Effect.tryPromise({
+								catch: cause => UpstreamError.make({cause}),
+								try: signal =>
+									discoverAuthorizationServerMetadata(oauth.metadata.issuer, {
+										fetchFn: (target, init) =>
+											fetch(target, {
+												...init,
+												signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+											})
+									})
+							})
+						)
+						if (!validMetadata(metadata) || !Array.contains(metadata.code_challenge_methods_supported ?? [], 'S256')) {
+							return yield* AuthError.make({
+								message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'
+							})
+						}
+						// Each connection registers anew, so a client registered for an earlier callback is never reused; the row keeps its client until the new one has tokens.
+						const registered = yield* register(metadata, id)
+						const stateId = yield* nonce
+						const authorization = yield* Effect.tryPromise({
 							catch: cause => UpstreamError.make({cause}),
-							try: signal =>
-								discoverAuthorizationServerMetadata(oauth.metadata.issuer, {
-									fetchFn: (target, init) =>
-										fetch(target, {
-											...init,
-											signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+							try: () =>
+								startAuthorization(metadata.issuer, {
+									clientInformation: {
+										client_id: Match.valueTags(registered, {
+											Document: () => clientInfo.client_id,
+											Registered: found => found.clientId
 										})
+									},
+									metadata: {
+										...metadata,
+										code_challenge_methods_supported: [...(metadata.code_challenge_methods_supported ?? [])],
+										response_types_supported: [...(metadata.response_types_supported ?? [])]
+									},
+									redirectUrl: Match.valueTags(registered, {
+										Document: () => callback,
+										Registered: () => `${callback}/${id}`
+									}),
+									resource: connection.url,
+									scope: oauth.scope,
+									state: stateId
 								})
 						})
-					)
-					if (!validMetadata(metadata) || !Array.contains(metadata.code_challenge_methods_supported ?? [], 'S256')) {
-						return yield* fail(
-							connection,
-							AuthError.make({message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'})
-						)
-					}
-					// Each connection registers anew, so a client registered for an earlier callback is never reused; the row keeps its client until the new one has tokens.
-					const registered = yield* register(metadata, id)
-					const stateId = yield* nonce
-					const authorization = yield* Effect.tryPromise({
-						catch: cause => UpstreamError.make({cause}),
-						try: () =>
-							startAuthorization(metadata.issuer, {
-								clientInformation: {
-									client_id: Match.valueTags(registered, {
-										Document: () => clientInfo.client_id,
-										Registered: found => found.clientId
-									})
-								},
-								metadata: {
-									...metadata,
-									code_challenge_methods_supported: [...(metadata.code_challenge_methods_supported ?? [])],
-									response_types_supported: [...(metadata.response_types_supported ?? [])]
-								},
-								redirectUrl: Match.valueTags(registered, {
-									Document: () => callback,
-									Registered: () => `${callback}/${id}`
-								}),
-								resource: connection.url,
-								scope: oauth.scope,
-								state: stateId
-							})
-					})
-					yield* Cache.set(pending, stateId, {
-						client: registered,
-						generation: connection.generation,
-						id,
-						metadata,
-						userId: user.id,
-						verifier: authorization.codeVerifier
-					})
-					return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
-				},
-				Effect.timeout('20 seconds'),
-				failed('Cannot connect this MCP')
-			),
+						yield* Cache.set(pending, stateId, {
+							client: registered,
+							generation: connection.generation,
+							id,
+							metadata,
+							userId: user.id,
+							verifier: authorization.codeVerifier
+						})
+						return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
+					}),
+					Effect.timeout('20 seconds'),
+					Effect.catch(cause => fail(connection, cause))
+				)
+			}, failed('Cannot connect this MCP')),
 			called: id => Effect.asVoid(PubSub.publish(traffic, id)),
 			calls: user => Stream.unwrap(Effect.as(admin(user), Stream.fromPubSub(traffic))),
 			complete: Effect.fn('Connections.complete')(function* (
@@ -518,8 +520,18 @@ export class Connections extends Context.Service<
 			) {
 				yield* admin(user)
 				// The flow is taken once, whatever the provider answered.
-				const flow = yield* Cache.get(pending, params.state)
-				yield* Cache.invalidate(pending, params.state)
+				const flow = yield* pipe(
+					Cache.getOption(pending, params.state),
+					Effect.tap(() => Cache.invalidate(pending, params.state)),
+					Effect.flatMap(
+						Option.match({
+							onNone: () => AuthError.make({message: 'The connection expired; connect it again'}),
+							onSome: Effect.succeed
+						})
+					),
+					Effect.uninterruptible,
+					Semaphore.withPermit(callbacks)
+				)
 				const connection = yield* get(flow.id)
 				if (flow.userId !== user.id || flow.generation !== connection.generation || connection.oauth === undefined) {
 					return yield* AuthError.make({message: 'The connection expired; connect it again'})

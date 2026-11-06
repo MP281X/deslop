@@ -39,10 +39,13 @@ export const arrivalsAtom = Atom.make(get => {
 	}
 })
 
-// One trace, keyed by its id and length, so a trace that grows while open is read again.
-export function traceAtom(id: string, size: number) {
-	return RpcClient.query('scope.trace', {id}, {serializationKey: `${id}:${size}`})
-}
+// An open trace follows arrivals, including late children and logs that do not change its duration.
+export const traceAtom = Atom.family((id: string) =>
+	RpcClient.runtime.atom(get => {
+		get(overviewAtom)
+		return Effect.flatMap(RpcClient, client => client('scope.trace', {id}))
+	})
+)
 
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))
