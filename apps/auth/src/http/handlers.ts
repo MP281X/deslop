@@ -78,7 +78,7 @@ function originOf(request: HttpServerRequest.HttpServerRequest) {
 	return originFrom(request.headers, request.remoteAddress)
 }
 
-// The session and bearer endpoints answer the user as no-store JSON, or 401 once the request is refused.
+// The session and bearer endpoints answer no-store JSON, 401 for refused credentials, or retryable 503 during an outage.
 function answered<E, R>(answer: Effect.Effect<User, E, R>) {
 	return pipe(
 		answer,
