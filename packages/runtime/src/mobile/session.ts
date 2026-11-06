@@ -5,10 +5,11 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
+import {RpcClientError} from 'effect/rpc'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import {Alert} from 'react-native'
 
-import {ISSUER} from '#auth/lib/utils.ts'
+import {ISSUER, needsSignIn} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
 import {activationsAtom, extra} from '#mobile/client.ts'
 
@@ -124,7 +125,8 @@ export function make(name: string, server: string, storage: Storage) {
 					token_endpoint_auth_method: 'none'
 				}),
 				Effect.flatMap(request => client.execute(request)),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(ClientRegistration))
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(ClientRegistration)),
+				Effect.timeout('10 seconds')
 			)
 			const request = new AuthRequest({
 				clientId: registration.client_id,
@@ -246,7 +248,7 @@ export function make(name: string, server: string, storage: Storage) {
 				Stream.tapError(error =>
 					pipe(
 						Effect.gen(function* () {
-							if (Schema.is(AuthError)(error)) {
+							if (needsSignIn(error)) {
 								yield* Effect.ignore(
 									// oxlint-disable-next-line effecttsgo/strict-effect-provide -- An app's RPC runtime exposes only its client, so the renewal brings its own fetch.
 									Effect.provide(sessionToken(true), FetchHttpClient.layer),
@@ -261,7 +263,18 @@ export function make(name: string, server: string, storage: Storage) {
 						Effect.ignore({log: 'Warn', message: 'The session could not be read'})
 					)
 				),
-				Stream.retry(Schedule.spaced('2 seconds'))
+				Stream.retry($ =>
+					pipe(
+						$(Schedule.spaced('2 seconds')),
+						Schedule.while(metadata => {
+							if (Schema.is(AuthError)(metadata.input)) return metadata.input.error !== 'access_denied'
+							return (
+								Schema.is(RpcClientError.RpcClientError)(metadata.input) &&
+								metadata.input.reason._tag !== 'RpcClientDefect'
+							)
+						})
+					)
+				)
 			),
 		runtime,
 		// Reading it also starts the caller over on each return from the background, when iOS has closed its sockets.

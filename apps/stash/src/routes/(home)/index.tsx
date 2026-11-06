@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
@@ -51,6 +51,7 @@ import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
+import {FailureContent} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
@@ -299,27 +300,31 @@ export function HomeRoute(props: {
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
-	const items = useAtomSuspense(notesAtom).value
+	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(notesAtom)
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
 	const query = String.trim(useAtomValue(queryAtom))
 	const found = pipe(useAtomValue(searchAtom), AsyncResult.getOrElse(Option.none))
+	const [limit, setLimit] = useState(80)
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} tint={primary} />
+	}
 	const notes = Array.filter(
-		items,
+		loaded.value,
 		note =>
 			Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
 			(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
 			(props.kind === undefined || kindOf(note) === props.kind)
 	)
-	const tags = Array.map(tagCounts(items), entry => entry.tag)
-	const [limit, setLimit] = useState(80)
+	const tags = Array.map(tagCounts(loaded.value), entry => entry.tag)
 	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
 		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
-				{Array.match(items, {
+				{Array.match(loaded.value, {
 					onEmpty: () => (
 						<Empty>
 							<EmptyHeader>
