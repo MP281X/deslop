@@ -56,18 +56,18 @@ function AppIcon(props: {name: string; url: string}) {
 }
 
 export function otherApps(current: string) {
-return {
-	items: Array.map(
-		Array.filter(APPS, app => app.name !== current),
-		app => ({
-			detail: new URL(app.url).hostname,
-			icon: <AppIcon name={app.name} url={app.url} />,
-			label: app.name,
-			run: () => location.assign(app.url)
-		})
-	),
-	label: 'Other apps'
-}
+	return {
+		items: Array.map(
+			Array.filter(APPS, app => app.name !== current),
+			app => ({
+				detail: new URL(app.url).hostname,
+				icon: <AppIcon name={app.name} url={app.url} />,
+				label: app.name,
+				run: () => location.assign(app.url)
+			})
+		),
+		label: 'Other apps'
+	}
 }
 
 function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
