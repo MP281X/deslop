@@ -1,4 +1,21 @@
-import {Array, Clock, Context, Effect, Layer, Option, Record, Ref, Result, Schedule, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Cache,
+	Clock,
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	Layer,
+	Number,
+	Option,
+	Record,
+	Result,
+	Schedule,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -48,7 +65,7 @@ export class Places extends Context.Service<
 		Effect.gen(function* () {
 			const client = yield* HttpClient.HttpClient
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, AirportIndex)
-			const stations = yield* Ref.make(Record.empty<string, Place>())
+			const clock = yield* Clock.Clock
 
 			const download = Effect.gen(function* () {
 				const all = yield* pipe(
@@ -74,42 +91,50 @@ export class Places extends Context.Service<
 				return index
 			})
 
-			const index = Effect.gen(function* () {
-				const saved = yield* Effect.orElseSucceed(store.get('airports'), Option.none<AirportIndex>)
-				const now = yield* Clock.currentTimeMillis
-				return yield* Option.match(
-					Option.filter(saved, found => now - found.fetchedAt < 30 * DAY),
-					{
-						// A stale copy still answers when GitHub does not.
-						onNone: () => Effect.catch(download, error => Effect.mapError(Effect.fromOption(saved), () => error)),
-						onSome: Effect.succeed
-					}
-				)
-			})
+			const index = yield* Effect.cachedWithTTL(
+				Effect.gen(function* () {
+					const saved = yield* Effect.orElseSucceed(store.get('airports'), Option.none<AirportIndex>)
+					const now = yield* Clock.currentTimeMillis
+					return yield* Option.match(
+						Option.filter(saved, found => now - found.fetchedAt < 30 * DAY),
+						{
+							// A stale copy still answers when GitHub does not.
+							onNone: () => Effect.catch(download, error => Effect.mapError(Effect.fromOption(saved), () => error)),
+							onSome: Effect.succeed
+						}
+					)
+				}),
+				exit =>
+					Exit.match(exit, {
+						onFailure: () => Duration.zero,
+						onSuccess: found =>
+							Duration.millis(Number.max(0, found.fetchedAt + 30 * DAY - clock.currentTimeMillisUnsafe()))
+					})
+			)
 
-			const lookup = Effect.fnUntraced(function* (name: string, key: string) {
-				const matches = yield* pipe(
-					// Transitous refuses a client that does not name itself.
-					HttpClientRequest.get('https://api.transitous.org/api/v1/geocode', {
-						headers: {'user-agent': 'Trips (+https://trips.mp281x.xyz)'},
-						urlParams: {text: name, type: 'STOP'}
-					}),
-					client.execute,
-					Effect.flatMap(HttpClientResponse.filterStatusOk),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(StopMatches)),
-					Effect.timeout('15 seconds'),
-					Effect.mapError(cause => BookingsError.make({cause, message: `The station ${name} could not be looked up.`}))
-				)
-				const named = Array.filter(matches, match => namesIt(name, match))
-				const place = Option.match(
-					// The best-ranked stop that trains call at beats a city's bus or metro stop of the same name.
-					Option.orElse(
-						Array.findFirst(named, match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
-						() => Array.head(named)
-					),
-					{
-						onNone: () => ({name}) satisfies Place,
-						onSome: match =>
+			const stations = yield* Cache.makeWith(
+				Effect.fnUntraced(function* (name: string) {
+					const named = Array.filter(
+						yield* pipe(
+							// Transitous refuses a client that does not name itself.
+							HttpClientRequest.get('https://api.transitous.org/api/v1/geocode', {
+								headers: {'user-agent': 'Trips (+https://trips.mp281x.xyz)'},
+								urlParams: {text: name, type: 'STOP'}
+							}),
+							client.execute,
+							Effect.flatMap(HttpClientResponse.filterStatusOk),
+							Effect.flatMap(HttpClientResponse.schemaBodyJson(StopMatches)),
+							Effect.timeout('15 seconds')
+						),
+						match => namesIt(name, match)
+					)
+					return Option.map(
+						// The best-ranked stop that trains call at beats a city's bus or metro stop of the same name.
+						Option.orElse(
+							Array.findFirst(named, match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
+							() => Array.head(named)
+						),
+						match =>
 							({
 								...Option.match(Option.fromUndefinedOr(match.tz), {
 									onNone: () => ({}),
@@ -126,11 +151,17 @@ export class Places extends Context.Service<
 									Array.join(' ')
 								)
 							}) satisfies Place
-					}
-				)
-				yield* Ref.update(stations, Record.set(key, place))
-				return place
-			})
+					)
+				}),
+				{
+					capacity: 1000,
+					timeToLive: exit =>
+						Exit.match(exit, {
+							onFailure: () => Duration.zero,
+							onSuccess: place => Option.match(place, {onNone: () => Duration.zero, onSome: () => Duration.infinity})
+						})
+				}
+			)
 
 			return Places.of({
 				airport: Effect.fn('Places.airport')(function* (code) {
@@ -151,11 +182,15 @@ export class Places extends Context.Service<
 					} satisfies Place
 				}),
 				station: Effect.fn('Places.station')(function* (name) {
-					const key = String.toLowerCase(String.trim(name))
-					return yield* Option.match(Record.get(yield* Ref.get(stations), key), {
-						onNone: () => lookup(name, key),
-						onSome: Effect.succeed
-					})
+					return Option.getOrElse(
+						yield* pipe(
+							Cache.get(stations, String.toLowerCase(String.trim(name))),
+							Effect.mapError(cause =>
+								BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
+							)
+						),
+						() => ({name})
+					)
 				})
 			})
 		})

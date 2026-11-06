@@ -12,6 +12,7 @@ import {
 	Layer,
 	Number,
 	Option,
+	PlatformError,
 	Predicate,
 	Ref,
 	Schema,
@@ -668,6 +669,39 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect(
+		'cleans up a finished upload when moving it into place fails',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			const notes = yield* Effect.provideService(
+				open({directory, organizer: noKey, sources: recipe}),
+				FileSystem.FileSystem,
+				{
+					...fs,
+					rename: (from, to) => {
+						if (String.endsWith('.partial')(from)) {
+							return Effect.fail(
+								PlatformError.systemError({
+									_tag: 'PermissionDenied',
+									method: 'rename',
+									module: 'FileSystem',
+									pathOrDescriptor: from
+								})
+							)
+						}
+						return fs.rename(from, to)
+					}
+				}
+			)
+			assert.instanceOf(
+				yield* Effect.flip(notes.captureFile({body: Stream.make(Uint8Array.of(1)), id: IDS[0], type: 'image/jpeg'})),
+				NotesError
+			)
+			assert.isEmpty(yield* fs.readDirectory(`${directory}/images`))
+			assert.isEmpty(yield* settled(notes, () => true))
+		})
+	)
 	test.effect(
 		'leaves no note and no file behind when an upload breaks off',
 		Effect.fnUntraced(function* () {

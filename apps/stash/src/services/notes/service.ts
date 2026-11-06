@@ -431,6 +431,7 @@ export class Notes extends Context.Service<
 						Effect.catchTag('PlatformError', cause =>
 							Effect.fail(NotesError.make({cause, message: 'The upload could not be written.'}))
 						),
+						Effect.andThen(pipe(fs.rename(partial, stored), storageFailed)),
 						Effect.onError(() =>
 							pipe(
 								fs.remove(partial, {force: true}),
@@ -438,7 +439,6 @@ export class Notes extends Context.Service<
 							)
 						)
 					)
-					yield* pipe(fs.rename(partial, stored), storageFailed)
 					const note = Note.make({
 						content: '',
 						createdAt: DateTime.toEpochMillis(yield* DateTime.now),
