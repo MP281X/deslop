@@ -26,14 +26,15 @@ function pack(x: number, z: number) {
 }
 
 // Tile centres from just after the start to the given tile.
-function trace(visits: MutableHashMap.MutableHashMap<number, Visit>, key: number): Point[] {
-	return Option.match(MutableHashMap.get(visits, key), {
-		onNone: () => [],
-		onSome: visit => {
-			if (visit.from === -1) return []
-			return Array.append(trace(visits, visit.from), {x: visit.x + 0.5, z: visit.z + 0.5})
-		}
-	})
+function trace(visits: MutableHashMap.MutableHashMap<number, Visit>, key: number) {
+	return Array.reverse(
+		Array.unfold(key, current =>
+			Option.flatMap(MutableHashMap.get(visits, current), visit => {
+				if (visit.from === -1) return Option.none()
+				return Option.some([{x: visit.x + 0.5, z: visit.z + 0.5}, visit.from] as const)
+			})
+		)
+	)
 }
 
 // A diagonal step needs both straight steps round it open too, so a path never cuts a cliff corner.

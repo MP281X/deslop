@@ -14,8 +14,20 @@ concurrency:
 permissions:
   contents: read
 
-# Check and test run side by side; neither reads the other's results.
+# Branch pushes check bundling as well as source and tests.
 jobs:
+  build:
+    name: Build
+    # Release already builds after verification, immediately before publishing.
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {tasks: 'true'}
+      - name: Build applications
+        run: vp run build
+
   check:
     name: Check
     runs-on: ubuntu-26.04

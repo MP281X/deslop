@@ -1,7 +1,21 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, FileSystem, Layer, Option, Ref, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Context,
+	Effect,
+	Fiber,
+	FileSystem,
+	Layer,
+	Option,
+	Queue,
+	Ref,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
@@ -30,6 +44,8 @@ it.layer(NodeServices.layer)(test => {
 				})
 			])
 			const revised = yield* Ref.make(false)
+			const broken = yield* Ref.make(0)
+			const brokenRequests = yield* Queue.unbounded<void>()
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
 					// r/OPMFolk alone posts some releases, numbered its own way and listing several translations.
@@ -82,19 +98,15 @@ it.layer(NodeServices.layer)(test => {
 							})
 						)
 					}
+					if (String.includes('/imgchest/series/broken/')(request.url)) {
+						yield* Ref.update(broken, count => count + 1)
+						yield* Queue.offer(brokenRequests, undefined)
+						return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+					}
 					return HttpClientResponse.fromWeb(
 						request,
 						Response.json({
-							chapters: {
-								'1': {
-									groups: {
-										english: Boolean.match(String.includes('/broken/')(request.url), {
-											onFalse: () => [`https://example.test${new URL(request.url).pathname}page.png`],
-											onTrue: () => []
-										})
-									}
-								}
-							}
+							chapters: {'1': {groups: {english: [`https://example.test${new URL(request.url).pathname}page.png`]}}}
 						})
 					)
 				})
@@ -105,11 +117,16 @@ it.layer(NodeServices.layer)(test => {
 				),
 				Chapters
 			)
-			yield* pipe(
+			const loaded = yield* pipe(
 				chapters.changes,
 				Stream.filter(event => Array.some(event.upserted, chapter => keyOf(chapter) === 'webcomic:2')),
-				Stream.runHead
+				Stream.runHead,
+				Effect.forkChild
 			)
+			yield* Queue.take(brokenRequests)
+			yield* TestClock.adjust('8 seconds')
+			yield* Fiber.join(loaded)
+			assert.strictEqual(yield* Ref.get(broken), 2)
 			const first = (yield* Effect.fromOption(yield* Stream.runHead(chapters.changes))).upserted
 			assert.deepStrictEqual(Array.map(first, keyOf), [
 				'manga:237',

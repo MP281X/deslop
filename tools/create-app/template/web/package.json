@@ -19,6 +19,7 @@
 		"#lib/*": "./src/lib/*",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
+		"#services/*": "./src/services/*",
 		"#tools/*": "./src/tools/*"
 	},
 	"publishConfig": {
@@ -33,7 +34,6 @@
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
-		"@effect/platform-node": "latest",
 		"@tanstack/react-router": "latest",
 		"effect": "latest",
 		"react": "latest",

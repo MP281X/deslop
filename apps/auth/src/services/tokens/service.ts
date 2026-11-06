@@ -12,6 +12,7 @@ import {
 	Order,
 	Record,
 	Ref,
+	Semaphore,
 	Stream,
 	String,
 	SubscriptionRef,
@@ -115,6 +116,7 @@ export class Tokens extends Context.Service<
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Grants)
 			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())
+			const redeeming = yield* Semaphore.make(1)
 			const random = yield* SecureRandom.SecureRandom
 			const digest = yield* Digest.Digest
 			function secret(bytes: number) {
@@ -179,18 +181,21 @@ export class Tokens extends Context.Service<
 				}
 				// Touch the grant at most once a minute, so a token's last use shows without a write per tool call.
 				if (found.now - found.grant.lastActive > 60_000) {
-					yield* change(current =>
-						Effect.succeed([
-							undefined,
-							Option.match(Record.get(current, found.family), {
-								onNone: () => current,
-								onSome: grant =>
-									Boolean.match(found.now - grant.lastActive > 60_000, {
-										onFalse: () => current,
-										onTrue: () => ({...current, [found.family]: {...grant, lastActive: found.now}})
-									})
-							})
-						] as const)
+					yield* pipe(
+						change(current =>
+							Effect.succeed([
+								undefined,
+								Option.match(Record.get(current, found.family), {
+									onNone: () => current,
+									onSome: grant =>
+										Boolean.match(found.now - grant.lastActive > 60_000, {
+											onFalse: () => current,
+											onTrue: () => ({...current, [found.family]: {...grant, lastActive: found.now}})
+										})
+								})
+							] as const)
+						),
+						Effect.ignore({log: 'Warn', message: 'The token’s last use could not be saved'})
 					)
 				}
 				return found.grant.user
@@ -228,88 +233,98 @@ export class Tokens extends Context.Service<
 				}
 				return params.resource
 			})
-			const redeem = Effect.fnUntraced(function* (
-				params: Extract<TokenParams, {grant_type: 'authorization_code'}>,
-				origin: Origin,
-				allowed: (user: User) => Effect.Effect<User, AuthError>
-			) {
-				const key = yield* hash(params.code)
-				const verifier = yield* hash(params.code_verifier)
-				const family = yield* secret(16)
-				// Redemption runs inside one change, so of two concurrent ones the second sees the code used and ends what the first gave.
-				return yield* change<Exchange, AuthError>((current, now) =>
-					Effect.gen(function* () {
-						const code = yield* pipe(
-							HashMap.get(yield* Ref.get(codes), key),
-							Option.filter(entry => entry.expiresAt > now),
-							Effect.fromOption,
-							Effect.mapError(() => expired)
-						)
-						if (code.state._tag === 'Used') {
-							return [
-								Exchange.cases.Replayed.make({
-									message: 'This authorization code was already used, so the tokens it gave are revoked; sign in again'
-								}),
-								Record.remove(current, code.state.family)
-							] as const
-						}
-						const fresh = code.state
-						if (
-							fresh.request.clientId !== params.client_id ||
-							Option.exists(given(params.redirect_uri), sent => sent !== fresh.request.redirectUri) ||
-							fresh.request.challenge !== verifier
-						) {
-							return yield* AuthError.make({
-								error: 'invalid_grant',
-								message: 'The authorization code, its client, callback or verifier do not match'
-							})
-						}
-						yield* allowed(fresh.user)
-						const resources = yield* tokenResources(params, fresh.request.resources)
-						yield* Ref.update(codes, entries =>
-							HashMap.set(entries, key, {expiresAt: code.expiresAt, state: {_tag: 'Used' as const, family}})
-						)
-						const minted = yield* mint(family, 0, resources, now)
-						const grant: Grant = {
-							client: clientLabel(fresh.request.clientName),
-							createdAt: now,
-							credential: {
-								_tag: 'App',
-								access: [minted.access],
-								clientId: fresh.request.clientId,
-								generation: 0,
-								resources: fresh.request.resources,
-								...minted.refresh
-							},
-							device: deviceLabel(origin),
-							lastActive: now,
-							origin,
-							user: fresh.user
-						}
-						// Each sign-in registers anew, so a second one of the same client, device and apps replaces the first.
-						return [
-							Exchange.cases.Granted.make({tokens: minted.tokens}),
-							{
-								...Record.filter(
-									current,
-									other =>
-										!(
-											other.user.id === grant.user.id &&
-											other.client === grant.client &&
-											other.device === grant.device &&
-											other.credential._tag === 'App' &&
-											Array.makeEquivalence(String.Equivalence)(
-												Array.sort(other.credential.resources, String.Order),
-												Array.sort(fresh.request.resources, String.Order)
-											)
-										)
-								),
-								[family]: grant
+			const redeem = Effect.fnUntraced(
+				function* (
+					params: Extract<TokenParams, {grant_type: 'authorization_code'}>,
+					origin: Origin,
+					allowed: (user: User) => Effect.Effect<User, AuthError>
+				) {
+					const key = yield* hash(params.code)
+					const verifier = yield* hash(params.code_verifier)
+					const family = yield* secret(16)
+					// The grant commits before its code is marked used; concurrent redemptions take turns through both steps.
+					const result = yield* change<Exchange, AuthError>((current, now) =>
+						Effect.gen(function* () {
+							const code = yield* pipe(
+								HashMap.get(yield* Ref.get(codes), key),
+								Option.filter(entry => entry.expiresAt > now),
+								Effect.fromOption,
+								Effect.mapError(() => expired)
+							)
+							if (code.state._tag === 'Used') {
+								return [
+									Exchange.cases.Replayed.make({
+										message:
+											'This authorization code was already used, so the tokens it gave are revoked; sign in again'
+									}),
+									Record.remove(current, code.state.family)
+								] as const
 							}
-						] as const
-					})
-				)
-			})
+							const fresh = code.state
+							if (
+								fresh.request.clientId !== params.client_id ||
+								Option.exists(given(params.redirect_uri), sent => sent !== fresh.request.redirectUri) ||
+								fresh.request.challenge !== verifier
+							) {
+								return yield* AuthError.make({
+									error: 'invalid_grant',
+									message: 'The authorization code, its client, callback or verifier do not match'
+								})
+							}
+							yield* allowed(fresh.user)
+							const minted = yield* mint(family, 0, yield* tokenResources(params, fresh.request.resources), now)
+							const grant: Grant = {
+								client: clientLabel(fresh.request.clientName),
+								createdAt: now,
+								credential: {
+									_tag: 'App',
+									access: [minted.access],
+									clientId: fresh.request.clientId,
+									generation: 0,
+									resources: fresh.request.resources,
+									...minted.refresh
+								},
+								device: deviceLabel(origin),
+								lastActive: now,
+								origin,
+								user: fresh.user
+							}
+							// Each sign-in registers anew, so a second one of the same client, device and apps replaces the first.
+							return [
+								Exchange.cases.Granted.make({tokens: minted.tokens}),
+								{
+									...Record.filter(
+										current,
+										other =>
+											!(
+												other.user.id === grant.user.id &&
+												other.client === grant.client &&
+												other.device === grant.device &&
+												other.credential._tag === 'App' &&
+												Array.makeEquivalence(String.Equivalence)(
+													Array.sort(other.credential.resources, String.Order),
+													Array.sort(fresh.request.resources, String.Order)
+												)
+											)
+									),
+									[family]: grant
+								}
+							] as const
+						})
+					)
+					if (result._tag === 'Granted') {
+						yield* Ref.update(codes, entries =>
+							HashMap.modify(entries, key, code => ({
+								expiresAt: code.expiresAt,
+								state: {_tag: 'Used' as const, family}
+							}))
+						)
+					}
+					return result
+				},
+				Effect.uninterruptible,
+				Semaphore.withPermit(redeeming)
+			)
 			const rotate = Effect.fnUntraced(function* (
 				params: Extract<TokenParams, {grant_type: 'refresh_token'}>,
 				origin: Origin,

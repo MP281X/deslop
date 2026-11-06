@@ -28,6 +28,7 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {CurrentUser} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
@@ -186,11 +187,13 @@ export class Gateway extends Context.Service<
 			}
 			const call = Effect.fn('Gateway.call')(
 				function* (server: Server, tool: string, input: unknown) {
-					const request = yield* Effect.flatMap(
-						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
-						Effect.fromOption
-					)
-					yield* auth.access(request.headers, `${url}/mcp`)
+					if (Option.isNone(yield* Effect.serviceOption(CurrentUser))) {
+						const request = yield* Effect.flatMap(
+							Effect.serviceOption(HttpServerRequest.HttpServerRequest),
+							Effect.fromOption
+						)
+						yield* auth.access(request.headers, `${url}/mcp`)
+					}
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, client =>

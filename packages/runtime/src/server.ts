@@ -57,7 +57,7 @@ import {
 } from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {APPS_PATH, ISSUER_PATH, localAuth} from '#auth/lib/utils.ts'
+import {APPS_PATH, ISSUER_PATH, failureOptions, localAuth} from '#auth/lib/utils.ts'
 import {Auth, layerMcpAuth} from '#auth/service.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -263,6 +263,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		const canonical = new URL(yield* Config.String('APP_URL')).origin
 		const issuer = yield* Config.option(Config.String('AUTH_URL'))
 		const traces = yield* pipe(Config.String('OTEL_URL'), Config.withDefault(''))
+		const metadata = yield* Effect.cached(packageMetadata)
 		// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
 		const toIssuer = Effect.fnUntraced(function* (search: Record<string, string>) {
 			const request = yield* HttpServerRequest.HttpServerRequest
@@ -288,11 +289,12 @@ export const layerRoutes = HttpRouter.use(router =>
 			'GET',
 			RUNTIME_PATH,
 			Effect.gen(function* () {
+				const release = yield* metadata
 				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
 					...Option.match(issuer, {onNone: () => ({}), onSome: origin => ({auth: origin})}),
-					name: yield* appName,
+					name: String.replace('@deslop/', '')(release.name),
 					traces,
-					version: (yield* packageMetadata).version
+					version: release.version
 				})
 			})
 		)
@@ -303,7 +305,7 @@ export const layerRoutes = HttpRouter.use(router =>
 			'/auth/user',
 			Effect.gen(function* () {
 				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
-				if (Result.isFailure(user)) return HttpServerResponse.empty({status: 401})
+				if (Result.isFailure(user)) return HttpServerResponse.empty(failureOptions(user.failure, 401))
 				return yield* HttpServerResponse.schemaJson(Account)(
 					{...user.success, signOut: Option.isSome(issuer)},
 					{headers: {'cache-control': 'no-store'}}
@@ -317,7 +319,13 @@ export const layerRoutes = HttpRouter.use(router =>
 export const layerAnnounce = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const origin = new URL(yield* Config.String('APP_URL')).origin
-		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+		const client = pipe(
+			yield* HttpClient.HttpClient,
+			HttpClient.filterStatusOk,
+			HttpClient.timeout('10 seconds'),
+			// Auth may restart beside the app, but a permanent refusal will never list it.
+			HttpClient.retryTransient({schedule: Schedule.spaced('1 minute'), times: 60})
+		)
 		yield* Option.match(yield* Config.option(Config.String('AUTH_URL')), {
 			onNone: () => Effect.void,
 			onSome: Effect.fnUntraced(function* (issuer) {
@@ -326,8 +334,6 @@ export const layerAnnounce = Layer.effectDiscard(
 					HttpClientRequest.bodyJsonUnsafe({origin}),
 					client.execute,
 					Effect.delay('2 seconds'),
-					// While Auth restarts too, as after a release; an hour of refusals means it never will list this app.
-					Effect.retry({schedule: Schedule.spaced('1 minute'), times: 60}),
 					Effect.ignore({log: 'Warn', message: 'Auth did not list this app'}),
 					Effect.forkScoped
 				)

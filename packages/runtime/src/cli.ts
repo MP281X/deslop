@@ -11,6 +11,7 @@ import {
 	FileSystem,
 	Layer,
 	Logger,
+	Option,
 	Path,
 	Record,
 	Schema,
@@ -118,6 +119,7 @@ export type App<A, E> = {
 	readonly icon: string
 	// The app's RPC, HTTP routes and `ServerRuntime.layerMcp` tools, with its own services provided; an app may answer `Auth` itself.
 	readonly routes: Routes<A, E>
+	// Runs around matched routes before the response is sent, so headers and bodies can be changed.
 	readonly middleware?: <A, R>(
 		app: Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
 	) => Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
@@ -131,9 +133,15 @@ function server<A, E>(app: App<A, E>) {
 		HttpRouter.serve(
 			pipe(
 				Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
+				Layer.provide(
+					Option.match(Option.fromUndefinedOr(app.middleware), {
+						onNone: () => Layer.empty,
+						onSome: middleware => HttpRouter.middleware()(middleware).layer
+					})
+				),
 				Layer.provide(Auth.layer)
 			),
-			{disableLogger: true, middleware: http => guard(app.middleware?.(http) ?? http)}
+			{disableLogger: true, middleware: guard}
 		),
 		Layer.provide(
 			Layer.mergeAll(

@@ -1,6 +1,6 @@
-import {Array, Config, Context, Effect, Option, Schema, String} from 'effect'
+import {Array, Config, Context, Effect, Option, Predicate, Schema, String} from 'effect'
 
-import {Headers} from 'effect/http'
+import {Headers, HttpClient} from 'effect/http'
 import {RpcMiddleware} from 'effect/rpc'
 
 import type {User} from '#auth/schema.ts'
@@ -48,8 +48,19 @@ export function needsSignIn(error: unknown) {
 export function rejected(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
+		if (Predicate.isTagged(cause, 'KeyValueStoreError') || HttpClient.isTransientError(cause)) {
+			return AuthError.make({cause, error: 'temporarily_unavailable', message})
+		}
 		return AuthError.make({cause, message})
 	})
+}
+
+// An outage keeps credentials and retries alive instead of looking like a permanent refusal.
+export function failureOptions(error: unknown, status: number) {
+	if (Schema.is(AuthError)(error) && error.error === 'temporarily_unavailable') {
+		return {headers: {'retry-after': '5'}, status: 503}
+	}
+	return {status}
 }
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/auth/lib/utils/CurrentUser') {}

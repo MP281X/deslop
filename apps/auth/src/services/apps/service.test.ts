@@ -8,8 +8,9 @@ import {KeyValueStore} from 'effect/persistence'
 import {Apps} from '#services/apps/service.ts'
 
 // Each app's server as Auth reaches it: its runtime settings, and a manifest only where it serves pages.
-const SERVERS: Record<string, {auth: string; name: string; web: boolean}> = {
+const SERVERS: Record<string, {auth: string; name: string; web: boolean; status?: number}> = {
 	'https://elsewhere.mp281x.xyz': {auth: 'https://auth.example.com', name: 'elsewhere', web: true},
+	'https://restarting.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', name: 'restarting', status: 503, web: true},
 	'https://scope.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', name: 'scope', web: true},
 	'https://stash.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', name: 'stash', web: false},
 	'https://stranger.example.com': {auth: 'https://auth.mp281x.xyz', name: 'stranger', web: true}
@@ -23,7 +24,10 @@ const servers = HttpClient.make(request =>
 		if (url.pathname === '/api/runtime') {
 			return HttpClientResponse.fromWeb(
 				request,
-				Response.json({auth: server.auth, name: server.name, traces: '', version: '0.1.1'})
+				Response.json(
+					{auth: server.auth, name: server.name, traces: '', version: '0.1.1'},
+					{status: server.status ?? 200}
+				)
 			)
 		}
 		if (url.pathname === '/manifest.webmanifest' && server.web) {
@@ -42,6 +46,17 @@ const layer = pipe(
 			ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://auth.mp281x.xyz'}))
 		)
 	)
+)
+
+it.effect(
+	'keeps a restarting app announcement retryable',
+	Effect.fnUntraced(function* () {
+		const apps = Context.get(yield* Layer.build(layer), Apps)
+		assert.strictEqual(
+			(yield* Effect.flip(apps.register('https://restarting.mp281x.xyz'))).error,
+			'temporarily_unavailable'
+		)
+	})
 )
 
 it.effect(

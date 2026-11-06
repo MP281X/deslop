@@ -1,4 +1,4 @@
-import {Layer, pipe} from 'effect'
+import {Layer} from 'effect'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'

@@ -55,6 +55,14 @@ it('reads a printed time in the place zone and an offset as given', () => {
 	assert.deepStrictEqual(instantOf('2026-10-28T16:40', 'Europe/Rome'), Option.some(DEPARTS))
 	assert.deepStrictEqual(instantOf('2026-07-01T09:00', 'Europe/London'), Option.some(at('2026-07-01T08:00:00Z')))
 	assert.deepStrictEqual(instantOf('2026-10-28T17:40+02:00', 'Europe/London'), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T16:40:30.125', 'Europe/Rome'), Option.some(DEPARTS + 30_125))
+})
+
+it('keeps journey activities available when a place has an invalid time zone', () => {
+	assert.strictEqual(
+		activityProps({...flight, from: {...flight.from, timeZone: 'Europe/Nowhere'}}, [], DEPARTS - HOUR).departureTime,
+		'15:40'
+	)
 })
 
 it('merges a reservation seen again and keeps live data unless the service moved', () => {

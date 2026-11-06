@@ -21,7 +21,7 @@ export const execute = Effect.fnUntraced(function* (command: string, args: strin
 	)
 	if (result.code !== 0) return yield* AppError.make({message: `${command} failed: ${result.stderr}`})
 	return result.stdout
-})
+}, Effect.scoped)
 
 function systemctl(...args: string[]) {
 	return execute('systemctl', ['--user', ...args])

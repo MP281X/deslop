@@ -276,10 +276,12 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 	)
 
 	test.effect(
-		'refuses frontend starts after a failed initial save without inference or overwriting the failure',
+		'refuses frontend starts after a failed initial save without inference or erasing usage accounting',
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
+			yield* kv.set('usage', 'retained accounting')
+			yield* kv.set('journal/0/obsolete', 'obsolete world data')
 			const calls = MutableList.make<number>()
 			const game = Context.get(
 				yield* Layer.build(
@@ -327,7 +329,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.strictEqual(state.running, false)
 			assert.include(state.problem ?? '', 'world could not be saved')
 			assert.strictEqual(calls.length, 0)
-			assert.deepStrictEqual(yield* kv.keys, [])
+			assert.deepStrictEqual(yield* kv.keys, ['usage'])
+			assert.strictEqual(yield* kv.get('usage'), 'retained accounting')
 		})
 	)
 
@@ -336,6 +339,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 		Effect.fnUntraced(function* () {
 			const calls = MutableList.make<number>()
 			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
 			const strategy = Layer.succeed(
 				Core,
 				Core.of({

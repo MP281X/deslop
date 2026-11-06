@@ -13,6 +13,7 @@ import {
 	SESSION_PATH,
 	VERIFY_PATH,
 	localAuth,
+	failureOptions,
 	rejected
 } from '@deslop/runtime/auth/utils'
 
@@ -65,7 +66,7 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 			Effect.succeed(
 				HttpServerResponse.jsonUnsafe(
 					{error: failure.error ?? 'invalid_request', error_description: failure.message},
-					{status: 400}
+					failureOptions(failure, 400)
 				)
 			)
 		),
@@ -82,7 +83,7 @@ function answered<E, R>(answer: Effect.Effect<User, E, R>) {
 	return pipe(
 		answer,
 		Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-		Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
+		Effect.catch(error => Effect.succeed(HttpServerResponse.empty(failureOptions(error, 401))))
 	)
 }
 
@@ -190,7 +191,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						return yield* HttpServerResponse.schemaJson(App)(yield* apps.register(params.origin))
 					}),
 					Effect.catchIf(Schema.is(AuthError), failure =>
-						Effect.succeed(HttpServerResponse.text(failure.message, {status: 403}))
+						Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))
 					)
 				)
 			)

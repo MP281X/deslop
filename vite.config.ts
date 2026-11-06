@@ -1,3 +1,8 @@
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Vite+ loads this configuration before an Effect runtime; discover native app boundaries synchronously.
+import {globSync} from 'node:fs'
+
+import {Array, String} from 'effect'
+
 import {defineConfig} from 'vite-plus'
 
 import {lint} from './tools/coding-standards/src/lint.ts'
@@ -60,7 +65,13 @@ export default defineConfig({
 		overrides: [
 			{
 				// React Native styles are objects with no Tailwind classes to check.
-				files: ['apps/{opm,stash,trips}/**', 'packages/components-mobile/**', 'tools/create-app/template/mobile/**'],
+				files: [
+					...Array.map(Array.fromIterable(globSync('apps/*/app.config.ts', {cwd: import.meta.dirname})), file =>
+						String.replace('/app.config.ts', '/**')(file)
+					),
+					'packages/components-mobile/**',
+					'tools/create-app/template/mobile/**'
+				],
 				rules: {
 					'shadcn/no-arbitrary-values': 'off',
 					'shadcn/no-inline-styles': 'off',

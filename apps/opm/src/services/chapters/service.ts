@@ -126,7 +126,7 @@ export class Chapters extends Context.Service<
 						Effect.flatMap(HttpClientResponse.filterStatusOk),
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(CubariSeries)),
 						Effect.timeout('20 seconds'),
-						Effect.retry({schedule: Schedule.exponential('1 second'), times: 2})
+						Effect.retry({schedule: Schedule.exponential('1 second'), times: 2, while: HttpClient.isTransientError})
 					)
 				}
 
@@ -390,7 +390,12 @@ export class Chapters extends Context.Service<
 				// Chapters come out weekly, so four rounds a day announce one within six hours.
 				yield* Effect.forkScoped(
 					Effect.repeat(
-						pipe(sync, Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}), Effect.andThen(notify)),
+						pipe(
+							sync,
+							Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}),
+							Effect.andThen(notify),
+							Effect.withSpan('Chapters.sync')
+						),
 						Schedule.spaced('6 hours')
 					)
 				)

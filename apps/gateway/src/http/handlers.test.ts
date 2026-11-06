@@ -210,17 +210,21 @@ function account(login?: string) {
 }
 
 // Auth as the gateway sees it: an agent token for the gateway's MCP, or a browser session.
-function layerAuth(origin: string) {
+function layerAuth(origin: string, verified: Ref.Ref<number>) {
 	return Layer.succeedContext(
 		Auth.makeContext(
 			Auth.of({
-				access: (headers, resource) => {
-					const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
-					if (resource !== `${origin}/mcp` || !String.startsWith('agent-')(token)) {
-						return Effect.fail(AuthError.make({message: 'Sign in first'}))
-					}
-					return account(String.split(String.slice(6)(token), '-')[0])
-				},
+				access: (headers, resource) =>
+					Effect.andThen(
+						Ref.update(verified, count => count + 1),
+						Effect.suspend(() => {
+							const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
+							if (resource !== `${origin}/mcp` || !String.startsWith('agent-')(token)) {
+								return Effect.fail(AuthError.make({message: 'Sign in first'}))
+							}
+							return account(String.split(String.slice(6)(token), '-')[0])
+						})
+					),
 				user: headers => account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
 			})
 		)
@@ -230,6 +234,7 @@ function layerAuth(origin: string) {
 const servers = Effect.fnUntraced(function* (home?: string, origin: string = GATEWAY_URL, local: boolean = false) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const clock = yield* Clock.Clock
+	const verified = yield* Ref.make(0)
 	const ready = yield* Queue.make<true>()
 	const rejectAccess = yield* Ref.make('never')
 	const pauseReject = yield* Ref.make(false)
@@ -509,7 +514,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 							)
 						)
 					),
-					Layer.provideMerge(layerAuth(origin)),
+					Layer.provideMerge(layerAuth(origin, verified)),
 					Layer.provideMerge(Layer.succeed(Clock.Clock, clock))
 				),
 				{disableLogger: true}
@@ -530,6 +535,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		stallReady,
 		toolNames,
 		upstreamRequests,
+		verified,
 		web
 	}
 })
@@ -681,12 +687,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: `${origin}/mcp`})).status, 400)
 			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
+			const verifiedBefore = yield* Ref.get(gateway.verified)
 			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'alternate-origin'},
 				name: `${publicServer.id}__search`
 			})
 			assert.strictEqual(called.status, 200)
 			assert.include(yield* Effect.promise(() => called.text()), 'alternate-origin')
+			assert.strictEqual((yield* Ref.get(gateway.verified)) - verifiedBefore, 2)
 		})
 	)
 	test.effect(

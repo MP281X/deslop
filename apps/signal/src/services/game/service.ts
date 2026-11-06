@@ -51,6 +51,7 @@ import {GENERATOR} from '#services/world/lib/utils.ts'
 const PAGE = 20
 // A replay starts from the latest checkpoint before it, one every few rounds.
 const CHECKPOINT = 4
+const GAME_PREFIXES = ['thread/', 'history/', 'activity/', 'local/', 'journal/', 'checkpoint/']
 
 const RunStates = Machine.state({states: {Failed: {fields: {message: Schema.String}}, Paused: {}, Running: {}}})
 
@@ -733,7 +734,17 @@ export class Game extends Context.Service<
 							if (requested) {
 								if (!MutableRef.get(prepared)) {
 									if (Option.isNone(restored)) {
-										yield* kv.clear
+										yield* Effect.forEach(
+											Array.filter(
+												yield* kv.keys,
+												key =>
+													key === 'world' ||
+													key === 'timeline' ||
+													Array.some(GAME_PREFIXES, prefix => String.startsWith(prefix)(key))
+											),
+											key => kv.remove(key),
+											{concurrency: 1, discard: true}
+										)
 										MutableRef.set(historyIndex, {})
 										MutableRef.set(threadKeys, [])
 										MutableHashMap.clear(recent)
