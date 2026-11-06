@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {
 	Array,
 	Boolean,
+	Cause,
 	ConfigProvider,
 	Context,
 	Deferred,
@@ -11,6 +12,7 @@ import {
 	Fiber,
 	Layer,
 	Option,
+	Queue,
 	Ref,
 	Stream,
 	String,
@@ -76,6 +78,58 @@ function bookingsAt(state: Ref.Ref<BookingList>) {
 it.layer(
 	Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'})))
 )(test => {
+	test.effect(
+		'refuses legacy dot-segment and non-numeric numbers before any provider lookup or spend',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.adjust('1 hour')
+			const store = yield* KeyValueStore.KeyValueStore
+			yield* store.clear
+			const state = yield* Ref.make<BookingList>([])
+			const calls = yield* Ref.make(0)
+			const initial = yield* Queue.unbounded<void>()
+			const tracker = Context.get(
+				yield* Layer.build(
+					pipe(
+						Tracker.layer,
+						Layer.provide(
+							Layer.succeed(Bookings, {
+								...bookingsAt(state),
+								list: Effect.tap(Ref.get(state), () => Queue.offer(initial, undefined))
+							})
+						),
+						Layer.provide(
+							Layer.succeed(
+								HttpClient.HttpClient,
+								HttpClient.make(request =>
+									Effect.as(
+										Ref.update(calls, count => count + 1),
+										HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
+									)
+								)
+							)
+						)
+					)
+				),
+				Tracker
+			)
+			yield* Queue.take(initial)
+			for (const booking of [TRAIN, FLIGHT]) {
+				for (const number of ['.', '..', '../../path', '9541?other=true']) {
+					yield* Ref.set(state, [{...booking, number}])
+					const result = yield* Effect.exit(tracker.refresh(booking.id))
+					assert.isTrue(
+						Exit.hasFails(result),
+						Exit.match(result, {onFailure: Cause.pretty, onSuccess: () => `${booking._tag}: ${number} skipped`})
+					)
+					assert.strictEqual(yield* Ref.get(calls), 0)
+					yield* Ref.set(state, [])
+					yield* TestClock.adjust('1 minute')
+				}
+			}
+			assert.isUndefined(yield* store.get('aeroapi'))
+		})
+	)
+
 	test.effect(
 		'discards flight and train answers after rebooking, but saves an unchanged reservation',
 		Effect.fnUntraced(function* () {
