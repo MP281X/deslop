@@ -29,10 +29,10 @@ import {addPushToStartTokenListener} from 'expo-widgets'
 import type {LiveActivity} from 'expo-widgets'
 import {Linking} from 'react-native'
 
-import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
+import {ClipboardOffer, clipboardMachine, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {colors, hues} from '@deslop/components-mobile/theme'
-import {alert, cachedList, clipboardChangeCount, writeAtomically} from '@deslop/components-mobile/utils'
+import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
@@ -118,10 +118,7 @@ export const bookingsAtom = Atom.keepAlive(
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
 type Offer = {count: string; kind: ClipboardKind}
 
-const readClipboard = Effect.fnUntraced(function* (offer: Offer) {
-	if (`${clipboardChangeCount()}` !== offer.count) {
-		return yield* BookingsError.make({message: 'The clipboard changed. Reopen Trips to add the new copy.'})
-	}
+const bookingFromClipboard = Effect.fnUntraced(function* (offer: Offer) {
 	if (offer.kind === 'image') {
 		const copied = yield* Effect.tryPromise({
 			catch: cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}),
@@ -162,7 +159,7 @@ export const clipboardAtom = AtomMachine.bind(
 					yield* pipe(
 						Effect.gen(function* () {
 							if (!answer.save) return
-							const source = yield* readClipboard(answer)
+							const source = yield* readClipboard(answer.count, bookingFromClipboard(answer))
 							yield* Effect.provideContext(
 								Effect.flatMap(RpcClient, client => client('bookings.save', source)),
 								yield* get.result(RpcClient.runtime)

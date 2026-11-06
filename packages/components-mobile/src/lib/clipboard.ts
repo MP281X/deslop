@@ -12,6 +12,29 @@ const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
 type Offered = {readonly count: string; readonly kind: ClipboardKind}
 type Answer = Offered & {readonly save: boolean}
 
+class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
+	cause: Schema.optional(Schema.Defect()),
+	message: Schema.String
+}) {}
+
+// Metadata is checked on both sides of the native read, before any save can consume a different copy.
+export function readClipboard<A, E, R>(count: string, read: Effect.Effect<A, E, R>) {
+	const unchanged = Effect.flatMap(
+		Effect.try({
+			catch: cause => ClipboardError.make({cause, message: 'The clipboard could not be checked.'}),
+			try: () => `${clipboardChangeCount()}`
+		}),
+		current => {
+			if (current === count) return Effect.void
+			return ClipboardError.make({message: 'The clipboard changed. Reopen the app to save the new copy.'})
+		}
+	)
+	return Effect.andThen(
+		unchanged,
+		Effect.tap(read, () => unchanged)
+	)
+}
+
 // What an app does with its clipboard; its runtime provides it to the machine.
 export class ClipboardOffer extends Context.Service<
 	ClipboardOffer,

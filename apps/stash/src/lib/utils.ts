@@ -8,7 +8,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
-import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
+import {ClipboardOffer, clipboardMachine, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {brands} from '@deslop/components-mobile/icons'
 import {hues} from '@deslop/components-mobile/theme'
@@ -233,13 +233,16 @@ const clipboardFile = new File(Paths.document, 'clipboard.txt')
 
 type Offer = {count: string; kind: ClipboardKind}
 
-const saveImage = Effect.fnUntraced(function* () {
-	const token = yield* session.accessToken
-	const image = yield* Effect.tryPromise({
-		catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
-		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
-	})
+const saveImage = Effect.fnUntraced(function* (count: string) {
+	const image = yield* readClipboard(
+		count,
+		Effect.tryPromise({
+			catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
+			try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
+		})
+	)
 	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
+	const token = yield* session.accessToken
 	const id = Crypto.randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
 	const response = yield* pipe(
@@ -260,12 +263,15 @@ const saveImage = Effect.fnUntraced(function* () {
 	}
 })
 
-const saveLink = Effect.gen(function* () {
+const saveLink = Effect.fnUntraced(function* (count: string) {
 	const text = String.trim(
-		yield* Effect.tryPromise({
-			catch: cause => NotesError.make({cause, message: 'The clipboard could not be read.'}),
-			try: () => Clipboard.getStringAsync()
-		})
+		yield* readClipboard(
+			count,
+			Effect.tryPromise({
+				catch: cause => NotesError.make({cause, message: 'The clipboard could not be read.'}),
+				try: () => Clipboard.getStringAsync()
+			})
+		)
 	)
 	// iOS detects a bare domain such as example.com/page as a link too.
 	const link = Boolean.match(Predicate.isUndefined(captureUrl(text)) && !String.includes(' ')(text), {
@@ -298,10 +304,10 @@ export const clipboardAtom = AtomMachine.bind(
 									Boolean.match(answer.kind === 'image', {
 										onFalse: () =>
 											Effect.flatMap(get.result(RpcClient.runtime), context =>
-												Effect.provideContext(saveLink, context)
+												Effect.provideContext(saveLink(answer.count), context)
 											),
 										// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
-										onTrue: () => Effect.provide(saveImage(), FetchHttpClient.layer)
+										onTrue: () => Effect.provide(saveImage(answer.count), FetchHttpClient.layer)
 									})
 							})
 						),
