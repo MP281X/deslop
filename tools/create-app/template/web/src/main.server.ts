@@ -1,4 +1,6 @@
-import {Layer} from 'effect'
+import {Layer, pipe} from 'effect'
+
+import {McpServer} from 'effect/ai'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -13,6 +15,9 @@ CliRuntime.runApp({
 	icon,
 	routes: Layer.mergeAll(
 		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-		ServerRuntime.layerMcp({handlers: ToolHandlers, instructions: "Read the app's name with name.", tools: Tools})
+		ServerRuntime.layerMcp({
+			instructions: "Read the app's name with name.",
+			registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+		})
 	)
 })

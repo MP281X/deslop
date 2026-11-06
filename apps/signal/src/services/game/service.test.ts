@@ -145,7 +145,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			yield* Effect.forkScoped(
 				pipe(
 					game.revisions,
-					Stream.mapEffect(Effect.fnUntraced(function* () {
+					Stream.mapEffect(
+						Effect.fnUntraced(function* () {
 							const rows = yield* game.thread(1, Option.some(4))
 							for (const row of rows) {
 								assert.deepStrictEqual(

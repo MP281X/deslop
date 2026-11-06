@@ -74,7 +74,6 @@ const mcp = Layer.unwrap(
 		const now = yield* Clock.currentTimeMillis
 		return pipe(
 			ServerRuntime.layerMcp({
-				handlers: ToolHandlers,
 				instructions: Array.join(
 					[
 						"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
@@ -89,7 +88,7 @@ const mcp = Layer.unwrap(
 					],
 					'\n'
 				),
-				tools: Tools
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			}),
 			Layer.provide(GatewayDiscovery.layer),
 			Layer.provide(McpServer.McpServer.layer)

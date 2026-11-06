@@ -2,6 +2,7 @@ import {NodeDns} from '@effect/platform-node'
 
 import {Array, Effect, Layer, Schema, String, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization} from 'effect/rpc'
 
@@ -75,9 +76,8 @@ CliRuntime.runApp({
 			rpc,
 			pipe(routes, Layer.provide(HttpAuth.layer)),
 			ServerRuntime.layerMcp({
-				handlers: ToolHandlers,
 				instructions: 'Stash is the reading list of articles, videos and posts the user saved or asks to keep.',
-				tools: Tools
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			})
 		),
 		Layer.provide(layerNotes),

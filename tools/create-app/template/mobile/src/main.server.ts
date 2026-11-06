@@ -1,5 +1,6 @@
 import {Layer, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {RpcSerialization} from 'effect/rpc'
 
 import * as CliRuntime from '@deslop/runtime/cli'
@@ -18,6 +19,9 @@ CliRuntime.runApp({
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			Layer.provide(RpcSerialization.layerJson)
 		),
-		ServerRuntime.layerMcp({handlers: ToolHandlers, instructions: "Read the app's name with name.", tools: Tools})
+		ServerRuntime.layerMcp({
+			instructions: "Read the app's name with name.",
+			registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+		})
 	)
 })

@@ -19,6 +19,7 @@ import {
 	pipe
 } from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {Digest, SecureRandom, Signature} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
@@ -71,9 +72,8 @@ const me = pipe(
 )
 
 const mcp = ServerRuntime.layerMcp({
-	handlers: ToolHandlers,
 	instructions: 'Approve a sign-in you started with answer_request.',
-	tools: Tools
+	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 })
 
 // A test route answers a refusal with its message, as the page shows it.

@@ -1,5 +1,7 @@
 import {Effect, Layer, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
+
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
@@ -35,9 +37,8 @@ CliRuntime.runApp({
 		Layer.mergeAll(
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
-				handlers: ToolHandlers,
 				instructions: 'Deploy observes services, containers and ports and manages explicitly owned HTTPS exposure.',
-				tools: Tools
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			})
 		),
 		Layer.provide(layerServices),
