@@ -141,10 +141,21 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 				Game
 			)
 			const updates = yield* Queue.unbounded<readonly Entry[]>()
+			const entries = KeyValueStore.toSchemaStore(kv, Entry)
 			yield* Effect.forkScoped(
 				pipe(
 					game.revisions,
-					Stream.mapEffect(() => game.thread(1, Option.some(4))),
+					Stream.mapEffect(Effect.fnUntraced(function* () {
+							const rows = yield* game.thread(1, Option.some(4))
+							for (const row of rows) {
+								assert.deepStrictEqual(
+									yield* entries.get(`thread/${row.team}/${String.padStart(9, '0')(`${row.round}`)}`),
+									Option.some(row)
+								)
+							}
+							return rows
+						})
+					),
 					Stream.runForEach(value => Queue.offer(updates, value))
 				)
 			)
@@ -163,7 +174,6 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 					yield* Queue.take(completed)
 					yield* Deferred.succeed(release, undefined)
 					yield* Fiber.join(paused)
-					const entries = KeyValueStore.toSchemaStore(kv, Entry)
 					assert.isTrue(Option.isNone(yield* entries.get('thread/1/000000003')))
 					yield* game.control(true)
 					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 30})

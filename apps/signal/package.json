@@ -33,6 +33,7 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/ai-openrouter": "latest",
 		"@effect/atom-react": "latest",
+		"@effect/platform-node": "latest",
 		"@tanstack/react-router": "latest",
 		"@typeonce/effect-machine": "latest",
 		"@types/three": "latest",
