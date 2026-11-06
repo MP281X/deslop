@@ -43,7 +43,7 @@ export function BlankScreen() {
 	)
 }
 
-// Data on its way, as the list it will fill; a Suspense fallback, so React keeps it at least 300ms and it never blinks.
+// Data on its way, shaped like the list it will fill.
 export function LoadingScreen() {
 	return (
 		<Host style={{flex: 1}}>

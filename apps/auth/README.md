@@ -1,6 +1,6 @@
 # Auth
 
-The sign-in for every Deslop app: GitHub, or a code approved from a browser, phone or agent.
+Shared sign-in for Deslop apps that enable Auth: GitHub, or a code approved from a browser, phone or agent.
 
 ```bash
 npm install --global @deslop/auth
