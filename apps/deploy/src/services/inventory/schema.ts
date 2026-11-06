@@ -1,4 +1,4 @@
-import {Schema} from 'effect'
+import {Array, Option, Schema, String} from 'effect'
 
 import {SecureOrigin} from '@deslop/runtime/schema'
 
@@ -66,7 +66,14 @@ export const Worker = Schema.Struct({name: Schema.NonEmptyString, url: SecureOri
 export type WorkerList = typeof WorkerList.Type
 // `--workers desktop=https://desktop.example.ts.net:5102,…`: the other workers' Deploy origins, by name.
 export const WorkerList = Schema.String.check(
-	Schema.isPattern(/^[\w-]+=https?:\/\/[^,=\s]+(?:,[\w-]+=https?:\/\/[^,=\s]+)*$/u)
+	Schema.isPattern(/^[\w-]+=https?:\/\/[^,=\s]+(?:,[\w-]+=https?:\/\/[^,=\s]+)*$/u),
+	Schema.makeFilter(
+		value =>
+			Array.every(String.split(value, ','), entry =>
+				Option.exists(Array.get(String.split(entry, '='), 1), Schema.is(SecureOrigin))
+			),
+		{expected: 'named HTTPS origins, or loopback HTTP origins'}
+	)
 )
 
 export type Peer = typeof Peer.Type

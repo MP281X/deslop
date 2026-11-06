@@ -45,8 +45,16 @@ import {
 	serverIcons,
 	serverName
 } from '#services/connections/lib/utils.ts'
-import type {Callback, ConnectionInfo, Discovery, OAuth, ServerId, Connection} from '#services/connections/schema.ts'
-import {ConnectionStore, Metadata, Registration, ServerUrl, Token, UpstreamError} from '#services/connections/schema.ts'
+import type {
+	Callback,
+	ConnectionInfo,
+	Discovery,
+	OAuth,
+	ServerId,
+	Connection,
+	ServerUrl
+} from '#services/connections/schema.ts'
+import {ConnectionStore, Metadata, Registration, Token, UpstreamError} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {
@@ -65,22 +73,10 @@ function failed(message: string) {
 	})
 }
 
-function validMetadata(metadata: Metadata) {
-	return Array.every(
-		[
-			metadata.issuer,
-			metadata.authorization_endpoint,
-			metadata.token_endpoint,
-			...Option.toArray(Option.fromUndefinedOr(metadata.registration_endpoint))
-		],
-		endpoint => Schema.is(ServerUrl)(endpoint)
-	)
-}
-
 export class Connections extends Context.Service<
 	Connections,
 	{
-		readonly add: (url: string, user: User) => Effect.Effect<ConnectionInfo, AuthError>
+		readonly add: (url: ServerUrl, user: User) => Effect.Effect<ConnectionInfo, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
 		// A tool call passing through, by server, for the page's port lights.
 		readonly called: (id: ServerId) => Effect.Effect<void>
@@ -363,9 +359,6 @@ export class Connections extends Context.Service<
 				} satisfies Connection
 			}
 			const metadata = yield* Schema.decodeEffect(Metadata)(discovery.authorizationServerMetadata)
-			if (!validMetadata(metadata)) {
-				return yield* AuthError.make({message: 'The MCP returned unsafe authorization endpoints.'})
-			}
 			return {
 				...initial,
 				link: {_tag: 'Disconnected'},
@@ -405,9 +398,9 @@ export class Connections extends Context.Service<
 
 		return Connections.of({
 			add: Effect.fn('Connections.add')(
-				function* (input: string, user: User) {
+				function* (input: ServerUrl, user: User) {
 					yield* admin(user)
-					const url = new URL(yield* Schema.decodeEffect(ServerUrl)(input)).href
+					const url = new URL(input).href
 					if (new URL(url).origin === origin) {
 						return yield* AuthError.make({message: 'The gateway cannot connect to itself'})
 					}
@@ -465,7 +458,7 @@ export class Connections extends Context.Service<
 									})
 							})
 						)
-						if (!validMetadata(metadata) || !Array.contains(metadata.code_challenge_methods_supported ?? [], 'S256')) {
+						if (!Array.contains(metadata.code_challenge_methods_supported ?? [], 'S256')) {
 							return yield* AuthError.make({
 								message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'
 							})

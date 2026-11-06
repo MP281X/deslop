@@ -228,7 +228,7 @@ export const ExtractedItem = Schema.Union([
 		boardingGroup: Schema.optionalKey(Schema.String),
 		confirmation: Schema.optionalKey(Schema.String),
 		departure: LocalTime,
-		flightNumber: Schema.String.annotate({description: 'Digits only, such as 553'}),
+		flightNumber: Schema.String.check(Schema.isPattern(/^\d+$/u)).annotate({description: 'Digits only, such as 553'}),
 		from: Schema.String.annotate({description: 'IATA airport code'}),
 		kind: Schema.Literal('flight'),
 		seat: Schema.optionalKey(Schema.String),
@@ -247,7 +247,7 @@ export const ExtractedItem = Schema.Union([
 		seat: Schema.optionalKey(Schema.String),
 		status: ReservationStatus,
 		to: Schema.String,
-		trainNumber: Schema.String.annotate({description: 'Digits only, such as 9541'})
+		trainNumber: Schema.String.check(Schema.isPattern(/^\d+$/u)).annotate({description: 'Digits only, such as 9541'})
 	}),
 	Schema.Struct({
 		address: Schema.String.annotate({description: 'Full street address with city and country'}),

@@ -121,18 +121,20 @@ export class Tracker extends Context.Service<
 
 			const train = Effect.fnUntraced(function* (booking: Train, now: number) {
 				// Today's run must be the booked one: it starts at most a day before the booked departure.
-				const run = Option.filter(yield* viaggiaTreno(`cercaNumeroTreno/${booking.number}`, VtRun, booking), found =>
-					Option.exists(
-						Number.parse(found.millisDataPartenza),
-						started => started <= booking.departs && booking.departs - started < 30 * HOUR
-					)
+				const run = Option.filter(
+					yield* viaggiaTreno(`cercaNumeroTreno/${encodeURIComponent(booking.number)}`, VtRun, booking),
+					found =>
+						Option.exists(
+							Number.parse(found.millisDataPartenza),
+							started => started <= booking.departs && booking.departs - started < 30 * HOUR
+						)
 				)
 				return yield* Option.match(run, {
 					onNone: () => Effect.succeedNone,
 					onSome: today =>
 						Effect.map(
 							viaggiaTreno(
-								`andamentoTreno/${today.codLocOrig}/${booking.number}/${today.millisDataPartenza}`,
+								`andamentoTreno/${encodeURIComponent(today.codLocOrig)}/${encodeURIComponent(booking.number)}/${encodeURIComponent(today.millisDataPartenza)}`,
 								VtStatus,
 								booking
 							),
