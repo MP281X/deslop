@@ -47,7 +47,10 @@ jobs:
       # The apps publish side by side, each taking about ten seconds; the summary keeps their order.
       - name: Publish changed apps
         run: |
-          apps=(auth deploy gateway portfolio scope stash opm trips signal)
+          shopt -s nullglob
+          apps=(apps/*/package.json)
+          apps=("${apps[@]%/package.json}")
+          apps=("${apps[@]#apps/}")
           publish() {
             cd "apps/$1"
             fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
@@ -75,6 +78,7 @@ jobs:
   app:
     name: App
     needs: verify
+    if: needs.verify.outputs.mobile != '[]'
     permissions:
       contents: read
       actions: read
@@ -82,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [stash, opm, trips]
+        app: ${{ fromJSON(needs.verify.outputs.mobile) }}
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}

@@ -1,13 +1,11 @@
 name: Simulator builds
 
-# Only a change to what the native build reads can change its fingerprint.
+# Discovery ignores web-only changes; a mobile app's native fingerprint decides whether the Mac builds it.
 on:
   push:
     branches-ignore: [main]
     paths:
-      - apps/stash/**
-      - apps/opm/**
-      - apps/trips/**
+      - apps/**
       - packages/**
       - pnpm-lock.yaml
       - .github/workflows/simulator*.yaml
@@ -23,11 +21,38 @@ permissions:
   actions: read
 
 jobs:
+  apps:
+    name: Discover apps
+    runs-on: ubuntu-26.04
+    outputs:
+      mobile: ${{ steps.apps.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {fetch-depth: 2}
+      - name: Discover changed mobile inputs
+        id: apps
+        env:
+          BASE: ${{ github.event.before }}
+        run: |
+          shopt -s nullglob
+          configs=(apps/*/app.config.ts)
+          apps=("${configs[@]%/app.config.ts}")
+          paths=("${apps[@]}" packages pnpm-lock.yaml .github/workflows .github/actions/setup)
+          apps=("${apps[@]#apps/}")
+          mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          if [[ ! $BASE =~ ^0+$ ]]; then
+            git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BASE"
+            if git diff --quiet "$BASE" HEAD -- "${paths[@]}"; then mobile='[]'; fi
+          fi
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+
   app:
     name: App
+    needs: apps
+    if: needs.apps.outputs.mobile != '[]'
     strategy:
       matrix:
-        app: [stash, opm, trips]
+        app: ${{ fromJSON(needs.apps.outputs.mobile) }}
     uses: ./.github/workflows/simulator-app.yaml
     with:
       app: ${{ matrix.app }}

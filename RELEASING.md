@@ -4,7 +4,7 @@ How changes reach the iOS Simulator, production and npm; accounts and hosts are 
 
 ## Simulator builds
 
-`simulator.yaml` builds each mobile app once per native fingerprint as the artifact `<app>-simulator-<fingerprint>`, on a branch push that changes what the native build reads; a Swift change compiles first in that build. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it on a Simulator.
+`simulator.yaml` checks every mobile app's native fingerprint on a branch push touching a mobile app or shared packages, building a missing `<app>-simulator-<fingerprint>` artifact; a Swift change compiles first in that build. The app holds the JavaScript of the commit that built it, so embed the branch's bundle before installing it on a Simulator.
 
 ```bash
 fingerprint=$(cd apps/stash && APP_VARIANT=development npx --yes eas-cli@latest fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
@@ -41,13 +41,13 @@ Release publishes `@deslop/coding-standards` and every app as `0.1.<run>` with n
    script -qfc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
    ```
 
-4. A tool: version and pack `tools/<name>` beside `tools/coding-standards` in Release's Build and Package steps. An app: add it to Release's Apps loop.
+4. A tool: version and pack `tools/<name>` beside `tools/coding-standards` in Release's Build and Package steps. Apps are discovered from `apps/*/package.json`; native jobs from `apps/*/app.config.ts`.
 
 ## Publish an iOS app
 
 The Simulator is for iteration, TestFlight for distribution.
 
-1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and share its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add the app to the Apps loop and the app matrix in `deploy.yaml`, and to the app matrix and trigger paths in `simulator.yaml`. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
+1. **Register before pushing.** After the mobile generator, check `npx --yes eas-cli@latest whoami`; if needed, use `login --device` and share its URL, not a worker-local callback. The generated all-zero project ID counts as already linked: temporarily replace `app.config.ts` with a default export of only its generated `name`, `owner` and `slug`, without the runtime helper, project ID or updates URL. Run `init` in `apps/<name>`, then restore the generated config with the real UUID it prints before the first CI push. If init cannot write the dynamic config, apply its printed ID yourself, not another project creation. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect` in `apps/auth/src/services/tokens/lib/utils.ts`.
 2. **Prove the app.** Install the branch's Simulator build per Simulator builds, sign in through both callback schemes, then complete a real app action.
 3. **Resolve production first.** Set `APP_VARIANT=production` on every standalone build, credentials, submission or metadata command; a submit profile does not inherit the build profile's environment. Set `RELEASE_NUMBER` to the intended unused release number, not the default zero. Inspect the resolved name, bundle identifier, scheme, project and version before creating Apple records:
 
