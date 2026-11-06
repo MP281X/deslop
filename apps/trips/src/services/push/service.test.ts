@@ -2,6 +2,7 @@ import {NodeCrypto} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {
+	Array,
 	Boolean,
 	Clock,
 	ConfigProvider,
@@ -9,6 +10,7 @@ import {
 	Deferred,
 	Effect,
 	Layer,
+	Option,
 	Queue,
 	Ref,
 	Stream,
@@ -23,6 +25,9 @@ import type {HttpClientRequest} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
+import {HOUR} from '#services/bookings/lib/utils.ts'
+import {Flight} from '#services/bookings/schema.ts'
+import type {BookingList} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {PushState} from '#services/push/schema.ts'
 import type {ActivityRecord} from '#services/push/schema.ts'
@@ -37,13 +42,23 @@ const RECORD = {
 	leg: 'departure'
 } satisfies ActivityRecord
 
-function open(answer: Effect.Effect<number>, record: ActivityRecord, following: ActivityRecord[] = []) {
+function open(
+	answer: Effect.Effect<number>,
+	record?: ActivityRecord,
+	following: ActivityRecord[] = [],
+	list: BookingList = []
+) {
 	return Effect.gen(function* () {
 		const now = yield* Clock.currentTimeMillis
 		const base = Context.get(yield* Layer.build(Layer.fresh(KeyValueStore.layerMemory)), KeyValueStore.KeyValueStore)
 		const saved = KeyValueStore.toSchemaStore(base, PushState)
-		yield* saved.set('push', {activities: [record, ...following], devices: [], sent: {}})
+		yield* saved.set('push', {
+			activities: [...Option.toArray(Option.fromUndefinedOr(record)), ...following],
+			devices: [],
+			sent: {}
+		})
 		const responses = yield* Ref.make(answer)
+		const channels = yield* Ref.make(0)
 		const calls = yield* Queue.unbounded<HttpClientRequest.HttpClientRequest>()
 		const commits = yield* Queue.unbounded<PushState>()
 		const key = yield* (yield* Signature.Signature).generateKeyPair(Signature.ecdsaP256)
@@ -68,7 +83,7 @@ function open(answer: Effect.Effect<number>, record: ActivityRecord, following: 
 							Bookings.of({
 								changes: Stream.never,
 								events: Stream.never,
-								list: Effect.succeed([]),
+								list: Effect.succeed(list),
 								remove: () => Effect.void,
 								restore: () => Effect.void,
 								save: () => Effect.succeed([]),
@@ -82,6 +97,14 @@ function open(answer: Effect.Effect<number>, record: ActivityRecord, following: 
 							HttpClient.make(request =>
 								Effect.gen(function* () {
 									yield* Queue.offer(calls, request)
+									if (request.method === 'POST' && String.endsWith('/channels')(request.url)) {
+										return HttpClientResponse.fromWeb(
+											request,
+											new Response(undefined, {
+												headers: {'apns-channel-id': `channel-${yield* Ref.updateAndGet(channels, count => count + 1)}`}
+											})
+										)
+									}
 									return HttpClientResponse.fromWeb(
 										request,
 										new Response(undefined, {status: yield* Effect.flatten(Ref.get(responses))})
@@ -108,6 +131,64 @@ function open(answer: Effect.Effect<number>, record: ActivityRecord, following: 
 }
 
 it.layer(NodeCrypto.layer)(test => {
+	test.effect(
+		'retries a refused start without blocking another trip or churning its broadcast channels',
+		Effect.fnUntraced(function* () {
+			const now = yield* Clock.currentTimeMillis
+			const first = Flight.make({
+				airline: 'British Airways',
+				airlineCode: 'BA',
+				arrives: now + 4 * HOUR,
+				createdAt: now,
+				departs: now + 2 * HOUR,
+				from: {code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'},
+				id: RECORD.bookingId,
+				number: '553',
+				sources: [],
+				status: 'confirmed',
+				to: {code: 'LHR', name: 'London', timeZone: 'Europe/London'}
+			})
+			const second = {...first, id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e', number: '554'}
+			const fixture = yield* open(
+				Effect.map(
+					Ref.getAndUpdate(yield* Ref.make(0), count => count + 1),
+					count => {
+						if (count === 0) return 503
+						return 200
+					}
+				),
+				undefined,
+				[],
+				[first, second]
+			)
+			yield* fixture.push.register({bundle: RECORD.bundle, kind: 'start', token: TOKEN_A})
+			yield* TestClock.adjust('30 seconds')
+			const calls = yield* Queue.takeAll(fixture.calls)
+			assert.strictEqual(
+				Array.countBy(calls, request => String.includes('/3/device/')(request.url)),
+				2
+			)
+			assert.strictEqual(
+				Array.countBy(calls, request => String.endsWith('/channels')(request.url)),
+				3
+			)
+			assert.isTrue(
+				Array.some(
+					(yield* fixture.snapshot).activities,
+					record => record.bookingId === second.id && record.channel !== undefined
+				)
+			)
+			yield* TestClock.adjust('30 seconds')
+			assert.strictEqual(yield* Queue.size(fixture.calls), 0)
+			yield* TestClock.adjust('870 seconds')
+			assert.deepStrictEqual(
+				Array.map(yield* Queue.takeAll(fixture.calls), request => request.method),
+				['POST', 'POST']
+			)
+			assert.isTrue(Array.every((yield* fixture.snapshot).activities, record => record.channel !== undefined))
+		})
+	)
+
 	for (const status of [429, 500, 503]) {
 		test.effect(
 			`retains a channel after APNs ${status} and ends it only after a later accepted send`,

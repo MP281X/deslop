@@ -215,9 +215,9 @@ export class Push extends Context.Service<
 				failed('The APNs key could not sign a token.')
 			)
 
-			const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest) {
+			const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
 				const now = yield* Clock.currentTimeMillis
-				const key = `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
+				const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
 				const deferred = Option.getOrUndefined(
 					Option.filter(HashMap.get(yield* Ref.get(retrying), key), pending => pending.until > now)
 				)
@@ -257,7 +257,8 @@ export class Push extends Context.Service<
 				target: Apns & {token: string},
 				type: 'alert' | 'liveactivity',
 				body: unknown,
-				priority: 5 | 10
+				priority: 5 | 10,
+				notification?: string
 			) {
 				return Effect.flatMap(
 					HttpClientRequest.bodyJson(
@@ -273,7 +274,7 @@ export class Push extends Context.Service<
 						}),
 						body
 					),
-					send
+					request => send(request, notification)
 				)
 			}
 
@@ -366,7 +367,7 @@ export class Push extends Context.Service<
 			}
 
 			// Accepted, the start is a channel the server updates; refused, the channel goes, and a token Apple will refuse again leaves until the app registers it anew.
-			const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+			const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing, notification: string) {
 				const channel = yield* createChannel(target)
 				const json = yield* Schema.encodeEffect(ActivityPropsJson)(showing.props)
 				const answer = yield* Effect.onError(
@@ -387,7 +388,8 @@ export class Push extends Context.Service<
 								timestamp: seconds(showing.now)
 							}
 						},
-						10
+						10,
+						notification
 					),
 					() => deleteChannel({...target, channel})
 				)
@@ -404,6 +406,13 @@ export class Push extends Context.Service<
 
 			// The server starts an activity the app has not, through the push-to-start token and a channel for its updates.
 			const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+				// Every trip uses the same push-to-start token, but a refusal belongs to this leg's notification only.
+				const notification = `start ${target.bundle} ${target.token} ${showing.journey.id} ${showing.leg}`
+				if (
+					Option.exists(HashMap.get(yield* Ref.get(retrying), notification), pending => pending.until > showing.now)
+				) {
+					return
+				}
 				const reserved = {
 					bookingId: showing.journey.id,
 					bundle: target.bundle,
@@ -411,7 +420,7 @@ export class Push extends Context.Service<
 					leg: showing.leg
 				} satisfies ActivityRecord
 				if (!(yield* reserve(reserved, showing.window))) return
-				const started = yield* Effect.onError(pushStart(target, showing), () => release(reserved))
+				const started = yield* Effect.onError(pushStart(target, showing, notification), () => release(reserved))
 				// A refused start leaves the leg free, so the app can still start it when opened.
 				if (Result.isFailure(started)) return yield* release(reserved)
 				yield* save(current => ({
