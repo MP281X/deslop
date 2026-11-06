@@ -741,6 +741,65 @@ const authenticator = Effect.fnUntraced(function* () {
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	test.effect(
+		'registers a credential ID to only one account under concurrent verified requests',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const member = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			const key = yield* authenticator()
+			const attempts = yield* Effect.forEach(
+				[admin, member],
+				Effect.fnUntraced(function* (session) {
+					const options = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+						yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: session}}), response =>
+							Effect.promise(() => response.text())
+						)
+					)
+					return {response: yield* key.register(options), session}
+				}),
+				{concurrency: 'unbounded'}
+			)
+			const responses = yield* Effect.forEach(
+				attempts,
+				attempt => post(web.issuer, '/add-passkey', attempt.session, {response: attempt.response}),
+				{concurrency: 'unbounded'}
+			)
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(responses, response => response.status),
+					Order.Number
+				),
+				[204, 400]
+			)
+			const listed = yield* Effect.forEach(
+				[admin, member],
+				Effect.fnUntraced(function* (session) {
+					return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey)))(
+						yield* Effect.flatMap(send(web.issuer, '/passkeys', {headers: {cookie: session}}), response =>
+							Effect.promise(() => response.text())
+						)
+					)
+				}),
+				{concurrency: 'unbounded'}
+			)
+			assert.strictEqual(Array.flatten(listed).length, 1)
+			const challenge = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/auth/passkey'), response => Effect.promise(() => response.text()))
+			)
+			const session = cookie(yield* post(web.issuer, '/auth/passkey', '', {response: yield* key.answer(challenge)}))
+			assert.strictEqual(
+				(yield* Schema.decodeEffect(Schema.fromJsonString(User))(
+					yield* Effect.flatMap(send(web.issuer, '/me', {headers: {cookie: session}}), response =>
+						Effect.promise(() => response.text())
+					)
+				)).id,
+				Boolean.match(responses[0]?.status === 204, {onFalse: () => 'github:7', onTrue: () => 'github:42'})
+			)
+		})
+	)
+
+	test.effect(
 		'keeps old passkeys and registration challenges invalid after a failed removal cleanup and restart',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()

@@ -107,11 +107,12 @@ export class Passkeys extends Context.Service<
 			const registering = yield* Ref.make(HashMap.empty<string, {challenge: string; expiresAt: number}>())
 			const signingIn = yield* Ref.make(HashMap.empty<string, {expiresAt: number}>())
 			// Every change saves the next passkeys before memory and the live views see them.
-			const change = Effect.fnUntraced(function* (next: (current: StoredPasskeys) => StoredPasskeys) {
-				yield* SubscriptionRef.modifyEffect(state, current => {
-					const updated = next(current)
-					return Effect.as(store.set('passkeys', updated), [undefined, updated] as const)
-				})
+			const change = Effect.fnUntraced(function* <E>(
+				next: (current: StoredPasskeys) => Effect.Effect<StoredPasskeys, E>
+			) {
+				yield* SubscriptionRef.updateEffect(state, current =>
+					Effect.tap(next(current), updated => store.set('passkeys', updated))
+				)
 			}, Effect.uninterruptible)
 
 			return Passkeys.of({
@@ -146,27 +147,31 @@ export class Passkeys extends Context.Service<
 					})
 					if (!verified.verified) return yield* AuthError.make({message: 'The passkey could not be verified'})
 					const credential = verified.registrationInfo.credential
-					// WebAuthn §7.1 step 22: an id already registered, to anyone, is refused, so no one's passkey is overwritten.
-					if (Array.some(yield* SubscriptionRef.get(state), found => found.id === credential.id)) {
-						return yield* AuthError.make({message: 'This passkey is already added'})
-					}
-					yield* change(current => [
-						...current,
-						{
-							addedFrom: `${browserLabel(from)} · ${deviceLabel(from)}`,
-							counter: credential.counter,
-							createdAt: now,
-							id: credential.id,
-							lastUsed: now,
-							publicKey: Base64Url.encode(credential.publicKey),
-							synced: verified.registrationInfo.credentialDeviceType === 'multiDevice',
-							transports,
-							...session.owner
-						}
-					])
+					yield* change(current =>
+						Effect.gen(function* () {
+							// WebAuthn §7.1 step 22: uniqueness is checked under the same lock as the saved registration.
+							if (Array.some(current, found => found.id === credential.id)) {
+								return yield* AuthError.make({message: 'This passkey is already added'})
+							}
+							return [
+								...current,
+								{
+									addedFrom: `${browserLabel(from)} · ${deviceLabel(from)}`,
+									counter: credential.counter,
+									createdAt: now,
+									id: credential.id,
+									lastUsed: now,
+									publicKey: Base64Url.encode(credential.publicKey),
+									synced: verified.registrationInfo.credentialDeviceType === 'multiDevice',
+									transports,
+									...session.owner
+								}
+							]
+						})
+					)
 				}, rejected('Cannot add the passkey')),
 				forget: Effect.fn('Passkeys.forget')(function* (owner: CredentialOwner) {
-					yield* change(current => Array.filter(current, found => !sameOwner(found, owner)))
+					yield* change(current => Effect.succeed(Array.filter(current, found => !sameOwner(found, owner))))
 					yield* Ref.update(registering, HashMap.remove(registrationKey(owner)))
 				}, rejected('Cannot remove the account’s passkeys')),
 				list: owner =>
@@ -214,7 +219,9 @@ export class Passkeys extends Context.Service<
 					)
 				}, rejected('Cannot start adding a passkey')),
 				remove: Effect.fn('Passkeys.remove')(function* (id: string, owner: CredentialOwner) {
-					yield* change(current => Array.filter(current, found => found.id !== id || !sameOwner(found, owner)))
+					yield* change(current =>
+						Effect.succeed(Array.filter(current, found => found.id !== id || !sameOwner(found, owner)))
+					)
 				}, rejected('Cannot remove the passkey')),
 				request: pipe(
 					Effect.tryPromise({
@@ -262,14 +269,16 @@ export class Passkeys extends Context.Service<
 					if (!verified.verified) return yield* AuthError.make({message: 'The passkey could not be verified'})
 					// Two sign-ins at once never move the counter back.
 					yield* change(current =>
-						Array.map(current, stored => {
-							if (stored.id !== found.id) return stored
-							return {
-								...stored,
-								counter: Number.max(stored.counter, verified.authenticationInfo.newCounter),
-								lastUsed: now
-							}
-						})
+						Effect.succeed(
+							Array.map(current, stored => {
+								if (stored.id !== found.id) return stored
+								return {
+									...stored,
+									counter: Number.max(stored.counter, verified.authenticationInfo.newCounter),
+									lastUsed: now
+								}
+							})
+						)
 					)
 					return {incarnation: found.incarnation, user: found.user}
 				}, rejected('Cannot sign in with the passkey'))
