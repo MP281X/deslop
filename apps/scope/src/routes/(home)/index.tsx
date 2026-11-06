@@ -888,7 +888,7 @@ function Home() {
 				})}
 				palette={Boolean.match(Option.isSome(authFailure), {
 					onFalse: () => [traces, operations, otherApps('scope')],
-					onTrue: () => []
+					onTrue: () => [otherApps('scope')]
 				})}
 			/>
 			{Option.match(authFailure, {

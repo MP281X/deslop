@@ -420,7 +420,7 @@ function Home() {
 				name="gateway"
 				palette={Boolean.match(Option.isSome(authFailure), {
 					onFalse: () => [actions, needsYou, all, otherApps('gateway')],
-					onTrue: () => []
+					onTrue: () => [otherApps('gateway')]
 				})}
 				action={
 					<>

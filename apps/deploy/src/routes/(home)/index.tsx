@@ -1238,7 +1238,7 @@ function Home() {
 						},
 						otherApps('deploy')
 					],
-					onTrue: () => []
+					onTrue: () => [otherApps('deploy')]
 				})}
 				action={
 					<>
