@@ -1,8 +1,9 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Cause, Context, Effect, Fiber, Layer, MutableList, String, pipe} from 'effect'
+import {Array, Boolean, Cause, Context, Effect, Fiber, Layer, MutableList, Queue, Ref, String, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
+import type {HttpClientError} from 'effect/http/HttpClientError'
 import {OtlpExporter} from 'effect/observability'
 import {TestClock} from 'effect/testing'
 
@@ -12,15 +13,26 @@ it.effect(
 	'keeps app data available when telemetry settings cannot be read',
 	Effect.fnUntraced(function* () {
 		for (const response of [new Response('offline', {status: 503}), Response.json({unexpected: true})]) {
+			const calls = yield* Ref.make(0)
 			const services = yield* Layer.build(
 				Layer.provide(
 					layerWebTelemetry('fixture'),
 					Layer.succeed(
 						HttpClient.HttpClient,
-						HttpClient.make(request => Effect.succeed(HttpClientResponse.fromWeb(request, response)))
+						HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
+							request =>
+								Effect.flatMap(request, input =>
+									Effect.as(
+										Ref.update(calls, count => count + 1),
+										HttpClientResponse.fromWeb(input, response)
+									)
+								),
+							Effect.succeed
+						)
 					)
 				)
 			)
+			assert.strictEqual(yield* Ref.get(calls), 1)
 			assert.strictEqual(yield* Effect.provideContext(Effect.succeed('ready'), services), 'ready')
 		}
 	}, Effect.scoped)
@@ -29,6 +41,7 @@ it.effect(
 it.effect(
 	'bounds stalled telemetry settings without swallowing caller cancellation',
 	Effect.fnUntraced(function* () {
+		const entered = yield* Queue.unbounded<void>()
 		const page = Effect.scoped(
 			Effect.gen(function* () {
 				const services = yield* Layer.build(
@@ -36,7 +49,10 @@ it.effect(
 						layerWebTelemetry('fixture'),
 						Layer.succeed(
 							HttpClient.HttpClient,
-							HttpClient.make(() => Effect.never)
+							HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
+								request => Effect.andThen(request, Effect.andThen(Queue.offer(entered, undefined), Effect.never)),
+								Effect.succeed
+							)
 						)
 					)
 				)
@@ -44,9 +60,13 @@ it.effect(
 			})
 		)
 		const waiting = yield* Effect.forkChild(page)
-		yield* TestClock.adjust('3 seconds')
+		yield* Queue.take(entered)
+		yield* TestClock.adjust('2999 millis')
+		assert.isUndefined(waiting.pollUnsafe())
+		yield* TestClock.adjust('1 millis')
 		assert.strictEqual(yield* Fiber.join(waiting), 'ready')
 		const cancelled = yield* Effect.forkChild(page)
+		yield* Queue.take(entered)
 		yield* Fiber.interrupt(cancelled)
 		const exit = yield* Fiber.await(cancelled)
 		assert.isTrue(exit._tag === 'Failure' && Cause.hasInterrupts(exit.cause))

@@ -90,22 +90,37 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		)
 		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
-			const now = BigInt(yield* Clock.currentTimeMillis) * 1_000_000n
+			const receivedAt = yield* Clock.currentTimeMillis
+			const now = BigInt(receivedAt) * 1_000_000n
 			const cutoff = now - BigInt(Duration.toMillis(RETENTION)) * 1_000_000n
 			const newest = yield* Ref.get(releases)
-			yield* SynchronizedRef.updateEffect(state, current => {
-				const expired = Array.filter(Array.fromIterable(HashMap.values(current)), entry => {
-					const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
-						onNone: () => BigInt(entry.time),
-						onSome: time => BigInt(time) * 1_000_000n
+			yield* SynchronizedRef.updateEffect(
+				state,
+				Effect.fnUntraced(function* (current) {
+					// Stamp a previous-release future clock once, rather than deleting its data or renewing retention at every restart.
+					const repaired = Array.map(
+						Array.filter(
+							Array.fromIterable(HashMap.values(current)),
+							entry => entry.receivedAt === undefined && BigInt(entry.time) > now
+						),
+						entry => ({...entry, receivedAt})
+					)
+					yield* Effect.forEach(repaired, entry => store.set(entry.id, entry), {concurrency: 1, discard: true})
+					const expired = Array.filter(Array.fromIterable(HashMap.values(current)), entry => {
+						const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
+							onNone: () => BigInt(entry.time),
+							onSome: time => BigInt(time) * 1_000_000n
+						})
+						return received < cutoff || superseded(entry, newest)
 					})
-					return received < cutoff || received > now || superseded(entry, newest)
+					yield* Effect.forEach(expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
+					return Array.reduce(
+						expired,
+						Array.reduce(repaired, current, (all, entry) => HashMap.set(all, entry.id, entry)),
+						(all, entry) => HashMap.remove(all, entry.id)
+					)
 				})
-				return Effect.as(
-					Effect.forEach(expired, entry => store.remove(entry.id), {concurrency: 1, discard: true}),
-					Array.reduce(expired, current, (all, entry) => HashMap.remove(all, entry.id))
-				)
-			})
+			)
 			yield* SubscriptionRef.update(version, Number.increment)
 		})
 		yield* prune

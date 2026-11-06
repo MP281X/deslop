@@ -14,14 +14,16 @@ import {
 	Order,
 	Queue,
 	Ref,
+	Schema,
 	Stream,
 	String,
+	Struct,
 	pipe
 } from 'effect'
 
 import {TestClock} from 'effect/testing'
 
-import {LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
+import {Entry, LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
 import type {Overview} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
@@ -155,6 +157,22 @@ it.layer(platform)(test => {
 					assert.strictEqual(trace.spans[0]?.receivedAt, 1_781_870_000_000)
 					assert.strictEqual(trace.spans[0]?.payload['startTimeUnixNano'], '99999999999999999999')
 					assert.strictEqual(trace.logs[0]?.time, '99999999999999999999')
+				})
+			)
+			// The immediately previous release stored only the client's clock, without receipt timestamps.
+			for (const file of yield* fs.readDirectory(directory)) {
+				yield* pipe(
+					fs.readFileString(`${directory}/${file}`),
+					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Entry))),
+					Effect.map(Struct.omit(['receivedAt'])),
+					Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Entry))),
+					Effect.flatMap(value => fs.writeFileString(`${directory}/${file}`, value))
+				)
+			}
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.receivedAt, 1_781_870_000_000)
 				})
 			)
 			yield* TestClock.adjust('4 days')
