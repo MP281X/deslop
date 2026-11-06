@@ -15,7 +15,8 @@ import {
 	Toggle,
 	ZStack,
 	Toolbar,
-	ToolbarItem
+	ToolbarItem,
+	VStack
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
@@ -37,6 +38,7 @@ import {
 	navigationTitle,
 	onAppear,
 	pickerStyle,
+	padding,
 	redacted,
 	resizable,
 	searchable,
@@ -67,8 +69,9 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
+import {AuthError} from '@deslop/runtime/auth/schema'
 
-import {Byline} from '#lib/components.tsx'
+import {Byline, ReadError} from '#lib/components.tsx'
 import {
 	appOf,
 	brandOf,
@@ -305,10 +308,15 @@ export function HomeRoute(props: {
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
 	const query = String.trim(useAtomValue(queryAtom))
-	const found = pipe(useAtomValue(searchAtom), AsyncResult.getOrElse(Option.none))
+	const search = useAtomValue(searchAtom)
+	const refreshSearch = useAtomRefresh(searchAtom)
+	const found = pipe(search, AsyncResult.value, Option.flatten)
 	const [limit, setLimit] = useState(80)
 	if (AsyncResult.isFailure(loaded)) {
 		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} tint={primary} />
+	}
+	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), Schema.is(AuthError))) {
+		return <FailureContent cause={search.cause} name="stash" onRetry={refreshSearch} tint={primary} />
 	}
 	const notes = Array.filter(
 		loaded.value,
@@ -324,82 +332,92 @@ export function HomeRoute(props: {
 		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
-				{Array.match(loaded.value, {
-					onEmpty: () => (
-						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="tray" />
-								<EmptyTitle>Nothing Saved</EmptyTitle>
-								<EmptyDescription>Share a link to stash, or copy one and open the app.</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					),
-					onNonEmpty: () => (
-						// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
-						<Overlay>
-							<ItemGroup>
-								{/* "all" clears the tag, and choosing the chosen tag again does too. */}
-								<ToggleGroup
-									value={props.tag ?? 'all'}
-									onValueChange={value =>
-										Boolean.match(value === 'all' || value === props.tag, {
-											onFalse: () => props.onTag(value),
-											onTrue: () => props.onTag()
-										})
-									}
-									tint={primary}
-									modifiers={[
-										listRowBackground(colors.background),
-										listRowSeparator('hidden'),
-										listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
-									]}
-								>
-									<ToggleGroupItem value="all" systemImage="tray">
-										all
-									</ToggleGroupItem>
-									{Array.map(tags, name => (
-										<ToggleGroupItem key={name} value={name}>
-											{name}
+				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+					{AsyncResult.isFailure(search) && (
+						<ReadError
+							cause={search.cause}
+							title="Search unavailable"
+							onRetry={refreshSearch}
+							modifiers={[padding({all: space[4]})]}
+						/>
+					)}
+					{Array.match(loaded.value, {
+						onEmpty: () => (
+							<Empty>
+								<EmptyHeader>
+									<EmptyMedia systemImage="tray" />
+									<EmptyTitle>Nothing Saved</EmptyTitle>
+									<EmptyDescription>Share a link to stash, or copy one and open the app.</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						),
+						onNonEmpty: () => (
+							// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
+							<Overlay>
+								<ItemGroup>
+									{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+									<ToggleGroup
+										value={props.tag ?? 'all'}
+										onValueChange={value =>
+											Boolean.match(value === 'all' || value === props.tag, {
+												onFalse: () => props.onTag(value),
+												onTrue: () => props.onTag()
+											})
+										}
+										tint={primary}
+										modifiers={[
+											listRowBackground(colors.background),
+											listRowSeparator('hidden'),
+											listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
+										]}
+									>
+										<ToggleGroupItem value="all" systemImage="tray">
+											all
 										</ToggleGroupItem>
+										{Array.map(tags, name => (
+											<ToggleGroupItem key={name} value={name}>
+												{name}
+											</ToggleGroupItem>
+										))}
+									</ToggleGroup>
+									{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+									{Array.map(Array.take(notes, limit), (note, position) => (
+										<NoteRow
+											key={note.id}
+											note={note}
+											onAppear={() => {
+												if (position === limit - 1) setLimit(limit + 80)
+											}}
+											onOpen={props.onOpen}
+											onRegenerate={id => regenerate(id)}
+											onRemove={id => remove(id)}
+										/>
 									))}
-								</ToggleGroup>
-								{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-								{Array.map(Array.take(notes, limit), (note, position) => (
-									<NoteRow
-										key={note.id}
-										note={note}
-										onAppear={() => {
-											if (position === limit - 1) setLimit(limit + 80)
-										}}
-										onOpen={props.onOpen}
-										onRegenerate={id => regenerate(id)}
-										onRemove={id => remove(id)}
-									/>
-								))}
-							</ItemGroup>
-							{filtered && Array.isReadonlyArrayEmpty(notes) && (
-								<Overlay.Content>
-									<Empty>
-										{Boolean.match(String.isEmpty(query), {
-											onFalse: () => (
-												<EmptyHeader>
-													<EmptyMedia systemImage="magnifyingglass" />
-													<EmptyTitle>{`No Results for “${query}”`}</EmptyTitle>
-												</EmptyHeader>
-											),
-											onTrue: () => (
-												<EmptyHeader>
-													<EmptyMedia systemImage="tray" />
-													<EmptyTitle>No Notes</EmptyTitle>
-												</EmptyHeader>
-											)
-										})}
-									</Empty>
-								</Overlay.Content>
-							)}
-						</Overlay>
-					)
-				})}
+								</ItemGroup>
+								{filtered && Array.isReadonlyArrayEmpty(notes) && (
+									<Overlay.Content>
+										<Empty>
+											{Boolean.match(String.isEmpty(query), {
+												onFalse: () => (
+													<EmptyHeader>
+														<EmptyMedia systemImage="magnifyingglass" />
+														<EmptyTitle>{`No Results for “${query}”`}</EmptyTitle>
+													</EmptyHeader>
+												),
+												onTrue: () => (
+													<EmptyHeader>
+														<EmptyMedia systemImage="tray" />
+														<EmptyTitle>No Notes</EmptyTitle>
+													</EmptyHeader>
+												)
+											})}
+										</Empty>
+									</Overlay.Content>
+								)}
+							</Overlay>
+						)
+					})}
+				</VStack>
 				<Toolbar.Content>
 					<ToolbarItem placement="bottomBar">
 						<Button

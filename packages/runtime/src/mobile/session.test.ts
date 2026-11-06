@@ -45,7 +45,7 @@ it.layer(AtomRegistry.layer)(test => {
 		})
 	]) {
 		test.effect(
-			`surfaces ${error._tag}: ${error.message} without retrying or asking to sign in`,
+			`surfaces ${error._tag}: ${error.message} without retrying`,
 			Effect.fnUntraced(function* () {
 				const waiting = yield* Effect.forkChild(Stream.runCollect(session().renewing(Stream.fail(error))))
 				yield* TestClock.adjust('2 seconds')
