@@ -4,7 +4,7 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
-/* DESIGN.md owns these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
+/* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
 :root {
 	--red: #af3029;
 	--orange: #bc5215;

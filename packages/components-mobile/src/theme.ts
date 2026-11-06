@@ -1,7 +1,7 @@
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
-// DESIGN.md owns these values, in the iPhone's light or dark appearance; theme.test.ts fails when they drift.
+// theme.css owns these values, in the iPhone's light or dark appearance; theme.test.ts fails when they drift.
 export const colors = {
 	background: DynamicColorIOS({dark: '#0a0a0a', light: '#ffffff'}),
 	border: DynamicColorIOS({dark: '#222222', light: '#e5e5e5'}),
