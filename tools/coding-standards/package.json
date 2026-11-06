@@ -7,11 +7,10 @@
 		"directory": "tools/coding-standards"
 	},
 	"bin": {
-		"deslop-coding-standards": "dist/install.js"
+		"deslop-coding-standards": "dist/main.cli.js"
 	},
 	"files": [
 		"dist",
-		"skills",
 		"src/css-properties.d.ts",
 		"tsconfig.json"
 	],
@@ -33,11 +32,13 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
-		"@effect/platform-node": "latest",
 		"@shadcn/lint": "latest",
 		"@typeonce/oxlint-plugin-effect-machine": "latest",
 		"effect": "latest",
 		"oxlint-plugin-react-doctor": "latest"
+	},
+	"devDependencies": {
+		"@effect/platform-node": "latest"
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.67",

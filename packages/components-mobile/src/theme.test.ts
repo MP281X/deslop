@@ -3,8 +3,6 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, FileSystem, Option, String, pipe} from 'effect'
 
-import {lint} from '@google/design.md/linter'
-
 // Each color the theme names, with its dark and light values; theme.ts imports React Native, so its source is read as text.
 function pairs(source: string) {
 	return Array.map(
@@ -19,19 +17,48 @@ function pairs(source: string) {
 	)
 }
 
+function declarations(block: string) {
+	return Array.map(
+		Array.fromIterable(String.matchAll(/--([a-z-]+): (?:#([0-9a-f]{6})|var\(--([a-z-]+)\));/gu)(block)),
+		match => {
+			if (match[2]) return [match[1] ?? '', `#${match[2]}`]
+			return [match[1] ?? '', `var(--${match[3] ?? ''})`]
+		}
+	)
+}
+
+function lookup(entries: string[][], name: string) {
+	for (const entry of entries) {
+		if (entry[0] === name) return entry[1]
+	}
+	return undefined
+}
+
+function resolved(entries: string[][], name: string) {
+	const value = lookup(entries, name)
+	if (value === undefined) return undefined
+	if (String.startsWith('var(--')(value)) return resolved(entries, String.slice(6, -1)(value))
+	return value
+}
+
 it.layer(NodeServices.layer)(test => {
 	test.effect(
-		'theme.ts sets every color to its DESIGN.md token, dark and light',
+		'theme.ts matches theme.css for every shared color, dark and light',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
-			const colors = lint(yield* fs.readFileString(`${import.meta.dirname}/../../../DESIGN.md`)).designSystem.colors
+			const [light, dark = ''] = String.split(
+				yield* fs.readFileString(`${import.meta.dirname}/../../../packages/components-web/src/theme.css`),
+				'@media screen and (prefers-color-scheme: dark)'
+			)
+			const lightDeclarations = declarations(light)
+			const darkDeclarations = [...declarations(dark), ...lightDeclarations]
 			const found = pairs(yield* fs.readFileString(`${import.meta.dirname}/theme.ts`))
 			assert.isNotEmpty(found)
 			assert.deepStrictEqual(
 				found,
 				Array.map(found, color => ({
-					dark: colors.get(color.name)?.hex,
-					light: colors.get(`light-${color.name}`)?.hex,
+					dark: resolved(darkDeclarations, color.name),
+					light: resolved(lightDeclarations, color.name),
 					name: color.name
 				}))
 			)

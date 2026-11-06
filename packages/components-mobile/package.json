@@ -27,7 +27,6 @@
 	"devDependencies": {
 		"@deslop/runtime": "workspace:*",
 		"@effect/platform-node": "latest",
-		"@google/design.md": "latest",
 		"expo": "^58.0",
 		"react-native": "0.88.1"
 	},

@@ -20,8 +20,9 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 - **Releases.** `RELEASING.md`: Simulator builds, deploy and its checks, publishing packages and iOS apps.
 - **Agent configuration.**
   - `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; they replace the provider prompts with goals and local facts the harness, T3 and tool descriptions don't say, and name each injected rule they override.
-  - **Team skills**: `tools/coding-standards/skills/`; `node tools/coding-standards/src/install.ts` refreshes `.claude/skills` and `.codex/skills`.
-  - **Personal skills**: planning and environment in `.claude/skills`, loaded globally through the workers' links.
+  - **Canonical config.** The installed configuration is `~/deslop`; change it through a deslop PR, merge it, pull the canonical checkout, then install. Do not hand-edit the canonical checkout while other threads use it.
+  - **Lint tactics.** `vpx @deslop/coding-standards@latest` prints them when a diagnostic survives `vp run fix`; the text lives in `tools/coding-standards/src/main.cli.ts`. No skill files are installed.
+  - **Global skills**: workflow, environment, verification and pull-requests in `.claude/skills`, each linked globally; reply lives in the prompt.
 
 ## Patterns
 
@@ -38,4 +39,4 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Documents
 
-Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, `DESIGN.md` for every visual token and rule, `RELEASING.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.
+Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, `DESIGN.md` for every visual rule, `packages/components-web/src/theme.css` and `packages/components-mobile/src/theme.ts` for every token, `RELEASING.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.
