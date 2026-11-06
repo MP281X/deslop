@@ -13,7 +13,7 @@ import {Tokens} from '#services/tokens/service.ts'
 
 const RESOURCE = 'https://scope.mp281x.xyz/mcp'
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-const USER = {id: 'github:42', name: 'octocat'}
+const USER = {incarnation: 'fixture', user: {id: 'github:42', name: 'octocat'}}
 
 const open = Effect.gen(function* () {
 	const store = yield* KeyValueStore.KeyValueStore

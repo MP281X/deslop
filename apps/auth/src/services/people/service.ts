@@ -15,24 +15,33 @@ import {
 	pipe
 } from 'effect'
 
+import {SecureRandom} from 'effect/crypto'
+import {Base64Url} from 'effect/encoding'
 import type {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {adminIds, isAdmin, rejected} from '@deslop/runtime/auth/utils'
+import {DEVELOPER, adminIds, isAdmin, localAuth, rejected} from '@deslop/runtime/auth/utils'
 
+import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import type {AdmitParams, GitHubUser, MemberRow, Role} from '#services/people/schema.ts'
 import {Members, Person, SignedAccount} from '#services/people/schema.ts'
+import {CurrentOwner} from '#services/tokens/schema.ts'
+import type {CredentialOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
 
-function memberOf(github: GitHubUser, since: number, status: MemberRow['status']) {
-	return {fullName: github.name ?? '', id: `github:${github.id}`, name: github.login, since, status}
+function memberOf(github: GitHubUser, since: number, status: MemberRow['status'], incarnation: string) {
+	return {fullName: github.name ?? '', id: `github:${github.id}`, incarnation, name: github.login, since, status}
+}
+
+function ownerOf(row: MemberRow) {
+	return {incarnation: row.incarnation, user: {id: row.id, name: row.name}}
 }
 
 function member(id: string, current: Members) {
@@ -45,10 +54,10 @@ export class People extends Context.Service<
 		readonly account: (headers: Headers.Headers) => Stream.Stream<SignedAccount, AuthError>
 		readonly admin: (user: User) => Effect.Effect<void, AuthError>
 		readonly admit: (params: AdmitParams, user: User) => Effect.Effect<Person, AuthError>
-		readonly allowed: (user: User) => Effect.Effect<User, AuthError>
+		readonly allowed: (owner: CredentialOwner) => Effect.Effect<CredentialOwner, AuthError>
 		readonly list: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly people: (user: User) => Stream.Stream<Person[], AuthError>
-		readonly register: (github: GitHubUser) => Effect.Effect<User, AuthError>
+		readonly register: (github: GitHubUser) => Effect.Effect<CredentialOwner, AuthError>
 		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
 	}
 >()('@deslop/auth/services/people/service/People') {
@@ -61,6 +70,9 @@ export class People extends Context.Service<
 			const passkeys = yield* Passkeys
 			const github = yield* GitHub
 			const admins = yield* adminIds
+			const random = yield* SecureRandom.SecureRandom
+			const local = yield* localAuth
+			const developer = {incarnation: 'local', user: DEVELOPER}
 			// Every change saves the next members before memory and the live views see them.
 			const transact = Effect.fnUntraced(function* <A, E>(
 				change: (current: Members) => Effect.Effect<readonly [A, Members], E>
@@ -84,14 +96,34 @@ export class People extends Context.Service<
 					role: roleOf(row.id, Option.some(row))
 				})
 			}
-			const allowed = Effect.fnUntraced(function* (user: User) {
-				if (roleOf(user.id, member(user.id, yield* SubscriptionRef.get(state))) === 'Waiting') {
+			const currentOwner = Effect.fnUntraced(function* (owner: CredentialOwner) {
+				const row = member(owner.user.id, yield* SubscriptionRef.get(state))
+				if (local && owner.user.id === DEVELOPER.id && owner.incarnation === developer.incarnation) return row
+				if (
+					!Option.match(row, {
+						onNone: () => isAdmin(admins, owner.user.id) && owner.incarnation === 'legacy',
+						onSome: found => found.incarnation === owner.incarnation
+					})
+				) {
+					return yield* AuthError.make({
+						error: 'invalid_grant',
+						message: 'This account registration ended. Sign in again.'
+					})
+				}
+				return row
+			})
+			const allowed = Effect.fnUntraced(function* (owner: CredentialOwner) {
+				if (roleOf(owner.user.id, yield* currentOwner(owner)) === 'Waiting') {
 					return yield* AuthError.make({
 						error: 'access_denied',
 						message: 'An admin has not allowed this GitHub account yet'
 					})
 				}
-				return user
+				return owner
+			})
+			const sessionOwner = Effect.fnUntraced(function* (headers: Headers.Headers) {
+				if (local) return developer
+				return yield* allowed(yield* tokens.session(headers))
 			})
 			const admin = Effect.fnUntraced(function* (user: User) {
 				if (!isAdmin(admins, user.id)) {
@@ -131,7 +163,18 @@ export class People extends Context.Service<
 							if (Option.isSome(member(`github:${profile.id}`, current))) {
 								return Effect.succeed([undefined, current] as const)
 							}
-							return Effect.succeed([undefined, [...current, memberOf(profile, since, 'Allowed')]] as const)
+							return Effect.succeed([
+								undefined,
+								[
+									...current,
+									memberOf(
+										profile,
+										since,
+										'Allowed',
+										Boolean.match(local, {onFalse: () => 'legacy', onTrue: () => 'local'})
+									)
+								]
+							] as const)
 						})
 					}),
 					{concurrency: 1, discard: true}
@@ -152,11 +195,11 @@ export class People extends Context.Service<
 							pipe(
 								Effect.gen(function* () {
 									const session = yield* tokens.browserSession(headers)
-									return Option.match(member(session.user.id, yield* SubscriptionRef.get(state)), {
+									return Option.match(yield* currentOwner(session.owner), {
 										onNone: () =>
 											SignedAccount.make({
-												...session.user,
-												role: roleOf(session.user.id, Option.none()),
+												...session.owner.user,
+												role: roleOf(session.owner.user.id, Option.none()),
 												via: session.via
 											}),
 										onSome: row => SignedAccount.make({...Struct.omit(personOf(row), ['since']), via: session.via})
@@ -171,28 +214,34 @@ export class People extends Context.Service<
 				admit: Effect.fn('People.admit')(function* (params: AdmitParams, user: User) {
 					yield* admin(user)
 					const now = yield* Clock.currentTimeMillis
-					const person = yield* transact(current =>
+					const result = yield* transact(current =>
 						Effect.gen(function* () {
-							const found = personOf(yield* Effect.fromOption(member(params.id, current)))
+							const row = yield* Effect.fromOption(member(params.id, current))
+							const found = personOf(row)
 							if (found.role !== 'Waiting') {
 								return yield* AuthError.make({message: 'This account is not asking for access'})
 							}
-							if (!params.allow) return [found, Array.filter(current, row => row.id !== params.id)] as const
+							if (!params.allow) {
+								return [
+									{owner: ownerOf(row), person: found},
+									Array.filter(current, stored => stored.id !== params.id)
+								] as const
+							}
 							return [
-								Person.make({...found, role: 'Member', since: now}),
-								Array.map(current, row => {
-									if (row.id !== params.id) return row
-									return {...row, since: now, status: 'Allowed' as const}
+								{owner: ownerOf(row), person: Person.make({...found, role: 'Member', since: now})},
+								Array.map(current, stored => {
+									if (stored.id !== params.id) return stored
+									return {...stored, since: now, status: 'Allowed' as const}
 								})
 							] as const
 						})
 					)
 					// A declined account is signed out and loses its passkeys, so it can sign in again to ask again.
 					if (!params.allow) {
-						yield* tokens.forget(params.id)
-						yield* passkeys.forget(params.id)
+						yield* tokens.forget(result.owner)
+						yield* passkeys.forget(result.owner)
 					}
-					return person
+					return result.person
 				}, rejected('Cannot answer the access request')),
 				allowed: Effect.fn('People.allowed')(allowed),
 				list,
@@ -200,51 +249,75 @@ export class People extends Context.Service<
 				// Every GitHub sign-in is recorded: an admin as allowed, anyone else as asking for access until an admin answers.
 				register: Effect.fn('People.register')(function* (profile: GitHubUser) {
 					const since = yield* Clock.currentTimeMillis
-					return yield* transact(current => {
-						const row = memberOf(
-							profile,
-							since,
-							Boolean.match(roleOf(`github:${profile.id}`, Option.none()) === 'Admin', {
-								onFalse: () => 'Waiting' as const,
-								onTrue: () => 'Allowed' as const
+					return yield* transact(current =>
+						Effect.gen(function* () {
+							const existing = member(`github:${profile.id}`, current)
+							const incarnation = Option.match(existing, {
+								onNone: () => {
+									if (local && profile.id === 0) return Effect.succeed('local')
+									return Effect.map(random.randomBytes(32), Base64Url.encode)
+								},
+								onSome: row => Effect.succeed(row.incarnation)
 							})
-						)
-						return Effect.succeed([
-							{id: row.id, name: row.name},
-							Option.match(member(row.id, current), {
-								onNone: () => [...current, row],
-								onSome: () =>
-									Array.map(current, existing => {
-										if (existing.id !== row.id) return existing
-										return {...existing, fullName: row.fullName, name: row.name}
-									})
-							})
-						] as const)
-					})
+							const row = memberOf(
+								profile,
+								since,
+								Boolean.match(roleOf(`github:${profile.id}`, Option.none()) === 'Admin', {
+									onFalse: () => 'Waiting' as const,
+									onTrue: () => 'Allowed' as const
+								}),
+								yield* incarnation
+							)
+							return [
+								ownerOf(row),
+								Option.match(existing, {
+									onNone: () => [...current, row],
+									onSome: () =>
+										Array.map(current, stored => {
+											if (stored.id !== row.id) return stored
+											return {...stored, fullName: row.fullName, name: row.name}
+										})
+								})
+							] as const
+						})
+					)
 				}, rejected('Cannot record the GitHub account')),
 				remove: Effect.fn('People.remove')(function* (id: string, user: User) {
 					yield* admin(user)
 					if (roleOf(id, Option.none()) === 'Admin') {
 						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
 					}
-					const found = personOf(yield* Effect.fromOption(member(id, yield* SubscriptionRef.get(state))))
-					// Access ends first, so no token or sign-in can be issued to the account between the steps; a later re-admission revives no old passkey.
-					yield* transact(current => Effect.succeed([undefined, Array.filter(current, row => row.id !== id)] as const))
-					yield* tokens.forget(id)
-					yield* passkeys.forget(id)
-					return found
+					const removed = yield* transact(current =>
+						Effect.gen(function* () {
+							return [
+								yield* Effect.fromOption(member(id, current)),
+								Array.filter(current, row => row.id !== id)
+							] as const
+						})
+					)
+					// Membership commits first. Cleanup is scoped to its incarnation and cannot remove a concurrent new registration.
+					yield* tokens.forget(ownerOf(removed))
+					yield* passkeys.forget(ownerOf(removed))
+					return personOf(removed)
 				}, rejected('Cannot remove this account'))
 			})
 			return pipe(
 				Context.make(People, people),
+				Context.add(
+					RpcOwner,
+					RpcOwner.of((effect, request) =>
+						Effect.flatMap(sessionOwner(request.headers), owner => Effect.provideService(effect, CurrentOwner, owner))
+					)
+				),
 				Context.merge(
 					Auth.makeContext(
 						Auth.of({
 							access: Effect.fn('Auth.access')(function* (headers: Headers.Headers, resource: string) {
-								return yield* allowed(yield* tokens.access(headers, resource))
+								if (local) return DEVELOPER
+								return (yield* allowed(yield* tokens.access(headers, resource))).user
 							}),
 							user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-								return yield* allowed(yield* tokens.session(headers))
+								return (yield* sessionOwner(headers)).user
 							})
 						})
 					)

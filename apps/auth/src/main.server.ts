@@ -20,7 +20,7 @@ import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
-import {ToolHandlers} from '#tools/handlers.ts'
+import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
 
 // Each service builds on the ones below it: tokens and passkeys, then people (who may use them), then sign-ins.
 const layerServices = pipe(
@@ -43,7 +43,7 @@ CliRuntime.runApp({
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
 				instructions: 'Approve a sign-in you started with answer_request.',
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
 			})
 		),
 		Layer.provide(layerServices)

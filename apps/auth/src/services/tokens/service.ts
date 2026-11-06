@@ -25,14 +25,23 @@ import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import type {Resource, User} from '@deslop/runtime/auth/schema'
+import type {Resource} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {rejected} from '@deslop/runtime/auth/utils'
 
-import {browserLabel, clientLabel, clientOf, deviceLabel, given, matchingRedirect} from '#services/tokens/lib/utils.ts'
+import {
+	browserLabel,
+	clientLabel,
+	clientOf,
+	deviceLabel,
+	given,
+	matchingRedirect,
+	sameOwner
+} from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
 	ClientRequest,
+	CredentialOwner,
 	Grant,
 	Origin,
 	RevokeParams,
@@ -47,7 +56,7 @@ export const SESSION_COOKIE = '__Secure-session'
 // An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
 type Code = {
 	expiresAt: number
-	state: {_tag: 'Fresh'; request: ClientRequest; user: User} | {_tag: 'Used'; family: string}
+	state: {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: string}
 }
 
 const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
@@ -83,28 +92,30 @@ function live(grants: Grants, now: number) {
 export class Tokens extends Context.Service<
 	Tokens,
 	{
-		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<User, AuthError>
-		readonly apps: (user: User) => Stream.Stream<SignedInApp[], AuthError>
+		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<CredentialOwner, AuthError>
+		readonly apps: (owner: CredentialOwner) => Stream.Stream<SignedInApp[], AuthError>
 		// Each saved change to the signed-in apps and browsers, starting with the current state.
 		readonly changes: Stream.Stream<void>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
-		readonly disconnect: (family: string, user: User) => Effect.Effect<void, AuthError>
+		readonly disconnect: (family: string, owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly endSession: (headers: Headers.Headers) => Effect.Effect<void, AuthError>
 		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
 		readonly exchange: (
 			params: TokenParams,
 			origin: Origin,
-			allowed: (user: User) => Effect.Effect<User, AuthError>
+			allowed: (owner: CredentialOwner) => Effect.Effect<CredentialOwner, AuthError>
 		) => Effect.Effect<Exchange, AuthError>
-		readonly forget: (id: string) => Effect.Effect<void, AuthError>
-		readonly issue: (request: ClientRequest, user: User) => Effect.Effect<string, AuthError>
+		readonly forget: (owner: CredentialOwner) => Effect.Effect<void, AuthError>
+		readonly issue: (request: ClientRequest, owner: CredentialOwner) => Effect.Effect<string, AuthError>
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
-		readonly session: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
+		readonly session: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 		readonly sessionVia: (headers: Headers.Headers) => Effect.Effect<SessionVia, AuthError>
 		// The session's account and how it signed in, read once.
-		readonly browserSession: (headers: Headers.Headers) => Effect.Effect<{user: User; via: SessionVia}, AuthError>
+		readonly browserSession: (
+			headers: Headers.Headers
+		) => Effect.Effect<{owner: CredentialOwner; via: SessionVia}, AuthError>
 		readonly startSession: (
-			user: User,
+			owner: CredentialOwner,
 			origin: Origin,
 			via: SessionVia
 		) => Effect.Effect<{seconds: number; token: string}, AuthError>
@@ -153,10 +164,13 @@ export class Tokens extends Context.Service<
 				if (found.grant.credential._tag !== 'Browser' || found.grant.credential.hash !== found.hash) {
 					return yield* AuthError.make({message: 'Sign in first'})
 				}
-				return {user: found.grant.user, via: found.grant.credential.via ?? ('Code' as const)}
+				return {
+					owner: {incarnation: found.grant.incarnation, user: found.grant.user},
+					via: found.grant.credential.via ?? ('Code' as const)
+				}
 			}, rejected('Sign in first'))
 			const session = Effect.fn('Tokens.session')(function* (headers: Headers.Headers) {
-				return (yield* browser(headers)).user
+				return (yield* browser(headers)).owner
 			})
 			const sessionVia = Effect.fn('Tokens.sessionVia')(function* (headers: Headers.Headers) {
 				return (yield* browser(headers)).via
@@ -198,7 +212,7 @@ export class Tokens extends Context.Service<
 						Effect.ignore({log: 'Warn', message: 'The token’s last use could not be saved'})
 					)
 				}
-				return found.grant.user
+				return {incarnation: found.grant.incarnation, user: found.grant.user}
 			}, rejected('Sign in first'))
 			const mint = Effect.fnUntraced(function* (
 				family: string,
@@ -237,7 +251,7 @@ export class Tokens extends Context.Service<
 				function* (
 					params: Extract<TokenParams, {grant_type: 'authorization_code'}>,
 					origin: Origin,
-					allowed: (user: User) => Effect.Effect<User, AuthError>
+					allowed: (owner: CredentialOwner) => Effect.Effect<CredentialOwner, AuthError>
 				) {
 					const key = yield* hash(params.code)
 					const verifier = yield* hash(params.code_verifier)
@@ -271,7 +285,7 @@ export class Tokens extends Context.Service<
 									message: 'The authorization code, its client, callback or verifier do not match'
 								})
 							}
-							yield* allowed(fresh.user)
+							yield* allowed(fresh.owner)
 							const minted = yield* mint(family, 0, yield* tokenResources(params, fresh.request.resources), now)
 							const grant: Grant = {
 								client: clientLabel(fresh.request.clientName),
@@ -287,7 +301,7 @@ export class Tokens extends Context.Service<
 								device: deviceLabel(origin),
 								lastActive: now,
 								origin,
-								user: fresh.user
+								...fresh.owner
 							}
 							// Each sign-in registers anew, so a second one of the same client, device and apps replaces the first.
 							return [
@@ -297,7 +311,7 @@ export class Tokens extends Context.Service<
 										current,
 										other =>
 											!(
-												other.user.id === grant.user.id &&
+												sameOwner(other, grant) &&
 												other.client === grant.client &&
 												other.device === grant.device &&
 												other.credential._tag === 'App' &&
@@ -328,7 +342,7 @@ export class Tokens extends Context.Service<
 			const rotate = Effect.fnUntraced(function* (
 				params: Extract<TokenParams, {grant_type: 'refresh_token'}>,
 				origin: Origin,
-				allowed: (user: User) => Effect.Effect<User, AuthError>
+				allowed: (owner: CredentialOwner) => Effect.Effect<CredentialOwner, AuthError>
 			) {
 				const presented = yield* Effect.mapError(Effect.fromOption(parts(params.refresh_token)), () => expired)
 				const presentedHash = yield* hash(presented.secret)
@@ -363,7 +377,7 @@ export class Tokens extends Context.Service<
 						if (presented.generation !== credential.generation || presentedHash !== credential.hash) {
 							return yield* expired
 						}
-						yield* allowed(grant.user)
+						yield* allowed(grant)
 						const minted = yield* mint(
 							presented.family,
 							credential.generation + 1,
@@ -393,11 +407,11 @@ export class Tokens extends Context.Service<
 					})
 				)
 			})
-			const listApps = Effect.fnUntraced(function* (user: User) {
+			const listApps = Effect.fnUntraced(function* (owner: CredentialOwner) {
 				const now = yield* Clock.currentTimeMillis
 				return pipe(
 					Record.toEntries(live(yield* SubscriptionRef.get(grants), now)),
-					Array.filter(entry => entry[1].user.id === user.id),
+					Array.filter(entry => sameOwner(entry[1], owner)),
 					Array.map(
 						entry =>
 							({
@@ -452,10 +466,10 @@ export class Tokens extends Context.Service<
 					)
 					return {clientName: client.name, redirectUri}
 				}),
-				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, user: User) {
+				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, owner: CredentialOwner) {
 					yield* change(current =>
 						Effect.gen(function* () {
-							if (!Option.exists(Record.get(current, family), grant => grant.user.id === user.id)) {
+							if (!Option.exists(Record.get(current, family), grant => sameOwner(grant, owner))) {
 								return yield* AuthError.make({message: 'This sign-in has already ended'})
 							}
 							return [undefined, Record.remove(current, family)] as const
@@ -477,22 +491,22 @@ export class Tokens extends Context.Service<
 				exchange: Effect.fn('Tokens.exchange')(function* (
 					params: TokenParams,
 					origin: Origin,
-					allowed: (user: User) => Effect.Effect<User, AuthError>
+					allowed: (owner: CredentialOwner) => Effect.Effect<CredentialOwner, AuthError>
 				) {
 					if (params.grant_type === 'authorization_code') return yield* redeem(params, origin, allowed)
 					return yield* rotate(params, origin, allowed)
 				}, rejected('Invalid token request')),
 				// Removing an account signs it out everywhere; a sign-in it approved but not yet delivered checks the account at delivery.
-				forget: Effect.fn('Tokens.forget')(function* (id: string) {
+				forget: Effect.fn('Tokens.forget')(function* (owner: CredentialOwner) {
 					yield* change(current =>
-						Effect.succeed([undefined, Record.filter(current, grant => grant.user.id !== id)] as const)
+						Effect.succeed([undefined, Record.filter(current, grant => !sameOwner(grant, owner))] as const)
 					)
 					yield* Ref.update(
 						codes,
-						HashMap.filter(entry => entry.state._tag === 'Used' || entry.state.user.id !== id)
+						HashMap.filter(entry => entry.state._tag === 'Used' || !sameOwner(entry.state.owner, owner))
 					)
 				}, rejected('Cannot sign this account out')),
-				issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, user: User) {
+				issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, owner: CredentialOwner) {
 					const code = yield* secret(32)
 					const key = yield* hash(code)
 					const now = yield* Clock.currentTimeMillis
@@ -500,7 +514,7 @@ export class Tokens extends Context.Service<
 						HashMap.set(
 							HashMap.filter(current, entry => entry.expiresAt > now),
 							key,
-							{expiresAt: now + 60_000, state: {_tag: 'Fresh', request, user}}
+							{expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}}
 						)
 					)
 					return code
@@ -532,7 +546,11 @@ export class Tokens extends Context.Service<
 				}, rejected('Cannot revoke the token')),
 				session,
 				sessionVia,
-				startSession: Effect.fn('Tokens.startSession')(function* (user: User, origin: Origin, via: SessionVia) {
+				startSession: Effect.fn('Tokens.startSession')(function* (
+					owner: CredentialOwner,
+					origin: Origin,
+					via: SessionVia
+				) {
 					const family = yield* secret(16)
 					const sessionSecret = yield* secret(32)
 					const seconds = pipe(
@@ -555,7 +573,7 @@ export class Tokens extends Context.Service<
 									device: deviceLabel(origin),
 									lastActive: now,
 									origin,
-									user
+									...owner
 								}
 							}
 						] as const)

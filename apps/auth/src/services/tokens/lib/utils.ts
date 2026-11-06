@@ -7,7 +7,7 @@ import {NetAddress} from 'effect/net'
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
-import type {AuthorizeClient, AuthorizeParams, Origin} from '#services/tokens/schema.ts'
+import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin} from '#services/tokens/schema.ts'
 import {ClientInfo, ClientRequest} from '#services/tokens/schema.ts'
 
 // The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
@@ -16,6 +16,10 @@ const WORKERS: Record<string, string> = {
 	'100.68.201.107': 'dev',
 	'100.97.120.3': 'desktop',
 	'100.115.207.60': 'macbook-pro'
+}
+
+export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
+	return left.user.id === right.user.id && left.incarnation === right.incarnation
 }
 
 // The address as its own family, an IPv4-mapped IPv6 address read as that IPv4 address.

@@ -1,6 +1,21 @@
-import {Schema} from 'effect'
+import {Context, Effect, Schema, pipe} from 'effect'
 
 import {Resource, User} from '@deslop/runtime/auth/schema'
+
+// Credentials retain the registration that issued them, never a later membership with the same GitHub id.
+export type CredentialOwner = typeof CredentialOwner.Type
+export const CredentialOwner = Schema.Struct({incarnation: Schema.NonEmptyString, user: User})
+
+export class CurrentOwner extends Context.Service<CurrentOwner, CredentialOwner>()(
+	'@deslop/auth/services/tokens/schema/CurrentOwner'
+) {}
+
+// Only records from the immediately previous release may omit their incarnation.
+export type StoredOwner = typeof StoredOwner.Type
+export const StoredOwner = Schema.Struct({
+	...CredentialOwner.fields,
+	incarnation: pipe(Schema.NonEmptyString, Schema.withDecodingDefaultKey(Effect.succeed('legacy')))
+})
 
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({
@@ -100,6 +115,7 @@ export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
 // One signed-in app or browser, keyed by its family: what the signed-in list shows and what signing it out removes.
 export type Grant = typeof Grant.Type
 export const Grant = Schema.Struct({
+	...StoredOwner.fields,
 	client: Schema.String,
 	createdAt: Schema.Finite,
 	credential: Schema.TaggedUnion({
@@ -118,8 +134,7 @@ export const Grant = Schema.Struct({
 	}),
 	device: Schema.String,
 	lastActive: Schema.Finite,
-	origin: Origin,
-	user: User
+	origin: Origin
 })
 
 export type Grants = typeof Grants.Type

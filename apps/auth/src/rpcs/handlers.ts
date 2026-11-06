@@ -8,6 +8,7 @@ import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {originFrom} from '#services/tokens/lib/utils.ts'
+import {CurrentOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
@@ -24,7 +25,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'auth.addPasskey': Effect.fnUntraced(function* (input, options) {
 				yield* passkeys.add(input.response, {
 					from: originFrom(options.headers, Option.none()),
-					user: yield* CurrentUser,
+					owner: yield* CurrentOwner,
 					via: yield* tokens.sessionVia(options.headers)
 				})
 			}),
@@ -33,24 +34,24 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			// The page's RPC runs on the signed-in browser's session cookie.
 			'auth.answer': Effect.fnUntraced(function* (input) {
-				yield* signIns.answer(input, yield* CurrentUser, 'Session')
+				yield* signIns.answer(input, yield* CurrentOwner, 'Session')
 			}),
-			'auth.apps': () => Stream.unwrap(Effect.map(CurrentUser, tokens.apps)),
+			'auth.apps': () => Stream.unwrap(Effect.map(CurrentOwner, tokens.apps)),
 			'auth.catalog': () => apps.catalog,
 			'auth.disconnect': Effect.fnUntraced(function* (input) {
-				return yield* tokens.disconnect(input.family, yield* CurrentUser)
+				return yield* tokens.disconnect(input.family, yield* CurrentOwner)
 			}),
 			'auth.lookup': input => signIns.lookup(input.code),
 			'auth.passkeyOptions': Effect.fnUntraced(function* (_, options) {
-				return yield* passkeys.registration(yield* CurrentUser, yield* tokens.sessionVia(options.headers))
+				return yield* passkeys.registration(yield* CurrentOwner, yield* tokens.sessionVia(options.headers))
 			}),
-			'auth.passkeys': () => Stream.unwrap(Effect.map(CurrentUser, passkeys.list)),
+			'auth.passkeys': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
 			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
 			'auth.remove': Effect.fnUntraced(function* (input) {
 				return yield* people.remove(input.id, yield* CurrentUser)
 			}),
 			'auth.removePasskey': Effect.fnUntraced(function* (input) {
-				yield* passkeys.remove(input.id, yield* CurrentUser)
+				yield* passkeys.remove(input.id, yield* CurrentOwner)
 			}),
 			'auth.wait': (input, options) =>
 				Stream.onStart(signIns.status(input.request, options.headers), Effect.annotateCurrentSpan('rpc.stream', true))

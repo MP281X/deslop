@@ -22,7 +22,7 @@ import {Base64Url} from 'effect/encoding'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 
-import {AuthError, User} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL, rejected} from '@deslop/runtime/auth/utils'
 
 import {People} from '#services/people/service.ts'
@@ -30,6 +30,7 @@ import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
 import {addressGroup, browserLabel, callbackUrl, clientLabel, deviceLabel} from '#services/tokens/lib/utils.ts'
+import {CredentialOwner} from '#services/tokens/schema.ts'
 import type {Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
@@ -42,11 +43,11 @@ const notWaiting = AuthError.make({
 })
 
 // The answer, delivered: an app's code at its callback, or a session for the waiting browser; a removed approver delivers a denial.
-const deliver = Effect.fnUntraced(function* (input: {delivery: Delivery; origin: Origin; user?: User}) {
+const deliver = Effect.fnUntraced(function* (input: {delivery: Delivery; origin: Origin; owner?: CredentialOwner}) {
 	const tokens = yield* Tokens
 	const people = yield* People
 	const approver = yield* Effect.option(
-		Effect.flatMap(Effect.fromOption(Option.fromUndefinedOr(input.user)), people.allowed)
+		Effect.flatMap(Effect.fromOption(Option.fromUndefinedOr(input.owner)), people.allowed)
 	)
 	return yield* Match.valueTags(input.delivery, {
 		Browser: browser =>
@@ -76,10 +77,10 @@ const SignInStates = Machine.state({
 		Open: {
 			fields: SignInInput.fields,
 			states: {
-				Approved: {fields: {user: User}},
-				Delivering: {fields: {user: Schema.optionalKey(User)}},
+				Approved: {fields: {owner: CredentialOwner}},
+				Delivering: {fields: {owner: Schema.optionalKey(CredentialOwner)}},
 				Denied: {},
-				Failed: {fields: {message: Schema.String, user: Schema.optionalKey(User)}},
+				Failed: {fields: {message: Schema.String, owner: Schema.optionalKey(CredentialOwner)}},
 				Waiting: {}
 			}
 		}
@@ -90,7 +91,7 @@ const SignInStates = Machine.state({
 const SignIn = Machine.make({
 	branches: {answered: {approved: {target: 'Open.Approved'}, denied: {target: 'Open.Denied'}}},
 	effects: {deliver},
-	events: Machine.events({Answered: {accept: Schema.Boolean, user: User}, Collect: {}}),
+	events: Machine.events({Answered: {accept: Schema.Boolean, owner: CredentialOwner}, Collect: {}}),
 	input: SignInInput,
 	root: SignInStates,
 	timers: {lifetime: '10 minutes'}
@@ -103,16 +104,16 @@ const SignIn = Machine.make({
 			initial: {target: 'Open.Waiting'},
 			invoke: {onDone: {target: 'Expired'}, src: 'lifetime'},
 			states: {
-				Approved: {on: {Collect: {data: transition => ({user: transition.state.user}), target: 'Open.Delivering'}}},
+				Approved: {on: {Collect: {data: transition => ({owner: transition.state.owner}), target: 'Open.Delivering'}}},
 				Delivering: {
 					invoke: {
 						input: transition => ({
 							...Struct.pick(transition.ancestors.Open, ['delivery', 'origin']),
-							...Struct.pick(transition.state, ['user'])
+							...Struct.pick(transition.state, ['owner'])
 						}),
 						onDone: {data: transition => ({collected: transition.output}), target: 'Delivered'},
 						onFailure: {
-							data: transition => ({...Struct.pick(transition.state, ['user']), message: transition.error.message}),
+							data: transition => ({...Struct.pick(transition.state, ['owner']), message: transition.error.message}),
 							target: 'Open.Failed'
 						},
 						src: 'deliver'
@@ -123,8 +124,8 @@ const SignIn = Machine.make({
 					on: {
 						Collect: {
 							data: transition => {
-								if (transition.state.user === undefined) return {}
-								return {user: transition.state.user}
+								if (transition.state.owner === undefined) return {}
+								return {owner: transition.state.owner}
 							},
 							target: 'Open.Delivering'
 						}
@@ -135,7 +136,7 @@ const SignIn = Machine.make({
 						Answered: {
 							branches: 'answered',
 							resolve: transition => {
-								if (transition.event.accept) return transition.select.approved({data: {user: transition.event.user}})
+								if (transition.event.accept) return transition.select.approved({data: {owner: transition.event.owner}})
 								return transition.select.denied()
 							}
 						}
@@ -159,7 +160,7 @@ export class SignIns extends Context.Service<
 		// A browser sign-in is approved only from a signed-in browser, never with a token an agent holds.
 		readonly answer: (
 			params: AnswerParams,
-			user: User,
+			owner: CredentialOwner,
 			via: 'Session' | 'Token'
 		) => Effect.Effect<{clientName: string}, AuthError>
 		readonly collect: (code: string, headers: Headers.Headers) => Effect.Effect<Collected, AuthError>
@@ -206,8 +207,12 @@ export class SignIns extends Context.Service<
 			})
 
 			return SignIns.of({
-				answer: Effect.fn('SignIns.answer')(function* (params: AnswerParams, user: User, via: 'Session' | 'Token') {
-					yield* people.allowed(user)
+				answer: Effect.fn('SignIns.answer')(function* (
+					params: AnswerParams,
+					owner: CredentialOwner,
+					via: 'Session' | 'Token'
+				) {
+					yield* people.allowed(owner)
 					const signIn = yield* Effect.mapError(Effect.fromOption(yield* find(params.request)), () => notWaiting)
 					if (via === 'Token' && signIn.pending.kind === 'Browser') {
 						return yield* AuthError.make({
@@ -219,8 +224,12 @@ export class SignIns extends Context.Service<
 						answering,
 						Effect.gen(function* () {
 							if (!SignInStates.matches((yield* signIn.ref.snapshot).state, 'Open.Waiting')) return yield* notWaiting
-							yield* signIn.ref.send({_tag: 'Answered', accept: params.accept, user})
-							yield* Machine.waitFor(signIn.ref, snapshot => !SignInStates.matches(snapshot.state, 'Open.Waiting'))
+							yield* signIn.ref.send({_tag: 'Answered', accept: params.accept, owner})
+							const answered = yield* Machine.waitFor(
+								signIn.ref,
+								snapshot => !SignInStates.matches(snapshot.state, 'Open.Waiting')
+							)
+							if (SignInStates.matches(answered.state, 'Expired')) return yield* expired
 						})
 					)
 					return {clientName: signIn.pending.clientName}

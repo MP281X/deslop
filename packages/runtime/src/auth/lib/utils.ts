@@ -69,15 +69,16 @@ export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/r
 export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
 	'@deslop/runtime/auth/lib/utils/RpcAuth',
 	{error: AuthError}
-) {
-	// Sends the session token as the bearer of every request, read again for each one.
-	static readonly layerClient = <R>(token: Effect.Effect<string, AuthError, R>) =>
-		RpcMiddleware.layerClient(RpcAuth, options =>
-			Effect.gen(function* () {
-				return yield* options.next({
-					...options.request,
-					headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
-				})
+) {}
+
+// Sends the session token as the bearer of every request, read again for each one.
+export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>) {
+	return RpcMiddleware.layerClient(RpcAuth, options =>
+		Effect.gen(function* () {
+			return yield* options.next({
+				...options.request,
+				headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
 			})
-		)
+		})
+	)
 }
