@@ -26,7 +26,7 @@ import {
 import {Base64} from 'effect/encoding'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {tool} from '@deslop/runtime/server'
+import {ToolPath} from '@deslop/runtime/server'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
@@ -56,18 +56,6 @@ function commentLine(comment: Comment) {
 	)
 }
 
-const run = Effect.fnUntraced(function* (command: string, args: string[]) {
-	const handle = yield* ChildProcess.make(yield* tool(command), args, {stderr: 'pipe', stdout: 'pipe'})
-	return yield* Effect.all(
-		{
-			exitCode: handle.exitCode,
-			stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
-			stdout: Stream.mkUint8Array(handle.stdout)
-		},
-		{concurrency: 'unbounded'}
-	)
-})
-
 export class Media extends Context.Service<
 	Media,
 	{
@@ -86,6 +74,18 @@ export class Media extends Context.Service<
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+			const locate = yield* ToolPath
+			const run = Effect.fnUntraced(function* (command: string, args: string[]) {
+				const handle = yield* ChildProcess.make(yield* locate(command), args, {stderr: 'pipe', stdout: 'pipe'})
+				return yield* Effect.all(
+					{
+						exitCode: handle.exitCode,
+						stderr: Stream.mkString(Stream.decodeText(handle.stderr)),
+						stdout: Stream.mkUint8Array(handle.stdout)
+					},
+					{concurrency: 'unbounded'}
+				)
+			})
 			const whisper = yield* Semaphore.make(1)
 			const key = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
 			const openRouter = yield* OpenRouterClient.make({apiKey: Option.getOrUndefined(key)})
@@ -93,7 +93,7 @@ export class Media extends Context.Service<
 				'--js-runtimes',
 				`node:${execPath}`,
 				'--ffmpeg-location',
-				yield* tool('ffmpeg'),
+				yield* locate('ffmpeg'),
 				'--no-progress',
 				'--no-warnings',
 				'--no-playlist'

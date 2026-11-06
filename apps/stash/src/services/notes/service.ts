@@ -119,7 +119,7 @@ export class Notes extends Context.Service<
 
 				yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
 				yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
-				const store = yield* openStore(directory)
+				const store = yield* openStore()
 				const state = yield* SubscriptionRef.make(yield* store.load)
 				const definitions = yield* Ref.make(
 					Record.fromEntries(Array.map(yield* store.definitions, entry => [entry.tag, entry.definition] as const))

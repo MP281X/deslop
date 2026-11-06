@@ -23,6 +23,8 @@ import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
+import {layerKeyValueStore} from '@deslop/runtime/server'
+
 import {openStore} from '#services/chapters/lib/store.ts'
 import {keyOf, resumeOf} from '#services/chapters/lib/utils.ts'
 import {Chapter, Series} from '#services/chapters/schema.ts'
@@ -33,7 +35,7 @@ it.layer(NodeServices.layer)(test => {
 		'keeps a chapter in the outbox until Expo returns exactly one ticket per device',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = yield* openStore(directory)
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
 			yield* store.save([
 				Chapter.make({
 					notified: false,
@@ -51,7 +53,8 @@ it.layer(NodeServices.layer)(test => {
 			const rounds = yield* Queue.unbounded<void>()
 			yield* Layer.build(
 				pipe(
-					Chapters.layer(directory),
+					Chapters.layer,
+					Layer.provide(layerKeyValueStore(directory)),
 					Layer.provide(
 						Layer.succeed(
 							HttpClient.HttpClient,
@@ -100,7 +103,7 @@ it.layer(NodeServices.layer)(test => {
 		'backfills the webcomic beside existing manga and scopes releases, revisions and reading by series',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = yield* openStore(directory)
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
 			yield* store.save([
 				Chapter.make({
 					notified: true,
@@ -182,7 +185,11 @@ it.layer(NodeServices.layer)(test => {
 			)
 			const chapters = Context.get(
 				yield* Layer.build(
-					pipe(Chapters.layer(directory), Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))
+					pipe(
+						Chapters.layer,
+						Layer.provide(layerKeyValueStore(directory)),
+						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+					)
 				),
 				Chapters
 			)
@@ -261,7 +268,7 @@ it.layer(NodeServices.layer)(test => {
 			const second = 'ExpoPushToken[device00000002]'
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const store = yield* openStore(directory)
+					const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
 					yield* store.save(
 						Array.flatMap(Series.literals, series =>
 							Array.map([1, 2], number =>
@@ -282,7 +289,8 @@ it.layer(NodeServices.layer)(test => {
 					const chapters = Context.get(
 						yield* Layer.build(
 							pipe(
-								Chapters.layer(directory),
+								Chapters.layer,
+								Layer.provide(layerKeyValueStore(directory)),
 								Layer.provide(
 									Layer.succeed(
 										HttpClient.HttpClient,
@@ -305,7 +313,7 @@ it.layer(NodeServices.layer)(test => {
 					yield* chapters.read({done: false, number: 1, opened: true, page: 0, series: 'webcomic'})
 				})
 			)
-			const store = yield* openStore(directory)
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
 			assert.deepStrictEqual(resumeOf(yield* store.load), Option.some({number: 1, page: 0}))
 			assert.deepStrictEqual(
 				Array.map(yield* store.load, chapter => [keyOf(chapter), chapter.reading?.done]),

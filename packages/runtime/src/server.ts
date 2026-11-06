@@ -11,6 +11,7 @@ import {
 	Boolean,
 	ByteSize,
 	Config,
+	Context,
 	Effect,
 	FileSystem,
 	HashMap,
@@ -108,7 +109,7 @@ export const dataDirectory = Effect.gen(function* () {
 })
 
 // The app's native tools ship zstd-compressed in its `bin/`; the first use of a release unpacks one into the data directory.
-export const tool = Effect.fnUntraced(function* (name: string) {
+const tool = Effect.fnUntraced(function* (name: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const version = (yield* packageMetadata).version
@@ -135,6 +136,10 @@ export const tool = Effect.fnUntraced(function* (name: string) {
 	)
 	return target
 })
+
+export class ToolPath extends Context.Service<ToolPath, typeof tool>()('@deslop/runtime/server/ToolPath') {
+	static readonly layer = Layer.succeed(this, tool)
+}
 
 // One cross-site check for every app. A browser's Origin must name the host it reached, except for the OTLP receiver any page may export to. Without an issuer, where every request is the developer, only loopback, IP and the canonical host names are served, so a rebound DNS name cannot reach the app.
 export const guard = HttpMiddleware.make(app =>
@@ -193,8 +198,8 @@ export function layerKeyValueStore(directory: string) {
 								else yield* fs.writeFile(`${target}.tmp`, value, {mode: 0o600})
 							}),
 							Effect.andThen(fs.rename(`${target}.tmp`, target)),
-							Semaphore.withPermit(writes),
 							Effect.uninterruptible,
+							Semaphore.withPermit(writes),
 							Effect.mapError(
 								cause =>
 									new KeyValueStore.KeyValueStoreError({cause, key, message: 'Cannot save the value', method: 'set'})

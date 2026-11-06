@@ -24,6 +24,8 @@ import {
 
 import {TestClock} from 'effect/testing'
 
+import {layerKeyValueStore} from '@deslop/runtime/server'
+
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
@@ -69,6 +71,7 @@ const open = Effect.fnUntraced(function* (options: {
 	const context = yield* Layer.build(
 		pipe(
 			Notes.layer(options.directory),
+			Layer.provide(layerKeyValueStore(options.directory)),
 			Layer.provide(Layer.succeed(Sources, options.sources)),
 			Layer.provide(Layer.succeed(Media, options.media ?? noVideo)),
 			Layer.provide(Layer.succeed(Organizer, options.organizer))

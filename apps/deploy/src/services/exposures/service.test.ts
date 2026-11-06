@@ -19,6 +19,8 @@ import {
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {ToolPath, layerKeyValueStore} from '@deslop/runtime/server'
+
 import {Exposures} from '#services/exposures/service.ts'
 import type {Serve} from '#services/inventory/schema.ts'
 import {Exposure} from '#services/inventory/schema.ts'
@@ -89,6 +91,8 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 				yield* Layer.build(
 					pipe(
 						Exposures.layer(`${home}/deploy`),
+						Layer.provide(Layer.succeed(ToolPath, name => Effect.succeed(`/fixture/tools/${name}`))),
+						Layer.provide(layerKeyValueStore(`${home}/deploy`)),
 						Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
 						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({HOME: home})))
 					)

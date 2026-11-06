@@ -19,10 +19,14 @@ const layerServices = pipe(
 	Layer.provideMerge(
 		Layer.unwrap(
 			Effect.map(ServerRuntime.dataDirectory, directory =>
-				Layer.mergeAll(Inventory.layer, Exposures.layer(directory), Metrics.layer(directory))
+				Layer.provide(
+					Layer.mergeAll(Inventory.layer, Exposures.layer(directory), Metrics.layer),
+					ServerRuntime.layerKeyValueStore(directory)
+				)
 			)
 		)
-	)
+	),
+	Layer.provide(ServerRuntime.ToolPath.layer)
 )
 
 CliRuntime.runApp({

@@ -19,7 +19,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {ChildProcessSpawner} from 'effect/process'
 
 import {execute, install} from '@deslop/runtime/cli/service'
-import {layerKeyValueStore, tool} from '@deslop/runtime/server'
+import {ToolPath} from '@deslop/runtime/server'
 
 import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
 
@@ -66,181 +66,178 @@ export class Exposures extends Context.Service<
 >()('@deslop/deploy/services/exposures/service/Exposures') {
 	// Ownership records, the Caddyfile and Caddy's certificates live in `directory`.
 	static readonly layer = (directory: string) =>
-		pipe(
-			Layer.effect(
-				Exposures,
-				Effect.gen(function* () {
-					const fs = yield* FileSystem.FileSystem
-					yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-					const store = KeyValueStore.toSchemaStore(
-						yield* KeyValueStore.KeyValueStore,
-						Schema.Record(Schema.String, Exposure)
+		Layer.effect(
+			Exposures,
+			Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem
+				yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+				const store = KeyValueStore.toSchemaStore(
+					yield* KeyValueStore.KeyValueStore,
+					Schema.Record(Schema.String, Exposure)
+				)
+				const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('exposures'), () => ({})))
+				const lock = yield* Semaphore.make(1)
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+				const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
+				const path = yield* Path.Path
+				// Unpacked on the first public exposure, not on every start.
+				const caddy = pipe(
+					(yield* ToolPath)('caddy'),
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.provideService(Path.Path, path)
+				)
+				const configFile = path.join(directory, 'Caddyfile')
+				function run(program: string, args: string[]) {
+					return pipe(
+						execute(program, args),
+						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+						Effect.timeout('30 seconds')
 					)
-					const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('exposures'), () => ({})))
-					const lock = yield* Semaphore.make(1)
-					const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-					const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
-					const path = yield* Path.Path
-					// Unpacked on the first public exposure, not on every start.
-					const caddy = pipe(
-						tool('caddy'),
+				}
+				const status = pipe(
+					run('tailscale', ['serve', 'status', '--json']),
+					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Serve)))
+				)
+				const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
+					const current = yield* status
+					if (
+						Record.has(current.TCP ?? {}, `${input.port}`) ||
+						current.AllowFunnel?.[`${input.hostname}:${input.port}`] === true
+					) {
+						return yield* DeployError.make({
+							message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
+						})
+					}
+					const tailnet = yield* pipe(
+						run('tailscale', ['status', '--json']),
+						Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet)))
+					)
+					if (String.replace(/\.$/u, '')(tailnet.Self?.DNSName ?? '') !== input.hostname) {
+						return yield* DeployError.make({
+							message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
+						})
+					}
+				})
+				const caddyApply = Effect.fnUntraced(function* (rows: Record<string, Exposure>) {
+					const binary = yield* caddy
+					yield* fs.makeDirectory(path.join(directory, 'caddy'), {mode: 0o700, recursive: true})
+					yield* fs.writeFileString(
+						`${configFile}.next`,
+						caddyConfig(Record.values(rows), path.join(directory, 'caddy')),
+						{mode: 0o600}
+					)
+					yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
+					yield* fs.rename(`${configFile}.next`, configFile)
+					yield* pipe(
+						install('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile'], {
+							restart: false
+						}),
+						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 						Effect.provideService(FileSystem.FileSystem, fs),
 						Effect.provideService(Path.Path, path)
 					)
-					const configFile = path.join(directory, 'Caddyfile')
-					function run(program: string, args: string[]) {
-						return pipe(
-							execute(program, args),
-							Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-							Effect.timeout('30 seconds')
-						)
-					}
-					const status = pipe(
-						run('tailscale', ['serve', 'status', '--json']),
-						Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Serve)))
+					yield* pipe(
+						run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
+						Effect.retry({schedule: Schedule.spaced('200 millis'), times: 10})
 					)
-					const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
-						const current = yield* status
-						if (
-							Record.has(current.TCP ?? {}, `${input.port}`) ||
-							current.AllowFunnel?.[`${input.hostname}:${input.port}`] === true
-						) {
-							return yield* DeployError.make({
-								message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
-							})
-						}
-						const tailnet = yield* pipe(
-							run('tailscale', ['status', '--json']),
-							Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet)))
-						)
-						if (String.replace(/\.$/u, '')(tailnet.Self?.DNSName ?? '') !== input.hostname) {
-							return yield* DeployError.make({
-								message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
-							})
-						}
-					})
-					const caddyApply = Effect.fnUntraced(function* (rows: Record<string, Exposure>) {
-						const binary = yield* caddy
-						yield* fs.makeDirectory(path.join(directory, 'caddy'), {mode: 0o700, recursive: true})
-						yield* fs.writeFileString(
-							`${configFile}.next`,
-							caddyConfig(Record.values(rows), path.join(directory, 'caddy')),
-							{mode: 0o600}
-						)
-						yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
-						yield* fs.rename(`${configFile}.next`, configFile)
-						yield* pipe(
-							install('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile'], {
-								restart: false
-							}),
-							Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-							Effect.provideService(FileSystem.FileSystem, fs),
-							Effect.provideService(Path.Path, path)
-						)
-						yield* pipe(
-							run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
-							Effect.retry({schedule: Schedule.spaced('200 millis'), times: 10})
-						)
-					})
-					if (Array.some(Record.values(yield* SubscriptionRef.get(state)), row => row.kind === 'public')) {
-						yield* pipe(
-							caddyApply(yield* SubscriptionRef.get(state)),
-							Effect.scoped,
-							Effect.ignore({
-								log: 'Warn',
-								message: 'Could not reconcile owned Caddy configuration; inspect its service and owned exposure records'
-							})
-						)
-					}
-					function save(rows: Record<string, Exposure>) {
-						return pipe(store.set('exposures', rows), Effect.andThen(SubscriptionRef.set(state, rows)))
-					}
-					return Exposures.of({
-						expose: Effect.fnUntraced(
-							function* (input: Exposure) {
-								const rows = yield* SubscriptionRef.get(state)
-								if (Record.has(rows, input.name)) {
-									return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
+				})
+				if (Array.some(Record.values(yield* SubscriptionRef.get(state)), row => row.kind === 'public')) {
+					yield* pipe(
+						caddyApply(yield* SubscriptionRef.get(state)),
+						Effect.scoped,
+						Effect.ignore({
+							log: 'Warn',
+							message: 'Could not reconcile owned Caddy configuration; inspect its service and owned exposure records'
+						})
+					)
+				}
+				function save(rows: Record<string, Exposure>) {
+					return pipe(store.set('exposures', rows), Effect.andThen(SubscriptionRef.set(state, rows)))
+				}
+				return Exposures.of({
+					expose: Effect.fnUntraced(
+						function* (input: Exposure) {
+							const rows = yield* SubscriptionRef.get(state)
+							if (Record.has(rows, input.name)) {
+								return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
+							}
+							if (
+								Array.some(
+									Record.values(rows),
+									row => row.hostname === input.hostname && (row.kind === 'public' || row.port === input.port)
+								)
+							) {
+								return yield* DeployError.make({message: 'This hostname or port already has an owned exposure'})
+							}
+							if (input.kind === 'public' && !input.publicAccess) {
+								return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
+							}
+							if (input.kind === 'tailnet') {
+								yield* checkTailnet(input)
+							}
+							const next = Record.set(rows, input.name, input)
+							// Persist ownership before changing an external process; an interrupted apply remains inspectable/removable.
+							yield* save(next)
+							if (input.kind === 'public') {
+								yield* caddyApply(next)
+							} else {
+								yield* run('tailscale', ['serve', '--bg', `--https=${input.port}`, `http://127.0.0.1:${input.port}`])
+								if (!ownsMapping(yield* status, input)) {
+									return yield* DeployError.make({
+										message: 'Tailscale configured a different hostname or target; inspect before retrying'
+									})
 								}
-								if (
-									Array.some(
-										Record.values(rows),
-										row => row.hostname === input.hostname && (row.kind === 'public' || row.port === input.port)
-									)
-								) {
-									return yield* DeployError.make({message: 'This hostname or port already has an owned exposure'})
-								}
-								if (input.kind === 'public' && !input.publicAccess) {
-									return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
-								}
-								if (input.kind === 'tailnet') {
-									yield* checkTailnet(input)
-								}
-								const next = Record.set(rows, input.name, input)
-								// Persist ownership before changing an external process; an interrupted apply remains inspectable/removable.
-								yield* save(next)
-								if (input.kind === 'public') {
-									yield* caddyApply(next)
-								} else {
-									yield* run('tailscale', ['serve', '--bg', `--https=${input.port}`, `http://127.0.0.1:${input.port}`])
-									if (!ownsMapping(yield* status, input)) {
+							}
+							return exposureUrl(input)
+						},
+						Effect.scoped,
+						Semaphore.withPermit(lock),
+						failed
+					),
+					hide: Effect.fnUntraced(
+						function* (name: string) {
+							const rows = yield* SubscriptionRef.get(state)
+							const owned = yield* pipe(
+								Effect.fromOption(Record.get(rows, name)),
+								Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
+							)
+							const next = Record.remove(rows, name)
+							if (owned.kind === 'tailnet') {
+								const current = yield* status
+								if (Record.has(current.TCP ?? {}, `${owned.port}`)) {
+									if (!ownsMapping(current, owned)) {
 										return yield* DeployError.make({
-											message: 'Tailscale configured a different hostname or target; inspect before retrying'
+											message: 'This mapping was changed outside Deploy; refusing to remove it'
 										})
 									}
+									yield* run('tailscale', ['serve', `--https=${owned.port}`, 'off'])
 								}
-								return exposureUrl(input)
-							},
-							Effect.scoped,
-							Semaphore.withPermit(lock),
-							failed
-						),
-						hide: Effect.fnUntraced(
-							function* (name: string) {
-								const rows = yield* SubscriptionRef.get(state)
-								const owned = yield* pipe(
-									Effect.fromOption(Record.get(rows, name)),
-									Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
-								)
-								const next = Record.remove(rows, name)
-								if (owned.kind === 'tailnet') {
-									const current = yield* status
-									if (Record.has(current.TCP ?? {}, `${owned.port}`)) {
-										if (!ownsMapping(current, owned)) {
-											return yield* DeployError.make({
-												message: 'This mapping was changed outside Deploy; refusing to remove it'
-											})
-										}
-										yield* run('tailscale', ['serve', `--https=${owned.port}`, 'off'])
-									}
-								} else {
-									yield* caddyApply(next)
-								}
-								yield* save(next)
-							},
-							Effect.scoped,
-							Semaphore.withPermit(lock),
-							failed
-						),
-						items: Effect.map(SubscriptionRef.get(state), rows =>
-							Array.map(Record.values(rows), row =>
-								InventoryItem.make({
-									detail: `${row.kind} → 127.0.0.1:${row.port}`,
-									id: `${worker}:exposure:${row.name}`,
-									kind: 'exposure',
-									name: row.name,
-									owned: true,
-									port: row.port,
-									publicAccess: row.kind === 'public',
-									state: 'configured; check backend',
-									url: exposureUrl(row),
-									worker
-								})
-							)
+							} else {
+								yield* caddyApply(next)
+							}
+							yield* save(next)
+						},
+						Effect.scoped,
+						Semaphore.withPermit(lock),
+						failed
+					),
+					items: Effect.map(SubscriptionRef.get(state), rows =>
+						Array.map(Record.values(rows), row =>
+							InventoryItem.make({
+								detail: `${row.kind} → 127.0.0.1:${row.port}`,
+								id: `${worker}:exposure:${row.name}`,
+								kind: 'exposure',
+								name: row.name,
+								owned: true,
+								port: row.port,
+								publicAccess: row.kind === 'public',
+								state: 'configured; check backend',
+								url: exposureUrl(row),
+								worker
+							})
 						)
-					})
+					)
 				})
-			),
-			Layer.provide(layerKeyValueStore(directory))
+			})
 		)
 }
