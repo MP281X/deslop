@@ -941,7 +941,7 @@ function RangeMenu(props: {
 					<DropdownMenuLabel>History range</DropdownMenuLabel>
 					<DropdownMenuSeparator />
 					{Array.map(RANGES, range => (
-						<DropdownMenuRadioItem key={range.minutes} value={`${range.minutes}`}>
+						<DropdownMenuRadioItem key={range.minutes} value={`${range.minutes}`} closeOnClick>
 							{range.label}
 						</DropdownMenuRadioItem>
 					))}
