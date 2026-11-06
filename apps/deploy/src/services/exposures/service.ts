@@ -18,8 +18,8 @@ import {
 import {KeyValueStore} from 'effect/persistence'
 import {ChildProcessSpawner} from 'effect/process'
 
+import {execute, install} from '@deslop/runtime/cli/service'
 import {layerKeyValueStore, tool} from '@deslop/runtime/server'
-import {execute, install} from '@deslop/runtime/service'
 
 import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
 

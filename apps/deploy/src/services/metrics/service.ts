@@ -20,8 +20,8 @@ import {
 
 import {KeyValueStore} from 'effect/persistence'
 
+import {execute} from '@deslop/runtime/cli/service'
 import {layerKeyValueStore} from '@deslop/runtime/server'
-import {execute} from '@deslop/runtime/service'
 
 import {processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'

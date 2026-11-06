@@ -19,7 +19,7 @@ import {
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {execute} from '@deslop/runtime/service'
+import {execute} from '@deslop/runtime/cli/service'
 
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
 import {unitFailures} from '#services/inventory/lib/utils.ts'
