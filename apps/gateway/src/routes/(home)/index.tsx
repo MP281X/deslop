@@ -10,6 +10,7 @@ import {Check, Copy, Plus, Server} from 'lucide-react'
 import {useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
+import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
@@ -417,7 +418,10 @@ function Home() {
 			<AppBar
 				icon={icon}
 				name="gateway"
-				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [actions, needsYou, all], onTrue: () => []})}
+				palette={Boolean.match(Option.isSome(authFailure), {
+					onFalse: () => [actions, needsYou, all, otherApps('gateway')],
+					onTrue: () => []
+				})}
 				action={
 					<>
 						<AppBarAction

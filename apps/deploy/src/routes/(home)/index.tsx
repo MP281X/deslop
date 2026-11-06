@@ -8,6 +8,7 @@ import {ChevronRight, Clock, Monitor, Play, Server} from 'lucide-react'
 import {useState, useTransition} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
+import {otherApps} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
@@ -1234,7 +1235,8 @@ function Home() {
 								})
 							),
 							label: 'Apps'
-						}
+						},
+						otherApps('deploy')
 					],
 					onTrue: () => []
 				})}

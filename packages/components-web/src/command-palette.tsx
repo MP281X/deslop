@@ -7,15 +7,7 @@ import {useState, useSyncExternalStore} from 'react'
 import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
-import {
-	Command,
-	CommandEmpty,
-	CommandGroup,
-	CommandInput,
-	CommandItem,
-	CommandList,
-	CommandSeparator
-} from '#components/ui/command.tsx'
+import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from '#components/ui/command.tsx'
 import {
 	DialogClose,
 	DialogDescription,
@@ -63,6 +55,21 @@ function AppIcon(props: {name: string; url: string}) {
 	)
 }
 
+export function otherApps(current: string) {
+return {
+	items: Array.map(
+		Array.filter(APPS, app => app.name !== current),
+		app => ({
+			detail: new URL(app.url).hostname,
+			icon: <AppIcon name={app.name} url={app.url} />,
+			label: app.name,
+			run: () => location.assign(app.url)
+		})
+	),
+	label: 'Other apps'
+}
+}
+
 function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem value={`${props.group}:${props.item.id ?? props.item.label}`} onSelect={props.onSelect}>
@@ -75,7 +82,7 @@ function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	)
 }
 
-// One search field over the page's records and actions, plus every other web tool; the bar opens it with ⌘K.
+// One search field over the caller's records and actions; the bar opens it with ⌘K.
 export function CommandPalette(props: {
 	current?: string
 	groups: readonly PaletteGroup[]
@@ -86,10 +93,9 @@ export function CommandPalette(props: {
 		props.onOpenChange(false)
 		item.run()
 	}
-	const apps = Array.filter(APPS, app => app.name !== props.current)
 	// cmdk keeps an item's first keywords, so the filter reads this render's text instead: stable value, current search.
-	const searchable: Record<string, string> = Record.fromEntries([
-		...Array.flatMap(props.groups, group =>
+	const searchable: Record<string, string> = Record.fromEntries(
+		Array.flatMap(props.groups, group =>
 			Array.map(
 				group.items,
 				item =>
@@ -98,9 +104,8 @@ export function CommandPalette(props: {
 						`${item.label} ${item.detail ?? ''} ${item.keywords ?? ''}`
 					] as const
 			)
-		),
-		...Array.map(apps, app => [`Deslop:${app.name}`, `${app.name} ${new URL(app.url).hostname}`] as const)
-	])
+		)
+	)
 	return (
 		<Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
 			<DialogPortal>
@@ -108,7 +113,7 @@ export function CommandPalette(props: {
 				<Dialog.Popup className="bg-popover text-popover-foreground ring-foreground/10 fixed inset-x-4 top-1/2 z-50 mx-auto flex max-h-dvh -translate-y-1/2 flex-col overflow-hidden rounded-lg ring-1 outline-none sm:max-w-lg">
 					<DialogHeader className="sr-only">
 						<DialogTitle>Search or run a command</DialogTitle>
-						<DialogDescription>Jump to a record, run an action, or open another Deslop tool.</DialogDescription>
+						<DialogDescription>Search available records and actions.</DialogDescription>
 					</DialogHeader>
 					<Command
 						className="min-h-0"
@@ -137,21 +142,6 @@ export function CommandPalette(props: {
 									</CommandGroup>
 								)
 							)}
-							<CommandSeparator />
-							<CommandGroup heading="Other apps">
-								{Array.map(apps, app => {
-									const item = {
-										detail: new URL(app.url).hostname,
-										icon: <AppIcon name={app.name} url={app.url} />,
-										keywords: new URL(app.url).hostname,
-										label: app.name,
-										run: () => {
-											location.assign(app.url)
-										}
-									}
-									return <Item key={app.name} group="Deslop" item={item} onSelect={() => run(item)} />
-								})}
-							</CommandGroup>
 						</CommandList>
 						<div className="text-muted-foreground hidden items-center justify-between border-t px-3 py-2 text-xs sm:flex">
 							<span className="flex items-center gap-1">

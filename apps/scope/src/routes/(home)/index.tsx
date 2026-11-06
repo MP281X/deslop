@@ -23,6 +23,7 @@ import {Suspense, useState, useSyncExternalStore} from 'react'
 import type {ReactElement} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
+import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
@@ -885,7 +886,10 @@ function Home() {
 							)
 					})
 				})}
-				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [traces, operations], onTrue: () => []})}
+				palette={Boolean.match(Option.isSome(authFailure), {
+					onFalse: () => [traces, operations, otherApps('scope')],
+					onTrue: () => []
+				})}
 			/>
 			{Option.match(authFailure, {
 				onNone: () =>
