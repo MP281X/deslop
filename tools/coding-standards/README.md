@@ -1,11 +1,13 @@
 # @deslop/coding-standards
 
-A Vite+ lint preset that runs the Effect rules and TypeScript diagnostics in Oxlint on tsrs, a strict TypeScript configuration, and the `lint-companion`, `pull-requests` and `review` skills for Claude Code and Codex.
+A Vite+ lint preset that runs the Effect rules and TypeScript diagnostics in Oxlint on tsrs, a strict TypeScript configuration, and a CLI that prints the lint tactics; no skill files are installed.
 
 ```bash
-vpx @deslop/coding-standards@latest                                  # installs the skills
+vpx @deslop/coding-standards@latest                                  # prints the lint tactics
 vp add -D @deslop/coding-standards@latest @effect/tsgo@latest tsrs@latest
 ```
+
+Add to the repository's `AGENTS.md`: when a diagnostic survives `vp run fix`, run `vpx @deslop/coding-standards@latest` and follow the printed instructions.
 
 ```ts
 // vite.config.ts

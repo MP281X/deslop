@@ -27,18 +27,18 @@ Setup, upkeep and rebuild of the machines.
 
 - **Variables** for agents only: `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never `~/.bashrc`.
 - **`.codex/global-config.toml`** avoids loading the global config again as project config.
-- **Links** into the main checkout `~/deslop`, so workers run `origin/main`; Claude's `SessionStart` hook runs `git pull --ff-only` there in the background, and the next session loads it. Running threads keep their configuration.
+- **Links** into the main checkout `~/deslop`, so workers run `origin/main`; update it explicitly with `git -C ~/deslop pull --ff-only` between sessions. Running threads keep their configuration.
 - **Never** edit an installed path or switch `~/deslop` off `main`: both change every thread.
 
-| Installed path                      | Links to `~/deslop/…`       |
-| ----------------------------------- | --------------------------- |
-| `~/.claude/settings.json`           | `.claude/settings.json`     |
-| `~/.claude/agents/pair.md`          | `.claude/agents/pair.md`    |
-| `~/.claude/skills/<personal skill>` | `.claude/skills/<name>`     |
-| `~/.codex/config.toml`              | `.codex/global-config.toml` |
-| `~/.codex/instructions.md`          | `.codex/instructions.md`    |
-| `~/.codex/rules/deny.rules`         | `.codex/rules/deny.rules`   |
-| `~/.codex/skills/<personal skill>`  | `~/.claude/skills/<name>`   |
+| Installed path              | Links to                    |
+| --------------------------- | --------------------------- |
+| `~/.claude/settings.json`   | `.claude/settings.json`     |
+| `~/.claude/agents/pair.md`  | `.claude/agents/pair.md`    |
+| `~/.claude/skills/*`        | `.claude/skills/*`          |
+| `~/.codex/config.toml`      | `.codex/global-config.toml` |
+| `~/.codex/instructions.md`  | `.codex/instructions.md`    |
+| `~/.codex/rules/deny.rules` | `.codex/rules/deny.rules`   |
+| `~/.codex/skills/*`         | `~/.claude/skills/*`        |
 
 Once per worker, and after a harness replaced a link with a file:
 
@@ -47,14 +47,16 @@ r=~/deslop
 mkdir -p ~/.claude/agents ~/.claude/skills ~/.codex/rules ~/.codex/skills
 ln -sfn $r/.claude/settings.json ~/.claude/settings.json
 ln -sfn $r/.claude/agents/pair.md ~/.claude/agents/pair.md
-for s in planning environment; do ln -sfn $r/.claude/skills/$s ~/.claude/skills/$s; ln -sfn ~/.claude/skills/$s ~/.codex/skills/$s; done
+for s in $r/.claude/skills/*; do n=${s##*/}; rm -f ~/.claude/skills/$n ~/.codex/skills/$n; done
+ln -sfn $r/.claude/skills/* ~/.claude/skills/
+ln -sfn ~/.claude/skills/* ~/.codex/skills/
 ln -sfn $r/.codex/global-config.toml ~/.codex/config.toml
 ln -sfn $r/.codex/instructions.md ~/.codex/instructions.md
 ln -sfn $r/.codex/rules/deny.rules ~/.codex/rules/deny.rules
 codex execpolicy check --rules ~/.codex/rules/deny.rules true
 ```
 
-- **New links** before merging, on both workers, to the future path in `~/deslop`, never a review worktree; they resolve once main fast-forwards. Then retire only this setup's old links; keep unrelated skills and real directories.
+- **New links** before merging, on both workers, to the future path in `~/deslop`, never a review worktree; they resolve once main fast-forwards. Remove the previous links before recreating them; retire only this setup's old links and keep unrelated skills and real directories.
 - **Check.** `find ~/.claude/settings.json ~/.claude/agents/pair.md ~/.codex/config.toml ~/.codex/instructions.md ~/.codex/rules/deny.rules ~/.claude/skills/* ~/.codex/skills/* -maxdepth 0 ! -type l` prints a replaced link; `git -C ~/deslop status --short` shows a harness write through a link: carry it into a PR, then `git -C ~/deslop restore` it, since a dirty checkout stops the pull.
 
 ## T3 settings
@@ -107,7 +109,7 @@ Close with `dpkg --audit`, held/upgradable packages after refreshing apt, runnin
 
 ## Update
 
-1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `dpkg -i` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb`.
+1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `curl -fLo /tmp/glab.deb` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` then `sudo dpkg -i /tmp/glab.deb`.
 2. **T3**, nightly, as the `t3code.service` user unit: `t3 update --yes` with no run active; otherwise leave the download for the user. New worker: `vp install -g t3@nightly`, `t3 service install`, `t3 connect link --headless` (link to the user), `t3 connect publish`.
 3. **Mac.** The agent steps under [Mac](#mac); a pending macOS update is the user's, labelled from `softwareupdate -l`.
 
@@ -205,7 +207,7 @@ T3's desktop app and the iOS Simulator; builds nothing, the Simulator app comes 
 
 - **MDM** by the user's organization: keep its policies.
 - **Reachability.** System sleep off, so reachable with the display off; a closed lid isn't. When `ssh matteopaludgnach@macbook-pro true` fails, ask the user to wake it.
-- **Sudo** needs the user's password: apps, updates and permissions are the user's, from a guide. Agents run only `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`.
+- **Sudo** needs the user's password: apps, updates and permissions are the user's, from a guide. Agents run only maintenance mutations: `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`; read-only checks and the device workflow below are separate.
 
 **Device host.**
 
@@ -234,15 +236,7 @@ systemctl --user daemon-reload && systemctl --user enable --now secret-service.s
 claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp
 ```
 
-**Harness sign-in** needs no browser and no tunnel. On the worker running the CLI, start the login in the background, read its code from the authorize redirect, then wait for the answer with the same cookie; the wait answers 408 every 50 seconds until the sign-in is answered, and then follows to the CLI's loopback callback. A sign-in lives 10 minutes.
-
-```bash
-codex mcp login --no-browser gateway   # in the background; prints the authorize URL
-mkdir -p /tmp/<task> && curl -s -c /tmp/<task>/jar -o /dev/null -w '%{redirect_url}\n' '<authorize URL>'   # …/?request=WDJBMJHT
-curl -s -b /tmp/<task>/jar -L --retry 12 --retry-delay 1 -o /dev/null 'https://auth.mp281x.xyz/auth/continue?request=WDJBMJHT'   # in the background
-```
-
-Approve with Auth's `answer_request` (`auth__answer_request` through the gateway) from any harness that already has it, since this thread started the sign-in; otherwise give the user only the code, to approve at https://auth.mp281x.xyz from any signed-in browser or phone. Repeat for `claude mcp login --no-browser gateway` and on each worker. Never approve a request the thread did not start: the client name is self-reported, not a verified worker identity.
+**Harness sign-in.** `claude mcp login --no-browser gateway` prints an authorization URL; approve its code at https://auth.mp281x.xyz. The sign-in is a Claude Code column in Sign-ins. Codex: `codex mcp login --no-browser gateway`.
 
 **Browser sign-in.** A profile without the user's GitHub, such as the Datapizza work profile: **Sign in with a code** at https://auth.mp281x.xyz, which the user approves (`apps/auth/README.md`). A provider whose account lives in that profile, such as Dual, connects from its row on the gateway's page there.
 

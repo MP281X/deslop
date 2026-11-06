@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Load before worker operations, previews, devices, tracing, deployment, publishing or sign-in.
+description: Load before worker operations, previews, devices, tracing, deployment, publishing, sign-in, runtime errors, saved reading, design references or Dual.
 ---
 
 # Environment
@@ -18,14 +18,14 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 - **Tools.** `vp` and `vpx` (Vite+) on `PATH` everywhere, also over SSH; systemd units need `~/.vite-plus/bin`. Passwordless sudo on the workers; `gh`, `glab` and the MCP gateway signed in.
 - **Scratch** under `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
-- **Services** run as temporary containers, not host installs.
+- **Task-local auxiliary services** run as temporary containers, not host installs.
+- **Agent sign-in.** Claude: `claude mcp login --no-browser gateway`; Codex uses its configured gateway MCP sign-in. Approve the code in the URL it prints at https://auth.mp281x.xyz.
 
 | Reference                                | For                                                       |
 | ---------------------------------------- | --------------------------------------------------------- |
 | [Deslop](references/deslop.md)           | Production, Stash data, npm, Apple and EAS, tracing       |
 | [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing     |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 settings, updates, clean |
-| [Video](references/video.md)             | Proof videos: camera targets, HyperFrames composition     |
 
 ## Previews
 
@@ -38,10 +38,23 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
   ```
 
 - **Share** only after the URL loads sign-in, assets and API calls.
-- **Keep** it running: a turn that touched an app ends with that app's preview up on the latest code, started if it wasn't.
+- **Keep** it running: a turn that touched an app ends with that app's preview up on the latest code, started if it wasn't; where the app has no worktree preview, use its scratch run.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
+
+## Tools
+
+One chain per trigger; if it returns no data, say so and proceed. Missing MCP data permits continued investigation, not a successful verification claim.
+
+| Missing fact                             | First call                                                                                                                                         |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime error, trace or latency          | Scope: `list_services` → `find` → `read_trace` / `measure_latency`                                                                                 |
+| Runtime service, port or container state | Deploy: `inventory` / `resource_history` — not `ps`, `docker ps`, `ss` or `systemctl`; unit health is the maintenance check's `systemctl --failed` |
+| Sign-in blocked                          | Auth: `answer_request`                                                                                                                             |
+| Saved article, video or post             | Stash: `search_notes` / `read_note`                                                                                                                |
+| Design reference                         | Mobbin: `search_screens` / `search_flows` / `save_content`                                                                                         |
+| Dual behavior or skill                   | DualOS: `dual_context` → `read_skill` → `execute`                                                                                                  |
+| A tool seems missing                     | `list_mcp_connections` before assuming it is absent                                                                                                |
 
 ## Diagnostics
 
-- **Scope** traces and logs when the failing operation exports them (Deslop and Dual references, Tracing); otherwise the reproduction's output and source.
 - **Primary viewports** in T3: desktop 1440×900, phone `iphone-12-pro`.

@@ -1,36 +1,6 @@
 {
-	"disableBundledSkills": true,
 	"syncClaudeAiSkills": false,
 	"syncClaudeAiPlugins": false,
-	"disableClaudeAiConnectors": true,
-	"allowedMcpServers": [{"serverUrl": "http://127.0.0.1:*/mcp"}, {"serverUrl": "https://gateway.mp281x.xyz/mcp"}],
-	"enabledPlugins": {
-		"plugin-authoring@builtin": false,
-		"mods-guide@builtin": false,
-		"mermaid@builtin": false,
-		"tips@builtin": false,
-		"claude-test@builtin": false
-	},
-	"autoMemoryEnabled": false,
-	"autoDreamEnabled": false,
-	"disableWorkflows": true,
-	"feedbackDrafts": "off",
-	"includeGitInstructions": false,
-	"agent": "pair",
-	"attribution": {"commit": "", "pr": ""},
-	"hooks": {
-		"SessionStart": [
-			{
-				"hooks": [
-					{
-						"type": "command",
-						"command": "printf 'Execution worker: %s\\n' \"$(hostname -s)\"; (git -C ~/deslop pull --ff-only -q >/dev/null 2>&1 &)",
-						"timeout": 5
-					}
-				]
-			}
-		]
-	},
 	"env": {
 		"CLAUDE_CODE_DISABLE_CRON": "1",
 		"CLAUDE_CODE_SKIP_PLUGIN_MCP_SERVERS": "1",
@@ -45,6 +15,8 @@
 		"GLAB_PAGER": "cat",
 		"NO_COLOR": "1"
 	},
+	"attribution": {"commit": "", "pr": ""},
+	"includeGitInstructions": false,
 	"permissions": {
 		"deny": [
 			"Agent",
@@ -142,5 +114,26 @@
 			"Bash(*glab api graphql*=mutation*)",
 			"Bash(*glab api graphql*'mutation*)"
 		]
-	}
+	},
+	"disableClaudeAiConnectors": true,
+	"disableBundledSkills": true,
+	"allowedMcpServers": [{"serverUrl": "http://127.0.0.1:*/mcp"}, {"serverUrl": "https://gateway.mp281x.xyz/mcp"}],
+	"hooks": {
+		"SessionStart": [
+			{"hooks": [{"type": "command", "command": "printf 'Execution worker: %s\\n' \"$(hostname -s)\"", "timeout": 5}]}
+		]
+	},
+	"disableWorkflows": true,
+	"enabledPlugins": {
+		"plugin-authoring@builtin": false,
+		"mods-guide@builtin": false,
+		"mermaid@builtin": false,
+		"tips@builtin": false,
+		"claude-test@builtin": false
+	},
+	"feedbackDrafts": "off",
+	"agent": "pair",
+	"autoMemoryEnabled": false,
+	"autoDreamEnabled": false,
+	"theme": "dark"
 }

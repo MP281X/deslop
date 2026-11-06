@@ -5,7 +5,7 @@ export default defineConfig({
 		// Node refuses to strip types under node_modules, so the published entries are built.
 		deps: {alwaysBundle: [/.*/u], neverBundle: [/^vite-plus(?:\/|$)/u], onlyBundle: false},
 		dts: {generator: 'oxc'},
-		entry: ['src/lint.ts', 'src/install.ts'],
+		entry: ['src/lint.ts', 'src/main.cli.ts'],
 		outputOptions: {entryFileNames: '[name].js'}
 	}
 })

@@ -1,39 +1,29 @@
 ---
-name: planning
+name: workflow
 description: Load at task start, when the user changes direction, and before design choices, research into unfamiliar APIs or architecture, or delegation.
 ---
 
-# Planning
+# Workflow
 
 ## Outcome
 
-- **Contract.** The user's goal, accepted choices, rejected directions and order. A steer updates it; an approval accepts the proposal actually shown. Side-note constraints apply at once; extra work follows the main task.
-- **Reversals.** Discuss a deliberate configuration reversal before making it.
+- **Agreement.** The user's goal, accepted choices, rejected directions and order. A steer updates it; an approval accepts the proposal actually shown. Side-note constraints apply at once; extra work follows the main task.
+- **Reversals.** Discuss a deliberate reversal of an agreed approach before making it.
 - **Uncertainty.** Settle what is consequential early; give open-ended work a checkable finish. The strategy is yours, the agreed scope and quality are not.
 - **Continuity.** Carry valid evidence, pending work and IDs across batches and compaction; recover a missing decision from the thread, never guess.
 - **Evidence.** Ground consequential claims in the deciding source, trace or probe; name what stays unverified.
 
 ## Delivery
 
-Build → prove the actual journey → Verify → one review → draft push, per pull-requests. Fix related findings in one batch and revalidate. Process lives in prose, not hooks, stamps or coordination machinery.
-
-- **Review.** One independent review of the unmerged PR set before the first push; one reviewer unless distinct risks need different expertise.
-- **Triage.** Fix kept P1, P2 and trivial P3 findings; keep pre-existing defects separate. Follow-ups cover changed contracts only; repeated substantial findings mean rethinking the approach.
+Build → prove the actual journey with the verification skill → draft push, per pull-requests. Fix related findings in one batch and revalidate. Before replacement work, name superseded owners and paths and their replacement; verification closes each entry with deletion or a keep reason.
 
 ## Delegation
 
-Bounded, independent work that saves time or adds judgment. Give the question, the user's constraints, the evidence and a stopping condition, without your verdict; a reviewer also gets immutable revisions and "Load the review skill." Keep parent and child investigations disjoint.
+Bounded, independent work that saves time or adds judgment. Give the question, the user's constraints, raw evidence and an open question, without your verdict or summary. Choose a different family or lens, with no main transcript or other reports. A reviewer also gets immutable revisions and the verification skill. Keep parent and child investigations disjoint.
 
-**Models.** The parent's provider by default, the other family for a second opinion. A user's model, provider or quota steer holds until changed.
+**Models.** DeepSeek for bulk read-only work; Codex gpt-6.1-sol for UI review, contracts and CI; Opus for design, architecture and final verification; Sonnet, Haiku and Luna for bounded read-only work.
 
-| Work                                                 | Codex         | Claude Code        | Effort   |
-| ---------------------------------------------------- | ------------- | ------------------ | -------- |
-| Exploration, lookup, inventory, evidence collection  | `gpt-6-luna`  | `claude-haiku-5-5` | `medium` |
-| Reasoning, architecture, difficult debugging, review | `gpt-6.1-sol` | `claude-opus-5-5`  | `high`   |
-
-**Council.** Only for a hard-to-reverse decision with split evidence: `gpt-6-luna`, `claude-haiku-5-5`, `gpt-6.1-sol` and `claude-opus-5-5` at their table efforts, each given the same question, options, raw evidence and criteria, never your preferred answer or another member's conclusion. Weigh their tradeoffs and choose. Otherwise decide, or ask one reviewer.
-
-**`~/deslop`.** Move to a task worktree with `t3_worktree_handoff` before any edit: that checkout supplies every thread's installed configuration.
+**Council.** Only for a hard-to-reverse decision with split evidence: two strong models with different lenses, each given the same question, evidence and criteria. Blind proposals first; hostile review of the draft second; no third round. Synthesize a decision-axis table with a dissent record — `axis | options | who proposed | evidence | adopted or rejected, with reason` — and choose; never a majority vote. Otherwise decide, or ask one reviewer.
 
 ## References
 
@@ -68,9 +58,12 @@ The repository's canonical examples lead; these fill a gap. Clones are read-only
 The user starts from symptoms and rough ideas and finds what they want by reacting to concrete things.
 
 - **Map first.** Symptoms become a map of causes and options sized by impact, before any pick.
-- **Intent.** Agreed, rejected and open, kept current as the user reacts: the app's `AGENTS.md` in deslop, like `apps/signal/AGENTS.md`; in a team repository an untracked `/.intent.md` that `.git/info/exclude` lists.
-- **Taste.** The content owns the screen and panels open on demand; actions missing a prerequisite show disabled; a reference takes you to its subject. No labels on the obvious, controls that duplicate another path, control rows that wrap with room to spare, or raw data dumps. The top bar carries search, which also runs commands, and the page's actions; what needs attention simply sorts first, never in a labeled group, tinted row, folded remainder, notice block or a count that filters the list; secondary actions live in a context menu, not a ⋯ button; separate apps stay separate. Fewer moving parts and standard protocols over custom machinery. Add each new pick or veto here, as generic as these.
-- **Exploration.** Round one shows six or more genuinely different directions, unranked, each from its own stance, for example the obvious one, radically minimal, maximal, borrowed from another domain (games, maps, print, tools), one that breaks a named house rule, or one from the user's references (Mobbin screens or flows for the job, the repository's screens). Every direction carries its artifact: an interactive `html_render` mock on realistic data, a config, a CLI session or an API sketch. Mocks take color, radius, type, spacing and shadow from the theme `components.json` names. A round may run past one screen or swap its variants in one grid cell. Round two recombines the picks.
+- **Decisions.** Agreed, rejected and open choices, kept current as the user reacts; a durable app decision goes in the app's `AGENTS.md`.
+- **Exploration.** Build one mix board, not N mocks; the user mixes parts and comments per part. A screen change with no agreed direction does not start until the mix is agreed or the user waives it.
+  - **Axes.** 2–4 axes — navigation, density, empty/error model, action placement; 2–3 variants each with stable ids like `nav-A`, `empty-2`.
+  - **Material.** Real primitives from `components-web` or `components-mobile`; 2–3 real screens; one fixture data set; a state scrubber from empty through loading and error to long, on phone and desktop, light and dark.
+  - **Interaction.** Side-by-side or matrix; tabs, toggles or drag where behaviour matters; URL-hash state and a copyable `mix` JSON.
+  - **Where.** A route in the worktree preview for a web app, Device-panel screens for a native app; a standalone HTML board is only for pre-app exploration.
+  - **Record.** The chosen mix is stated in the thread; implement it. Live finalists run as `?variant=` in a web app's preview or as Device-panel screens for a native app on real data; losers go before the PR; validate the built journey against the pick at the same viewport.
+- **Alternatives.** For a user-owned, hard-to-reverse architecture choice, compare 3 genuinely different designs; decide reversible technical details yourself.
 - **Spikes.** The riskiest unknown gets a time-boxed throwaway in `/tmp/<task>/`; its result backs the recommendation, not a reading of docs.
-- **Live variants.** Finalists in an existing app run as `?variant=` in the worktree's preview on real data, so the user compares them on the phone; the losers go before the PR. An agreed direction needs no new choice; validate the built journey against the pick at the same viewport.
-- **Visual taste.** No gradients or glows, colored side stripes, a bordered card per section, tiles where rows fit, a dense table where rows fit, equal prominence everywhere, a decorative color per tile that means nothing, generic copy, content waiting on an entrance animation, or the hero/feature-grid/logo-row skeleton. The user's picked reference wins.
