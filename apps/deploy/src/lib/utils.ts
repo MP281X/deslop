@@ -47,13 +47,16 @@ export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
 )
 
-export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('deploy.metrics', {minutes})),
-			Stream.unwrap,
-			WebRuntime.reconnecting
-		)
+export const minutesAtom = Atom.make<HistoryQuery['minutes']>(60)
+
+// One reader retains the last range and its samples while a newer request connects.
+export const metricsAtom = RpcClient.runtime.atom(get => {
+	const minutes = get(minutesAtom)
+	return pipe(
+		RpcClient,
+		Effect.map(client => client('deploy.metrics', {minutes})),
+		Stream.unwrap,
+		Stream.map(histories => ({histories, minutes})),
+		WebRuntime.reconnecting
 	)
-)
+})

@@ -5,7 +5,7 @@ import {Array, Boolean, HashSet, Match, Number, Option, Order, Record, Schema, S
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {ChevronRight, Clock, Monitor, Play, Server} from 'lucide-react'
-import {useState, useTransition} from 'react'
+import {useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
@@ -41,7 +41,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
-import {inventoryAtom, hideAtom, metricsAtom, runAtom} from '#lib/utils.ts'
+import {inventoryAtom, hideAtom, metricsAtom, minutesAtom, runAtom} from '#lib/utils.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {Cores, TimeAxis, UsageChart} from '#routes/(home)/-charts.tsx'
 import {useExpose} from '#routes/(home)/-expose.tsx'
@@ -923,7 +923,6 @@ function RangeMenu(props: {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				className={cn(buttonVariants({size: 'sm', variant: 'ghost'}), 'gap-1 font-mono text-xs max-sm:h-11')}
-				disabled={props.pending}
 				aria-label="History range"
 			>
 				{Boolean.match(props.pending, {onFalse: () => <Clock className="size-3.5" />, onTrue: () => <Spinner />})}
@@ -1030,18 +1029,24 @@ function DeploySkeleton(props: {isMobile: boolean}) {
 
 function Home() {
 	const isMobile = useIsMobile()
-	const [minutes, setMinutes] = useState<HistoryQuery['minutes']>(60)
-	const [pending, transition] = useTransition()
+	const [minutes, setMinutes] = useAtom(minutesAtom)
 	const [worker, setWorker] = useState<string>()
 	const [selection, setSelection] = useState<Selection>()
 	const [pane, setPane] = useState<Pane>('apps')
 	const [machineBack, setMachineBack] = useState<Pane>('apps')
 	const [hovered, setHovered] = useState<string>()
-	const [held, setHeld] = useState<readonly MachineHistory[]>([])
 	const inventory = useAtomValue(inventoryAtom)
-	const metrics = useAtomValue(metricsAtom(minutes))
+	const metrics = useAtomValue(metricsAtom)
 	const snapshot = AsyncResult.value(inventory)
-	const histories = Option.getOrElse(AsyncResult.value(metrics), () => [])
+	const readings = AsyncResult.value(metrics)
+	const shownHistories = Option.getOrElse(
+		Option.map(readings, value => value.histories),
+		() => []
+	)
+	const shownMinutes = Option.getOrElse(
+		Option.map(readings, value => value.minutes),
+		() => minutes
+	)
 	const inventoryFailure = AsyncResult.isFailure(inventory)
 	const inventoryError = AsyncResult.error(inventory)
 	const metricsError = AsyncResult.error(metrics)
@@ -1049,13 +1054,7 @@ function Home() {
 	const authFailure = Option.orElse(Option.filter(inventoryError, Schema.is(AuthError)), () =>
 		Option.filter(metricsError, Schema.is(AuthError))
 	)
-	// A new range keeps the previous samples on screen, dimmed, until its first reading arrives.
-	const shownHistories = Boolean.match(Array.isReadonlyArrayNonEmpty(histories), {
-		onFalse: () => held,
-		onTrue: () => histories
-	})
-	const refreshing =
-		Array.isReadonlyArrayEmpty(histories) && Array.isReadonlyArrayNonEmpty(held) && Option.isNone(metricsError)
+	const refreshing = shownMinutes !== minutes && Option.isNone(metricsError)
 
 	const workers = Array.dedupe([
 		...Option.getOrElse(
@@ -1102,7 +1101,7 @@ function Home() {
 		)
 	) satisfies Record<string, string>
 	const searchable = Array.sort(activeRows, order)
-	const sorted = Array.sort(ranged(activeRows, minutes, Option.getOrUndefined(history)), order)
+	const sorted = Array.sort(ranged(activeRows, shownMinutes, Option.getOrUndefined(history)), order)
 	const selectedRow = Option.getOrElse(
 		Option.orElse(
 			Option.flatMap(Option.fromUndefinedOr(selection), current =>
@@ -1127,11 +1126,6 @@ function Home() {
 		setSelection(undefined)
 		setHovered(undefined)
 		setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const}))
-	}
-
-	function changeRange(next: HistoryQuery['minutes']) {
-		setHeld(histories)
-		transition(() => setMinutes(next))
 	}
 
 	function showMachine() {
@@ -1242,7 +1236,7 @@ function Home() {
 				})}
 				action={
 					<>
-						<RangeMenu minutes={minutes} pending={pending || refreshing} onChange={changeRange} />
+						<RangeMenu minutes={minutes} pending={refreshing} onChange={setMinutes} />
 						{Boolean.match(isMobile, {
 							onFalse: () => null,
 							onTrue: () => (
@@ -1341,7 +1335,7 @@ function Home() {
 													className={cn('min-w-0', refreshing && 'opacity-60')}
 													history={Option.getOrUndefined(history)}
 													labels={bandNames}
-													minutes={minutes}
+													minutes={shownMinutes}
 													hovered={hovered}
 													onHover={setHovered}
 													worker={active}
@@ -1381,7 +1375,7 @@ function Home() {
 															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 															history={Option.getOrUndefined(history)}
 															labels={bandNames}
-															minutes={minutes}
+															minutes={shownMinutes}
 															hovered={hovered}
 															onHover={setHovered}
 															worker={active}
