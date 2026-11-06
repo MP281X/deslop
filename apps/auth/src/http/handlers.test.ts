@@ -1458,11 +1458,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => first.text())
 			)
 			assert.strictEqual(token.expires_in, 900)
+			assert.strictEqual(first.headers.get('cache-control'), 'no-store')
+			assert.strictEqual(first.headers.get('pragma'), 'no-cache')
 			const second = yield* refresh(web.issuer, request.clientId, token.refresh_token)
 			const rotated = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => second.text())
 			)
 			assert.notStrictEqual(rotated.refresh_token, token.refresh_token)
+			const third = yield* refresh(web.issuer, request.clientId, rotated.refresh_token)
+			const latest = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => third.text())
+			)
 			// The family is the public prefix of every bearer, so it alone revokes nothing and proves no replay.
 			const family = String.split(token.access_token, '.')[0]
 			assert.strictEqual(
@@ -1473,7 +1479,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					headers: {'content-type': 'application/x-www-form-urlencoded'},
 					method: 'POST'
 				})).status,
-				204
+				200
 			)
 			assert.strictEqual(
 				(yield* refresh(web.issuer, request.clientId, `${family}.0.${String.repeat(43)('A')}`)).status,
@@ -1493,6 +1499,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 400)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, rotated.refresh_token)).status, 400)
+			assert.strictEqual((yield* refresh(web.issuer, request.clientId, latest.refresh_token)).status, 400)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
 					headers: {authorization: `Bearer ${rotated.access_token}`}
@@ -1515,7 +1522,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					headers: {'content-type': 'application/x-www-form-urlencoded'},
 					method: 'POST'
 				})).status,
-				204
+				200
 			)
 			assert.strictEqual(
 				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${active.access_token}`}})).status,

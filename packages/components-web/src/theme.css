@@ -186,7 +186,9 @@
 		outline: none;
 	}
 
-	button:focus-visible {
+	button:focus-visible,
+	summary:focus-visible,
+	[role='button']:focus-visible {
 		@apply outline-ring outline-2 outline-offset-2;
 	}
 
@@ -194,14 +196,23 @@
 		outline: none;
 	}
 
-	/* Pressables scale, as DESIGN's motion rule says; the stock translate stays as the base-ui hint. */
-	button:not(:disabled):active,
-	a[data-slot='button']:active {
-		scale: 0.97;
+	@media (prefers-reduced-motion: no-preference) {
+		button:not(:disabled):active,
+		a[data-slot='button']:active {
+			scale: 0.97;
+		}
 	}
 
 	::selection {
 		background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+	}
+}
+
+/* Override the stock button's active translation without removing colour feedback. */
+@media (prefers-reduced-motion: reduce) {
+	button:active,
+	a[data-slot='button']:active {
+		translate: none;
 	}
 }
 

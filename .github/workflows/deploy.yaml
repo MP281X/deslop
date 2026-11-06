@@ -33,12 +33,12 @@ jobs:
       # An app's bundle carries no version, so its build replays from the task cache until its code changes.
       - name: Build every package
         run: |
-          vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp run build
 
       # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
       - name: Publish @deslop/coding-standards
         run: |
+          vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
           npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
           echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"

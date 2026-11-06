@@ -31,8 +31,10 @@ export const Metadata = Schema.Struct({
 	authorization_endpoint: Schema.NonEmptyString,
 	authorization_response_iss_parameter_supported: Schema.optionalKey(Schema.Boolean),
 	client_id_metadata_document_supported: Schema.optionalKey(Schema.Boolean),
+	code_challenge_methods_supported: Schema.optionalKey(Schema.Array(Schema.String)),
 	issuer: Schema.NonEmptyString,
 	registration_endpoint: Schema.optionalKey(Schema.NonEmptyString),
+	response_types_supported: Schema.optionalKey(Schema.Array(Schema.String)),
 	token_endpoint: Schema.NonEmptyString
 })
 

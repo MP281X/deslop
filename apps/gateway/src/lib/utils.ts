@@ -31,8 +31,8 @@ export const serversAtom = Atom.keepAlive(
 // Every tool call through the gateway, numbered, so a server called twice in a row lights twice.
 const callsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
-		WebRuntime.reconnecting(
-			Stream.zipWithIndex(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.calls', undefined))))
+		Stream.zipWithIndex(
+			WebRuntime.reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.calls', undefined))))
 		)
 	)
 )

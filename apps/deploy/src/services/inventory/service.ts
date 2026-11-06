@@ -12,13 +12,14 @@ import {
 	Record,
 	Ref,
 	Schema,
-	Stream,
 	String,
 	pipe
 } from 'effect'
 
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
-import {ChildProcess, ChildProcessSpawner} from 'effect/process'
+import {ChildProcessSpawner} from 'effect/process'
+
+import {execute} from '@deslop/runtime/service'
 
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
 import {unitFailures} from '#services/inventory/lib/utils.ts'
@@ -33,20 +34,6 @@ import {
 	Unit
 } from '#services/inventory/schema.ts'
 import type {RunRequest} from '#services/inventory/schema.ts'
-
-const execute = Effect.fnUntraced(function* (name: string, args: string[]) {
-	const handle = yield* ChildProcess.make(name, args, {stderr: 'pipe', stdout: 'pipe'})
-	const output = yield* Effect.all(
-		{
-			code: handle.exitCode,
-			error: Stream.mkString(Stream.decodeText(handle.stderr)),
-			text: Stream.mkString(Stream.decodeText(handle.stdout))
-		},
-		{concurrency: 'unbounded'}
-	)
-	if (output.code !== 0) return yield* DeployError.make({message: `${name}: ${output.error}`})
-	return output.text
-})
 
 function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http: HttpClient.HttpClient) {
 	return Effect.forEach(
@@ -162,7 +149,11 @@ export class Inventory extends Context.Service<
 			const http = yield* HttpClient.HttpClient
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			function command(name: string, args: string[]) {
-				return Effect.provideService(execute(name, args), ChildProcessSpawner.ChildProcessSpawner, spawner)
+				return pipe(
+					execute(name, args),
+					Effect.mapError(cause => DeployError.make({cause, message: cause.message})),
+					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
+				)
 			}
 			const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())

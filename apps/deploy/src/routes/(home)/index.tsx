@@ -929,8 +929,6 @@ function RangeMenu(props: {
 				{label}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-32">
-				<DropdownMenuLabel>History range</DropdownMenuLabel>
-				<DropdownMenuSeparator />
 				<DropdownMenuRadioGroup
 					value={`${props.minutes}`}
 					onValueChange={value =>
@@ -940,6 +938,8 @@ function RangeMenu(props: {
 						)
 					}
 				>
+					<DropdownMenuLabel>History range</DropdownMenuLabel>
+					<DropdownMenuSeparator />
 					{Array.map(RANGES, range => (
 						<DropdownMenuRadioItem key={range.minutes} value={`${range.minutes}`}>
 							{range.label}

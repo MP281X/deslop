@@ -70,7 +70,7 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 				)
 			)
 		),
-		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
+		Effect.map(HttpServerResponse.setHeaders({'cache-control': 'no-store', pragma: 'no-cache'}))
 	)
 }
 
@@ -340,7 +340,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						yield* tokens.revoke(
 							yield* pipe(HttpServerRequest.schemaBodyUrlParams(RevokeParams), rejected('Invalid revocation request'))
 						)
-						return HttpServerResponse.empty()
+						return HttpServerResponse.empty({status: 200})
 					})
 				)
 			)

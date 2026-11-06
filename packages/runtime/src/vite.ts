@@ -44,5 +44,23 @@ export const config = {
 		tanstackRouter({autoCodeSplitting: true, target: 'react', tmpDir: 'node_modules/.cache/tanstack'}),
 		react({compiler: true}),
 		tailwindcss({optimize: true})
-	]
+	],
+	run: {
+		tasks: {
+			build: {
+				// Cross-app icon globs read source artwork, not sibling builds or dependency scratch directories.
+				cache: {
+					input: [
+						{auto: true},
+						{base: 'workspace', pattern: '!apps/*'},
+						{base: 'workspace', pattern: '!apps/*/dist'},
+						{base: 'workspace', pattern: '!apps/*/dist/**'},
+						{base: 'workspace', pattern: '!apps/*/node_modules'},
+						{base: 'workspace', pattern: '!apps/*/node_modules/**'}
+					]
+				},
+				command: 'vp build && vp pack'
+			}
+		}
+	}
 } satisfies UserConfig

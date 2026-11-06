@@ -115,7 +115,7 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 			yield* exposures.expose({...row, hostname: 'preview.example.com', kind: 'public', publicAccess: true})
 			const configuration = yield* fs.readFileString(`${home}/deploy/Caddyfile`)
 			assert.include(configuration, 'admin 127.0.0.1:20219')
-			assert.include(configuration, 'preview.example.com {\n\treverse_proxy 127.0.0.1:5173')
+			assert.include(configuration, 'preview.example.com {\n\tencode\n\treverse_proxy 127.0.0.1:5173')
 			assert.notInclude(configuration, row.hostname)
 			yield* exposures.expose({
 				...row,
@@ -126,11 +126,11 @@ it.layer(NodeServices.layer)('Owned exposures', test => {
 			})
 			assert.include(
 				yield* fs.readFileString(`${home}/deploy/Caddyfile`),
-				'second.example.com {\n\treverse_proxy 127.0.0.1:5173'
+				'second.example.com {\n\tencode\n\treverse_proxy 127.0.0.1:5173'
 			)
 			assert.include(
 				yield* fs.readFileString(`${home}/deploy/Caddyfile`),
-				'preview.example.com {\n\treverse_proxy 127.0.0.1:5173'
+				'preview.example.com {\n\tencode\n\treverse_proxy 127.0.0.1:5173'
 			)
 			yield* exposures.hide('public:second.example.com')
 			yield* exposures.hide(row.name)

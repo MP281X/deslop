@@ -8,6 +8,7 @@ import {
 	Effect,
 	FiberMap,
 	FileSystem,
+	HashSet,
 	Layer,
 	Option,
 	Path,
@@ -48,11 +49,11 @@ import type {Capture, Extraction, FileType, Image, NotesEvent, Picture, TagDefin
 import {ImageType, Note, NotesError, TagEntry} from '#services/notes/schema.ts'
 
 function withWords(note: Note, text: string) {
-	const known = pipe(note.text, String.toLowerCase, String.split(/\s+/u))
+	const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
 	const added = pipe(
 		commentFor(text),
 		String.split(' '),
-		Array.filter(word => String.isNonEmpty(word) && !Array.contains(known, String.toLowerCase(word)))
+		Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word)))
 	)
 	if (Array.isReadonlyArrayEmpty(added)) return note
 	return {...note, text: `${note.text}\n${Array.join(added, ' ')}`}

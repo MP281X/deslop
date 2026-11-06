@@ -348,8 +348,11 @@ export class Tokens extends Context.Service<
 								message: 'The refresh token belongs to another client'
 							})
 						}
-						// Only the replaced token itself proves a replay; a guess at the family ends nothing.
-						if (presented.generation === credential.generation - 1 && presentedHash === credential.replaced) {
+						// Only a spent token's secret proves a replay; a guess at the family ends nothing.
+						if (
+							presented.generation < credential.generation &&
+							Array.contains(Array.ensure(credential.replaced ?? []), presentedHash)
+						) {
 							return [
 								Exchange.cases.Replayed.make({
 									message: 'This refresh token was already used, so its sign-in is revoked; sign in again'
@@ -377,7 +380,7 @@ export class Tokens extends Context.Service<
 										...credential,
 										access: [...credential.access, minted.access],
 										generation: credential.generation + 1,
-										replaced: credential.hash,
+										replaced: [...Array.ensure(credential.replaced ?? []), credential.hash],
 										...minted.refresh
 									},
 									// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
@@ -405,12 +408,9 @@ export class Tokens extends Context.Service<
 								family: entry[0],
 								kind: entry[1].credential._tag,
 								lastActive: entry[1].lastActive,
-								resources: Boolean.match(entry[1].credential._tag === 'App', {
-									onFalse: () => [],
-									onTrue: () => {
-										if (entry[1].credential._tag === 'App') return entry[1].credential.resources
-										return []
-									}
+								resources: Match.valueTags(entry[1].credential, {
+									App: credential => credential.resources,
+									Browser: () => []
 								}),
 								...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
 									onNone: () => ({}),

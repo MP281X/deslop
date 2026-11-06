@@ -28,7 +28,7 @@ function caddyConfig(rows: Exposure[], storage: string) {
 	return `{\n\tadmin 127.0.0.1:20219\n\tgrace_period 10s\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${Array.join(
 		Array.map(
 			Array.filter(rows, row => row.kind === 'public'),
-			row => `${row.hostname} {\n\treverse_proxy 127.0.0.1:${row.port}\n}\n`
+			row => `${row.hostname} {\n\tencode\n\treverse_proxy 127.0.0.1:${row.port}\n}\n`
 		),
 		'\n'
 	)}`

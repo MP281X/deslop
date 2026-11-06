@@ -322,7 +322,7 @@ function SpanRow(props: {
 
 // A trace's spans under its root, each on the trace's time scale; where it broke starts picked, else the root's own details show.
 function Spans(props: {id: string; size: number}) {
-	const result = useAtomSuspense(traceAtom(`${props.id}:${props.size}`), {includeFailure: true})
+	const result = useAtomSuspense(traceAtom(props.id, props.size), {includeFailure: true})
 	const [picked, setPicked] = useState<string>()
 	if (AsyncResult.isFailure(result)) return <Failure cause={result.cause} />
 	const trace = result.value

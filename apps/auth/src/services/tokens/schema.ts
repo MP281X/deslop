@@ -103,14 +103,14 @@ export const Grant = Schema.Struct({
 	client: Schema.String,
 	createdAt: Schema.Finite,
 	credential: Schema.TaggedUnion({
-		// A refresh token names its generation; presenting the one it replaced is a replay that ends the family.
+		// Keep every spent token's hash until the family ends; the previous release stored only its latest one.
 		App: {
 			access: Schema.Array(Access),
 			clientId: Schema.NonEmptyString,
 			expiresAt: Schema.Finite,
 			generation: Schema.Int,
 			hash: Schema.String,
-			replaced: Schema.optionalKey(Schema.String),
+			replaced: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
 			resources: Schema.Array(Resource)
 		},
 		// A session from before it was recorded reads as a code's, the least trusted.

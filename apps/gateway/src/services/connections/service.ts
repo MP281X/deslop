@@ -20,10 +20,13 @@ import {
 
 import {
 	StreamableHTTPClientTransport,
+	discoverAuthorizationServerMetadata,
 	discoverOAuthServerInfo,
-	extractWWWAuthenticateParams
+	extractWWWAuthenticateParams,
+	startAuthorization,
+	validateAuthorizationResponseIssuer
 } from '@modelcontextprotocol/client'
-import {Digest, SecureRandom} from 'effect/crypto'
+import {SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -46,7 +49,14 @@ import type {Callback, ConnectionInfo, Discovery, OAuth, ServerId, Connection} f
 import {ConnectionStore, Metadata, Registration, ServerUrl, Token, UpstreamError} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
-type Pending = {client: OAuth['client']; generation: string; id: ServerId; userId: string; verifier: string}
+type Pending = {
+	client: OAuth['client']
+	generation: string
+	id: ServerId
+	metadata: Metadata
+	userId: string
+	verifier: string
+}
 
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => {
@@ -106,7 +116,6 @@ export class Connections extends Context.Service<
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
 		const fetch = yield* FetchHttpClient.Fetch
 		const random = yield* SecureRandom.SecureRandom
-		const digest = yield* Digest.Digest
 		const pending = yield* Cache.make<string, Pending, AuthError>({
 			capacity: 64,
 			lookup: () => Effect.fail(AuthError.make({message: 'The connection expired; connect it again'})),
@@ -114,11 +123,11 @@ export class Connections extends Context.Service<
 		})
 		const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
 		// Every change saves the next connections before memory and the live views see them.
-		const change = Effect.fnUntraced(function* <A, E>(
-			update: (current: ConnectionStore) => Effect.Effect<readonly [A, ConnectionStore], E>
+		const change = Effect.fnUntraced(function* <E>(
+			update: (current: ConnectionStore) => Effect.Effect<ConnectionStore, E>
 		) {
-			return yield* SubscriptionRef.modifyEffect(state, current =>
-				Effect.tap(update(current), result => store.set('servers', result[1]))
+			return yield* SubscriptionRef.updateEffect(state, current =>
+				Effect.tap(update(current), next => store.set('servers', next))
 			)
 		}, Effect.uninterruptible)
 		const get = Effect.fnUntraced(function* (id: ServerId) {
@@ -135,13 +144,12 @@ export class Connections extends Context.Service<
 			next: (connection: Connection) => Connection
 		) {
 			yield* change(current =>
-				Effect.succeed([
-					undefined,
+				Effect.succeed(
 					Option.match(
 						Option.filter(Record.get(current, id), found => found.generation === generation),
 						{onNone: () => current, onSome: found => ({...current, [id]: next(found)})}
 					)
-				] as const)
+				)
 			)
 		})
 		const list = Effect.gen(function* () {
@@ -386,13 +394,10 @@ export class Connections extends Context.Service<
 					const found = yield* Effect.mapError(Effect.fromOption(Record.get(current, id)), () =>
 						AuthError.make({message: 'This MCP was removed. Add it again on the MCP page.'})
 					)
-					return [
-						undefined,
-						Option.match(next(found), {
-							onNone: () => Record.remove(current, id),
-							onSome: row => ({...current, [id]: row})
-						})
-					] as const
+					return Option.match(next(found), {
+						onNone: () => Record.remove(current, id),
+						onSome: row => ({...current, [id]: row})
+					})
 				})
 			)
 		}, failed('Cannot change this MCP connection'))
@@ -424,7 +429,7 @@ export class Connections extends Context.Service<
 						if (Record.has(latest, id) || Array.some(Record.values(latest), row => row.url === url)) {
 							return Effect.fail(AuthError.make({message: 'This MCP has already been added.'}))
 						}
-						return Effect.succeed([undefined, {...latest, [id]: connection}] as const)
+						return Effect.succeed({...latest, [id]: connection})
 					})
 					return connectionInfo(connection, yield* Clock.currentTimeMillis)
 				},
@@ -432,43 +437,78 @@ export class Connections extends Context.Service<
 				Effect.timeout('20 seconds'),
 				failed('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
 			),
-			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
-				yield* admin(user)
-				const connection = yield* get(id)
-				if (connection.oauth === undefined) {
-					yield* update(id, connection.generation, found => ({
-						...Struct.omit(found, ['error']),
-						link: {_tag: 'Connected'}
-					}))
-					return {state: Option.none<string>(), url: '/'}
-				}
-				// Each connection registers anew, so a client registered for an earlier callback is never reused; the row keeps its client until the new one has tokens.
-				const registered = yield* register(connection.oauth.metadata, id)
-				const stateId = yield* nonce
-				const verifier = yield* nonce
-				yield* Cache.set(pending, stateId, {
-					client: registered,
-					generation: connection.generation,
-					id,
-					userId: user.id,
-					verifier
-				})
-				const url = new URL(connection.oauth.metadata.authorization_endpoint)
-				url.search = new URLSearchParams({
-					client_id: Match.valueTags(registered, {
-						Document: () => clientInfo.client_id,
-						Registered: found => found.clientId
-					}),
-					code_challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))),
-					code_challenge_method: 'S256',
-					redirect_uri: Match.valueTags(registered, {Document: () => callback, Registered: () => `${callback}/${id}`}),
-					resource: connection.url,
-					response_type: 'code',
-					scope: connection.oauth.scope,
-					state: stateId
-				}).toString()
-				return {state: Option.some(stateId), url: url.href}
-			}, failed('Cannot connect this MCP')),
+			begin: Effect.fn('Connections.begin')(
+				function* (id: ServerId, user: User) {
+					yield* admin(user)
+					const connection = yield* get(id)
+					const oauth = connection.oauth
+					if (oauth === undefined) {
+						yield* update(id, connection.generation, found => ({
+							...Struct.omit(found, ['error']),
+							link: {_tag: 'Connected'}
+						}))
+						return {state: Option.none<string>(), url: '/'}
+					}
+					// Check the provider's current capabilities before authorization, including connections saved by the previous release.
+					const metadata = yield* Schema.decodeUnknownEffect(Metadata)(
+						yield* Effect.tryPromise({
+							catch: cause => UpstreamError.make({cause}),
+							try: signal =>
+								discoverAuthorizationServerMetadata(oauth.metadata.issuer, {
+									fetchFn: (target, init) =>
+										fetch(target, {
+											...init,
+											signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
+										})
+								})
+						})
+					)
+					if (!validMetadata(metadata) || !Array.contains(metadata.code_challenge_methods_supported ?? [], 'S256')) {
+						return yield* fail(
+							connection,
+							AuthError.make({message: 'The provider must advertise S256 PKCE and safe authorization endpoints.'})
+						)
+					}
+					// Each connection registers anew, so a client registered for an earlier callback is never reused; the row keeps its client until the new one has tokens.
+					const registered = yield* register(metadata, id)
+					const stateId = yield* nonce
+					const authorization = yield* Effect.tryPromise({
+						catch: cause => UpstreamError.make({cause}),
+						try: () =>
+							startAuthorization(metadata.issuer, {
+								clientInformation: {
+									client_id: Match.valueTags(registered, {
+										Document: () => clientInfo.client_id,
+										Registered: found => found.clientId
+									})
+								},
+								metadata: {
+									...metadata,
+									code_challenge_methods_supported: [...(metadata.code_challenge_methods_supported ?? [])],
+									response_types_supported: [...(metadata.response_types_supported ?? [])]
+								},
+								redirectUrl: Match.valueTags(registered, {
+									Document: () => callback,
+									Registered: () => `${callback}/${id}`
+								}),
+								resource: connection.url,
+								scope: oauth.scope,
+								state: stateId
+							})
+					})
+					yield* Cache.set(pending, stateId, {
+						client: registered,
+						generation: connection.generation,
+						id,
+						metadata,
+						userId: user.id,
+						verifier: authorization.codeVerifier
+					})
+					return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
+				},
+				Effect.timeout('20 seconds'),
+				failed('Cannot connect this MCP')
+			),
 			called: id => Effect.asVoid(PubSub.publish(traffic, id)),
 			calls: user => Stream.unwrap(Effect.as(admin(user), Stream.fromPubSub(traffic))),
 			complete: Effect.fn('Connections.complete')(function* (
@@ -484,7 +524,7 @@ export class Connections extends Context.Service<
 				if (flow.userId !== user.id || flow.generation !== connection.generation || connection.oauth === undefined) {
 					return yield* AuthError.make({message: 'The connection expired; connect it again'})
 				}
-				const oauth = {...connection.oauth, client: flow.client}
+				const oauth = {...connection.oauth, client: flow.client, metadata: flow.metadata}
 				yield* pipe(
 					Effect.gen(function* () {
 						if (params.error !== undefined || params.code === undefined) {
@@ -494,14 +534,23 @@ export class Connections extends Context.Service<
 						}
 						// RFC 9700 §4.4.2: the answer must come from this server's authorization server, by its own callback or its issuer.
 						const fromIssuer = Match.valueTags(oauth.client, {
-							Document: () => params.iss === oauth.metadata.issuer && Option.isNone(route),
-							Registered: () =>
-								Option.contains(route, connection.id) &&
-								(params.iss === undefined || params.iss === oauth.metadata.issuer)
+							Document: () => Option.isNone(route),
+							Registered: () => Option.contains(route, connection.id)
 						})
 						if (!fromIssuer) {
 							return yield* AuthError.make({message: 'The answer came from another authorization server'})
 						}
+						yield* Effect.try({
+							catch: cause => AuthError.make({cause, message: 'The answer came from another authorization server'}),
+							try: () =>
+								validateAuthorizationResponseIssuer({
+									expectedIssuer: oauth.metadata.issuer,
+									iss: params.iss,
+									issParameterSupported:
+										oauth.client._tag === 'Document' ||
+										oauth.metadata.authorization_response_iss_parameter_supported === true
+								})
+						})
 						yield* exchange(connection, oauth, {
 							code: params.code,
 							code_verifier: flow.verifier,
