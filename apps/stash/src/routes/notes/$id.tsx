@@ -170,6 +170,11 @@ function FullBody(props: {note: NoteItem}) {
 }
 
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
+	const full = useAtomValue(noteAtom(props.note))
+	const reload = useAtomRefresh(noteAtom(props.note))
+	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
+		return <FailureContent cause={full.cause} name="stash" onRetry={reload} tint={primary} />
+	}
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
 			<VStack
