@@ -163,7 +163,6 @@ it.layer(
 										flights: [
 											{
 												cancelled: false,
-												destination: {code_iata: 'LHR'},
 												diverted: false,
 												fa_flight_id: 'old-flight',
 												gate_origin: 'B12',
