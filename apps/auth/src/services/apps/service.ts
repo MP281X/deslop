@@ -22,7 +22,7 @@ export class Apps extends Context.Service<
 			const state = yield* SubscriptionRef.make<Catalog>(Option.getOrElse(yield* store.get('apps'), () => []))
 			const self = new URL(yield* Config.String('APP_URL'))
 			const domain = pipe(self.hostname, String.split('.'), Array.drop(1), Array.join('.'))
-			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+			const client = yield* HttpClient.HttpClient
 			return Apps.of({
 				catalog: SubscriptionRef.changes(state),
 				register: Effect.fn('Apps.register')(function* (origin: string) {
@@ -31,6 +31,7 @@ export class Apps extends Context.Service<
 					}
 					const runtime = yield* pipe(
 						client.get(new URL(RUNTIME_PATH, origin).href),
+						Effect.flatMap(HttpClientResponse.filterStatusOk),
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
 						Effect.timeout('10 seconds'),
 						rejected(`${origin} did not answer ${RUNTIME_PATH}`)
@@ -41,9 +42,12 @@ export class Apps extends Context.Service<
 					// A web app serves its manifest; an iOS app's server has no pages and opens through the app's scheme.
 					const web = yield* pipe(
 						client.get(new URL(MANIFEST_PATH, origin).href),
+						Effect.flatMap(response => {
+							if (response.status === 404) return Effect.succeed(false)
+							return Effect.as(HttpClientResponse.filterStatusOk(response), true)
+						}),
 						Effect.timeout('10 seconds'),
-						Effect.as(true),
-						Effect.orElseSucceed(() => false)
+						rejected(`${origin} did not answer ${MANIFEST_PATH}`)
 					)
 					const app = App.make({
 						name: runtime.name,
@@ -51,12 +55,12 @@ export class Apps extends Context.Service<
 						origin: new URL(origin).origin
 					})
 					yield* pipe(
-						SubscriptionRef.modifyEffect(state, current => {
+						SubscriptionRef.updateEffect(state, current => {
 							const next = Array.sort(
 								[...Array.filter(current, known => known.origin !== app.origin), app],
 								Order.mapInput(String.Order, (known: App) => known.name)
 							)
-							return Effect.as(store.set('apps', next), [undefined, next] as const)
+							return Effect.as(store.set('apps', next), next)
 						}),
 						Effect.uninterruptible,
 						rejected('The app list could not be saved')
