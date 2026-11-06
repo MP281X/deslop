@@ -14,10 +14,10 @@
 		"@types/react-dom": "latest",
 		"effect": "latest",
 		"fallow": "latest",
-		"tsrs": "0.21.0-ts7.1.0-beta",
+		"tsrs": "0.22.0-ts7.1.0-beta",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
-		"vitest": "5.0.5"
+		"vitest": "5.1.0"
 	},
 	"engines": {
 		"node": ">=26"
