@@ -1026,6 +1026,32 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'keeps shadcn components as shipped, allowing only placement classes',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'primitives.tsx': pipe(
+						[
+							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Card} from '#components/ui/card.tsx'",
+							"import {cn} from '#lib/utils.ts'",
+							"import {Widget} from 'some-lib'",
+							'',
+							'export function Painted() { return <Button className="mt-2 w-full hover:bg-muted sm:!px-2 data-[state=open]:text-red-500">Save</Button> } // reported',
+							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 relative z-10 self-center -mt-1 sm:inset-0 hidden md:block [&_svg:not([class*=size-])]:size-4">Save</Button> }',
+							"export function Combined() { return <Card className={cn('mt-2', 'bg-red-500')}>Body</Card> } // reported",
+							'export function Templated() { return <Card className={`mt-2 text-lg`}>Body</Card> } // reported',
+							'export function Passed({className}: {className: string}) { return <Card className={className}>Body</Card> }',
+							'export function Foreign() { return <Widget className="bg-red-500" /> }'
+						],
+						Array.join('\n')
+					)
+				})
+				const lines = reportedLines(result, 'no-primitive-restyle')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
 			'keeps labeled tuples and component refs without opening object bypasses',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

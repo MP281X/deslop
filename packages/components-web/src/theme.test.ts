@@ -164,4 +164,16 @@ it.layer(NodeServices.layer)(test => {
 			}
 		})
 	)
+
+	test.effect(
+		'theme.css sets tokens only, never a component selector',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			assert.notMatch(
+				yield* fs.readFileString(`${import.meta.dirname}/theme.css`),
+				/\[data-(?:slot|variant)/u,
+				'theme.css sets tokens only: style a component through its variant, never a data-slot or data-variant selector.'
+			)
+		})
+	)
 })
