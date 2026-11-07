@@ -38,7 +38,21 @@
 	const controls = all.filter(element =>
 		element.matches('button, a[href], [role="button"], [role="menuitem"], input, select, textarea')
 	)
-	const nameOf = element => element.getAttribute('aria-label') || textOf(element) || element.getAttribute('title') || ''
+	const labelledBy = element =>
+		(element.getAttribute('aria-labelledby') || '')
+			.split(' ')
+			.map(id => document.getElementById(id))
+			.filter(Boolean)
+			.map(textOf)
+			.join(' ')
+	const nameOf = element =>
+		element.getAttribute('aria-label') ||
+		labelledBy(element) ||
+		[...(element.labels || [])].map(textOf).join(' ') ||
+		textOf(element) ||
+		element.getAttribute('title') ||
+		element.getAttribute('placeholder') ||
+		''
 
 	const overlaps = controls.flatMap((first, index) =>
 		controls
@@ -54,11 +68,14 @@
 			.map(second => `${describe(first)} ↔ ${describe(second)}`)
 	)
 
-	const loading = all.some(element =>
-		element.matches('[aria-busy="true"], [data-slot="skeleton"], [role="progressbar"]')
+	const loadingSelector = '[aria-busy="true"], [data-slot="skeleton"], [role="progressbar"]'
+	const errorElements = all.filter(element =>
+		element.matches('[role="alert"], [data-slot="alert"][data-variant="destructive"]')
 	)
-	const errors = all
-		.filter(element => element.matches('[role="alert"], [data-slot="alert"][data-variant="destructive"]'))
+	const regionOf = element =>
+		element.closest('[role="region"], [role="dialog"], section, article, main, [data-slot="card"]') || document.body
+	const errorWhileLoading = errorElements
+		.filter(element => [...regionOf(element).querySelectorAll(loadingSelector)].some(visible))
 		.map(describe)
 
 	return {
@@ -66,8 +83,8 @@
 			.filter(image => image.complete && image.naturalWidth === 0)
 			.map(image => image.src),
 		cut,
-		errorWhileLoading: loading && errors.length > 0 ? errors : [],
-		errors,
+		errorWhileLoading,
+		errors: errorElements.map(describe),
 		overlaps: overlaps.slice(0, 15),
 		pageOverflow: Math.max(0, document.documentElement.scrollWidth - innerWidth),
 		repeatedActions: repeated(controls.map(nameOf).filter(Boolean)),

@@ -7,16 +7,16 @@ description: Load at task start, when the user changes direction, before a plan 
 
 ## Plan card
 
-A data model, a screen, or work spanning more than one PR starts with one HTML page the user approves before anything is built:
+A data model, a screen, or work spanning more than one PR starts with one HTML page the user approves before the real build; prototypes are built to make the card:
 
-- **The thing itself.** Entities with one worked example; a screen as a working prototype in the app's preview on real primitives and fixture data, phone and desktop, 2–3 variants behind `?variant=` when the direction is open. A static mock only before the app exists.
+- **The thing itself.** Entities with one worked example; a screen as a working prototype on real primitives and fixture data, phone and desktop, with 2–3 variants when the direction is open: behind `?variant=` in a web app's preview, as Device-panel screens for a native app. A static mock only before the app exists.
 - **Choices.** Chosen, and rejected with the reason.
 - **Units.** The PRs or stack layers, and what each proves.
 - **Done.** The journeys the proof will show.
 
 Approval freezes the card. A message that changes an entity, a screen or a unit updates the card and gets it approved again before the build follows. A durable app decision goes in the app's `AGENTS.md`.
 
-The user starts from symptoms and finds what they want by reacting to concrete things. Map causes before options. A screen with no agreed direction gets a mix board in the app's preview route: 2–4 axes (navigation, density, empty and error model, action placement), 2–3 variants each with stable ids like `nav-A`, a state scrubber from empty to error to long, and a copyable `mix` JSON; implement the chosen mix and remove the losers.
+The user starts from symptoms and finds what they want by reacting to concrete things. Map causes before options. A screen with no agreed direction gets a mix board in the app's preview route, or Device-panel screens for a native app: 2–4 axes (navigation, density, empty and error model, action placement), 2–3 variants each with stable ids like `nav-A`, a state scrubber from empty to error to long, and a copyable `mix` JSON; implement the chosen mix and remove the losers.
 
 ## Decide
 

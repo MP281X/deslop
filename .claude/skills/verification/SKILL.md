@@ -18,12 +18,13 @@ A bug or a failed check starts at Diagnose. Finished work goes Cleanup, Prove, R
 
 ## Cleanup
 
-Before any capture, remove what the change no longer needs: debug code, dead code, duplicates, restyled shadcn components, unused files and the leftovers listed under Cleanup in Work. Proof shows the code that will merge.
+Before any capture, remove what the change no longer needs: debug code, dead code, duplicates, restyled shadcn components, unused files and the leftovers listed under Cleanup in Work. `rg` and Fallow rank candidates; deleting code something may still call needs caller or registration evidence plus a reachable-path probe. Proof shows the code that will merge.
 
 ## Prove
 
 - **Fresh.** The preview runs the latest commit; confirm it before the first capture. Captures come after the last edit and are labelled with the commit; a later edit retakes every capture it affects.
-- **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with the Scope trace for the backend path.
+- **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
+- **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with the Scope trace for the backend path where the app exports traces.
 - **Each touched screen**, in the running app on real or planted data:
   - cold first open, reload of a deep link, the first request failing, and on native background then resume;
   - hover, focus and keyboard on changed controls;
@@ -40,7 +41,7 @@ Before any capture, remove what the change no longer needs: debug code, dead cod
 
 ## Review
 
-One reviewer from another model family, in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It may answer "no findings" and reports only what a person would fix, grouped by class, each with the input, the observed result and `path:line`. One round, one recheck after fixes; needing a third round means the approach is wrong. Not findings: taste without a rule, hypothetical callers, what lint covers.
+One reviewer from another model family, in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It reports only what a person would fix, grouped by class, each with the input, the observed result and `path:line`. "No findings" lists the probes it ran and one attempt to break the change; a UI reviewer opens its own preview tab, since reading source is not evidence. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; needing a third round means the approach is wrong. Not findings: taste without a rule, hypothetical callers, what lint covers.
 
 | Severity | Meaning                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------- |
@@ -50,4 +51,4 @@ One reviewer from another model family, in a fresh context, read-only. Its brief
 
 ## Tests
 
-Keep a test that fails when the behavior breaks and still passes after the code under it is rewritten; prefer no new test over one that checks mocks, structure, timing or the current implementation. A probe that reproduced a real failure becomes a test at the narrowest public seam. A deleted test names its reason in the commit message.
+`CODING_STANDARDS.md` decides which tests to keep. A probe that reproduced a real failure is kept only when those rules keep it, at the narrowest public seam. A deleted test names its reason in the commit message.

@@ -19,7 +19,7 @@ The user merges on the PR body alone: it must prove the change works without any
 
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
 2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds.
-   - **Every claim has its capture** from the final head, taken after the last edit it depends on: a `| Before | After |` image table for a visible change, a video for a sequence, the screen that shows a backend change plus its Scope trace. Command output supports a capture, never replaces it; a mock is never proof.
+   - **Every claim has its capture** from the final head, taken after the last edit it depends on; only a labelled Before comes from base: a `| Before | After |` image table for a visible change, a video for a sequence, the screen that shows a backend change plus its Scope trace where the app exports traces. Command output supports a capture, never replaces it; a mock is never proof.
    - **Formats over sentences**: diff or code block for a shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, at most one `> [!IMPORTANT]` alert (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its claim for what stays unverified.
    - **Bullets are fragments**, only what a reviewer must know: `**No double lint**: vp check --fix fails on leftovers`.
    - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, check results. Captions say what changed, not how it was captured.

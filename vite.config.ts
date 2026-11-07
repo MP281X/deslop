@@ -61,9 +61,32 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		// Skill scripts run inside a page through preview_evaluate, outside any Effect runtime or type information.
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**', '.claude/skills/**/*.js'],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 		overrides: [
+			{
+				// Skill scripts run inside an app's page through preview_evaluate, with no Effect runtime and no type information.
+				files: ['.claude/skills/**/*.js'],
+				rules: {
+					'@deslop/coding-standards/function-declaration': 'off',
+					'@deslop/coding-standards/no-destructured-parameter': 'off',
+					'@deslop/coding-standards/no-native-emptiness-check': 'off',
+					'@deslop/coding-standards/no-native-method-call': 'off',
+					'@deslop/coding-standards/no-single-use-value': 'off',
+					'@deslop/coding-standards/no-ternary': 'off',
+					'@deslop/coding-standards/no-trivial-indirection': 'off',
+					'effecttsgo/prefer-effect-array': 'off',
+					'eslint/no-restricted-globals': 'off',
+					'eslint/no-restricted-properties': 'off',
+					'typescript/no-unsafe-argument': 'off',
+					'typescript/no-unsafe-assignment': 'off',
+					'typescript/no-unsafe-call': 'off',
+					'typescript/no-unsafe-member-access': 'off',
+					'typescript/no-unsafe-return': 'off',
+					'typescript/prefer-nullish-coalescing': 'off',
+					'typescript/strict-boolean-expressions': 'off',
+					'unicorn/consistent-function-scoping': 'off'
+				}
+			},
 			{
 				// React Native styles are objects with no Tailwind classes to check.
 				files: [
