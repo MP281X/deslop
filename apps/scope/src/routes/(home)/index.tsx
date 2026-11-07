@@ -36,8 +36,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn, formatError} from '@deslop/components-web/utils'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {ageOf, arrivalsAtom, copyAtom, durationOf, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
@@ -356,10 +355,7 @@ function Spans(props: {id: string}) {
 	const result = useAtomSuspense(atom, {includeFailure: true})
 	const refresh = useAtomRefresh(atom)
 	const value = AsyncResult.value(result)
-	if (
-		AsyncResult.isFailure(result) &&
-		(Option.isNone(value) || Option.exists(AsyncResult.error(result), Schema.is(AuthError)))
-	) {
+	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
 		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
@@ -795,7 +791,7 @@ function Home() {
 	const refresh = useAtomRefresh(overviewAtom)
 	const value = AsyncResult.value(overview)
 	const overviewError = AsyncResult.error(overview)
-	const authFailure = Option.filter(overviewError, Schema.is(AuthError))
+	const authFailure = Option.filter(overviewError, isDenied)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const arrived = useAtomValue(arrivalsAtom).arrived
 

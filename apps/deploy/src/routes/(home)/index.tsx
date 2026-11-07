@@ -1,6 +1,6 @@
-import {useAtom, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
@@ -37,8 +37,7 @@ import {Progress, ProgressLabel, ProgressValue} from '@deslop/components-web/ui/
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn, formatError} from '@deslop/components-web/utils'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
 import {inventoryAtom, hideAtom, metricsAtom, minutesAtom, runAtom} from '#lib/utils.ts'
@@ -952,9 +951,9 @@ function RangeMenu(props: {
 }
 
 // Sign-in or an error replaces the panes, never the bar.
-function FailureContent(props: {error: unknown}) {
+function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	return <Error error={props.error} reset={() => location.reload()} />
+	return <Error error={props.error} reset={props.reset} />
 }
 
 // A pane's header and rows while the first snapshot loads, so the shell keeps its columns.
@@ -1037,6 +1036,12 @@ function Home() {
 	const [hovered, setHovered] = useState<string>()
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom)
+	const refreshInventory = useAtomRefresh(inventoryAtom)
+	const refreshMetrics = useAtomRefresh(metricsAtom)
+	function retryFailed() {
+		if (AsyncResult.isFailure(inventory)) refreshInventory()
+		if (AsyncResult.isFailure(metrics)) refreshMetrics()
+	}
 	const snapshot = AsyncResult.value(inventory)
 	const readings = AsyncResult.value(metrics)
 	const shownHistories = Option.getOrElse(
@@ -1051,8 +1056,8 @@ function Home() {
 	const inventoryError = AsyncResult.error(inventory)
 	const metricsError = AsyncResult.error(metrics)
 	// A revoked session must show the sign-in even while the last snapshot is still cached; only other errors keep the panes.
-	const authFailure = Option.orElse(Option.filter(inventoryError, Schema.is(AuthError)), () =>
-		Option.filter(metricsError, Schema.is(AuthError))
+	const authFailure = Option.orElse(Option.filter(inventoryError, isDenied), () =>
+		Option.filter(metricsError, isDenied)
 	)
 	const refreshing = shownMinutes !== minutes && Option.isNone(metricsError)
 
@@ -1260,7 +1265,7 @@ function Home() {
 						onNone: () =>
 							Boolean.match(inventoryFailure, {
 								onFalse: () => <DeploySkeleton isMobile={isMobile} />,
-								onTrue: () => <FailureContent error={Option.getOrUndefined(inventoryError)} />
+								onTrue: () => <FailureContent error={Option.getOrUndefined(inventoryError)} reset={refreshInventory} />
 							}),
 						onSome: () => (
 							<div className="flex min-h-0 flex-1 flex-col">
@@ -1285,7 +1290,12 @@ function Home() {
 													onTrue: () => (
 														<Alert variant="destructive">
 															<AlertTitle>Apps may be out of date</AlertTitle>
-															<AlertDescription className="wrap-anywhere">{formatError(error)}</AlertDescription>
+															<AlertDescription className="wrap-anywhere">
+																{formatError(error)}
+																<Button variant="outline" size="sm" onClick={refreshInventory}>
+																	Try again
+																</Button>
+															</AlertDescription>
 														</Alert>
 													)
 												})
@@ -1295,7 +1305,12 @@ function Home() {
 											onSome: error => (
 												<Alert variant="destructive">
 													<AlertTitle>Usage history is unavailable</AlertTitle>
-													<AlertDescription className="wrap-anywhere">{formatError(error)}</AlertDescription>
+													<AlertDescription className="wrap-anywhere">
+														{formatError(error)}
+														<Button variant="outline" size="sm" onClick={refreshMetrics}>
+															Try again
+														</Button>
+													</AlertDescription>
 												</Alert>
 											)
 										})}
@@ -1389,7 +1404,7 @@ function Home() {
 							</div>
 						)
 					}),
-				onSome: error => <FailureContent error={error} />
+				onSome: error => <FailureContent error={error} reset={retryFailed} />
 			})}
 		</div>
 	)

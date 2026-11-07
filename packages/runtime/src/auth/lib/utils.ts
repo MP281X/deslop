@@ -46,6 +46,10 @@ export function needsSignIn(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable' && error.error !== 'access_denied'
 }
 
+export function isDenied(error: unknown) {
+	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable'
+}
+
 // A failure that already carries its answer stays as it is; anything else becomes the message the caller names.
 export function rejected(message: string) {
 	return Effect.mapError(cause => {
@@ -85,33 +89,36 @@ export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>
 	)
 }
 
-// A denial invalidates the retained success itself, not just the error currently hiding it.
+// Only fresh authorized data can clear a denial; later outages must not restore its retained value or hide the refusal.
 export function withoutDeniedData<A, E>(source: Atom.Atom<AsyncResult.AsyncResult<A, E>>) {
-	const denied = new WeakMap<AtomRegistry.AtomRegistry, WeakSet<AsyncResult.Success<A, E>>>()
+	const denied = new WeakMap<AtomRegistry.AtomRegistry, Cause.Cause<E>>()
 	return pipe(
 		Atom.transform(
 			source,
 			get => {
 				const result = get(source)
-				if (!AsyncResult.isFailure(result)) return result
-				return Option.match(result.previousSuccess, {
+				if (AsyncResult.isSuccess(result)) {
+					denied.delete(get.registry)
+					return result
+				}
+				if (AsyncResult.isFailure(result)) {
+					const refusals = Array.filter(
+						result.cause.reasons,
+						reason => Cause.isFailReason(reason) && isDenied(reason.error)
+					)
+					if (Array.isArrayNonEmpty(refusals)) denied.set(get.registry, Cause.fromReasons(refusals))
+				}
+				return Option.match(Option.fromUndefinedOr(denied.get(get.registry)), {
 					onNone: () => result,
-					onSome: previous => {
-						const invalid = Option.getOrElse(Option.fromUndefinedOr(denied.get(get.registry)), () => {
-							const entries = new WeakSet<AsyncResult.Success<A, E>>()
-							denied.set(get.registry, entries)
-							return entries
-						})
-						if (
-							Array.some(
-								result.cause.reasons,
-								reason => Cause.isFailReason(reason) && Schema.is(AuthError)(reason.error)
-							)
-						) {
-							invalid.add(previous)
-						}
-						if (invalid.has(previous)) return AsyncResult.failure(result.cause, {waiting: result.waiting})
-						return result
+					onSome: refusal => {
+						if (!AsyncResult.isFailure(result)) return AsyncResult.failure(refusal, {waiting: result.waiting})
+						return AsyncResult.failure(
+							Cause.fromReasons([
+								...refusal.reasons,
+								...Array.filter(result.cause.reasons, reason => !Cause.isFailReason(reason) || !isDenied(reason.error))
+							]),
+							{waiting: result.waiting}
+						)
 					}
 				})
 			},

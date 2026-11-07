@@ -69,7 +69,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {isDenied} from '@deslop/runtime/auth/utils'
 
 import {Byline, ReadError} from '#lib/components.tsx'
 import {
@@ -315,7 +315,7 @@ export function HomeRoute(props: {
 	if (AsyncResult.isFailure(loaded)) {
 		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} tint={primary} />
 	}
-	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), Schema.is(AuthError))) {
+	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
 		return <FailureContent cause={search.cause} name="stash" onRetry={refreshSearch} tint={primary} />
 	}
 	const notes = Array.filter(

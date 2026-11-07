@@ -14,6 +14,7 @@ import {brands} from '@deslop/components-mobile/icons'
 import {hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/schema'
@@ -136,17 +137,19 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 export const queryAtom = Atom.make('')
 
 // Debounce typing once, then the server keeps the same full-text query current as notes change.
-export const searchAtom = RpcClient.runtime.atom(get => {
-	const query = String.trim(get(queryAtom))
-	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
-	return pipe(
-		Effect.sleep('250 millis'),
-		Effect.andThen(Effect.map(RpcClient, client => client('notes.search', {query}))),
-		Stream.unwrap,
-		Stream.map(ids => Option.some(HashSet.fromIterable(ids))),
-		session.renewing
-	)
-})
+export const searchAtom = withoutDeniedData(
+	RpcClient.runtime.atom(get => {
+		const query = String.trim(get(queryAtom))
+		if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
+		return pipe(
+			Effect.sleep('250 millis'),
+			Effect.andThen(Effect.map(RpcClient, client => client('notes.search', {query}))),
+			Stream.unwrap,
+			Stream.map(ids => Option.some(HashSet.fromIterable(ids))),
+			session.renewing
+		)
+	})
+)
 
 const images = new Directory(Paths.cache, 'downloads')
 

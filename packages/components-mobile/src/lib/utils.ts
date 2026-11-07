@@ -1,4 +1,4 @@
-import {Effect, FiberHandle, Option, Schema, Stream, pipe} from 'effect'
+import {Array, Cause, Effect, FiberHandle, Option, Schema, Stream, pipe} from 'effect'
 
 import {createModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -6,6 +6,8 @@ import {requireNativeModule} from 'expo'
 import {Asset} from 'expo-asset'
 import {File} from 'expo-file-system'
 import {Alert} from 'react-native'
+
+import {isDenied} from '@deslop/runtime/auth/utils'
 
 class DeviceError extends Schema.TaggedError<DeviceError>()('DeviceError', {
 	cause: Schema.Defect(),
@@ -57,22 +59,44 @@ export function cachedList<S extends Schema.Top, E, R>(
 		),
 		Stream.unwrap(
 			Effect.map(FiberHandle.make(), writes =>
-				Stream.tap(live, list =>
-					FiberHandle.run(
-						writes,
-						pipe(
-							Schema.encodeEffect(json)(list),
-							Effect.flatMap(text =>
+				pipe(
+					live,
+					Stream.tap(list =>
+						FiberHandle.run(
+							writes,
+							pipe(
+								Schema.encodeEffect(json)(list),
+								Effect.flatMap(text =>
+									Effect.try({
+										catch: cause =>
+											DeviceError.make({cause, message: `${file.name} could not be written on this iPhone`}),
+										try: () => writeAtomically(file, text)
+									})
+								),
+								Effect.delay('2 seconds'),
+								Effect.ignore({log: 'Warn', message: `${file.name} could not be kept on this iPhone`})
+							)
+						)
+					),
+					Stream.tapCause(failure => {
+						if (!Array.some(failure.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))) {
+							return Effect.void
+						}
+						return pipe(
+							FiberHandle.clear(writes),
+							Effect.andThen(
 								Effect.try({
 									catch: cause =>
-										DeviceError.make({cause, message: `${file.name} could not be written on this iPhone`}),
-									try: () => writeAtomically(file, text)
+										DeviceError.make({cause, message: `${file.name} could not be removed from this iPhone`}),
+									try: () => {
+										if (file.exists) file.delete()
+									}
 								})
 							),
-							Effect.delay('2 seconds'),
-							Effect.ignore({log: 'Warn', message: `${file.name} could not be kept on this iPhone`})
+							Effect.ignore({log: 'Warn', message: `${file.name} could not be removed after access was denied`}),
+							Effect.uninterruptible
 						)
-					)
+					})
 				)
 			)
 		)

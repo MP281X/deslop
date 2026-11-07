@@ -9,6 +9,7 @@ import {
 	Predicate,
 	Record,
 	Schedule,
+	Schema,
 	Stream,
 	String,
 	pipe
@@ -18,7 +19,7 @@ import {RouterProvider, createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, AnyRouter, RouterOptions} from '@tanstack/react-router'
 import {FetchHttpClient} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
-import {Atom, AtomRegistry} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
 import {StrictMode} from 'react'
@@ -28,6 +29,8 @@ import {Error, NotFound} from '@deslop/components-web/fallbacks'
 
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
+
+import {AuthError} from '#auth/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
 const reported = new WeakSet<object>()
@@ -117,12 +120,24 @@ export function appIcons(icons: Record<string, string>) {
 	)
 }
 
-// A live stream opens again after the socket drops; its other failures reach the screen.
-export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
-	return Stream.retry(stream, $ =>
-		pipe(
-			$(Schedule.spaced('1 second')),
-			Schedule.while(metadata => metadata.input._tag === 'RpcClientError')
+// A live stream recovers from transport and authorization outages, never a refusal or domain failure.
+export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>, get?: Atom.AtomContext) {
+	return pipe(
+		stream,
+		Stream.tapCause(cause =>
+			Effect.sync(() => {
+				get?.setSelf(AsyncResult.failureWithPrevious(cause, {previous: get.self<AsyncResult.AsyncResult<A, E>>()}))
+			})
+		),
+		Stream.retry($ =>
+			pipe(
+				$(Schedule.spaced('1 second')),
+				Schedule.while(
+					metadata =>
+						metadata.input._tag === 'RpcClientError' ||
+						(Schema.is(AuthError)(metadata.input) && metadata.input.error === 'temporarily_unavailable')
+				)
+			)
 		)
 	)
 }

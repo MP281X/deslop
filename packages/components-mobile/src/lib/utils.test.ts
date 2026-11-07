@@ -1,11 +1,14 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, Fiber, Option, Queue, Ref, Schema, Stream, pipe} from 'effect'
+import {Array, Effect, Fiber, Function, Option, Queue, Ref, Schema, Stream, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
+import {TestClock} from 'effect/testing'
 import {File} from 'expo-file-system'
 // oxlint-disable-next-line no-restricted-imports -- Node cannot load native modules; stub only platform imports, exercising the real cache and atom runtime.
 import {vi} from 'vite-plus/test'
+
+import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {readClipboard} from '#lib/clipboard.ts'
 import {cachedList} from '#lib/utils.ts'
@@ -20,11 +23,17 @@ vi.mock('expo-file-system', () => ({
 		name = 'list.json'
 		uri = 'file:///list.json'
 		text = '[{"id":"old"}]'
+		exists = true
 		textSync() {
+			if (!this.exists) throw new TypeError('File not found')
 			return this.text
 		}
 		writeSync(text: string) {
+			this.exists = true
 			this.text = text
+		}
+		delete() {
+			this.exists = false
 		}
 		moveSync(file: {writeSync: (text: string) => void}) {
 			file.writeSync(this.text)
@@ -33,6 +42,79 @@ vi.mock('expo-file-system', () => ({
 }))
 
 it.layer(AtomRegistry.layer)(test => {
+	test.effect.each([
+		{
+			error: AuthError.make({error: 'access_denied', message: 'Denied'}),
+			kept: false,
+			name: 'cancels a pending cache write after denial',
+			saved: false
+		},
+		{
+			error: AuthError.make({error: 'access_denied', message: 'Denied'}),
+			kept: false,
+			name: 'removes the saved cache after denial',
+			saved: true
+		},
+		{
+			error: AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}),
+			kept: true,
+			name: 'keeps the cache during a temporary auth outage',
+			saved: false
+		},
+		{error: 'Offline', kept: true, name: 'keeps the cache during an ordinary outage', saved: false}
+	])('$name', scenario =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const file = new File('file:///list.json')
+				const incoming = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError | string>>()
+				const list = Atom.make(get =>
+					cachedList(
+						get,
+						file,
+						Schema.Struct({id: Schema.String}),
+						pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity))
+					)
+				)
+				const registry = yield* AtomRegistry.AtomRegistry
+				yield* Atom.mount(list)
+				assert.deepStrictEqual(yield* Atom.getResult(list), [{id: 'old'}])
+				const updated = yield* Effect.forkChild(
+					pipe(
+						AtomRegistry.toStream(registry, list),
+						Stream.filter(result => Option.exists(AsyncResult.value(result), items => items[0]?.id === 'fresh')),
+						Stream.runHead
+					)
+				)
+				yield* Queue.offer(incoming, Effect.succeed([{id: 'fresh'}]))
+				yield* Fiber.join(updated)
+				if (scenario.saved) yield* TestClock.adjust('3 seconds')
+				const failed = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(registry, list), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+				)
+				yield* Queue.offer(incoming, Effect.fail(scenario.error))
+				yield* Fiber.join(failed)
+				yield* TestClock.adjust('3 seconds')
+				assert.strictEqual(file.exists, scenario.kept)
+				const cold = yield* Effect.acquireRelease(
+					Effect.sync(() => AtomRegistry.make()),
+					value => Effect.sync(() => value.dispose())
+				)
+				const opened = yield* Queue.unbounded<void>()
+				const restarted = Atom.make(get =>
+					cachedList(
+						get,
+						file,
+						Schema.Struct({id: Schema.String}),
+						Stream.concat(Stream.drain(Stream.fromEffect(Queue.offer(opened, undefined))), Stream.never)
+					)
+				)
+				cold.mount(restarted)
+				yield* Queue.take(opened)
+				assert.strictEqual(Option.isSome(AsyncResult.value(cold.get(restarted))), scenario.kept)
+			})
+		)
+	)
+
 	test.effect(
 		'reads an offered copy once when its metadata stays current',
 		Effect.fnUntraced(function* () {

@@ -4,7 +4,7 @@ import {Cause, ConfigProvider, Effect, Exit, Option, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 
-import {adminIds, isAdmin, needsSignIn, rejected, withoutDeniedData} from '#auth/lib/utils.ts'
+import {adminIds, isAdmin, isDenied, needsSignIn, rejected, withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 function adminsWith(env: Record<string, string>) {
@@ -29,6 +29,7 @@ it('does not resurrect denied data after another failure, and accepts a fresh su
 			AsyncResult.failWithPrevious<string, AuthError | string>('Retry failed', {previous: Option.some(denied)})
 		)
 		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.none())
+		assert.isTrue(Option.exists(AsyncResult.error(registry.get(protectedData)), isDenied))
 		dispose()
 		const rejoin = registry.mount(protectedData)
 		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.none())
@@ -37,6 +38,47 @@ it('does not resurrect denied data after another failure, and accepts a fresh su
 		registry.set(source, AsyncResult.failWithPrevious('Later outage', {previous: Option.some(fresh)}))
 		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('fresh'))
 		rejoin()
+	} finally {
+		registry.dispose()
+	}
+})
+
+it('keeps an initial denial through waiting and unrelated failures without a retained success', () => {
+	const source = Atom.make<AsyncResult.AsyncResult<string, AuthError | string>>(AsyncResult.initial())
+	const protectedData = withoutDeniedData(source)
+	const registry = AtomRegistry.make()
+	try {
+		registry.mount(protectedData)
+		registry.set(source, AsyncResult.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
+		registry.set(source, AsyncResult.initial(true))
+		assert.isTrue(Option.exists(AsyncResult.error(registry.get(protectedData)), isDenied))
+		registry.set(source, AsyncResult.fail('Offline'))
+		assert.isTrue(Option.exists(AsyncResult.error(registry.get(protectedData)), isDenied))
+		registry.set(source, AsyncResult.success('fresh'))
+		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('fresh'))
+	} finally {
+		registry.dispose()
+	}
+})
+
+it('retains authorized data during a temporary auth outage and an ordinary failure', () => {
+	const initial = AsyncResult.success('private')
+	const source = Atom.make<AsyncResult.AsyncResult<string, AuthError | string>>(initial)
+	const protectedData = withoutDeniedData(source)
+	const registry = AtomRegistry.make()
+	try {
+		registry.mount(protectedData)
+		const outage = AsyncResult.failWithPrevious(
+			AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}),
+			{previous: Option.some(initial)}
+		)
+		registry.set(source, outage)
+		assert.strictEqual(registry.get(protectedData), outage)
+		registry.set(
+			source,
+			AsyncResult.failWithPrevious<string, AuthError | string>('Offline', {previous: Option.some(outage)})
+		)
+		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('private'))
 	} finally {
 		registry.dispose()
 	}
