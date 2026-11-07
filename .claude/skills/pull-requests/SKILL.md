@@ -19,10 +19,10 @@ The user merges on the PR body alone: it must prove the change works without any
 
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
 2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds.
-   - **Every claim has its capture** from the final head, taken after the last edit it depends on; only a labelled Before comes from base: a `| Before | After |` image table for a visible change, a video for a sequence, the screen that shows a backend change plus its Scope trace where the app exports traces. Command output supports a capture, never replaces it; a mock is never proof.
+   - **Every claim has its capture** from the final head, taken after the last edit it depends on; only a labelled Before comes from base: a `| Before | After |` image table for a visible change, a video for a sequence, the screen that shows a backend change plus its Scope trace where the app exports traces. Command output supports a capture, never replaces it; a mock is never proof. T3 Code shows each image at most 480 px wide, so a desktop capture is cropped to the region its claim is about, in dark, unless the claim is the whole layout.
    - **Formats over sentences**: diff or code block for a shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, at most one `> [!IMPORTANT]` alert (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its claim for what stays unverified.
    - **Visual first.** The body is mostly pictures: captures for screens, and a figure for anything else (a flow, an architecture, a before/after). A table of sentences is still text.
-   - **Figures** share one look, GitHub's colors and type in both themes: write an HTML fragment with the classes in `references/figure.css` (`flow`, `fork`, `arrow`, `compare`, `specimens`, `box` filled `ok`, `bad`, `info`, `done` or `warn`), render it with `references/figure.sh <figure.html>`, read both PNGs, and embed the pair as below. No Mermaid, whose colors ignore the theme.
+   - **Figures** are made like the thread's HTML pages, with the same host tokens, then kept as images: the user reads PRs in T3 Code's dark theme, which shows an image at most 480 px wide. Lay the page out for 480 px (stacked, two columns at most), set `zoom: 2` on its `html` and `background: var(--background)` on its `body`, and pass it to `html_preview` at width 960 in dark; its PNG is the figure, sharp at 480 px. Read it before attaching. No Mermaid: it ignores the theme and the width.
    - **Each fact once.** A diagram, table or capture carries its point alone: no sentence before or after it restates it, and no section repeats another. A fact the visual cannot show gets one fragment beside it.
    - **Bullets are fragments**, only what a reviewer must know: `**No double lint**: vp check --fix fails on leftovers`.
    - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, check results. Captions say what changed, not how it was captured.
@@ -33,16 +33,44 @@ The user merges on the PR body alone: it must prove the change works without any
 
 ## Video
 
-One claim per video: the real journey in the running app, after the last edit.
+A short motion piece the user wants to watch, of real journeys recorded after the last edit; a raw recording only for a single action.
 
-- **Record** with `preview_recording_start` and `preview_recording_stop` at the app's primary viewport (1440×900 for web), or the Device panel's recording in portrait for iOS.
-- **Shape.** Start on the claim's screen with its data loaded, perform each input at real speed, pause about a second on each result, and hold the final outcome for two seconds.
-- **Encode**, trimming to the journey:
+- **Storyboard first**: per chapter the claim, focal element, input and payoff; one chapter per claim, one dataset.
+- **Open** on the real subject, its value visible in the first frames; **end** on the verified outcome, held until it reads.
+- **Camera** lands on each input before it happens, still during the change; real speed for the meaningful action, accelerated footage labelled.
+- **Captions**: one per chapter, its benefit in a few words; frames read at 390 px wide without zoom.
+- **Camera targets.** Read each input's target and the outcome's box with `preview_evaluate` right after recording starts and before each input:
 
-  ```bash
-  ffmpeg -ss <start> -to <end> -i <recording> -vf 'crop=trunc(iw/16)*16:trunc(ih/16)*16:0:0' -r 30 -c:v libx264 -pix_fmt yuv420p -crf 23 -movflags +faststart <claim>.mp4
-  ffmpeg -i <claim>.mp4 -vf fps=1,scale=640:-1,tile=4x4 <claim>-sheet-%03d.png   # read the sheet: each step visible, the outcome held
+  ```js
+  ;(() => {
+  	const r = document.querySelector('<selector>').getBoundingClientRect()
+  	// Fractions of the recording after its crop to multiples of 16.
+  	const w = Math.floor(innerWidth / 16) * 16
+  	const h = Math.floor(innerHeight / 16) * 16
+  	const box = [r.left / w, r.top / h, r.width / w, r.height / h]
+  	return {box, t: Date.now(), target: [box[0] + box[2] / 2, box[1] + box[3] / 2]}
+  })()
   ```
+
+- **Compose** in a scratch HyperFrames project in the app's primary orientation, landscape for a desktop web app such as Dual and portrait for a phone app, with the recordings re-encoded below (a side that is not a multiple of 16 renders a black strip) and the app's font in `assets/`; `$hf docs <topic>` holds the composition contract. Every video keeps this look, in the app's font, primary and radius:
+  - **Layout.** On the app's foreground hue darkened to near black, top to bottom: the progress, the caption, then the recording in a frame with the app's radius; margins of 6 % and a caption of 5 % of the short side. Nothing covers the recording but the touch marker and the reveal: no scrim, no caption over it.
+  - **Progress.** One 6 px segment per chapter, filling with the primary over its chapter.
+  - **Captions.** Weight 650; words rise into focus one after another (blur 12 px to 0, 0.45 s, 0.035 s stagger) and leave before the next caption.
+  - **Camera.** Portrait fills the frame's width, shows about four fifths of the screen's height and only pans to each input, since a push crops rows; landscape pushes every frame meant to be read in to at most 500 CSS px of the app's width. Expo easing; each move takes 0.25–0.65 s and settles 0.2 s before its input, so the viewer watches it land.
+  - **Touch.** A white marker 38 app CSS px wide, scaled with the recording, at 55 % opacity with a 3 px white border and a primary ring, enters in 0.22 s, presses to 0.78 in 0.08 s while a 0.55 s primary ripple beneath it grows to 2.6×, and fades in 0.25 s.
+  - **Chapters** start 0.6 s before the previous one ends and grow out of its last input as a circular clip; the previous view dims to brightness 0.55 at 0.96 scale.
+  - **Reveal.** The camera zooms onto the verified outcome, at most 2.6×, inside a 4 px primary outline offset 6 px, everything else dimmed to 80 % backdrop, entering in 0.5 s and held to the end. Energy rises only around this one reveal.
+  - **Pitfalls.** A `fromTo` that starts later takes `immediateRender: false`, or its start state shows from frame one; a filter tween states its start, `brightness(1)`, or GSAP starts at zero and flashes black; select by id, since the bundler cannot parse a selector built from a template literal; the camera container taller than the stage takes `data-layout-allow-overflow`; a timed video sits in untimed wrappers, which `check` otherwise rejects as `video_nested_in_timed_element`.
+
+```bash
+hf='vpx hyperframes@latest'
+export HYPERFRAMES_NO_TELEMETRY=1 HYPERFRAMES_SKIP_SKILLS=1 HYPERFRAMES_BROWSER_PATH=$(ls -d ~/.t3/tools/chrome-headless-shell/linux64/*/chrome-headless-shell | awk 'END {print}')
+$hf init <claim> --example blank --resolution <landscape|portrait> --non-interactive && mkdir <claim>/assets
+ffmpeg -i <recording> -vf 'crop=trunc(iw/16)*16:trunc(ih/16)*16:0:0' -r 30 -force_key_frames 'expr:gte(t,n_forced)' -c:v libx264 -pix_fmt yuv420p <claim>/assets/chapter-<n>.mp4
+$hf check && $hf render --quality delivery --output <claim>.mp4 # inside <claim>/
+ffmpeg -ss <second> -i <claim>.mp4 -frames:v 1 -vf scale=390:-1 <frame>.png # read each chapter's frame at phone size
+ffmpeg -i <video> -vf fps=1,scale=640:-1,tile=4x4 <sheet-%03d.png>         # contact sheet of a recording
+```
 
 ## Commands
 
@@ -52,11 +80,7 @@ Captures upload with `--attach`, never through the host's upload API.
 gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EOF'  # ![alt](./shot.png) becomes the upload
 <body>
 EOF
-gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
-# A figure's two PNGs: upload both as images, read their URLs from the body, then replace the pair with one element:
-# <picture><source media="(prefers-color-scheme: dark)" srcset="<dark url>"><img alt="<claim>" src="<light url>" width="880"></picture>
-gh pr view <n> --json body --jq .body
-gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
+gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraphgh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
 glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
 glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
 glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
