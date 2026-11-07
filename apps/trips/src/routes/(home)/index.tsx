@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, pipe} from 'effect'
 
@@ -6,6 +6,7 @@ import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStac
 import {
 	accessibilityLabel,
 	background,
+	fixedSize,
 	font,
 	foregroundStyle,
 	frame,
@@ -18,9 +19,10 @@ import {
 import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {useState} from 'react'
+import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {FailureContent} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -35,11 +37,13 @@ import {
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {Spinner} from '@deslop/components-mobile/ui/spinner'
 
 import {
 	clipboardAtom,
 	clipboardReturnsAtom,
+	bookingsAtom,
 	daysUntil,
 	dots,
 	nowAtom,
@@ -54,7 +58,7 @@ import {
 } from '#lib/utils.ts'
 import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingList} from '#services/bookings/schema.ts'
+import type {Booking} from '#services/bookings/schema.ts'
 
 function zoneOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.place.timeZone
@@ -84,7 +88,7 @@ type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
-		<VStack spacing={0} modifiers={[frame({width: 34})]}>
+		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 34})]}>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
 			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
@@ -161,31 +165,35 @@ function PasteSheet() {
 }
 
 // What runs now, then the days ahead counted down in the gutter, then the last month folded away.
-export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) => void}) {
+function Bookings(props: {onOpen: (id: string) => void}) {
+	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(bookingsAtom)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const restore = useAtomSet(restoreAtom)
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} />
+	}
 	const current = Array.filter(
-		props.bookings,
+		loaded.value,
 		booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now
 	)
-	const ahead = Array.filter(props.bookings, booking => startOf(booking) - 6 * HOUR > now)
+	const ahead = Array.filter(loaded.value, booking => startOf(booking) - 6 * HOUR > now)
 	const past = Array.reverse(
-		Array.filter(props.bookings, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
+		Array.filter(loaded.value, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
 	)
 	function daysOf(booking: Booking) {
 		return daysUntil(startOf(booking), now, zoneOf(booking))
 	}
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
-			{Array.isReadonlyArrayEmpty(props.bookings) && (
+		<>
+			{Array.isReadonlyArrayEmpty(loaded.value) && (
 				<Empty modifiers={[accessibilityLabel('No bookings')]}>
 					<EmptyHeader>
 						<EmptyMedia systemImage="ticket" />
 					</EmptyHeader>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(props.bookings) &&
+			{Array.isReadonlyArrayNonEmpty(loaded.value) &&
 				Array.isReadonlyArrayEmpty(current) &&
 				Array.isReadonlyArrayEmpty(ahead) &&
 				Array.isReadonlyArrayEmpty(past) && (
@@ -231,6 +239,22 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 					)}
 				</ItemGroup>
 			)}
+		</>
+	)
+}
+
+// Native navigation and clipboard/account controls do not wait for the bookings stream.
+export function HomeRoute(props: {onOpen: (id: string) => void}) {
+	const restore = useAtomSet(restoreAtom)
+	return (
+		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+			<Suspense
+				fallback={
+					<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+				}
+			>
+				<Bookings onOpen={props.onOpen} />
+			</Suspense>
 			<Toolbar.Content>
 				<ToolbarItem placement="principal">
 					<PasteSheet />

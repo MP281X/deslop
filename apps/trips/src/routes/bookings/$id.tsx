@@ -15,6 +15,7 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	accessibilityLabel,
 	Animation,
 	animation,
 	background,
@@ -34,7 +35,7 @@ import {
 import {AsyncResult} from 'effect/reactivity'
 
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 
 import {
 	dayAt,
@@ -323,11 +324,15 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 		{
 			onNone: () => (
 				<Empty
-					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
+					modifiers={[
+						accessibilityLabel('Booking deleted'),
+						navigationTitle(''),
+						navigationBarTitleDisplayMode('inline'),
+						background(colors.background)
+					]}
 				>
 					<EmptyHeader>
 						<EmptyMedia systemImage="trash" />
-						<EmptyTitle>Booking Deleted</EmptyTitle>
 					</EmptyHeader>
 				</Empty>
 			),
