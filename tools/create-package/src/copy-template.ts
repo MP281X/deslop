@@ -1,4 +1,4 @@
-import {Array, Effect, FileSystem, Path, String, pipe} from 'effect'
+import {Array, Console, Effect, FileSystem, Path, String, pipe} from 'effect'
 
 import {CliError} from 'effect/cli'
 
@@ -32,4 +32,5 @@ export const copyTemplate = Effect.fnUntraced(function* (input: {
 			}),
 		{concurrency: 'unbounded'}
 	)
+	yield* Console.log(`Created ${input.to}`)
 })
