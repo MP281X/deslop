@@ -162,6 +162,20 @@
 	image-rendering: pixelated;
 }
 
+/* A single shape contract even when a refreshed registry component ships a pill or circular avatar. Dots stay round. */
+[data-slot='badge'],
+[data-slot='avatar'],
+[data-slot='avatar-image'],
+[data-slot='avatar-fallback'],
+[data-slot='avatar']::after {
+	border-radius: var(--radius);
+}
+
+[data-slot='kbd'] {
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+}
+
 @layer base {
 	* {
 		@apply border-border outline-none;

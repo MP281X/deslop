@@ -3,9 +3,9 @@ import {useAtomValue} from '@effect/atom-react'
 import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {useRender} from '@base-ui/react/use-render'
+import {CaretLeftIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {ChevronLeft} from 'lucide-react'
 import {useEffect, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
@@ -161,7 +161,7 @@ export function AppBar(props: {
 										aria-label={back.label}
 										onClick={back.onClick}
 									>
-										<ChevronLeft className="size-4" />
+										<CaretLeftIcon className="size-4" />
 									</Button>
 								)
 							})}

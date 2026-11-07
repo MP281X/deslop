@@ -2,9 +2,9 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
+import {CaretRightIcon, ClockIcon, MonitorIcon, PlayIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {ChevronRight, Clock, Monitor, Play, Server} from 'lucide-react'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
@@ -309,7 +309,7 @@ function RunNow(props: {busy: boolean; item: InventoryItem; onRun: () => void}) 
 				})
 			}}
 		>
-			{Boolean.match(working, {onFalse: () => <Play />, onTrue: () => <Spinner />})}
+			{Boolean.match(working, {onFalse: () => <PlayIcon />, onTrue: () => <Spinner />})}
 		</Button>
 	)
 }
@@ -425,7 +425,7 @@ function AppListRow(props: {
 						</span>
 						{scheduled && (
 							<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs">
-								<Clock className="size-3" />
+								<ClockIcon className="size-3" />
 								{next}
 							</span>
 						)}
@@ -486,7 +486,7 @@ function AppListRow(props: {
 						)}
 					>
 						{Boolean.match(scheduled, {
-							onFalse: () => <ChevronRight className="text-muted-foreground size-3.5" />,
+							onFalse: () => <CaretRightIcon className="text-muted-foreground size-3.5" />,
 							onTrue: () => (
 								<RunNow busy={running} item={props.row.item} onRun={() => setRequested(Option.some(props.now))} />
 							)
@@ -995,7 +995,7 @@ function RangeMenu(props: {
 				className={cn(buttonVariants({size: 'sm', variant: 'ghost'}), 'gap-1 font-mono text-xs max-sm:h-11')}
 				aria-label="History range"
 			>
-				{Boolean.match(props.pending, {onFalse: () => <Clock className="size-3.5" />, onTrue: () => <Spinner />})}
+				{Boolean.match(props.pending, {onFalse: () => <ClockIcon className="size-3.5" />, onTrue: () => <Spinner />})}
 				{label}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-32">
@@ -1177,13 +1177,17 @@ function Home() {
 								...Option.match(Option.fromUndefinedOr(active), {
 									onNone: () => [],
 									onSome: current => [
-										{icon: <Monitor />, label: `Open ${machineName(current)} graphs`, run: showMachine}
+										{icon: <MonitorIcon />, label: `Open ${machineName(current)} graphs`, run: showMachine}
 									]
 								}),
 								...Option.match(Option.fromUndefinedOr(selectedRow), {
 									onNone: () => [],
 									onSome: row => [
-										{icon: <Server />, label: `Processes of ${workloadName(row.item)}`, run: () => selectRow(row)}
+										{
+											icon: <HardDrivesIcon />,
+											label: `Processes of ${workloadName(row.item)}`,
+											run: () => selectRow(row)
+										}
 									]
 								})
 							],
@@ -1245,7 +1249,7 @@ function Home() {
 							onFalse: () => null,
 							onTrue: () => (
 								<AppBarAction
-									icon={<Monitor />}
+									icon={<MonitorIcon />}
 									label="Machine"
 									variant={Boolean.match(pane === 'machine', {
 										onFalse: () => 'outline' as const,

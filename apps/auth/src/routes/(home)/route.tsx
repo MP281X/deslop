@@ -2,9 +2,9 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 
 import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
+import {CheckIcon, CopyIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy, KeyRound, Plus} from 'lucide-react'
 import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
@@ -103,8 +103,8 @@ function Code(props: {id: string}) {
 			>
 				{requestCode(props.id)}
 				{Boolean.match(copied, {
-					onFalse: () => <Copy className="text-muted-foreground" />,
-					onTrue: () => <Check className="text-primary" />
+					onFalse: () => <CopyIcon className="text-muted-foreground" />,
+					onTrue: () => <CheckIcon className="text-primary" />
 				})}
 				<span role="status" className="sr-only">
 					{copied && 'Copied'}
@@ -154,7 +154,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			{props.request.kind === 'App' && (
 				<span className="flex flex-wrap justify-center gap-1">
 					<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
-						<KeyRound />
+						<KeyIcon />
 						Approve here with a passkey
 					</Button>
 					<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
@@ -268,7 +268,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 			{Array.map(passkeys, passkey => (
 				<DropdownMenuSub key={passkey.id}>
 					<DropdownMenuSubTrigger>
-						<KeyRound />
+						<KeyIcon />
 						<span className="truncate">{passkey.addedFrom}</span>
 						<span className="text-muted-foreground ml-auto pl-3 text-xs">
 							{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
@@ -290,7 +290,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
 				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
 			>
-				<Plus />
+				<PlusIcon />
 				Add a passkey
 			</DropdownMenuItem>
 		</DropdownMenuGroup>
@@ -361,7 +361,7 @@ function SignIn() {
 					disabled={AsyncResult.isWaiting(passkey)}
 					onClick={() => startPasskey()}
 				>
-					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyRound />, onTrue: () => <Spinner />})}
+					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
 					Continue with a passkey
 				</Button>
 				<Button
