@@ -21,7 +21,6 @@ import {
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
@@ -31,6 +30,7 @@ import {rejected} from '@deslop/runtime/auth/utils'
 
 import {
 	browserLabel,
+	browserToken,
 	clientLabel,
 	clientOf,
 	deviceLabel,
@@ -50,8 +50,6 @@ import type {
 	TokenParams
 } from '#services/tokens/schema.ts'
 import {Exchange, Grants} from '#services/tokens/schema.ts'
-
-export const SESSION_COOKIE = '__Secure-session'
 
 // An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
 type Code = {
@@ -117,7 +115,8 @@ export class Tokens extends Context.Service<
 		readonly startSession: (
 			owner: CredentialOwner,
 			origin: Origin,
-			via: SessionVia
+			via: SessionVia,
+			previous: string
 		) => Effect.Effect<{seconds: number; token: string}, AuthError>
 	}
 >()('@deslop/auth/services/tokens/service/Tokens') {
@@ -160,7 +159,7 @@ export class Tokens extends Context.Service<
 				}
 			})
 			const browser = Effect.fnUntraced(function* (headers: Headers.Headers) {
-				const found = yield* grantOf(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
+				const found = yield* grantOf(browserToken(headers))
 				if (found.grant.credential._tag !== 'Browser' || found.grant.credential.hash !== found.hash) {
 					return yield* AuthError.make({message: 'Sign in first'})
 				}
@@ -477,11 +476,11 @@ export class Tokens extends Context.Service<
 					)
 				}, rejected('Cannot sign this out')),
 				endSession: Effect.fn('Tokens.endSession')(function* (headers: Headers.Headers) {
-					const found = yield* Effect.option(
-						grantOf(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? '')
-					)
 					yield* Option.match(
-						Option.filter(found, current => current.grant.credential.hash === current.hash),
+						Option.filter(
+							yield* Effect.option(grantOf(browserToken(headers))),
+							current => current.grant.credential._tag === 'Browser' && current.grant.credential.hash === current.hash
+						),
 						{
 							onNone: () => Effect.void,
 							onSome: own => change(saved => Effect.succeed([undefined, Record.remove(saved, own.family)] as const))
@@ -549,7 +548,8 @@ export class Tokens extends Context.Service<
 				startSession: Effect.fn('Tokens.startSession')(function* (
 					owner: CredentialOwner,
 					origin: Origin,
-					via: SessionVia
+					via: SessionVia,
+					previousToken: string
 				) {
 					const family = yield* secret(16)
 					const sessionSecret = yield* secret(32)
@@ -561,11 +561,31 @@ export class Tokens extends Context.Service<
 						Match.exhaustive
 					)
 					const sessionHash = yield* hash(sessionSecret)
-					yield* change((current, now) =>
-						Effect.succeed([
+					const previous = yield* Effect.transposeOption(
+						Option.map(parts(previousToken), prior =>
+							Effect.map(hash(prior.secret), presented => ({family: prior.family, hash: presented}))
+						)
+					)
+					// Retire only the browser credential presented here, in the same durable write as its replacement.
+					yield* change((current, now) => {
+						const retained = Option.match(previous, {
+							onNone: () => current,
+							onSome: prior => {
+								if (
+									Option.exists(
+										Record.get(current, prior.family),
+										grant => grant.credential._tag === 'Browser' && grant.credential.hash === prior.hash
+									)
+								) {
+									return Record.remove(current, prior.family)
+								}
+								return current
+							}
+						})
+						return Effect.succeed([
 							undefined,
 							{
-								...current,
+								...retained,
 								[family]: {
 									client: browserLabel(origin),
 									createdAt: now,
@@ -577,7 +597,7 @@ export class Tokens extends Context.Service<
 								}
 							}
 						] as const)
-					)
+					})
 					return {seconds, token: `${family}.${sessionSecret}`}
 				}, rejected('Cannot start the session'))
 			})

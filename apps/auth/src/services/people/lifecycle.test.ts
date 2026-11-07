@@ -35,9 +35,10 @@ import {Passkeys} from '#services/passkeys/service.ts'
 import {Members} from '#services/people/schema.ts'
 import {People} from '#services/people/service.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
+import {SESSION_COOKIE} from '#services/tokens/lib/utils.ts'
 import type {ClientRequest} from '#services/tokens/schema.ts'
 import {Grants} from '#services/tokens/schema.ts'
-import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
+import {Tokens} from '#services/tokens/service.ts'
 
 const ADMIN = {id: 'github:42', name: 'admin'}
 const PROFILE = {id: 7, login: 'member'}
@@ -142,10 +143,10 @@ it.layer(NodeCrypto.layer)(test => {
 			const member = yield* fixture.people.register(PROFILE)
 			const other = yield* fixture.people.register({id: 9, login: 'another'})
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(member, {}, 'GitHub')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(member, {}, 'GitHub', '')).token}`
 			})
 			const otherHeaders = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(other, {}, 'GitHub')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(other, {}, 'GitHub', '')).token}`
 			})
 			const client = yield* fixture.client
 			assert.strictEqual((yield* first(client['auth.account'](undefined, {headers}))).role, 'Waiting')
@@ -182,7 +183,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
 			})
 			const members = (yield* fixture.base.get('members')) ?? ''
 			const grants = (yield* fixture.base.get('grants')) ?? ''
@@ -217,7 +218,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
 			})
 			assert.strictEqual((yield* first(fixture.people.account(headers))).role, 'Waiting')
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
@@ -281,7 +282,7 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.deepStrictEqual(
 				yield* restarted.auth.user(
 					Headers.fromInput({
-						cookie: `${SESSION_COOKIE}=${(yield* restarted.tokens.startSession(renewed, {}, 'GitHub')).token}`
+						cookie: `${SESSION_COOKIE}=${(yield* restarted.tokens.startSession(renewed, {}, 'GitHub', '')).token}`
 					})
 				),
 				renewed.user
@@ -317,7 +318,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
-			const old = yield* fixture.tokens.startSession(owner, {}, 'GitHub')
+			const old = yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')
 			yield* Ref.set(fixture.holding, Option.some('grants'))
 			const removing = yield* Effect.forkScoped(fixture.people.remove(owner.user.id, ADMIN))
 			yield* Effect.addFinalizer(() => Deferred.succeed(fixture.release, undefined))
@@ -328,7 +329,7 @@ it.layer(NodeCrypto.layer)(test => {
 				(yield* Effect.flip(fixture.auth.user(Headers.fromInput({cookie: `${SESSION_COOKIE}=${old.token}`})))).error,
 				'invalid_grant'
 			)
-			const starting = yield* Effect.forkScoped(fixture.tokens.startSession(fresh, {}, 'GitHub'))
+			const starting = yield* Effect.forkScoped(fixture.tokens.startSession(fresh, {}, 'GitHub', ''))
 			yield* Deferred.succeed(fixture.release, undefined)
 			yield* Fiber.join(removing)
 			assert.deepStrictEqual(
@@ -351,7 +352,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
 			})
 			yield* Ref.set(fixture.failing, Option.some('members'))
 			assert.strictEqual(

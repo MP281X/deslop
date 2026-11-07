@@ -30,13 +30,15 @@ import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import {
 	addressGroup,
 	allowedRedirect,
+	browserToken,
 	callbackUrl,
 	clientAddress,
 	clientIdOf,
 	clientRequest,
 	cookieDomain,
 	originFrom,
-	returnable
+	returnable,
+	SESSION_COOKIE
 } from '#services/tokens/lib/utils.ts'
 import {
 	AuthorizeClient,
@@ -47,7 +49,7 @@ import {
 	TokenParams,
 	VerificationParams
 } from '#services/tokens/schema.ts'
-import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
+import {Tokens} from '#services/tokens/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
@@ -399,9 +401,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const finished = yield* github.finish(params.code, params.state)
 					return yield* pipe(
 						people.register(finished.profile),
-						// A browser already signed in, as a code session confirming with GitHub to add a passkey, swaps its session rather than keeping two.
-						Effect.tap(() => tokens.endSession(request.headers)),
-						Effect.flatMap(user => tokens.startSession(user, originOf(request), 'GitHub')),
+						Effect.flatMap(user =>
+							tokens.startSession(user, originOf(request), 'GitHub', browserToken(request.headers))
+						),
 						Effect.map(started =>
 							pipe(
 								HttpServerResponse.redirect(returnTo(finished.flow)),
@@ -478,7 +480,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 						const started = yield* tokens.startSession(
 							yield* people.allowed(yield* passkeys.signIn(input.response)),
 							originOf(request),
-							'Passkey'
+							'Passkey',
+							browserToken(request.headers)
 						)
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.jsonUnsafe(

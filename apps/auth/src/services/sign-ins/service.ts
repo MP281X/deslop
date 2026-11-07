@@ -29,7 +29,14 @@ import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
-import {addressGroup, browserLabel, callbackUrl, clientLabel, deviceLabel} from '#services/tokens/lib/utils.ts'
+import {
+	addressGroup,
+	browserLabel,
+	browserToken,
+	callbackUrl,
+	clientLabel,
+	deviceLabel
+} from '#services/tokens/lib/utils.ts'
 import {CredentialOwner} from '#services/tokens/schema.ts'
 import type {Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
@@ -43,7 +50,12 @@ const notWaiting = AuthError.make({
 })
 
 // The answer, delivered: an app's code at its callback, or a session for the waiting browser; a removed approver delivers a denial.
-const deliver = Effect.fnUntraced(function* (input: {delivery: Delivery; origin: Origin; owner?: CredentialOwner}) {
+const deliver = Effect.fnUntraced(function* (input: {
+	delivery: Delivery
+	origin: Origin
+	owner?: CredentialOwner
+	previous: string
+}) {
 	const tokens = yield* Tokens
 	const people = yield* People
 	const approver = yield* Effect.option(
@@ -54,7 +66,7 @@ const deliver = Effect.fnUntraced(function* (input: {delivery: Delivery; origin:
 			Option.match(approver, {
 				onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
 				onSome: user =>
-					Effect.map(tokens.startSession(user, input.origin, 'Code'), started =>
+					Effect.map(tokens.startSession(user, input.origin, 'Code', input.previous), started =>
 						Collected.cases.Session.make({...started, ...Struct.pick(browser, ['next'])})
 					)
 			}),
@@ -78,7 +90,7 @@ const SignInStates = Machine.state({
 			fields: SignInInput.fields,
 			states: {
 				Approved: {fields: {owner: CredentialOwner}},
-				Delivering: {fields: {owner: Schema.optionalKey(CredentialOwner)}},
+				Delivering: {fields: {owner: Schema.optionalKey(CredentialOwner), previous: Schema.String}},
 				Denied: {},
 				Failed: {fields: {message: Schema.String, owner: Schema.optionalKey(CredentialOwner)}},
 				Waiting: {}
@@ -91,7 +103,10 @@ const SignInStates = Machine.state({
 const SignIn = Machine.make({
 	branches: {answered: {approved: {target: 'Open.Approved'}, denied: {target: 'Open.Denied'}}},
 	effects: {deliver},
-	events: Machine.events({Answered: {accept: Schema.Boolean, owner: CredentialOwner}, Collect: {}}),
+	events: Machine.events({
+		Answered: {accept: Schema.Boolean, owner: CredentialOwner},
+		Collect: {previous: Schema.String}
+	}),
 	input: SignInInput,
 	root: SignInStates,
 	timers: {lifetime: '10 minutes'}
@@ -104,12 +119,19 @@ const SignIn = Machine.make({
 			initial: {target: 'Open.Waiting'},
 			invoke: {onDone: {target: 'Expired'}, src: 'lifetime'},
 			states: {
-				Approved: {on: {Collect: {data: transition => ({owner: transition.state.owner}), target: 'Open.Delivering'}}},
+				Approved: {
+					on: {
+						Collect: {
+							data: transition => ({owner: transition.state.owner, previous: transition.event.previous}),
+							target: 'Open.Delivering'
+						}
+					}
+				},
 				Delivering: {
 					invoke: {
 						input: transition => ({
 							...Struct.pick(transition.ancestors.Open, ['delivery', 'origin']),
-							...Struct.pick(transition.state, ['owner'])
+							...Struct.pick(transition.state, ['owner', 'previous'])
 						}),
 						onDone: {data: transition => ({collected: transition.output}), target: 'Delivered'},
 						onFailure: {
@@ -119,14 +141,13 @@ const SignIn = Machine.make({
 						src: 'deliver'
 					}
 				},
-				Denied: {on: {Collect: {data: () => ({}), target: 'Open.Delivering'}}},
+				Denied: {
+					on: {Collect: {data: transition => ({previous: transition.event.previous}), target: 'Open.Delivering'}}
+				},
 				Failed: {
 					on: {
 						Collect: {
-							data: transition => {
-								if (transition.state.owner === undefined) return {}
-								return {owner: transition.state.owner}
-							},
+							data: transition => ({...Struct.pick(transition.state, ['owner']), previous: transition.event.previous}),
 							target: 'Open.Delivering'
 						}
 					}
@@ -251,7 +272,7 @@ export class SignIns extends Context.Service<
 							onSome: () => Effect.fail(expired)
 						})
 					}
-					yield* signIn.ref.send({_tag: 'Collect'})
+					yield* signIn.ref.send({_tag: 'Collect', previous: browserToken(headers)})
 					const done = yield* pipe(
 						Machine.waitFor(
 							signIn.ref,

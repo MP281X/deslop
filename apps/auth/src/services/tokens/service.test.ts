@@ -1,7 +1,7 @@
 import {NodeCrypto} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Context, Effect, Layer, Ref, pipe} from 'effect'
+import {Array, Context, Effect, Layer, Ref, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -9,6 +9,7 @@ import {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
+import {SESSION_COOKIE} from '#services/tokens/lib/utils.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const RESOURCE = 'https://scope.mp281x.xyz/mcp'
@@ -67,6 +68,35 @@ const open = Effect.gen(function* () {
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
+	test.effect(
+		'accepts only a matching browser credential for replacement or sign-out',
+		Effect.fnUntraced(function* () {
+			const fixture = yield* open
+			const browser = yield* fixture.tokens.startSession(USER, {}, 'GitHub', '')
+			const granted = yield* fixture.exchange
+			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
+			for (const previous of [
+				`${Array.headNonEmpty(String.split(browser.token, '.'))}.forged`,
+				granted.tokens.access_token,
+				granted.tokens.refresh_token
+			]) {
+				yield* fixture.tokens.startSession(USER, {}, 'Passkey', previous)
+				yield* fixture.tokens.endSession(Headers.fromInput({cookie: `${SESSION_COOKIE}=${previous}`}))
+				assert.deepStrictEqual(
+					yield* fixture.tokens.session(Headers.fromInput({cookie: `${SESSION_COOKIE}=${browser.token}`})),
+					USER
+				)
+				assert.deepStrictEqual(
+					yield* fixture.tokens.access(
+						Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`}),
+						RESOURCE
+					),
+					USER
+				)
+			}
+		})
+	)
+
 	test.effect(
 		'does not consume an authorization code before its grant is persisted',
 		Effect.fnUntraced(function* () {
