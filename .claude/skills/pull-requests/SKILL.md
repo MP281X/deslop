@@ -21,7 +21,8 @@ The user merges on the PR body alone: it must prove the change works without any
 2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds.
    - **Every claim has its capture** from the final head, taken after the last edit it depends on; only a labelled Before comes from base: a `| Before | After |` image table for a visible change, a video for a sequence, the screen that shows a backend change plus its Scope trace where the app exports traces. Command output supports a capture, never replaces it; a mock is never proof.
    - **Formats over sentences**: diff or code block for a shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, at most one `> [!IMPORTANT]` alert (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its claim for what stays unverified.
-   - **Visual first.** The body is mostly pictures: a colored Mermaid diagram for a flow or architecture, captures for screens, an image rendered from an HTML page for a before/after of anything else. A table of sentences is still text.
+   - **Visual first.** The body is mostly pictures: captures for screens, and a figure for anything else (a flow, an architecture, a before/after). A table of sentences is still text.
+   - **Figures** share one look, GitHub's colors and type in both themes: write an HTML fragment with the classes in `references/figure.css` (`flow`, `fork`, `arrow`, `compare`, `specimens`, `box` filled `ok`, `bad`, `info`, `done` or `warn`), render it with `references/figure.sh <figure.html>`, read both PNGs, and embed the pair as below. No Mermaid, whose colors ignore the theme.
    - **Each fact once.** A diagram, table or capture carries its point alone: no sentence before or after it restates it, and no section repeats another. A fact the visual cannot show gets one fragment beside it.
    - **Bullets are fragments**, only what a reviewer must know: `**No double lint**: vp check --fix fails on leftovers`.
    - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, check results. Captions say what changed, not how it was captured.
@@ -52,6 +53,9 @@ gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EO
 <body>
 EOF
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
+# A figure's two PNGs: upload both as images, read their URLs from the body, then replace the pair with one element:
+# <picture><source media="(prefers-color-scheme: dark)" srcset="<dark url>"><img alt="<claim>" src="<light url>" width="880"></picture>
+gh pr view <n> --json body --jq .body
 gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
 glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
 glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
