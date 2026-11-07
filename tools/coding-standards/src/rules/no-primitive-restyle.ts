@@ -93,17 +93,13 @@ function classStrings(node: ESTree.Node): string[] {
 
 // The utility after its variant prefixes and important marker, with a negative value's sign removed.
 function utility(token: string) {
-	const scanned = Array.reduce(
-		String.split('')(token),
-		{depth: 0, end: 0, index: 0},
-		(state, character) => {
-			const index = state.index + 1
-			if (character === '[') return {depth: state.depth + 1, end: state.end, index}
-			if (character === ']') return {depth: Number.max(0, state.depth - 1), end: state.end, index}
-			if (character === ':' && state.depth === 0) return {depth: state.depth, end: index, index}
-			return {depth: state.depth, end: state.end, index}
-		}
-	)
+	const scanned = Array.reduce(String.split('')(token), {depth: 0, end: 0, index: 0}, (state, character) => {
+		const index = state.index + 1
+		if (character === '[') return {depth: state.depth + 1, end: state.end, index}
+		if (character === ']') return {depth: Number.max(0, state.depth - 1), end: state.end, index}
+		if (character === ':' && state.depth === 0) return {depth: state.depth, end: index, index}
+		return {depth: state.depth, end: state.end, index}
+	})
 	return pipe(token, String.slice(scanned.end), String.replaceAll(/^!|!$/gu, ''), String.replace(/^-/u, ''))
 }
 
