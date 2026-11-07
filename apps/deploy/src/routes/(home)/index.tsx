@@ -15,7 +15,6 @@ import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
@@ -36,7 +35,7 @@ import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Progress, ProgressLabel} from '@deslop/components-web/ui/progress'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -212,9 +211,10 @@ function failedFor(
 // Port chips of one least width: exposed filled in the machine's hue, unexposed neutral; a public endpoint reads as its whole hostname.
 function Endpoint(props: {item: InventoryItem}) {
 	return (
-		<Badge
-			variant="default"
+		<Button
+			size="xs"
 			className="machine-metric min-w-port relative font-mono tabular-nums max-sm:overflow-visible"
+			nativeButton={false}
 			render={
 				<a
 					href={props.item.url}
@@ -232,7 +232,7 @@ function Endpoint(props: {item: InventoryItem}) {
 					onTrue: () => String.replace(/^https:\/\//u, '')(props.item.url)
 				})}
 			</span>
-		</Badge>
+		</Button>
 	)
 }
 
@@ -256,25 +256,24 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 						Array.findFirst(props.free, port => port.id === listener.id),
 						{
 							onNone: () => (
-								<Badge key={listener.id} variant="secondary" className="min-w-port font-mono tabular-nums">
+								<span
+									key={listener.id}
+									className="text-muted-foreground min-w-port px-2 text-center font-mono text-xs tabular-nums"
+								>
 									:{listener.port}
-								</Badge>
+								</span>
 							),
 							onSome: port => (
-								<Badge
+								<Button
 									key={listener.id}
+									size="xs"
 									variant="secondary"
 									className="min-w-port relative font-mono tabular-nums max-sm:overflow-visible"
-									render={
-										<button
-											type="button"
-											aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
-											onClick={() => expose(port)}
-										/>
-									}
+									aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
+									onClick={() => expose(port)}
 								>
 									<span aria-hidden className="absolute inset-x-0 -inset-y-3 sm:hidden" />:{listener.port}
-								</Badge>
+								</Button>
 							)
 						}
 					)
@@ -914,57 +913,50 @@ function MachineStrip(props: {
 			</div>
 		),
 		onNonEmpty: workers => (
-			<ToggleGroup
-				aria-label="Machines"
-				className="border-border h-12 w-full shrink-0 rounded-none border-b"
-				spacing={0}
-				value={Option.toArray(Option.fromUndefinedOr(props.active))}
-				onValueChange={values => props.onSelect(values[0] ?? props.active ?? workers[0])}
+			<Tabs
+				className="shrink-0 border-b px-2 pt-2 pb-1"
+				value={props.active ?? workers[0]}
+				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				{Array.map(workers, worker => {
-					const history = Array.findFirst(props.histories, machine => machine.worker === worker)
-					const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
-					const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
-					return (
-						<ToggleGroupItem
-							key={worker}
-							value={worker}
-							data-machine={machineName(worker)}
-							className={cn(
-								'machine flex h-full min-w-0 flex-1 items-center justify-start gap-2 rounded-none border-b-2 px-3 text-left',
-								Boolean.match(props.active === worker && workers.length > 1, {
-									onFalse: () => 'border-transparent hover:bg-muted/40',
-									onTrue: () => 'border-b-(--machine) bg-muted/40'
-								})
-							)}
-						>
-							<MachineIcon worker={worker} />
-							<span className="max-w-1/2 shrink-0 truncate text-sm font-medium">{machineName(worker)}</span>
-							{/* Only an unreachable machine is marked; one that answers needs no dot. */}
-							{failed && (
-								<span role="img" aria-label="Unavailable" className="flex size-3 shrink-0 items-center justify-center">
-									<StatusDot status="off" />
-								</span>
-							)}
-							<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-								{Array.join(
-									[
-										...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
-											onFalse: () => [],
-											onTrue: () => [`${latest?.cores?.length} cores`]
-										}),
-										...Boolean.match(latest === undefined, {
-											onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
-											onTrue: () => []
-										})
-									],
-									' · '
+				<TabsList variant="line" aria-label="Machines" className="w-full">
+					{Array.map(workers, worker => {
+						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
+						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
+						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
+						return (
+							<TabsTrigger key={worker} value={worker} className="min-w-0">
+								<MachineIcon worker={worker} />
+								<span className="truncate">{machineName(worker)}</span>
+								{/* Only an unreachable machine is marked; one that answers needs no dot. */}
+								{failed && (
+									<span
+										role="img"
+										aria-label="Unavailable"
+										className="flex size-3 shrink-0 items-center justify-center"
+									>
+										<StatusDot status="off" />
+									</span>
 								)}
-							</span>
-						</ToggleGroupItem>
-					)
-				})}
-			</ToggleGroup>
+								<span className="text-muted-foreground truncate font-mono">
+									{Array.join(
+										[
+											...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
+												onFalse: () => [],
+												onTrue: () => [`${latest?.cores?.length} cores`]
+											}),
+											...Boolean.match(latest === undefined, {
+												onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
+												onTrue: () => []
+											})
+										],
+										' · '
+									)}
+								</span>
+							</TabsTrigger>
+						)
+					})}
+				</TabsList>
+			</Tabs>
 		)
 	})
 }

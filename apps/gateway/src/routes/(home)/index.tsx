@@ -34,6 +34,7 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
+import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -116,10 +117,15 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 }
 
 // Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
-function FirstImage(props: {sources: string[]}) {
+function FirstImage(props: {small?: boolean; sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-5 shrink-0 items-center justify-center">
+		<span
+			className={cn(
+				'flex shrink-0 items-center justify-center',
+				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
+			)}
+		>
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
@@ -130,8 +136,8 @@ function FirstImage(props: {sources: string[]}) {
 	)
 }
 
-// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
-function ServerIcon(props: {server: ConnectionInfo}) {
+// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first. Small, it takes the palette's icon slot so names line up with the actions'.
+function ServerIcon(props: {server: ConnectionInfo; small?: boolean}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
 		...Array.map(
@@ -144,7 +150,7 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
-	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
+	return <FirstImage key={Array.join(sources, ' ')} small={props.small} sources={sources} />
 }
 
 // The page has no detail pane, so a palette pick brings its row into view.
@@ -351,7 +357,7 @@ function Home() {
 			Array.filter(sorted, server => server.status !== 'Connected' || server.error !== undefined),
 			server => ({
 				detail: reasonText(server),
-				icon: <ServerIcon server={server} />,
+				icon: <ServerIcon server={server} small />,
 				id: server.id,
 				keywords: `${server.name} ${server.url}`,
 				label: server.name,
@@ -363,7 +369,7 @@ function Home() {
 	const all: PaletteGroup = {
 		items: Array.map(sorted, server => ({
 			detail: new URL(server.url).hostname,
-			icon: <ServerIcon server={server} />,
+			icon: <ServerIcon server={server} small />,
 			id: server.id,
 			keywords: `${server.name} ${server.url} ${Array.join(
 				Array.map(server.tools, tool => tool.name),

@@ -82,11 +82,12 @@
 		--card: #141313;
 		--popover: #141313;
 		--primary-foreground: #0d0c0c;
-		--secondary: #191818;
-		--muted: #141313;
+		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
+		--secondary: #242323;
+		--muted: #242323;
 		--muted-foreground: #8c8c8c;
-		--accent: #191818;
-		--border: #1a1a1a;
+		--accent: #242323;
+		--border: #222121;
 		--input: #282727;
 	}
 }
