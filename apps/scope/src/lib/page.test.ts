@@ -1,7 +1,7 @@
 import {RegistryContext} from '@effect/atom-react'
 import {assert, beforeAll, it} from '@effect/vitest'
 
-import {Cause, Option} from 'effect'
+import {Array, Cause, Option, String} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {createElement} from 'react'
@@ -174,6 +174,21 @@ it('centres an icon in an authorised empty waterfall without loading or explanat
 	assert.include(html, 'aria-label="No spans"')
 	assert.notInclude(html, '>No spans<')
 	assert.notInclude(html, 'aria-busy="true"')
+})
+
+it('wraps unbroken attribute keys as well as their values', () => {
+	const key = String.repeat(240)('k')
+	const html = render(
+		AsyncResult.success({
+			...trace,
+			spans: Array.map(trace.spans, span => ({
+				...span,
+				payload: {...span.payload, attributes: [{key, value: {stringValue: String.repeat(4000)('v')}}]}
+			}))
+		})
+	)
+	assert.include(html, `<dt class="text-muted-foreground wrap-anywhere">${key}</dt>`)
+	assert.include(html, String.repeat(4000)('v'))
 })
 
 it('marks a failed trace without repeating its diagnostic on the row or its hover name', () => {

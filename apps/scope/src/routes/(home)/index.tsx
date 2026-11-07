@@ -220,7 +220,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				],
 				(line, index) => (
 					<div key={`${line.key}:${index}`} className="flex min-w-0 flex-col gap-0.5 py-1">
-						<dt className={cn('text-muted-foreground', line.failed && 'text-destructive')}>{line.key}</dt>
+						<dt className={cn('text-muted-foreground wrap-anywhere', line.failed && 'text-destructive')}>{line.key}</dt>
 						<dd
 							className={cn('min-w-0 wrap-anywhere whitespace-pre-wrap select-text', line.failed && 'text-destructive')}
 						>
@@ -872,7 +872,8 @@ function Home() {
 	const pane = navigation.path
 	const root = useRef<HTMLDivElement>(null)
 	useEffect(() => {
-		if (!isMobile) return
+		const container = root.current
+		if (!isMobile || container === null) return
 		const selector = pipe(
 			Match.value(pane),
 			Match.when('Span', () => 'header button'),
@@ -880,7 +881,35 @@ function Home() {
 			Match.when('Traces', () => 'section[aria-label="Traces"] button[aria-current="true"]'),
 			Match.orElse(() => 'section[aria-label="Operations"] button[aria-current="true"]')
 		)
-		root.current?.querySelector<HTMLButtonElement>(selector)?.focus()
+		const target = container.querySelector<HTMLButtonElement>(selector)
+		if (target !== null && target.getClientRects().item(0) !== null) {
+			target.focus()
+			return
+		}
+		const fallback = container.querySelector<HTMLButtonElement>('header button')
+		fallback?.focus()
+		// A push can reach its Suspense fallback before its selected row mounts.
+		const pending = new MutationObserver(() => {
+			if (
+				container.ownerDocument.activeElement !== container.ownerDocument.body &&
+				container.ownerDocument.activeElement !== fallback
+			) {
+				pending.disconnect()
+				return
+			}
+			const ready = container.querySelector<HTMLButtonElement>(selector)
+			if (ready !== null && ready.getClientRects().item(0) !== null) {
+				pending.disconnect()
+				ready.focus()
+			}
+		})
+		pending.observe(container, {
+			attributeFilter: ['aria-current', 'hidden', 'style'],
+			attributes: true,
+			childList: true,
+			subtree: true
+		})
+		return () => pending.disconnect()
 	}, [isMobile, pane, root])
 	const selection = navigation.value.selection?.operation
 	const overview = useAtomValue(overviewAtom)
