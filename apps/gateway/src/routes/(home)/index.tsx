@@ -265,8 +265,8 @@ function ServersContent() {
 function ServersPane() {
 	return (
 		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-1 flex-col overflow-y-auto">
-			{/* A list of a few servers reads at a glance in a column, not stretched across an ultrawide. */}
-			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-2 pt-2">
+			{/* A list of a few servers reads at a glance in a column centred on the page, as Auth's sign-ins do, not stretched across an ultrawide; a long list scrolls from its top. */}
+			<div className="m-auto flex w-full max-w-3xl flex-col px-2 py-6">
 				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
 					<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
 						<ServersContent />
