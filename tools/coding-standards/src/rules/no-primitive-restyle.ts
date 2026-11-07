@@ -62,6 +62,9 @@ const PLACEMENT_EXACT = [
 	'sticky',
 	'hidden',
 	'block',
+	'flex',
+	'inline-flex',
+	'grid',
 	'sr-only'
 ]
 const RESTYLE =

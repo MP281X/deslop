@@ -1037,7 +1037,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"import {Widget} from 'some-lib'",
 							'',
 							'export function Painted() { return <Button className="mt-2 w-full hover:bg-muted sm:!px-2 data-[state=open]:text-red-500">Save</Button> } // reported',
-							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 relative z-10 self-center -mt-1 sm:inset-0 hidden md:block [&_svg:not([class*=size-])]:size-4">Save</Button> }',
+							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 relative z-10 self-center -mt-1 sm:inset-0 hidden md:block sm:flex shrink-0 -translate-x-1/2 pointer-events-auto [&_svg:not([class*=size-])]:size-4">Save</Button> }',
 							"export function Combined() { return <Card className={cn('mt-2', 'bg-red-500')}>Body</Card> } // reported",
 							'export function Templated() { return <Card className={`mt-2 text-lg`}>Body</Card> } // reported',
 							'export function Passed({className}: {className: string}) { return <Card className={className}>Body</Card> }',
