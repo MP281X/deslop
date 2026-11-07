@@ -14,6 +14,7 @@
 		"@types/react-dom": "latest",
 		"effect": "latest",
 		"fallow": "latest",
+		"scheduler": "^0.27.0",
 		"tsrs": "0.22.0-ts7.1.0-beta",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",

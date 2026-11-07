@@ -1,40 +1,60 @@
-import {Duration, Effect, Number, Schedule, Stream} from 'effect'
+import {Cache, Duration, Effect, Number, Schedule, Scope, Stream} from 'effect'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Fleet} from '#services/fleet/service.ts'
 import {resolution} from '#services/metrics/lib/utils.ts'
+import {HistoryQuery} from '#services/metrics/schema.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const fleet = yield* Fleet
+		// A cache lookup inherits its caller's scope; shared sources belong to this layer, not the first RPC.
+		const scope = yield* Effect.scope
+		const inventory = yield* Stream.share(
+			Stream.concat(
+				Stream.fromEffect(fleet.local),
+				Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))
+			),
+			{capacity: 1, replay: 1, strategy: 'sliding'}
+		)
+		// Viewers share one range sampler; the source stops when its last viewer leaves.
+		const metrics = yield* Cache.make({
+			capacity: HistoryQuery.fields.minutes.literals.length,
+			lookup: (minutes: HistoryQuery['minutes']) => {
+				const query = {minutes}
+				return Effect.provideService(
+					Stream.share(
+						Stream.concat(
+							Stream.concat(Stream.fromEffect(fleet.current(query)), Stream.fromEffect(fleet.metrics(query))),
+							Stream.merge(
+								Stream.fromEffectSchedule(
+									fleet.current(query),
+									Schedule.spaced(Duration.millis(Number.min(resolution(minutes), 30_000)))
+								),
+								Stream.drain(
+									Stream.fromEffectSchedule(
+										fleet.metrics(query),
+										Schedule.spaced(
+											Duration.millis(Number.clamp(resolution(minutes), {maximum: 30_000, minimum: 5000}))
+										)
+									)
+								)
+							)
+						),
+						{capacity: 1, replay: 1, strategy: 'sliding'}
+					),
+					Scope.Scope,
+					scope
+				)
+			}
+		})
 		return RpcContracts.of({
 			'deploy.expose': fleet.expose,
 			'deploy.hide': fleet.hide,
 			'deploy.history': fleet.history,
-			'deploy.inventory': () =>
-				Stream.concat(
-					Stream.fromEffect(fleet.local),
-					Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))
-				),
+			'deploy.inventory': () => inventory,
 			// Cached history at once, then every worker's fresh one; after that a slot of the range as each fills, at most every 30 seconds, while the other workers refresh beside it, at most every 5 seconds, so a sleeping one never holds back this one's seconds.
-			'deploy.metrics': query =>
-				Stream.concat(
-					Stream.concat(Stream.fromEffect(fleet.current(query)), Stream.fromEffect(fleet.metrics(query))),
-					Stream.merge(
-						Stream.fromEffectSchedule(
-							fleet.current(query),
-							Schedule.spaced(Duration.millis(Number.min(resolution(query.minutes), 30_000)))
-						),
-						Stream.drain(
-							Stream.fromEffectSchedule(
-								fleet.metrics(query),
-								Schedule.spaced(
-									Duration.millis(Number.clamp(resolution(query.minutes), {maximum: 30_000, minimum: 5000}))
-								)
-							)
-						)
-					)
-				),
+			'deploy.metrics': query => Stream.unwrap(Cache.get(metrics, query.minutes)),
 			'deploy.run': fleet.run,
 			'deploy.snapshot': () => fleet.local
 		})

@@ -71,8 +71,6 @@ export function flightTracking(answer: FaFlight, checkedAt: number, previous?: F
 			arrivalEstimated: instant(answer.estimated_in),
 			departureActual: instant(answer.actual_out),
 			departureEstimated: instant(answer.estimated_out),
-			landingActual: instant(answer.actual_on),
-			progress: Option.fromNullishOr(answer.progress_percent),
 			takeoffActual: instant(answer.actual_off)
 		}),
 		state: flightState(answer)

@@ -8,12 +8,13 @@ import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
-import {ClipboardOffer, clipboardMachine} from '@deslop/components-mobile/clipboard'
+import {ClipboardOffer, clipboardMachine, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {brands} from '@deslop/components-mobile/icons'
 import {hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/schema'
@@ -113,7 +114,7 @@ const apply = listReducer(newestFirst)
 // The copy on the iPhone shows the list while the server is out of reach.
 export const notesAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get => {
-		if (!session.signedIn(get)) return Stream.succeed(Array.empty<NoteItem>())
+		if (!session.signedIn(get)) return Stream.never
 		return cachedList(
 			get,
 			listFile,
@@ -121,9 +122,9 @@ export const notesAtom = Atom.keepAlive(
 			pipe(
 				Stream.unwrap(Effect.map(RpcClient, client => client('notes.watch', undefined))),
 				Stream.scan(Array.empty<NoteItem>, apply),
-				Stream.drop(1),
-				session.renewing
-			)
+				Stream.drop(1)
+			),
+			session.renewing
 		)
 	})
 )
@@ -135,14 +136,19 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 
 export const queryAtom = Atom.make('')
 
-// One atom for every query keeps the previous results on screen; each keystroke restarts the wait, so the server searches once typing pauses.
+// Debounce typing once, then the server keeps the same full-text query current as notes change.
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
-	if (String.isEmpty(query)) return Effect.succeedNone
-	return pipe(
-		Effect.sleep('250 millis'),
-		Effect.andThen(Effect.flatMap(RpcClient, client => client('notes.search', {query}))),
-		Effect.map(ids => Option.some(HashSet.fromIterable(ids)))
+	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
+	return withoutDeniedData(
+		get,
+		pipe(
+			Effect.sleep('250 millis'),
+			Effect.andThen(Effect.map(RpcClient, client => client('notes.search', {query}))),
+			Stream.unwrap,
+			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
+		),
+		session.renewing
 	)
 })
 
@@ -231,13 +237,16 @@ const clipboardFile = new File(Paths.document, 'clipboard.txt')
 
 type Offer = {count: string; kind: ClipboardKind}
 
-const saveImage = Effect.fnUntraced(function* () {
-	const token = yield* session.accessToken
-	const image = yield* Effect.tryPromise({
-		catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
-		try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
-	})
+const saveImage = Effect.fnUntraced(function* (count: string) {
+	const image = yield* readClipboard(
+		count,
+		Effect.tryPromise({
+			catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
+			try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
+		})
+	)
 	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
+	const token = yield* session.accessToken
 	const id = Crypto.randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
 	const response = yield* pipe(
@@ -258,12 +267,15 @@ const saveImage = Effect.fnUntraced(function* () {
 	}
 })
 
-const saveLink = Effect.gen(function* () {
+const saveLink = Effect.fnUntraced(function* (count: string) {
 	const text = String.trim(
-		yield* Effect.tryPromise({
-			catch: cause => NotesError.make({cause, message: 'The clipboard could not be read.'}),
-			try: () => Clipboard.getStringAsync()
-		})
+		yield* readClipboard(
+			count,
+			Effect.tryPromise({
+				catch: cause => NotesError.make({cause, message: 'The clipboard could not be read.'}),
+				try: () => Clipboard.getStringAsync()
+			})
+		)
 	)
 	// iOS detects a bare domain such as example.com/page as a link too.
 	const link = Boolean.match(Predicate.isUndefined(captureUrl(text)) && !String.includes(' ')(text), {
@@ -296,10 +308,10 @@ export const clipboardAtom = AtomMachine.bind(
 									Boolean.match(answer.kind === 'image', {
 										onFalse: () =>
 											Effect.flatMap(get.result(RpcClient.runtime), context =>
-												Effect.provideContext(saveLink, context)
+												Effect.provideContext(saveLink(answer.count), context)
 											),
 										// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
-										onTrue: () => Effect.provide(saveImage(), FetchHttpClient.layer)
+										onTrue: () => Effect.provide(saveImage(answer.count), FetchHttpClient.layer)
 									})
 							})
 						),

@@ -60,7 +60,7 @@ export const RUNTIME_PATH = '/api/runtime'
 export type RuntimeConfig = typeof RuntimeConfig.Type
 // What it tells them: the app's name, the Auth it signs in through, where it exports traces and its release.
 export const RuntimeConfig = Schema.Struct({
-	auth: Schema.optionalKey(Schema.String),
+	auth: Schema.optionalKey(Origin),
 	name: Schema.String,
 	traces: Schema.String,
 	version: AppVersion

@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {User} from '@deslop/runtime/auth/schema'
+import {StoredOwner} from '#services/tokens/schema.ts'
 
 // The WebAuthn JSON forms `@simplewebauthn` and the browser exchange, so each side decodes what the other sent; arrays stay mutable because the library's own types are, not to satisfy a readonly rule.
 export type Transport = typeof Transport.Type
@@ -84,6 +84,7 @@ export const ClientData = Schema.Struct({challenge: Schema.String})
 // A passkey as saved: its public key and signature counter, the account it signs in, and where it was added.
 export type StoredPasskey = typeof StoredPasskey.Type
 export const StoredPasskey = Schema.Struct({
+	...StoredOwner.fields,
 	addedFrom: Schema.String,
 	counter: Schema.Int,
 	createdAt: Schema.Finite,
@@ -92,8 +93,7 @@ export const StoredPasskey = Schema.Struct({
 	publicKey: Schema.NonEmptyString,
 	// Synced through a password manager, rather than bound to one security key or device.
 	synced: Schema.Boolean,
-	transports: Schema.Array(Transport),
-	user: User
+	transports: Schema.Array(Transport)
 })
 
 export type StoredPasskeys = typeof StoredPasskeys.Type

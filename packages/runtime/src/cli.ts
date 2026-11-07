@@ -11,6 +11,7 @@ import {
 	FileSystem,
 	Layer,
 	Logger,
+	Option,
 	Path,
 	Record,
 	Schema,
@@ -44,6 +45,8 @@ import {AppError} from '#cli/schema.ts'
 import {install, installUpdates, status, uninstall} from '#cli/service.ts'
 import {activate, update} from '#cli/update.ts'
 
+const DEFAULT_HOST = '127.0.0.1'
+
 // A setting is a flag, or else the environment variable it names; app code reads either through `Config`.
 export type Setting = {
 	readonly description: string
@@ -58,9 +61,8 @@ const SETTINGS = {
 		flag: 'auth',
 		schema: SecureOrigin
 	},
-	HOST: {description: 'Listen address; defaults to 127.0.0.1', flag: 'host', schema: Schema.NonEmptyString},
-	OTEL_URL: {description: 'Scope origin to export traces and logs to', flag: 'traces', schema: Origin},
-	PORT: {description: "Listen port; defaults to the package's config.port", flag: 'port', schema: Port}
+	HOST: {description: `Listen address; defaults to ${DEFAULT_HOST}`, flag: 'host', schema: Schema.NonEmptyString},
+	OTEL_URL: {description: 'Scope origin to export traces and logs to', flag: 'traces', schema: Origin}
 } satisfies Record<string, Setting>
 
 // Auth's and the gateway's admins, by GitHub user id.
@@ -76,21 +78,21 @@ function flagsOf(settings: Record<string, Setting>) {
 			Flag.String(setting.flag),
 			Flag.withSchema(setting.schema),
 			Flag.withFallbackConfig(Config.schema(setting.schema, key)),
-			Flag.withDescription(setting.description),
+			Flag.withDescription(`${setting.description} [${key}]`),
 			Flag.optional
 		)
 	)
 }
 
 // The settings given, as the provider app code reads, with the listen address and canonical origin filled in.
-const provider = Effect.fnUntraced(function* (given: Record<string, string>) {
-	const port = given['PORT'] ?? `${(yield* packageMetadata).config.port}`
+const provider = Effect.fnUntraced(function* (given: Record<string, string>, defaultPort: number) {
+	const port = given['PORT'] ?? `${defaultPort}`
 	const url = given['APP_URL'] ?? `http://localhost:${port}`
 	if (given['AUTH_URL'] !== undefined && new URL(url).protocol !== 'https:') {
 		return yield* AppError.make({message: "With --auth, set --url to the app's HTTPS origin"})
 	}
 	return ConfigProvider.orElse(
-		ConfigProvider.fromUnknown({HOST: '127.0.0.1', ...given, APP_URL: url, PORT: port}),
+		ConfigProvider.fromUnknown({HOST: DEFAULT_HOST, ...given, APP_URL: url, PORT: port}),
 		ConfigProvider.fromEnv()
 	)
 })
@@ -118,6 +120,7 @@ export type App<A, E> = {
 	readonly icon: string
 	// The app's RPC, HTTP routes and `ServerRuntime.layerMcp` tools, with its own services provided; an app may answer `Auth` itself.
 	readonly routes: Routes<A, E>
+	// Runs around matched routes before the response is sent, so headers and bodies can be changed.
 	readonly middleware?: <A, R>(
 		app: Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
 	) => Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
@@ -131,9 +134,15 @@ function server<A, E>(app: App<A, E>) {
 		HttpRouter.serve(
 			pipe(
 				Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
+				Layer.provide(
+					Option.match(Option.fromUndefinedOr(app.middleware), {
+						onNone: () => Layer.empty,
+						onSome: middleware => HttpRouter.middleware()(middleware).layer
+					})
+				),
 				Layer.provide(Auth.layer)
 			),
-			{disableLogger: true, middleware: http => guard(app.middleware?.(http) ?? http)}
+			{disableLogger: true, middleware: guard}
 		),
 		Layer.provide(
 			Layer.mergeAll(
@@ -153,16 +162,20 @@ function output(text: string) {
 
 // The app's executable: the server in the foreground, or `service` to run it under systemd and keep it on npm's latest release.
 export function runApp<A, E>(app: App<A, E>) {
-	const settings: Record<string, Setting> = {...SETTINGS, ...app.settings}
 	const program = Effect.gen(function* () {
 		const metadata = yield* packageMetadata
 		const name = yield* appName
+		const settings: Record<string, Setting> = {
+			...SETTINGS,
+			PORT: {description: `Listen port; defaults to ${metadata.config.port}`, flag: 'port', schema: Port},
+			...app.settings
+		}
 		const root = pipe(Command.make(name), Command.withSharedFlags(flagsOf(settings)))
 		const given = Effect.map(root, input => Record.getSomes(input))
 		return yield* pipe(
 			root,
 			Command.withHandler(input =>
-				Effect.flatMap(provider(Record.getSomes(input)), values =>
+				Effect.flatMap(provider(Record.getSomes(input), metadata.config.port), values =>
 					Effect.provideService(server(app), ConfigProvider.ConfigProvider, values)
 				)
 			),
@@ -177,7 +190,7 @@ export function runApp<A, E>(app: App<A, E>) {
 								const fs = yield* FileSystem.FileSystem
 								const path = yield* Path.Path
 								const flags = yield* given
-								yield* provider(flags)
+								yield* provider(flags, metadata.config.port)
 								// The unit runs whatever `current` links to: this package now, the updater's releases later.
 								const entry = path.join(yield* activate(name, yield* fs.realPath(packageRoot)), 'dist', 'server.js')
 								const args = Array.flatten(

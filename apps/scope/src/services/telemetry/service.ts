@@ -90,18 +90,37 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		)
 		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
-			const cutoff = BigInt((yield* Clock.currentTimeMillis) - Duration.toMillis(RETENTION)) * 1_000_000n
+			const receivedAt = yield* Clock.currentTimeMillis
+			const now = BigInt(receivedAt) * 1_000_000n
+			const cutoff = now - BigInt(Duration.toMillis(RETENTION)) * 1_000_000n
 			const newest = yield* Ref.get(releases)
-			yield* SynchronizedRef.updateEffect(state, current => {
-				const expired = Array.filter(
-					Array.fromIterable(HashMap.values(current)),
-					entry => BigInt(entry.time) < cutoff || superseded(entry, newest)
-				)
-				return Effect.as(
-					Effect.forEach(expired, entry => store.remove(entry.id), {concurrency: 1, discard: true}),
-					Array.reduce(expired, current, (all, entry) => HashMap.remove(all, entry.id))
-				)
-			})
+			yield* SynchronizedRef.updateEffect(
+				state,
+				Effect.fnUntraced(function* (current) {
+					// Stamp a previous-release future clock once, rather than deleting its data or renewing retention at every restart.
+					const repaired = Array.map(
+						Array.filter(
+							Array.fromIterable(HashMap.values(current)),
+							entry => entry.receivedAt === undefined && BigInt(entry.time) > now
+						),
+						entry => ({...entry, receivedAt})
+					)
+					yield* Effect.forEach(repaired, entry => store.set(entry.id, entry), {concurrency: 1, discard: true})
+					const expired = Array.filter(Array.fromIterable(HashMap.values(current)), entry => {
+						const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
+							onNone: () => BigInt(entry.time),
+							onSome: time => BigInt(time) * 1_000_000n
+						})
+						return received < cutoff || superseded(entry, newest)
+					})
+					yield* Effect.forEach(expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
+					return Array.reduce(
+						expired,
+						Array.reduce(repaired, current, (all, entry) => HashMap.set(all, entry.id, entry)),
+						(all, entry) => HashMap.remove(all, entry.id)
+					)
+				})
+			)
 			yield* SubscriptionRef.update(version, Number.increment)
 		})
 		yield* prune
@@ -145,21 +164,24 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					})
 				)
 			)
+			yield* SubscriptionRef.update(version, Number.increment)
 		}, failed)
-		// One recompute for every open page: the latest change is kept while one runs, and a second passes between them.
-		const live = yield* SubscriptionRef.make(overview(yield* read, 20, yield* Clock.currentTimeMillis))
-		yield* pipe(
+		// Open pages share one recompute; without a viewer there is no scan. Changes coalesce during the one-second pause.
+		const live = yield* pipe(
 			SubscriptionRef.changes(version),
 			Stream.buffer({capacity: 1, strategy: 'sliding'}),
-			Stream.mapEffect(() =>
-				pipe(
-					Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'}),
-					Effect.flatMap(current => SubscriptionRef.set(live, overview(current.entries, 20, current.now))),
-					Effect.andThen(Effect.sleep('1 second'))
+			Stream.flatMap(() =>
+				Stream.concat(
+					Stream.fromEffect(
+						pipe(
+							Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'}),
+							Effect.map(current => overview(current.entries, 20, current.now))
+						)
+					),
+					Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
 				)
 			),
-			Stream.runDrain,
-			Effect.forkScoped
+			Stream.share({capacity: 1, replay: 1, strategy: 'sliding'})
 		)
 		const page = Effect.fnUntraced(function* (query: Query, signal: Entry['signal']) {
 			const entries = orderEntries(filterEntries(yield* selected(query.runs), query, signal), query.sort)
@@ -167,7 +189,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		})
 		return {
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(function* (payload: LogsRequest) {
-				const now = `${BigInt(yield* Clock.currentTimeMillis) * 1_000_000n}`
+				const receivedAt = yield* Clock.currentTimeMillis
+				const now = `${BigInt(receivedAt) * 1_000_000n}`
 				yield* save(
 					yield* Effect.forEach(
 						Array.flatMap(payload.resourceLogs ?? [], group =>
@@ -181,6 +204,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								id,
 								name: logMessage(item.log.body ?? {}),
 								payload: item.log,
+								receivedAt,
 								resource: item.group.resource ?? {},
 								resourceSchemaUrl: item.group.schemaUrl ?? '',
 								scope: item.scope.scope ?? {},
@@ -197,6 +221,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				)
 			}),
 			ingestTraces: Effect.fn('Telemetry.ingestTraces')(function* (payload: TracesRequest) {
+				const receivedAt = yield* Clock.currentTimeMillis
 				yield* save(
 					Array.flatMap(payload.resourceSpans ?? [], group =>
 						Array.flatMap(group.scopeSpans ?? [], scope =>
@@ -205,6 +230,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								id: `${String.toLowerCase(span.traceId)}:${String.toLowerCase(span.spanId)}`,
 								name: spanName(span),
 								payload: span,
+								receivedAt,
 								resource: group.resource ?? {},
 								resourceSchemaUrl: group.schemaUrl ?? '',
 								scope: scope.scope ?? {},
@@ -219,13 +245,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						)
 					)
 				)
-				yield* SubscriptionRef.update(version, Number.increment)
 			}),
 			logs: Effect.fn('Telemetry.logs')(function* (query: Query) {
 				return yield* page(query, 'log')
 			}),
 			// The live page's operations: the current ones at once, then each recompute.
-			overview: SubscriptionRef.changes(live),
+			overview: live,
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis
 				const key = `${input.route}:${input.status}:${input.credential}`
@@ -256,11 +281,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			traces: Effect.fn('Telemetry.traces')(function* (query: Query) {
 				const active = yield* selected(query.runs)
 				const byTrace = Array.groupBy(active, entry => entry.traceId)
-				const ids = Array.dedupe(
-					Array.map(
-						Array.filter(filterEntries(active, query, 'all'), entry => entry.traceId !== ''),
-						entry => entry.traceId
-					)
+				const ids = Array.filter(
+					Array.dedupe(
+						Array.map(
+							Array.filter(filterEntries(active, query, 'all'), entry => entry.traceId !== ''),
+							entry => entry.traceId
+						)
+					),
+					id => Array.some(byTrace[id] ?? [], entry => entry.signal === 'trace')
 				)
 				// Ordering needs only each trace's start and length, so only the page's traces are assembled.
 				const ordered = orderEntries(

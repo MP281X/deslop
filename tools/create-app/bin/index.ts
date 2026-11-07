@@ -2,7 +2,7 @@
 
 import {NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Array, Effect, FileSystem, Number, Option, Path, Schema, String, flow, pipe} from 'effect'
+import {Array, Effect, FileSystem, Formatter, Number, Option, Path, Schema, String, flow, pipe} from 'effect'
 
 import {Generator, getConfig} from '@tanstack/router-generator'
 import {Command, Flag} from 'effect/cli'
@@ -18,7 +18,11 @@ const AppPackage = Schema.Struct({config: Schema.Struct({port: Schema.Int})})
 const create = Command.make(
 	'create-app',
 	{
-		directory: pipe(Flag.String('directory'), Flag.withDescription('Defaults to apps/<name>'), Flag.optional),
+		directory: pipe(
+			Flag.String('directory'),
+			Flag.withDescription('Destination relative to the repository root; defaults to apps/<name>'),
+			Flag.optional
+		),
 		kind: pipe(
 			Flag.Literals('kind', ['web', 'mobile']),
 			Flag.withDescription('A web app, or an iOS app with an Expo client'),
@@ -29,8 +33,12 @@ const create = Command.make(
 	Effect.fnUntraced(function* (input) {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
-		const apps = path.join(import.meta.dirname, '../../../apps')
-		const root = Option.getOrElse(input.directory, () => path.join(apps, input.name))
+		const workspace = path.resolve(import.meta.dirname, '../../..')
+		const apps = path.join(workspace, 'apps')
+		const root = path.resolve(
+			workspace,
+			Option.getOrElse(input.directory, () => path.join('apps', input.name))
+		)
 		// Each app listens on its own default port, so any two run side by side: the next after the highest taken.
 		const ports = yield* Effect.forEach(
 			yield* fs.readDirectory(apps),
@@ -46,8 +54,11 @@ const create = Command.make(
 		yield* copyTemplate({
 			from: path.join(import.meta.dirname, '../template', input.kind),
 			rewrite: flow(
-				String.replaceAll('@deslop/template-app', `@deslop/${input.name}`),
 				String.replaceAll('template-app', input.name),
+				String.replaceAll(
+					`"directory": "apps/${input.name}"`,
+					`"directory": ${Formatter.formatJson(path.relative(workspace, root))}`
+				),
 				String.replaceAll('"port": 5100', `"port": ${Array.reduce(ports, 5100, Number.max) + 1}`)
 			),
 			to: root

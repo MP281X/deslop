@@ -25,14 +25,13 @@ import {
 import {Base64Url} from 'effect/encoding'
 import {KeyValueStore} from 'effect/persistence'
 
-import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import type {Assertion, Passkey, Registration} from '#services/passkeys/schema.ts'
 import {ClientData, CreationOptions, RequestOptions, StoredPasskeys, Transport} from '#services/passkeys/schema.ts'
-import {browserLabel, cookieDomain, deviceLabel} from '#services/tokens/lib/utils.ts'
-import type {Origin, SessionVia} from '#services/tokens/schema.ts'
+import {browserLabel, cookieDomain, deviceLabel, sameOwner} from '#services/tokens/lib/utils.ts'
+import type {CredentialOwner, Origin, SessionVia} from '#services/tokens/schema.ts'
 
 // How long a challenge stays answerable.
 const LIFETIME = 5 * 60_000
@@ -69,6 +68,10 @@ function live<K, V extends {expiresAt: number}>(issued: HashMap.HashMap<K, V>, n
 	return HashMap.filter(issued, entry => entry.expiresAt > now)
 }
 
+function registrationKey(owner: CredentialOwner) {
+	return `${owner.user.id}/${owner.incarnation}`
+}
+
 // Passkeys sit beside tokens, below People: People forgets an account's passkeys with its sessions, and callers check access.
 export class Passkeys extends Context.Service<
 	Passkeys,
@@ -76,15 +79,15 @@ export class Passkeys extends Context.Service<
 		// `from` names where it was added; `via` is how the adding browser signed in.
 		readonly add: (
 			response: Registration,
-			session: {from: Origin; user: User; via: SessionVia}
+			session: {from: Origin; owner: CredentialOwner; via: SessionVia}
 		) => Effect.Effect<void, AuthError>
-		readonly forget: (userId: string) => Effect.Effect<void, AuthError>
-		readonly list: (user: User) => Stream.Stream<Passkey[]>
-		readonly registration: (user: User, via: SessionVia) => Effect.Effect<CreationOptions, AuthError>
-		readonly remove: (id: string, user: User) => Effect.Effect<void, AuthError>
+		readonly forget: (owner: CredentialOwner) => Effect.Effect<void, AuthError>
+		readonly list: (owner: CredentialOwner) => Stream.Stream<Passkey[]>
+		readonly registration: (owner: CredentialOwner, via: SessionVia) => Effect.Effect<CreationOptions, AuthError>
+		readonly remove: (id: string, owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly request: Effect.Effect<RequestOptions, AuthError>
 		// The account the passkey belongs to; the caller checks it may still sign in.
-		readonly signIn: (response: Assertion) => Effect.Effect<User, AuthError>
+		readonly signIn: (response: Assertion) => Effect.Effect<CredentialOwner, AuthError>
 	}
 >()('@deslop/auth/services/passkeys/service/Passkeys') {
 	static readonly layer = Layer.effect(
@@ -104,26 +107,27 @@ export class Passkeys extends Context.Service<
 			const registering = yield* Ref.make(HashMap.empty<string, {challenge: string; expiresAt: number}>())
 			const signingIn = yield* Ref.make(HashMap.empty<string, {expiresAt: number}>())
 			// Every change saves the next passkeys before memory and the live views see them.
-			const change = Effect.fnUntraced(function* (next: (current: StoredPasskeys) => StoredPasskeys) {
-				yield* SubscriptionRef.modifyEffect(state, current => {
-					const updated = next(current)
-					return Effect.as(store.set('passkeys', updated), [undefined, updated] as const)
-				})
+			const change = Effect.fnUntraced(function* <E>(
+				next: (current: StoredPasskeys) => Effect.Effect<StoredPasskeys, E>
+			) {
+				yield* SubscriptionRef.updateEffect(state, current =>
+					Effect.tap(next(current), updated => store.set('passkeys', updated))
+				)
 			}, Effect.uninterruptible)
 
 			return Passkeys.of({
 				add: Effect.fn('Passkeys.add')(function* (
 					response: Registration,
-					session: {from: Origin; user: User; via: SessionVia}
+					session: {from: Origin; owner: CredentialOwner; via: SessionVia}
 				) {
 					yield* owned(session.via)
-					const user = session.user
+					const key = registrationKey(session.owner)
 					const from = session.from
 					const now = yield* Clock.currentTimeMillis
 					const challenge = yield* pipe(
 						Ref.modify(registering, issued => [
-							HashMap.get(live(issued, now), user.id),
-							HashMap.remove(live(issued, now), user.id)
+							HashMap.get(live(issued, now), key),
+							HashMap.remove(live(issued, now), key)
 						]),
 						Effect.flatMap(Effect.fromOption),
 						Effect.mapError(() => AuthError.make({message: 'Adding the passkey took too long; start again'}))
@@ -143,32 +147,37 @@ export class Passkeys extends Context.Service<
 					})
 					if (!verified.verified) return yield* AuthError.make({message: 'The passkey could not be verified'})
 					const credential = verified.registrationInfo.credential
-					// WebAuthn §7.1 step 22: an id already registered, to anyone, is refused, so no one's passkey is overwritten.
-					if (Array.some(yield* SubscriptionRef.get(state), found => found.id === credential.id)) {
-						return yield* AuthError.make({message: 'This passkey is already added'})
-					}
-					yield* change(current => [
-						...current,
-						{
-							addedFrom: `${browserLabel(from)} · ${deviceLabel(from)}`,
-							counter: credential.counter,
-							createdAt: now,
-							id: credential.id,
-							lastUsed: now,
-							publicKey: Base64Url.encode(credential.publicKey),
-							synced: verified.registrationInfo.credentialDeviceType === 'multiDevice',
-							transports,
-							user
-						}
-					])
+					yield* change(current =>
+						Effect.gen(function* () {
+							// WebAuthn §7.1 step 22: uniqueness is checked under the same lock as the saved registration.
+							if (Array.some(current, found => found.id === credential.id)) {
+								return yield* AuthError.make({message: 'This passkey is already added'})
+							}
+							return [
+								...current,
+								{
+									addedFrom: `${browserLabel(from)} · ${deviceLabel(from)}`,
+									counter: credential.counter,
+									createdAt: now,
+									id: credential.id,
+									lastUsed: now,
+									publicKey: Base64Url.encode(credential.publicKey),
+									synced: verified.registrationInfo.credentialDeviceType === 'multiDevice',
+									transports,
+									...session.owner
+								}
+							]
+						})
+					)
 				}, rejected('Cannot add the passkey')),
-				forget: Effect.fn('Passkeys.forget')(function* (userId: string) {
-					yield* change(current => Array.filter(current, found => found.user.id !== userId))
+				forget: Effect.fn('Passkeys.forget')(function* (owner: CredentialOwner) {
+					yield* change(current => Effect.succeed(Array.filter(current, found => !sameOwner(found, owner))))
+					yield* Ref.update(registering, HashMap.remove(registrationKey(owner)))
 				}, rejected('Cannot remove the account’s passkeys')),
-				list: user =>
+				list: owner =>
 					Stream.map(SubscriptionRef.changes(state), current =>
 						Array.map(
-							Array.filter(current, found => found.user.id === user.id),
+							Array.filter(current, found => sameOwner(found, owner)),
 							found => ({
 								addedFrom: found.addedFrom,
 								createdAt: found.createdAt,
@@ -179,9 +188,10 @@ export class Passkeys extends Context.Service<
 						)
 					),
 				// Any kind: a phone's or laptop's built-in one, a password manager's, or a security key. Each holds the account, so signing in needs no name.
-				registration: Effect.fn('Passkeys.registration')(function* (user: User, via: SessionVia) {
+				registration: Effect.fn('Passkeys.registration')(function* (owner: CredentialOwner, via: SessionVia) {
 					yield* owned(via)
-					const existing = Array.filter(yield* SubscriptionRef.get(state), found => found.user.id === user.id)
+					const user = owner.user
+					const existing = Array.filter(yield* SubscriptionRef.get(state), found => sameOwner(found, owner))
 					const options = yield* Effect.tryPromise({
 						catch: invalid,
 						try: () =>
@@ -198,15 +208,20 @@ export class Passkeys extends Context.Service<
 					})
 					const now = yield* Clock.currentTimeMillis
 					yield* Ref.update(registering, issued =>
-						HashMap.set(live(issued, now), user.id, {challenge: options.challenge, expiresAt: now + LIFETIME})
+						HashMap.set(live(issued, now), registrationKey(owner), {
+							challenge: options.challenge,
+							expiresAt: now + LIFETIME
+						})
 					)
 					// As the JSON the browser receives, where a key the library left undefined is simply absent.
 					return yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
 						yield* Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(options)
 					)
 				}, rejected('Cannot start adding a passkey')),
-				remove: Effect.fn('Passkeys.remove')(function* (id: string, user: User) {
-					yield* change(current => Array.filter(current, found => found.id !== id || found.user.id !== user.id))
+				remove: Effect.fn('Passkeys.remove')(function* (id: string, owner: CredentialOwner) {
+					yield* change(current =>
+						Effect.succeed(Array.filter(current, found => found.id !== id || !sameOwner(found, owner)))
+					)
 				}, rejected('Cannot remove the passkey')),
 				request: pipe(
 					Effect.tryPromise({
@@ -254,16 +269,18 @@ export class Passkeys extends Context.Service<
 					if (!verified.verified) return yield* AuthError.make({message: 'The passkey could not be verified'})
 					// Two sign-ins at once never move the counter back.
 					yield* change(current =>
-						Array.map(current, stored => {
-							if (stored.id !== found.id) return stored
-							return {
-								...stored,
-								counter: Number.max(stored.counter, verified.authenticationInfo.newCounter),
-								lastUsed: now
-							}
-						})
+						Effect.succeed(
+							Array.map(current, stored => {
+								if (stored.id !== found.id) return stored
+								return {
+									...stored,
+									counter: Number.max(stored.counter, verified.authenticationInfo.newCounter),
+									lastUsed: now
+								}
+							})
+						)
 					)
-					return found.user
+					return {incarnation: found.incarnation, user: found.user}
 				}, rejected('Cannot sign in with the passkey'))
 			})
 		})

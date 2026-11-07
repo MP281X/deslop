@@ -73,7 +73,9 @@
 		"ignore": ["packages/components-web/src/ui/**"]
 	},
 	"ignoreDependencies": [
-		// The runtime's session and keychain import these two; each app keeps them so autolinking builds their native modules.
+		// Peer-only: one scheduler resolution keeps app and shared atom hooks on the same registry context.
+		"scheduler",
+		// The runtime imports these; each app keeps them so autolinking includes their native modules.
 		"expo-auth-session",
 		"expo-secure-store",
 		"expo-updates"

@@ -2,13 +2,30 @@ import {ChatRequest} from '@effect/ai-openrouter/Generated'
 import type {ChatResult} from '@effect/ai-openrouter/Generated'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Exit, Layer, MutableList, Option, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	Deferred,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	MutableList,
+	Option,
+	Queue,
+	Record,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {Conversation, Turn} from '#services/core/schema.ts'
 import {Core} from '#services/core/service.ts'
+import {UsageLedger} from '#services/game/schema.ts'
 
 function completion(content: string, finish: ChatResult['choices'][number]['finish_reason'] = 'stop') {
 	return {
@@ -40,6 +57,55 @@ const ORIGINAL: Conversation = {
 }
 
 it.layer(KeyValueStore.layerMemory)(test => {
+	test.effect(
+		'pushes committed usage before and after a provider response without a polling clock',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.remove('usage')
+			const response = yield* Deferred.make<void>()
+			const core = Context.get(
+				yield* Layer.build(
+					pipe(
+						Core.layer,
+						Layer.provide(
+							Layer.succeed(
+								HttpClient.HttpClient,
+								HttpClient.make(request =>
+									Effect.as(
+										Deferred.await(response),
+										HttpClientResponse.fromWeb(request, Response.json(completion('Ready.')))
+									)
+								)
+							)
+						)
+					)
+				),
+				Core
+			)
+			const updates = yield* Queue.unbounded<UsageLedger>()
+			const watch = yield* Effect.forkScoped(Stream.runForEach(core.usage, value => Queue.offer(updates, value)))
+			assert.deepStrictEqual((yield* Queue.take(updates)).groups, {})
+			const deciding = yield* Effect.forkScoped(core.decide(99, 0, 'Nothing new observed.', false))
+			const started = yield* Queue.take(updates)
+			assert.deepStrictEqual(
+				started,
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, UsageLedger).get('usage'))
+			)
+			assert.strictEqual(Record.values(started.groups)[0]?.calls, 1)
+			assert.strictEqual(Record.values(started.groups)[0]?.values.cost.reported, 0)
+			yield* Deferred.succeed(response, undefined)
+			yield* Fiber.join(deciding)
+			const finished = yield* Queue.take(updates)
+			assert.deepStrictEqual(
+				finished,
+				Option.getOrThrow(yield* KeyValueStore.toSchemaStore(kv, UsageLedger).get('usage'))
+			)
+			assert.strictEqual(Record.values(finished.groups)[0]?.values.cost.total, 0.001)
+			yield* Fiber.interrupt(watch)
+			yield* kv.remove('usage')
+		})
+	)
+
 	test.effect(
 		'compacts an individual independently, retrieves its own originals and preserves incoming experience on failure',
 		Effect.fnUntraced(function* () {
@@ -223,7 +289,10 @@ it.layer(KeyValueStore.layerMemory)(test => {
 				6500
 			)
 			const strategy = Option.getOrThrow(
-				Array.findFirst(Record.values((yield* core.usage).groups), group => group.kind === 'strategy')
+				Array.findFirst(
+					Record.values((yield* Effect.flatMap(Stream.runHead(core.usage), Effect.fromOption)).groups),
+					group => group.kind === 'strategy'
+				)
 			)
 			assert.strictEqual(strategy.calls, 2)
 			assert.strictEqual(strategy.values.cost.total, 0.002)

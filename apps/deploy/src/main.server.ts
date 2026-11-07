@@ -1,5 +1,7 @@
 import {Effect, Layer, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
+
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
@@ -19,10 +21,14 @@ const layerServices = pipe(
 	Layer.provideMerge(
 		Layer.unwrap(
 			Effect.map(ServerRuntime.dataDirectory, directory =>
-				Layer.mergeAll(Inventory.layer, Exposures.layer(directory), Metrics.layer(directory))
+				Layer.provide(
+					Layer.mergeAll(Inventory.layer, Exposures.layer(directory), Metrics.layer),
+					ServerRuntime.layerKeyValueStore(directory)
+				)
 			)
 		)
-	)
+	),
+	Layer.provide(ServerRuntime.ToolPath.layer)
 )
 
 CliRuntime.runApp({
@@ -31,9 +37,8 @@ CliRuntime.runApp({
 		Layer.mergeAll(
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
-				handlers: ToolHandlers,
 				instructions: 'Deploy observes services, containers and ports and manages explicitly owned HTTPS exposure.',
-				tools: Tools
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			})
 		),
 		Layer.provide(layerServices),

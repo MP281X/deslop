@@ -1,6 +1,22 @@
-import {Array, Config, Context, Effect, Option, Schema, String} from 'effect'
+import {
+	Array,
+	Cause,
+	Config,
+	Context,
+	Effect,
+	Function,
+	MutableRef,
+	Option,
+	Predicate,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
-import {Headers} from 'effect/http'
+import {Headers, HttpClient} from 'effect/http'
+import {AsyncResult} from 'effect/reactivity'
+import type {Atom, AtomRegistry} from 'effect/reactivity'
 import {RpcMiddleware} from 'effect/rpc'
 
 import type {User} from '#auth/schema.ts'
@@ -44,12 +60,27 @@ export function needsSignIn(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable' && error.error !== 'access_denied'
 }
 
+export function isDenied(error: unknown) {
+	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable'
+}
+
 // A failure that already carries its answer stays as it is; anything else becomes the message the caller names.
 export function rejected(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
+		if (Predicate.isTagged(cause, 'KeyValueStoreError') || HttpClient.isTransientError(cause)) {
+			return AuthError.make({cause, error: 'temporarily_unavailable', message})
+		}
 		return AuthError.make({cause, message})
 	})
+}
+
+// An outage keeps credentials and retries alive instead of looking like a permanent refusal.
+export function failureOptions(error: unknown, status: number) {
+	if (Schema.is(AuthError)(error) && error.error === 'temporarily_unavailable') {
+		return {headers: {'retry-after': '5'}, status: 503}
+	}
+	return {status}
 }
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/auth/lib/utils/CurrentUser') {}
@@ -58,15 +89,68 @@ export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/r
 export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
 	'@deslop/runtime/auth/lib/utils/RpcAuth',
 	{error: AuthError}
+) {}
+
+// Sends the session token as the bearer of every request, read again for each one.
+export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>) {
+	return RpcMiddleware.layerClient(RpcAuth, options =>
+		Effect.gen(function* () {
+			return yield* options.next({
+				...options.request,
+				headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
+			})
+		})
+	)
+}
+
+// Observe the read before recovery can swallow its refusal. Only a real emission restores authorization, never empty completion.
+export function withoutDeniedData<A, E, R>(
+	get: Atom.AtomContext,
+	live: Stream.Stream<A, E, R>,
+	recover: (stream: Stream.Stream<A, E, R>) => Stream.Stream<A, E, R | AtomRegistry.AtomRegistry> = Function.identity
 ) {
-	// Sends the session token as the bearer of every request, read again for each one.
-	static readonly layerClient = <R>(token: Effect.Effect<string, AuthError, R>) =>
-		RpcMiddleware.layerClient(RpcAuth, options =>
-			Effect.gen(function* () {
-				return yield* options.next({
-					...options.request,
-					headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
-				})
+	function denials(cause: Cause.Cause<E>) {
+		const reasons = Array.filter(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+		if (Array.isArrayEmpty(reasons)) return Option.none()
+		return Option.some(Cause.fromReasons(reasons))
+	}
+	const denied = MutableRef.make(
+		pipe(
+			get.self<AsyncResult.AsyncResult<A, E>>(),
+			Option.filter(AsyncResult.isFailure),
+			Option.flatMap(result => denials(result.cause))
+		)
+	)
+	function gated(cause: Cause.Cause<E>) {
+		return Option.match(MutableRef.get(denied), {
+			onNone: () => cause,
+			onSome: refusal =>
+				Cause.fromReasons([
+					...refusal.reasons,
+					...Array.filter(cause.reasons, reason => !Cause.isFailReason(reason) || !isDenied(reason.error))
+				])
+		})
+	}
+	const observed = pipe(
+		live,
+		Stream.tapCause(cause =>
+			Effect.sync(() => {
+				MutableRef.update(denied, previous => Option.orElse(denials(cause), () => previous))
+				const failure = gated(cause)
+				if (Option.isSome(MutableRef.get(denied))) {
+					get.setSelf(AsyncResult.failure(failure))
+					return
+				}
+				get.setSelf(AsyncResult.failureWithPrevious(failure, {previous: get.self<AsyncResult.AsyncResult<A, E>>()}))
 			})
 		)
+	)
+	return pipe(
+		recover(observed),
+		Stream.tap(() => Effect.sync(() => MutableRef.set(denied, Option.none()))),
+		Stream.catchCause(cause => Stream.failCause(gated(cause))),
+		Stream.concat(
+			Stream.suspend(() => Option.match(MutableRef.get(denied), {onNone: () => Stream.empty, onSome: Stream.failCause}))
+		)
+	)
 }

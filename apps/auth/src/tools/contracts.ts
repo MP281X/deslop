@@ -3,12 +3,13 @@ import {Schema} from 'effect'
 import {Tool, Toolkit} from 'effect/ai'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+
+import {CurrentOwner} from '#services/tokens/schema.ts'
 
 // The tool acts as the signed-in caller, which the MCP sign-in middleware provides per request.
 export const Tools = Toolkit.make(
 	Tool.make('answer_request', {
-		dependencies: [CurrentUser],
+		dependencies: [CurrentOwner],
 		description:
 			'Approve or deny an app or agent sign-in you started, by the code its page or authorize redirect shows (WDJB-MJHT). Never answer a code you did not start; browser sign-ins are approved only in a browser.',
 		failure: AuthError,

@@ -4550,6 +4550,7 @@ export const makeSim = Effect.fnUntraced(
 							{concurrency: 1}
 						)
 					}
+					const lifeState = life.snapshot()
 					return {
 						amounts: Array.map(
 							Array.fromIterable(amounts),
@@ -4563,8 +4564,8 @@ export const makeSim = Effect.fnUntraced(
 						generator: GENERATOR,
 						jams: Array.fromIterable(jams),
 						life: {
-							...life.snapshot(),
-							individuals: Array.map(life.snapshot().individuals, individual => ({
+							...lifeState,
+							individuals: Array.map(lifeState.individuals, individual => ({
 								...individual,
 								explored: Array.map(Array.fromIterable(exploredOf(-individual.id)), entry => ({
 									bits: Uint8Array.from(entry[1].bits),

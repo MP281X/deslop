@@ -23,6 +23,8 @@ import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {ToolPath} from '@deslop/runtime/server'
+
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 
@@ -58,6 +60,7 @@ const open = Effect.fnUntraced(function* (
 		yield* Layer.build(
 			pipe(
 				Media.layer,
+				Layer.provide(Layer.succeed(ToolPath, name => Effect.succeed(`/fixture/tools/${name}`))),
 				Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
 				Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
 				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({OPENROUTER_API_KEY: 'unit-test-key'})))

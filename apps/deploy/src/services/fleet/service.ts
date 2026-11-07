@@ -271,10 +271,7 @@ export class Fleet extends Context.Service<
 						items: [...own.items, ...Array.flatMap(others, value => value.items)],
 						sources: [...own.sources, ...Array.flatMap(others, value => value.sources)],
 						time: yield* Clock.currentTimeMillis,
-						workers: Array.dedupe([
-							...(own.workers ?? Array.dedupe(Array.map(own.items, item => item.worker))),
-							...Array.map(workers, worker => worker.name)
-						])
+						workers: Array.dedupe([...(own.workers ?? []), ...Array.map(workers, worker => worker.name)])
 					})
 				})
 			})

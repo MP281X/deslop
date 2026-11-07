@@ -1,7 +1,8 @@
-import {Effect, Option, Stream, pipe} from 'effect'
+import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
+import {isDenied, withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -13,19 +14,29 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/R
 	protocol: WebRuntime.layer('@deslop/deploy')
 }) {}
 
+// The port whose Expose dialog is open, from a click on its badge on the app's row.
+export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
+
 export const inventoryAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('deploy.inventory', undefined)),
-			Stream.unwrap,
+	RpcClient.runtime.atom(get =>
+		withoutDeniedData(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('deploy.inventory', undefined)),
+				Stream.unwrap,
+				Stream.tapCause(cause =>
+					Effect.sync(() => {
+						if (Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))) {
+							get.set(exposeTargetAtom, Option.none())
+						}
+					})
+				)
+			),
 			WebRuntime.reconnecting
 		)
 	)
 )
-
-// The port whose Expose dialog is open, from a click on its badge on the app's row.
-export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
 
 // A port exposed closes the dialog: its endpoint replaces the port's badge.
 export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
@@ -47,13 +58,19 @@ export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
 )
 
-export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
-	RpcClient.runtime.atom(
+export const minutesAtom = Atom.make<HistoryQuery['minutes']>(60)
+
+// One reader retains the last range and its samples while a newer request connects.
+export const metricsAtom = RpcClient.runtime.atom(get => {
+	const minutes = get(minutesAtom)
+	return withoutDeniedData(
+		get,
 		pipe(
 			RpcClient,
 			Effect.map(client => client('deploy.metrics', {minutes})),
 			Stream.unwrap,
-			WebRuntime.reconnecting
-		)
+			Stream.map(histories => ({histories, minutes}))
+		),
+		WebRuntime.reconnecting
 	)
-)
+})

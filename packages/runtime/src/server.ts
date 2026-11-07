@@ -11,6 +11,7 @@ import {
 	Boolean,
 	ByteSize,
 	Config,
+	Context,
 	Effect,
 	FileSystem,
 	HashMap,
@@ -30,7 +31,6 @@ import {
 } from 'effect'
 
 import {McpProtocol, McpServer} from 'effect/ai'
-import type {Tool, Toolkit} from 'effect/ai'
 import {
 	HttpClient,
 	HttpClientRequest,
@@ -57,7 +57,7 @@ import {
 } from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {APPS_PATH, ISSUER_PATH, localAuth} from '#auth/lib/utils.ts'
+import {APPS_PATH, ISSUER_PATH, failureOptions, localAuth} from '#auth/lib/utils.ts'
 import {Auth, layerMcpAuth} from '#auth/service.ts'
 
 const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
@@ -108,7 +108,7 @@ export const dataDirectory = Effect.gen(function* () {
 })
 
 // The app's native tools ship zstd-compressed in its `bin/`; the first use of a release unpacks one into the data directory.
-export const tool = Effect.fnUntraced(function* (name: string) {
+const tool = Effect.fnUntraced(function* (name: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const version = (yield* packageMetadata).version
@@ -135,6 +135,10 @@ export const tool = Effect.fnUntraced(function* (name: string) {
 	)
 	return target
 })
+
+export class ToolPath extends Context.Service<ToolPath, typeof tool>()('@deslop/runtime/server/ToolPath') {
+	static readonly layer = Layer.succeed(this, tool)
+}
 
 // One cross-site check for every app. A browser's Origin must name the host it reached, except for the OTLP receiver any page may export to. Without an issuer, where every request is the developer, only loopback, IP and the canonical host names are served, so a rebound DNS name cannot reach the app.
 export const guard = HttpMiddleware.make(app =>
@@ -193,8 +197,8 @@ export function layerKeyValueStore(directory: string) {
 								else yield* fs.writeFile(`${target}.tmp`, value, {mode: 0o600})
 							}),
 							Effect.andThen(fs.rename(`${target}.tmp`, target)),
-							Semaphore.withPermit(writes),
 							Effect.uninterruptible,
+							Semaphore.withPermit(writes),
 							Effect.mapError(
 								cause =>
 									new KeyValueStore.KeyValueStoreError({cause, key, message: 'Cannot save the value', method: 'set'})
@@ -242,7 +246,19 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 // Binary RPC frames unless an app picks JSON; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
 export const layerProtocol = Layer.mergeAll(
 	RpcSerialization.layerSchemaBinary(),
-	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10))
+	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10)),
+	Layer.effect(
+		HttpMiddleware.TracerDisabledWhen,
+		Effect.map(HttpMiddleware.TracerDisabledWhen, previous => request => {
+			const path = Array.headNonEmpty(String.split(request.url, '?'))
+			return (
+				previous(request) ||
+				(path === RPC_PATH && String.toLowerCase(request.headers['upgrade'] ?? '') === 'websocket') ||
+				String.startsWith('/assets/')(path) ||
+				Array.contains(['/icon', '/favicon.ico', '/apple-touch-icon.png', MANIFEST_PATH], path)
+			)
+		})
+	)
 )
 
 // Traces and logs go to Scope when `--traces` names it, under the package name its web and iOS clients also use.
@@ -263,6 +279,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		const canonical = new URL(yield* Config.String('APP_URL')).origin
 		const issuer = yield* Config.option(Config.String('AUTH_URL'))
 		const traces = yield* pipe(Config.String('OTEL_URL'), Config.withDefault(''))
+		const metadata = yield* Effect.cached(packageMetadata)
 		// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
 		const toIssuer = Effect.fnUntraced(function* (search: Record<string, string>) {
 			const request = yield* HttpServerRequest.HttpServerRequest
@@ -288,11 +305,12 @@ export const layerRoutes = HttpRouter.use(router =>
 			'GET',
 			RUNTIME_PATH,
 			Effect.gen(function* () {
+				const release = yield* metadata
 				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
 					...Option.match(issuer, {onNone: () => ({}), onSome: origin => ({auth: origin})}),
-					name: yield* appName,
+					name: String.replace('@deslop/', '')(release.name),
 					traces,
-					version: (yield* packageMetadata).version
+					version: release.version
 				})
 			})
 		)
@@ -303,7 +321,7 @@ export const layerRoutes = HttpRouter.use(router =>
 			'/auth/user',
 			Effect.gen(function* () {
 				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
-				if (Result.isFailure(user)) return HttpServerResponse.empty({status: 401})
+				if (Result.isFailure(user)) return HttpServerResponse.empty(failureOptions(user.failure, 401))
 				return yield* HttpServerResponse.schemaJson(Account)(
 					{...user.success, signOut: Option.isSome(issuer)},
 					{headers: {'cache-control': 'no-store'}}
@@ -317,7 +335,13 @@ export const layerRoutes = HttpRouter.use(router =>
 export const layerAnnounce = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const origin = new URL(yield* Config.String('APP_URL')).origin
-		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+		const client = pipe(
+			yield* HttpClient.HttpClient,
+			HttpClient.filterStatusOk,
+			HttpClient.timeout('10 seconds'),
+			// Auth may restart beside the app, but a permanent refusal will never list it.
+			HttpClient.retryTransient({schedule: Schedule.spaced('1 minute'), times: 60})
+		)
 		yield* Option.match(yield* Config.option(Config.String('AUTH_URL')), {
 			onNone: () => Effect.void,
 			onSome: Effect.fnUntraced(function* (issuer) {
@@ -326,8 +350,6 @@ export const layerAnnounce = Layer.effectDiscard(
 					HttpClientRequest.bodyJsonUnsafe({origin}),
 					client.execute,
 					Effect.delay('2 seconds'),
-					// While Auth restarts too, as after a release; an hour of refusals means it never will list this app.
-					Effect.retry({schedule: Schedule.spaced('1 minute'), times: 60}),
 					Effect.ignore({log: 'Warn', message: 'Auth did not list this app'}),
 					Effect.forkScoped
 				)
@@ -402,11 +424,7 @@ export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 }
 
 // Codex speaks MCP's stateless 2026-07-28 revision; Claude still opens a session, which it ends with DELETE.
-export function layerMcp<Tools extends Record<string, Tool.Any>, E, R>(options: {
-	handlers: Layer.Layer<Tool.HandlersFor<Tools>, E, R>
-	instructions: string
-	tools: Toolkit.Toolkit<Tools>
-}) {
+export function layerMcp<E, R>(options: {instructions: string; registrations: Layer.Layer<never, E, R>}) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const metadata = yield* packageMetadata
@@ -421,8 +439,7 @@ export function layerMcp<Tools extends Record<string, Tool.Any>, E, R>(options: 
 					name: yield* appName,
 					path: MCP_PATH,
 					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
-					// An app declares its tools once; its services supply the handlers they run.
-					registrations: pipe(McpServer.toolkit(options.tools), Layer.provide(options.handlers)),
+					registrations: options.registrations,
 					version: metadata.version
 				}),
 				Layer.provide(layerMcpAuth(resource))

@@ -4,10 +4,12 @@ import Undici from '@effect/platform-node/Undici'
 import {
 	Array,
 	Boolean,
+	Cause,
 	Clock,
 	Config,
 	Context,
 	Effect,
+	HashMap,
 	Layer,
 	Option,
 	Record,
@@ -25,7 +27,7 @@ import {
 
 import {KeyFormat, Signature} from 'effect/crypto'
 import {Base64, Base64Url} from 'effect/encoding'
-import {HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {
@@ -52,6 +54,18 @@ type LegOf = Pick<ActivityRecord, 'bookingId' | 'bundle' | 'leg'>
 type Span = {end: number; start: number}
 // One journey leg to show in its current window.
 type Showing = {journey: Flight | Train; leg: Leg; now: number; props: ActivityProps; window: Span}
+
+export const layerApnsClient = Layer.effect(
+	HttpClient.HttpClient,
+	Effect.gen(function* () {
+		// APNs requires HTTP/2; the bundle exposes Undici's default export, not the named Agent used by layerUndiciOptions.
+		const dispatcher = yield* Effect.acquireRelease(
+			Effect.sync(() => new Undici.Agent({allowH2: true})),
+			agent => Effect.promise(() => agent.destroy())
+		)
+		return yield* Effect.provideService(NodeHttpClient.makeUndici, NodeHttpClient.Dispatcher, dispatcher)
+	})
+)
 
 // The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
 function host(bundle: Bundle) {
@@ -88,6 +102,15 @@ function seconds(time: number) {
 // Each app, release and Simulator build, shows its own activity of a leg.
 function sameLeg(record: LegOf, other: LegOf) {
 	return record.bookingId === other.bookingId && record.leg === other.leg && record.bundle === other.bundle
+}
+
+function sameActivity(record: ActivityRecord, other: ActivityRecord) {
+	return (
+		sameLeg(record, other) &&
+		record.claimedAt === other.claimedAt &&
+		record.token === other.token &&
+		record.channel === other.channel
+	)
 }
 
 // A leg stays taken by an activity that lives to the window's end and did not end before it opened, or a claim not yet given up.
@@ -131,12 +154,7 @@ export class Push extends Context.Service<
 			const keyId = yield* Config.option(Config.String('APNS_KEY_ID'))
 			const teamId = yield* Config.option(Config.String('APNS_TEAM_ID'))
 			const privateKey = yield* Config.option(Config.Redacted('APNS_KEY'))
-			// APNs requires HTTP/2; the bundle exposes Undici's default export, not the named Agent used by layerUndiciOptions.
-			const dispatcher = yield* Effect.acquireRelease(
-				Effect.sync(() => new Undici.Agent({allowH2: true})),
-				agent => Effect.promise(() => agent.destroy())
-			)
-			const client = yield* Effect.provideService(NodeHttpClient.makeUndici, NodeHttpClient.Dispatcher, dispatcher)
+			const client = yield* HttpClient.HttpClient
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, PushState)
 			const state = yield* SubscriptionRef.make<PushState>(
 				Option.getOrElse(yield* failed('The push state could not be read.')(store.get('push')), () => ({
@@ -175,6 +193,7 @@ export class Push extends Context.Service<
 			)
 			const signature = yield* Signature.Signature
 			const bearer = yield* Ref.make(Option.none<{at: number; token: string}>())
+			const retrying = yield* Ref.make(HashMap.empty<string, {answer: Answer; until: number}>())
 
 			const sign = Effect.fnUntraced(function* (now: number) {
 				const found = yield* Effect.fromOption(signer)
@@ -196,7 +215,13 @@ export class Push extends Context.Service<
 				failed('The APNs key could not sign a token.')
 			)
 
-			const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest) {
+			const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
+				const now = yield* Clock.currentTimeMillis
+				const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
+				const deferred = Option.getOrUndefined(
+					Option.filter(HashMap.get(yield* Ref.get(retrying), key), pending => pending.until > now)
+				)
+				if (deferred !== undefined) return deferred.answer
 				const response = yield* pipe(
 					client.execute(HttpClientRequest.setHeader(request, 'authorization', `bearer ${yield* providerToken}`)),
 					Effect.timeout('20 seconds'),
@@ -210,18 +235,30 @@ export class Push extends Context.Service<
 				if (response.status >= 300) {
 					yield* Effect.logWarning(`APNs refused a push: ${response.status} ${Option.getOrElse(reason, () => '')}`)
 				}
-				return {
+				const answer = {
 					channel: Option.fromNullishOr(response.headers['apns-channel-id']),
 					reason,
 					status: response.status
 				} satisfies Answer
+				const receivedAt = yield* Clock.currentTimeMillis
+				yield* Ref.update(retrying, pending => {
+					const current = HashMap.filter(pending, entry => entry.until > receivedAt)
+					if (!retryable(answer)) return HashMap.remove(current, key)
+					// Apple asks for fifteen minutes after 5xx; token throttling waits at least one round.
+					return HashMap.set(current, key, {
+						answer,
+						until: receivedAt + Boolean.match(answer.status >= 500, {onFalse: () => 30_000, onTrue: () => 15 * MINUTE})
+					})
+				})
+				return answer
 			})
 
 			function toDevice(
 				target: Apns & {token: string},
 				type: 'alert' | 'liveactivity',
 				body: unknown,
-				priority: 5 | 10
+				priority: 5 | 10,
+				notification?: string
 			) {
 				return Effect.flatMap(
 					HttpClientRequest.bodyJson(
@@ -237,7 +274,7 @@ export class Push extends Context.Service<
 						}),
 						body
 					),
-					send
+					request => send(request, notification)
 				)
 			}
 
@@ -330,7 +367,7 @@ export class Push extends Context.Service<
 			}
 
 			// Accepted, the start is a channel the server updates; refused, the channel goes, and a token Apple will refuse again leaves until the app registers it anew.
-			const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+			const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing, notification: string) {
 				const channel = yield* createChannel(target)
 				const json = yield* Schema.encodeEffect(ActivityPropsJson)(showing.props)
 				const answer = yield* Effect.onError(
@@ -351,7 +388,8 @@ export class Push extends Context.Service<
 								timestamp: seconds(showing.now)
 							}
 						},
-						10
+						10,
+						notification
 					),
 					() => deleteChannel({...target, channel})
 				)
@@ -368,6 +406,13 @@ export class Push extends Context.Service<
 
 			// The server starts an activity the app has not, through the push-to-start token and a channel for its updates.
 			const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+				// Every trip uses the same push-to-start token, but a refusal belongs to this leg's notification only.
+				const notification = `start ${target.bundle} ${target.token} ${showing.journey.id} ${showing.leg}`
+				if (
+					Option.exists(HashMap.get(yield* Ref.get(retrying), notification), pending => pending.until > showing.now)
+				) {
+					return
+				}
 				const reserved = {
 					bookingId: showing.journey.id,
 					bundle: target.bundle,
@@ -375,7 +420,7 @@ export class Push extends Context.Service<
 					leg: showing.leg
 				} satisfies ActivityRecord
 				if (!(yield* reserve(reserved, showing.window))) return
-				const started = yield* Effect.onError(pushStart(target, showing), () => release(reserved))
+				const started = yield* Effect.onError(pushStart(target, showing, notification), () => release(reserved))
 				// A refused start leaves the leg free, so the app can still start it when opened.
 				if (Result.isFailure(started)) return yield* release(reserved)
 				yield* save(current => ({
@@ -388,7 +433,7 @@ export class Push extends Context.Service<
 			})
 
 			const finish = Effect.fnUntraced(function* (record: ActivityRecord, now: number) {
-				yield* Effect.ignore(
+				const answer = yield* Effect.result(
 					update(
 						record,
 						{
@@ -399,14 +444,18 @@ export class Push extends Context.Service<
 						},
 						10,
 						now
-					),
-					{log: 'Warn', message: 'An activity was not ended'}
+					)
 				)
+				if (Result.isFailure(answer)) {
+					yield* Effect.logWarning('An activity was not ended', Cause.fail(answer.failure))
+					return
+				}
+				if (retryable(answer.success)) return
 				if (record.channel !== undefined) yield* deleteChannel({...record, channel: record.channel})
 				yield* save(current => ({
 					...current,
 					activities: Array.map(current.activities, item =>
-						Boolean.match(sameLeg(item, record), {onFalse: () => item, onTrue: () => ({...item, endedAt: now})})
+						Boolean.match(sameActivity(item, record), {onFalse: () => item, onTrue: () => ({...item, endedAt: now})})
 					)
 				}))
 			})
@@ -430,12 +479,7 @@ export class Push extends Context.Service<
 				yield* save(current => ({
 					...current,
 					activities: Array.map(current.activities, item => {
-						if (
-							!sameLeg(item, record) ||
-							item.claimedAt !== record.claimedAt ||
-							item.token !== record.token ||
-							item.channel !== record.channel
-						) {
+						if (!sameActivity(item, record)) {
 							return item
 						}
 						if (deadToken(answer)) return {...item, endedAt: now}
@@ -610,7 +654,7 @@ export class Push extends Context.Service<
 							...Array.filter(current.activities, item => !sameLeg(item, input)),
 							// A rotated token keeps the activity's start, which bounds its eight hours, and the state it last showed.
 							Option.match(
-								Array.findFirst(current.activities, item => sameLeg(item, input)),
+								Array.findFirst(current.activities, item => sameLeg(item, input) && item.endedAt === undefined),
 								{onNone: () => ({...input, claimedAt: now}), onSome: existing => ({...existing, ...input})}
 							)
 						]

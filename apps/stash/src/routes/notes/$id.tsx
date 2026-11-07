@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -36,9 +36,11 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
+import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
+import {FailureContent} from '@deslop/components-mobile/screens'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
@@ -49,8 +51,9 @@ import {
 	EmptyTitle
 } from '@deslop/components-mobile/ui/empty'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
+import {AuthError} from '@deslop/runtime/auth/schema'
 
-import {Byline} from '#lib/components.tsx'
+import {Byline, ReadError} from '#lib/components.tsx'
 import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
@@ -151,9 +154,27 @@ function Placeholder() {
 	)
 }
 
+function FullBody(props: {note: NoteItem}) {
+	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
+	const reload = useAtomRefresh(noteAtom(props.note))
+	return (
+		<VStack alignment="leading" spacing={space[4]}>
+			{AsyncResult.isFailure(full) && <ReadError cause={full.cause} title="Note body unavailable" onRetry={reload} />}
+			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
+				Option.match(AsyncResult.value(full), {
+					onNone: () => undefined,
+					onSome: note => note.body !== undefined && <Body text={note.body} />
+				})}
+		</VStack>
+	)
+}
+
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
+	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
+		return <FailureContent cause={full.cause} name="stash" onRetry={reload} tint={primary} />
+	}
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
 			<VStack
@@ -197,18 +218,9 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 					Match.orElse(() => (
 						<VStack alignment="leading" spacing={space[4]}>
 							<Text modifiers={prose}>{props.note.summary}</Text>
-							{AsyncResult.match(full, {
-								onFailure: () => (
-									<Button
-										label="Load the Notes Again"
-										systemImage="arrow.clockwise"
-										onPress={reload}
-										modifiers={[buttonStyle('glass')]}
-									/>
-								),
-								onInitial: () => <Placeholder />,
-								onSuccess: loaded => loaded.value.body !== undefined && <Body text={loaded.value.body} />
-							})}
+							<Suspense fallback={<Placeholder />}>
+								<FullBody note={props.note} />
+							</Suspense>
 						</VStack>
 					))
 				)}
@@ -232,8 +244,13 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
+	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(notesAtom)
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} tint={primary} />
+	}
 	return Option.match(
-		Array.findFirst(useAtomSuspense(notesAtom).value, item => item.id === props.id),
+		Array.findFirst(loaded.value, item => item.id === props.id),
 		{
 			onNone: () => (
 				<Empty

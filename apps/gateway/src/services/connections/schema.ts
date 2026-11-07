@@ -28,12 +28,14 @@ export const ServerParams = Schema.Struct({id: ServerId})
 
 export type Metadata = typeof Metadata.Type
 export const Metadata = Schema.Struct({
-	authorization_endpoint: Schema.NonEmptyString,
+	authorization_endpoint: ServerUrl,
 	authorization_response_iss_parameter_supported: Schema.optionalKey(Schema.Boolean),
 	client_id_metadata_document_supported: Schema.optionalKey(Schema.Boolean),
-	issuer: Schema.NonEmptyString,
-	registration_endpoint: Schema.optionalKey(Schema.NonEmptyString),
-	token_endpoint: Schema.NonEmptyString
+	code_challenge_methods_supported: Schema.optionalKey(Schema.Array(Schema.String)),
+	issuer: ServerUrl,
+	registration_endpoint: Schema.optionalKey(ServerUrl),
+	response_types_supported: Schema.optionalKey(Schema.Array(Schema.String)),
+	token_endpoint: ServerUrl
 })
 
 export type Registration = typeof Registration.Type

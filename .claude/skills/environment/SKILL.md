@@ -31,11 +31,7 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 
 - **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it only through the project's `preview` script from the worktree root, which prints the stable HTTPS URL and replaces the previous run; the repository's own preview command or a background task bypasses the unit and dies with the turn.
 
-  ```bash
-  root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-  id=$(sqlite3 -readonly ~/.t3/userdata/statev2.sqlite "SELECT project_id FROM projection_projects WHERE workspace_root = '$root' AND deleted_at IS NULL")
-  bash -c "$(jq -r --arg id "$id" '.projectSettingsOverrides[$id].defaultProjectScripts[] | select(.id == "preview").command' ~/.t3/userdata/settings.json)"
-  ```
+  Read the saved command with `t3_project_read`. Deslop selects a changed web app, or Portfolio; set `PREVIEW_APP=<app>` when checking another app in the same change. Invalid selections leave the existing preview running.
 
 - **Share** only after the URL loads sign-in, assets and API calls.
 - **Keep** it running: a turn that touched an app ends with that app's preview up on the latest code, started if it wasn't; where the app has no worktree preview, use its scratch run.

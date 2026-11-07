@@ -24,7 +24,9 @@ import {SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Alert, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Button} from '@deslop/components-web/ui/button'
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '@deslop/components-web/ui/popover'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
@@ -464,31 +466,23 @@ function StructuredText(props: {text: string; tick: number}) {
 }
 
 function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: boolean}) {
-	const [open, setOpen] = useState(false)
 	return (
-		<details
-			className={cn('text-xs', props.compact !== true && 'relative mt-1')}
-			onToggle={event => setOpen(event.currentTarget.open)}
-		>
-			<summary
+		<Collapsible className={cn('text-xs', props.compact !== true && 'relative mt-1')}>
+			<CollapsibleTrigger
+				render={<Button variant="ghost" size="sm" />}
 				className={cn(
-					'text-muted-foreground cursor-pointer',
-					props.compact === true &&
-						'absolute top-0 right-0 z-10 flex size-11 list-none items-center justify-center [&::-webkit-details-marker]:hidden'
+					'group/disclosure text-muted-foreground max-w-full justify-start text-left whitespace-normal',
+					Boolean.match(props.compact === true, {
+						onFalse: () => 'h-auto px-0 py-1',
+						onTrue: () => 'absolute top-0 right-0 z-10 size-11 justify-center'
+					})
 				)}
 			>
-				{Boolean.match(props.compact === true, {
-					onFalse: () => props.title,
-					onTrue: () => (
-						<>
-							<ChevronDown className={cn('size-4', open && 'rotate-180')} />
-							<span className="sr-only">{props.title}</span>
-						</>
-					)
-				})}
-			</summary>
-			{open && <div className="space-y-3 py-2">{props.children}</div>}
-		</details>
+				<ChevronDown className="size-4 shrink-0 group-data-panel-open/disclosure:rotate-180" />
+				<span className={cn('min-w-0', props.compact === true && 'sr-only')}>{props.title}</span>
+			</CollapsibleTrigger>
+			<CollapsibleContent className="space-y-3 py-2">{props.children}</CollapsibleContent>
+		</Collapsible>
 	)
 }
 
@@ -595,10 +589,13 @@ function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
 	const navigate = useContext(Navigation)
 	return (
 		<li>
-			<details>
-				<summary className={cn('cursor-pointer py-1', !props.outcome.ok && 'text-destructive')}>
-					{Boolean.match(props.outcome.ok, {onFalse: () => '✕', onTrue: () => '✓'})} {props.outcome.command._tag}
-				</summary>
+			<RecordDetails
+				title={
+					<span className={cn(!props.outcome.ok && 'text-destructive')}>
+						{Boolean.match(props.outcome.ok, {onFalse: () => '✕', onTrue: () => '✓'})} {props.outcome.command._tag}
+					</span>
+				}
+			>
 				<div className="py-2 text-xs">
 					<DataValue value={argumentsOf(props.outcome.command)} tick={props.tick} />
 				</div>
@@ -616,7 +613,7 @@ function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
 				<div className="pb-2 leading-relaxed break-words">
 					<StructuredText text={props.outcome.text} tick={props.tick} />
 				</div>
-			</details>
+			</RecordDetails>
 		</li>
 	)
 }
@@ -625,7 +622,7 @@ function Round(props: {entry: Entry}) {
 	const navigate = useContext(Navigation)
 	const summary = roundSummary(props.entry)
 	return (
-		<li className="relative border-t py-2 [&:has(>details[open])_[data-preview]]:hidden">
+		<li className="relative border-t py-2 [&:has(>[data-slot=collapsible][data-open])_[data-preview]]:hidden">
 			<div className="relative flex items-start gap-2 pr-10">
 				<Button
 					variant="ghost"
@@ -661,23 +658,21 @@ function Round(props: {entry: Entry}) {
 			<RecordDetails compact title="Core details">
 				<StructuredText text={props.entry.text} tick={props.entry.tick} />
 				{Array.isReadonlyArrayNonEmpty(props.entry.notices) && (
-					<details>
-						<summary className="text-muted-foreground cursor-pointer text-xs">Received updates</summary>
+					<RecordDetails title="Received updates">
 						<ul className="flex flex-col gap-1 py-2">
 							{Array.map(props.entry.notices, (notice, index) => (
 								<Notice key={index} text={notice} tick={props.entry.observed ?? props.entry.tick} />
 							))}
 						</ul>
-					</details>
+					</RecordDetails>
 				)}
 				{Option.getOrUndefined(
 					Option.map(Option.filter(Option.fromUndefinedOr(props.entry.reasoning), String.isNonEmpty), reasoning => (
-						<details>
-							<summary className="text-muted-foreground cursor-pointer">Reasoning</summary>
+						<RecordDetails title="Reasoning">
 							<p className="text-muted-foreground mt-2 leading-relaxed whitespace-pre-wrap">
 								<References text={String.trim(reasoning)} tick={props.entry.tick} />
 							</p>
-						</details>
+						</RecordDetails>
 					))
 				)}
 				{Array.isReadonlyArrayNonEmpty(props.entry.commands) && (
@@ -687,14 +682,11 @@ function Round(props: {entry: Entry}) {
 						))}
 					</ul>
 				)}
-				<details>
-					<summary className="text-muted-foreground cursor-pointer">
-						Original observation · active request may be abbreviated
-					</summary>
+				<RecordDetails title="Original observation · active request may be abbreviated">
 					<div className="mt-2 text-xs">
 						<StructuredText text={props.entry.observation} tick={props.entry.observed ?? props.entry.tick} />
 					</div>
-				</details>
+				</RecordDetails>
 			</RecordDetails>
 		</li>
 	)
@@ -1642,51 +1634,56 @@ function Spend() {
 				Option.map(AsyncResult.value(useAtomValue(usageAtom)), ledger => spendOf(ledger, USAGE_MODE)),
 				total => total.reported > 0
 			),
-			total => (
-				<details className="relative shrink-0" aria-label="Total model spend">
-					<summary
-						className="bg-popover flex min-h-11 cursor-pointer list-none items-center rounded-md px-2 text-xs tabular-nums [&::-webkit-details-marker]:hidden"
-						title="Total reported model spend"
-					>
-						${total.cost.toLocaleString('en', {maximumFractionDigits: 4, minimumFractionDigits: 2})}
-					</summary>
-					<div className="bg-popover absolute top-12 right-0 w-64 space-y-2 border p-3 text-xs">
-						<p className="font-medium">{fieldName(USAGE_MODE)} · reported spend</p>
-						<div className="flex h-2 gap-px overflow-hidden rounded-sm" aria-label="Cost by model">
+			total => {
+				const price = `$${total.cost.toLocaleString('en', {maximumFractionDigits: 4, minimumFractionDigits: 2})}`
+				return (
+					<Popover>
+						<PopoverTrigger
+							render={<Button variant="ghost" className="bg-popover min-h-11 px-2 font-mono text-xs tabular-nums" />}
+							aria-label={`Total model spend: ${price}`}
+						>
+							{price}
+						</PopoverTrigger>
+						<PopoverContent align="end" className="gap-2">
+							<PopoverTitle>{fieldName(USAGE_MODE)} · reported spend</PopoverTitle>
+							<div className="flex h-2 gap-px overflow-hidden rounded-sm" aria-label="Cost by model">
+								{Array.map(
+									total.models,
+									(model, index) =>
+										model.cost > 0 && (
+											<span
+												key={model.model}
+												className="bg-foreground flex-(--share) opacity-(--strength)"
+												style={{
+													'--share': (model.cost / total.cost) * 100,
+													'--strength': Number.max(0.25, 1 - index * 0.2)
+												}}
+												title={model.model}
+											/>
+										)
+								)}
+							</div>
 							{Array.map(
 								total.models,
-								(model, index) =>
-									model.cost > 0 && (
-										<span
-											key={model.model}
-											className="bg-foreground flex-(--share) opacity-(--strength)"
-											style={{
-												'--share': (model.cost / total.cost) * 100,
-												'--strength': Number.max(0.25, 1 - index * 0.2)
-											}}
-											title={model.model}
-										/>
+								model =>
+									model.reported > 0 && (
+										<div key={model.model} className="flex items-center justify-between gap-2">
+											<span className="truncate">{model.model}</span>
+											<span className="tabular-nums">
+												${model.cost.toLocaleString('en', {maximumFractionDigits: 4})}
+											</span>
+										</div>
 									)
 							)}
-						</div>
-						{Array.map(
-							total.models,
-							model =>
-								model.reported > 0 && (
-									<div key={model.model} className="flex items-center justify-between gap-2">
-										<span className="truncate">{model.model}</span>
-										<span className="tabular-nums">${model.cost.toLocaleString('en', {maximumFractionDigits: 4})}</span>
-									</div>
-								)
-						)}
-						{total.reported < total.calls && (
-							<p className="text-muted-foreground">
-								Cost reported for {total.reported} of {total.calls} requests. Unreported costs aren’t included.
-							</p>
-						)}
-					</div>
-				</details>
-			)
+							{total.reported < total.calls && (
+								<p className="text-muted-foreground">
+									Cost reported for {total.reported} of {total.calls} requests. Unreported costs aren’t included.
+								</p>
+							)}
+						</PopoverContent>
+					</Popover>
+				)
+			}
 		)
 	)
 }

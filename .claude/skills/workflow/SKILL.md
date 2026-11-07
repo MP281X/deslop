@@ -21,8 +21,6 @@ Build → prove the actual journey with the verification skill → draft push, p
 
 Bounded, independent work that saves time or adds judgment. Give the question, the user's constraints, raw evidence and an open question, without your verdict or summary. Choose a different family or lens, with no main transcript or other reports. A reviewer also gets immutable revisions and the verification skill. Keep parent and child investigations disjoint.
 
-**Models.** DeepSeek for bulk read-only work; Codex gpt-6.1-sol for UI review, contracts and CI; Opus for design, architecture and final verification; Sonnet, Haiku and Luna for bounded read-only work.
-
 **Council.** Only for a hard-to-reverse decision with split evidence: two strong models with different lenses, each given the same question, evidence and criteria. Blind proposals first; hostile review of the draft second; no third round. Synthesize a decision-axis table with a dissent record — `axis | options | who proposed | evidence | adopted or rejected, with reason` — and choose; never a majority vote. Otherwise decide, or ask one reviewer.
 
 ## References

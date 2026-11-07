@@ -8,13 +8,14 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {layerChapters} from '#services/chapters/service.ts'
+import {Chapters} from '#services/chapters/service.ts'
 
 CliRuntime.runApp({
 	icon,
 	routes: pipe(
 		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(RpcSerialization.layerJson),
-		Layer.provide(layerChapters)
+		Layer.provide(Chapters.layer),
+		Layer.provide(ServerRuntime.layerDataStore)
 	)
 })

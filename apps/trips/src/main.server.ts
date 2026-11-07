@@ -11,7 +11,7 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Extractor} from '#services/bookings/lib/extraction.ts'
 import {Places} from '#services/bookings/lib/places.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {Push} from '#services/push/service.ts'
+import {Push, layerApnsClient} from '#services/push/service.ts'
 import {Tracker} from '#services/tracking/service.ts'
 
 CliRuntime.runApp({
@@ -19,7 +19,7 @@ CliRuntime.runApp({
 	routes: pipe(
 		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(RpcSerialization.layerJson),
-		Layer.provide(Layer.mergeAll(Push.layer, Tracker.layer)),
+		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracker.layer)),
 		Layer.provide(Bookings.layer),
 		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer)),
 		// One data folder for the bookings, the push tokens and the airport list.

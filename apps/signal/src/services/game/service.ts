@@ -21,6 +21,8 @@ import {
 	Semaphore,
 	Stream,
 	String,
+	SubscriptionRef,
+	Trie,
 	pipe
 } from 'effect'
 
@@ -51,6 +53,7 @@ import {GENERATOR} from '#services/world/lib/utils.ts'
 const PAGE = 20
 // A replay starts from the latest checkpoint before it, one every few rounds.
 const CHECKPOINT = 4
+const GAME_PREFIXES = ['thread/', 'history/', 'activity/', 'local/', 'journal/', 'checkpoint/']
 
 const RunStates = Machine.state({states: {Failed: {fields: {message: Schema.String}}, Paused: {}, Running: {}}})
 
@@ -118,6 +121,7 @@ export class Game extends Context.Service<
 	Game,
 	{
 		readonly status: Stream.Stream<RunState>
+		readonly revisions: Stream.Stream<number>
 		readonly control: (running: boolean) => Effect.Effect<RunState, GameError>
 		readonly join: Stream.Stream<Frame>
 		// The world as it was from a tick on, played at a multiple of real time (0 holds still), up to the live tick.
@@ -125,7 +129,7 @@ export class Game extends Context.Service<
 		// A team's thread, newest last: the rounds before `before`, or the latest.
 		readonly thread: (team: number, before: Option.Option<number>) => Effect.Effect<Entry[], GameError>
 		readonly timeline: Effect.Effect<Timeline>
-		readonly usage: Effect.Effect<UsageLedger, GameError>
+		readonly usage: Stream.Stream<UsageLedger, GameError>
 		readonly history: (
 			actor: number | 'all',
 			before: Option.Option<number>,
@@ -138,6 +142,7 @@ export class Game extends Context.Service<
 		Effect.gen(function* () {
 			const initiallyRunning = (yield* pipe(Config.String('SIGNAL_RUN'), Config.withDefault('paused'))) === 'running'
 			const kv = yield* KeyValueStore.KeyValueStore
+			const revision = yield* SubscriptionRef.make(0)
 			const worlds = KeyValueStore.toSchemaStore(kv, Saved)
 			const entries = KeyValueStore.toSchemaStore(kv, Entry)
 			const journals = KeyValueStore.toSchemaStore(kv, Journal)
@@ -234,9 +239,11 @@ export class Game extends Context.Service<
 			const thinking = MutableHashMap.empty<number, {entry: Entry; fiber: Fiber.Fiber<Thought, GameError>}>()
 			const recent = MutableHashMap.empty<number, Entry[]>()
 			const threadKeys = MutableRef.make(
-				Array.sort(
-					Array.filter(yield* kv.keys, key => String.startsWith('thread/')(key)),
-					String.Order
+				Trie.fromIterable(
+					Array.map(
+						Array.filter(yield* kv.keys, key => String.startsWith('thread/')(key)),
+						key => [key, true] as const
+					)
 				)
 			)
 			const local = MutableHashMap.empty<number, {fiber: Fiber.Fiber<LocalChoice, GameError>; request: LocalDecision}>()
@@ -348,6 +355,7 @@ export class Game extends Context.Service<
 					// Every canonical page and reference is durable before the one visible frontier advances.
 					yield* indexes.set('history/index', index)
 					MutableRef.set(historyIndex, index)
+					if (index['@through'] !== committed['@through']) yield* SubscriptionRef.update(revision, value => value + 1)
 					if (Array.isArrayNonEmpty(pending)) sim.acknowledge(Option.getOrThrow(Array.last(pending)).id)
 				},
 				Effect.mapError(cause =>
@@ -380,9 +388,8 @@ export class Game extends Context.Service<
 					entry.team,
 					Array.takeRight([...Option.getOrElse(MutableHashMap.get(recent, entry.team), () => []), entry], 60)
 				)
-				MutableRef.update(threadKeys, keys =>
-					Array.sort(Array.dedupe([...keys, keyOf(entry.team, entry.round)]), String.Order)
-				)
+				MutableRef.update(threadKeys, Trie.insert(keyOf(entry.team, entry.round), true))
+				yield* SubscriptionRef.update(revision, value => value + 1)
 			})
 
 			// The world as a boundary leaves it, for replays to start from; the one six hours (720 rounds) older goes unless it is one of every forty kept for good.
@@ -403,11 +410,12 @@ export class Game extends Context.Service<
 				round: number,
 				pending: {entry: Entry; fiber: Fiber.Fiber<Thought, GameError>}
 			) {
-				const exit = pending.fiber.pollUnsafe()
-				if (exit === undefined && round - pending.entry.round < 3) return Array.empty<Command>()
+				const polled = pending.fiber.pollUnsafe()
+				if (polled === undefined && round - pending.entry.round < 3) return Array.empty<Command>()
 				MutableHashMap.remove(thinking, team)
 				yield* Fiber.interrupt(pending.fiber)
-				if (exit === undefined) {
+				const exit = polled ?? (yield* Fiber.await(pending.fiber))
+				if (Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)) {
 					sim.setStatus(team, 'failed')
 					yield* record({
 						...pending.entry,
@@ -705,15 +713,20 @@ export class Game extends Context.Service<
 						entry => entry[1].fiber.pollUnsafe() === undefined
 					)) {
 						yield* Fiber.interrupt(pending[1].fiber)
-						MutableHashMap.remove(thinking, pending[0])
-						sim.setStatus(pending[0], 'waiting')
-						yield* record({
-							...pending[1].entry,
-							// The current boundary can already hold the preceding completed answer.
-							round: Math.floor(sim.tick() / ROUND) + 1,
-							text: 'World paused; unfinished decision cancelled.',
-							tick: sim.tick()
-						})
+						const exit = yield* Fiber.await(pending[1].fiber)
+						if (Exit.isFailure(exit)) {
+							MutableHashMap.remove(thinking, pending[0])
+							if (Cause.hasInterrupts(exit.cause)) {
+								sim.setStatus(pending[0], 'waiting')
+								yield* record({
+									...pending[1].entry,
+									// The current boundary can already hold the preceding completed answer.
+									round: Math.floor(sim.tick() / ROUND) + 1,
+									text: 'World paused; unfinished decision cancelled.',
+									tick: sim.tick()
+								})
+							}
+						}
 					}
 					// Completed answers stay pending; cancelled local calls become recorded failures on resume.
 					for (const pending of MutableHashMap.values(local)) yield* Fiber.interrupt(pending.fiber)
@@ -733,9 +746,19 @@ export class Game extends Context.Service<
 							if (requested) {
 								if (!MutableRef.get(prepared)) {
 									if (Option.isNone(restored)) {
-										yield* kv.clear
+										yield* Effect.forEach(
+											Array.filter(
+												yield* kv.keys,
+												key =>
+													key === 'world' ||
+													key === 'timeline' ||
+													Array.some(GAME_PREFIXES, prefix => String.startsWith(prefix)(key))
+											),
+											key => kv.remove(key),
+											{concurrency: 1, discard: true}
+										)
 										MutableRef.set(historyIndex, {})
-										MutableRef.set(threadKeys, [])
+										MutableRef.set(threadKeys, Trie.empty<true>())
 										MutableHashMap.clear(recent)
 										MutableRef.set(timeline, {live: sim.tick(), marks: [], start: sim.tick()})
 									}
@@ -744,6 +767,7 @@ export class Game extends Context.Service<
 									const anchor = Math.floor(sim.tick() / ROUND / CHECKPOINT) * CHECKPOINT
 									if (Option.isNone(yield* worlds.get(replayKey('checkpoint', anchor)))) yield* checkpoint(anchor)
 									MutableRef.set(prepared, true)
+									yield* SubscriptionRef.update(revision, value => value + 1)
 								}
 								MutableRef.set(started, {at: yield* Clock.currentTimeMillis, tick: sim.tick()})
 								yield* process.send({_tag: 'Run'})
@@ -969,6 +993,7 @@ export class Game extends Context.Service<
 							)
 						})
 					),
+				revisions: SubscriptionRef.changes(revision),
 				status: pipe(
 					process.changes,
 					Stream.mapEffect(() => state),
@@ -986,8 +1011,8 @@ export class Game extends Context.Service<
 							yield* Effect.forEach(
 								Array.takeRight(
 									Array.filter(
-										MutableRef.get(threadKeys),
-										key => String.startsWith(`thread/${team}/`)(key) && key < keyOf(team, last)
+										Array.fromIterable(Trie.keysWithPrefix(MutableRef.get(threadKeys), `thread/${team}/`)),
+										key => key < keyOf(team, last)
 									),
 									PAGE
 								),

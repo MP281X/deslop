@@ -1,7 +1,6 @@
-/* oxlint-disable effecttsgo/process-env -- Expo's Metro serializer reads its tree-shaking flags only from process.env. */
+/* oxlint-disable effecttsgo/process-env -- Expo reads its release optimization flags from process.env. */
 import {getDefaultConfig} from 'expo/metro-config'
 
-// Tree shaking drops the Effect modules the app never reaches, about a fifth of its release JavaScript.
 process.env['EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH'] = '1'
 process.env['EXPO_UNSTABLE_TREE_SHAKING'] = '1'
 

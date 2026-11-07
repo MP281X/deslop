@@ -12,6 +12,7 @@ import {
 	Layer,
 	MutableList,
 	Option,
+	Queue,
 	Random,
 	Schema,
 	Stream,
@@ -41,6 +42,165 @@ import type {LocalDecision} from '#services/game/schema.ts'
 import {Game} from '#services/game/service.ts'
 
 it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({}))))(test => {
+	test.effect(
+		'pages archived rounds in order without mixing teams with overlapping prefixes',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const entries = KeyValueStore.toSchemaStore(kv, Entry)
+			for (const team of [1, 10]) {
+				for (const round of Array.reverse(Array.range(1, 45))) {
+					yield* entries.set(`thread/${team}/${String.padStart(9, '0')(`${round}`)}`, {
+						commands: [],
+						notices: [],
+						observation: '',
+						observed: round * 600,
+						round,
+						status: 'done',
+						team,
+						text: '',
+						tick: round * 600
+					})
+				}
+			}
+			const game = Context.get(
+				yield* Layer.build(
+					Layer.provide(
+						Game.layer,
+						Layer.succeed(
+							Core,
+							Core.of({
+								choose: () => Effect.never,
+								decide: () => Effect.never,
+								recall: () => Effect.succeed(''),
+								usage: Stream.succeed({groups: {}})
+							})
+						)
+					)
+				),
+				Game
+			)
+			for (const team of [1, 10]) {
+				const latest = yield* game.thread(team, Option.some(46))
+				assert.deepStrictEqual(
+					Array.map(latest, entry => entry.round),
+					Array.range(26, 45)
+				)
+				assert.isTrue(Array.every(latest, entry => entry.team === team))
+				assert.deepStrictEqual(
+					Array.map(yield* game.thread(team, Option.some(21)), entry => entry.round),
+					Array.range(1, 20)
+				)
+			}
+		})
+	)
+
+	test.effect(
+		'keeps an answer that completes while pause is interrupting another team',
+		Effect.fnUntraced(function* () {
+			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
+			const interrupted = yield* Queue.unbounded<void>()
+			const completed = yield* Queue.unbounded<void>()
+			const release = yield* Deferred.make<void>()
+			const answer = yield* Deferred.make<Thought>()
+			const game = Context.get(
+				yield* Layer.build(
+					pipe(
+						Game.layer,
+						Layer.provide(
+							Layer.succeed(
+								Core,
+								Core.of({
+									choose: () => Effect.never,
+									decide: (_seed, team) => {
+										if (team === 0) {
+											return pipe(
+												Effect.never,
+												Effect.onInterrupt(() =>
+													Effect.andThen(Queue.offer(interrupted, undefined), Deferred.await(release))
+												)
+											)
+										}
+										if (team === 1) {
+											return pipe(
+												Deferred.await(answer),
+												Effect.onExit(() => Queue.offer(completed, undefined))
+											)
+										}
+										return Effect.never
+									},
+									recall: () => Effect.succeed(''),
+									usage: Stream.succeed({groups: {}})
+								})
+							)
+						),
+						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({SIGNAL_LOCAL_DECISIONS_PER_SECOND: '0'})))
+					)
+				),
+				Game
+			)
+			const updates = yield* Queue.unbounded<readonly Entry[]>()
+			const entries = KeyValueStore.toSchemaStore(kv, Entry)
+			yield* Effect.forkScoped(
+				pipe(
+					game.revisions,
+					Stream.mapEffect(
+						Effect.fnUntraced(function* () {
+							const rows = yield* game.thread(1, Option.some(4))
+							for (const row of rows) {
+								assert.deepStrictEqual(
+									yield* entries.get(`thread/${row.team}/${String.padStart(9, '0')(`${row.round}`)}`),
+									Option.some(row)
+								)
+							}
+							return rows
+						})
+					),
+					Stream.runForEach(value => Queue.offer(updates, value))
+				)
+			)
+			assert.deepStrictEqual(yield* Queue.take(updates), [])
+			yield* Effect.ensuring(
+				Effect.gen(function* () {
+					yield* game.control(true)
+					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 60})
+					const paused = yield* Effect.forkChild(game.control(false))
+					yield* Queue.take(interrupted)
+					yield* Deferred.succeed(answer, {
+						commands: [{_tag: 'Catalog', section: 'milestones'}],
+						invalid: [],
+						text: 'Completed during pause.'
+					})
+					yield* Queue.take(completed)
+					yield* Deferred.succeed(release, undefined)
+					yield* Fiber.join(paused)
+					assert.isTrue(Option.isNone(yield* entries.get('thread/1/000000003')))
+					yield* game.control(true)
+					yield* Effect.repeat(TestClock.adjust('1 second'), {times: 30})
+					yield* game.control(false)
+					const applied = Option.getOrThrow(yield* entries.get('thread/1/000000003'))
+					assert.strictEqual(applied.status, 'done')
+					assert.include(applied.text, 'Completed during pause.')
+					assert.strictEqual(applied.commands[0]?.command._tag, 'Catalog')
+					const pushed = Option.getOrThrow(
+						yield* Stream.runHead(
+							pipe(
+								Stream.fromQueue(updates),
+								Stream.filter(rows => Array.some(rows, row => row.round === 3 && row.status === 'done'))
+							)
+						)
+					)
+					assert.deepStrictEqual(
+						Array.findFirst(pushed, row => row.round === 3),
+						Option.some(applied)
+					)
+				}),
+				Deferred.succeed(release, undefined)
+			)
+		})
+	)
+
 	test.effect(
 		'includes unexplored wildlife in live and frozen spectator frames without revealing it to agents',
 		Effect.fnUntraced(function* () {
@@ -73,7 +233,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									choose: () => Effect.die('No model calls allowed'),
 									decide: () => Effect.die('No model calls allowed'),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						)
@@ -112,7 +272,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 						}
 					}),
 					recall: () => Effect.succeed(''),
-					usage: Effect.succeed({groups: {}})
+					usage: Stream.succeed({groups: {}})
 				})
 			)
 			const layer = pipe(
@@ -166,7 +326,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 							choose: () => Effect.never,
 							decide: () => Effect.never,
 							recall: () => Effect.succeed(''),
-							usage: Effect.succeed({groups: {}})
+							usage: Stream.succeed({groups: {}})
 						})
 					)
 				),
@@ -216,7 +376,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									}),
 									decide: () => Effect.succeed({commands: [], invalid: [], text: ''}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						)
@@ -276,10 +436,12 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 	)
 
 	test.effect(
-		'refuses frontend starts after a failed initial save without inference or overwriting the failure',
+		'refuses frontend starts after a failed initial save without inference or erasing usage accounting',
 		Effect.fnUntraced(function* () {
 			const kv = yield* KeyValueStore.KeyValueStore
 			yield* kv.clear
+			yield* kv.set('usage', 'retained accounting')
+			yield* kv.set('journal/0/obsolete', 'obsolete world data')
 			const calls = MutableList.make<number>()
 			const game = Context.get(
 				yield* Layer.build(
@@ -296,7 +458,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 											return {commands: [], invalid: [], text: ''}
 										}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),
@@ -327,7 +489,8 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			assert.strictEqual(state.running, false)
 			assert.include(state.problem ?? '', 'world could not be saved')
 			assert.strictEqual(calls.length, 0)
-			assert.deepStrictEqual(yield* kv.keys, [])
+			assert.deepStrictEqual(yield* kv.keys, ['usage'])
+			assert.strictEqual(yield* kv.get('usage'), 'retained accounting')
 		})
 	)
 
@@ -336,6 +499,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 		Effect.fnUntraced(function* () {
 			const calls = MutableList.make<number>()
 			const kv = yield* KeyValueStore.KeyValueStore
+			yield* kv.clear
 			const strategy = Layer.succeed(
 				Core,
 				Core.of({
@@ -350,7 +514,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 							return {commands: [], invalid: [], text: ''}
 						}),
 					recall: () => Effect.succeed(''),
-					usage: Effect.succeed({groups: {}})
+					usage: Stream.succeed({groups: {}})
 				})
 			)
 			const game = Context.get(yield* Layer.build(pipe(Game.layer, Layer.provide(strategy))), Game)
@@ -422,7 +586,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 										return yield* GameError.make({message: 'Offline provider failure.'})
 									}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),
@@ -535,7 +699,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									choose: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
 									decide: () => Effect.fail(GameError.make({message: 'No inference in history queries.'})),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						)
@@ -588,7 +752,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 			const strategy = pipe(
 				Layer.succeed(
 					Core,
-					Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Effect.succeed({groups: {}})})
+					Core.of({choose: deny, decide: deny, recall: () => Effect.succeed(''), usage: Stream.succeed({groups: {}})})
 				),
 				Layer.merge(Layer.succeed(Random.Random, {nextDoubleUnsafe: () => 42 / 2_000_000_001, nextIntUnsafe: () => 42}))
 			)
@@ -665,7 +829,7 @@ it.layer(Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvi
 									choose: () => Effect.fail(GameError.make({message: 'No local inference in this fixture.'})),
 									decide: () => Effect.succeed({commands: [], invalid: [], text: 'A considered response.'}),
 									recall: () => Effect.succeed(''),
-									usage: Effect.succeed({groups: {}})
+									usage: Stream.succeed({groups: {}})
 								})
 							)
 						),

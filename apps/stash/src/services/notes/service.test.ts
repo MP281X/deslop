@@ -12,7 +12,9 @@ import {
 	Layer,
 	Number,
 	Option,
+	PlatformError,
 	Predicate,
+	Queue,
 	Ref,
 	Schema,
 	Stream,
@@ -21,6 +23,8 @@ import {
 } from 'effect'
 
 import {TestClock} from 'effect/testing'
+
+import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
@@ -67,6 +71,7 @@ const open = Effect.fnUntraced(function* (options: {
 	const context = yield* Layer.build(
 		pipe(
 			Notes.layer(options.directory),
+			Layer.provide(layerKeyValueStore(options.directory)),
 			Layer.provide(Layer.succeed(Sources, options.sources)),
 			Layer.provide(Layer.succeed(Media, options.media ?? noVideo)),
 			Layer.provide(Layer.succeed(Organizer, options.organizer))
@@ -106,6 +111,35 @@ function counting(calls: Ref.Ref<number>) {
 }
 
 it.layer(NodeServices.layer)('Notes', test => {
+	test.effect(
+		'pushes matching full-text search results through organization and removal without changing the query',
+		Effect.fnUntraced(function* () {
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					organize: () =>
+						Effect.succeed({
+							body: 'A secret ingredient.',
+							definitions: [],
+							screenText: '',
+							summary: '',
+							tags: [],
+							title: 'Soup',
+							topics: ''
+						})
+				}),
+				sources: recipe
+			})
+			const updates = yield* Queue.unbounded<readonly string[]>()
+			yield* Effect.forkChild(Stream.runForEach(notes.search({query: 'secret'}), ids => Queue.offer(updates, ids)))
+			assert.deepStrictEqual(yield* Queue.take(updates), [])
+			yield* notes.capture({id: IDS[0], text: 'https://example.com/soup'})
+			assert.deepStrictEqual(yield* Queue.take(updates), [IDS[0]])
+			yield* notes.remove({id: IDS[0]})
+			assert.deepStrictEqual(yield* Queue.take(updates), [])
+		})
+	)
+
 	test.effect(
 		'saves the original first, tags it once, and keeps the result across a restart',
 		Effect.fnUntraced(function* () {
@@ -668,6 +702,39 @@ it.layer(NodeServices.layer)('Notes', test => {
 		})
 	)
 
+	test.effect(
+		'cleans up a finished upload when moving it into place fails',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			const notes = yield* Effect.provideService(
+				open({directory, organizer: noKey, sources: recipe}),
+				FileSystem.FileSystem,
+				{
+					...fs,
+					rename: (from, to) => {
+						if (String.endsWith('.partial')(from)) {
+							return Effect.fail(
+								PlatformError.systemError({
+									_tag: 'PermissionDenied',
+									method: 'rename',
+									module: 'FileSystem',
+									pathOrDescriptor: from
+								})
+							)
+						}
+						return fs.rename(from, to)
+					}
+				}
+			)
+			assert.instanceOf(
+				yield* Effect.flip(notes.captureFile({body: Stream.make(Uint8Array.of(1)), id: IDS[0], type: 'image/jpeg'})),
+				NotesError
+			)
+			assert.isEmpty(yield* fs.readDirectory(`${directory}/images`))
+			assert.isEmpty(yield* settled(notes, () => true))
+		})
+	)
 	test.effect(
 		'leaves no note and no file behind when an upload breaks off',
 		Effect.fnUntraced(function* () {
