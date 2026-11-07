@@ -233,10 +233,6 @@ export function appOrigins(resources: PendingAuthorization['resources']) {
 	return Array.dedupe(Array.map(resources, resource => new URL(resource).origin))
 }
 
-export function timeLabel(time: number) {
-	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({hour: '2-digit', minute: '2-digit'}))
-}
-
 // The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(
 	pipe(

@@ -154,10 +154,9 @@ it('replaces loading rows with honest empty panes', () => {
 	assert.notInclude(html, 'aria-busy="true"')
 })
 
-it('uses square pane-edge selection and independent inset row dividers', () => {
+it('marks the selected row with independent inset row dividers', () => {
 	const html = render(AsyncResult.success(trace))
 	assert.include(html, 'class="list-row" data-selected="true"')
-	assert.include(html, 'data-row="true"')
 	assert.include(html, 'aria-current:bg-accent')
 	assert.notInclude(html, 'animate-grow-in')
 	assert.notInclude(html, 'grid-rows-single')

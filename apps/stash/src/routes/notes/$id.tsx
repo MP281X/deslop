@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Result, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -41,7 +41,7 @@ import {Linking} from 'react-native'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent} from '@deslop/components-mobile/screens'
+import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
@@ -182,7 +182,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
-		return <FailureContent cause={full.cause} name="Note" onRetry={reload} tint={primary} />
+		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
 	}
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
@@ -255,11 +255,12 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 	const regenerate = useAtomSet(regenerateAtom)
 	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(notesAtom)
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="Notes" onRetry={refresh} tint={primary} />
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name="Notes" onRetry={refresh} />
 	}
 	return Option.match(
-		Array.findFirst(loaded.value, item => item.id === props.id),
+		Array.findFirst(shown.success, item => item.id === props.id),
 		{
 			onNone: () => (
 				<Empty

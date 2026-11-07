@@ -191,10 +191,17 @@ it.layer(NodeServices.layer)(test => {
 				yield* Queue.take(env.opened)
 				yield* Queue.offer(env.answers, Effect.succeed([sample]))
 				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				yield* Queue.offer(
-					env.answers,
-					Effect.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
-				)
+				// The first miss is a dropped socket the retry usually heals; the second in a row is an outage the page marks.
+				for (const attempt of [1, 2]) {
+					if (attempt === 2) {
+						yield* TestClock.adjust('1 second')
+						yield* Queue.take(env.opened)
+					}
+					yield* Queue.offer(
+						env.answers,
+						Effect.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
+					)
+				}
 				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
 				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(env.serversAtom))), [sample])
 				yield* TestClock.adjust('1 second')
@@ -207,13 +214,14 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps bar actions outside initial suspension without adding a second heading',
+		'keeps the bar outside initial suspension, its actions in the palette and no second heading',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.initial())
 			assert.include(html, '>gateway</span>')
 			assert.notInclude(html, '>Servers</span>')
-			assert.include(html, 'aria-label="Add server"')
-			assert.include(html, 'aria-label="Copy MCP URL"')
+			assert.include(html, 'aria-label="Search gateway"')
+			assert.notInclude(html, 'aria-label="Add server"')
+			assert.notInclude(html, 'aria-label="Copy MCP URL"')
 			assert.include(html, 'aria-busy="true"')
 			assert.notInclude(html, 'aria-label="No servers"')
 		})

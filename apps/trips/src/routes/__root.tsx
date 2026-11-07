@@ -1,13 +1,13 @@
 import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option} from 'effect'
+import {Array, Option, Result} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureContent, SessionGate} from '@deslop/components-mobile/screens'
+import {BlankScreen, FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {updateAtom} from '@deslop/runtime/mobile'
@@ -21,10 +21,11 @@ import icon from '#routes/icon.png'
 function Destination(props: {onClose: () => void; value: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
 	}
-	return <BookingRoute key={props.value} bookings={loaded.value} id={props.value} onClose={props.onClose} />
+	return <BookingRoute key={props.value} bookings={shown.success} id={props.value} onClose={props.onClose} />
 }
 
 // The app opens on the trip list; an island, a calendar event or a notification opens its booking.

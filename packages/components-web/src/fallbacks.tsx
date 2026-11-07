@@ -42,7 +42,7 @@ export function Error(props: {error: unknown; label?: string; reset: () => void}
 					<WarningCircleIcon aria-hidden className="text-destructive size-4 shrink-0" />
 					<span>{props.label ?? 'Can’t load this view.'}</span>
 				</p>
-				<Button variant="link" size="sm" className="max-sm:min-h-11" onClick={props.reset}>
+				<Button variant="destructive" className="max-sm:h-11" onClick={props.reset}>
 					Retry
 				</Button>
 			</div>

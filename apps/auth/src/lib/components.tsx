@@ -44,8 +44,7 @@ import {
 	minuteAtom,
 	minutesSince,
 	newest,
-	signInLabel,
-	timeLabel
+	signInLabel
 } from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
@@ -193,7 +192,7 @@ function ColumnHead(props: {column: Column; now: number}) {
 						<DropdownMenu>
 							<DropdownMenuTrigger
 								render={
-									<Button variant="ghost" size="icon-sm" className="max-sm:size-11" title={name} aria-label={name} />
+									<Button variant="ghost" size="icon" className="max-sm:size-11" title={name} aria-label={name} />
 								}
 							>
 								<ClientIcon client={props.column.client} />
@@ -245,7 +244,7 @@ function holds(column: Column, row: Row) {
 function Cell(props: {column: Column; row: Row}) {
 	const held = holds(props.column, props.row)
 	return (
-		<TableCell className="w-7 px-0 max-sm:w-14">
+		<TableCell className="w-12 px-0">
 			<span className="flex justify-center">
 				{Boolean.match(held, {
 					onFalse: () => <StatusDot status="off" />,
@@ -405,17 +404,9 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		Array.some(rows, row => holds(column, row))
 	)
 	return (
-		<section className="flex flex-1 flex-col gap-3" aria-label="Apps">
+		<section className="flex max-w-full flex-col gap-3" aria-label="Apps">
 			{/* A waiting sign-in's answer comes first, where the approving phone sees it without scrolling. */}
-			{Option.match(props.pending, {
-				onNone: () => null,
-				onSome: request => (
-					<>
-						<Answer request={request} />
-						<p className="text-muted-foreground font-mono text-xs">open until {timeLabel(request.expiresAt)}</p>
-					</>
-				)
-			})}
+			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(rows, {
 				onEmpty: () => (
 					<Empty>
@@ -426,11 +417,11 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				),
 				onNonEmpty: () => (
 					<div className="flex flex-col gap-3">
-						<Table aria-label="Apps and the clients signed in to them" className="w-auto border-b">
+						<Table aria-label="Apps and the clients signed in to them" className="w-auto">
 							<TableHeader>
-								<TableRow className="max-sm:h-11">
+								<TableRow className="h-11">
 									<TableHead className="bg-background sticky left-0 z-10 w-40">
-										<span className="text-muted-foreground text-xs">App</span>
+										<span className="sr-only">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
 										<ColumnHead key={column.key} column={column} now={data.now} />
@@ -439,7 +430,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							</TableHeader>
 							<TableBody>
 								{Array.map(rows, row => (
-									<TableRow key={row.origin} className="max-sm:h-11">
+									<TableRow key={row.origin} className="h-11">
 										<TableHead scope="row" className="bg-background sticky left-0 z-10 w-40">
 											{Option.match(row.open, {
 												onNone: () => (

@@ -113,8 +113,7 @@ it.layer(NodeServices.layer)(test => {
 				['muted-foreground', '#666666'],
 				['accent', '#f0f0f0'],
 				['border', '#e5e5e5'],
-				['input', '#d9d9d9'],
-				['icon-tile', '#fafafa']
+				['input', '#d9d9d9']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}

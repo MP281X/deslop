@@ -1,13 +1,12 @@
 import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, Schema} from 'effect'
+import {Array, Option, Result, Schema} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {background, tint} from '@expo/ui/swift-ui/modifiers'
-import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobile/screens'
+import {BlankScreen, FailureScreen, LoadingScreen, SessionGate, shownOf} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {updateAtom} from '@deslop/runtime/mobile'
 
@@ -47,10 +46,11 @@ function AppRoutes() {
 		setResumePage(page)
 		setPath([keyOf({number, series})])
 	}
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureScreen cause={loaded.cause} name="Chapters" onRetry={refreshChapters} tint={primary} />
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureScreen cause={shown.failure} name="Chapters" onRetry={refreshChapters} />
 	}
-	const chapters = loaded.value
+	const chapters = shown.success
 
 	return (
 		<Host style={{flex: 1}}>

@@ -9,7 +9,7 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
+import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
@@ -167,7 +167,6 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						render={
 							<Button
 								variant="ghost"
-								data-row
 								id={`server-${props.server.id}`}
 								type="button"
 								aria-label={`${props.server.name}, ${reasonText(props.server)}`}
@@ -260,11 +259,14 @@ function ServersContent() {
 function ServersPane() {
 	return (
 		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-1 flex-col overflow-y-auto">
-			<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
-					<ServersContent />
-				</Suspense>
-			</CatchBoundary>
+			{/* A list of a few servers reads at a glance in a column, not stretched across an ultrawide. */}
+			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-2 pt-2">
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+					<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
+						<ServersContent />
+					</Suspense>
+				</CatchBoundary>
+			</div>
 		</section>
 	)
 }
@@ -400,24 +402,6 @@ function Home() {
 					onFalse: () => [actions, needsYou, all, otherApps('gateway')],
 					onTrue: () => [otherApps('gateway')]
 				})}
-				action={
-					<>
-						<AppBarAction
-							icon={Boolean.match(copied, {
-								onFalse: () => <CopyIcon />,
-								onTrue: () => <CheckIcon className="text-primary" />
-							})}
-							label="Copy MCP URL"
-							onClick={() => copyText()}
-						/>
-						<AppBarAction
-							disabled={!ready}
-							icon={<PlusIcon />}
-							label="Add server"
-							onClick={() => send({_tag: 'Open'})}
-						/>
-					</>
-				}
 			/>
 			<ServersPane />
 			<AddDialog />

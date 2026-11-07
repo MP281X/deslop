@@ -9,7 +9,7 @@ import {RpcClientError} from 'effect/rpc'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import {Alert} from 'react-native'
 
-import {ISSUER, needsSignIn} from '#auth/lib/utils.ts'
+import {ISSUER, needsSignIn, rejected} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
 import {activationsAtom, extra} from '#mobile/client.ts'
 
@@ -63,6 +63,10 @@ export function make(name: string, server: string, storage: Storage) {
 			yield* storage.clear
 			return yield* AuthError.make({message: `Sign in to ${name} again`})
 		}
+		// A proxy still waking after the phone resumes answers 5xx; that is an outage, not a refusal.
+		if (HttpClient.isTransientResponse(response)) {
+			return yield* AuthError.make({error: 'temporarily_unavailable', message: `Sign in to ${name}`})
+		}
 		// Once the server answers, the refresh token it rotated exists only in this response, so nothing stops it being saved.
 		return yield* Effect.uninterruptible(
 			Effect.gen(function* () {
@@ -106,7 +110,8 @@ export function make(name: string, server: string, storage: Storage) {
 					{onNone: () => renewed, onSome: credentials => Effect.succeed(credentials.accessToken)}
 				)
 			),
-			Effect.mapError(cause => AuthError.make({cause, message: `Sign in to ${name}`}))
+			// A dead socket or timeout while the phone resumes is an outage; only a missing or refused credential asks to sign in.
+			rejected(`Sign in to ${name}`)
 		)
 	}
 

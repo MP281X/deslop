@@ -8,7 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
+import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
@@ -34,7 +34,7 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
-import {Progress, ProgressLabel, ProgressValue} from '@deslop/components-web/ui/progress'
+import {Progress, ProgressLabel} from '@deslop/components-web/ui/progress'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
@@ -42,7 +42,16 @@ import {cn} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
-import {inventoryAtom, hideAtom, metricsAtom, minutesAtom, runAtom} from '#lib/utils.ts'
+import {
+	appParam,
+	hideAtom,
+	inventoryAtom,
+	machineParam,
+	metricsAtom,
+	minutesAtom,
+	paneParam,
+	runAtom
+} from '#lib/utils.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {Cores, TimeAxis, UsageChart} from '#routes/(home)/-charts.tsx'
 import {useExpose} from '#routes/(home)/-expose.tsx'
@@ -58,7 +67,6 @@ import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 
 type Pane = 'apps' | 'machine' | 'process'
-type Selection = {id: string; name: string}
 
 const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
 const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
@@ -197,12 +205,12 @@ function failedFor(
 	)
 }
 
-// Equal-width port chips: exposed in the app hue, unexposed neutral; the full endpoint remains in its link and title.
+// Port chips of one least width: exposed filled in the machine's hue, unexposed neutral; a public endpoint reads as its whole hostname.
 function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Badge
 			variant="default"
-			className="bg-primary/22 text-primary hover:bg-primary/30 w-port relative h-5 shrink-0 justify-center border-0 font-mono text-xs tabular-nums max-sm:overflow-visible"
+			className="machine-metric min-w-port relative font-mono tabular-nums max-sm:overflow-visible"
 			render={
 				<a
 					href={props.item.url}
@@ -214,7 +222,7 @@ function Endpoint(props: {item: InventoryItem}) {
 			}
 		>
 			<span aria-hidden className="absolute inset-x-0 -inset-y-3 sm:hidden" />
-			<span className="truncate">
+			<span>
 				{Boolean.match(props.item.publicAccess === true, {
 					onFalse: () => `:${props.item.port}`,
 					onTrue: () => String.replace(/^https:\/\//u, '')(props.item.url)
@@ -244,11 +252,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 						Array.findFirst(props.free, port => port.id === listener.id),
 						{
 							onNone: () => (
-								<Badge
-									key={listener.id}
-									variant="secondary"
-									className="w-port h-5 shrink-0 justify-center border-0 font-mono text-xs tabular-nums"
-								>
+								<Badge key={listener.id} variant="secondary" className="min-w-port font-mono tabular-nums">
 									:{listener.port}
 								</Badge>
 							),
@@ -256,7 +260,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								<Badge
 									key={listener.id}
 									variant="secondary"
-									className="hover:bg-accent w-port relative h-5 shrink-0 cursor-pointer justify-center border-0 font-mono text-xs tabular-nums max-sm:overflow-visible"
+									className="min-w-port relative font-mono tabular-nums max-sm:overflow-visible"
 									render={
 										<button
 											type="button"
@@ -351,7 +355,6 @@ function AppListRow(props: {
 	onSelect: () => void
 	row: ReturnType<typeof workloads>[number]
 	selected: boolean
-	swatches: Record<string, number>
 }) {
 	const [requested, setRequested] = useState(() => Option.none<number>())
 	const processes = props.row.item.processes ?? []
@@ -374,8 +377,11 @@ function AppListRow(props: {
 			entry => entry.name
 		)
 	)
-	const band = Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id))
-	const swatch = Option.flatMap(owner(props.row), id => Record.get(props.swatches, id))
+	// A job is no chart band of its own, so hovering the shared band of small apps never lights the jobs.
+	const band = Option.filter(
+		Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id)),
+		() => !scheduled
+	)
 	const highlighted = Option.exists(band, id => props.hovered === id)
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middle(fullName)})
@@ -426,7 +432,7 @@ function AppListRow(props: {
 						)}
 						<span
 							className={cn(
-								'pointer-events-auto flex w-28 shrink-0 items-center justify-end gap-1 overflow-hidden max-sm:h-11',
+								'pointer-events-auto flex max-w-1/2 shrink-0 items-center justify-end gap-1 max-sm:h-11',
 								props.row.item.scheduled === true && 'text-muted-foreground'
 							)}
 						>
@@ -448,31 +454,17 @@ function AppListRow(props: {
 								)
 							})}
 						</span>
-						{Option.match(swatch, {
-							onNone: () => null,
-							onSome: opacity =>
-								Boolean.match(props.compact, {
-									onFalse: () => (
-										<span
-											aria-hidden
-											className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
-											style={{'--swatch-opacity': opacity}}
-										/>
-									),
-									onTrue: () => null
-								})
-						})}
-						<span
-							title={state}
-							aria-label={state}
-							role="img"
-							className="flex size-3 shrink-0 items-center justify-center"
-						>
-							<StatusDot
-								status={light}
-								className={Boolean.match(light === 'live', {onFalse: () => undefined, onTrue: () => 'bg-(--machine)'})}
-							/>
-						</span>
+						{/* Only a problem earns a dot; a healthy row says nothing more. */}
+						{(light === 'error' || light === 'warning') && (
+							<span
+								title={state}
+								aria-label={state}
+								role="img"
+								className="flex size-3 shrink-0 items-center justify-center"
+							>
+								<StatusDot status={light} />
+							</span>
+						)}
 					</span>
 					<span
 						className={cn(
@@ -577,7 +569,6 @@ function AppsPane(props: {
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
-	swatches: Record<string, number>
 }) {
 	const apps = Array.filter(props.rows, row => row.item.scheduled !== true)
 	const jobs = Array.filter(props.rows, row => row.item.scheduled === true)
@@ -614,7 +605,6 @@ function AppsPane(props: {
 										onSelect={() => props.onSelect(row)}
 										row={row}
 										selected={props.selectedId === row.item.id}
-										swatches={props.swatches}
 									/>
 								))}
 								{Array.isReadonlyArrayNonEmpty(jobs) && (
@@ -634,7 +624,6 @@ function AppsPane(props: {
 										onSelect={() => props.onSelect(row)}
 										row={row}
 										selected={props.selectedId === row.item.id}
-										swatches={props.swatches}
 									/>
 								))}
 							</div>
@@ -697,14 +686,16 @@ function ProcessPane(props: {
 				)}
 				{props.row !== undefined && (
 					<>
-						<span
-							title={state}
-							aria-label={state}
-							role="img"
-							className="flex size-3 shrink-0 items-center justify-center"
-						>
-							<StatusDot status={light} className={cn(light === 'live' && 'bg-(--machine)')} />
-						</span>
+						{(light === 'error' || light === 'warning') && (
+							<span
+								title={state}
+								aria-label={state}
+								role="img"
+								className="flex size-3 shrink-0 items-center justify-center"
+							>
+								<StatusDot status={light} />
+							</span>
+						)}
 						{props.row.item.scheduled === true && (
 							<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
 								{nextRun(props.row.item.next ?? props.now, props.now)}
@@ -877,14 +868,10 @@ function MachinePane(props: {
 									{Boolean.match(storage.total > 0, {
 										onFalse: () => null,
 										onTrue: () => (
-											<div className="machine-metric">
+											// The bar alone says how full the disks are; the figures wait on hover.
+											<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
 												<Progress value={(storage.used / storage.total) * 100}>
 													<ProgressLabel>Disk</ProgressLabel>
-													<ProgressValue>
-														{() =>
-															`${bytes(storage.used)} of ${bytes(storage.total)} · ${size.format((storage.used / storage.total) * 100)}%`
-														}
-													</ProgressValue>
 												</Progress>
 											</div>
 										)
@@ -933,10 +920,6 @@ function MachineStrip(props: {
 				{Array.map(workers, worker => {
 					const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 					const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
-					const storage = {
-						total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
-						used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
-					}
 					const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 					return (
 						<ToggleGroupItem
@@ -953,12 +936,12 @@ function MachineStrip(props: {
 						>
 							<MachineIcon worker={worker} />
 							<span className="max-w-1/2 shrink-0 truncate text-sm font-medium">{machineName(worker)}</span>
-							<span className="flex size-3 shrink-0 items-center justify-center">
-								<StatusDot
-									status={Boolean.match(failed, {onFalse: () => 'live', onTrue: () => 'off'})}
-									className={Boolean.match(failed, {onFalse: () => 'bg-(--machine)', onTrue: () => undefined})}
-								/>
-							</span>
+							{/* Only an unreachable machine is marked; one that answers needs no dot. */}
+							{failed && (
+								<span role="img" aria-label="Unavailable" className="flex size-3 shrink-0 items-center justify-center">
+									<StatusDot status="off" />
+								</span>
+							)}
 							<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
 								{Array.join(
 									[
@@ -969,10 +952,6 @@ function MachineStrip(props: {
 										...Boolean.match(latest === undefined, {
 											onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
 											onTrue: () => []
-										}),
-										...Boolean.match(storage.total > 0, {
-											onFalse: () => [],
-											onTrue: () => [`${size.format((storage.used / storage.total) * 100)}% disk`]
 										})
 									],
 									' · '
@@ -1031,9 +1010,14 @@ function RangeMenu(props: {
 function Home() {
 	const isMobile = useIsMobile()
 	const [minutes, setMinutes] = useAtom(minutesAtom)
-	const [worker, setWorker] = useState<string>()
-	const [selection, setSelection] = useState<Selection>()
-	const [pane, setPane] = useState<Pane>('apps')
+	const [chosenMachine, setMachine] = useAtom(machineParam)
+	const [selection, setSelection] = useAtom(appParam)
+	const [chosenPane, setPaneParam] = useAtom(paneParam)
+	const pane = Option.getOrElse(chosenPane, () => 'apps' as const)
+	function setPane(next: Pane) {
+		setPaneParam(Option.some(next))
+	}
+	const worker = Option.getOrUndefined(Option.liftPredicate(chosenMachine, String.isNonEmpty))
 	const [machineBack, setMachineBack] = useState<Pane>('apps')
 	const [hovered, setHovered] = useState<string>()
 	const inventory = useAtomValue(inventoryAtom)
@@ -1075,13 +1059,15 @@ function Home() {
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
 	// A row lights its own band, or the one band every small app joins.
-	const chartBands = Option.getOrElse(Option.map(history, bands), () => [])
 	const bandOf = Record.fromEntries(
-		Array.flatMap(chartBands, band => Array.map(band.members, member => [member, band.id] as const))
+		Array.flatMap(
+			Option.getOrElse(
+				Option.map(history, machine => bands(machine)),
+				() => Array.empty<Band>()
+			),
+			(band: Band) => Array.map(band.members, member => [member, band.id] as const)
+		)
 	) satisfies Record<string, string>
-	const swatches = Record.fromEntries(
-		Array.flatMap(chartBands, band => Array.map(band.members, member => [member, band.opacity] as const))
-	) satisfies Record<string, number>
 	const rows = Option.getOrElse(
 		Option.map(snapshot, value => workloads(value.items)),
 		() => []
@@ -1111,8 +1097,8 @@ function Home() {
 	const sorted = Array.sort(ranged(activeRows, shownMinutes, Option.getOrUndefined(history)), order)
 	const selectedRow = Option.getOrElse(
 		Option.orElse(
-			Option.flatMap(Option.fromUndefinedOr(selection), current =>
-				Array.findFirst(searchable, row => row.item.id === current.id)
+			Option.flatMap(Option.liftPredicate(selection, String.isNonEmpty), current =>
+				Array.findFirst(searchable, row => row.item.id === current)
 			),
 			() => Array.head(sorted)
 		),
@@ -1124,13 +1110,13 @@ function Home() {
 	})
 
 	function selectRow(row: ReturnType<typeof workloads>[number]) {
-		setSelection({id: row.item.id, name: workloadName(row.item)})
+		setSelection(row.item.id)
 		setPane('process')
 	}
 
 	function selectWorker(next: string) {
-		setWorker(next)
-		setSelection(undefined)
+		setMachine(next)
+		setSelection('')
 		setHovered(undefined)
 		setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const}))
 	}
@@ -1245,15 +1231,7 @@ function Home() {
 					],
 					onTrue: () => [otherApps('deploy')]
 				})}
-				action={
-					<>
-						<RangeMenu minutes={minutes} pending={refreshing} onChange={setMinutes} />
-						{Boolean.match(isMobile, {
-							onFalse: () => null,
-							onTrue: () => <AppBarAction icon={<MonitorIcon />} label="Machine" onClick={showMachine} />
-						})}
-					</>
-				}
+				controls={<RangeMenu minutes={minutes} pending={refreshing} onChange={setMinutes} />}
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
@@ -1292,7 +1270,6 @@ function Home() {
 											compact={isMobile}
 											hovered={hovered}
 											onHover={setHovered}
-											swatches={swatches}
 											now={now}
 											onSelect={selectRow}
 											rows={sorted}
@@ -1327,7 +1304,6 @@ function Home() {
 													compact={isMobile}
 													hovered={hovered}
 													onHover={setHovered}
-													swatches={swatches}
 													now={now}
 													onSelect={selectRow}
 													rows={sorted}

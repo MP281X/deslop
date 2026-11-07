@@ -1,4 +1,4 @@
-import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
+import {Array, Cause, Effect, Option, Schema, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -7,7 +7,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, InventoryItem, RunRequest} from '#services/inventory/schema.ts'
-import type {HistoryQuery} from '#services/metrics/schema.ts'
+import {HistoryQuery} from '#services/metrics/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -58,7 +58,19 @@ export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
 )
 
-export const minutesAtom = Atom.make<HistoryQuery['minutes']>(60)
+// The page's view lives in the URL, so a reload, Back or a shared link reopens the same machine, app, pane and range.
+const rangeParam = Atom.searchParam('range', {
+	schema: pipe(HistoryQuery.fields.minutes, Schema.encodeTo(Schema.FiniteFromString))
+})
+export const machineParam = Atom.searchParam('machine')
+export const appParam = Atom.searchParam('app')
+// A phone shows one pane at a time; a wide screen shows all three and ignores it.
+export const paneParam = Atom.searchParam('pane', {schema: Schema.Literals(['apps', 'machine', 'process'])})
+
+export const minutesAtom = Atom.writable(
+	get => Option.getOrElse(get(rangeParam), () => 60 as const),
+	(ctx, minutes: HistoryQuery['minutes']) => ctx.set(rangeParam, Option.some(minutes))
+)
 
 // One reader retains the last range and its samples while a newer request connects.
 export const metricsAtom = RpcClient.runtime.atom(get => {

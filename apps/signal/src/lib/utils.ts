@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Number, Option, Record, Stream, String, Tuple, pipe} from 'effect'
+import {Array, Boolean, Effect, Number, Option, Record, Schema, Stream, String, Tuple, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
@@ -295,5 +295,11 @@ export type Follow = {
 }
 export const followAtom = Atom.keepAlive(Atom.make<Follow>({free: Option.none(), id: Option.none()}))
 
-// The team whose thread and units the sidebar shows.
-export const teamAtom = Atom.keepAlive(Atom.make(-1))
+// The team whose thread and units the sidebar shows, or -1 for every team; kept in the URL so a reload or shared link reopens it.
+const teamParam = Atom.searchParam('team', {schema: Schema.FiniteFromString})
+export const teamAtom = Atom.keepAlive(
+	Atom.writable(
+		get => Option.getOrElse(get(teamParam), () => -1),
+		(ctx, team: number) => ctx.set(teamParam, Option.liftPredicate(team, Number.isGreaterThanOrEqualTo(0)))
+	)
+)

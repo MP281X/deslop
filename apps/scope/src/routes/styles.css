@@ -23,7 +23,9 @@
 }
 
 @theme {
-	--breakpoint-inspection: 160rem;
+	/* From a 1920px desktop up the inspector stands beside the waterfall, at full height. */
+	--breakpoint-inspection: 100rem;
 	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
 	--grid-template-columns-trace: minmax(0, 1fr) minmax(22rem, 0.6fr);
+	--grid-template-columns-attributes: repeat(auto-fill, minmax(14rem, 1fr));
 }

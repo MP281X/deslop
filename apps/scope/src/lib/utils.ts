@@ -1,16 +1,18 @@
-import {Clock, Effect, Number, Option, Schema, Stream, String, pipe} from 'effect'
+import {Clock, Effect, Number, Option, Record, Schema, Stream, String, pipe} from 'effect'
 
-import {Machine} from '@typeonce/effect-machine'
-import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {toast} from '@deslop/components-web/ui/toast'
-import {AuthError} from '@deslop/runtime/auth/schema'
 import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Operation} from '#services/telemetry/schema.ts'
+
+// The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
+const UP: Record<string, Pane> = {Span: 'Trace', Trace: 'Traces'}
+
+type Pane = typeof Pane.Type
+const Pane = Schema.Literals(['Traces', 'Trace', 'Span'])
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -25,43 +27,65 @@ const Selection = Schema.Struct({
 	spanId: Schema.optionalKey(Schema.String),
 	traceId: Schema.optionalKey(Schema.String)
 })
-type SelectedTrace = typeof SelectedTrace.Type
-const SelectedTrace = Schema.Struct({...Selection.fields, traceId: Schema.String})
-type SelectedSpan = typeof SelectedSpan.Type
-const SelectedSpan = Schema.Struct({...SelectedTrace.fields, spanId: Schema.String})
+export type NavigationEvent =
+	| {readonly _tag: 'Back'}
+	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
+	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: string; traceId: string}}
+	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
 
-// Back preserves one selection. Operation and trace events establish their own selection.
-const Navigation = Machine.make({
-	events: Machine.events({
-		Back: {},
-		Operation: {operation: OperationKey},
-		Span: {selection: SelectedSpan},
-		Trace: {selection: SelectedTrace}
-	}),
-	root: Machine.state({
-		states: {
-			Operations: {fields: {selection: Schema.optionalKey(Selection)}},
-			Span: {fields: {selection: SelectedSpan}},
-			Trace: {fields: {selection: SelectedTrace}},
-			Traces: {fields: {selection: Selection}}
+// The view lives in the URL, so a reload, the browser's Back or a shared link reopens the same operation, trace and span.
+const params = {
+	app: Atom.searchParam('app'),
+	operation: Atom.searchParam('operation'),
+	pane: Atom.searchParam('pane', {schema: Pane}),
+	side: Atom.searchParam('side', {schema: Operation.fields.runtime}),
+	span: Atom.searchParam('span'),
+	trace: Atom.searchParam('trace')
+}
+
+// Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
+export const navigationAtom = Atom.writable(
+	get => {
+		const operation = Option.map(get(params.side), runtime => ({
+			app: get(params.app),
+			name: get(params.operation),
+			runtime
+		}))
+		const trace = Option.liftPredicate(get(params.trace), String.isNonEmpty)
+		const span = Option.liftPredicate(get(params.span), String.isNonEmpty)
+		return {
+			path: Option.getOrElse(get(params.pane), () => 'Operations' as const),
+			selection: Option.getOrUndefined(
+				Option.map(
+					operation,
+					key =>
+						({
+							operation: key,
+							...Option.match(trace, {onNone: () => ({}), onSome: traceId => ({traceId})}),
+							...Option.match(span, {onNone: () => ({}), onSome: spanId => ({spanId})})
+						}) satisfies Selection
+				)
+			)
 		}
-	})
-}).handle({
-	initial: {target: 'Operations'},
-	on: {
-		Operation: {data: transition => ({selection: {operation: transition.event.operation}}), target: 'Traces'},
-		Span: {data: transition => ({selection: transition.event.selection}), target: 'Span'},
-		Trace: {data: transition => ({selection: transition.event.selection}), target: 'Trace'}
 	},
-	states: {
-		Operations: {},
-		Span: {on: {Back: {data: transition => ({selection: transition.state.selection}), target: 'Trace'}}},
-		Trace: {on: {Back: {data: transition => ({selection: transition.state.selection}), target: 'Traces'}}},
-		Traces: {on: {Back: {data: transition => ({selection: transition.state.selection}), target: 'Operations'}}}
+	(ctx, event: NavigationEvent) => {
+		function select(selection: Selection, pane: Pane) {
+			ctx.set(params.app, selection.operation.app)
+			ctx.set(params.operation, selection.operation.name)
+			ctx.set(params.side, Option.some(selection.operation.runtime))
+			ctx.set(params.trace, selection.traceId ?? '')
+			ctx.set(params.span, selection.spanId ?? '')
+			ctx.set(params.pane, Option.some(pane))
+		}
+		if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
+		if (event._tag === 'Trace') return select(event.selection, 'Trace')
+		if (event._tag === 'Span') return select(event.selection, 'Span')
+		ctx.set(
+			params.pane,
+			Option.flatMap(ctx.get(params.pane), pane => Record.get(UP, pane))
+		)
 	}
-})
-
-export const navigationAtom = AtomMachine.make(Navigation)
+)
 
 // Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
@@ -88,20 +112,6 @@ export const traceAtom = Atom.family((id: string) =>
 
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))
-
-// Copies a trace id; the result waits a moment after, while the button shows it was copied.
-export const copyAtom = Atom.fn((text: string) =>
-	pipe(
-		Effect.tryPromise({
-			catch: cause => AuthError.make({cause, message: 'Cannot copy the trace ID'}),
-			try: () => navigator.clipboard.writeText(text)
-		}),
-		Effect.tapError(failure =>
-			Effect.sync(() => toast.add({description: failure.message, title: 'Cannot copy the trace ID', type: 'error'}))
-		),
-		Effect.andThen(Effect.sleep('1500 millis'))
-	)
-)
 
 // "now", "40s", "12m", "3h" or "2d" since a nanosecond timestamp.
 export function ageOf(time: string, now: number) {

@@ -6,15 +6,20 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {ResultError} from '@deslop/components-web/result-error'
-import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle
+} from '@deslop/components-web/ui/dialog'
 import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 
 import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/utils.ts'
-import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
 // Opens the Expose dialog on a port, with no answer left from an earlier one.
@@ -61,13 +66,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 				})
 			}}
 		>
-			<DialogTitle className="flex items-center gap-2">
-				<ApplicationIcon name={props.port.process ?? props.port.name} small />
-				Expose {props.port.process}
-				<Badge variant="outline" className="font-mono">
-					:{props.port.port}
-				</Badge>
-			</DialogTitle>
+			<DialogHeader>
+				<DialogTitle>
+					Expose {props.port.process} :{props.port.port}
+				</DialogTitle>
+			</DialogHeader>
 			{/* Who reaches it, as tabs over the address: the tailnet's is fixed, a public one is typed. */}
 			<Tabs
 				value={kind}
@@ -89,7 +92,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<Input
 							id="expose-tailnet"
 							readOnly
-							className="font-mono"
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${props.port.port}`,
 								onTrue: () => ''
@@ -103,7 +105,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<Input
 							id="expose-public"
 							required={kind === 'public'}
-							className="font-mono"
 							placeholder="app.example.com"
 							autoCapitalize="none"
 							spellCheck={false}

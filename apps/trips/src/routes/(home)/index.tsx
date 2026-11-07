@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
 
 import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
@@ -22,7 +22,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {FailureContent} from '@deslop/components-mobile/screens'
+import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -170,30 +170,31 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	const refresh = useAtomRefresh(bookingsAtom)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
 	}
 	const current = Array.filter(
-		loaded.value,
+		shown.success,
 		booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now
 	)
-	const ahead = Array.filter(loaded.value, booking => startOf(booking) - 6 * HOUR > now)
+	const ahead = Array.filter(shown.success, booking => startOf(booking) - 6 * HOUR > now)
 	const past = Array.reverse(
-		Array.filter(loaded.value, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
+		Array.filter(shown.success, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
 	)
 	function daysOf(booking: Booking) {
 		return daysUntil(startOf(booking), now, zoneOf(booking))
 	}
 	return (
 		<>
-			{Array.isReadonlyArrayEmpty(loaded.value) && (
+			{Array.isReadonlyArrayEmpty(shown.success) && (
 				<Empty modifiers={[accessibilityLabel('No bookings')]}>
 					<EmptyHeader>
 						<EmptyMedia systemImage="ticket" />
 					</EmptyHeader>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(loaded.value) &&
+			{Array.isReadonlyArrayNonEmpty(shown.success) &&
 				Array.isReadonlyArrayEmpty(current) &&
 				Array.isReadonlyArrayEmpty(ahead) &&
 				Array.isReadonlyArrayEmpty(past) && (

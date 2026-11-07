@@ -131,6 +131,8 @@ export function withoutDeniedData<A, E, R>(
 				])
 		})
 	}
+	// A dropped socket, as after a hidden tab or a suspended app, usually heals on the first retry; only a second miss in a row is an outage worth showing.
+	const misses = MutableRef.make(0)
 	const observed = pipe(
 		live,
 		Stream.tapCause(cause =>
@@ -141,13 +143,19 @@ export function withoutDeniedData<A, E, R>(
 					get.setSelf(AsyncResult.failure(failure))
 					return
 				}
+				if (MutableRef.incrementAndGet(misses) < 2) return
 				get.setSelf(AsyncResult.failureWithPrevious(failure, {previous: get.self<AsyncResult.AsyncResult<A, E>>()}))
 			})
 		)
 	)
 	return pipe(
 		recover(observed),
-		Stream.tap(() => Effect.sync(() => MutableRef.set(denied, Option.none()))),
+		Stream.tap(() =>
+			Effect.sync(() => {
+				MutableRef.set(denied, Option.none())
+				MutableRef.set(misses, 0)
+			})
+		),
 		Stream.catchCause(cause => Stream.failCause(gated(cause))),
 		Stream.concat(
 			Stream.suspend(() => Option.match(MutableRef.get(denied), {onNone: () => Stream.empty, onSome: Stream.failCause}))
