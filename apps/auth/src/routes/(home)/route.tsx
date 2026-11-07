@@ -3,7 +3,7 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 import {Array, Boolean, Match, Option, String, pipe} from 'effect'
 
 import {CheckIcon, CopyIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
-import {Link, Outlet, createFileRoute, useMatchRoute} from '@tanstack/react-router'
+import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
 
@@ -39,6 +39,7 @@ import {
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {AccountAvatar, AppIcon, AppList, QrCode} from '#lib/components.tsx'
 import {
@@ -58,19 +59,21 @@ import {
 	peopleAtom,
 	requestAtom,
 	requestCode,
-	requestId,
+	Search,
 	secondAtom,
 	signInAtom,
 	menuSignOutAtom,
-	signOutAtom,
-	signingOut
+	signOutAtom
 } from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
+const route = getRouteApi('/(home)')
+
 function Failures() {
+	const failed = route.useSearch({select: search => search.error !== undefined})
 	const [signIn] = useAtom(signInAtom)
 	const [codeSignIn] = useAtom(codeSignInAtom)
 	const [passkey] = useAtom(passkeySignInAtom)
@@ -84,7 +87,7 @@ function Failures() {
 				),
 				{onNone: () => null, onSome: failure => <FieldError>{failure.message}</FieldError>}
 			)}
-			{new URLSearchParams(location.search).has('error') && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
+			{failed && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
 		</>
 	)
 }
@@ -133,6 +136,7 @@ function Countdown(props: {expiresAt: number}) {
 
 // A device that is not signed in, centred and sparse: who asks, a QR a signed-in phone scans, its code to copy, its time running down.
 function CodeCard(props: {request: PendingAuthorization}) {
+	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const title = `Sign in ${props.request.clientName} on ${props.request.device}`
@@ -153,7 +157,12 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
 			{props.request.kind === 'App' && (
 				<span className="flex flex-wrap justify-center gap-1">
-					<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(passkey)} onClick={() => startPasskey()}>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={AsyncResult.isWaiting(passkey)}
+						onClick={() => startPasskey(next)}
+					>
 						<KeyIcon />
 						Approve here with a passkey
 					</Button>
@@ -299,6 +308,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 
 // The account's avatar opens who is signed in, its passkeys and the sign-out.
 function AccountMenu(props: {account: SignedAccount}) {
+	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
 	const add = useAtomSet(addPasskeyAtom)
 	// Back from GitHub, the passkey it went for starts at once, and only once.
@@ -329,7 +339,11 @@ function AccountMenu(props: {account: SignedAccount}) {
 						<DropdownMenuSeparator />
 					</>
 				)}
-				<DropdownMenuItem variant="destructive" disabled={AsyncResult.isWaiting(signOut)} onClick={() => endSession()}>
+				<DropdownMenuItem
+					variant="destructive"
+					disabled={AsyncResult.isWaiting(signOut)}
+					onClick={() => endSession(next)}
+				>
 					Sign out
 				</DropdownMenuItem>
 			</DropdownMenuContent>
@@ -339,6 +353,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 
 // Without an account: GitHub, or a code approved from another browser, a phone or an agent.
 function SignIn() {
+	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
@@ -359,7 +374,7 @@ function SignIn() {
 					variant="outline"
 					className="max-sm:h-11"
 					disabled={AsyncResult.isWaiting(passkey)}
-					onClick={() => startPasskey()}
+					onClick={() => startPasskey(next)}
 				>
 					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
 					Continue with a passkey
@@ -369,7 +384,7 @@ function SignIn() {
 					variant="ghost"
 					className="max-sm:h-11"
 					disabled={AsyncResult.isWaiting(codeSignIn)}
-					onClick={() => startCodeSignIn()}
+					onClick={() => startCodeSignIn(next)}
 				>
 					Use a sign-in code
 				</Button>
@@ -381,8 +396,9 @@ function SignIn() {
 
 // Arriving from another app's Sign out ends the session every app shares, then returns there.
 function SigningOut() {
+	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(signOutAtom)
-	useEffect(() => endSession(), [endSession])
+	useEffect(() => endSession(next), [endSession, next])
 	return Option.match(AsyncResult.error(signOut), {
 		onNone: () => (
 			<Empty role="status">
@@ -398,7 +414,7 @@ function SigningOut() {
 					<EmptyDescription>{failure.message}</EmptyDescription>
 				</EmptyHeader>
 				<EmptyContent>
-					<Button variant="outline" onClick={() => endSession()}>
+					<Button variant="outline" onClick={() => endSession(next)}>
 						Try again
 					</Button>
 				</EmptyContent>
@@ -409,6 +425,9 @@ function SigningOut() {
 
 // A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
+	const search = route.useSearch()
+	const requestId = Option.fromUndefinedOr(search.request)
+	const signingOut = search['sign-out'] !== undefined
 	const account = useAtomSuspense(accountAtom).value
 	const catalog = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	const people = AsyncResult.getOrElse(useAtomValue(peopleAtom), () => [])
@@ -465,7 +484,7 @@ function Shell() {
 		{
 			items: Option.match(account, {
 				onNone: () => [],
-				onSome: () => [{label: 'Sign out of every app', run: () => endSession()}]
+				onSome: () => [{label: 'Sign out of every app', run: () => endSession(search.next)}]
 			}),
 			label: 'Account'
 		}
@@ -529,4 +548,4 @@ function HomeLayout() {
 	)
 }
 
-export const Route = createFileRoute('/(home)')({component: HomeLayout})
+export const Route = createFileRoute('/(home)')({component: HomeLayout, validateSearch: WebRuntime.searchOf(Search)})

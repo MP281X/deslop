@@ -1,14 +1,15 @@
-import {CatchBoundary, Outlet, createFileRoute} from '@tanstack/react-router'
+import {CatchBoundary, Outlet, createFileRoute, useLocation} from '@tanstack/react-router'
 
 import {PageError} from '#routes/(home)/-error.tsx'
 import {ExposeDialog} from '#routes/(home)/-expose.tsx'
 
-// The page owns the whole screen: its bar, machine split and panes.
+// The page owns the whole screen: its bar, machine split and panes; a new view clears a page failure.
 function Shell() {
+	const href = useLocation({select: location => location.href})
 	return (
 		<>
 			<ExposeDialog />
-			<CatchBoundary getResetKey={() => location.href} errorComponent={PageError}>
+			<CatchBoundary getResetKey={() => href} errorComponent={PageError}>
 				<Outlet />
 			</CatchBoundary>
 		</>

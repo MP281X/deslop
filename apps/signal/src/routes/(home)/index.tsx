@@ -15,7 +15,7 @@ import {
 	WifiSlashIcon,
 	XIcon
 } from '@phosphor-icons/react'
-import {createFileRoute} from '@tanstack/react-router'
+import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
@@ -30,6 +30,7 @@ import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '@deslop/com
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {createCast} from './-cast.ts'
 import type {Cast} from './-cast.ts'
@@ -71,8 +72,8 @@ import {
 	threadFeedAtom,
 	runStateAtom,
 	seedAtom,
+	Search,
 	sourceAtom,
-	teamAtom,
 	usageAtom,
 	viewAtom
 } from '#lib/utils.ts'
@@ -85,6 +86,7 @@ import {tileOf} from '#services/world/lib/utils.ts'
 const ZOOM_STEP = 1.25
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 const chunksAtom = Atom.make(true)
+const route = getRouteApi('/(home)/')
 const USAGE_MODE = Boolean.match(import.meta.env.DEV, {onFalse: () => 'production', onTrue: () => 'development'})
 
 type Key = 'in' | 'leave' | 'next' | 'out' | 'previous'
@@ -115,6 +117,14 @@ function teamColor(team: number) {
 function teamName(team: number) {
 	if (team === -1) return 'All models'
 	return TEAMS[team]?.name ?? `Team ${team}`
+}
+
+// The URL for a team, or for every team at -1.
+function teamSearch(team: number) {
+	return Option.match(Option.liftPredicate(team, Number.isGreaterThanOrEqualTo(0)), {
+		onNone: () => ({}),
+		onSome: entry => ({team: entry})
+	}) satisfies Search
 }
 
 // A team's units, in a stable order: by class, then by id.
@@ -1133,7 +1143,7 @@ function Followed(props: {unit: UnitView}) {
 }
 
 function Sidebar(props: {close: () => void; clear: () => void; selection: Inspection; source: Source; view: View}) {
-	const filter = useAtomValue(teamAtom)
+	const filter = route.useSearch({select: search => search.team ?? -1})
 	const members = useContext(Membership)
 	const selected = Option.getOrUndefined(props.selection.entry)
 	const actor = Option.getOrUndefined(props.selection.actor)
@@ -1689,7 +1699,7 @@ function Spend() {
 }
 
 function MapControls(props: {view: View; onTeam: (team: number) => void}) {
-	const team = useAtomValue(teamAtom)
+	const team = route.useSearch({select: search => search.team ?? -1})
 	return (
 		<nav
 			className="absolute inset-x-2 top-2 z-30 flex items-start justify-between gap-2 md:inset-x-4 md:top-4"
@@ -1744,18 +1754,19 @@ function World(props: {seed: number; view: View}) {
 	// The tile under the pointer, what the chunk worker said lies on it, and the pointer's place on screen.
 	const setGround = useAtomSet(groundAtom)
 	const setFollow = useAtomSet(followAtom)
-	const setTeam = useAtomSet(teamAtom)
+	const team = route.useSearch({select: search => search.team ?? -1})
+	const navigate = route.useNavigate()
 	const [source, setSource] = useAtom(sourceAtom)
 	const [panel, setPanel] = useState(Option.none<Inspection>)
 	const cursor = useAtomValue(cursorAtom)
 
 	const [portraits, setPortraits] = useState<Record<string, string>>({})
 	// What the key handler and the camera read, kept current outside render.
-	const latest = useRef({view: props.view})
+	const latest = useRef({team, view: props.view})
 	useEffect(() => {
-		latest.current = {view: props.view}
+		latest.current = {team, view: props.view}
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.invalidate()})
-	}, [props.view, world])
+	}, [props.view, team, world])
 
 	useEffect(() => {
 		const target = canvas.current
@@ -1826,7 +1837,6 @@ function World(props: {seed: number; view: View}) {
 		)
 		const chunksChanged = registry.subscribe(chunksAtom, renderer.invalidate)
 		const followChanged = registry.subscribe(followAtom, renderer.invalidate)
-		const teamChanged = registry.subscribe(teamAtom, renderer.invalidate)
 		const runChanged = registry.subscribe(runStateAtom, renderer.invalidate)
 		const sourceChanged = registry.subscribe(sourceAtom, renderer.invalidate)
 		const hoverChanged = registry.subscribe(hoverAtom, renderer.invalidate)
@@ -1843,10 +1853,10 @@ function World(props: {seed: number; view: View}) {
 					onSome: replay => replay.speed
 				})
 			)
-			renderer.aim(aimOf(current, registry.get(teamAtom), latest.current.view, active))
+			renderer.aim(aimOf(current, latest.current.team, latest.current.view, active))
 			renderer.focus(
 				Option.flatMap(current.id, id => cast.objectOf(id)),
-				teamColor(registry.get(teamAtom))
+				teamColor(latest.current.team)
 			)
 		})
 		// Once the camera has moved: health pips and the hover card follow their units. Zoomed far out, pips only clutter, so they hide.
@@ -1867,7 +1877,7 @@ function World(props: {seed: number; view: View}) {
 			}
 		})
 		function cycle(step: number) {
-			const own = unitsOf(latest.current.view.frame.units, registry.get(teamAtom))
+			const own = unitsOf(latest.current.view.frame.units, latest.current.team)
 			const current = registry.get(followAtom)
 			const index = Option.getOrElse(
 				Array.findFirstIndex(own, unit => Option.contains(current.id, unit.id)),
@@ -1894,7 +1904,7 @@ function World(props: {seed: number; view: View}) {
 			}
 		}
 		function pick(next: number) {
-			registry.set(teamAtom, next)
+			navigate({search: teamSearch(next)})
 			registry.set(followAtom, {free: Option.none(), id: Option.none()})
 			renderer.centre()
 		}
@@ -1931,7 +1941,6 @@ function World(props: {seed: number; view: View}) {
 			frames()
 			chunksChanged()
 			followChanged()
-			teamChanged()
 			runChanged()
 			sourceChanged()
 			hoverChanged()
@@ -1939,11 +1948,11 @@ function World(props: {seed: number; view: View}) {
 			cast.dispose()
 			renderer.dispose()
 		}
-	}, [registry, props.seed, setGround])
+	}, [registry, props.seed, setGround, navigate])
 
 	function followUnit(id: number) {
 		const unit = Option.getOrUndefined(Array.findFirst(props.view.frame.units, entry => entry.id === id))
-		if (unit?.team !== undefined) setTeam(unit.team)
+		if (unit?.team !== undefined) navigate({search: teamSearch(unit.team)})
 		setFollow({free: Option.none(), id: Option.some(id)})
 		setPanel(Option.some({actor: Option.some(id), entry: Option.none(), scoped: true}))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
@@ -2004,9 +2013,9 @@ function World(props: {seed: number; view: View}) {
 	return (
 		<Navigation
 			value={{
-				core: (team, tick) => {
+				core: (owner, tick) => {
 					Option.match(
-						Array.findFirst(props.view.teams, entry => entry.id === team),
+						Array.findFirst(props.view.teams, entry => entry.id === owner),
 						{onNone: () => undefined, onSome: entry => setFollow({free: Option.some(entry.home), id: Option.none()})}
 					)
 					setSource(Option.some({from: tick, speed: 0}))
@@ -2076,8 +2085,8 @@ function World(props: {seed: number; view: View}) {
 							/>
 							<Overlay buildings={props.view.buildings} inspection={panel} units={props.view.frame.units} />
 							<MapControls
-								onTeam={team => {
-									setTeam(team)
+								onTeam={next => {
+									navigate({search: teamSearch(next)})
 									setFollow({free: Option.none(), id: Option.none()})
 									setPanel(before =>
 										Option.map(before, () => ({actor: Option.none(), entry: Option.none(), scoped: false}))
@@ -2156,4 +2165,4 @@ function Signal() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Signal})
+export const Route = createFileRoute('/(home)/')({component: Signal, validateSearch: WebRuntime.searchOf(Search)})

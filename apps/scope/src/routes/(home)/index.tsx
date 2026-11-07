@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {
 	Array,
@@ -17,7 +17,7 @@ import {
 } from 'effect'
 
 import {CaretRightIcon, GlobeIcon, HardDrivesIcon, DeviceMobileIcon, DesktopIcon} from '@phosphor-icons/react'
-import {createFileRoute} from '@tanstack/react-router'
+import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect, useRef, useSyncExternalStore} from 'react'
 import type {ReactElement, ReactNode} from 'react'
@@ -38,8 +38,8 @@ import {cn} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {ageOf, durationOf, navigationAtom, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
-import type {OperationKey} from '#lib/utils.ts'
+import {ageOf, durationOf, navigationOf, nextSearch, nowAtom, overviewAtom, Search, traceAtom} from '#lib/utils.ts'
+import type {NavigationEvent, OperationKey} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
@@ -106,6 +106,7 @@ const clock = new Intl.DateTimeFormat(undefined, {
 	second: '2-digit'
 })
 const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
+const route = getRouteApi('/(home)/')
 
 type Attributes = typeof Attributes.Type
 const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
@@ -819,8 +820,11 @@ function Home() {
 		() => window.matchMedia(COMPACT_LAYOUT).matches,
 		() => false
 	)
-	const navigation = useAtomValue(navigationAtom)
-	const send = useAtomSet(navigationAtom)
+	const navigation = navigationOf(route.useSearch())
+	const navigate = route.useNavigate()
+	function send(event: NavigationEvent) {
+		navigate({search: previous => nextSearch(previous, event)})
+	}
 	const pane = navigation.path
 	const root = useRef<HTMLDivElement>(null)
 	useEffect(() => {
@@ -1075,4 +1079,4 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})

@@ -35,6 +35,16 @@ import type {SignedInApp} from '#services/tokens/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
+// What the server hands the page: a sign-in to wait on, a code to approve, the app to return to, a failed GitHub sign-in or another app's Sign out.
+export type Search = typeof Search.Type
+export const Search = Schema.Struct({
+	code: Schema.optionalKey(Schema.String),
+	error: Schema.optionalKey(Schema.String),
+	next: Schema.optionalKey(Schema.String),
+	request: Schema.optionalKey(Schema.String),
+	'sign-out': Schema.optionalKey(Schema.String)
+})
+
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: WebRuntime.layer('@deslop/auth')
@@ -125,9 +135,11 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 )
 
 // Read each time the approve page opens, so returning to it from People does not bring back an answered code.
-export const linkedCodeAtom = Atom.make(get => {
-	get.set(codeAtom.send, {_tag: 'Typed', typed: typedCode(new URLSearchParams(location.search).get('code') ?? '')})
-})
+export const linkedCodeAtom = Atom.family((code: string) =>
+	Atom.make(get => {
+		get.set(codeAtom.send, {_tag: 'Typed', typed: typedCode(code)})
+	})
+)
 
 export const peopleAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
@@ -178,8 +190,6 @@ export const admitAtom = Atom.family((id: string) =>
 export const removeAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.remove', {id})))
 )
-
-export const requestId = Option.fromNullishOr(new URLSearchParams(location.search).get('request'))
 
 // Once answered, the page continues where the answer is delivered: the app's callback, or this browser's session.
 export const requestAtom = Atom.family((request: string) =>
@@ -303,9 +313,6 @@ export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; reques
 	)
 )
 
-// The page an app sent this browser to sign in from, carried through either way of signing in.
-const next = Option.fromNullishOr(new URLSearchParams(location.search).get('next'))
-
 // Closing the browser's passkey dialog is a normal choice, so it ends the attempt quietly instead of as an error.
 function cancelled(failure: AuthError) {
 	return Predicate.hasProperty(failure.cause, 'name') && failure.cause.name === 'NotAllowedError'
@@ -323,7 +330,7 @@ const refused = Effect.fnUntraced(function* (response: HttpClientResponse.HttpCl
 })
 
 // The browser asks for any passkey of this site, whichever device or key holds it, then lands signed in where the page asked.
-export const passkeySignInAtom = authRuntime.fn(() =>
+export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 	pipe(
 		Effect.gen(function* () {
 			const client = yield* HttpClient.HttpClient
@@ -341,7 +348,7 @@ export const passkeySignInAtom = authRuntime.fn(() =>
 			const answer = yield* pipe(
 				HttpClientRequest.post('/auth/passkey'),
 				HttpClientRequest.schemaBodyJson(PasskeySignIn)({
-					...Option.match(next, {onNone: () => ({}), onSome: page => ({next: page})}),
+					...Option.match(Option.fromUndefinedOr(next), {onNone: () => ({}), onSome: page => ({next: page})}),
 					response
 				}),
 				Effect.flatMap(request => client.execute(request)),
@@ -430,12 +437,13 @@ export const signInAtom = Atom.fn(() =>
 	})
 )
 
-export const codeSignInAtom = Atom.fn(() =>
+// The page an app sent this browser to sign in from, carried through either way of signing in.
+export const codeSignInAtom = Atom.fn((next: Search['next']) =>
 	Effect.try({
 		catch: cause => AuthError.make({cause, message: 'Cannot start the sign-in'}),
 		try: () =>
 			location.assign(
-				Option.match(next, {
+				Option.match(Option.fromUndefinedOr(next), {
 					onNone: () => '/auth/code',
 					onSome: page => `/auth/code?${new URLSearchParams({next: page})}`
 				})
@@ -443,24 +451,27 @@ export const codeSignInAtom = Atom.fn(() =>
 	})
 )
 
-// Another app's account menu signs out here, where the shared session lives, then returns to that app.
-export const signingOut = new URLSearchParams(location.search).has('sign-out')
-
-const afterSignOut = pipe(
-	Option.fromNullishOr(new URLSearchParams(location.search).get('next')),
-	Option.filter(page => returnable(page, AUTH_URL)),
-	Option.getOrElse(() => location.pathname)
-)
-
-// Ends the session every app shares, keeping the reason it could not.
-const signOut = pipe(
-	HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
-	Effect.andThen(Effect.sync(() => location.replace(afterSignOut))),
-	Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign out: ${cause.message}`}))
-)
+// Ends the session every app shares, then returns to the app that asked, keeping the reason it could not.
+function signOut(next: Search['next']) {
+	return pipe(
+		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),
+		Effect.andThen(
+			Effect.sync(() =>
+				location.replace(
+					pipe(
+						Option.fromUndefinedOr(next),
+						Option.filter(page => returnable(page, AUTH_URL)),
+						Option.getOrElse(() => location.pathname)
+					)
+				)
+			)
+		),
+		Effect.mapError(cause => AuthError.make({cause, message: `Cannot sign out: ${cause.message}`}))
+	)
+}
 
 // From another app's Sign out, whose page says how it failed.
-export const signOutAtom = authRuntime.fn(() => signOut)
+export const signOutAtom = authRuntime.fn(signOut)
 
 // From the account menu, which closes as it runs, so a failure is a toast.
-export const menuSignOutAtom = authRuntime.fn(() => failedWith('Cannot sign out')(signOut))
+export const menuSignOutAtom = authRuntime.fn((next: Search['next']) => failedWith('Cannot sign out')(signOut(next)))

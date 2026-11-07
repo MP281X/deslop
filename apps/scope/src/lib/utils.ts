@@ -1,4 +1,4 @@
-import {Clock, Effect, Number, Option, Record, Schema, Stream, String, pipe} from 'effect'
+import {Clock, Effect, Number, Option, Record, Schema, Stream, String, Struct, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -34,58 +34,54 @@ export type NavigationEvent =
 	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
 
 // The view lives in the URL, so a reload, the browser's Back or a shared link reopens the same operation, trace and span.
-const params = {
-	app: Atom.searchParam('app'),
-	operation: Atom.searchParam('operation'),
-	pane: Atom.searchParam('pane', {schema: Pane}),
-	side: Atom.searchParam('side', {schema: Operation.fields.runtime}),
-	span: Atom.searchParam('span'),
-	trace: Atom.searchParam('trace')
+export type Search = typeof Search.Type
+export const Search = Schema.Struct({
+	app: Schema.optionalKey(Schema.String),
+	operation: Schema.optionalKey(Schema.String),
+	pane: Schema.optionalKey(Pane),
+	side: Schema.optionalKey(Operation.fields.runtime),
+	span: Schema.optionalKey(Schema.String),
+	trace: Schema.optionalKey(Schema.String)
+})
+
+// The pane and selection a URL names.
+export function navigationOf(search: Search) {
+	return {
+		path: search.pane ?? 'Operations',
+		selection: Option.getOrUndefined(
+			Option.map(
+				Option.fromUndefinedOr(search.side),
+				runtime =>
+					({
+						operation: {app: search.app ?? '', name: search.operation ?? '', runtime},
+						...Option.match(Option.fromUndefinedOr(search.trace), {onNone: () => ({}), onSome: traceId => ({traceId})}),
+						...Option.match(Option.fromUndefinedOr(search.span), {onNone: () => ({}), onSome: spanId => ({spanId})})
+					}) satisfies Selection
+			)
+		)
+	}
 }
 
 // Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
-export const navigationAtom = Atom.writable(
-	get => {
-		const operation = Option.map(get(params.side), runtime => ({
-			app: get(params.app),
-			name: get(params.operation),
-			runtime
-		}))
-		const trace = Option.liftPredicate(get(params.trace), String.isNonEmpty)
-		const span = Option.liftPredicate(get(params.span), String.isNonEmpty)
+export function nextSearch(search: Search, event: NavigationEvent) {
+	function select(selection: Selection, pane: Pane) {
 		return {
-			path: Option.getOrElse(get(params.pane), () => 'Operations' as const),
-			selection: Option.getOrUndefined(
-				Option.map(
-					operation,
-					key =>
-						({
-							operation: key,
-							...Option.match(trace, {onNone: () => ({}), onSome: traceId => ({traceId})}),
-							...Option.match(span, {onNone: () => ({}), onSome: spanId => ({spanId})})
-						}) satisfies Selection
-				)
-			)
-		}
-	},
-	(ctx, event: NavigationEvent) => {
-		function select(selection: Selection, pane: Pane) {
-			ctx.set(params.app, selection.operation.app)
-			ctx.set(params.operation, selection.operation.name)
-			ctx.set(params.side, Option.some(selection.operation.runtime))
-			ctx.set(params.trace, selection.traceId ?? '')
-			ctx.set(params.span, selection.spanId ?? '')
-			ctx.set(params.pane, Option.some(pane))
-		}
-		if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
-		if (event._tag === 'Trace') return select(event.selection, 'Trace')
-		if (event._tag === 'Span') return select(event.selection, 'Span')
-		ctx.set(
-			params.pane,
-			Option.flatMap(ctx.get(params.pane), pane => Record.get(UP, pane))
-		)
+			app: selection.operation.app,
+			operation: selection.operation.name,
+			pane,
+			side: selection.operation.runtime,
+			...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})}),
+			...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})})
+		} satisfies Search
 	}
-)
+	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
+	if (event._tag === 'Trace') return select(event.selection, 'Trace')
+	if (event._tag === 'Span') return select(event.selection, 'Span')
+	return Option.match(
+		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
+		{onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})}
+	) satisfies Search
+}
 
 // Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(

@@ -16,7 +16,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {DEVELOPER, isDenied} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
-import {exposeTargetAtom, inventoryAtom, metricsAtom, minutesAtom} from '#lib/utils.ts'
+import {exposeTargetAtom, inventoryAtom, metricsAtom} from '#lib/utils.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {DeployError, InventoryItem, Snapshot} from '#services/inventory/schema.ts'
 import {MachineHistory} from '#services/metrics/schema.ts'
@@ -97,116 +97,110 @@ const fixture = Effect.gen(function* () {
 		Effect.sync(() => AtomRegistry.make()),
 		value => Effect.sync(() => value.dispose())
 	)
-	const updates = yield* Queue.unbounded<Atom.Type<typeof metricsAtom>>()
-	yield* Effect.acquireRelease(
-		Effect.sync(() =>
-			registry.subscribe(
-				metricsAtom,
-				value => {
-					Queue.offerUnsafe(updates, value)
-				},
-				{immediate: true}
-			)
-		),
-		unsubscribe => Effect.sync(unsubscribe)
-	)
-	return {authorization, closed, hour, inventory, minute, opened, registry, updates}
+	// One range's reader, mounted for the test, with every value it publishes.
+	const watch = Effect.fnUntraced(function* (minutes: 1 | 60) {
+		const updates = yield* Queue.unbounded<Atom.Type<ReturnType<typeof metricsAtom>>>()
+		yield* Effect.acquireRelease(
+			Effect.sync(() =>
+				registry.subscribe(
+					metricsAtom(minutes),
+					value => {
+						Queue.offerUnsafe(updates, value)
+					},
+					{immediate: true}
+				)
+			),
+			unsubscribe => Effect.sync(unsubscribe)
+		)
+		return {
+			current: () => registry.get(metricsAtom(minutes)),
+			next: (predicate: (value: Atom.Type<ReturnType<typeof metricsAtom>>) => boolean) =>
+				pipe(Stream.fromQueue(updates), Stream.filter(predicate), Stream.runHead),
+			refresh: () => registry.refresh(metricsAtom(minutes))
+		}
+	})
+	return {authorization, closed, hour, inventory, minute, opened, registry, watch}
 })
 
 it.layer(NodeServices.layer)(test => {
-	test.effect('keeps the last loaded range across superseded requests and a failed replacement', () =>
+	test.effect('reads each range on its own request and keeps its readings through a failed update', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
+				const hour = yield* env.watch(60)
+				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				yield* Queue.offer(env.hour, [sample])
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(metricsAtom))), {
-					histories: [sample],
-					minutes: 60
-				})
-				env.registry.set(minutesAtom, 10)
-				assert.strictEqual(yield* Queue.take(env.opened), 10)
-				env.registry.set(minutesAtom, 1)
+				yield* hour.next(AsyncResult.isSuccess)
+				const minute = yield* env.watch(1)
 				assert.strictEqual(yield* Queue.take(env.opened), 1)
-				assert.deepStrictEqual([yield* Queue.take(env.closed), yield* Queue.take(env.closed)], [60, 10])
-				assert.strictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(metricsAtom))).minutes, 60)
 				yield* Queue.offer(env.minute, [sample])
-				yield* pipe(
-					Stream.fromQueue(env.updates),
-					Stream.filter(value => Option.exists(AsyncResult.value(value), loaded => loaded.minutes === 1)),
-					Stream.runHead
-				)
-				assert.strictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(metricsAtom))).minutes, 1)
-				const failed = yield* Effect.forkChild(
-					pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
-				)
+				yield* minute.next(AsyncResult.isSuccess)
+				const failed = yield* Effect.forkChild(minute.next(AsyncResult.isFailure))
 				yield* Queue.offer(env.minute, [])
 				assert.isTrue(Option.isSome(yield* Fiber.join(failed)))
-				assert.strictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(metricsAtom))).minutes, 1)
+				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(minute.current())), [sample])
+				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(hour.current())), [sample])
 			})
 		)
 	)
 
-	test.effect('keeps denied ranges hidden across later failures until fresh authorized data arrives', () =>
+	test.effect('keeps denied readings hidden across later failures until fresh authorized data arrives', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
-				yield* Queue.offer(env.hour, [sample])
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
+				const minute = yield* env.watch(1)
+				assert.strictEqual(yield* Queue.take(env.opened), 1)
+				yield* Queue.offer(env.minute, [sample])
+				yield* minute.next(AsyncResult.isSuccess)
 				yield* Ref.set(
 					env.authorization,
 					Option.some(Cause.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
 				)
-				env.registry.set(minutesAtom, 10)
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(metricsAtom))))
+				minute.refresh()
+				yield* minute.next(AsyncResult.isFailure)
+				assert.isTrue(Option.isNone(AsyncResult.value(minute.current())))
 				yield* Ref.set(env.authorization, Option.none())
-				env.registry.set(minutesAtom, 1)
+				minute.refresh()
 				assert.strictEqual(yield* Queue.take(env.opened), 1)
 				yield* Queue.offer(env.minute, [])
-				yield* pipe(
-					Stream.fromQueue(env.updates),
-					Stream.filter(value => AsyncResult.isFailure(value) && value.cause.reasons.length === 2),
-					Stream.runHead
-				)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(metricsAtom))))
-				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(metricsAtom)), isDenied))
-				env.registry.refresh(metricsAtom)
+				yield* minute.next(value => AsyncResult.isFailure(value) && value.cause.reasons.length === 2)
+				assert.isTrue(Option.isNone(AsyncResult.value(minute.current())))
+				assert.isTrue(Option.exists(AsyncResult.error(minute.current()), isDenied))
+				minute.refresh()
 				assert.strictEqual(yield* Queue.take(env.opened), 1)
 				yield* Queue.offer(env.minute, [sample])
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				assert.strictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(metricsAtom))).minutes, 1)
+				yield* minute.next(AsyncResult.isSuccess)
+				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(minute.current())), [sample])
 			})
 		)
 	)
 
-	test.effect('shows an auth outage with retained readings and reconnects without a range change', () =>
+	test.effect('shows an auth outage with retained readings and reconnects by itself', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
+				const hour = yield* env.watch(60)
+				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				yield* Queue.offer(env.hour, [sample])
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
+				yield* hour.next(AsyncResult.isSuccess)
 				yield* Ref.set(
 					env.authorization,
 					Option.some(Cause.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'})))
 				)
-				env.registry.set(minutesAtom, 1)
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
-				const outage = env.registry.get(metricsAtom)
-				assert.isFalse(Option.exists(AsyncResult.error(outage), isDenied))
-				assert.strictEqual(Option.getOrThrow(AsyncResult.value(outage)).minutes, 60)
+				hour.refresh()
+				// The first miss could be a dropped socket, so only the retry's second miss marks the outage.
+				yield* TestClock.adjust('1 second')
+				yield* hour.next(AsyncResult.isFailure)
+				assert.isFalse(Option.exists(AsyncResult.error(hour.current()), isDenied))
+				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(hour.current())), [sample])
 				yield* Ref.set(env.authorization, Option.none())
 				yield* TestClock.adjust('1 second')
-				assert.strictEqual(yield* Queue.take(env.opened), 1)
-				yield* Queue.offer(env.minute, [sample])
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				assert.strictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(metricsAtom))).minutes, 1)
+				assert.strictEqual(yield* Queue.take(env.opened), 60)
+				yield* Queue.offer(env.hour, [sample])
+				yield* hour.next(AsyncResult.isSuccess)
 			})
 		)
 	)

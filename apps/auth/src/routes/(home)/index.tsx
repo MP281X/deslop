@@ -3,7 +3,7 @@ import {useAtomMount, useAtomSet} from '@effect/atom-react'
 import {Array, Boolean, Option, Predicate} from 'effect'
 
 import {CheckIcon, XIcon} from '@phosphor-icons/react'
-import {createFileRoute} from '@tanstack/react-router'
+import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {Suspense} from 'react'
 
@@ -20,6 +20,8 @@ import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
 type Answer = {accept: boolean; request: PendingAuthorization}
 
+const route = getRouteApi('/(home)/')
+
 // The last answer stays as one line under an empty code, ready for the next sign-in.
 function Enter(props: {
 	answered: Option.Option<Answer>
@@ -27,6 +29,7 @@ function Enter(props: {
 	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
 	typed: string
 }) {
+	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
 		<section className="flex w-full max-w-sm flex-col gap-4">
@@ -42,7 +45,7 @@ function Enter(props: {
 					pasteTransformer={typedCode}
 					pattern="^[A-Za-z]+$"
 					inputMode="text"
-					autoFocus={new URLSearchParams(location.search).has('code')}
+					autoFocus={linked}
 					autoComplete="off"
 					autoCapitalize="characters"
 					disabled={props.state === 'Checking'}
@@ -128,7 +131,7 @@ function Page(props: {
 }
 
 function SignIns() {
-	useAtomMount(linkedCodeAtom)
+	useAtomMount(linkedCodeAtom(route.useSearch({select: search => search.code ?? ''})))
 	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
 	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)

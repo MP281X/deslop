@@ -1,11 +1,11 @@
 import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
 import {CaretRightIcon, ClockIcon, MonitorIcon, PlayIcon, HardDrivesIcon} from '@phosphor-icons/react'
-import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
+import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense, useDeferredValue, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -40,18 +40,10 @@ import {Spinner} from '@deslop/components-web/ui/spinner'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
-import {
-	appParam,
-	hideAtom,
-	inventoryAtom,
-	machineParam,
-	metricsAtom,
-	minutesAtom,
-	paneParam,
-	runAtom
-} from '#lib/utils.ts'
+import {hideAtom, inventoryAtom, metricsAtom, runAtom} from '#lib/utils.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {Cores, TimeAxis, UsageChart} from '#routes/(home)/-charts.tsx'
 import {useExpose} from '#routes/(home)/-expose.tsx'
@@ -64,9 +56,22 @@ import icon from '#routes/icon.svg'
 import {availablePorts, itemOwner, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
-import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
+import {HistoryQuery} from '#services/metrics/schema.ts'
+import type {MachineHistory} from '#services/metrics/schema.ts'
 
-type Pane = 'apps' | 'machine' | 'process'
+// A phone shows one pane at a time; a wide screen shows all three and ignores it.
+type Pane = typeof Pane.Type
+const Pane = Schema.Literals(['apps', 'machine', 'process'])
+
+// The view lives in the URL, so a reload, Back or a shared link reopens the same machine, app, pane and range.
+type Search = typeof Search.Type
+const Search = Schema.Struct({
+	app: Schema.optionalKey(Schema.String),
+	machine: Schema.optionalKey(Schema.String),
+	pane: Schema.optionalKey(Pane),
+	range: Schema.optionalKey(HistoryQuery.fields.minutes)
+})
+const route = getRouteApi('/(home)/')
 
 const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
 const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
@@ -517,9 +522,9 @@ function InventoryContent(props: {children: ReactNode}) {
 	)
 }
 
-function MetricsContent(props: {children: ReactNode}) {
-	const result = useAtomSuspense(metricsAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(metricsAtom)
+function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minutes']}) {
+	const result = useAtomSuspense(metricsAtom(props.minutes), {includeFailure: true})
+	const refresh = useAtomRefresh(metricsAtom(props.minutes))
 	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
 		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
 	}
@@ -538,10 +543,10 @@ function InventoryProblem() {
 	return <Problem className="ml-auto" label="Inventory out of date" warning reset={refresh} since={problemSince} />
 }
 
-function MetricsProblem() {
-	const result = useAtomValue(metricsAtom)
-	const refresh = useAtomRefresh(metricsAtom)
-	const problemSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(metricsAtom)))
+function MetricsProblem(props: {minutes: HistoryQuery['minutes']}) {
+	const result = useAtomValue(metricsAtom(props.minutes))
+	const refresh = useAtomRefresh(metricsAtom(props.minutes))
+	const problemSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(metricsAtom(props.minutes))))
 	if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return null
 	return <Problem className="ml-auto" label="History out of date" warning reset={refresh} since={problemSince} />
 }
@@ -760,7 +765,7 @@ function MachinePane(props: {
 			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 				{props.worker !== undefined && <MachineIcon worker={props.worker} />}
 				<span className="text-sm font-semibold">Machine</span>
-				<MetricsProblem />
+				<MetricsProblem minutes={props.minutes} />
 				{props.worker !== undefined && !props.available && (
 					<span role="img" aria-label="Unavailable" className="flex size-3 items-center justify-center">
 						<StatusDot status="off" />
@@ -768,7 +773,7 @@ function MachinePane(props: {
 				)}
 			</header>
 			<Suspense fallback={<ChartSkeleton />}>
-				<MetricsContent>
+				<MetricsContent minutes={props.minutes}>
 					{Option.match(Option.fromUndefinedOr(props.history), {
 						onNone: () => (
 							<Empty>
@@ -1009,43 +1014,35 @@ function RangeMenu(props: {
 
 function Home() {
 	const isMobile = useIsMobile()
-	const [minutes, setMinutes] = useAtom(minutesAtom)
-	const [chosenMachine, setMachine] = useAtom(machineParam)
-	const [selection, setSelection] = useAtom(appParam)
-	const [chosenPane, setPaneParam] = useAtom(paneParam)
-	const pane = Option.getOrElse(chosenPane, () => 'apps' as const)
-	function setPane(next: Pane) {
-		setPaneParam(Option.some(next))
+	const search = route.useSearch()
+	const navigate = route.useNavigate()
+	function view(next: Partial<Search>) {
+		navigate({search: previous => ({...previous, ...next})})
 	}
-	const worker = Option.getOrUndefined(Option.liftPredicate(chosenMachine, String.isNonEmpty))
+	const minutes = search.range ?? 60
+	// The charts keep the last loaded range, dimmed, until the one the URL asks for arrives.
+	const shownMinutes = useDeferredValue(minutes)
+	const pane = search.pane ?? 'apps'
 	const [machineBack, setMachineBack] = useState<Pane>('apps')
 	const [hovered, setHovered] = useState<string>()
 	const inventory = useAtomValue(inventoryAtom)
-	const metrics = useAtomValue(metricsAtom)
+	const metrics = useAtomValue(metricsAtom(shownMinutes))
 	useAtomValue(problemSinceAtom(inventoryAtom))
-	useAtomValue(problemSinceAtom(metricsAtom))
+	useAtomValue(problemSinceAtom(metricsAtom(shownMinutes)))
 	const refreshInventory = useAtomRefresh(inventoryAtom)
-	const refreshMetrics = useAtomRefresh(metricsAtom)
+	const refreshMetrics = useAtomRefresh(metricsAtom(shownMinutes))
 	function retryFailed() {
 		if (AsyncResult.isFailure(inventory)) refreshInventory()
 		if (AsyncResult.isFailure(metrics)) refreshMetrics()
 	}
 	const snapshot = AsyncResult.value(inventory)
-	const readings = AsyncResult.value(metrics)
-	const shownHistories = Option.getOrElse(
-		Option.map(readings, value => value.histories),
-		() => []
-	)
-	const shownMinutes = Option.getOrElse(
-		Option.map(readings, value => value.minutes),
-		() => minutes
-	)
+	const shownHistories = AsyncResult.getOrElse(metrics, () => [])
 	const inventoryFailure = AsyncResult.isFailure(inventory)
 	// A revoked session must show the sign-in even while the last snapshot is still cached; only other errors keep the panes.
 	const authFailure = Option.orElse(Option.filter(AsyncResult.error(inventory), isDenied), () =>
 		Option.filter(AsyncResult.error(metrics), isDenied)
 	)
-	const refreshing = shownMinutes !== minutes && !AsyncResult.isFailure(metrics)
+	const refreshing = shownMinutes !== minutes
 
 	const workers = Array.dedupe([
 		...Option.getOrElse(
@@ -1054,7 +1051,9 @@ function Home() {
 		),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
-	const active = Option.getOrElse(Option.fromUndefinedOr(worker), () => Option.getOrUndefined(Array.head(workers)))
+	const active = Option.getOrElse(Option.fromUndefinedOr(search.machine), () =>
+		Option.getOrUndefined(Array.head(workers))
+	)
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
@@ -1097,7 +1096,7 @@ function Home() {
 	const sorted = Array.sort(ranged(activeRows, shownMinutes, Option.getOrUndefined(history)), order)
 	const selectedRow = Option.getOrElse(
 		Option.orElse(
-			Option.flatMap(Option.liftPredicate(selection, String.isNonEmpty), current =>
+			Option.flatMap(Option.fromUndefinedOr(search.app), current =>
 				Array.findFirst(searchable, row => row.item.id === current)
 			),
 			() => Array.head(sorted)
@@ -1110,20 +1109,21 @@ function Home() {
 	})
 
 	function selectRow(row: ReturnType<typeof workloads>[number]) {
-		setSelection(row.item.id)
-		setPane('process')
+		view({app: row.item.id, pane: 'process'})
 	}
 
 	function selectWorker(next: string) {
-		setMachine(next)
-		setSelection('')
 		setHovered(undefined)
-		setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const}))
+		view({
+			app: undefined,
+			machine: next,
+			pane: Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const})
+		})
 	}
 
 	function showMachine() {
 		setMachineBack(Boolean.match(pane === 'machine', {onFalse: () => pane, onTrue: () => machineBack}))
-		setPane('machine')
+		view({pane: 'machine'})
 	}
 
 	return (
@@ -1156,7 +1156,9 @@ function Home() {
 							onTrue: () => Boolean.match(machineBack === 'process', {onFalse: () => 'Apps', onTrue: () => 'Processes'})
 						}),
 						onClick: () =>
-							setPane(Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => machineBack}))
+							view({
+								pane: Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => machineBack})
+							})
 					})
 				})}
 				palette={Boolean.match(Option.isSome(authFailure), {
@@ -1231,7 +1233,7 @@ function Home() {
 					],
 					onTrue: () => [otherApps('deploy')]
 				})}
-				controls={<RangeMenu minutes={minutes} pending={refreshing} onChange={setMinutes} />}
+				controls={<RangeMenu minutes={minutes} pending={refreshing} onChange={range => view({range})} />}
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
@@ -1343,4 +1345,4 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})
