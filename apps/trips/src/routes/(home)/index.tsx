@@ -2,7 +2,7 @@ import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue}
 
 import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
 
-import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
+import {Button, HStack, Section, Spacer, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	background,
@@ -28,7 +28,6 @@ import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -58,7 +57,6 @@ import {
 	tones,
 	undoAtom
 } from '#lib/utils.ts'
-import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 
@@ -151,7 +149,7 @@ function PasteSheet() {
 	const send = useAtomSet(clipboardAtom.send)
 	return (
 		<ClipboardSheet
-			anchor={<AppTitle logo={icon} name="trips" />}
+			anchor={<Spacer modifiers={[frame({height: 0})]} />}
 			confirm="Add booking"
 			detail={Boolean.match(
 				Option.exists(offer, current => current.kind === 'image'),
@@ -189,6 +187,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	}
 	return (
 		<>
+			<PasteSheet />
 			{/* The bookings on screen stay through an outage; a dot above them marks that they stopped updating. */}
 			{AsyncResult.isFailure(loaded) && (
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
@@ -256,7 +255,9 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 export function HomeRoute(props: {onOpen: (id: string) => void}) {
 	const restore = useAtomSet(restoreAtom)
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+		<Toolbar
+			modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
+		>
 			<Suspense
 				fallback={
 					<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
@@ -265,9 +266,6 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 				<Bookings onOpen={props.onOpen} />
 			</Suspense>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
-					<PasteSheet />
-				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session.machine} />
 				</ToolbarItem>

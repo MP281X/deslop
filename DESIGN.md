@@ -23,7 +23,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 
 ## Shape and layout
 
-- One 4px `--radius`; each primitive keeps the shape its shadcn style gives it. System navigation and controls stay native on iOS.
+- One 4px `--radius`; each primitive keeps the shape its shadcn style gives it. System navigation and controls stay native on iOS, following Apple's current guidelines as closely as SwiftUI allows: a root list takes the system large title, which collapses inline as it scrolls; no custom title view, bar background or restyled system control.
 - One-line rows. No column-heading labels or counts in headings/tabs. The whole row opens its content; secondary actions use the existing context menu.
 - Dividers are separate, straight, inset lines, hidden next to hovered or selected rows. Never use a rounded row's border or shadow as its divider.
 - Show each fact once: no value repeated as a chart, a figure and a percentage, and nothing in the bar that the selected row already shows.
@@ -57,7 +57,7 @@ Canonical app artwork and SVGL software marks remain transparent, never letter p
 | ------------------------------------------------- | --------------------------------------------------------- |
 | Transparent `icon.svg`                            | Favicon, app bar, `/icon`, `/favicon.ico` and MCP clients |
 | `app.icon/` with a 1024px transparent pixel layer | Icon Composer; iOS supplies its system treatment          |
-| 1024px transparent `icon.png`                     | Native in-app title                                       |
+| 1024px transparent `icon.png`                     | Native sign-in screen                                     |
 | Whole-cell indexed `public/apple-touch-icon.png`  | Installed web app home screen                             |
 
 `ServerRuntime.layerWeb` owns the standalone manifest and raster icon. Web roots clear the top safe area; scrollers clear the bottom.

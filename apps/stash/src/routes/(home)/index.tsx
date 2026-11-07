@@ -16,6 +16,7 @@ import {
 	Text,
 	Toggle,
 	ZStack,
+	Spacer,
 	Toolbar,
 	ToolbarItem,
 	VStack
@@ -60,7 +61,6 @@ import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -92,7 +92,6 @@ import {
 	searchAtom,
 	session
 } from '#lib/utils.ts'
-import logo from '#routes/icon.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
@@ -285,7 +284,7 @@ function PasteSheet() {
 	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
 	return (
 		<ClipboardSheet
-			anchor={<AppTitle logo={logo} name="stash" />}
+			anchor={<Spacer modifiers={[frame({height: 0})]} />}
 			confirm="Save"
 			onAnswer={save => send({_tag: 'Answered', save})}
 			open={Option.isSome(offer)}
@@ -354,10 +353,13 @@ export function HomeRoute(props: {
 	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+		<Toolbar
+			modifiers={[navigationTitle('Stash'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
+		>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
 				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+					<PasteSheet />
 					<Outages />
 					{Array.match(shown.success, {
 						onEmpty: () => (
@@ -444,9 +446,6 @@ export function HomeRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
-					<PasteSheet />
-				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session.machine} />
 				</ToolbarItem>

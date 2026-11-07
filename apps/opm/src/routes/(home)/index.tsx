@@ -29,7 +29,6 @@ import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -45,7 +44,6 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
-import icon from '#routes/icon.png'
 import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
@@ -171,7 +169,13 @@ export function ChaptersRoute(props: {
 		)
 	)
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+		<Toolbar
+			modifiers={[
+				navigationTitle(SERIES_NAMES[props.series]),
+				navigationBarTitleDisplayMode('large'),
+				background(colors.background)
+			]}
+		>
 			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
 			<Toolbar
 				modifiers={[
@@ -225,9 +229,6 @@ export function ChaptersRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
-					<AppTitle logo={icon} name="opm" />
-				</ToolbarItem>
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
 				{AsyncResult.isFailure(useAtomValue(chaptersAtom)) && (
 					<ToolbarItem placement="topBarLeading">
