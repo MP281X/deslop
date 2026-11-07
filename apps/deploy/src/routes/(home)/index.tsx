@@ -202,12 +202,12 @@ function failedFor(
 	)
 }
 
-// One port's badge: a public endpoint reads as its hostname, a tailnet one as its port, in the machine's hue; a hairline port nobody reaches is not a link.
+// Equal-width port chips: exposed in the app hue, unexposed neutral; the full endpoint remains in its link and title.
 function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Badge
 			variant="default"
-			className="text-primary-foreground relative max-w-28 shrink-0 bg-(--machine) font-mono hover:bg-(--machine)/80 max-sm:overflow-visible"
+			className="bg-primary/22 text-primary hover:bg-primary/30 w-port relative h-5 shrink-0 justify-center border-0 font-mono text-xs tabular-nums max-sm:overflow-visible"
 			render={
 				<a
 					href={props.item.url}
@@ -249,15 +249,19 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 						Array.findFirst(props.free, port => port.id === listener.id),
 						{
 							onNone: () => (
-								<Badge key={listener.id} variant="outline" className="shrink-0 font-mono">
+								<Badge
+									key={listener.id}
+									variant="secondary"
+									className="w-port h-5 shrink-0 justify-center border-0 font-mono text-xs tabular-nums"
+								>
 									:{listener.port}
 								</Badge>
 							),
 							onSome: port => (
 								<Badge
 									key={listener.id}
-									variant="outline"
-									className="hover:bg-muted relative shrink-0 cursor-pointer font-mono max-sm:overflow-visible"
+									variant="secondary"
+									className="hover:bg-accent w-port relative h-5 shrink-0 cursor-pointer justify-center border-0 font-mono text-xs tabular-nums max-sm:overflow-visible"
 									render={
 										<button
 											type="button"
@@ -427,7 +431,7 @@ function AppListRow(props: {
 						)}
 						<span
 							className={cn(
-								'pointer-events-auto flex w-28 shrink-0 items-center gap-1 overflow-hidden max-sm:h-11',
+								'pointer-events-auto flex w-28 shrink-0 items-center justify-end gap-1 overflow-hidden max-sm:h-11',
 								props.row.item.scheduled === true && 'text-muted-foreground'
 							)}
 						>

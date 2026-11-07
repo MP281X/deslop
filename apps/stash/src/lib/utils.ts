@@ -27,7 +27,7 @@ import {Brand, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const SERVER = 'https://stash.mp281x.xyz'
 
-export const primary = hues.yellow
+export const primary = hues.amber
 
 const listFile = new File(Paths.document, 'list.json')
 

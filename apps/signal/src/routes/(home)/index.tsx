@@ -1155,7 +1155,7 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 			<aside
 				aria-label="Inspector"
 				className={cn(
-					'bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-80',
+					'bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col overflow-hidden rounded-md md:max-h-full md:w-80',
 					actor !== undefined && 'max-h-2/3 lg:w-160'
 				)}
 			>

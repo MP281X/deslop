@@ -1,23 +1,28 @@
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
-// theme.css owns these values; components-web's theme test checks both iPhone appearances against it.
+// Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0a0a0a', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#222222', light: '#e5e5e5'}),
-	card: DynamicColorIOS({dark: '#111111', light: '#fafafa'}),
-	destructive: DynamicColorIOS({dark: '#d14d41', light: '#af3029'}),
-	foreground: DynamicColorIOS({dark: '#ededed', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#9a9a9a', light: '#666666'}),
-	primaryForeground: DynamicColorIOS({dark: '#0a0a0a', light: '#ffffff'}),
-	warning: DynamicColorIOS({dark: '#d0a215', light: '#ad8301'})
+	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
+	border: DynamicColorIOS({dark: '#1a1a1a', light: '#e5e5e5'}),
+	card: DynamicColorIOS({dark: '#141313', light: '#fafafa'}),
+	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
+	foreground: DynamicColorIOS({dark: '#dcdcdc', light: '#0a0a0a'}),
+	mutedForeground: DynamicColorIOS({dark: '#8c8c8c', light: '#666666'}),
+	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
+	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
 }
 
 // Each app's primary tints its controls, live states and icon.
 export const hues = {
-	blue: DynamicColorIOS({dark: '#4385be', light: '#205ea6'}),
-	orange: DynamicColorIOS({dark: '#da702c', light: '#bc5215'}),
-	yellow: DynamicColorIOS({dark: '#d0a215', light: '#ad8301'})
+	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
+	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),
+	cyan: DynamicColorIOS({dark: '#a3d4d5', light: '#25777a'}),
+	ivory: DynamicColorIOS({dark: '#dcd7ba', light: '#686868'}),
+	orange: DynamicColorIOS({dark: '#ffa066', light: '#b64b11'}),
+	pink: DynamicColorIOS({dark: '#d27e99', light: '#a63c69'}),
+	purple: DynamicColorIOS({dark: '#957fb8', light: '#74519b'}),
+	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
 }
 
 // DESIGN.md's 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.

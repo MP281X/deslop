@@ -1,17 +1,20 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Number, Option, String, pipe} from 'effect'
 
 const ROOT = `${import.meta.dirname}/../../..`
 
-// Each variable the block sets to a hex color, by name.
+// Relative OKLCH preserves its Kanagawa source exactly; Expo accepts that source at its native color boundary.
 function declarations(block: string) {
 	return Array.map(
-		Array.fromIterable(String.matchAll(/--([a-z-]+): (?:#([0-9a-f]{6})|var\(--([a-z-]+)\));/gu)(block)),
+		Array.fromIterable(
+			String.matchAll(/--([a-z-]+): (?:#([0-9a-f]{6})|oklch\(from #([0-9a-f]{6}) l c h\)|var\(--([a-z-]+)\));/gu)(block)
+		),
 		match => {
 			if (match[2]) return [match[1] ?? '', `#${match[2]}`]
-			return [match[1] ?? '', `var(--${match[3] ?? ''})`]
+			if (match[3]) return [match[1] ?? '', `#${match[3]}`]
+			return [match[1] ?? '', `var(--${match[4] ?? ''})`]
 		}
 	)
 }
@@ -43,6 +46,20 @@ function pairs(source: string) {
 	)
 }
 
+function luminance(hex: string) {
+	const channels = Array.map(Array.fromIterable(String.matchAll(/[0-9a-f]{2}/gu)(hex)), match => {
+		const channel = Option.getOrThrow(Number.parse(`0x${match[0]}`)) / 255
+		if (channel <= 0.04045) return channel / 12.92
+		return ((channel + 0.055) / 1.055) ** 2.4
+	})
+	assert.lengthOf(channels, 3)
+	return (
+		0.2126 * Array.getUnsafe(channels, 0) +
+		0.7152 * Array.getUnsafe(channels, 1) +
+		0.0722 * Array.getUnsafe(channels, 2)
+	)
+}
+
 it.layer(NodeServices.layer)(test => {
 	test.effect(
 		'theme.css matches theme.ts for every shared color, dark and light',
@@ -64,7 +81,7 @@ it.layer(NodeServices.layer)(test => {
 				})),
 				mobile
 			)
-			const hues = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'magenta']
+			const hues = ['red', 'orange', 'amber', 'ivory', 'cyan', 'blue', 'purple', 'pink', 'slate']
 			assert.includeMembers(
 				Array.map(declarations(dark), entry => entry[0]),
 				hues
@@ -73,6 +90,74 @@ it.layer(NodeServices.layer)(test => {
 				Array.map(declarations(light), entry => entry[0]),
 				hues
 			)
+		})
+	)
+
+	test.effect(
+		'keeps light surfaces neutral and app and status colours readable on white',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const [light] = String.split(
+				yield* fs.readFileString(`${import.meta.dirname}/theme.css`),
+				'@media screen and (prefers-color-scheme: dark)'
+			)
+			const entries = declarations(light)
+			for (const entry of [
+				['background', '#ffffff'],
+				['popover', '#ffffff'],
+				['primary-foreground', '#ffffff'],
+				['foreground', '#0a0a0a'],
+				['card', '#fafafa'],
+				['secondary', '#f2f2f2'],
+				['muted', '#f5f5f5'],
+				['muted-foreground', '#666666'],
+				['accent', '#f0f0f0'],
+				['border', '#e5e5e5'],
+				['input', '#d9d9d9'],
+				['icon-tile', '#fafafa']
+			] as const) {
+				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
+			}
+			for (const name of [
+				'blue',
+				'cyan',
+				'pink',
+				'slate',
+				'purple',
+				'amber',
+				'orange',
+				'ivory',
+				'coral',
+				'destructive',
+				'warning',
+				'machine-dev',
+				'machine-desktop'
+			]) {
+				const value = resolved(entries, name) ?? ''
+				assert.match(value, /^#[0-9a-f]{6}$/u, name)
+				assert.isAtLeast(1.05 / (luminance(value) + 0.05), 4.5, name)
+			}
+		})
+	)
+
+	test.effect(
+		'keeps neutral selection, one radius and no green token in either appearance',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const source = yield* fs.readFileString(`${import.meta.dirname}/theme.css`)
+			const [light, dark = ''] = String.split(source, '@media screen and (prefers-color-scheme: dark)')
+			const darkDeclarations = [...declarations(dark), ...declarations(light)]
+			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
+			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#dcdcdc')
+			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#191818')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), '#1a1a1a')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
+			assert.notInclude(source, '--green')
+			assert.include(source, '--radius: 4px;')
+			for (const size of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']) {
+				assert.include(source, `--radius-${size}: var(--radius);`)
+			}
 		})
 	)
 })

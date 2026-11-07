@@ -10,10 +10,10 @@
 	--side: var(--blue);
 }
 [data-side='web'] {
-	--side: var(--magenta);
+	--side: var(--pink);
 }
 [data-side='mobile'] {
-	--side: var(--green);
+	--side: var(--amber);
 }
 [data-side='ci'] {
 	--side: var(--purple);
