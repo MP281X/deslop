@@ -2,7 +2,7 @@ import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue}
 
 import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
 
-import {Button, HStack, Section, Spacer, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
+import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
 	accessibilityLabel,
 	background,
@@ -21,11 +21,12 @@ import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
+import type {ReactNode} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
-import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
@@ -143,24 +144,25 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	)
 }
 
-function PasteSheet() {
+function PasteSheet(props: {children: ReactNode}) {
 	useAtomMount(clipboardReturnsAtom)
 	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
 	const send = useAtomSet(clipboardAtom.send)
 	return (
-		<ClipboardSheet
-			anchor={<Spacer modifiers={[frame({height: 0})]} />}
-			confirm="Add booking"
-			detail={Boolean.match(
-				Option.exists(offer, current => current.kind === 'image'),
-				{onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'}
-			)}
+		<ClipboardDialog
+			confirm="Add"
 			onAnswer={save => send({_tag: 'Answered', save})}
 			open={Option.isSome(offer)}
-			question="Add from clipboard?"
-			symbol="ticket"
-			tint={primary}
-		/>
+			question={Boolean.match(
+				Option.exists(offer, current => current.kind === 'image'),
+				{
+					onFalse: () => 'Add a booking from the copied text?',
+					onTrue: () => 'Add a booking from the copied screenshot?'
+				}
+			)}
+		>
+			{props.children}
+		</ClipboardDialog>
 	)
 }
 
@@ -185,9 +187,9 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	function daysOf(booking: Booking) {
 		return daysUntil(startOf(booking), now, zoneOf(booking))
 	}
+	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
-		<>
-			<PasteSheet />
+		<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
 			{/* The bookings on screen stay through an outage; a dot above them marks that they stopped updating. */}
 			{AsyncResult.isFailure(loaded) && (
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
@@ -247,7 +249,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 					)}
 				</ItemGroup>
 			)}
-		</>
+		</VStack>
 	)
 }
 
@@ -258,16 +260,18 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 		<Toolbar
 			modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
 		>
-			<Suspense
-				fallback={
-					<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
-				}
-			>
-				<Bookings onOpen={props.onOpen} />
-			</Suspense>
+			<PasteSheet>
+				<Suspense
+					fallback={
+						<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+					}
+				>
+					<Bookings onOpen={props.onOpen} />
+				</Suspense>
+			</PasteSheet>
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session.machine} />
+					<AccountMenu session={session} />
 				</ToolbarItem>
 				<MachineState machine={clipboardAtom} path="Answering">
 					{answering =>

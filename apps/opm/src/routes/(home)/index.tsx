@@ -236,7 +236,7 @@ export function ChaptersRoute(props: {
 					</ToolbarItem>
 				)}
 				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session.machine} />
+					<AccountMenu session={session} />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
 					<Menu

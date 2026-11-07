@@ -9,6 +9,8 @@ import {RpcClientError} from 'effect/rpc'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import {Alert} from 'react-native'
 
+import {Account} from '#schema.ts'
+
 import {ISSUER, needsSignIn, rejected} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
 import {activationsAtom, extra} from '#mobile/client.ts'
@@ -243,8 +245,23 @@ export function make(name: string, server: string, storage: Storage) {
 	)
 	const signedIn = AtomMachine.matches(machine, 'SignedIn')
 
+	// Who is signed in, as the web app bar shows it: the app's server answers for its own bearer.
+	const account = runtime.atom(get => {
+		get(signedIn)
+		get(activationsAtom)
+		return pipe(
+			sessionToken(false),
+			Effect.flatMap(token =>
+				HttpClient.get(new URL('/auth/user', server).href, {headers: {authorization: `Bearer ${token}`}})
+			),
+			Effect.flatMap(HttpClientResponse.schemaBodyJson(Account)),
+			Effect.timeout('10 seconds')
+		)
+	})
+
 	return {
 		accessToken: sessionToken(false),
+		account,
 		machine,
 		// A refused stream renews the session before it opens again; only a refused refresh signs out.
 		renewing: <A, E, R>(live: Stream.Stream<A, E, R>) =>
@@ -291,3 +308,4 @@ export function make(name: string, server: string, storage: Storage) {
 }
 
 export type Session = ReturnType<typeof make>['machine']
+export type AppSession = ReturnType<typeof make>
