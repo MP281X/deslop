@@ -103,7 +103,8 @@ it('shows usable charts while the independent inventory reader is still pending'
 
 it('owns an initial inventory defect without hiding the machine charts', () => {
 	const html = render(AsyncResult.failure(Cause.die('Inventory decode failed')), AsyncResult.success(readings))
-	assert.include(html, 'aria-label="Unavailable"')
+	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Retry')
 	assert.notInclude(html, 'Inventory decode failed')
 	assert.include(html, 'Memory')
 	assert.include(html, 'CPU')

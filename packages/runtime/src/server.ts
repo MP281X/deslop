@@ -381,16 +381,16 @@ export const layerWeb = Layer.unwrap(
 				Effect.succeed(
 					HttpServerResponse.jsonUnsafe(
 						{
-							background_color: '#0a0a0a',
+							background_color: '#0d0c0c',
 							display: 'standalone',
 							// Only the tiled raster: an installed icon must be opaque, and /icon is transparent.
-							icons: [{purpose: 'any', sizes: '512x512', src: '/apple-touch-icon.png', type: 'image/png'}],
+							icons: [{purpose: 'any', src: '/apple-touch-icon.png', type: 'image/png'}],
 							id: '/',
 							name,
 							scope: '/',
 							short_name: name,
 							start_url: '/',
-							theme_color: '#0a0a0a'
+							theme_color: '#0d0c0c'
 						},
 						{contentType: 'application/manifest+json', headers: {'cache-control': 'no-cache'}}
 					)

@@ -37,9 +37,9 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 - Phosphor replaces Lucide: regular at 16px and below, light at 20px and above. Keep accessible names on icon controls; hover/focus names unfamiliar kinds. Native system symbols retain native behaviour.
 - Command entries always have an icon; shortcuts use `Kbd`. The palette has no absolute close X. Escape closes it and restores focus.
 - Loading uses local Suspense with geometry-matched `ItemListSkeleton` or redacted native `Item` parts. Local session reads show the blank shell; no standalone spinner or fake progress. Pressed controls may show a spinner.
-- Retain authorised content through ordinary outages. A small status-coloured dot and age sit on the affected row, tab or pane; hover/focus/tap exposes a few words and an icon retry. Interactive recovery uses a popover, not a button inside a tooltip.
+- Retain authorised content through ordinary outages. Beside usable content, a small status-coloured dot and age mark the affected row, tab or pane; hover/focus/tap exposes a few words and an icon retry. Interactive recovery uses a popover, not a button inside a tooltip.
 - Do not dump `formatError`, raw causes or agent instructions into alerts. Diagnostics belong in Scope. Stash's on-device search/body read failures use a quiet saved-copy indicator.
-- No-data failures remain owned by the local reader or route boundary, with an accessible retry. Native readers use `includeFailure: true`; never throw a data failure into React Native.
+- Blocking failures use a compact icon and brief reason in normal text, with a plain app-accent Retry below: no lone dot, hero, duplicate heading or decorated button. The local reader or route boundary owns them. Native readers use `includeFailure: true`; never throw a data failure into React Native.
 - Authorisation denial invalidates retained content and palette records until an actual authorised emission. Styling must not weaken that boundary, empty-success handling, stream recovery or cache invalidation.
 - Failed mutations remain attached to the action that caused them. Do not hide whether a destructive action committed.
 
@@ -51,11 +51,13 @@ Motion explains a change, never delays work. No ornamental or global press scali
 
 Canonical app artwork and SVGL software marks remain transparent, never letter placeholders or decorative tiles. Redrawing app artwork requires its own approved brief; do not recolour `icon.svg` as part of a UI pass. Portfolio's handmade coral bolt is never redrawn.
 
-| Asset                                            | Consumer                                                  |
-| ------------------------------------------------ | --------------------------------------------------------- |
-| Transparent `icon.svg`                           | Favicon, app bar, `/icon`, `/favicon.ico` and MCP clients |
-| `app.icon/` with a 1024px SVG layer              | Icon Composer; iOS supplies its system treatment          |
-| 1024px indexed `icon.png`                        | Native in-app title                                       |
-| Whole-cell indexed `public/apple-touch-icon.png` | Installed web app home screen                             |
+| Asset                                             | Consumer                                                  |
+| ------------------------------------------------- | --------------------------------------------------------- |
+| Transparent `icon.svg`                            | Favicon, app bar, `/icon`, `/favicon.ico` and MCP clients |
+| `app.icon/` with a 1024px transparent pixel layer | Icon Composer; iOS supplies its system treatment          |
+| 1024px transparent `icon.png`                     | Native in-app title                                       |
+| Whole-cell indexed `public/apple-touch-icon.png`  | Installed web app home screen                             |
 
 `ServerRuntime.layerWeb` owns the standalone manifest and raster icon. Web roots clear the top safe area; scrollers clear the bottom.
+
+The approved Kanagawa pixel-art family is fixed: copy the cell-run SVGs unchanged, retain transparency and `crispEdges`, and scale raster cells only by integers. Touch icons use a 192px render cropped centrally to 180px on `#0d0c0c`; native icon backgrounds use the same colour. No smoothing, recolouring or extra small variants.

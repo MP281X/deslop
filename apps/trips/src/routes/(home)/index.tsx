@@ -171,7 +171,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} />
+		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
 	}
 	const current = Array.filter(
 		loaded.value,

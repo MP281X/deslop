@@ -21,7 +21,9 @@ import icon from '#routes/icon.png'
 function Destination(props: {onClose: () => void; value: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
-	if (AsyncResult.isFailure(loaded)) return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} />
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+	}
 	return <BookingRoute key={props.value} bookings={loaded.value} id={props.value} onClose={props.onClose} />
 }
 

@@ -2,7 +2,7 @@ import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause} from 'effect'
 
-import {Button, Host, Image, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
+import {Button, Host, Image, Label, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	buttonStyle,
@@ -11,6 +11,7 @@ import {
 	disabled,
 	foregroundStyle,
 	frame,
+	labelStyle,
 	padding,
 	resizable,
 	tint
@@ -24,7 +25,6 @@ import type {Session} from '@deslop/runtime/mobile/session'
 
 import {colors, radius, space, text} from './theme.ts'
 
-import {Problem} from '#components/problem.tsx'
 import {ItemGroupSkeleton} from '#components/ui/skeleton.tsx'
 import {assetAtom} from '#lib/utils.ts'
 
@@ -53,16 +53,34 @@ export function LoadingScreen() {
 	)
 }
 
-export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
+export function FailureContent(props: {
+	cause: Cause.Cause<unknown>
+	name: string
+	onRetry: () => void
+	tint: ColorValue
+}) {
+	const denied = Array.some(props.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
 	return (
 		<VStack modifiers={FULL_SCREEN}>
-			<Problem
-				label={Boolean.match(
-					Array.some(props.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error)),
-					{onFalse: () => `${props.name} unavailable`, onTrue: () => 'Access denied'}
-				)}
-				onRetry={props.onRetry}
-			/>
+			<VStack spacing={space[2]}>
+				<Label
+					icon={
+						<Image
+							systemName={Boolean.match(denied, {onFalse: () => 'exclamationmark.circle', onTrue: () => 'lock'})}
+							modifiers={[text.body, foregroundStyle(colors.destructive)]}
+						/>
+					}
+					modifiers={[labelStyle('titleAndIcon')]}
+				>
+					<Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>
+						{Boolean.match(denied, {
+							onFalse: () => `${props.name} unavailable.`,
+							onTrue: () => 'You don’t have access.'
+						})}
+					</Text>
+				</Label>
+				<Button label="Retry" onPress={props.onRetry} modifiers={[tint(props.tint)]} />
+			</VStack>
 		</VStack>
 	)
 }

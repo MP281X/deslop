@@ -105,7 +105,8 @@ it('keeps retained spans after a defect', () => {
 
 it('owns a trace failure without retained data', () => {
 	const html = render(AsyncResult.fail(TelemetryError.make({message: 'No trace remains'})))
-	assert.include(html, 'aria-label="Unavailable"')
+	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Retry')
 	assert.notInclude(html, 'No trace remains')
 	assert.notInclude(html, 'Private retained span')
 })
@@ -164,7 +165,8 @@ it('uses square pane-edge selection and independent inset row dividers', () => {
 
 it('owns an initial overview defect instead of leaving its skeleton indefinitely', () => {
 	const html = render(AsyncResult.initial(), AsyncResult.failure(Cause.die('Overview decode failed')))
-	assert.include(html, 'aria-label="Unavailable"')
+	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Retry')
 	assert.notInclude(html, 'Overview decode failed')
 	assert.notInclude(html, 'aria-busy="true"')
 })

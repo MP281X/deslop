@@ -182,7 +182,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
-		return <FailureContent cause={full.cause} name="stash" onRetry={reload} />
+		return <FailureContent cause={full.cause} name="Note" onRetry={reload} tint={primary} />
 	}
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
@@ -256,7 +256,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(notesAtom)
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} />
+		return <FailureContent cause={loaded.cause} name="Notes" onRetry={refresh} tint={primary} />
 	}
 	return Option.match(
 		Array.findFirst(loaded.value, item => item.id === props.id),

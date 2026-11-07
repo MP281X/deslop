@@ -59,11 +59,7 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (!Schema.is(AuthError)(props.error)) return <Error error={props.error} reset={props.reset} />
 	if (props.error.error === 'access_denied') {
-		return (
-			<div className="flex flex-1 items-center justify-center">
-				<Problem label="Access denied" reset={props.reset} />
-			</div>
-		)
+		return <Error error={props.error} label="Access denied" reset={props.reset} />
 	}
 	if (!needsSignIn(props.error)) return <Error error={props.error} reset={props.reset} />
 	return <SignIn href={signInUrl(location.href)} />

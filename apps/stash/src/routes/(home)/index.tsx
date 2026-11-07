@@ -13,6 +13,7 @@ import {
 	Overlay,
 	Picker,
 	SwipeActions,
+	Text,
 	Toggle,
 	ZStack,
 	Toolbar,
@@ -22,6 +23,7 @@ import {
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
 	accessibilityHidden,
+	accessibilityElement,
 	accessibilityLabel,
 	alignmentGuide,
 	aspectRatio,
@@ -115,11 +117,10 @@ function Lines(props: {note: NoteItem}) {
 					</ItemDescription>
 				)),
 				Match.when('failed', () => (
-					<Label
-						title="Couldn’t read this link"
-						systemImage="exclamationmark.triangle.fill"
-						modifiers={[text.caption, foregroundStyle(colors.destructive), lineLimit(1)]}
-					/>
+					<HStack spacing={space[1]} modifiers={[accessibilityElement('combine'), foregroundStyle(colors.destructive)]}>
+						<Image systemName="exclamationmark.triangle.fill" modifiers={[text.caption, accessibilityHidden(true)]} />
+						<Text modifiers={[text.caption, lineLimit(1)]}>Couldn’t read this link</Text>
+					</HStack>
 				)),
 				Match.orElse(() => <Byline note={props.note} />)
 			)}
@@ -315,10 +316,10 @@ export function HomeRoute(props: {
 	const found = pipe(search, AsyncResult.value, Option.flatten)
 	const [limit, setLimit] = useState(80)
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} />
+		return <FailureContent cause={loaded.cause} name="Notes" onRetry={refresh} tint={primary} />
 	}
 	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
-		return <FailureContent cause={search.cause} name="stash" onRetry={refreshSearch} />
+		return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} tint={primary} />
 	}
 	const notes = Array.filter(
 		loaded.value,

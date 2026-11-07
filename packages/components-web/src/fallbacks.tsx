@@ -1,9 +1,8 @@
-import {HouseIcon, QuestionIcon} from '@phosphor-icons/react'
+import {HouseIcon, QuestionIcon, WarningCircleIcon} from '@phosphor-icons/react'
 import {useEffect} from 'react'
 import type {ReactNode} from 'react'
 
-import {Problem} from '#components/problem.tsx'
-import {buttonVariants} from '#components/ui/button.tsx'
+import {Button, buttonVariants} from '#components/ui/button.tsx'
 import {Empty} from '#components/ui/empty.tsx'
 
 export function EmptyState(props: {icon: ReactNode; label: string}) {
@@ -38,7 +37,15 @@ export function SignIn(props: {href: string}) {
 export function Error(props: {error: unknown; label?: string; reset: () => void}) {
 	return (
 		<div className="flex min-h-0 flex-1 items-center justify-center p-3">
-			<Problem label={props.label ?? 'Unavailable'} reset={props.reset} />
+			<div role="alert" aria-label={props.label ?? 'Unavailable'} className="flex flex-col items-center gap-2">
+				<p className="flex items-center gap-2">
+					<WarningCircleIcon aria-hidden className="text-destructive size-4 shrink-0" />
+					<span>{props.label ?? 'Can’t load this view.'}</span>
+				</p>
+				<Button variant="link" size="sm" className="max-sm:min-h-11" onClick={props.reset}>
+					Retry
+				</Button>
+			</div>
 		</div>
 	)
 }
