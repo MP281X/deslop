@@ -35,7 +35,6 @@
 		"@fontsource-variable/ibm-plex-sans": "latest",
 		"@tanstack/react-hotkeys": "latest",
 		"@tanstack/react-router": "latest",
-		"@tanstack/redact": "latest",
 		"@typeonce/effect-machine": "latest",
 		"effect": "latest",
 		"lucide-react": "latest",
