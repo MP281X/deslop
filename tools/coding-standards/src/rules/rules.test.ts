@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Option, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
@@ -12,6 +12,7 @@ const OxlintOutput = Schema.Struct({
 	diagnostics: Schema.Array(
 		Schema.Struct({
 			code: Schema.String,
+			filename: Schema.optional(Schema.String),
 			labels: Schema.Array(Schema.Struct({span: Schema.Struct({line: Schema.Finite})})),
 			message: Schema.String
 		})
@@ -24,11 +25,12 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	const directory = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-lint-'})
 	yield* Effect.forEach(
 		Record.toEntries(input),
-		entry =>
-			fs.writeFileString(
-				path.join(directory, entry[0]),
-				String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(entry[1])
-			),
+		entry => {
+			const file = path.join(directory, entry[0])
+			return Effect.flatMap(fs.makeDirectory(path.dirname(file), {recursive: true}), () =>
+				fs.writeFileString(file, String.replace(/^((?:import[^\n]*\n)+)(?!\n)/u, '$1\n')(entry[1]))
+			)
+		},
 		{concurrency: 'unbounded'}
 	)
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
@@ -2297,6 +2299,85 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				const lines = reportedLines(result, 'no-dom-test-environment')
 				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'keeps every schema definition in its service schema file',
+			Effect.fnUntraced(function* () {
+				const inputs = {
+					'src/elsewhere/utils.ts': Array.join(
+						["import {Schema} from 'effect'", '', 'export const Shared = Schema.Struct({name: Schema.String})'],
+						'\n'
+					),
+					'src/services/x/lib/store.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'',
+							'const Stored = Schema.Array(Schema.String) // reported',
+							'',
+							'export const stored = Stored'
+						],
+						'\n'
+					),
+					'src/services/x/schema.ts': Array.join(
+						[
+							"import {Schema} from 'effect'",
+							'',
+							'export const Imported = Schema.Struct({name: Schema.String})',
+							'export const ImportedList = Schema.Array(Imported)'
+						],
+						'\n'
+					),
+					'src/services/x/service.test.ts': Array.join(
+						["import {Schema} from 'effect'", '', 'export const Fixture = Schema.Struct({name: Schema.String})'],
+						'\n'
+					),
+					'src/services/x/service.ts': Array.join(
+						[
+							"import {Schema, pipe} from 'effect'",
+							'',
+							"import {Imported} from '#services/x/schema.ts'",
+							'',
+							'export const Local = Schema.Struct({name: Schema.String}) // reported',
+							'export const Chained = Schema.String.check(Schema.isMinLength(1)) // reported',
+							'export const Piped = pipe(Schema.String, Schema.check(Schema.isMinLength(1))) // reported',
+							'export const Decoded = Schema.decodeUnknownSync(Imported)',
+							'export const Used = Imported',
+							'export class LocalError extends Schema.TaggedError<LocalError>()("LocalError", {message: Schema.String}) {} // reported',
+							'export class Boxed extends Schema.TaggedClass<Boxed>()("Boxed", {name: Schema.String}) {} // reported',
+							'export const Factory = Schema.Class<Factory>()("Factory", {name: Schema.String}) // reported'
+						],
+						'\n'
+					)
+				}
+				const result = yield* lintSource(inputs)
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => diagnostic.code === '@deslop/coding-standards(service-schema-file)'),
+						Array.map(diagnostic =>
+							pipe(
+								Array.findFirst(Record.keys(inputs), name => String.endsWith(name)(diagnostic.filename ?? '')),
+								Option.map(name => `${name}:${diagnostic.labels[0]?.span.line ?? 0}`),
+								Option.getOrElse(() => diagnostic.filename ?? '')
+							)
+						),
+						Array.sort(String.Order)
+					),
+					pipe(
+						Record.keys(inputs),
+						Array.flatMap((name, index) =>
+							pipe(
+								String.split(result.sources[index] ?? '', '\n'),
+								Array.map((line, lineIndex) => ({line, number: lineIndex + 1})),
+								Array.filter(entry => String.includes('// reported')(entry.line)),
+								Array.map(entry => `${name}:${entry.number}`)
+							)
+						),
+						Array.sort(String.Order)
+					)
+				)
 			})
 		)
 
