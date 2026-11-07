@@ -19,9 +19,15 @@ it('owns the loading status and shape of shared rows', () => {
 	assert.include(html, 'shrink-0')
 })
 
-it('composes local row alignment without conflicting spacing utilities', () => {
+it('composes local row alignment and media size without conflicting utilities', () => {
 	const html = renderToStaticMarkup(
-		createElement(ItemListSkeleton, {label: 'Apps', media: true, rowClassName: 'gap-2 px-3', rows: 8})
+		createElement(ItemListSkeleton, {
+			label: 'Apps',
+			media: true,
+			mediaClassName: 'size-3.5',
+			rowClassName: 'gap-2 px-3',
+			rows: 8
+		})
 	)
 	assert.strictEqual(String.split(html, 'aria-hidden="true"').length - 1, 8)
 	assert.include(html, 'gap-2')
@@ -29,4 +35,6 @@ it('composes local row alignment without conflicting spacing utilities', () => {
 	assert.include(html, 'max-sm:h-11')
 	assert.notInclude(html, 'gap-3')
 	assert.notInclude(html, 'px-1')
+	assert.include(html, 'size-3.5')
+	assert.notInclude(html, 'size-5')
 })

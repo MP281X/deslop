@@ -1,6 +1,8 @@
-import {Array, Clock, Effect, Number, Option, Stream, String, pipe} from 'effect'
+import {Clock, Effect, Number, Option, Schema, Stream, String, pipe} from 'effect'
 
-import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
+import {Machine} from '@typeonce/effect-machine'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
+import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -8,11 +10,58 @@ import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import {Operation} from '#services/telemetry/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: WebRuntime.layerProtocol
 }) {}
+
+export type OperationKey = typeof OperationKey.Type
+const OperationKey = Schema.Struct({app: Schema.String, name: Operation.fields.name, runtime: Operation.fields.runtime})
+type Selection = typeof Selection.Type
+const Selection = Schema.Struct({
+	operation: OperationKey,
+	spanId: Schema.optionalKey(Schema.String),
+	traceId: Schema.optionalKey(Schema.String)
+})
+type SelectedTrace = typeof SelectedTrace.Type
+const SelectedTrace = Schema.Struct({...Selection.fields, traceId: Schema.String})
+type SelectedSpan = typeof SelectedSpan.Type
+const SelectedSpan = Schema.Struct({...SelectedTrace.fields, spanId: Schema.String})
+
+// Back preserves one selection. Operation and trace events establish their own selection.
+const Navigation = Machine.make({
+	events: Machine.events({
+		Back: {},
+		Operation: {operation: OperationKey},
+		Span: {selection: SelectedSpan},
+		Trace: {selection: SelectedTrace}
+	}),
+	root: Machine.state({
+		states: {
+			Operations: {fields: {selection: Schema.optionalKey(Selection)}},
+			Span: {fields: {selection: SelectedSpan}},
+			Trace: {fields: {selection: SelectedTrace}},
+			Traces: {fields: {selection: Selection}}
+		}
+	})
+}).handle({
+	initial: {target: 'Operations'},
+	on: {
+		Operation: {data: transition => ({selection: {operation: transition.event.operation}}), target: 'Traces'},
+		Span: {data: transition => ({selection: transition.event.selection}), target: 'Span'},
+		Trace: {data: transition => ({selection: transition.event.selection}), target: 'Trace'}
+	},
+	states: {
+		Operations: {},
+		Span: {on: {Back: {data: transition => ({selection: transition.state.selection}), target: 'Trace'}}},
+		Trace: {on: {Back: {data: transition => ({selection: transition.state.selection}), target: 'Traces'}}},
+		Traces: {on: {Back: {data: transition => ({selection: transition.state.selection}), target: 'Operations'}}}
+	}
+})
+
+export const navigationAtom = AtomMachine.make(Navigation)
 
 // Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
@@ -28,20 +77,6 @@ export const overviewAtom = Atom.keepAlive(
 		)
 	)
 )
-
-// The traces the latest push added, so only they grow in; the first push shows at once.
-export const arrivalsAtom = Atom.make(get => {
-	const result = get(overviewAtom)
-	const before = Option.flatMap(get.self<{arrived: string[]; seen: Option.Option<string[]>}>(), last => last.seen)
-	if (!AsyncResult.isSuccess(result)) return {arrived: Array.empty<string>(), seen: before}
-	const ids = Array.flatMap(result.value.apps, app =>
-		Array.flatMap(app.operations, operation => Array.map(operation.traces, trace => trace.id))
-	)
-	return {
-		arrived: Option.match(before, {onNone: () => Array.empty<string>(), onSome: seen => Array.difference(ids, seen)}),
-		seen: Option.some(ids)
-	}
-})
 
 // An open trace follows arrivals, including late children and logs that do not change its duration.
 export const traceAtom = Atom.family((id: string) =>
