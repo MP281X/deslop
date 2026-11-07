@@ -159,7 +159,7 @@ it.layer(AtomRegistry.layer)(test => {
 					Effect.sync(() => AtomRegistry.make()),
 					registry => Effect.sync(() => registry.dispose())
 				)
-				const a = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
+				const a = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError | string>>()
 				const b = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
 				const file = new File('file:///shared.json')
 				file.writeSync('[{"id":"old"}]')
@@ -231,6 +231,57 @@ it.layer(AtomRegistry.layer)(test => {
 				yield* Fiber.join(fresh)
 				yield* TestClock.adjust('3 seconds')
 				assert.strictEqual(new File(file.uri).textSync(), '[{"id":"authorized"}]')
+				first.refresh(readA)
+				const failed = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(first, readA), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+				)
+				yield* Queue.offer(a, Effect.fail('Still offline'))
+				yield* Fiber.join(failed)
+				assert.isTrue(Option.isNone(AsyncResult.value(first.get(readA))))
+				assert.isTrue(
+					Option.exists(
+						AsyncResult.error(first.get(readA)),
+						error => Schema.is(AuthError)(error) && error.error === 'access_denied'
+					)
+				)
+			})
+		)
+	)
+
+	test.effect('does not hydrate a denied cache on retry when removing the file failed', () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const file = new File('file:///unremoved.json')
+				file.writeSync('[{"id":"private"}]')
+				file.delete = () => {
+					throw new TypeError('Injected removal failure')
+				}
+				const incoming = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError | string>>()
+				const list = Atom.make(get =>
+					cachedList(
+						get,
+						file,
+						Schema.Struct({id: Schema.String}),
+						pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity))
+					)
+				)
+				const registry = yield* AtomRegistry.AtomRegistry
+				yield* Atom.mount(list)
+				assert.deepStrictEqual(yield* Atom.getResult(list), [{id: 'private'}])
+				const denied = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(registry, list), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+				)
+				yield* Queue.offer(incoming, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				yield* Fiber.join(denied)
+				assert.isTrue(file.exists)
+				registry.refresh(list)
+				assert.isTrue(Option.isNone(AsyncResult.value(registry.get(list))))
+				const failed = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(registry, list), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+				)
+				yield* Queue.offer(incoming, Effect.fail('Still offline'))
+				yield* Fiber.join(failed)
+				assert.isTrue(Option.isNone(AsyncResult.value(registry.get(list))))
 			})
 		)
 	)

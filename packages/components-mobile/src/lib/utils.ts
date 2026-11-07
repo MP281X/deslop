@@ -66,9 +66,14 @@ export function cachedList<S extends Schema.Top, E, R>(
 	> = Function.identity
 ) {
 	const json = Schema.fromJsonString(Schema.Array(item))
-	const shown = Option.isSome(
-		Option.flatMap(get.self<AsyncResult.AsyncResult<Schema.$Array<S>['Type']>>(), AsyncResult.value)
-	)
+	const hydrate = Option.match(get.self<AsyncResult.AsyncResult<Schema.$Array<S>['Type'], E>>(), {
+		onNone: () => true,
+		onSome: result => {
+			if (Option.isSome(AsyncResult.value(result))) return false
+			if (!AsyncResult.isFailure(result)) return true
+			return !Array.some(result.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+		}
+	})
 	return Stream.concat(
 		// Only a cold start reads the copy, since a list on screen is newer; without one the app waits for the server rather than open on nothing.
 		pipe(
@@ -80,7 +85,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 			Effect.option,
 			Stream.fromEffect,
 			Stream.flatMap(cached => Stream.fromIterable(Option.toArray(cached))),
-			Stream.when(Effect.succeed(!shown))
+			Stream.when(Effect.succeed(hydrate))
 		),
 		Stream.unwrap(
 			Effect.gen(function* () {
