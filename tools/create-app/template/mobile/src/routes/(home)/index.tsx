@@ -1,16 +1,20 @@
-import {useAtomSuspense} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
 
 import {Text} from '@expo/ui/swift-ui'
-import {foregroundStyle, navigationTitle} from '@expo/ui/swift-ui/modifiers'
+import {foregroundStyle} from '@expo/ui/swift-ui/modifiers'
+import {AsyncResult} from 'effect/reactivity'
 
+import {FailureContent} from '@deslop/components-mobile/screens'
 import {colors, text} from '@deslop/components-mobile/theme'
 
-import {RpcClient} from '#lib/utils.ts'
+import {primary, RpcClient} from '#lib/utils.ts'
 
 export function HomeRoute() {
-	return (
-		<Text modifiers={[navigationTitle('template-app'), text.body, foregroundStyle(colors.foreground)]}>
-			{useAtomSuspense(RpcClient.query('app.name', undefined)).value}
-		</Text>
-	)
+	const atom = RpcClient.query('app.name', undefined)
+	const loaded = useAtomSuspense(atom, {includeFailure: true})
+	const refresh = useAtomRefresh(atom)
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureContent cause={loaded.cause} name="template-app" onRetry={refresh} tint={primary} />
+	}
+	return <Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>{loaded.value}</Text>
 }
