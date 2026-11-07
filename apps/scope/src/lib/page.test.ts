@@ -13,7 +13,7 @@ import {overviewAtom, traceAtom} from '#lib/utils.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceView} from '#services/telemetry/lib/utils.ts'
 import {Entry, TelemetryError} from '#services/telemetry/schema.ts'
-import type {Trace} from '#services/telemetry/schema.ts'
+import type {Overview, Trace} from '#services/telemetry/schema.ts'
 
 const ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 beforeAll(() => Route.options.component?.preload?.())
@@ -39,28 +39,32 @@ const trace = traceView(
 	ID
 )
 
-function render(result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>) {
+function render(
+	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
+	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>
+) {
 	const registry = AtomRegistry.make({
 		initialValues: [
 			[
 				overviewAtom,
-				AsyncResult.success({
-					apps: [
-						{
-							name: 'deploy',
-							operations: [
-								{
-									count: 1,
-									failures: 0,
-									name: 'Inventory.snapshot',
-									p50Ms: 10,
-									runtime: 'server',
-									traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
-								}
-							]
-						}
-					]
-				}),
+				overview ??
+					AsyncResult.success({
+						apps: [
+							{
+								name: 'deploy',
+								operations: [
+									{
+										count: 1,
+										failures: 0,
+										name: 'Inventory.snapshot',
+										p50Ms: 10,
+										runtime: 'server',
+										traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+									}
+								]
+							}
+						]
+					}),
 				{skipInitialRun: true}
 			],
 			[traceAtom(ID), result, {skipInitialRun: true}]
@@ -69,6 +73,7 @@ function render(result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryErro
 	try {
 		registry.get(traceAtom(ID))
 		registry.ensureNode(traceAtom(ID)).setInitialValue(result)
+		if (overview !== undefined) registry.ensureNode(overviewAtom).setInitialValue(overview)
 		if (Route.options.component === undefined) throw TelemetryError.make({message: 'Missing Scope page'})
 		return renderToString(
 			createElement(RegistryContext.Provider, {value: registry}, createElement(Route.options.component))
@@ -123,4 +128,30 @@ it('keeps initial trace loading inside the spans boundary', () => {
 	assert.include(html, 'aria-label="Spans"')
 	assert.include(html, 'Timeline')
 	assert.notInclude(html, 'Something went wrong')
+})
+
+it('keeps pane and column headings outside initial overview suspension', () => {
+	const html = render(AsyncResult.initial(), AsyncResult.initial())
+	for (const heading of ['Operations', 'Failed', 'Runs', 'Typical', 'Age', 'Trace', 'Failure', 'Span', 'Timeline']) {
+		assert.include(html, heading)
+	}
+	assert.include(html, 'grid-cols-scope')
+	assert.include(html, 'aria-busy="true"')
+	assert.notInclude(html, 'Select an operation')
+	assert.notInclude(html, 'Select a trace')
+})
+
+it('replaces loading rows with honest empty panes', () => {
+	const html = render(AsyncResult.initial(), AsyncResult.success({apps: []}))
+	assert.include(html, 'No traces yet')
+	assert.include(html, 'Select an operation')
+	assert.include(html, 'Select a trace')
+	assert.notInclude(html, 'aria-busy="true"')
+})
+
+it('owns an initial overview defect instead of leaving its skeleton indefinitely', () => {
+	const html = render(AsyncResult.initial(), AsyncResult.failure(Cause.die('Overview decode failed')))
+	assert.include(html, 'Overview decode failed')
+	assert.include(html, 'Try again')
+	assert.notInclude(html, 'aria-busy="true"')
 })
