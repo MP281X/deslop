@@ -1,6 +1,8 @@
-import {Array, Config, Context, Effect, Option, Predicate, Schema, String} from 'effect'
+import {Array, Cause, Config, Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {Headers, HttpClient} from 'effect/http'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import type {AtomRegistry} from 'effect/reactivity'
 import {RpcMiddleware} from 'effect/rpc'
 
 import type {User} from '#auth/schema.ts'
@@ -80,5 +82,41 @@ export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>
 				headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
 			})
 		})
+	)
+}
+
+// A denial invalidates the retained success itself, not just the error currently hiding it.
+export function withoutDeniedData<A, E>(source: Atom.Atom<AsyncResult.AsyncResult<A, E>>) {
+	const denied = new WeakMap<AtomRegistry.AtomRegistry, WeakSet<AsyncResult.Success<A, E>>>()
+	return pipe(
+		Atom.transform(
+			source,
+			get => {
+				const result = get(source)
+				if (!AsyncResult.isFailure(result)) return result
+				return Option.match(result.previousSuccess, {
+					onNone: () => result,
+					onSome: previous => {
+						const invalid = Option.getOrElse(Option.fromUndefinedOr(denied.get(get.registry)), () => {
+							const entries = new WeakSet<AsyncResult.Success<A, E>>()
+							denied.set(get.registry, entries)
+							return entries
+						})
+						if (
+							Array.some(
+								result.cause.reasons,
+								reason => Cause.isFailReason(reason) && Schema.is(AuthError)(reason.error)
+							)
+						) {
+							invalid.add(previous)
+						}
+						if (invalid.has(previous)) return AsyncResult.failure(result.cause, {waiting: result.waiting})
+						return result
+					}
+				})
+			},
+			{initialValueTarget: source}
+		),
+		Atom.setLazy(false)
 	)
 }

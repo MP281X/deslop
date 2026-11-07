@@ -122,3 +122,27 @@ it('keeps initial trace loading inside the spans boundary', () => {
 	assert.include(html, 'Timeline')
 	assert.notInclude(html, 'Something went wrong')
 })
+
+it('applies denial invalidation to the actual trace reader', () => {
+	const initial = AsyncResult.success(trace)
+	const atom = traceAtom(ID)
+	const registry = AtomRegistry.make({initialValues: [[atom, initial, {skipInitialRun: true}]]})
+	try {
+		registry.mount(atom)
+		if (atom.initialValueTarget === undefined) throw TelemetryError.make({message: 'Missing guarded trace source'})
+		const source = registry.ensureNode(atom.initialValueTarget)
+		const denied = AsyncResult.failWithPrevious(AuthError.make({error: 'access_denied', message: 'Denied'}), {
+			previous: Option.some(initial)
+		})
+		source.setInitialValue(denied)
+		assert.deepStrictEqual(AsyncResult.value(registry.get(atom)), Option.none())
+		source.setInitialValue(
+			AsyncResult.failWithPrevious<Trace, AuthError | TelemetryError>(TelemetryError.make({message: 'Retry failed'}), {
+				previous: Option.some(denied)
+			})
+		)
+		assert.deepStrictEqual(AsyncResult.value(registry.get(atom)), Option.none())
+	} finally {
+		registry.dispose()
+	}
+})
