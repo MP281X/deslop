@@ -404,7 +404,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		Array.some(rows, row => holds(column, row))
 	)
 	return (
-		<section className="flex max-w-full flex-col gap-3" aria-label="Apps">
+		<section className="flex w-full max-w-sm flex-col gap-3" aria-label="Apps">
 			{/* A waiting sign-in's answer comes first, where the approving phone sees it without scrolling. */}
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(rows, {
@@ -417,10 +417,10 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				),
 				onNonEmpty: () => (
 					<div className="flex flex-col gap-3">
-						<Table aria-label="Apps and the clients signed in to them" className="w-auto border-b">
+						<Table aria-label="Apps and the clients signed in to them" className="border-b">
 							<TableHeader>
 								<TableRow className="max-sm:h-11">
-									<TableHead className="bg-background sticky left-0 z-10 w-40">
+									<TableHead>
 										<span className="text-muted-foreground text-xs">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
@@ -431,7 +431,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							<TableBody>
 								{Array.map(rows, row => (
 									<TableRow key={row.origin} className="max-sm:h-11">
-										<TableHead scope="row" className="bg-background sticky left-0 z-10 w-40">
+										<TableHead scope="row">
 											{Option.match(row.open, {
 												onNone: () => (
 													<span className="flex items-center gap-2 text-sm font-medium">
