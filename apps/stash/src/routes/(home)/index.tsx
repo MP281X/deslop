@@ -6,6 +6,7 @@ import {
 	Button,
 	ContextMenu,
 	Divider,
+	HStack,
 	Image,
 	Label,
 	Menu,
@@ -53,11 +54,12 @@ import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
+import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
-import {colors, space, text} from '@deslop/components-mobile/theme'
+import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemContent,
@@ -71,7 +73,7 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 
-import {Byline, ReadError} from '#lib/components.tsx'
+import {Byline} from '#lib/components.tsx'
 import {
 	appOf,
 	brandOf,
@@ -136,7 +138,7 @@ function Thumbnail(props: {id: Note['id']}) {
 				resizable(),
 				aspectRatio({contentMode: 'fill'}),
 				frame({height: 64, width: 64}),
-				clipShape('roundedRectangle', 10),
+				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
 		/>
@@ -151,7 +153,7 @@ function NoteMedia(props: {note: NoteItem}) {
 			modifiers={[
 				frame({height: 64, width: 64}),
 				background(colors.card),
-				clipShape('roundedRectangle', 10),
+				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
 		>
@@ -313,10 +315,10 @@ export function HomeRoute(props: {
 	const found = pipe(search, AsyncResult.value, Option.flatten)
 	const [limit, setLimit] = useState(80)
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} tint={primary} />
+		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} />
 	}
 	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
-		return <FailureContent cause={search.cause} name="stash" onRetry={refreshSearch} tint={primary} />
+		return <FailureContent cause={search.cause} name="stash" onRetry={refreshSearch} />
 	}
 	const notes = Array.filter(
 		loaded.value,
@@ -334,20 +336,15 @@ export function HomeRoute(props: {
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
 				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
 					{AsyncResult.isFailure(search) && (
-						<ReadError
-							cause={search.cause}
-							title="Search unavailable"
-							onRetry={refreshSearch}
-							modifiers={[padding({all: space[4]})]}
-						/>
+						<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
+							<Problem label="Search unavailable" saved={Option.isSome(found)} onRetry={refreshSearch} />
+						</HStack>
 					)}
 					{Array.match(loaded.value, {
 						onEmpty: () => (
-							<Empty>
+							<Empty modifiers={[accessibilityLabel('Nothing saved')]}>
 								<EmptyHeader>
 									<EmptyMedia systemImage="tray" />
-									<EmptyTitle>Nothing Saved</EmptyTitle>
-									<EmptyDescription>Share a link to stash, or copy one and open the app.</EmptyDescription>
 								</EmptyHeader>
 							</Empty>
 						),
@@ -396,18 +393,16 @@ export function HomeRoute(props: {
 								</ItemGroup>
 								{filtered && Array.isReadonlyArrayEmpty(notes) && (
 									<Overlay.Content>
-										<Empty>
+										<Empty modifiers={[accessibilityLabel('No matching notes')]}>
 											{Boolean.match(String.isEmpty(query), {
 												onFalse: () => (
 													<EmptyHeader>
 														<EmptyMedia systemImage="magnifyingglass" />
-														<EmptyTitle>{`No Results for “${query}”`}</EmptyTitle>
 													</EmptyHeader>
 												),
 												onTrue: () => (
 													<EmptyHeader>
 														<EmptyMedia systemImage="tray" />
-														<EmptyTitle>No Notes</EmptyTitle>
 													</EmptyHeader>
 												)
 											})}

@@ -48,7 +48,7 @@ function AppRoutes() {
 		setPath([keyOf({number, series})])
 	}
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureScreen cause={loaded.cause} name="opm" onRetry={refreshChapters} tint={primary} />
+		return <FailureScreen cause={loaded.cause} name="opm" onRetry={refreshChapters} />
 	}
 	const chapters = loaded.value
 

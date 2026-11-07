@@ -35,7 +35,7 @@ function AppRoutes() {
 	)
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureScreen cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+		return <FailureScreen cause={loaded.cause} name="Trips" onRetry={refresh} />
 	}
 
 	return (

@@ -155,6 +155,10 @@ it.layer(NodeServices.layer)(test => {
 			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
 			assert.notInclude(source, '--green')
 			assert.include(source, '--radius: 4px;')
+			assert.include(
+				yield* fs.readFileString(`${ROOT}/packages/components-mobile/src/theme.ts`),
+				'export const radius = 4'
+			)
 			for (const size of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']) {
 				assert.include(source, `--radius-${size}: var(--radius);`)
 			}

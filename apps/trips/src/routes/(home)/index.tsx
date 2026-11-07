@@ -4,6 +4,7 @@ import {Array, Boolean, DateTime, Number, Option, pipe} from 'effect'
 
 import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
+	accessibilityLabel,
 	background,
 	font,
 	foregroundStyle,
@@ -24,7 +25,7 @@ import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemContent,
@@ -178,11 +179,9 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 	return (
 		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
 			{Array.isReadonlyArrayEmpty(props.bookings) && (
-				<Empty>
+				<Empty modifiers={[accessibilityLabel('No bookings')]}>
 					<EmptyHeader>
 						<EmptyMedia systemImage="ticket" />
-						<EmptyTitle>No bookings</EmptyTitle>
-						<EmptyDescription>Copy a confirmation or screenshot, then open Trips.</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)}
@@ -190,13 +189,9 @@ export function HomeRoute(props: {bookings: BookingList; onOpen: (id: string) =>
 				Array.isReadonlyArrayEmpty(current) &&
 				Array.isReadonlyArrayEmpty(ahead) &&
 				Array.isReadonlyArrayEmpty(past) && (
-					<Empty>
+					<Empty modifiers={[accessibilityLabel('No upcoming bookings')]}>
 						<EmptyHeader>
 							<EmptyMedia systemImage="ticket" />
-							<EmptyTitle>No upcoming bookings</EmptyTitle>
-							<EmptyDescription>
-								Copy a confirmation or screenshot, then open Trips. Bookings older than a month are hidden.
-							</EmptyDescription>
 						</EmptyHeader>
 					</Empty>
 				)}

@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Cause} from 'effect'
+import {Array, Boolean, Cause} from 'effect'
 
 import {Button, Host, Image, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {
@@ -11,7 +11,6 @@ import {
 	disabled,
 	foregroundStyle,
 	frame,
-	lineLimit,
 	padding,
 	resizable,
 	tint
@@ -20,10 +19,12 @@ import {MachineState} from '@typeonce/effect-machine-react'
 import type {ComponentProps, ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
+import {isDenied} from '@deslop/runtime/auth/utils'
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {colors, space, text} from './theme.ts'
+import {colors, radius, space, text} from './theme.ts'
 
+import {Problem} from '#components/problem.tsx'
 import {ItemGroupSkeleton} from '#components/ui/skeleton.tsx'
 import {assetAtom} from '#lib/utils.ts'
 
@@ -52,24 +53,16 @@ export function LoadingScreen() {
 	)
 }
 
-export function FailureContent(props: {
-	cause: Cause.Cause<unknown>
-	name: string
-	onRetry: () => void
-	tint: ColorValue
-}) {
+export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
 	return (
-		<VStack spacing={space[3]} modifiers={FULL_SCREEN}>
-			<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
-			<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
-				{Cause.pretty(props.cause)}
-			</Text>
-			<Button
-				onPress={() => props.onRetry()}
-				modifiers={[buttonStyle('glassProminent'), tint(props.tint), foregroundStyle(colors.primaryForeground)]}
-			>
-				<Text modifiers={[text.title]}>Try Again</Text>
-			</Button>
+		<VStack modifiers={FULL_SCREEN}>
+			<Problem
+				label={Boolean.match(
+					Array.some(props.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error)),
+					{onFalse: () => `${props.name} unavailable`, onTrue: () => 'Access denied'}
+				)}
+				onRetry={props.onRetry}
+			/>
 		</VStack>
 	)
 }
@@ -93,7 +86,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 					modifiers={[
 						resizable(),
 						frame({height: 64, width: 64}),
-						clipShape('roundedRectangle', 14),
+						clipShape('roundedRectangle', radius),
 						frame({maxHeight: Infinity}),
 						padding({bottom: space[16]})
 					]}
