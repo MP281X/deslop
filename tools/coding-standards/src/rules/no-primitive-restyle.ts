@@ -44,14 +44,18 @@ const PLACEMENT_PREFIXES = [
 	'left-',
 	'start-',
 	'end-',
-	'z-'
+	'z-',
+	'translate-',
+	'pointer-events-'
 ]
 const PLACEMENT_EXACT = [
 	'flex-1',
 	'flex-auto',
 	'flex-none',
 	'grow',
+	'grow-0',
 	'shrink',
+	'shrink-0',
 	'relative',
 	'absolute',
 	'fixed',
