@@ -28,6 +28,8 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/compo
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '@deslop/components-web/ui/popover'
 import {Spinner} from '@deslop/components-web/ui/spinner'
+import {Toggle} from '@deslop/components-web/ui/toggle'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -1262,17 +1264,15 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 			className="absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4"
 		>
 			<div className="bg-popover flex shrink-0 rounded-md">
-				<Button
-					variant="ghost"
-					size="sm"
-					className={cn('min-h-11 min-w-11 px-1', chunks && 'text-primary')}
+				<Toggle
+					className="min-h-11 min-w-11"
 					aria-label="Team chunks"
-					aria-pressed={chunks}
+					pressed={chunks}
 					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
-					onClick={() => setChunks(shown => !shown)}
+					onPressedChange={setChunks}
 				>
-					<SquaresFourIcon className="size-4" />
-				</Button>
+					<SquaresFourIcon />
+				</Toggle>
 				<Button
 					variant="ghost"
 					size="icon"
@@ -1699,42 +1699,39 @@ function Spend() {
 }
 
 function MapControls(props: {view: View; onTeam: (team: number) => void}) {
-	const team = route.useSearch({select: search => search.team ?? -1})
 	return (
 		<nav
 			className="absolute inset-x-2 top-2 z-30 flex items-start justify-between gap-2 md:inset-x-4 md:top-4"
 			aria-label="Map controls"
 		>
-			<div className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Teams">
-				<Button
-					aria-label="All models"
-					aria-pressed={team === -1}
-					title="All models"
-					variant="secondary"
-					className={cn('bg-popover min-h-11 min-w-11 px-2', team === -1 && 'border-foreground/40')}
-					onClick={() => props.onTeam(-1)}
-				>
+			<ToggleGroup
+				aria-label="Teams"
+				variant="outline"
+				className="bg-popover min-w-0 overflow-x-auto rounded-md"
+				value={[route.useSearch({select: search => `${search.team ?? -1}`})]}
+				onValueChange={values =>
+					Option.match(Option.flatMap(Array.head(values), Number.parse), {
+						onNone: () => undefined,
+						onSome: props.onTeam
+					})
+				}
+			>
+				<ToggleGroupItem value="-1" aria-label="All models" title="All models" className="min-h-11 min-w-11">
 					<RobotIcon weight="light" className="size-5" />
-				</Button>
+				</ToggleGroupItem>
 				{Array.map(props.view.teams, entry => (
-					<Button
+					<ToggleGroupItem
 						key={entry.id}
+						value={`${entry.id}`}
 						aria-label={entry.name}
-						aria-pressed={team === entry.id}
 						title={entry.name}
-						variant="secondary"
-						size="sm"
-						className={cn(
-							'bg-popover min-h-11 min-w-11 shrink-0 px-2 text-(--team) hover:text-(--team)',
-							team === entry.id && 'border-(--team)/60'
-						)}
+						className="min-h-11 min-w-11 text-(--team) hover:text-(--team)"
 						style={{'--team': teamColor(entry.id)}}
-						onClick={() => props.onTeam(entry.id)}
 					>
 						<TeamIcon team={entry.id} className="size-5" />
-					</Button>
+					</ToggleGroupItem>
 				))}
-			</div>
+			</ToggleGroup>
 			<Spend />
 		</nav>
 	)

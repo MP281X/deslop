@@ -16,7 +16,7 @@ import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
-import {Button, buttonVariants} from '@deslop/components-web/ui/button'
+import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -983,7 +983,7 @@ function RangeMenu(props: {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				className={cn(buttonVariants({size: 'sm', variant: 'ghost'}), 'gap-1 font-mono text-xs max-sm:h-11')}
+				render={<Button variant="ghost" size="sm" className="font-mono max-sm:h-11" />}
 				aria-label="History range"
 			>
 				{Boolean.match(props.pending, {onFalse: () => <ClockIcon className="size-3.5" />, onTrue: () => <Spinner />})}
