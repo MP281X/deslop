@@ -1,21 +1,21 @@
-import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {createFileRoute} from '@tanstack/react-router'
+import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy, Plus, Server} from 'lucide-react'
-import {useState} from 'react'
+import {Check, Copy, OctagonAlert, Plus, Server} from 'lucide-react'
+import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
+import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
@@ -31,12 +31,13 @@ import {
 	DialogFooter,
 	DialogTitle
 } from '@deslop/components-web/ui/dialog'
-import {Empty, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {formatError} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {addAtom, connectUrl, copyAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
@@ -55,6 +56,28 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 		Match.orElse(() => 2)
 	)
 )
+
+// A failure the page can't show as data: an admin's refusal, a sign-in, then anything else.
+function FailureContent(props: {error: unknown; reset: () => void}) {
+	if (!Schema.is(AuthError)(props.error)) return <Error error={props.error} reset={props.reset} />
+	if (props.error.error === 'access_denied') {
+		return (
+			<Empty>
+				<EmptyHeader>
+					<EmptyTitle>Admins only</EmptyTitle>
+					<EmptyDescription>{props.error.message}</EmptyDescription>
+				</EmptyHeader>
+				<EmptyContent>
+					<Button variant="outline" onClick={props.reset}>
+						Try again
+					</Button>
+				</EmptyContent>
+			</Empty>
+		)
+	}
+	if (!needsSignIn(props.error)) return <Error error={props.error} reset={props.reset} />
+	return <SignIn href={signInUrl(location.href)} />
+}
 
 // Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
 function Status(props: {server: ConnectionInfo}) {
@@ -225,32 +248,87 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	)
 }
 
-// The page is the list: one column of servers, centered at reading width on a wide screen.
-function ServersPane(props: {servers: readonly ConnectionInfo[]}) {
+function ServerRowsSkeleton() {
 	return (
-		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-col overflow-y-auto">
+		<div aria-busy="true" role="status" aria-label="MCP servers">
+			{Array.map(Array.range(1, 5), row => (
+				<div key={row} aria-hidden className="border-b">
+					<div className="flex h-8 items-center gap-2 px-3 max-sm:h-11">
+						<Skeleton className="size-5 shrink-0" />
+						<Skeleton className="h-4 w-1/3" />
+						<Skeleton className="h-3 flex-1" />
+						<Skeleton className="size-2.5 shrink-0" />
+					</div>
+				</div>
+			))}
+		</div>
+	)
+}
+
+function ServersContent() {
+	const result = useAtomSuspense(serversAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(serversAtom)
+	const value = AsyncResult.value(result)
+	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	return (
+		<>
+			{AsyncResult.isFailure(result) && (
+				<div className="shrink-0 px-3 py-2">
+					<Alert variant="destructive">
+						<OctagonAlert />
+						<AlertTitle>Servers may be out of date</AlertTitle>
+						<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
+							{formatError(result.cause)}
+							<Button variant="outline" size="sm" onClick={refresh}>
+								Try again
+							</Button>
+						</AlertDescription>
+					</Alert>
+				</div>
+			)}
+			{Option.getOrUndefined(
+				Option.map(value, current =>
+					Array.match(Array.sort(current, urgency), {
+						onEmpty: () => (
+							<Empty>
+								<EmptyHeader>
+									<EmptyTitle>No servers yet</EmptyTitle>
+									<EmptyDescription>Add one from the bar to offer its tools.</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						),
+						onNonEmpty: servers => (
+							<div role="list" aria-label="MCP servers">
+								{Array.map(servers, server => (
+									<ServerRow key={server.id} server={server} />
+								))}
+							</div>
+						)
+					})
+				)
+			)}
+		</>
+	)
+}
+
+// The page is the list: one column of servers, centered at reading width on a wide screen.
+function ServersPane(props: {count?: number; pending: boolean}) {
+	return (
+		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-1 flex-col overflow-y-auto">
 			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
 				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
 					<span className="text-sm font-semibold">Servers</span>
-					<span className="text-muted-foreground font-mono text-xs">{props.servers.length}</span>
+					<span className="text-muted-foreground font-mono text-xs">
+						{Boolean.match(props.pending, {onFalse: () => props.count, onTrue: () => <Skeleton className="h-3 w-4" />})}
+					</span>
 				</header>
-				{Array.match(props.servers, {
-					onEmpty: () => (
-						<Empty>
-							<EmptyHeader>
-								<EmptyTitle>No servers yet</EmptyTitle>
-								<EmptyDescription>Add one from the bar to offer its tools.</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					),
-					onNonEmpty: servers => (
-						<div role="list" aria-label="MCP servers">
-							{Array.map(servers, server => (
-								<ServerRow key={server.id} server={server} />
-							))}
-						</div>
-					)
-				})}
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+					<Suspense fallback={<ServerRowsSkeleton />}>
+						<ServersContent />
+					</Suspense>
+				</CatchBoundary>
 			</div>
 		</section>
 	)
@@ -318,52 +396,13 @@ function AddDialog() {
 	)
 }
 
-// A failure the page can't show as data: an admin's refusal, a sign-in, then anything else.
-function FailureContent(props: {error: unknown}) {
-	if (!Schema.is(AuthError)(props.error)) return <Error error={props.error} reset={() => location.reload()} />
-	if (props.error.error === 'access_denied') {
-		return (
-			<Empty>
-				<EmptyHeader>
-					<EmptyTitle>Admins only</EmptyTitle>
-					<EmptyDescription>{props.error.message}</EmptyDescription>
-				</EmptyHeader>
-			</Empty>
-		)
-	}
-	if (!needsSignIn(props.error)) return <Error error={props.error} reset={() => location.reload()} />
-	return <SignIn href={signInUrl(location.href)} />
-}
-
-// The list's header and rows while the servers load, so the page is already its final shape.
-function GatewaySkeleton() {
-	return (
-		<section
-			aria-busy="true"
-			role="status"
-			aria-label="MCP servers"
-			className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-		>
-			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
-				<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-					<Skeleton className="h-4 w-20" />
-				</header>
-				<div className="p-2">
-					<ItemListSkeleton label="MCP servers" media rows={5} />
-				</div>
-			</div>
-		</section>
-	)
-}
-
 function Home() {
 	const send = useAtomSet(addAtom.send)
 	const [copy, copyText] = useAtom(copyAtom(ENDPOINT))
 	const copied = AsyncResult.isWaiting(copy)
 	const servers = useAtomValue(serversAtom)
 	const value = AsyncResult.value(servers)
-	const error = AsyncResult.error(servers)
-	const authFailure = Option.filter(error, Schema.is(AuthError))
+	const authFailure = Option.filter(AsyncResult.error(servers), isDenied)
 	const sorted = Array.sort(
 		Option.getOrElse(value, () => Array.empty<ConnectionInfo>()),
 		urgency
@@ -430,22 +469,19 @@ function Home() {
 							variant="outline"
 							onClick={() => copyText()}
 						/>
-						{ready && <AppBarAction icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />}
+						<AppBarAction disabled={!ready} icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />
 					</>
 				}
 			/>
-			{Option.match(authFailure, {
-				onNone: () =>
-					Option.match(value, {
-						onNone: () =>
-							Option.match(error, {
-								onNone: () => <GatewaySkeleton />,
-								onSome: cause => <FailureContent error={cause} />
-							}),
-						onSome: () => <ServersPane servers={sorted} />
-					}),
-				onSome: cause => <FailureContent error={cause} />
-			})}
+			<ServersPane
+				count={Option.getOrUndefined(
+					Option.map(
+						Option.filter(value, () => Option.isNone(authFailure)),
+						connections => connections.length
+					)
+				)}
+				pending={AsyncResult.isInitial(servers)}
+			/>
 			<AddDialog />
 		</div>
 	)

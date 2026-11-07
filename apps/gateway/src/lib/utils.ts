@@ -6,6 +6,7 @@ import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -23,8 +24,12 @@ export function connectUrl(id: string) {
 }
 
 export const serversAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		WebRuntime.reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))))
+	RpcClient.runtime.atom(get =>
+		withoutDeniedData(
+			get,
+			Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))),
+			WebRuntime.reconnecting
+		)
 	)
 )
 
