@@ -1,4 +1,4 @@
-import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {
 	Array,
@@ -18,7 +18,7 @@ import {
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, ChevronRight, Copy, Globe, Server, Smartphone, Workflow} from 'lucide-react'
+import {Check, ChevronRight, Copy, Globe, OctagonAlert, Server, Smartphone, Workflow} from 'lucide-react'
 import {Suspense, useState, useSyncExternalStore} from 'react'
 import type {ReactElement} from 'react'
 
@@ -27,6 +27,7 @@ import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
@@ -34,7 +35,7 @@ import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
-import {cn} from '@deslop/components-web/utils'
+import {cn, formatError} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -105,21 +106,9 @@ type Pane = 'operations' | 'trace' | 'traces'
 type OperationKey = {app: string; name: string; runtime: Runtime}
 type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
 
-// A failure the page can't show as data: sign-in, then anything else as an error with a reload.
-function Failure(props: {cause: Cause.Cause<unknown>}) {
-	return Option.match(Cause.findErrorOption(props.cause), {
-		onNone: () => <Error error={Cause.squash(props.cause)} reset={() => location.reload()} />,
-		onSome: error =>
-			Boolean.match(needsSignIn(error), {
-				onFalse: () => <Error error={error} reset={() => location.reload()} />,
-				onTrue: () => <SignIn href={signInUrl(location.href)} />
-			})
-	})
-}
-
-function FailureContent(props: {error: unknown}) {
+function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	return <Error error={props.error} reset={() => location.reload()} />
+	return <Error error={props.error} reset={props.reset} />
 }
 
 // An attribute's value as OTLP wraps it, such as {stringValue: "…"}, shown as its one value.
@@ -322,12 +311,9 @@ function SpanRow(props: {
 	)
 }
 
-// A trace's spans under its root, each on the trace's time scale; where it broke starts picked, else the root's own details show.
-function Spans(props: {id: string}) {
-	const result = useAtomSuspense(traceAtom(props.id), {includeFailure: true})
+function TraceSpans(props: {trace: Trace}) {
 	const [picked, setPicked] = useState<string>()
-	if (AsyncResult.isFailure(result)) return <Failure cause={result.cause} />
-	const trace = result.value
+	const trace = props.trace
 	const root = Array.findFirst(trace.spans, span => span.depth === 0)
 	const below = Array.filter(trace.spans, span => !Option.exists(root, top => top.spanId === span.spanId))
 	const services = Record.fromEntries(Array.map(trace.spans, span => [span.spanId, span.service] as const))
@@ -361,6 +347,37 @@ function Spans(props: {id: string}) {
 				<SpanRow key={span.spanId} focus={focusId} mark={mark} onPick={id => setPicked(id)} span={span} />
 			))}
 		</div>
+	)
+}
+
+// A failed refresh keeps the last trace, but authorization failures never expose retained spans.
+function Spans(props: {id: string}) {
+	const atom = traceAtom(props.id)
+	const result = useAtomSuspense(atom, {includeFailure: true})
+	const refresh = useAtomRefresh(atom)
+	const value = AsyncResult.value(result)
+	if (
+		AsyncResult.isFailure(result) &&
+		(Option.isNone(value) || Option.exists(AsyncResult.error(result), Schema.is(AuthError)))
+	) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	return (
+		<>
+			{AsyncResult.isFailure(result) && (
+				<Alert variant="destructive" className="my-2">
+					<OctagonAlert />
+					<AlertTitle>Cannot update this trace</AlertTitle>
+					<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
+						{formatError(result.cause)}
+						<Button variant="outline" size="sm" onClick={refresh}>
+							Try again
+						</Button>
+					</AlertDescription>
+				</Alert>
+			)}
+			{Option.match(value, {onNone: () => null, onSome: trace => <TraceSpans trace={trace} />})}
+		</>
 	)
 }
 
@@ -775,6 +792,7 @@ function Home() {
 	const [selection, setSelection] = useState<OperationKey>()
 	const [selectedTrace, setSelectedTrace] = useState<OperationTrace>()
 	const overview = useAtomValue(overviewAtom)
+	const refresh = useAtomRefresh(overviewAtom)
 	const value = AsyncResult.value(overview)
 	const overviewError = AsyncResult.error(overview)
 	const authFailure = Option.filter(overviewError, Schema.is(AuthError))
@@ -897,7 +915,7 @@ function Home() {
 						onNone: () =>
 							Option.match(overviewError, {
 								onNone: () => <ScopeSkeleton isMobile={isMobile} />,
-								onSome: error => <FailureContent error={error} />
+								onSome: error => <FailureContent error={error} reset={refresh} />
 							}),
 						onSome: current => (
 							<div className="flex min-h-0 flex-1">
@@ -953,7 +971,7 @@ function Home() {
 							</div>
 						)
 					}),
-				onSome: error => <FailureContent error={error} />
+				onSome: error => <FailureContent error={error} reset={refresh} />
 			})}
 		</div>
 	)
