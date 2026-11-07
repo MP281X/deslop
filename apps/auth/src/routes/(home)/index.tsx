@@ -55,23 +55,13 @@ function Enter(props: {
 				>
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot
-								key={index}
-								index={index}
-								aria-invalid={invalid}
-								className="h-11 flex-1 font-mono text-lg"
-							/>
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
 						))}
 					</InputOTPGroup>
 					<InputOTPSeparator />
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot
-								key={index}
-								index={index}
-								aria-invalid={invalid}
-								className="h-11 flex-1 font-mono text-lg"
-							/>
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
 						))}
 					</InputOTPGroup>
 				</InputOTP>

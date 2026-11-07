@@ -74,7 +74,11 @@ export function otherApps(current: string) {
 // The detail trails the label in the muted tone, so a hostname or reason reads as part of the same entry.
 function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
-		<CommandItem value={`${props.group}:${props.item.id ?? props.item.label}`} onSelect={props.onSelect}>
+		<CommandItem
+			value={`${props.group}:${props.item.id ?? props.item.label}`}
+			className="max-sm:h-11"
+			onSelect={props.onSelect}
+		>
 			{props.item.icon ?? <ArrowRightIcon />}
 			<span className="truncate">{props.item.label}</span>
 			{props.item.detail !== undefined && (
@@ -170,7 +174,7 @@ export function CommandTrigger(props: {label: string; onClick: () => void}) {
 				aria-keyshortcuts={shortcut.aria}
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-72 -translate-x-1/2 justify-start sm:flex"
+				className="absolute left-1/2 hidden w-72 -translate-x-1/2 sm:flex"
 			>
 				<MagnifyingGlassIcon />
 				<span className="flex-1 text-left">Search</span>

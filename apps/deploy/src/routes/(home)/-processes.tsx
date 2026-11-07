@@ -2,6 +2,7 @@ import {Array, Boolean, Option, String} from 'effect'
 
 import {CaretRightIcon} from '@phosphor-icons/react'
 
+import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {cn} from '@deslop/components-web/utils'
 
@@ -15,7 +16,7 @@ function Line(props: {depth: number; node: ProcessNode}) {
 	return (
 		<span
 			className={cn(
-				'flex h-8 min-w-0 items-center gap-2 pl-(--indent) text-xs max-sm:h-11',
+				'flex h-8 w-full min-w-0 items-center gap-2 pl-(--indent) text-xs font-normal max-sm:h-11',
 				props.node.small && 'text-muted-foreground'
 			)}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
@@ -47,7 +48,7 @@ function Line(props: {depth: number; node: ProcessNode}) {
 			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
 				onFalse: () => <span className="size-3.5 shrink-0" />,
 				onTrue: () => (
-					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/process:rotate-90" />
+					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/button:rotate-90" />
 				)
 			})}
 		</span>
@@ -57,12 +58,17 @@ function Line(props: {depth: number; node: ProcessNode}) {
 // A parent opens on its own, as a small accordion; the first level starts open, deeper ones closed.
 function Node(props: {depth: number; node: ProcessNode}) {
 	if (Array.isArrayEmpty(props.node.children)) {
-		return <Line depth={props.depth} node={props.node} />
+		// The same box as a parent's large button, border included, so leaves and parents share heights and columns.
+		return (
+			<div className="border border-transparent px-2.5">
+				<Line depth={props.depth} node={props.node} />
+			</div>
+		)
 	}
 	return (
 		<Collapsible defaultOpen={props.depth === 0 && !props.node.small}>
 			<CollapsibleTrigger
-				className="group/process hover:bg-muted/50 w-full cursor-pointer text-left"
+				render={<Button variant="ghost" size="lg" className="h-auto w-full" />}
 				aria-label={`${props.node.name} processes`}
 			>
 				<Line depth={props.depth} node={props.node} />

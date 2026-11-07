@@ -257,7 +257,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted/60 relative h-1.5 flex-1 rounded">
+			<span className="bg-muted/60 relative mx-2 h-1.5 flex-1 rounded">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
@@ -302,7 +302,7 @@ function SpanRow(props: {
 	const open = props.focus === props.span.spanId
 	if (!hasDetail(props.span)) {
 		return (
-			<div className="list-row flex h-8 w-full items-center gap-3 px-3 text-xs max-sm:h-11">
+			<div className="list-row flex h-8 w-full items-center gap-1 px-2.5 text-xs max-sm:h-11">
 				<SpanLine mark={props.mark(props.span)} span={props.span} />
 			</div>
 		)
@@ -310,10 +310,11 @@ function SpanRow(props: {
 	return (
 		<div data-selected={open} className="list-row">
 			<Button
-				variant="ghost"
+				size="lg"
+				variant={Boolean.match(open, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 				aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={() => props.onPick(props.span.spanId)}
-				className="aria-current:bg-accent aria-current:hover:bg-accent flex h-8 w-full items-center gap-3 px-3 py-0 text-left text-xs max-sm:h-11"
+				className="w-full max-sm:h-11"
 			>
 				<SpanLine mark={props.mark(props.span)} span={props.span} open={open} />
 			</Button>
@@ -549,16 +550,16 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 		<div role="listitem" className="list-row" data-selected={props.active}>
 			<Button
 				size="lg"
-				variant="ghost"
-				className="aria-current:bg-accent aria-current:hover:bg-accent w-full justify-start text-left max-sm:h-11"
+				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+				className="w-full max-sm:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
 				{DEVICES[props.operation.runtime]}
-				<span className="min-w-0 flex-1 truncate font-mono">{props.operation.name}</span>
+				<span className="min-w-0 flex-1 truncate text-left font-mono">{props.operation.name}</span>
 				<span className="flex w-8 shrink-0 justify-end">
 					{props.operation.failures > 0 && (
-						<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
+						<Badge variant="destructive" className="shrink-0" title="Failed">
 							{props.operation.failures}
 							<span className="sr-only"> failed</span>
 						</Badge>
@@ -651,8 +652,8 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 		<div role="listitem" className="list-row" data-selected={props.active}>
 			<Button
 				size="lg"
-				variant="ghost"
-				className="aria-current:bg-accent aria-current:hover:bg-accent w-full justify-start text-left max-sm:h-11"
+				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+				className="w-full max-sm:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
@@ -662,7 +663,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 				>
 					{ageOf(props.trace.time, props.now)}
 				</span>
-				<span className="text-muted-foreground min-w-20 flex-1 truncate font-mono text-xs">
+				<span className="text-muted-foreground min-w-20 flex-1 truncate text-left font-mono text-xs">
 					{String.slice(0, 8)(props.trace.id)}
 				</span>
 				<span className="flex w-4 shrink-0 justify-end">

@@ -42,7 +42,10 @@ function AccountMenu() {
 	if (!AsyncResult.isSuccess(account)) return null
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger aria-label="Account" className="flex items-center justify-center max-sm:size-11">
+			<DropdownMenuTrigger
+				aria-label="Account"
+				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}
+			>
 				<Avatar size="sm">
 					<AvatarImage
 						src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(account.value.id)}?s=96`}
@@ -58,6 +61,7 @@ function AccountMenu() {
 				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					variant="destructive"
+					className="max-sm:h-11"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
@@ -113,7 +117,7 @@ export function AppBar(props: {
 			<header className="bg-background text-muted-foreground border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" className="flex shrink-0 items-center gap-2">
+						<a href="/" className="flex shrink-0 items-center gap-2 max-sm:h-11">
 							<img src={props.icon} alt="" className="pixelated size-8 opacity-60" />
 							<span className="text-sm font-semibold">{props.name}</span>
 						</a>

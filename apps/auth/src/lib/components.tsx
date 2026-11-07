@@ -185,14 +185,14 @@ function ColumnHead(props: {column: Column; now: number}) {
 	)
 	const name = `${props.column.label}, ${detail}`
 	return (
-		<TableHead className="px-0.5">
+		<TableHead>
 			<span className="flex flex-col items-center gap-0.5">
 				{Boolean.match(props.column.pending, {
 					onFalse: () => (
 						<DropdownMenu>
 							<DropdownMenuTrigger
 								render={
-									<Button variant="ghost" size="icon-sm" className="max-sm:size-11" title={name} aria-label={name} />
+									<Button variant="ghost" size="icon" className="max-sm:size-11" title={name} aria-label={name} />
 								}
 							>
 								<ClientIcon client={props.column.client} />
@@ -206,6 +206,7 @@ function ColumnHead(props: {column: Column; now: number}) {
 								</DropdownMenuGroup>
 								<DropdownMenuItem
 									variant="destructive"
+									className="max-sm:h-11"
 									disabled={AsyncResult.isWaiting(disconnection)}
 									onClick={() => disconnect(props.column.families)}
 								>
@@ -249,9 +250,9 @@ function possible(column: Column, row: Row) {
 // Where a column's client holds the app, a dot in Auth's hue; where the waiting sign-in asks for it, the same dot breathing. A pairing that can't happen, like a browser and an iOS app, stays empty.
 function Cell(props: {column: Column; row: Row}) {
 	const held = holds(props.column, props.row)
-	if (!held && !possible(props.column, props.row)) return <TableCell className="w-7 px-0 max-sm:w-14" />
+	if (!held && !possible(props.column, props.row)) return <TableCell className="w-7 max-sm:w-14" />
 	return (
-		<TableCell className="w-7 px-0 max-sm:w-14">
+		<TableCell className="w-7 max-sm:w-14">
 			<span className="flex justify-center">
 				{Boolean.match(held, {
 					onFalse: () => <StatusDot status="off" />,
@@ -424,9 +425,10 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				),
 				onNonEmpty: () => (
 					<div className="flex flex-col gap-3">
-						<Table aria-label="Apps and the clients signed in to them" className="border-b">
+						<Table aria-label="Apps and the clients signed in to them">
 							<TableHeader>
-								<TableRow className="max-sm:h-11">
+								{/* 48px rows on a phone leave each app's link a full 44px target above its divider. */}
+								<TableRow className="max-sm:h-12">
 									<TableHead>
 										<span className="text-muted-foreground text-xs">App</span>
 									</TableHead>
@@ -437,7 +439,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							</TableHeader>
 							<TableBody>
 								{Array.map(rows, row => (
-									<TableRow key={row.origin} className="max-sm:h-11">
+									<TableRow key={row.origin} className="max-sm:h-12">
 										<TableHead scope="row">
 											{Option.match(row.open, {
 												onNone: () => (

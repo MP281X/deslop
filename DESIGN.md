@@ -19,11 +19,11 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 - Error red; warning orange. Dots communicate problems and live activity, never health that needs no attention or the kind of a thing. Other identities draw from the same palette; magnitude uses opacity steps of one hue.
 - Burn-in: static chrome, app marks and tabs stay low-luminance. Bright colour belongs to changing information, not a permanently filled primary button in the bar.
 - Web UI: Geist at the shadcn style's own sizes and weights. Native UI keeps system fonts and Dynamic Type. Portfolio's editorial and printed document typography stays distinct.
-- Hosts, ids, times, figures and shortcuts use tabular mono. Trailing values have fixed-width, right-aligned columns. Prose stays proportional and readable, about 65 characters per line.
+- Hosts, ids, times, figures and shortcuts in running text and table cells use tabular mono; inside a shadcn component they take its own font. Trailing values have fixed-width, right-aligned columns. Prose stays proportional and readable, about 65 characters per line.
 
 ## Shape and layout
 
-- One 4px `--radius`; each primitive keeps the shape its shadcn style gives it. System navigation and controls stay native on iOS, following Apple's current guidelines as closely as SwiftUI allows: a root list takes the system large title, which collapses inline as it scrolls; no custom title view, bar background or restyled system control.
+- One 4px `--radius`; each primitive keeps the shape, padding, type and colour its shadcn style gives it: a call site picks a variant or size and only places it. A selected row is the `secondary` variant of its button. System navigation and controls stay native on iOS, following Apple's current guidelines as closely as SwiftUI allows: a root list takes the system large title, which collapses inline as it scrolls; no custom title view, bar background or restyled system control.
 - One-line rows. No column-heading labels or counts in headings/tabs. The whole row opens its content; secondary actions use the existing context menu.
 - Dividers are separate, straight, inset lines, hidden next to hovered or selected rows. Never use a rounded row's border or shadow as its divider.
 - Show each fact once: no value repeated as a chart, a figure and a percentage, and nothing in the bar that the selected row already shows.
@@ -31,7 +31,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 - Keep app bars, navigation and pane geometry mounted through loading, updates and errors. Lists and detail regions scroll independently.
 - Detail tools use three columns from 1600px: list, trace/waterfall, selected detail at full height. Narrower desktops put detail below the waterfall, its fields in as many columns as fit. On iPhone, push full-screen with native back.
 - Empty regions show one faint icon centred in their own container: search for no matches, the app mark for nothing selected. No explanatory title, count or paragraph.
-- Deploy ports: a port that opens something is a stock extra-small button, exposed in `default`, exposable in `secondary`; one that can't be exposed is plain muted text. Each is at least 7ch wide so a five-digit port is never cut.
+- Deploy ports: a port that opens something is a stock small button, whose 12px text reads at a glance, exposed in `default`, exposable in `secondary`; one that can't be exposed is a disabled `ghost` one, so all three share one box. Each is at least 7ch wide so a five-digit port is never cut.
 
 ## Components and recovery
 

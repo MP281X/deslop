@@ -188,7 +188,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						</span>
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
 							<span
-								className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums"
+								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
 								title="Tools"
 							>
 								{props.server.tools.length}
@@ -218,7 +218,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					</div>
 				</div>
 				<ContextMenuContent className="w-auto min-w-36">
-					<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
+					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={() => setConfirm(true)}>
 						Remove
 					</ContextMenuItem>
 				</ContextMenuContent>

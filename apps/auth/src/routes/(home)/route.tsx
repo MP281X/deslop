@@ -101,7 +101,6 @@ function Code(props: {id: string}) {
 			<Button
 				variant="ghost"
 				aria-label={`Copy the code ${requestCode(props.id)}`}
-				className="font-mono text-base font-semibold"
 				onClick={() => copyCode(requestCode(props.id))}
 			>
 				{requestCode(props.id)}
@@ -269,7 +268,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 			{Option.match(AsyncResult.error(read), {
 				onNone: () => null,
 				onSome: failure => (
-					<DropdownMenuItem disabled>
+					<DropdownMenuItem disabled className="max-sm:h-11">
 						<span className="text-destructive text-xs">Passkeys unavailable · {failure.message}</span>
 					</DropdownMenuItem>
 				)
@@ -286,6 +285,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 					<DropdownMenuSubContent>
 						<DropdownMenuItem
 							variant="destructive"
+							className="max-sm:h-11"
 							disabled={AsyncResult.isWaiting(removing)}
 							onClick={() => remove(passkey.id)}
 						>
@@ -296,6 +296,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 			))}
 			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
 			<DropdownMenuItem
+				className="max-sm:h-11"
 				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
 				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
 			>
@@ -321,7 +322,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				aria-label="Account"
-				className="focus-visible:ring-ring rounded-full outline-none focus-visible:ring-2 max-sm:flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
+				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}
 			>
 				<AccountAvatar id={props.account.id} name={props.account.name} />
 			</DropdownMenuTrigger>
@@ -341,6 +342,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 				)}
 				<DropdownMenuItem
 					variant="destructive"
+					className="max-sm:h-11"
 					disabled={AsyncResult.isWaiting(signOut)}
 					onClick={() => endSession(next)}
 				>

@@ -69,13 +69,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			}}
 		>
 			<DialogHeader>
-				<DialogTitle className="flex items-center gap-2">
+				<div className="flex items-center gap-2">
 					<ApplicationIcon name={props.port.process ?? props.port.name} small />
-					Expose {props.port.process}
-					<Badge variant="outline" className="font-mono">
-						:{props.port.port}
-					</Badge>
-				</DialogTitle>
+					<DialogTitle>Expose {props.port.process}</DialogTitle>
+					<Badge variant="outline">:{props.port.port}</Badge>
+				</div>
 			</DialogHeader>
 			{/* Who reaches it, as tabs over the address: the tailnet's is fixed, a public one is typed. */}
 			<Tabs
@@ -84,11 +82,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					if (value === 'public' || value === 'tailnet') setKind(value)
 				}}
 			>
-				<TabsList className="w-full">
-					<TabsTrigger value="tailnet" disabled={pending}>
+				<TabsList className="w-full max-sm:group-data-horizontal/tabs:h-auto">
+					<TabsTrigger value="tailnet" disabled={pending} className="max-sm:h-11">
 						Tailnet
 					</TabsTrigger>
-					<TabsTrigger value="public" disabled={pending}>
+					<TabsTrigger value="public" disabled={pending} className="max-sm:h-11">
 						Public
 					</TabsTrigger>
 				</TabsList>
@@ -97,6 +95,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-tailnet">Address</FieldLabel>
 						<Input
 							id="expose-tailnet"
+							className="max-sm:h-11"
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${props.port.port}`,
@@ -110,6 +109,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-public">Hostname</FieldLabel>
 						<Input
 							id="expose-public"
+							className="max-sm:h-11"
 							required={kind === 'public'}
 							placeholder="app.example.com"
 							autoCapitalize="none"
@@ -123,9 +123,12 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			</Tabs>
 			<ResultError result={result} />
 			<DialogFooter>
-				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} />}>Cancel</DialogClose>
+				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} className="max-sm:h-11" />}>
+					Cancel
+				</DialogClose>
 				<Button
 					type="submit"
+					className="max-sm:h-11"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
 					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
@@ -147,7 +150,8 @@ export function ExposeDialog() {
 					if (!next) setTarget(Option.none())
 				}}
 			>
-				<DialogContent>
+				{/* Cancel already closes it, so the corner X would be the same action twice. */}
+				<DialogContent showCloseButton={false}>
 					<Expose key={open.port.id} items={open.snapshot.items} port={open.port} />
 				</DialogContent>
 			</Dialog>

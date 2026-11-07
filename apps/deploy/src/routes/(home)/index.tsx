@@ -208,12 +208,12 @@ function failedFor(
 	)
 }
 
-// Port chips of one least width: exposed filled in the machine's hue, unexposed neutral; a public endpoint reads as its whole hostname.
+// Port chips of one least width: exposed in Deploy's primary, unexposed neutral; a public endpoint reads as its whole hostname.
 function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Button
-			size="xs"
-			className="machine-metric min-w-port relative font-mono tabular-nums max-sm:overflow-visible"
+			size="sm"
+			className="min-w-port relative"
 			nativeButton={false}
 			render={
 				<a
@@ -256,19 +256,16 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 						Array.findFirst(props.free, port => port.id === listener.id),
 						{
 							onNone: () => (
-								<span
-									key={listener.id}
-									className="text-muted-foreground min-w-port px-2 text-center font-mono text-xs tabular-nums"
-								>
+								<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port">
 									:{listener.port}
-								</span>
+								</Button>
 							),
 							onSome: port => (
 								<Button
 									key={listener.id}
-									size="xs"
+									size="sm"
 									variant="secondary"
-									className="min-w-port relative font-mono tabular-nums max-sm:overflow-visible"
+									className="min-w-port relative"
 									aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
 									onClick={() => expose(port)}
 								>
@@ -329,7 +326,12 @@ function hideTarget(item: InventoryItem) {
 function RemoveExposure(props: {item: InventoryItem}) {
 	const [result, hide] = useAtom(hideAtom(hideTarget(props.item))(props.item.name))
 	return (
-		<ContextMenuItem variant="destructive" disabled={AsyncResult.isWaiting(result)} onClick={() => hide()}>
+		<ContextMenuItem
+			variant="destructive"
+			className="max-sm:h-11"
+			disabled={AsyncResult.isWaiting(result)}
+			onClick={() => hide()}
+		>
 			Remove {String.replace(/^https:\/\//u, '')(props.item.url)}
 		</ContextMenuItem>
 	)
@@ -401,7 +403,7 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							className={cn(
-								'hover:bg-muted/50 focus-within:ring-ring/30 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3 focus-within:ring-2 focus-within:ring-inset max-sm:h-11',
+								'hover:bg-muted/50 focus-within:ring-ring/30 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3 focus-within:ring-2 focus-within:ring-inset max-sm:h-12',
 								highlighted && 'bg-muted/60',
 								props.selected && 'bg-secondary'
 							)}
@@ -410,11 +412,11 @@ function AppListRow(props: {
 						/>
 					}
 				>
-					<Button
-						variant="ghost"
-						size="sm"
+					{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
+					<button
+						type="button"
 						aria-label={`Open ${fullName}`}
-						className="absolute inset-0 h-full w-full rounded-sm p-0"
+						className="absolute inset-0 outline-none"
 						onClick={props.onSelect}
 					/>
 					<span
@@ -902,7 +904,7 @@ function MachineStrip(props: {
 }) {
 	return Array.match(props.workers, {
 		onEmpty: () => (
-			<div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+			<div className="flex h-12 shrink-0 items-center gap-3 px-3">
 				{props.pending && (
 					<>
 						<Skeleton className="size-4" />
@@ -914,17 +916,17 @@ function MachineStrip(props: {
 		),
 		onNonEmpty: workers => (
 			<Tabs
-				className="shrink-0 border-b px-2 pt-2 pb-1"
+				className="mx-2 mt-2 mb-1 shrink-0"
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				<TabsList variant="line" aria-label="Machines" className="w-full">
+				<TabsList variant="line" aria-label="Machines" className="w-full max-sm:group-data-horizontal/tabs:h-auto">
 					{Array.map(workers, worker => {
 						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
 						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0">
+							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-11">
 								<MachineIcon worker={worker} />
 								<span className="truncate">{machineName(worker)}</span>
 								{/* Only an unreachable machine is marked; one that answers needs no dot. */}
@@ -974,7 +976,7 @@ function RangeMenu(props: {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				render={<Button variant="ghost" size="sm" className="font-mono max-sm:h-11" />}
+				render={<Button variant="ghost" size="sm" className="max-sm:h-11" />}
 				aria-label="History range"
 			>
 				{Boolean.match(props.pending, {onFalse: () => <ClockIcon className="size-3.5" />, onTrue: () => <Spinner />})}
@@ -993,7 +995,7 @@ function RangeMenu(props: {
 					<DropdownMenuLabel>History range</DropdownMenuLabel>
 					<DropdownMenuSeparator />
 					{Array.map(RANGES, range => (
-						<DropdownMenuRadioItem key={range.minutes} value={`${range.minutes}`} closeOnClick>
+						<DropdownMenuRadioItem key={range.minutes} value={`${range.minutes}`} className="max-sm:h-11" closeOnClick>
 							{range.label}
 						</DropdownMenuRadioItem>
 					))}

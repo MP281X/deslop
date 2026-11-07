@@ -190,7 +190,7 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
 		assert.include(html, 'class="list-row" data-selected="true"')
-		assert.include(html, 'aria-current:bg-accent')
+		assert.match(html, /aria-current="true" class="[^"]*bg-secondary/u)
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
 	})
