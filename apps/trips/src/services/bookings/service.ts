@@ -169,7 +169,6 @@ export class Bookings extends Context.Service<
 					}
 					const ids = yield* transact(current => {
 						const result = upsert(current, Array.getSuccesses(resolved))
-						if (Array.isReadonlyArrayEmpty(result.ids)) return Tuple.make(result.ids, current)
 						return Tuple.make(result.ids, result.bookings)
 					})
 					const touched = HashSet.fromIterable(ids)

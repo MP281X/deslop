@@ -581,6 +581,7 @@ it.layer(layer)(test => {
 			assert.strictEqual(page.entries.length, 1)
 			assert.strictEqual((yield* telemetry.logs({...query, errors: true, service: 'logging'})).total, 1)
 			assert.strictEqual((yield* telemetry.trace('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')).logs.length, 1)
+			assert.strictEqual((yield* telemetry.traces({...query, service: 'logging'})).total, 0)
 			assert.deepStrictEqual(
 				Array.map(
 					(yield* telemetry.logs({...query, service: 'logging', text: 'standalone'})).entries,
@@ -634,6 +635,8 @@ it.layer(layer)(test => {
 				})
 			)
 			const trace = yield* telemetry.trace('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+			assert.strictEqual((yield* telemetry.traces({...query, service: 'logging'})).total, 1)
+			assert.strictEqual((yield* telemetry.traces({...query, service: 'logging', text: 'BYTES aae='})).total, 1)
 			assert.deepStrictEqual(
 				Array.map(trace.spans, span => Array.map(span.logs, log => log.name)),
 				[['attached']]

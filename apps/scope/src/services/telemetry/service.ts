@@ -281,11 +281,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			traces: Effect.fn('Telemetry.traces')(function* (query: Query) {
 				const active = yield* selected(query.runs)
 				const byTrace = Array.groupBy(active, entry => entry.traceId)
-				const ids = Array.dedupe(
-					Array.map(
-						Array.filter(filterEntries(active, query, 'all'), entry => entry.traceId !== ''),
-						entry => entry.traceId
-					)
+				const ids = Array.filter(
+					Array.dedupe(
+						Array.map(
+							Array.filter(filterEntries(active, query, 'all'), entry => entry.traceId !== ''),
+							entry => entry.traceId
+						)
+					),
+					id => Array.some(byTrace[id] ?? [], entry => entry.signal === 'trace')
 				)
 				// Ordering needs only each trace's start and length, so only the page's traces are assembled.
 				const ordered = orderEntries(

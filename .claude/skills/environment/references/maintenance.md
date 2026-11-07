@@ -228,7 +228,7 @@ claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/
 **Browser sign-in.** A profile without the user's GitHub, such as the Datapizza work profile: **Sign in with a code** at https://auth.mp281x.xyz, which the user approves (`apps/auth/README.md`). A provider whose account lives in that profile, such as Dual, connects from its row on the gateway's page there.
 
 - **Connectors.** `.claude/settings.json` sets `disableClaudeAiConnectors`: no claude.ai connector, Mobbin included, only the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, T3's `http://127.0.0.1:<port>/mcp` included.
-- **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.
+- **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity
 
