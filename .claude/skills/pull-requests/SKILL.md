@@ -20,9 +20,13 @@ The user merges on the PR body alone: it must prove the change works without any
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
 2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments say what each section holds.
    - **Every claim has its capture** from the final head, taken after the last edit it depends on; only a labelled Before comes from base: a `| Before | After |` image table for a visible change, a video for a sequence, the screen that shows a backend change plus its Scope trace where the app exports traces. Command output supports a capture, never replaces it; a mock is never proof. T3 Code shows each image at most 480 px wide, so a desktop capture is cropped to the region its claim is about, in dark, unless the claim is the whole layout.
-   - **Formats over sentences**: diff or code block for a shape, table for comparisons and numbers, Mermaid for a flow, `<details>` for long output, at most one `> [!IMPORTANT]` alert (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its claim for what stays unverified.
-   - **Visual first.** The body is mostly pictures: captures for screens, and a figure for anything else (a flow, an architecture, a before/after). A table of sentences is still text.
-   - **Figures** are made like the thread's HTML pages, with the same host tokens, then kept as images: the user reads PRs in T3 Code's dark theme, which shows an image at most 480 px wide. Lay the page out for 480 px (stacked, two columns at most), set `zoom: 2` on its `html` and `background: var(--background)` on its `body`, and pass it to `html_preview` at width 960 in dark; its PNG is the figure, sharp at 480 px. Read it before attaching. No Mermaid: it ignores the theme and the width.
+   - **Forms** as the Replies rules choose them, GFM first: diff or code block for a shape, table for comparisons and numbers, Mermaid for a flow or an architecture, `<details>` for long output, at most one `> [!IMPORTANT]` alert (the marker alone on its line, each following line prefixed `> `), an unchecked task-list item under its claim for what stays unverified.
+   - **Figures** stand in for an `html_render` page, which a PR cannot hold: the user reads PRs in T3 Code's dark theme, which shows an image at most 480 px wide. Lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
+
+     ```bash
+     magick <figure>.png -fuzz 1% -transparent "$(magick <figure>.png -format '%[pixel:p{0,0}]' info:)" <figure>.png
+     ```
+
    - **Each fact once.** A diagram, table or capture carries its point alone: no sentence before or after it restates it, and no section repeats another. A fact the visual cannot show gets one fragment beside it.
    - **Bullets are fragments**, only what a reviewer must know: `**No double lint**: vp check --fix fails on leftovers`.
    - **Cut** what the diff or the PR page already shows: history, inventory, walkthrough, test lists, check results. Captions say what changed, not how it was captured.
