@@ -2,7 +2,7 @@
   "fill-specializations" : [
     {
       "value" : {
-        "solid" : "srgb:0.98039,0.98039,0.98039,1.00000"
+        "solid" : "srgb:0.05098,0.04706,0.04706,1.00000"
       }
     }
   ],
@@ -13,7 +13,7 @@
         {
           "glass" : false,
           "hidden" : false,
-          "image-name" : "icon.svg",
+          "image-name" : "icon.png",
           "name" : "icon",
           "position" : {
             "scale" : 1,

@@ -4,6 +4,7 @@ import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'eff
 
 import {Button, HStack, Menu, Picker, SwipeActions, Text, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
 import {
+	accessibilityLabel,
 	background,
 	clipShape,
 	disabled,
@@ -25,9 +26,9 @@ import {useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
-import {colors, space, text} from '@deslop/components-mobile/theme'
+import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemActions,
@@ -72,7 +73,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
 						modifiers={[
 							frame({height: 68, width: 48}),
-							clipShape('roundedRectangle', 6),
+							clipShape('roundedRectangle', radius),
 							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.55}))
 						]}
 					/>
@@ -179,19 +180,16 @@ export function ChaptersRoute(props: {
 					onEmpty: () =>
 						Boolean.match(String.isEmpty(needle), {
 							onFalse: () => (
-								<Empty>
+								<Empty modifiers={[accessibilityLabel('No matching chapters')]}>
 									<EmptyHeader>
 										<EmptyMedia systemImage="magnifyingglass" />
-										<EmptyTitle>{`No Results for “${searched}”`}</EmptyTitle>
 									</EmptyHeader>
 								</Empty>
 							),
 							onTrue: () => (
-								<Empty>
+								<Empty modifiers={[accessibilityLabel('No chapters')]}>
 									<EmptyHeader>
 										<EmptyMedia systemImage="book.closed" />
-										<EmptyTitle>No Chapters Yet</EmptyTitle>
-										<EmptyDescription>They appear here as soon as the server has read them.</EmptyDescription>
 									</EmptyHeader>
 								</Empty>
 							)

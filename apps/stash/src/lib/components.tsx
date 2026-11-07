@@ -1,43 +1,14 @@
-import {Array, Boolean, Cause, DateTime, Option, Schema, pipe} from 'effect'
+import {Array, Boolean, DateTime, Option, Schema, pipe} from 'effect'
 
-import {Button, HStack, Image, Text} from '@expo/ui/swift-ui'
-import {accessibilityElement, buttonStyle, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
-import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
+import {HStack, Image, Text} from '@expo/ui/swift-ui'
+import {accessibilityElement, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-mobile/ui/item'
 
 import {kindOf, kinds, siteOf} from '#lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
 import {Brand} from '#services/notes/schema.ts'
-
-export function ReadError(props: {
-	cause: Cause.Cause<unknown>
-	modifiers?: ViewModifier[]
-	onRetry: () => void
-	title: string
-}) {
-	return (
-		<Item modifiers={props.modifiers}>
-			<ItemMedia>
-				<Image systemName="exclamationmark.triangle" modifiers={[foregroundStyle(colors.destructive)]} />
-			</ItemMedia>
-			<ItemContent>
-				<ItemTitle modifiers={[foregroundStyle(colors.destructive)]}>{props.title}</ItemTitle>
-				<ItemDescription modifiers={[lineLimit(3)]}>
-					{Option.getOrElse(
-						Option.map(Array.head(Cause.prettyErrors(props.cause)), error => error.message),
-						() => Cause.pretty(props.cause)
-					)}
-				</ItemDescription>
-			</ItemContent>
-			<ItemActions>
-				<Button label="Try Again" onPress={props.onRetry} modifiers={[buttonStyle('glass')]} />
-			</ItemActions>
-		</Item>
-	)
-}
 
 // "23 Oct" this year, "23 Oct 2025" before it.
 function savedOn(createdAt: number) {

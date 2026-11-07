@@ -103,8 +103,9 @@ it('shows usable charts while the independent inventory reader is still pending'
 
 it('owns an initial inventory defect without hiding the machine charts', () => {
 	const html = render(AsyncResult.failure(Cause.die('Inventory decode failed')), AsyncResult.success(readings))
-	assert.include(html, 'Inventory decode failed')
-	assert.include(html, 'Try again')
+	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Retry')
+	assert.notInclude(html, 'Inventory decode failed')
 	assert.include(html, 'Memory')
 	assert.include(html, 'CPU')
 	assert.notInclude(html, 'aria-busy="true"')
@@ -116,8 +117,8 @@ it('owns an initial history failure without hiding apps or leaving a chart skele
 		AsyncResult.fail(DeployError.make({message: 'History unavailable'}))
 	)
 	assert.include(html, 'Open private')
-	assert.include(html, 'History unavailable')
-	assert.include(html, 'Try again')
+	assert.include(html, 'aria-label="Unavailable"')
+	assert.notInclude(html, 'History unavailable')
 	assert.notInclude(html, 'aria-busy="true"')
 })
 
@@ -132,8 +133,10 @@ it('keeps useful inventory and readings through ordinary defects', () => {
 	)
 	assert.include(html, 'Open private')
 	assert.include(html, 'Memory')
-	assert.include(html, 'Inventory decode failed')
-	assert.include(html, 'History decode failed')
+	assert.include(html, 'aria-label="Inventory out of date"')
+	assert.include(html, 'aria-label="History out of date"')
+	assert.notInclude(html, 'Inventory decode failed')
+	assert.notInclude(html, 'History decode failed')
 	assert.notInclude(html, 'aria-busy="true"')
 })
 

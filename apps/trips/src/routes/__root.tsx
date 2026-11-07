@@ -7,19 +7,24 @@ import {background, tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureScreen, LoadingScreen, SessionGate} from '@deslop/components-mobile/screens'
+import {BlankScreen, FailureContent, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {updateAtom} from '@deslop/runtime/mobile'
 
 import {activitiesAtom, bookingsAtom, calendarAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
 import icon from '#routes/icon.png'
-import type {BookingList} from '#services/bookings/schema.ts'
 
 // A pushed booking by its id.
-function Destination(props: {bookings: BookingList; onClose: () => void; value: string}) {
-	return <BookingRoute key={props.value} bookings={props.bookings} id={props.value} onClose={props.onClose} />
+function Destination(props: {onClose: () => void; value: string}) {
+	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(bookingsAtom)
+	if (AsyncResult.isFailure(loaded)) {
+		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+	}
+	return <BookingRoute key={props.value} bookings={loaded.value} id={props.value} onClose={props.onClose} />
 }
 
 // The app opens on the trip list; an island, a calendar event or a notification opens its booking.
@@ -27,17 +32,11 @@ function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(activitiesAtom)
 	useAtomMount(calendarAtom)
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(bookingsAtom)
 	const opened = useAtomValue(openedAtom)
 	const [path, setPath] = useState(() =>
 		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<string>(), onSome: id => [id]})
 	)
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureScreen cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
-	}
-
 	return (
 		<Host style={{flex: 1}}>
 			<NavigationStack
@@ -45,10 +44,12 @@ function AppRoutes() {
 				onPathChange={setPath}
 				modifiers={[tint(colors.foreground), background(colors.background)]}
 			>
-				<HomeRoute bookings={loaded.value} onOpen={id => setPath([id])} />
+				<HomeRoute onOpen={id => setPath([id])} />
 				{Array.map(path, value => (
 					<NavigationDestination key={value} value={value}>
-						<Destination bookings={loaded.value} value={value} onClose={() => setPath([])} />
+						<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
+							<Destination value={value} onClose={() => setPath([])} />
+						</Suspense>
 					</NavigationDestination>
 				))}
 			</NavigationStack>
@@ -61,9 +62,7 @@ export function RootRoute() {
 	return (
 		<Suspense fallback={<BlankScreen />}>
 			<SessionGate logo={icon} session={session.machine} tint={primary}>
-				<Suspense fallback={<LoadingScreen />}>
-					<AppRoutes />
-				</Suspense>
+				<AppRoutes />
 			</SessionGate>
 		</Suspense>
 	)

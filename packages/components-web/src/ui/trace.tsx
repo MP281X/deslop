@@ -6,7 +6,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "#components/ui/collapsible.tsx"
-import { ChevronRightIcon } from "lucide-react"
+import { CaretRightIcon } from "@phosphor-icons/react"
 
 function Trace({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -119,7 +119,7 @@ function TraceCollapsibleTrigger({
     >
       {children}
       <TraceIcon className="transition-transform group-aria-expanded/trace-collapsible-trigger:rotate-90">
-        <ChevronRightIcon
+        <CaretRightIcon
         />
       </TraceIcon>
     </CollapsibleTrigger>

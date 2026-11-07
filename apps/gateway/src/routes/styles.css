@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--purple);
+	--primary: var(--pink);
 }
 
 /* A tool call passing through: the dot dims and comes straight back, an opacity change even under reduced motion. */

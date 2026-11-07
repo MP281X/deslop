@@ -1,7 +1,7 @@
 import {RegistryContext} from '@effect/atom-react'
 import {assert, beforeAll, it} from '@effect/vitest'
 
-import {Cause, Option} from 'effect'
+import {Array, Cause, Option, String} from 'effect'
 
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import {createElement} from 'react'
@@ -90,9 +90,8 @@ it('keeps retained spans and explains a failed trace refresh', () => {
 		})
 	)
 	assert.include(html, 'Private retained span')
-	assert.include(html, 'Cannot update this trace')
-	assert.include(html, 'Trace unavailable')
-	assert.include(html, 'Try again')
+	assert.include(html, 'aria-label="Trace out of date"')
+	assert.notInclude(html, 'Trace unavailable')
 })
 
 it('keeps retained spans after a defect', () => {
@@ -100,13 +99,15 @@ it('keeps retained spans after a defect', () => {
 		AsyncResult.failureWithPrevious(Cause.die('Decode failed'), {previous: Option.some(AsyncResult.success(trace))})
 	)
 	assert.include(html, 'Private retained span')
-	assert.include(html, 'Decode failed')
+	assert.include(html, 'aria-label="Trace out of date"')
+	assert.notInclude(html, 'Decode failed')
 })
 
 it('owns a trace failure without retained data', () => {
 	const html = render(AsyncResult.fail(TelemetryError.make({message: 'No trace remains'})))
-	assert.include(html, 'No trace remains')
-	assert.include(html, 'Try again')
+	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Retry')
+	assert.notInclude(html, 'No trace remains')
 	assert.notInclude(html, 'Private retained span')
 })
 
@@ -126,14 +127,17 @@ it('hides retained spans through an authorization failure and its retry', () => 
 it('keeps initial trace loading inside the spans boundary', () => {
 	const html = render(AsyncResult.initial())
 	assert.include(html, 'aria-label="Spans"')
-	assert.include(html, 'Timeline')
+	assert.notInclude(html, '>Timeline<')
 	assert.notInclude(html, 'Something went wrong')
 })
 
-it('keeps pane and column headings outside initial overview suspension', () => {
+it('keeps the pane shell outside initial overview suspension without redundant column labels', () => {
 	const html = render(AsyncResult.initial(), AsyncResult.initial())
-	for (const heading of ['Operations', 'Failed', 'Runs', 'Typical', 'Age', 'Trace', 'Failure', 'Span', 'Timeline']) {
+	for (const heading of ['Operations', 'Trace']) {
 		assert.include(html, heading)
+	}
+	for (const heading of ['Age', 'Failure', 'Duration', 'Span', 'Timeline', 'Failed', 'Runs', 'Typical']) {
+		assert.notInclude(html, `>${heading}<`)
 	}
 	assert.include(html, 'grid-cols-scope')
 	assert.include(html, 'aria-busy="true"')
@@ -143,15 +147,81 @@ it('keeps pane and column headings outside initial overview suspension', () => {
 
 it('replaces loading rows with honest empty panes', () => {
 	const html = render(AsyncResult.initial(), AsyncResult.success({apps: []}))
-	assert.include(html, 'No traces yet')
-	assert.include(html, 'Select an operation')
-	assert.include(html, 'Select a trace')
+	for (const label of ['No traces yet', 'Select an operation', 'Select a trace']) {
+		assert.include(html, `aria-label="${label}"`)
+		assert.notInclude(html, `>${label}<`)
+	}
 	assert.notInclude(html, 'aria-busy="true"')
+})
+
+it('uses square pane-edge selection and independent inset row dividers', () => {
+	const html = render(AsyncResult.success(trace))
+	assert.include(html, 'class="list-row" data-selected="true"')
+	assert.include(html, 'data-row="true"')
+	assert.include(html, 'aria-current:bg-accent')
+	assert.notInclude(html, 'animate-grow-in')
+	assert.notInclude(html, 'grid-rows-single')
 })
 
 it('owns an initial overview defect instead of leaving its skeleton indefinitely', () => {
 	const html = render(AsyncResult.initial(), AsyncResult.failure(Cause.die('Overview decode failed')))
-	assert.include(html, 'Overview decode failed')
-	assert.include(html, 'Try again')
+	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Retry')
+	assert.notInclude(html, 'Overview decode failed')
 	assert.notInclude(html, 'aria-busy="true"')
+})
+
+it('centres an icon in an authorised empty waterfall without loading or explanatory copy', () => {
+	const html = render(AsyncResult.success(traceView([], ID)))
+	assert.include(html, 'aria-label="No spans"')
+	assert.notInclude(html, '>No spans<')
+	assert.notInclude(html, 'aria-busy="true"')
+})
+
+it('wraps unbroken attribute keys as well as their values', () => {
+	const key = String.repeat(240)('k')
+	const html = render(
+		AsyncResult.success({
+			...trace,
+			spans: Array.map(trace.spans, span => ({
+				...span,
+				payload: {...span.payload, attributes: [{key, value: {stringValue: String.repeat(4000)('v')}}]}
+			}))
+		})
+	)
+	assert.include(html, `<dt class="text-muted-foreground wrap-anywhere">${key}</dt>`)
+	assert.include(html, String.repeat(4000)('v'))
+})
+
+it('marks a failed trace without repeating its diagnostic on the row or its hover name', () => {
+	const html = render(
+		AsyncResult.success(trace),
+		AsyncResult.success({
+			apps: [
+				{
+					name: 'deploy',
+					operations: [
+						{
+							count: 1,
+							failures: 1,
+							name: 'Inventory.snapshot',
+							p50Ms: 10,
+							runtime: 'server',
+							traces: [
+								{
+									durationMs: 10,
+									failure: {message: 'PRIVATE ROW DIAGNOSTIC', span: 'Parser.decode'},
+									id: ID,
+									time: '1781870000000000000'
+								}
+							]
+						}
+					]
+				}
+			]
+		})
+	)
+	assert.include(html, 'aria-label="Failed in Parser.decode"')
+	assert.include(html, 'title="Failed in Parser.decode"')
+	assert.notInclude(html, 'PRIVATE ROW DIAGNOSTIC')
 })

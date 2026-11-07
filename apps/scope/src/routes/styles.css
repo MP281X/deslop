@@ -10,10 +10,10 @@
 	--side: var(--blue);
 }
 [data-side='web'] {
-	--side: var(--magenta);
+	--side: var(--pink);
 }
 [data-side='mobile'] {
-	--side: var(--green);
+	--side: var(--amber);
 }
 [data-side='ci'] {
 	--side: var(--purple);
@@ -22,16 +22,8 @@
 	--side: var(--muted-foreground);
 }
 
-/* A trace that arrives grows from no height and fades in; the first push shows at once. */
 @theme {
-	--animate-grow-in: grow-in 250ms cubic-bezier(0.23, 1, 0.32, 1);
-	--grid-template-columns-scope: 30% 30% 40%;
-	--grid-template-rows-single: 1fr;
-
-	@keyframes grow-in {
-		from {
-			grid-template-rows: 0fr;
-			opacity: 0;
-		}
-	}
+	--breakpoint-inspection: 160rem;
+	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
+	--grid-template-columns-trace: minmax(0, 1fr) minmax(22rem, 0.6fr);
 }

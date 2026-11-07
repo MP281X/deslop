@@ -1,4 +1,4 @@
-// Lucide has no brand icons; this is GitHub's mark from its Octicons.
+// GitHub's canonical mark from Octicons, not a UI glyph.
 export function GitHubIcon(props: {className?: string}) {
 	return (
 		<svg viewBox="0 0 16 16" fill="currentColor" className={props.className} aria-hidden="true">

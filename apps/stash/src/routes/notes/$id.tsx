@@ -40,8 +40,9 @@ import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
+import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent} from '@deslop/components-mobile/screens'
-import {colors, space, text} from '@deslop/components-mobile/theme'
+import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
 	EmptyContent,
@@ -53,7 +54,7 @@ import {
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {AuthError} from '@deslop/runtime/auth/schema'
 
-import {Byline, ReadError} from '#lib/components.tsx'
+import {Byline} from '#lib/components.tsx'
 import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
@@ -74,7 +75,7 @@ function Cover(props: {note: NoteItem}) {
 				resizable(),
 				aspectRatio({contentMode: 'fit'}),
 				frame({maxHeight: 280, maxWidth: Infinity}),
-				clipShape('roundedRectangle', 12),
+				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
 		/>
@@ -159,7 +160,15 @@ function FullBody(props: {note: NoteItem}) {
 	const reload = useAtomRefresh(noteAtom(props.note))
 	return (
 		<VStack alignment="leading" spacing={space[4]}>
-			{AsyncResult.isFailure(full) && <ReadError cause={full.cause} title="Note body unavailable" onRetry={reload} />}
+			{AsyncResult.isFailure(full) && (
+				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
+					<Problem
+						label="Note body unavailable"
+						saved={Option.exists(AsyncResult.value(full), note => note.body !== undefined)}
+						onRetry={reload}
+					/>
+				</HStack>
+			)}
 			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
 				Option.match(AsyncResult.value(full), {
 					onNone: () => undefined,
@@ -173,7 +182,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
-		return <FailureContent cause={full.cause} name="stash" onRetry={reload} tint={primary} />
+		return <FailureContent cause={full.cause} name="Note" onRetry={reload} tint={primary} />
 	}
 	return (
 		<ScrollView modifiers={[background(colors.background)]}>
@@ -247,7 +256,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(notesAtom)
 	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="stash" onRetry={refresh} tint={primary} />
+		return <FailureContent cause={loaded.cause} name="Notes" onRetry={refresh} tint={primary} />
 	}
 	return Option.match(
 		Array.findFirst(loaded.value, item => item.id === props.id),

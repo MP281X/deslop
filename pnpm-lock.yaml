@@ -251,9 +251,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.2
-      lucide-react:
+      '@phosphor-icons/react':
         specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -284,9 +284,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.2
-      lucide-react:
+      '@phosphor-icons/react':
         specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -323,9 +323,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.2
-      lucide-react:
+      '@phosphor-icons/react':
         specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -414,9 +414,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.2
-      lucide-react:
+      '@phosphor-icons/react':
         specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -441,12 +441,15 @@ importers:
       '@tanstack/react-router':
         specifier: latest
         version: 1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@typeonce/effect-machine':
+        specifier: latest
+        version: 0.46.0(effect@4.1.2)
       effect:
         specifier: latest
         version: 4.1.2
-      lucide-react:
+      '@phosphor-icons/react':
         specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -483,9 +486,9 @@ importers:
       effect:
         specifier: latest
         version: 4.1.2
-      lucide-react:
+      '@phosphor-icons/react':
         specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react:
         specifier: latest
         version: 19.3.1
@@ -690,6 +693,9 @@ importers:
       '@fontsource-variable/geist-mono':
         specifier: latest
         version: 5.3.0
+      '@phosphor-icons/react':
+        specifier: latest
+        version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@shadcn/react':
         specifier: latest
         version: 0.3.1(@types/react@19.3.0)(react@19.3.1)
@@ -711,9 +717,6 @@ importers:
       input-otp:
         specifier: latest
         version: 1.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      lucide-react:
-        specifier: latest
-        version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: ^19
         version: 19.3.1
@@ -2335,6 +2338,13 @@ packages:
   '@peculiar/x509@2.2.0':
     resolution: {integrity: sha512-adpW58ySPQMOUPv8pTKT3RIyCFqfUFt8X05ukPdtkQToXDVr8dMtxuenik1yx8tNFTbpApWsM/Hi5SzlIx48+Q==}
     engines: {node: '>=20.0.0'}
+
+  '@phosphor-icons/react@2.1.10':
+    resolution: {integrity: sha512-vt8Tvq8GLjheAZZYa+YG/pW7HDbov8El/MANW8pOAz4eGxrwhnbfrQZq0Cp4q8zBEu8NIhHdnr+r8thnfRSNYA==}
+    engines: {node: '>=10'}
+    peerDependencies:
+      react: '>= 16.8'
+      react-dom: '>= 16.8'
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -4746,15 +4756,6 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
-
-  lucide-react@1.70.0:
-    resolution: {integrity: sha512-gCTPPN1MlQUBtUgdsUv+0CAUj+X8hifRUiRBw4E5v7lvDIOIpx0EZezdGQMSimS8pKA6esvullJub4GYr0mCHA==}
-    peerDependencies:
-      '@types/react': '*'
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -7701,6 +7702,11 @@ snapshots:
       tslib: 2.9.1
       tsyringe: 4.10.0
 
+  '@phosphor-icons/react@2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
@@ -9958,12 +9964,6 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
-
-  lucide-react@1.70.0(@types/react@19.3.0)(react@19.3.1):
-    dependencies:
-      react: 19.3.1
-    optionalDependencies:
-      '@types/react': 19.3.0
 
   lz-string@1.5.0: {}
 

@@ -2,21 +2,21 @@ import {RegistryContext, useAtom, useAtomSet, useAtomValue} from '@effect/atom-r
 
 import {Array, Boolean, Number, Option, Predicate, Record, Schema, String, Struct} from 'effect'
 
+import {
+	WarningIcon,
+	ArrowUpRightIcon,
+	CaretDownIcon,
+	SquaresFourIcon,
+	RobotIcon,
+	EyeIcon,
+	ChatsIcon,
+	PauseIcon,
+	BroadcastIcon,
+	WifiSlashIcon,
+	XIcon
+} from '@phosphor-icons/react'
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {
-	AlertTriangle,
-	ArrowUpRight,
-	ChevronDown,
-	Grid2X2,
-	Bot,
-	Eye,
-	MessagesSquare,
-	Pause,
-	Radio,
-	WifiOff,
-	X
-} from 'lucide-react'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
@@ -478,7 +478,7 @@ function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: 
 					})
 				)}
 			>
-				<ChevronDown className="size-4 shrink-0 group-data-panel-open/disclosure:rotate-180" />
+				<CaretDownIcon className="size-4 shrink-0 group-data-panel-open/disclosure:rotate-180" />
 				<span className={cn('min-w-0', props.compact === true && 'sr-only')}>{props.title}</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent className="space-y-3 py-2">{props.children}</CollapsibleContent>
@@ -643,7 +643,7 @@ function Round(props: {entry: Entry}) {
 					{props.entry.status !== 'done' && <span className="text-destructive text-xs">{props.entry.status}</span>}
 					{(summary.failed > 0 || summary.unreadable > 0) && (
 						<p className="text-destructive flex flex-wrap items-center gap-1 text-xs">
-							<AlertTriangle className="size-3" />
+							<WarningIcon className="size-3" />
 							{summary.failed > 0 && <span>Failed commands: {summary.failed}</span>}
 							{summary.unreadable > 0 && <span>Unreadable calls: {summary.unreadable}</span>}
 						</p>
@@ -741,7 +741,7 @@ function EventRecord(props: {entry: Experience}) {
 				aria-label={`Inspect ${actorName(kind, props.entry.actor)} at ${clockOf(props.entry.tick)}`}
 				onClick={() => navigate.event(props.entry)}
 			>
-				<ArrowUpRight className="size-3" />
+				<ArrowUpRightIcon className="size-3" />
 			</Button>
 		</li>
 	)
@@ -753,7 +753,7 @@ function Observations(props: {entries: readonly Experience[]}) {
 			<RecordDetails
 				title={
 					<span className="inline-flex items-center gap-2">
-						<Eye className="size-3" />
+						<EyeIcon className="size-3" />
 						{props.entries.length} observations<time className="font-mono">{clockOf(props.entries[0]?.tick ?? 0)}</time>
 					</span>
 				}
@@ -1155,12 +1155,12 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 			<aside
 				aria-label="Inspector"
 				className={cn(
-					'bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col md:max-h-full md:w-80',
+					'bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col overflow-hidden rounded-md md:max-h-full md:w-80',
 					actor !== undefined && 'max-h-2/3 lg:w-160'
 				)}
 			>
 				<header className="border-border flex min-h-11 flex-none items-center gap-2 border-b px-3">
-					<MessagesSquare className="size-4" />
+					<ChatsIcon className="size-4" />
 					<span>
 						{Option.match(scopedActor, {onNone: () => 'Thread', onSome: id => `${actorName(kind, id)} history`})}
 					</span>
@@ -1171,7 +1171,7 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 						variant="ghost"
 						onClick={props.close}
 					>
-						<X className="size-4" />
+						<XIcon className="size-4" />
 					</Button>
 				</header>
 				<div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -1214,7 +1214,7 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 									onClick={props.clear}
 									aria-label="Clear entity selection"
 								>
-									<X className="size-3" />
+									<XIcon className="size-3" />
 								</Button>
 							</header>
 							<div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 text-xs select-text">
@@ -1261,7 +1261,7 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
 					onClick={() => setChunks(shown => !shown)}
 				>
-					<Grid2X2 className="size-4" />
+					<SquaresFourIcon className="size-4" />
 				</Button>
 				<Button
 					variant="ghost"
@@ -1270,7 +1270,7 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 					aria-label="Threads"
 					onClick={props.onThreads}
 				>
-					<MessagesSquare className="size-4" />
+					<ChatsIcon className="size-4" />
 				</Button>
 			</div>
 			<Button
@@ -1293,9 +1293,9 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 					{Boolean.match(live, {
 						onFalse: () => (
 							<span className="flex items-center gap-1 leading-none">
-								<Radio className="size-4" />
+								<BroadcastIcon className="size-4" />
 								Live
-								<ArrowUpRight className="size-3" />
+								<ArrowUpRightIcon className="size-3" />
 							</span>
 						),
 						onTrue: () =>
@@ -1305,20 +1305,20 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 										{Boolean.match(run?.running === true, {
 											onFalse: () => (
 												<>
-													<Pause className="size-4" />
+													<PauseIcon className="size-4" />
 													Paused
 												</>
 											),
 											onTrue: () => (
 												<>
-													<Radio className="size-4" />
+													<BroadcastIcon className="size-4" />
 													Live
 												</>
 											)
 										})}
 									</span>
 								),
-								onTrue: () => <WifiOff className="size-4" aria-label="Disconnected" />
+								onTrue: () => <WifiSlashIcon className="size-4" aria-label="Disconnected" />
 							})
 					})}
 				</span>
@@ -1704,7 +1704,7 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 					className={cn('bg-popover min-h-11 min-w-11 px-2', team === -1 && 'border-foreground/40')}
 					onClick={() => props.onTeam(-1)}
 				>
-					<Bot className="size-5" />
+					<RobotIcon weight="light" className="size-5" />
 				</Button>
 				{Array.map(props.view.teams, entry => (
 					<Button

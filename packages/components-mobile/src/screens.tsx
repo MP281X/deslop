@@ -1,8 +1,8 @@
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Cause} from 'effect'
+import {Array, Boolean, Cause} from 'effect'
 
-import {Button, Host, Image, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
+import {Button, Host, Image, Label, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	buttonStyle,
@@ -11,7 +11,7 @@ import {
 	disabled,
 	foregroundStyle,
 	frame,
-	lineLimit,
+	labelStyle,
 	padding,
 	resizable,
 	tint
@@ -20,9 +20,10 @@ import {MachineState} from '@typeonce/effect-machine-react'
 import type {ComponentProps, ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
+import {isDenied} from '@deslop/runtime/auth/utils'
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {colors, space, text} from './theme.ts'
+import {colors, radius, space, text} from './theme.ts'
 
 import {ItemGroupSkeleton} from '#components/ui/skeleton.tsx'
 import {assetAtom} from '#lib/utils.ts'
@@ -58,18 +59,28 @@ export function FailureContent(props: {
 	onRetry: () => void
 	tint: ColorValue
 }) {
+	const denied = Array.some(props.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
 	return (
-		<VStack spacing={space[3]} modifiers={FULL_SCREEN}>
-			<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
-			<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
-				{Cause.pretty(props.cause)}
-			</Text>
-			<Button
-				onPress={() => props.onRetry()}
-				modifiers={[buttonStyle('glassProminent'), tint(props.tint), foregroundStyle(colors.primaryForeground)]}
-			>
-				<Text modifiers={[text.title]}>Try Again</Text>
-			</Button>
+		<VStack modifiers={FULL_SCREEN}>
+			<VStack spacing={space[2]}>
+				<Label
+					icon={
+						<Image
+							systemName={Boolean.match(denied, {onFalse: () => 'exclamationmark.circle', onTrue: () => 'lock'})}
+							modifiers={[text.body, foregroundStyle(colors.destructive)]}
+						/>
+					}
+					modifiers={[labelStyle('titleAndIcon')]}
+				>
+					<Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>
+						{Boolean.match(denied, {
+							onFalse: () => `${props.name} unavailable.`,
+							onTrue: () => 'You don’t have access.'
+						})}
+					</Text>
+				</Label>
+				<Button label="Retry" onPress={props.onRetry} modifiers={[tint(props.tint)]} />
+			</VStack>
 		</VStack>
 	)
 }
@@ -93,7 +104,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 					modifiers={[
 						resizable(),
 						frame({height: 64, width: 64}),
-						clipShape('roundedRectangle', 14),
+						clipShape('roundedRectangle', radius),
 						frame({maxHeight: Infinity}),
 						padding({bottom: space[16]})
 					]}

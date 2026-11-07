@@ -742,7 +742,7 @@ export function daysUntil(time: number, now: number, timeZone?: string) {
 	return Number.round((day(time) - day(now)) / (24 * HOUR), 0)
 }
 
-export const primary = hues.blue
+export const primary = hues.orange
 
 // The departures board's colours: a journey going to plan is live, in the app's primary.
 export const tones = {

@@ -34,11 +34,11 @@
 		"@effect/ai-openrouter": "latest",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
+		"@phosphor-icons/react": "latest",
 		"@tanstack/react-router": "latest",
 		"@typeonce/effect-machine": "latest",
 		"@types/three": "latest",
 		"effect": "latest",
-		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest",
 		"three": "latest"

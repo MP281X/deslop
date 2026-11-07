@@ -1,6 +1,6 @@
 import {Image, Text, VStack} from '@expo/ui/swift-ui'
 import type {ImageProps} from '@expo/ui/swift-ui'
-import {font, foregroundStyle, frame, multilineTextAlignment, padding} from '@expo/ui/swift-ui/modifiers'
+import {font, foregroundStyle, frame, multilineTextAlignment, opacity, padding} from '@expo/ui/swift-ui/modifiers'
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import type {ReactNode} from 'react'
 
@@ -30,8 +30,8 @@ export function EmptyMedia(props: {systemImage: ImageProps['systemName']}) {
 	return (
 		<Image
 			systemName={props.systemImage}
-			size={44}
-			modifiers={[foregroundStyle(colors.mutedForeground), padding({bottom: space[2]})]}
+			size={space[6]}
+			modifiers={[foregroundStyle(colors.mutedForeground), opacity(0.4)]}
 		/>
 	)
 }

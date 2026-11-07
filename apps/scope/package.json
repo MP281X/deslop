@@ -34,9 +34,10 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
+		"@phosphor-icons/react": "latest",
 		"@tanstack/react-router": "latest",
+		"@typeonce/effect-machine": "latest",
 		"effect": "latest",
-		"lucide-react": "latest",
 		"react": "latest",
 		"react-dom": "latest"
 	},

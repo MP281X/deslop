@@ -2,8 +2,8 @@ import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
 
+import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {AppWindow, Globe, Network, Server} from 'lucide-react'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
@@ -95,7 +95,7 @@ export function AppIcon(props: {origin: string; small?: boolean}) {
 				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
 			)}
 		>
-			{state !== 'loaded' && <AppWindow className="size-4" />}
+			{state !== 'loaded' && <AppWindowIcon className="size-4" />}
 			{state !== 'failed' && (
 				<img
 					src={`${props.origin}/icon`}
@@ -132,12 +132,12 @@ function Brand(props: {client: Client}) {
 		onNone: () =>
 			pipe(
 				Match.value(props.client),
-				Match.when({kind: 'Browser'}, () => <Globe />),
+				Match.when({kind: 'Browser'}, () => <GlobeIcon />),
 				Match.when(
 					client => Option.isSome(String.match(/gateway/iu)(client.name)),
-					() => <Network />
+					() => <GraphIcon />
 				),
-				Match.orElse(() => <Server />)
+				Match.orElse(() => <HardDrivesIcon />)
 			),
 		onSome: brand => <img src={brand.src} alt="" className={cn('size-3.5', brand.mono && 'dark:invert')} />
 	})
