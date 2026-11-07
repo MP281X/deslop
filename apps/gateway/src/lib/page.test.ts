@@ -207,14 +207,15 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps the server heading and bar actions outside initial suspension',
+		'keeps bar actions outside initial suspension without adding a second heading',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.initial())
-			assert.match(html, /<header[^>]*><span[^>]*>Servers<\/span>/u)
+			assert.include(html, '>gateway</span>')
+			assert.notInclude(html, '>Servers</span>')
 			assert.include(html, 'aria-label="Add server"')
 			assert.include(html, 'aria-label="Copy MCP URL"')
 			assert.include(html, 'aria-busy="true"')
-			assert.notInclude(html, 'No servers yet')
+			assert.notInclude(html, 'aria-label="No servers"')
 		})
 	)
 
@@ -222,7 +223,7 @@ it.layer(NodeServices.layer)(test => {
 		'treats an empty server list as loaded content',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.success([]))
-			assert.include(html, 'No servers yet')
+			assert.include(html, 'aria-label="No servers"')
 			assert.notInclude(html, 'aria-busy="true"')
 		})
 	)
@@ -237,9 +238,8 @@ it.layer(NodeServices.layer)(test => {
 				)
 			)
 			assert.include(html, sample.name)
-			assert.include(html, 'Servers may be out of date')
-			assert.include(html, 'Authorization is temporarily unavailable')
-			assert.include(html, 'Try again')
+			assert.include(html, 'aria-label="Servers out of date"')
+			assert.notInclude(html, 'Authorization is temporarily unavailable')
 			assert.notInclude(html, 'Something went wrong')
 		})
 	)
@@ -252,8 +252,7 @@ it.layer(NodeServices.layer)(test => {
 					previous: Option.some(AsyncResult.success([sample]))
 				})
 			)
-			assert.include(html, 'Admins only')
-			assert.include(html, 'Try again')
+			assert.include(html, 'aria-label="Access denied"')
 			assert.notInclude(html, sample.name)
 		})
 	)
@@ -262,8 +261,8 @@ it.layer(NodeServices.layer)(test => {
 		'owns a failure without previous servers and offers a local retry',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.failure(Cause.die('Cannot decode server data')))
-			assert.include(html, 'Cannot decode server data')
-			assert.include(html, 'Try again')
+			assert.include(html, 'aria-label="Unavailable"')
+			assert.notInclude(html, 'Cannot decode server data')
 			assert.notInclude(html, 'aria-busy="true"')
 		})
 	)
@@ -277,8 +276,8 @@ it.layer(NodeServices.layer)(test => {
 				})
 			)
 			assert.include(html, sample.name)
-			assert.include(html, 'Cannot decode the latest update')
-			assert.include(html, 'Servers may be out of date')
+			assert.notInclude(html, 'Cannot decode the latest update')
+			assert.include(html, 'aria-label="Servers out of date"')
 		})
 	)
 })

@@ -162,6 +162,27 @@
 	image-rendering: pixelated;
 }
 
+/* A row's fill can meet the pane edge; its divider is an independent, straight inset hairline. */
+@utility list-row {
+	position: relative;
+	&::after {
+		content: '';
+		position: absolute;
+		inset-inline: calc(var(--spacing) * 3);
+		bottom: 0;
+		height: 1px;
+		background: var(--border);
+		pointer-events: none;
+	}
+	&:hover::after,
+	&:focus-within::after,
+	&[data-selected='true']::after,
+	&:has(+ :hover)::after,
+	&:has(+ [data-selected='true'])::after {
+		opacity: 0;
+	}
+}
+
 /* A single shape contract even when a refreshed registry component ships a pill or circular avatar. Dots stay round. */
 [data-slot='badge'],
 [data-slot='avatar'],
@@ -174,6 +195,10 @@
 [data-slot='kbd'] {
 	font-family: var(--font-mono);
 	font-size: var(--text-xs);
+}
+
+[data-slot='button'][data-row] {
+	border-radius: 0;
 }
 
 @layer base {

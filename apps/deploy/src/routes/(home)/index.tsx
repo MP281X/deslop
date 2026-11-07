@@ -12,9 +12,9 @@ import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Problem} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button, buttonVariants} from '@deslop/components-web/ui/button'
 import {
@@ -38,7 +38,7 @@ import {Progress, ProgressLabel, ProgressValue} from '@deslop/components-web/ui/
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
-import {cn, formatError} from '@deslop/components-web/utils'
+import {cn} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
@@ -62,11 +62,6 @@ type Selection = {id: string; name: string}
 
 const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
 const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
-const plural = new Intl.PluralRules('en')
-
-function countLabel(count: number, one: string, many: string) {
-	return `${count} ${Boolean.match(plural.select(count) === 'one', {onFalse: () => many, onTrue: () => one})}`
-}
 
 function status(item: InventoryItem) {
 	if (String.startsWith('stale')(item.state)) return 'stale'
@@ -512,6 +507,7 @@ function AppListRow(props: {
 // Sign-in or an error replaces content, never the bar.
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
+	if (isDenied(props.error)) return <Error error={props.error} label="Access denied" reset={props.reset} />
 	return <Error error={props.error} reset={props.reset} />
 }
 
@@ -531,15 +527,29 @@ function InventoryContent(props: {children: ReactNode}) {
 
 function MetricsContent(props: {children: ReactNode}) {
 	const result = useAtomSuspense(metricsAtom, {includeFailure: true})
-	// History failures have one alert above the panes, also visible while a phone shows Apps.
+	const refresh = useAtomRefresh(metricsAtom)
 	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return null
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
 		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={FailureContent}>
 			{props.children}
 		</CatchBoundary>
 	)
+}
+
+function InventoryProblem() {
+	const result = useAtomValue(inventoryAtom)
+	const refresh = useAtomRefresh(inventoryAtom)
+	if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return null
+	return <Problem className="ml-auto" label="Inventory out of date" warning reset={refresh} />
+}
+
+function MetricsProblem() {
+	const result = useAtomValue(metricsAtom)
+	const refresh = useAtomRefresh(metricsAtom)
+	if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return null
+	return <Problem className="ml-auto" label="History out of date" warning reset={refresh} />
 }
 
 function ChartSkeleton() {
@@ -563,7 +573,6 @@ function AppsPane(props: {
 	now: number
 	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
-	pending: boolean
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
 	swatches: Record<string, number>
@@ -575,14 +584,9 @@ function AppsPane(props: {
 			aria-label="Apps"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-x-hidden overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 				<span className="text-sm font-semibold">Apps</span>
-				<span className="text-muted-foreground font-mono text-xs" title={countLabel(apps.length, 'app', 'apps')}>
-					{Boolean.match(props.pending, {onFalse: () => apps.length, onTrue: () => <Skeleton className="h-3 w-4" />})}
-				</span>
-				{Array.isReadonlyArrayNonEmpty(jobs) && (
-					<span className="text-muted-foreground font-mono text-xs">· {countLabel(jobs.length, 'job', 'jobs')}</span>
-				)}
+				<InventoryProblem />
 			</header>
 			<Suspense fallback={<ItemListSkeleton label="Apps" media rowClassName="gap-2 px-3" rows={8} />}>
 				<InventoryContent>
@@ -612,7 +616,7 @@ function AppsPane(props: {
 									/>
 								))}
 								{Array.isReadonlyArrayNonEmpty(jobs) && (
-									<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center border-b px-3 text-xs">
+									<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center border-b px-3 text-xs max-sm:top-11">
 										Scheduled
 									</div>
 								)}
@@ -644,17 +648,18 @@ function AppsPane(props: {
 function ProcessPane(props: {
 	className?: string
 	now: number
-	pending: boolean
 	row?: ReturnType<typeof workloads>[number]
 	showName?: boolean
 }) {
-	const row = props.row
-	const state = Option.match(Option.fromUndefinedOr(row), {onNone: () => '', onSome: current => status(current.item)})
-	const light = Option.match(Option.fromUndefinedOr(row), {
+	const state = Option.match(Option.fromUndefinedOr(props.row), {
+		onNone: () => '',
+		onSome: current => status(current.item)
+	})
+	const light = Option.match(Option.fromUndefinedOr(props.row), {
 		onNone: () => 'quiet' as const,
 		onSome: current => dot(current.item, state)
 	})
-	const processes = row?.item.processes ?? []
+	const processes = props.row?.item.processes ?? []
 	const process = Option.getOrUndefined(
 		Option.map(
 			Array.head(
@@ -671,9 +676,9 @@ function ProcessPane(props: {
 			aria-label="Processes"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 				{Option.match(
-					Option.filter(Option.fromUndefinedOr(row), () => props.showName !== false),
+					Option.filter(Option.fromUndefinedOr(props.row), () => props.showName !== false),
 					{
 						onNone: () => <span className="flex-1 text-sm font-semibold">Processes</span>,
 						onSome: current => (
@@ -688,7 +693,7 @@ function ProcessPane(props: {
 						)
 					}
 				)}
-				{row !== undefined && (
+				{props.row !== undefined && (
 					<>
 						<span
 							title={state}
@@ -698,19 +703,18 @@ function ProcessPane(props: {
 						>
 							<StatusDot status={light} className={cn(light === 'live' && 'bg-(--machine)')} />
 						</span>
-						<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-							{Boolean.match(row.item.scheduled === true, {
-								onFalse: () => countLabel(processes.length, 'process', 'processes'),
-								onTrue: () => `next ${nextRun(row.item.next ?? props.now, props.now)}`
-							})}
-						</span>
+						{props.row.item.scheduled === true && (
+							<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+								{nextRun(props.row.item.next ?? props.now, props.now)}
+							</span>
+						)}
 					</>
 				)}
-				{props.pending && <Skeleton className="h-3 w-16" />}
+				<InventoryProblem />
 			</header>
 			<Suspense fallback={<ItemListSkeleton label="Processes" media rowClassName="gap-2 px-3" rows={5} />}>
 				<InventoryContent>
-					{Option.match(Option.fromUndefinedOr(row), {
+					{Option.match(Option.fromUndefinedOr(props.row), {
 						onNone: () => (
 							<Empty>
 								<EmptyHeader>
@@ -760,9 +764,10 @@ function MachinePane(props: {
 			aria-label="Machine"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 				{props.worker !== undefined && <MachineIcon worker={props.worker} />}
 				<span className="text-sm font-semibold">Machine</span>
+				<MetricsProblem />
 				{props.worker !== undefined && !props.available && (
 					<span role="img" aria-label="Unavailable" className="flex size-3 items-center justify-center">
 						<StatusDot status="off" />
@@ -1048,17 +1053,11 @@ function Home() {
 		() => minutes
 	)
 	const inventoryFailure = AsyncResult.isFailure(inventory)
-	const inventoryError = Option.map(Option.liftPredicate(inventory, AsyncResult.isFailure), result =>
-		Cause.squash(result.cause)
-	)
-	const metricsError = Option.map(Option.liftPredicate(metrics, AsyncResult.isFailure), result =>
-		Cause.squash(result.cause)
-	)
 	// A revoked session must show the sign-in even while the last snapshot is still cached; only other errors keep the panes.
 	const authFailure = Option.orElse(Option.filter(AsyncResult.error(inventory), isDenied), () =>
 		Option.filter(AsyncResult.error(metrics), isDenied)
 	)
-	const refreshing = shownMinutes !== minutes && Option.isNone(metricsError)
+	const refreshing = shownMinutes !== minutes && !AsyncResult.isFailure(metrics)
 
 	const workers = Array.dedupe([
 		...Option.getOrElse(
@@ -1247,17 +1246,7 @@ function Home() {
 						<RangeMenu minutes={minutes} pending={refreshing} onChange={setMinutes} />
 						{Boolean.match(isMobile, {
 							onFalse: () => null,
-							onTrue: () => (
-								<AppBarAction
-									icon={<MonitorIcon />}
-									label="Machine"
-									variant={Boolean.match(pane === 'machine', {
-										onFalse: () => 'outline' as const,
-										onTrue: () => 'default' as const
-									})}
-									onClick={showMachine}
-								/>
-							)
+							onTrue: () => <AppBarAction icon={<MonitorIcon />} label="Machine" onClick={showMachine} />
 						})}
 					</>
 				}
@@ -1278,46 +1267,14 @@ function Home() {
 							className="machine flex min-h-0 flex-1 flex-col"
 							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
 						>
-							<div className="flex max-h-1/3 shrink-0 flex-col gap-2 overflow-y-auto px-3 pt-3 empty:hidden">
-								{Option.match(inventoryError, {
-									onNone: () => null,
-									onSome: error =>
-										Boolean.match(Option.isSome(snapshot), {
-											onFalse: () => null,
-											onTrue: () => (
-												<Alert variant="destructive">
-													<AlertTitle>Apps may be out of date</AlertTitle>
-													<AlertDescription className="wrap-anywhere">
-														{formatError(error)}
-														<Button variant="outline" size="sm" onClick={refreshInventory}>
-															Try again
-														</Button>
-													</AlertDescription>
-												</Alert>
-											)
-										})
-								})}
-								{Option.match(metricsError, {
-									onNone: () => null,
-									onSome: error => (
-										<Alert variant="destructive">
-											<AlertTitle>Usage history is unavailable</AlertTitle>
-											<AlertDescription className="wrap-anywhere">
-												{formatError(error)}
-												<Button variant="outline" size="sm" onClick={refreshMetrics}>
-													Try again
-												</Button>
-											</AlertDescription>
-										</Alert>
-									)
-								})}
+							<div className="flex shrink-0 items-center gap-2 px-3 empty:hidden">
 								{Array.map(
 									Array.filter(sources, source => source.error !== '' && !Array.contains(workers, source.name)),
 									source => (
-										<Alert key={source.name} variant="destructive">
-											<AlertTitle>{source.name} is unreachable</AlertTitle>
-											<AlertDescription className="wrap-anywhere">{source.error}</AlertDescription>
-										</Alert>
+										<div key={source.name} className="flex items-center gap-1">
+											<MachineIcon worker={source.name} />
+											<Problem label={`${machineName(source.name)} unreachable`} reset={refreshInventory} />
+										</div>
 									)
 								)}
 							</div>
@@ -1334,7 +1291,6 @@ function Home() {
 											swatches={swatches}
 											now={now}
 											onSelect={selectRow}
-											pending={AsyncResult.isInitial(inventory)}
 											rows={sorted}
 											selectedId={selectedRow?.item.id}
 										/>
@@ -1342,7 +1298,6 @@ function Home() {
 											className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
 											now={now}
 											row={selectedRow}
-											pending={AsyncResult.isInitial(inventory)}
 										/>
 										<MachinePane
 											available={activeAvailable}
@@ -1371,7 +1326,6 @@ function Home() {
 													swatches={swatches}
 													now={now}
 													onSelect={selectRow}
-													pending={AsyncResult.isInitial(inventory)}
 													rows={sorted}
 													selectedId={selectedRow?.item.id}
 												/>
@@ -1381,7 +1335,6 @@ function Home() {
 													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 													now={now}
 													row={selectedRow}
-													pending={AsyncResult.isInitial(inventory)}
 													showName={false}
 												/>
 											)),

@@ -13,6 +13,7 @@
 		"./icons": "./src/icons.tsx",
 		"./item-list": "./src/item-list.tsx",
 		"./page": "./src/page.tsx",
+		"./problem": "./src/problem.tsx",
 		"./result-error": "./src/result-error.tsx",
 		"./status-dot": "./src/status-dot.tsx",
 		"./ui/*": "./src/ui/*.tsx",

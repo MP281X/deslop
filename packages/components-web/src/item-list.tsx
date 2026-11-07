@@ -11,7 +11,7 @@ export function ItemListSkeleton(props: {label: string; media?: boolean; rowClas
 				<div
 					key={row}
 					aria-hidden
-					className={cn('flex h-8 items-center gap-3 border-b px-1 max-sm:h-11', props.rowClassName)}
+					className={cn('list-row flex h-8 items-center gap-3 px-1 max-sm:h-11', props.rowClassName)}
 				>
 					{props.media === true && <Skeleton className="size-5 shrink-0" />}
 					<Skeleton className="h-4 w-1/3" />

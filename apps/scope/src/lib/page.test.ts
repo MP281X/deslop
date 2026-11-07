@@ -90,9 +90,8 @@ it('keeps retained spans and explains a failed trace refresh', () => {
 		})
 	)
 	assert.include(html, 'Private retained span')
-	assert.include(html, 'Cannot update this trace')
-	assert.include(html, 'Trace unavailable')
-	assert.include(html, 'Try again')
+	assert.include(html, 'aria-label="Trace out of date"')
+	assert.notInclude(html, 'Trace unavailable')
 })
 
 it('keeps retained spans after a defect', () => {
@@ -100,13 +99,14 @@ it('keeps retained spans after a defect', () => {
 		AsyncResult.failureWithPrevious(Cause.die('Decode failed'), {previous: Option.some(AsyncResult.success(trace))})
 	)
 	assert.include(html, 'Private retained span')
-	assert.include(html, 'Decode failed')
+	assert.include(html, 'aria-label="Trace out of date"')
+	assert.notInclude(html, 'Decode failed')
 })
 
 it('owns a trace failure without retained data', () => {
 	const html = render(AsyncResult.fail(TelemetryError.make({message: 'No trace remains'})))
-	assert.include(html, 'No trace remains')
-	assert.include(html, 'Try again')
+	assert.include(html, 'aria-label="Unavailable"')
+	assert.notInclude(html, 'No trace remains')
 	assert.notInclude(html, 'Private retained span')
 })
 
@@ -130,11 +130,12 @@ it('keeps initial trace loading inside the spans boundary', () => {
 	assert.notInclude(html, 'Something went wrong')
 })
 
-it('keeps pane and column headings outside initial overview suspension', () => {
+it('keeps the pane shell outside initial overview suspension without redundant column labels', () => {
 	const html = render(AsyncResult.initial(), AsyncResult.initial())
-	for (const heading of ['Operations', 'Failed', 'Runs', 'Typical', 'Age', 'Trace', 'Failure', 'Span', 'Timeline']) {
+	for (const heading of ['Operations', 'Age', 'Trace', 'Failure', 'Span', 'Timeline']) {
 		assert.include(html, heading)
 	}
+	for (const heading of ['Failed', 'Runs', 'Typical']) assert.notInclude(html, `>${heading}<`)
 	assert.include(html, 'grid-cols-scope')
 	assert.include(html, 'aria-busy="true"')
 	assert.notInclude(html, 'Select an operation')
@@ -151,7 +152,7 @@ it('replaces loading rows with honest empty panes', () => {
 
 it('owns an initial overview defect instead of leaving its skeleton indefinitely', () => {
 	const html = render(AsyncResult.initial(), AsyncResult.failure(Cause.die('Overview decode failed')))
-	assert.include(html, 'Overview decode failed')
-	assert.include(html, 'Try again')
+	assert.include(html, 'aria-label="Unavailable"')
+	assert.notInclude(html, 'Overview decode failed')
 	assert.notInclude(html, 'aria-busy="true"')
 })

@@ -9,6 +9,7 @@ import {Button} from '#components/ui/button.tsx'
 import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from '#components/ui/command.tsx'
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '#components/ui/dialog.tsx'
 import {Kbd} from '#components/ui/kbd.tsx'
+import {Tooltip, TooltipContent, TooltipTrigger} from '#components/ui/tooltip.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
 const APPS = [
@@ -118,7 +119,9 @@ export function CommandPalette(props: {
 				>
 					<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
 					<CommandList className="min-h-0">
-						<CommandEmpty>No results.</CommandEmpty>
+						<CommandEmpty aria-label="No matches">
+							<MagnifyingGlassIcon weight="light" className="text-muted-foreground mx-auto size-6" />
+						</CommandEmpty>
 						{Array.map(
 							Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
 							group => (
@@ -154,7 +157,7 @@ export function CommandPalette(props: {
 	)
 }
 
-// The bar's search, shaped like the input it stands in for; the mobile form is the search icon alone.
+// One quiet entry point on every screen; the keyboard shortcut remains available without an imitation input.
 export function CommandTrigger(props: {label: string; onClick: () => void}) {
 	// The handler takes Meta or Control, so the label and the announced shortcut name the key the reader actually has.
 	const mac = useSyncExternalStore(
@@ -163,34 +166,20 @@ export function CommandTrigger(props: {label: string; onClick: () => void}) {
 		() => true
 	)
 	return (
-		<Button
-			variant="outline"
-			size="lg"
-			aria-keyshortcuts={Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'})}
-			aria-label={props.label}
-			onClick={props.onClick}
-			className="hidden w-64 justify-start sm:flex lg:absolute lg:top-2 lg:left-1/2 lg:-translate-x-1/2"
-		>
-			<MagnifyingGlassIcon className="size-4" />
-			<span className="min-w-0 flex-1 truncate text-left">Search</span>
-			<span className="ml-auto">
+		<Tooltip>
+			<TooltipTrigger
+				render={<Button variant="ghost" size="icon" />}
+				aria-keyshortcuts={Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'})}
+				aria-label={props.label}
+				onClick={props.onClick}
+				className="max-sm:size-11"
+			>
+				<MagnifyingGlassIcon className="size-4" />
+			</TooltipTrigger>
+			<TooltipContent>
+				{props.label}
 				<Kbd>{Boolean.match(mac, {onFalse: () => 'Ctrl K', onTrue: () => '⌘K'})}</Kbd>
-			</span>
-		</Button>
-	)
-}
-
-// The same field as an icon before the bar's actions on a phone.
-export function CommandIcon(props: {label: string; onClick: () => void}) {
-	return (
-		<Button
-			variant="ghost"
-			size="icon"
-			aria-label={props.label}
-			onClick={props.onClick}
-			className="max-sm:size-11 sm:hidden"
-		>
-			<MagnifyingGlassIcon />
-		</Button>
+			</TooltipContent>
+		</Tooltip>
 	)
 }
