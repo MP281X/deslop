@@ -1,16 +1,16 @@
-import {useAtom, useAtomRefresh, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
-import {createFileRoute} from '@tanstack/react-router'
+import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {ChevronRight, Clock, Monitor, Play, Server} from 'lucide-react'
-import {useState} from 'react'
+import {Suspense, useState} from 'react'
+import type {ReactNode} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
@@ -504,6 +504,63 @@ function AppListRow(props: {
 	)
 }
 
+// Sign-in or an error replaces content, never the bar.
+function FailureContent(props: {error: unknown; reset: () => void}) {
+	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
+	return <Error error={props.error} reset={props.reset} />
+}
+
+// Readers suspend below real headers. A partial outage keeps its last data; first-read errors stay local.
+function InventoryContent(props: {children: ReactNode}) {
+	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(inventoryAtom)
+	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	return (
+		<CatchBoundary getResetKey={() => 'inventory'} errorComponent={FailureContent}>
+			{props.children}
+		</CatchBoundary>
+	)
+}
+
+function MetricsContent(props: {children: ReactNode}) {
+	const result = useAtomSuspense(metricsAtom, {includeFailure: true})
+	// History failures have one alert above the panes, also visible while a phone shows Apps.
+	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
+		return null
+	}
+	return (
+		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={FailureContent}>
+			{props.children}
+		</CatchBoundary>
+	)
+}
+
+function RowsSkeleton(props: {label: string; rows: number}) {
+	return (
+		<div aria-busy="true" role="status" aria-label={props.label}>
+			{Array.map(Array.range(1, props.rows), row => (
+				<div key={row} aria-hidden className="flex h-8 items-center gap-2 border-b px-3 max-sm:h-11">
+					<Skeleton className="size-5 shrink-0" />
+					<Skeleton className="h-4 w-1/3" />
+				</div>
+			))}
+		</div>
+	)
+}
+
+function ChartSkeleton() {
+	return (
+		<div aria-busy="true" role="status" aria-label="Usage history" className="flex min-h-0 flex-1 flex-col gap-4 p-3">
+			<Skeleton className="h-4 w-1/3" />
+			<Skeleton className="min-h-40 flex-1" />
+			<Skeleton className="min-h-36 flex-1" />
+			<Skeleton className="h-3 w-full" />
+		</div>
+	)
+}
+
 // The apps on one machine, failures first; jobs keep their row at the end.
 function AppsPane(props: {
 	bandOf: Record<string, string>
@@ -514,6 +571,7 @@ function AppsPane(props: {
 	now: number
 	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
+	pending: boolean
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
 	swatches: Record<string, number>
@@ -528,60 +586,64 @@ function AppsPane(props: {
 			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
 				<span className="text-sm font-semibold">Apps</span>
 				<span className="text-muted-foreground font-mono text-xs" title={countLabel(apps.length, 'app', 'apps')}>
-					{apps.length}
+					{Boolean.match(props.pending, {onFalse: () => apps.length, onTrue: () => <Skeleton className="h-3 w-4" />})}
 				</span>
 				{Array.isReadonlyArrayNonEmpty(jobs) && (
 					<span className="text-muted-foreground font-mono text-xs">· {countLabel(jobs.length, 'job', 'jobs')}</span>
 				)}
 			</header>
-			{Array.match(props.rows, {
-				onEmpty: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No apps in this range</EmptyTitle>
-						</EmptyHeader>
-					</Empty>
-				),
-				onNonEmpty: () => (
-					<div role="list">
-						{Array.map(apps, row => (
-							<AppListRow
-								key={row.item.id}
-								bandOf={props.bandOf}
-								compact={props.compact}
-								free={props.free}
-								hovered={props.hovered}
-								now={props.now}
-								onHover={props.onHover}
-								onSelect={() => props.onSelect(row)}
-								row={row}
-								selected={props.selectedId === row.item.id}
-								swatches={props.swatches}
-							/>
-						))}
-						{Array.isReadonlyArrayNonEmpty(jobs) && (
-							<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center border-b px-3 text-xs">
-								Scheduled
+			<Suspense fallback={<RowsSkeleton label="Apps" rows={8} />}>
+				<InventoryContent>
+					{Array.match(props.rows, {
+						onEmpty: () => (
+							<Empty>
+								<EmptyHeader>
+									<EmptyTitle>No apps in this range</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
+						),
+						onNonEmpty: () => (
+							<div role="list">
+								{Array.map(apps, row => (
+									<AppListRow
+										key={row.item.id}
+										bandOf={props.bandOf}
+										compact={props.compact}
+										free={props.free}
+										hovered={props.hovered}
+										now={props.now}
+										onHover={props.onHover}
+										onSelect={() => props.onSelect(row)}
+										row={row}
+										selected={props.selectedId === row.item.id}
+										swatches={props.swatches}
+									/>
+								))}
+								{Array.isReadonlyArrayNonEmpty(jobs) && (
+									<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center border-b px-3 text-xs">
+										Scheduled
+									</div>
+								)}
+								{Array.map(jobs, row => (
+									<AppListRow
+										key={row.item.id}
+										bandOf={props.bandOf}
+										compact={props.compact}
+										free={props.free}
+										hovered={props.hovered}
+										now={props.now}
+										onHover={props.onHover}
+										onSelect={() => props.onSelect(row)}
+										row={row}
+										selected={props.selectedId === row.item.id}
+										swatches={props.swatches}
+									/>
+								))}
 							</div>
-						)}
-						{Array.map(jobs, row => (
-							<AppListRow
-								key={row.item.id}
-								bandOf={props.bandOf}
-								compact={props.compact}
-								free={props.free}
-								hovered={props.hovered}
-								now={props.now}
-								onHover={props.onHover}
-								onSelect={() => props.onSelect(row)}
-								row={row}
-								selected={props.selectedId === row.item.id}
-								swatches={props.swatches}
-							/>
-						))}
-					</div>
-				)
-			})}
+						)
+					})}
+				</InventoryContent>
+			</Suspense>
 		</section>
 	)
 }
@@ -590,93 +652,104 @@ function AppsPane(props: {
 function ProcessPane(props: {
 	className?: string
 	now: number
+	pending: boolean
 	row?: ReturnType<typeof workloads>[number]
 	showName?: boolean
 }) {
-	return Option.match(Option.fromUndefinedOr(props.row), {
-		onNone: () => (
-			<section aria-label="Processes" className={cn('flex min-h-0 flex-col', props.className)}>
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>Select an app</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			</section>
-		),
-		onSome: row => {
-			const processes = row.item.processes ?? []
-			const tree = processTree(processes)
-			const process = Option.getOrUndefined(
-				Option.map(
-					Array.head(
-						Array.sort(
-							processes,
-							Order.mapInput(Order.flip(Order.Number), (entry: Process) => entry.memory)
-						)
-					),
-					entry => entry.name
+	const row = props.row
+	const state = Option.match(Option.fromUndefinedOr(row), {onNone: () => '', onSome: current => status(current.item)})
+	const light = Option.match(Option.fromUndefinedOr(row), {
+		onNone: () => 'quiet' as const,
+		onSome: current => dot(current.item, state)
+	})
+	const processes = row?.item.processes ?? []
+	const process = Option.getOrUndefined(
+		Option.map(
+			Array.head(
+				Array.sort(
+					processes,
+					Order.mapInput(Order.flip(Order.Number), (entry: Process) => entry.memory)
 				)
-			)
-			const state = status(row.item)
-			const light = dot(row.item, state)
-			const scheduled = row.item.scheduled === true
-			return (
-				<section
-					aria-label={workloadName(row.item)}
-					className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-				>
-					<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-						{Boolean.match(props.showName === false, {
-							onFalse: () => (
-								<>
-									<ApplicationIcon
-										name={workloadName(row.item)}
-										process={process}
-										container={row.item.kind === 'container'}
-									/>
-									<span className="min-w-0 flex-1 truncate text-sm font-semibold">{workloadName(row.item)}</span>
-								</>
-							),
-							onTrue: () => <span className="text-sm font-semibold">Processes</span>
-						})}
+			),
+			entry => entry.name
+		)
+	)
+	return (
+		<section
+			aria-label="Processes"
+			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+		>
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				{Option.match(
+					Option.filter(Option.fromUndefinedOr(row), () => props.showName !== false),
+					{
+						onNone: () => <span className="flex-1 text-sm font-semibold">Processes</span>,
+						onSome: current => (
+							<>
+								<ApplicationIcon
+									name={workloadName(current.item)}
+									process={process}
+									container={current.item.kind === 'container'}
+								/>
+								<span className="min-w-0 flex-1 truncate text-sm font-semibold">{workloadName(current.item)}</span>
+							</>
+						)
+					}
+				)}
+				{row !== undefined && (
+					<>
 						<span
 							title={state}
 							aria-label={state}
 							role="img"
 							className="flex size-3 shrink-0 items-center justify-center"
 						>
-							<StatusDot
-								status={light}
-								className={Boolean.match(light === 'live', {onFalse: () => undefined, onTrue: () => 'bg-(--machine)'})}
-							/>
+							<StatusDot status={light} className={cn(light === 'live' && 'bg-(--machine)')} />
 						</span>
-						{Boolean.match(props.showName === false, {onFalse: () => null, onTrue: () => <span className="flex-1" />})}
 						<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-							{Boolean.match(scheduled, {
+							{Boolean.match(row.item.scheduled === true, {
 								onFalse: () => countLabel(processes.length, 'process', 'processes'),
 								onTrue: () => `next ${nextRun(row.item.next ?? props.now, props.now)}`
 							})}
 						</span>
-					</header>
-					{scheduled && (
-						<div className="px-3 pt-2">
-							<RunFailure item={row.item} />
-						</div>
-					)}
-					{Array.match(processes, {
-						onEmpty: () => (
+					</>
+				)}
+				{props.pending && <Skeleton className="h-3 w-16" />}
+			</header>
+			<Suspense fallback={<RowsSkeleton label="Processes" rows={5} />}>
+				<InventoryContent>
+					{Option.match(Option.fromUndefinedOr(row), {
+						onNone: () => (
 							<Empty>
 								<EmptyHeader>
-									<EmptyTitle>No processes right now</EmptyTitle>
+									<EmptyTitle>Select an app</EmptyTitle>
 								</EmptyHeader>
 							</Empty>
 						),
-						onNonEmpty: () => <Processes tree={tree} />
+						onSome: current => (
+							<>
+								{current.item.scheduled === true && (
+									<div className="px-3 pt-2">
+										<RunFailure item={current.item} />
+									</div>
+								)}
+								{Array.match(processes, {
+									onEmpty: () => (
+										<Empty>
+											<EmptyHeader>
+												<EmptyTitle>No processes right now</EmptyTitle>
+											</EmptyHeader>
+										</Empty>
+									),
+									onNonEmpty: () => <Processes tree={processTree(processes)} />
+								})}
+							</>
+						)
 					})}
-				</section>
-			)
-		}
-	})
+				</InventoryContent>
+			</Suspense>
+		</section>
+	)
 }
 
 // A machine's graphs, on its own hue, at the range the bar carries.
@@ -690,151 +763,142 @@ function MachinePane(props: {
 	onHover: (id?: string) => void
 	worker?: string
 }) {
-	return Option.match(Option.fromUndefinedOr(props.worker), {
-		onNone: () => (
-			<section className={cn('flex min-h-0 flex-col', props.className)}>
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>No machine</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			</section>
-		),
-		onSome: worker =>
-			Option.match(Option.fromUndefinedOr(props.history), {
-				onNone: () => (
-					<section className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}>
-						<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-							<MachineIcon worker={worker} />
-							<span className="text-sm font-semibold">Machine</span>
-						</header>
-						<div className="flex flex-col gap-4 p-3">
-							<Skeleton className="h-40 w-full" />
-							<Skeleton className="h-36 w-full" />
-						</div>
-					</section>
-				),
-				onSome: history => {
-					const latest = Option.getOrUndefined(Array.last(history.samples))
-					const all = bands(history)
-					const storage = {
-						total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
-						used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
-					}
-					const names = Record.fromEntries([['other', 'Small apps'] as const, ['system', 'System'] as const])
-					const memoryTotal = latest?.memoryTotal ?? 0
-					const memoryPeak = peakOf(Array.map(all, band => ({values: band.memory})))
-					const cpuPeak = peakOf(Array.map(all, band => ({values: band.cpu})))
-					const memory = Option.map(Option.fromUndefinedOr(latest?.memoryUsed), value =>
-						Boolean.match(memoryTotal > 0, {
-							onFalse: () => bytes(value),
-							onTrue: () => `${bytes(value)} · peak ${bytes((memoryPeak / 100) * memoryTotal)}`
-						})
-					)
-					const cpu = Option.map(
-						Option.fromUndefinedOr(latest?.cpu),
-						value => `${size.format(value)}% · peak ${size.format(cpuPeak)}%`
-					)
-					const memoryTop = Array.take(
-						Array.sort(
-							Array.filter(all, band => band.kind === 'app'),
-							Order.mapInput(Order.flip(Order.Number), (band: Band) =>
-								Option.getOrElse(Array.last(band.memory), () => 0)
-							)
+	return (
+		<section
+			aria-label="Machine"
+			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+		>
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
+				{props.worker !== undefined && <MachineIcon worker={props.worker} />}
+				<span className="text-sm font-semibold">Machine</span>
+				{props.worker !== undefined && !props.available && (
+					<span role="img" aria-label="Unavailable" className="flex size-3 items-center justify-center">
+						<StatusDot status="off" />
+					</span>
+				)}
+			</header>
+			<Suspense fallback={<ChartSkeleton />}>
+				<MetricsContent>
+					{Option.match(Option.fromUndefinedOr(props.history), {
+						onNone: () => (
+							<Empty>
+								<EmptyHeader>
+									<EmptyTitle>
+										{Option.match(Option.fromUndefinedOr(props.worker), {
+											onNone: () => 'No machine',
+											onSome: () => 'No readings in this range'
+										})}
+									</EmptyTitle>
+								</EmptyHeader>
+							</Empty>
 						),
-						3
-					)
-					function bandName(id: string) {
-						return (
-							names[id] ??
-							props.labels[id] ??
-							String.replaceAll(
-								/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
-								''
-							)(String.replace(/^container:/u, 'container ')(id))
-						)
-					}
-					return (
-						<section
-							aria-label={machineName(worker)}
-							className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-						>
-							<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-								<MachineIcon worker={worker} />
-								<span className="text-sm font-semibold">Machine</span>
-								{Boolean.match(props.available, {
-									onFalse: () => (
-										<span role="img" aria-label="Unavailable" className="flex size-3 items-center justify-center">
-											<StatusDot status="off" />
-										</span>
-									),
-									onTrue: () => null
-								})}
-							</header>
-							<div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pt-3 pb-3">
-								<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-									{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
-										<span key={band.id} className="flex min-w-0 items-center gap-1.5">
-											<span
-												className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
-												style={{'--swatch-opacity': band.opacity}}
-											/>
-											<span className="text-muted-foreground max-w-40 truncate" title={bandName(band.id)}>
-												{bandName(band.id)}
-											</span>
-											<span className="font-mono tabular-nums">
-												{size.format(Option.getOrElse(Array.last(band.memory), () => 0))}%
-											</span>
-										</span>
-									))}
-								</div>
-								<UsageChart
-									className="min-h-40 flex-1"
-									history={history}
-									minutes={props.minutes}
-									hovered={props.hovered}
-									label="Memory"
-									layers={Array.map(all, band => ({...band, values: band.memory}))}
-									names={bandName}
-									onHover={props.onHover}
-									recorded={() => true}
-									value={Option.getOrUndefined(memory)}
-								/>
-								<UsageChart
-									className="min-h-36 flex-1"
-									history={history}
-									minutes={props.minutes}
-									hovered={props.hovered}
-									label="CPU"
-									layers={Array.map(all, band => ({...band, values: band.cpu}))}
-									names={bandName}
-									onHover={props.onHover}
-									recorded={sample => sample.cpu !== undefined}
-									value={Option.getOrUndefined(cpu)}
-								/>
-								<TimeAxis history={history} minutes={props.minutes} />
-								{Boolean.match(storage.total > 0, {
-									onFalse: () => null,
-									onTrue: () => (
-										<div className="machine-metric">
-											<Progress value={(storage.used / storage.total) * 100}>
-												<ProgressLabel>Disk</ProgressLabel>
-												<ProgressValue>
-													{() =>
-														`${bytes(storage.used)} of ${bytes(storage.total)} · ${size.format((storage.used / storage.total) * 100)}%`
-													}
-												</ProgressValue>
-											</Progress>
-										</div>
+						onSome: history => {
+							const latest = Option.getOrUndefined(Array.last(history.samples))
+							const all = bands(history)
+							const storage = {
+								total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
+								used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
+							}
+							const names = Record.fromEntries([['other', 'Small apps'] as const, ['system', 'System'] as const])
+							const memoryTotal = latest?.memoryTotal ?? 0
+							const memoryPeak = peakOf(Array.map(all, band => ({values: band.memory})))
+							const cpuPeak = peakOf(Array.map(all, band => ({values: band.cpu})))
+							const memory = Option.map(Option.fromUndefinedOr(latest?.memoryUsed), value =>
+								Boolean.match(memoryTotal > 0, {
+									onFalse: () => bytes(value),
+									onTrue: () => `${bytes(value)} · peak ${bytes((memoryPeak / 100) * memoryTotal)}`
+								})
+							)
+							const cpu = Option.map(
+								Option.fromUndefinedOr(latest?.cpu),
+								value => `${size.format(value)}% · peak ${size.format(cpuPeak)}%`
+							)
+							const memoryTop = Array.take(
+								Array.sort(
+									Array.filter(all, band => band.kind === 'app'),
+									Order.mapInput(Order.flip(Order.Number), (band: Band) =>
+										Option.getOrElse(Array.last(band.memory), () => 0)
 									)
-								})}
-								<Cores history={history} />
-							</div>
-						</section>
-					)
-				}
-			})
-	})
+								),
+								3
+							)
+							function bandName(id: string) {
+								return (
+									names[id] ??
+									props.labels[id] ??
+									String.replaceAll(
+										/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
+										''
+									)(String.replace(/^container:/u, 'container ')(id))
+								)
+							}
+							return (
+								<div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pt-3 pb-3">
+									<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+										{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
+											<span key={band.id} className="flex min-w-0 items-center gap-1.5">
+												<span
+													className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
+													style={{'--swatch-opacity': band.opacity}}
+												/>
+												<span className="text-muted-foreground max-w-40 truncate" title={bandName(band.id)}>
+													{bandName(band.id)}
+												</span>
+												<span className="font-mono tabular-nums">
+													{size.format(Option.getOrElse(Array.last(band.memory), () => 0))}%
+												</span>
+											</span>
+										))}
+									</div>
+									<UsageChart
+										className="min-h-40 flex-1"
+										history={history}
+										minutes={props.minutes}
+										hovered={props.hovered}
+										label="Memory"
+										layers={Array.map(all, band => ({...band, values: band.memory}))}
+										names={bandName}
+										onHover={props.onHover}
+										recorded={() => true}
+										value={Option.getOrUndefined(memory)}
+									/>
+									<UsageChart
+										className="min-h-36 flex-1"
+										history={history}
+										minutes={props.minutes}
+										hovered={props.hovered}
+										label="CPU"
+										layers={Array.map(all, band => ({...band, values: band.cpu}))}
+										names={bandName}
+										onHover={props.onHover}
+										recorded={sample => sample.cpu !== undefined}
+										value={Option.getOrUndefined(cpu)}
+									/>
+									<TimeAxis history={history} minutes={props.minutes} />
+									{Boolean.match(storage.total > 0, {
+										onFalse: () => null,
+										onTrue: () => (
+											<div className="machine-metric">
+												<Progress value={(storage.used / storage.total) * 100}>
+													<ProgressLabel>Disk</ProgressLabel>
+													<ProgressValue>
+														{() =>
+															`${bytes(storage.used)} of ${bytes(storage.total)} · ${size.format((storage.used / storage.total) * 100)}%`
+														}
+													</ProgressValue>
+												</Progress>
+											</div>
+										)
+									})}
+									<Cores history={history} />
+								</div>
+							)
+						}
+					})}
+				</MetricsContent>
+			</Suspense>
+		</section>
+	)
 }
 
 // The two machines as one split at the top: their names, their size, and whether they answer.
@@ -843,15 +907,26 @@ function MachineStrip(props: {
 	histories: readonly MachineHistory[]
 	inventoryFailure: boolean
 	onSelect: (worker: string) => void
+	pending: boolean
 	sources: readonly {error: string; name: string}[]
 	workers: readonly string[]
 }) {
 	return Array.match(props.workers, {
-		onEmpty: () => null,
+		onEmpty: () => (
+			<div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+				{props.pending && (
+					<>
+						<Skeleton className="size-4" />
+						<Skeleton className="h-4 w-24" />
+						<Skeleton className="h-3 w-32" />
+					</>
+				)}
+			</div>
+		),
 		onNonEmpty: workers => (
 			<ToggleGroup
 				aria-label="Machines"
-				className="border-border w-full shrink-0 rounded-none border-b"
+				className="border-border h-12 w-full shrink-0 rounded-none border-b"
 				spacing={0}
 				value={Option.toArray(Option.fromUndefinedOr(props.active))}
 				onValueChange={values => props.onSelect(values[0] ?? props.active ?? workers[0])}
@@ -870,7 +945,7 @@ function MachineStrip(props: {
 							value={worker}
 							data-machine={machineName(worker)}
 							className={cn(
-								'machine flex h-12 min-w-0 flex-1 items-center justify-start gap-2 rounded-none border-b-2 px-3 text-left',
+								'machine flex h-full min-w-0 flex-1 items-center justify-start gap-2 rounded-none border-b-2 px-3 text-left',
 								Boolean.match(props.active === worker && workers.length > 1, {
 									onFalse: () => 'border-transparent hover:bg-muted/40',
 									onTrue: () => 'border-b-(--machine) bg-muted/40'
@@ -954,82 +1029,6 @@ function RangeMenu(props: {
 	)
 }
 
-// Sign-in or an error replaces the panes, never the bar.
-function FailureContent(props: {error: unknown; reset: () => void}) {
-	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	return <Error error={props.error} reset={props.reset} />
-}
-
-// A pane's header and rows while the first snapshot loads, so the shell keeps its columns.
-function PaneSkeleton(props: {className?: string; label: string; rows: number}) {
-	return (
-		<section
-			aria-busy="true"
-			role="status"
-			aria-label={props.label}
-			className={cn('flex min-h-0 flex-col', props.className)}
-		>
-			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-				<Skeleton className="h-4 w-24" />
-			</header>
-			<div className="p-2">
-				<ItemListSkeleton label={props.label} media rows={props.rows} />
-			</div>
-		</section>
-	)
-}
-
-function MachineSkeleton(props: {className?: string}) {
-	return (
-		<section
-			aria-busy="true"
-			role="status"
-			aria-label="Machine"
-			className={cn('flex min-h-0 flex-col', props.className)}
-		>
-			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-				<Skeleton className="h-4 w-20" />
-			</header>
-			<div className="flex flex-col gap-4 p-3">
-				<Skeleton className="h-40 w-full" />
-				<Skeleton className="h-36 w-full" />
-			</div>
-		</section>
-	)
-}
-
-function StripSkeleton() {
-	return (
-		<div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-			<Skeleton className="size-4" />
-			<Skeleton className="h-4 w-24" />
-			<Skeleton className="h-3 w-32" />
-			<Skeleton className="ml-auto size-3 rounded-full" />
-		</div>
-	)
-}
-
-function DeploySkeleton(props: {isMobile: boolean}) {
-	if (props.isMobile) {
-		return (
-			<div className="flex min-h-0 flex-1 flex-col">
-				<StripSkeleton />
-				<PaneSkeleton className="min-h-0 flex-1" label="Apps" rows={8} />
-			</div>
-		)
-	}
-	return (
-		<div className="flex min-h-0 flex-1 flex-col">
-			<StripSkeleton />
-			<div className="grid-cols-split grid min-h-0 flex-1">
-				<PaneSkeleton className="min-w-0 border-r" label="Apps" rows={8} />
-				<PaneSkeleton className="min-w-0 border-r" label="Processes" rows={5} />
-				<MachineSkeleton className="min-w-0" />
-			</div>
-		</div>
-	)
-}
-
 function Home() {
 	const isMobile = useIsMobile()
 	const [minutes, setMinutes] = useAtom(minutesAtom)
@@ -1057,11 +1056,15 @@ function Home() {
 		() => minutes
 	)
 	const inventoryFailure = AsyncResult.isFailure(inventory)
-	const inventoryError = AsyncResult.error(inventory)
-	const metricsError = AsyncResult.error(metrics)
+	const inventoryError = Option.map(Option.liftPredicate(inventory, AsyncResult.isFailure), result =>
+		Cause.squash(result.cause)
+	)
+	const metricsError = Option.map(Option.liftPredicate(metrics, AsyncResult.isFailure), result =>
+		Cause.squash(result.cause)
+	)
 	// A revoked session must show the sign-in even while the last snapshot is still cached; only other errors keep the panes.
-	const authFailure = Option.orElse(Option.filter(inventoryError, isDenied), () =>
-		Option.filter(metricsError, isDenied)
+	const authFailure = Option.orElse(Option.filter(AsyncResult.error(inventory), isDenied), () =>
+		Option.filter(AsyncResult.error(metrics), isDenied)
 	)
 	const refreshing = shownMinutes !== minutes && Option.isNone(metricsError)
 
@@ -1264,76 +1267,107 @@ function Home() {
 				}
 			/>
 			{Option.match(authFailure, {
-				onNone: () =>
-					Option.match(snapshot, {
-						onNone: () =>
-							Boolean.match(inventoryFailure, {
-								onFalse: () => <DeploySkeleton isMobile={isMobile} />,
-								onTrue: () => <FailureContent error={Option.getOrUndefined(inventoryError)} reset={refreshInventory} />
-							}),
-						onSome: () => (
-							<div className="flex min-h-0 flex-1 flex-col">
-								<MachineStrip
-									active={active}
-									histories={shownHistories}
-									inventoryFailure={inventoryFailure}
-									onSelect={selectWorker}
-									sources={sources}
-									workers={workers}
-								/>
-								<div
-									className="machine flex min-h-0 flex-1 flex-col"
-									data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
-								>
-									<div className="flex shrink-0 flex-col gap-2 px-3 pt-3 empty:hidden">
-										{Option.match(inventoryError, {
-											onNone: () => null,
-											onSome: error =>
-												Boolean.match(Option.isSome(snapshot), {
-													onFalse: () => null,
-													onTrue: () => (
-														<Alert variant="destructive">
-															<AlertTitle>Apps may be out of date</AlertTitle>
-															<AlertDescription className="wrap-anywhere">
-																{formatError(error)}
-																<Button variant="outline" size="sm" onClick={refreshInventory}>
-																	Try again
-																</Button>
-															</AlertDescription>
-														</Alert>
-													)
-												})
-										})}
-										{Option.match(metricsError, {
-											onNone: () => null,
-											onSome: error => (
+				onNone: () => (
+					<div className="flex min-h-0 flex-1 flex-col">
+						<MachineStrip
+							active={active}
+							histories={shownHistories}
+							inventoryFailure={inventoryFailure}
+							onSelect={selectWorker}
+							pending={AsyncResult.isInitial(inventory) && AsyncResult.isInitial(metrics)}
+							sources={sources}
+							workers={workers}
+						/>
+						<div
+							className="machine flex min-h-0 flex-1 flex-col"
+							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
+						>
+							<div className="flex max-h-1/3 shrink-0 flex-col gap-2 overflow-y-auto px-3 pt-3 empty:hidden">
+								{Option.match(inventoryError, {
+									onNone: () => null,
+									onSome: error =>
+										Boolean.match(Option.isSome(snapshot), {
+											onFalse: () => null,
+											onTrue: () => (
 												<Alert variant="destructive">
-													<AlertTitle>Usage history is unavailable</AlertTitle>
+													<AlertTitle>Apps may be out of date</AlertTitle>
 													<AlertDescription className="wrap-anywhere">
 														{formatError(error)}
-														<Button variant="outline" size="sm" onClick={refreshMetrics}>
+														<Button variant="outline" size="sm" onClick={refreshInventory}>
 															Try again
 														</Button>
 													</AlertDescription>
 												</Alert>
 											)
-										})}
-										{Array.map(
-											Array.filter(sources, source => source.error !== '' && !Array.contains(workers, source.name)),
-											source => (
-												<Alert key={source.name} variant="destructive">
-													<AlertTitle>{source.name} is unreachable</AlertTitle>
-													<AlertDescription className="wrap-anywhere">{source.error}</AlertDescription>
-												</Alert>
-											)
-										)}
+										})
+								})}
+								{Option.match(metricsError, {
+									onNone: () => null,
+									onSome: error => (
+										<Alert variant="destructive">
+											<AlertTitle>Usage history is unavailable</AlertTitle>
+											<AlertDescription className="wrap-anywhere">
+												{formatError(error)}
+												<Button variant="outline" size="sm" onClick={refreshMetrics}>
+													Try again
+												</Button>
+											</AlertDescription>
+										</Alert>
+									)
+								})}
+								{Array.map(
+									Array.filter(sources, source => source.error !== '' && !Array.contains(workers, source.name)),
+									source => (
+										<Alert key={source.name} variant="destructive">
+											<AlertTitle>{source.name} is unreachable</AlertTitle>
+											<AlertDescription className="wrap-anywhere">{source.error}</AlertDescription>
+										</Alert>
+									)
+								)}
+							</div>
+							{Boolean.match(isMobile, {
+								onFalse: () => (
+									<div className="grid-cols-split grid min-h-0 flex-1">
+										<AppsPane
+											bandOf={bandOf}
+											className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
+											free={free}
+											compact={isMobile}
+											hovered={hovered}
+											onHover={setHovered}
+											swatches={swatches}
+											now={now}
+											onSelect={selectRow}
+											pending={AsyncResult.isInitial(inventory)}
+											rows={sorted}
+											selectedId={selectedRow?.item.id}
+										/>
+										<ProcessPane
+											className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
+											now={now}
+											row={selectedRow}
+											pending={AsyncResult.isInitial(inventory)}
+										/>
+										<MachinePane
+											available={activeAvailable}
+											className={cn('min-w-0', refreshing && 'opacity-60')}
+											history={Option.getOrUndefined(history)}
+											labels={bandNames}
+											minutes={shownMinutes}
+											hovered={hovered}
+											onHover={setHovered}
+											worker={active}
+										/>
 									</div>
-									{Boolean.match(isMobile, {
-										onFalse: () => (
-											<div className="grid-cols-split grid min-h-0 flex-1">
+								),
+								onTrue: () => (
+									<div className="flex min-h-0 flex-1 flex-col">
+										{pipe(
+											Match.value(pane),
+											Match.when('apps', () => (
 												<AppsPane
 													bandOf={bandOf}
-													className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
+													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 													free={free}
 													compact={isMobile}
 													hovered={hovered}
@@ -1341,17 +1375,24 @@ function Home() {
 													swatches={swatches}
 													now={now}
 													onSelect={selectRow}
+													pending={AsyncResult.isInitial(inventory)}
 													rows={sorted}
 													selectedId={selectedRow?.item.id}
 												/>
+											)),
+											Match.when('process', () => (
 												<ProcessPane
-													className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
+													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 													now={now}
 													row={selectedRow}
+													pending={AsyncResult.isInitial(inventory)}
+													showName={false}
 												/>
+											)),
+											Match.orElse(() => (
 												<MachinePane
 													available={activeAvailable}
-													className={cn('min-w-0', refreshing && 'opacity-60')}
+													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
 													history={Option.getOrUndefined(history)}
 													labels={bandNames}
 													minutes={shownMinutes}
@@ -1359,55 +1400,14 @@ function Home() {
 													onHover={setHovered}
 													worker={active}
 												/>
-											</div>
-										),
-										onTrue: () => (
-											<div className="flex min-h-0 flex-1 flex-col">
-												{pipe(
-													Match.value(pane),
-													Match.when('apps', () => (
-														<AppsPane
-															bandOf={bandOf}
-															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
-															free={free}
-															compact={isMobile}
-															hovered={hovered}
-															onHover={setHovered}
-															swatches={swatches}
-															now={now}
-															onSelect={selectRow}
-															rows={sorted}
-															selectedId={selectedRow?.item.id}
-														/>
-													)),
-													Match.when('process', () => (
-														<ProcessPane
-															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
-															now={now}
-															row={selectedRow}
-															showName={false}
-														/>
-													)),
-													Match.orElse(() => (
-														<MachinePane
-															available={activeAvailable}
-															className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
-															history={Option.getOrUndefined(history)}
-															labels={bandNames}
-															minutes={shownMinutes}
-															hovered={hovered}
-															onHover={setHovered}
-															worker={active}
-														/>
-													))
-												)}
-											</div>
-										)
-									})}
-								</div>
-							</div>
-						)
-					}),
+											))
+										)}
+									</div>
+								)
+							})}
+						</div>
+					</div>
+				),
 				onSome: error => <FailureContent error={error} reset={retryFailed} />
 			})}
 		</div>
