@@ -1,4 +1,4 @@
-import {OctagonAlert} from 'lucide-react'
+import {WarningOctagonIcon} from '@phosphor-icons/react'
 import {useEffect} from 'react'
 
 import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
@@ -35,7 +35,7 @@ export function Error(props: {error: unknown; reset: () => void}) {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
 			<Alert variant="destructive" className="w-full max-w-lg select-text">
-				<OctagonAlert />
+				<WarningOctagonIcon />
 				<AlertTitle>Something went wrong</AlertTitle>
 				<AlertDescription className="wrap-break-word whitespace-pre-wrap">{message}</AlertDescription>
 			</Alert>

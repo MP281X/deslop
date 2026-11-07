@@ -1,7 +1,7 @@
 import {Array, Predicate, String, pipe} from 'effect'
 
+import {PrinterIcon} from '@phosphor-icons/react'
 import {createFileRoute} from '@tanstack/react-router'
-import {Printer} from 'lucide-react'
 
 import {Button} from '@deslop/components-web/ui/button'
 
@@ -94,7 +94,7 @@ function CvRoute() {
 				}}
 				className="fixed top-3 right-3 print:hidden"
 			>
-				<Printer />
+				<PrinterIcon />
 			</Button>
 
 			<article

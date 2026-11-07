@@ -16,9 +16,18 @@ import {
 	pipe
 } from 'effect'
 
+import {
+	CheckIcon,
+	CaretRightIcon,
+	CopyIcon,
+	GlobeIcon,
+	WarningOctagonIcon,
+	HardDrivesIcon,
+	DeviceMobileIcon,
+	DesktopIcon
+} from '@phosphor-icons/react'
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, ChevronRight, Copy, Globe, OctagonAlert, Server, Smartphone, Workflow} from 'lucide-react'
 import {Suspense, useState, useSyncExternalStore} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
@@ -75,11 +84,15 @@ const HTTP_ATTRIBUTES = [
 
 // The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone, a server or CI.
 const DEVICES: Record<Runtime, ReactElement> = {
-	ci: <Workflow role="img" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
-	mobile: <Smartphone role="img" aria-label="iOS" data-side="mobile" className="size-3.5 shrink-0 text-(--side)" />,
-	server: <Server role="img" aria-label="server" data-side="server" className="size-3.5 shrink-0 text-(--side)" />,
-	unknown: <Server aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
-	web: <Globe role="img" aria-label="web" data-side="web" className="size-3.5 shrink-0 text-(--side)" />
+	ci: <DesktopIcon role="img" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
+	mobile: (
+		<DeviceMobileIcon role="img" aria-label="iOS" data-side="mobile" className="size-3.5 shrink-0 text-(--side)" />
+	),
+	server: (
+		<HardDrivesIcon role="img" aria-label="server" data-side="server" className="size-3.5 shrink-0 text-(--side)" />
+	),
+	unknown: <HardDrivesIcon aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
+	web: <GlobeIcon role="img" aria-label="web" data-side="web" className="size-3.5 shrink-0 text-(--side)" />
 }
 
 const clock = new Intl.DateTimeFormat(undefined, {
@@ -260,7 +273,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 			{Option.match(Option.fromUndefinedOr(props.open), {
 				onNone: () => <span className="size-3.5 shrink-0" />,
 				onSome: open => (
-					<ChevronRight
+					<CaretRightIcon
 						className={cn('text-muted-foreground size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
 					/>
 				)
@@ -361,7 +374,7 @@ function Spans(props: {id: string}) {
 		<>
 			{AsyncResult.isFailure(result) && (
 				<Alert variant="destructive" className="my-2">
-					<OctagonAlert />
+					<WarningOctagonIcon />
 					<AlertTitle>Cannot update this trace</AlertTitle>
 					<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
 						{formatError(result.cause)}
@@ -432,7 +445,7 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 					Boolean.match(
 						Array.every(props.app.operations, operation => operation.runtime === 'ci'),
 						{
-							onFalse: () => <Server className="text-muted-foreground size-4" />,
+							onFalse: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 							onTrue: () => (
 								<>
 									<GithubLight className="size-4 dark:hidden" />
@@ -482,7 +495,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 					<span className="sr-only">typical </span>
 					{durationOf(props.operation.p50Ms)}
 				</span>
-				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
+				<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 			</Button>
 		</div>
 	)
@@ -616,7 +629,7 @@ function TraceListRow(props: {
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
-					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
+					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 				</Button>
 			</div>
 		</div>
@@ -642,7 +655,7 @@ function TracesPane(props: {
 				{Option.match(
 					Option.flatMap(active, current => Option.fromUndefinedOr(marks[current.app.name])),
 					{
-						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
+						onNone: () => <HardDrivesIcon className="text-muted-foreground size-4 shrink-0" />,
 						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 					}
 				)}
@@ -723,7 +736,7 @@ function CopyTrace(props: {id: string}) {
 				aria-label={Boolean.match(copied, {onFalse: () => 'Copy trace ID', onTrue: () => 'Copied'})}
 				onClick={() => copyText(props.id)}
 			>
-				{Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
+				{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon className="text-primary" />})}
 			</Button>
 			<span role="status" className="sr-only">
 				{copied && 'Copied'}
@@ -961,7 +974,7 @@ function Home() {
 			{AsyncResult.isFailure(overview) && Option.isSome(value) && Option.isNone(authFailure) && (
 				<div className="shrink-0 px-3 py-2">
 					<Alert variant="destructive">
-						<OctagonAlert />
+						<WarningOctagonIcon />
 						<AlertTitle>Cannot update live operations</AlertTitle>
 						<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
 							{formatError(overview.cause)}

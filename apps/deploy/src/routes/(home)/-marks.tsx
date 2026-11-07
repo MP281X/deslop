@@ -1,6 +1,6 @@
 import {Array, Boolean, Option, String} from 'effect'
 
-import {Box, SquareTerminal} from 'lucide-react'
+import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
 import {Bun} from '@deslop/components-web/ui/svgs/bun'
 import {Cloudflare} from '@deslop/components-web/ui/svgs/cloudflare'
@@ -55,8 +55,12 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 				</>
 			)
 		}
-		if (props.container === true) return <Box className="size-full" />
-		return <SquareTerminal className="size-full" />
+		const weight = Boolean.match(props.small === true, {
+			onFalse: () => 'light' as const,
+			onTrue: () => 'regular' as const
+		})
+		if (props.container === true) return <CubeIcon className="size-full" weight={weight} />
+		return <TerminalWindowIcon className="size-full" weight={weight} />
 	}
 	return (
 		<span

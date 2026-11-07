@@ -2,11 +2,11 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
+import {CheckIcon, CopyIcon, WarningOctagonIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy, OctagonAlert, Plus, Server} from 'lucide-react'
 import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
@@ -135,7 +135,7 @@ function FirstImage(props: {sources: string[]}) {
 	return (
 		<span className="flex size-5 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
-				onNone: () => <Server className="text-muted-foreground size-4" />,
+				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
 					<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
 				)
@@ -277,7 +277,7 @@ function ServersContent() {
 			{AsyncResult.isFailure(result) && (
 				<div className="shrink-0 px-3 py-2">
 					<Alert variant="destructive">
-						<OctagonAlert />
+						<WarningOctagonIcon />
 						<AlertTitle>Servers may be out of date</AlertTitle>
 						<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
 							{formatError(result.cause)}
@@ -441,10 +441,13 @@ function Home() {
 		items: [
 			...Boolean.match(ready, {
 				onFalse: () => [],
-				onTrue: () => [{icon: <Plus />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
+				onTrue: () => [{icon: <PlusIcon />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
 			}),
 			{
-				icon: Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />}),
+				icon: Boolean.match(copied, {
+					onFalse: () => <CopyIcon />,
+					onTrue: () => <CheckIcon className="text-primary" />
+				}),
 				label: 'Copy MCP URL',
 				run: () => copyText()
 			}
@@ -464,12 +467,20 @@ function Home() {
 				action={
 					<>
 						<AppBarAction
-							icon={Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
+							icon={Boolean.match(copied, {
+								onFalse: () => <CopyIcon />,
+								onTrue: () => <CheckIcon className="text-primary" />
+							})}
 							label="Copy MCP URL"
 							variant="outline"
 							onClick={() => copyText()}
 						/>
-						<AppBarAction disabled={!ready} icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />
+						<AppBarAction
+							disabled={!ready}
+							icon={<PlusIcon />}
+							label="Add server"
+							onClick={() => send({_tag: 'Open'})}
+						/>
 					</>
 				}
 			/>
