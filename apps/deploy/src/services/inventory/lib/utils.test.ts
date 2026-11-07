@@ -1,9 +1,23 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array} from 'effect'
+import {Array, Schema} from 'effect'
 
 import {availablePorts, processOwner, unitFailures, workloadName, workloads} from '#services/inventory/lib/utils.ts'
-import {InventoryItem} from '#services/inventory/schema.ts'
+import {InventoryItem, WorkerList} from '#services/inventory/schema.ts'
+
+it('validates worker origins when parsing configuration', () => {
+	for (const origin of ['https://desktop.example.ts.net:5102', 'http://127.0.0.1:5102']) {
+		assert.isTrue(Schema.is(WorkerList)(`desktop=${origin}`))
+	}
+	for (const origin of [
+		'http://desktop.example.ts.net:5102',
+		'https://desktop.example.ts.net/path',
+		'https://user:pass@desktop.example.ts.net',
+		'https://desktop.example.ts.net#fragment'
+	]) {
+		assert.isFalse(Schema.is(WorkerList)(`desktop=${origin}`))
+	}
+})
 
 const listener = InventoryItem.make({
 	address: '127.0.0.1:5173',

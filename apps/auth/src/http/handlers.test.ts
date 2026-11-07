@@ -13,16 +13,18 @@ import {
 	Option,
 	Order,
 	Queue,
+	Ref,
 	Schema,
 	String,
 	Stream,
 	pipe
 } from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {Digest, SecureRandom, Signature} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
-import {RateLimiter} from 'effect/persistence'
+import {KeyValueStore, RateLimiter} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import type {Resource} from '@deslop/runtime/auth/schema'
@@ -53,10 +55,10 @@ import {
 	RequestParams
 } from '#services/sign-ins/schema.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {FamilyParams, Registration, SignedInApp} from '#services/tokens/schema.ts'
+import {FamilyParams, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
-import {ToolHandlers} from '#tools/handlers.ts'
+import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
 
 const API = 'https://stash.mp281x.xyz'
 const APPROVALS = 'https://auth.mp281x.xyz/mcp'
@@ -71,9 +73,12 @@ const me = pipe(
 )
 
 const mcp = ServerRuntime.layerMcp({
-	handlers: ToolHandlers,
 	instructions: 'Approve a sign-in you started with answer_request.',
-	tools: Tools
+	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
+})
+
+const requestOwner = Effect.gen(function* () {
+	return yield* (yield* Tokens).session((yield* HttpServerRequest.HttpServerRequest).headers)
 })
 
 // A test route answers a refusal with its message, as the page shows it.
@@ -83,8 +88,35 @@ function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespo
 	)
 }
 
-const servers = Effect.fnUntraced(function* (saved?: string) {
+const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<Option.Option<string>>) {
 	const directory = saved ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
+	const failures = failing ?? (yield* Ref.make(Option.none<string>()))
+	const grantWrites = yield* Ref.make(0)
+	const failGrantWrite = yield* Ref.make(Option.none<number>())
+	const storage = pipe(
+		Layer.effect(
+			KeyValueStore.KeyValueStore,
+			Effect.map(KeyValueStore.KeyValueStore, store =>
+				KeyValueStore.make({
+					...store,
+					set: (key, value) =>
+						Effect.gen(function* () {
+							const grantFailed =
+								key === 'grants' &&
+								Option.contains(
+									yield* Ref.get(failGrantWrite),
+									yield* Ref.updateAndGet(grantWrites, count => count + 1)
+								)
+							if (Option.contains(yield* Ref.get(failures), key) || grantFailed) {
+								return yield* new KeyValueStore.KeyValueStoreError({key, message: 'Disk unavailable', method: 'set'})
+							}
+							return yield* store.set(key, value)
+						})
+				})
+			)
+		),
+		Layer.provide(ServerRuntime.layerKeyValueStore(directory))
+	)
 	const digest = yield* Digest.Digest
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
@@ -186,7 +218,10 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									'/apps',
 									Effect.gen(function* () {
 										return yield* HttpServerResponse.schemaJson(Schema.Array(SignedInApp))(
-											yield* Effect.flatMap(Stream.runHead((yield* Tokens).apps(yield* CurrentUser)), Effect.fromOption)
+											yield* Effect.flatMap(
+												Stream.runHead((yield* Tokens).apps(yield* requestOwner)),
+												Effect.fromOption
+											)
 										)
 									})
 								),
@@ -196,7 +231,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									pipe(
 										Effect.gen(function* () {
 											const params = yield* HttpServerRequest.schemaSearchParams(FamilyParams)
-											yield* (yield* Tokens).disconnect(params.family, yield* CurrentUser)
+											yield* (yield* Tokens).disconnect(params.family, yield* requestOwner)
 											return HttpServerResponse.empty()
 										}),
 										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
@@ -210,7 +245,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 										Effect.gen(function* () {
 											return yield* HttpServerResponse.schemaJson(CreationOptions)(
 												yield* (yield* Passkeys).registration(
-													yield* CurrentUser,
+													yield* requestOwner,
 													yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
 												)
 											)
@@ -226,7 +261,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 											const input = yield* HttpServerRequest.schemaBodyJson(AddPasskeyParams)
 											yield* (yield* Passkeys).add(input.response, {
 												from: {userAgent: IPHONE_SAFARI},
-												user: yield* CurrentUser,
+												owner: yield* requestOwner,
 												via: yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
 											})
 											return HttpServerResponse.empty()
@@ -240,7 +275,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									Effect.gen(function* () {
 										return yield* HttpServerResponse.schemaJson(Schema.Array(Passkey))(
 											yield* Effect.flatMap(
-												Stream.runHead((yield* Passkeys).list(yield* CurrentUser)),
+												Stream.runHead((yield* Passkeys).list(yield* requestOwner)),
 												Effect.fromOption
 											)
 										)
@@ -252,7 +287,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									pipe(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(PasskeyParams)
-											yield* (yield* Passkeys).remove(input.id, yield* CurrentUser)
+											yield* (yield* Passkeys).remove(input.id, yield* requestOwner)
 											return HttpServerResponse.empty()
 										}),
 										refused
@@ -265,7 +300,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									pipe(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AnswerParams)
-											yield* (yield* SignIns).answer(input, yield* CurrentUser, 'Session')
+											yield* (yield* SignIns).answer(input, yield* requestOwner, 'Session')
 											return HttpServerResponse.empty()
 										}),
 										refused
@@ -314,7 +349,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 					Layer.provideMerge(
 						Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)
 					),
-					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
+					Layer.provide(storage),
 					Layer.provide(
 						Layer.mergeAll(
 							NodeCrypto.layer,
@@ -370,7 +405,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 		),
 		web => Effect.promise(() => web.dispose())
 	)
-	return {app, issuer, ready}
+	return {app, failGrantWrite, grantWrites, issuer, ready}
 })
 
 function send(web: Effect.Success<ReturnType<typeof servers>>['issuer'], path: string, init?: RequestInit) {
@@ -388,7 +423,8 @@ function cookie(response: Response) {
 const signIn = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	login: string,
-	search = ''
+	search = '',
+	previous = ''
 ) {
 	const start = yield* send(web, `/auth/github${search}`)
 	const target = new URL(start.headers.get('location') ?? '')
@@ -400,7 +436,7 @@ const signIn = Effect.fnUntraced(function* (
 				state: target.searchParams.get('state') ?? ''
 			})
 		)}`,
-		{headers: {cookie: cookie(start)}}
+		{headers: {cookie: `${cookie(start)}; ${previous}`}}
 	)
 })
 
@@ -710,7 +746,149 @@ const authenticator = Effect.fnUntraced(function* () {
 	}
 })
 
+// A new authentication proof, re-run after a failed write; a code retries the same approved request.
+const replacement = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	previous: string,
+	via: SessionVia
+) {
+	if (via === 'GitHub') return () => signIn(web, 'octocat', '', previous)
+	if (via === 'Code') {
+		const started = yield* send(web, '/auth/code', {headers: {cookie: previous}})
+		const id = new URL(started.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? ''
+		assert.strictEqual((yield* answer(web, previous, id, true)).status, 204)
+		return () => send(web, `/auth/continue?request=${id}`, {headers: {cookie: `${cookie(started)}; ${previous}`}})
+	}
+	const key = yield* authenticator()
+	const options = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+		yield* Effect.flatMap(send(web, '/passkey-options', {headers: {cookie: previous}}), response =>
+			Effect.promise(() => response.text())
+		)
+	)
+	assert.strictEqual((yield* post(web, '/add-passkey', previous, {response: yield* key.register(options)})).status, 204)
+	return Effect.fnUntraced(function* () {
+		const asked = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
+			yield* Effect.flatMap(send(web, '/auth/passkey'), response => Effect.promise(() => response.text()))
+		)
+		return yield* post(web, '/auth/passkey', previous, {response: yield* key.answer(asked)})
+	})
+})
+
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
+	test.effect(
+		'registers a credential ID to only one account under concurrent verified requests',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const member = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			const key = yield* authenticator()
+			const attempts = yield* Effect.forEach(
+				[admin, member],
+				Effect.fnUntraced(function* (session) {
+					const options = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+						yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: session}}), response =>
+							Effect.promise(() => response.text())
+						)
+					)
+					return {response: yield* key.register(options), session}
+				}),
+				{concurrency: 'unbounded'}
+			)
+			const responses = yield* Effect.forEach(
+				attempts,
+				attempt => post(web.issuer, '/add-passkey', attempt.session, {response: attempt.response}),
+				{concurrency: 'unbounded'}
+			)
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(responses, response => response.status),
+					Order.Number
+				),
+				[204, 400]
+			)
+			const listed = yield* Effect.forEach(
+				[admin, member],
+				Effect.fnUntraced(function* (session) {
+					return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey)))(
+						yield* Effect.flatMap(send(web.issuer, '/passkeys', {headers: {cookie: session}}), response =>
+							Effect.promise(() => response.text())
+						)
+					)
+				}),
+				{concurrency: 'unbounded'}
+			)
+			assert.strictEqual(Array.flatten(listed).length, 1)
+			const challenge = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/auth/passkey'), response => Effect.promise(() => response.text()))
+			)
+			const session = cookie(yield* post(web.issuer, '/auth/passkey', '', {response: yield* key.answer(challenge)}))
+			assert.strictEqual(
+				(yield* Schema.decodeEffect(Schema.fromJsonString(User))(
+					yield* Effect.flatMap(send(web.issuer, '/me', {headers: {cookie: session}}), response =>
+						Effect.promise(() => response.text())
+					)
+				)).id,
+				Boolean.match(responses[0]?.status === 204, {onFalse: () => 'github:7', onTrue: () => 'github:42'})
+			)
+		})
+	)
+
+	test.effect(
+		'keeps old passkeys and registration challenges invalid after a failed removal cleanup and restart',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const failing = yield* Ref.make(Option.none<string>())
+			const web = yield* servers(directory, failing)
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const member = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			const key = yield* authenticator()
+			const options = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: member}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			assert.strictEqual(
+				(yield* post(web.issuer, '/add-passkey', member, {response: yield* key.register(options)})).status,
+				204
+			)
+			const pending = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: member}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			yield* Ref.set(failing, Option.some('grants'))
+			assert.strictEqual((yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})).status, 400)
+			yield* Ref.set(failing, Option.none())
+			const fresh = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			const anotherKey = yield* authenticator()
+			// The old challenge cannot be used by the account's new registration, even before restart.
+			assert.strictEqual(
+				(yield* post(web.issuer, '/add-passkey', fresh, {response: yield* anotherKey.register(pending)})).status,
+				400
+			)
+			const restarted = yield* servers(directory)
+			const challenge = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
+				yield* Effect.flatMap(send(restarted.issuer, '/auth/passkey'), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			assert.strictEqual(
+				(yield* post(restarted.issuer, '/auth/passkey', '', {response: yield* key.answer(challenge)})).status,
+				400
+			)
+			assert.deepStrictEqual(
+				yield* Effect.flatMap(send(restarted.issuer, '/passkeys', {headers: {cookie: fresh}}), response =>
+					Effect.promise(() => response.json())
+				),
+				[]
+			)
+			assert.strictEqual((yield* send(restarted.issuer, '/auth/session', {headers: {cookie: fresh}})).status, 200)
+		})
+	)
+
 	test.effect(
 		'adds a passkey of any kind while signed in, then signs a browser in with it alone, once per challenge',
 		Effect.fnUntraced(function* () {
@@ -1037,34 +1215,50 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 
-	test.effect(
-		'swaps a signed-in browser’s session when it signs in with GitHub again',
-		Effect.fnUntraced(function* () {
-			const web = yield* servers()
-			const before = cookie(yield* signIn(web.issuer, 'octocat'))
-			const start = yield* send(web.issuer, '/auth/github')
-			const target = new URL(start.headers.get('location') ?? '')
-			const after = cookie(
-				yield* send(
-					web.issuer,
-					`/auth/github/callback?${UrlParams.toString(
-						UrlParams.fromInput({
-							code: `octocat.${target.searchParams.get('code_challenge') ?? ''}`,
-							state: target.searchParams.get('state') ?? ''
-						})
-					)}`,
-					{headers: {cookie: `${cookie(start)}; ${before}`}}
+	for (const via of SessionVia.literals) {
+		test.effect(
+			`replaces only the presented browser session in one grant write through ${via}`,
+			Effect.fnUntraced(function* () {
+				const web = yield* servers()
+				const before = cookie(yield* signIn(web.issuer, 'octocat'))
+				const independent = cookie(yield* signIn(web.issuer, 'octocat'))
+				const replace = yield* replacement(web.issuer, before, via)
+				const writes = yield* Ref.get(web.grantWrites)
+				const after = cookie(yield* replace())
+				assert.deepStrictEqual(
+					[
+						(yield* send(web.issuer, '/me', {headers: {cookie: before}})).status,
+						(yield* send(web.issuer, '/me', {headers: {cookie: after}})).status,
+						(yield* send(web.issuer, '/me', {headers: {cookie: independent}})).status
+					],
+					[401, 200, 200]
 				)
-			)
-			assert.deepStrictEqual(
-				[
-					(yield* send(web.issuer, '/me', {headers: {cookie: before}})).status,
-					(yield* send(web.issuer, '/me', {headers: {cookie: after}})).status
-				],
-				[401, 200]
-			)
-		})
-	)
+				assert.strictEqual(yield* Ref.get(web.grantWrites), writes + 1)
+			})
+		)
+
+		test.effect(
+			`preserves the old browser and retries a failed ${via} replacement`,
+			Effect.fnUntraced(function* () {
+				const web = yield* servers()
+				const before = cookie(yield* signIn(web.issuer, 'octocat'))
+				const replace = yield* replacement(web.issuer, before, via)
+				yield* Ref.set(web.failGrantWrite, Option.some((yield* Ref.get(web.grantWrites)) + 1))
+				const failed = yield* replace()
+				assert.isFalse(String.includes('__Secure-session=')(cookie(failed)))
+				assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: before}})).status, 200)
+				yield* Ref.set(web.failGrantWrite, Option.none())
+				const after = cookie(yield* replace())
+				assert.deepStrictEqual(
+					[
+						(yield* send(web.issuer, '/me', {headers: {cookie: before}})).status,
+						(yield* send(web.issuer, '/me', {headers: {cookie: after}})).status
+					],
+					[401, 200]
+				)
+			})
+		)
+	}
 
 	test.effect(
 		'returns a cancelled GitHub step to the sign-in it started from',
@@ -1458,11 +1652,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => first.text())
 			)
 			assert.strictEqual(token.expires_in, 900)
+			assert.strictEqual(first.headers.get('cache-control'), 'no-store')
+			assert.strictEqual(first.headers.get('pragma'), 'no-cache')
 			const second = yield* refresh(web.issuer, request.clientId, token.refresh_token)
 			const rotated = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => second.text())
 			)
 			assert.notStrictEqual(rotated.refresh_token, token.refresh_token)
+			const third = yield* refresh(web.issuer, request.clientId, rotated.refresh_token)
+			const latest = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => third.text())
+			)
 			// The family is the public prefix of every bearer, so it alone revokes nothing and proves no replay.
 			const family = String.split(token.access_token, '.')[0]
 			assert.strictEqual(
@@ -1473,7 +1673,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					headers: {'content-type': 'application/x-www-form-urlencoded'},
 					method: 'POST'
 				})).status,
-				204
+				200
 			)
 			assert.strictEqual(
 				(yield* refresh(web.issuer, request.clientId, `${family}.0.${String.repeat(43)('A')}`)).status,
@@ -1493,6 +1693,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 400)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, rotated.refresh_token)).status, 400)
+			assert.strictEqual((yield* refresh(web.issuer, request.clientId, latest.refresh_token)).status, 400)
 			assert.strictEqual(
 				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
 					headers: {authorization: `Bearer ${rotated.access_token}`}
@@ -1515,7 +1716,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					headers: {'content-type': 'application/x-www-form-urlencoded'},
 					method: 'POST'
 				})).status,
-				204
+				200
 			)
 			assert.strictEqual(
 				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${active.access_token}`}})).status,

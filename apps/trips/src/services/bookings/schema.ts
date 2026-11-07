@@ -47,10 +47,8 @@ export const FlightTracking = Schema.Struct({
 	departureEstimated: Schema.optionalKey(Schema.Finite),
 	departureGate: Schema.optionalKey(Schema.String),
 	departureTerminal: Schema.optionalKey(Schema.String),
-	landingActual: Schema.optionalKey(Schema.Finite),
 	// The gate the flight had before the current one, kept to show the change.
 	previousGate: Schema.optionalKey(Schema.String),
-	progress: Schema.optionalKey(Schema.Finite),
 	// The provider's own id for this operation, such as FlightAware's fa_flight_id.
 	providerId: Schema.optionalKey(Schema.String),
 	state: Schema.Literals(['scheduled', 'departed', 'airborne', 'landed', 'arrived', 'cancelled', 'diverted']),
@@ -217,6 +215,9 @@ export const LocalTime = pipe(
 	Schema.annotate({description: 'ISO date and time, local to the place unless the source gives an offset'})
 )
 
+export type TripNumber = typeof TripNumber.Type
+export const TripNumber = Schema.String.check(Schema.isPattern(/^\d+$/u))
+
 // One reservation as the ticket states it, before the airport, station and time zone are resolved.
 export type ExtractedItem = typeof ExtractedItem.Type
 export const ExtractedItem = Schema.Union([
@@ -228,7 +229,7 @@ export const ExtractedItem = Schema.Union([
 		boardingGroup: Schema.optionalKey(Schema.String),
 		confirmation: Schema.optionalKey(Schema.String),
 		departure: LocalTime,
-		flightNumber: Schema.String.annotate({description: 'Digits only, such as 553'}),
+		flightNumber: TripNumber.annotate({description: 'Digits only, such as 553'}),
 		from: Schema.String.annotate({description: 'IATA airport code'}),
 		kind: Schema.Literal('flight'),
 		seat: Schema.optionalKey(Schema.String),
@@ -247,7 +248,7 @@ export const ExtractedItem = Schema.Union([
 		seat: Schema.optionalKey(Schema.String),
 		status: ReservationStatus,
 		to: Schema.String,
-		trainNumber: Schema.String.annotate({description: 'Digits only, such as 9541'})
+		trainNumber: TripNumber.annotate({description: 'Digits only, such as 9541'})
 	}),
 	Schema.Struct({
 		address: Schema.String.annotate({description: 'Full street address with city and country'}),

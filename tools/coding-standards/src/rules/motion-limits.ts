@@ -37,13 +37,13 @@ function violation(token: string) {
 		matches(/^zoom-(?:in|out)$/u)(name) ||
 		Option.exists(amount(name, /^zoom-(?:in|out)-(\d+)$/u), value => value < 90)
 	) {
-		return Option.some('Enter from 0.9 scale or more: zoom-in-90 or zoom-in-95.')
+		return Option.some('Enter from 0.95 scale with opacity: zoom-in-95.')
 	}
 	if (
 		pipe(token, String.split(':'), Array.dropRight(1), Array.contains('starting')) &&
 		Option.exists(amount(name, /^scale-(\d+)$/u), value => value < 90)
 	) {
-		return Option.some('Enter from 0.9 scale or more: starting:scale-90 or starting:scale-95.')
+		return Option.some('Enter from 0.95 scale with opacity: starting:scale-95.')
 	}
 	return Option.none()
 }

@@ -74,7 +74,6 @@ const mcp = Layer.unwrap(
 		const now = yield* Clock.currentTimeMillis
 		return pipe(
 			ServerRuntime.layerMcp({
-				handlers: ToolHandlers,
 				instructions: Array.join(
 					[
 						"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
@@ -89,7 +88,7 @@ const mcp = Layer.unwrap(
 					],
 					'\n'
 				),
-				tools: Tools
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			}),
 			Layer.provide(GatewayDiscovery.layer),
 			Layer.provide(McpServer.McpServer.layer)
@@ -97,7 +96,7 @@ const mcp = Layer.unwrap(
 	})
 )
 
-function discoveryResponse(url: string) {
+function discoveryResponse(url: string, challengeMethods?: string[]) {
 	if (url === 'https://challenge.example.com/resource-info') {
 		return Response.json({
 			authorization_servers: ['https://identity.example.com'],
@@ -117,6 +116,7 @@ function discoveryResponse(url: string) {
 		return Response.json({
 			authorization_endpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
 			authorization_response_iss_parameter_supported: true,
+			code_challenge_methods_supported: challengeMethods,
 			issuer: `${AUTH_URL}/api/auth`,
 			registration_endpoint: `${AUTH_URL}/api/auth/oauth2/register`,
 			response_types_supported: ['code'],
@@ -135,6 +135,7 @@ function discoveryResponse(url: string) {
 		return Response.json({
 			authorization_endpoint: 'https://silent.example.com/oauth/authorize',
 			client_id_metadata_document_supported: true,
+			code_challenge_methods_supported: challengeMethods,
 			issuer: 'https://silent.example.com',
 			response_types_supported: ['code'],
 			token_endpoint: 'https://silent.example.com/oauth/token'
@@ -146,6 +147,7 @@ function discoveryResponse(url: string) {
 			authorization_endpoint: 'https://identity.example.com/oauth/authorize',
 			authorization_response_iss_parameter_supported: true,
 			client_id_metadata_document_supported: true,
+			code_challenge_methods_supported: challengeMethods,
 			issuer: 'https://identity.example.com',
 			response_types_supported: ['code'],
 			token_endpoint: 'https://identity.example.com/oauth/token'
@@ -165,8 +167,9 @@ function discoveryResponse(url: string) {
 		})
 	}
 	return Response.json({
-		authorization_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/authorize`,
+		authorization_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/authorize?tenant=required`,
 		authorization_response_iss_parameter_supported: true,
+		code_challenge_methods_supported: challengeMethods,
 		issuer: PROVIDERS.mobbin.issuer,
 		registration_endpoint: `${PROVIDERS.mobbin.issuer}/oauth/clients/register`,
 		response_types_supported: ['code'],
@@ -186,8 +189,8 @@ function getUpstream(url: string) {
 	return new Response(undefined, {status: 405})
 }
 
-function upstreamHttpResponse(request: Request) {
-	const metadata = discoveryResponse(request.url)
+function upstreamHttpResponse(request: Request, challengeMethods?: string[]) {
+	const metadata = discoveryResponse(request.url, challengeMethods)
 	if (metadata !== undefined) return metadata
 	if (request.method === 'GET') return new Response(undefined, {status: 405})
 	if (request.url === 'https://challenge.example.com/mcp') return getUpstream(request.url)
@@ -210,17 +213,21 @@ function account(login?: string) {
 }
 
 // Auth as the gateway sees it: an agent token for the gateway's MCP, or a browser session.
-function layerAuth(origin: string) {
+function layerAuth(origin: string, verified: Ref.Ref<number>) {
 	return Layer.succeedContext(
 		Auth.makeContext(
 			Auth.of({
-				access: (headers, resource) => {
-					const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
-					if (resource !== `${origin}/mcp` || !String.startsWith('agent-')(token)) {
-						return Effect.fail(AuthError.make({message: 'Sign in first'}))
-					}
-					return account(String.split(String.slice(6)(token), '-')[0])
-				},
+				access: (headers, resource) =>
+					Effect.andThen(
+						Ref.update(verified, count => count + 1),
+						Effect.suspend(() => {
+							const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
+							if (resource !== `${origin}/mcp` || !String.startsWith('agent-')(token)) {
+								return Effect.fail(AuthError.make({message: 'Sign in first'}))
+							}
+							return account(String.split(String.slice(6)(token), '-')[0])
+						})
+					),
 				user: headers => account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
 			})
 		)
@@ -230,12 +237,16 @@ function layerAuth(origin: string) {
 const servers = Effect.fnUntraced(function* (home?: string, origin: string = GATEWAY_URL, local: boolean = false) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const clock = yield* Clock.Clock
+	const verified = yield* Ref.make(0)
 	const ready = yield* Queue.make<true>()
 	const rejectAccess = yield* Ref.make('never')
 	const pauseReject = yield* Ref.make(false)
 	const rejectReady = yield* Queue.make<true>()
 	const rejectContinue = yield* Queue.make<true>()
 	const toolNames = yield* Ref.make(['search'])
+	const providerName = yield* Ref.make('legacy-provider')
+	const challengeMethods = yield* Ref.make(Option.some(['S256']))
+	const metadataUnavailable = yield* Ref.make(false)
 	const stall = yield* Ref.make(false)
 	const stallReady = yield* Queue.make<true>()
 	const upstreamRequests = MutableList.make<{url: string; method: string; authorization: string; body: unknown}>()
@@ -254,7 +265,10 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's FetchLike contract requires a Promise<Response>.
 		return Effect.runPromise(
 			Effect.gen(function* () {
-				const metadata = upstreamHttpResponse(request)
+				if (yield* Ref.get(metadataUnavailable)) {
+					return new Response(undefined, {status: 503})
+				}
+				const metadata = upstreamHttpResponse(request, Option.getOrUndefined(yield* Ref.get(challengeMethods)))
 				if (metadata !== undefined) return metadata
 				if (request.method === 'DELETE') {
 					MutableHashMap.remove(sessions, request.headers.get('mcp-session-id') ?? '')
@@ -295,7 +309,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 								serverInfo: {
 									// A page shows only HTTPS and inline image icons.
 									icons: [{src: 'https://example.com/icon.png', theme: 'dark'}, {src: 'javascript:alert(1)'}],
-									name: 'legacy-provider',
+									name: yield* Ref.get(providerName),
 									version: '1'
 								}
 							}
@@ -509,7 +523,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 							)
 						)
 					),
-					Layer.provideMerge(layerAuth(origin)),
+					Layer.provideMerge(layerAuth(origin, verified)),
 					Layer.provideMerge(Layer.succeed(Clock.Clock, clock))
 				),
 				{disableLogger: true}
@@ -518,8 +532,11 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		handler => Effect.promise(() => handler.dispose())
 	)
 	return {
+		challengeMethods,
 		grants,
+		metadataUnavailable,
 		pauseReject,
+		providerName,
 		ready,
 		registrations,
 		rejectAccess,
@@ -530,6 +547,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		stallReady,
 		toolNames,
 		upstreamRequests,
+		verified,
 		web
 	}
 })
@@ -648,6 +666,73 @@ const modern = Effect.fnUntraced(function* (
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	test.effect(
+		'keeps live authorizations when unknown callbacks arrive and exchanges a state only once',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			const start = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
+			const state = new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''
+			for (const index of Array.range(0, 64)) {
+				const unknown = `unknown-${index}`
+				yield* send(
+					gateway.web,
+					`/oauth/callback/mobbin?state=${unknown}&code=approved&iss=${encodeURIComponent(PROVIDERS.mobbin.issuer)}`,
+					{headers: {cookie: `${SESSION}; __Host-mcp-${unknown}=${unknown}`}}
+				)
+			}
+			const callback = `/oauth/callback/mobbin?state=${state}&code=approved&iss=${encodeURIComponent(PROVIDERS.mobbin.issuer)}`
+			yield* Effect.all(
+				[
+					send(gateway.web, callback, {headers: {cookie: `${SESSION}; ${cookie(start)}`}}),
+					send(gateway.web, callback, {headers: {cookie: `${SESSION}; ${cookie(start)}`}})
+				],
+				{concurrency: 'unbounded'}
+			)
+			assert.strictEqual(gateway.grants.length, 1)
+		})
+	)
+	test.effect(
+		'shows fresh discovery failures on the connection and recovers on the next attempt',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* Ref.set(gateway.metadataUnavailable, true)
+			const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
+			assert.strictEqual(response.status, 302)
+			assert.strictEqual(response.headers.get('location'), '/')
+			assert.isNotEmpty((yield* listServers(gateway.web))[0]?.error ?? '')
+			assert.strictEqual(gateway.registrations.length, 1)
+			assert.strictEqual(gateway.grants.length, 0)
+			yield* Ref.set(gateway.metadataUnavailable, false)
+			assert.include(
+				(yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})).headers.get('location') ??
+					'',
+				'code_challenge_method=S256'
+			)
+		})
+	)
+	test.effect(
+		'refuses authorization unless the provider currently advertises S256 PKCE',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			for (const methods of [Option.none<string[]>(), Option.some(['plain'])]) {
+				yield* Ref.set(gateway.challengeMethods, methods)
+				const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
+				assert.strictEqual(response.status, 302)
+				assert.strictEqual(response.headers.get('location'), '/')
+				assert.include((yield* listServers(gateway.web))[0]?.error ?? '', 'S256 PKCE')
+				assert.strictEqual(gateway.registrations.length, 1)
+			}
+			yield* Ref.set(gateway.challengeMethods, Option.some(['S256']))
+			assert.include(
+				(yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})).headers.get('location') ??
+					'',
+				'code_challenge_method=S256'
+			)
+		})
+	)
+	test.effect(
 		'uses the local trusted developer without production admin configuration',
 		Effect.fnUntraced(function* () {
 			assert.strictEqual(
@@ -681,12 +766,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: `${origin}/mcp`})).status, 400)
 			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
+			const verifiedBefore = yield* Ref.get(gateway.verified)
 			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'alternate-origin'},
 				name: `${publicServer.id}__search`
 			})
 			assert.strictEqual(called.status, 200)
 			assert.include(yield* Effect.promise(() => called.text()), 'alternate-origin')
+			assert.strictEqual((yield* Ref.get(gateway.verified)) - verifiedBefore, 2)
 		})
 	)
 	test.effect(
@@ -804,8 +891,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'adds arbitrary MCP URLs without a catalog and isolates removed and re-added servers',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
+			yield* Ref.set(gateway.providerName, '   ')
 			assert.deepStrictEqual(yield* listServers(gateway.web), [])
 			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			assert.strictEqual(publicServer.name, 'Public')
 			assert.strictEqual(publicServer.status, 'Connected')
 			assert.deepStrictEqual(publicServer.tools, [{description: 'Search example', name: 'search'}])
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
@@ -863,6 +952,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					const start = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 					const target = new URL(start.headers.get('location') ?? '')
 					assert.strictEqual(target.searchParams.get('code_challenge_method'), 'S256')
+					assert.strictEqual(target.searchParams.get('tenant'), 'required')
 					assert.strictEqual(target.searchParams.get('resource'), PROVIDERS.mobbin.url)
 					// A registered client answers at its own server's callback, so another provider's answer cannot land there.
 					assert.strictEqual(target.searchParams.get('redirect_uri'), `${GATEWAY_URL}/oauth/callback/mobbin`)
@@ -1140,6 +1230,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			// Registered clients must also receive `iss` when the provider advertises it.
+			yield* connect(gateway.web, 'mobbin', {code: 'missing-issuer'})
+			assert.strictEqual(gateway.grants.length, 0)
 			assert.strictEqual(
 				(yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: 'session=stranger'}})).headers.get(
 					'location'

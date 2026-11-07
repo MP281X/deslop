@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {Rpc, RpcGroup} from 'effect/rpc'
+import {Rpc, RpcGroup, RpcMiddleware} from 'effect/rpc'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
@@ -15,7 +15,13 @@ import {
 	PendingAuthorization,
 	RequestParams
 } from '#services/sign-ins/schema.ts'
+import type {CurrentOwner} from '#services/tokens/schema.ts'
 import {FamilyParams, SignedInApp} from '#services/tokens/schema.ts'
+
+export class RpcOwner extends RpcMiddleware.Service<RpcOwner, {provides: CurrentOwner}>()(
+	'@deslop/auth/rpcs/RpcOwner',
+	{error: AuthError}
+) {}
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.lookup', {
@@ -37,6 +43,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.removePasskey', {error: AuthError, payload: PasskeyParams})
 )
 	.middleware(RpcAuth)
+	.middleware(RpcOwner)
 	.merge(
 		// A GitHub account an admin has not allowed yet still reads its own state, and a waiting sign-in has no account at all.
 		RpcGroup.make(

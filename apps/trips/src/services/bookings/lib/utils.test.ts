@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Option} from 'effect'
+import {Array, DateTime, Option, Schema} from 'effect'
 
 import {
 	activeWindow,
@@ -13,7 +13,7 @@ import {
 	MINUTE,
 	upsert
 } from '#services/bookings/lib/utils.ts'
-import {Flight, Train} from '#services/bookings/schema.ts'
+import {ExtractedItem, Flight, Train} from '#services/bookings/schema.ts'
 
 function at(iso: string) {
 	return DateTime.toEpochMillis(DateTime.makeUnsafe(iso))
@@ -50,11 +50,52 @@ const train = Train.make({
 	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 })
 
+it('rejects non-numeric ticket numbers at extraction rather than storing provider paths', () => {
+	for (const number of ['9541', '../../andamentoTreno/S08409/12345?x=1', '', '123/456']) {
+		assert.strictEqual(
+			Schema.is(ExtractedItem)({
+				arrival: '2026-10-28T18:40',
+				departure: '2026-10-28T16:40',
+				from: 'Roma Termini',
+				kind: 'train',
+				operator: 'trenitalia',
+				operatorName: 'Frecciarossa',
+				status: 'confirmed',
+				to: 'Milano Centrale',
+				trainNumber: number
+			}),
+			number === '9541'
+		)
+		assert.strictEqual(
+			Schema.is(ExtractedItem)({
+				airlineCode: 'BA',
+				airlineName: 'British Airways',
+				arrival: '2026-10-28T18:40',
+				departure: '2026-10-28T16:40',
+				flightNumber: number,
+				from: 'FCO',
+				kind: 'flight',
+				status: 'confirmed',
+				to: 'LHR'
+			}),
+			number === '9541'
+		)
+	}
+})
+
 it('reads a printed time in the place zone and an offset as given', () => {
 	// Rome is on UTC+1 after the last Sunday of October.
 	assert.deepStrictEqual(instantOf('2026-10-28T16:40', 'Europe/Rome'), Option.some(DEPARTS))
 	assert.deepStrictEqual(instantOf('2026-07-01T09:00', 'Europe/London'), Option.some(at('2026-07-01T08:00:00Z')))
 	assert.deepStrictEqual(instantOf('2026-10-28T17:40+02:00', 'Europe/London'), Option.some(DEPARTS))
+	assert.deepStrictEqual(instantOf('2026-10-28T16:40:30.125', 'Europe/Rome'), Option.some(DEPARTS + 30_125))
+})
+
+it('keeps journey activities available when a place has an invalid time zone', () => {
+	assert.strictEqual(
+		activityProps({...flight, from: {...flight.from, timeZone: 'Europe/Nowhere'}}, [], DEPARTS - HOUR).departureTime,
+		'15:40'
+	)
 })
 
 it('merges a reservation seen again and keeps live data unless the service moved', () => {

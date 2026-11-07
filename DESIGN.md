@@ -9,26 +9,15 @@ Fast tools, not consumer or enterprise apps: Linear, Vercel, Executor, T3 Code. 
 ## Colors
 
 - **Neutrals.** `background` is the page. `card` and `popover` only for what floats or groups a few controls; `secondary`, `muted` and `accent` fill chips, inputs and hover; `border` draws hairlines, `input` strokes fields.
-- **One hue per app**, from the table below: the one action per view, focus, selection and anything live. The web points `--primary` at it in the app's `styles.css`; iOS exports `primary` from `lib/utils.ts`. A new app takes an unused hue, or orange.
+- **One hue per app**: the one action per view, focus, selection and anything live. Its only owner is `--primary` in the app's `styles.css` on the web, or `primary` in `lib/utils.ts` on iOS. A new app takes an unused hue, or orange.
 - **Status.** Live is the primary. Warning is yellow and error red, each with a word or icon. Off is muted: a hollow dot when switched off, a filled one for quiet states. White on light yellow only for large or bold labels.
 - **Deploy machine identity.** Dev uses blue, desktop purple, consistently in device icons, charts, swatches and live dots. Its stacked charts are the one place a hue steps by opacity: the heaviest app strongest, fading by size.
 - **Scope side identity.** Where a span ran: server blue, web magenta, iOS green, CI purple, consistently in an operation's device icon, a span's bar and the side named where a trace crosses over.
-
-| App       | Hue     |
-| --------- | ------- |
-| portfolio | orange  |
-| opm       | orange  |
-| auth      | orange  |
-| deploy    | blue    |
-| gateway   | purple  |
-| scope     | cyan    |
-| signal    | magenta |
-| stash     | yellow  |
-| trips     | blue    |
+- Portfolio visitor cursors and Signal team identities may use the palette's other hues; team colour never fills message cards.
 
 ## Typography
 
-Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens in `theme.ts`, nothing bundled. Machine text (hosts, ids, times, counts, codes, shortcuts) is Geist Mono or SF Mono; prose never is. Sentence case, no uppercase or letter-spaced labels.
+Bundled Geist on the web; system SF Pro on iOS at Dynamic Type sizes through `theme.ts`. Portfolio bundles IBM Plex for its editorial voice. Machine text (hosts, ids, times, counts, codes, shortcuts) is mono; prose never is. Sentence case, no uppercase or letter-spaced labels.
 
 - **Numbers that change** use tabular figures, so they don't jitter.
 - **Display.** The Portfolio's hero sits above the product titles: 36/48px. The Portfolio is the one editorial exception: its mono role and lowercase mono section labels are its own voice; everything else follows the scale.
@@ -39,20 +28,20 @@ Geist on the web, SF Pro on iOS at Dynamic Type sizes through the `text` tokens 
 
 - **Rows, not cards.** One-line hairline rows: a leading mark, a title, its muted detail, then trailing figures, status and action in shared columns. A row with more to show opens beneath itself: the whole row opens it, its chevron at the right.
 - **What needs you leads.** Rows that need the user sort first, their reason taking the muted detail's place in the state's colour, a longer error on its own line beneath; no label, divider or gap sets them apart. A row shows a button only for a fix the user can make; its other actions sit in its context menu (right-click, long press), never behind a ⋯ button.
-- **One column** up to `page`, forms up to `form`; list-and-detail tools split into two panes. 8px inside a group, 16px between groups, 24–32px between sections.
+- **One column** through `Page` (`max-w-3xl`); list-and-detail tools split only when each pane remains readable. 8px inside a group, 16px between groups, 24–32px between sections.
 - **iOS.** Inline titles, plain lists, bottom search.
 - **App bars.** The app icon and name lead on the web and take the title's place, centered and without a glass button, on iOS; detail screens keep their native back navigation. Signal's spectator world uses map controls instead of an app bar.
 - **The web app bar is the page header**: name, section tabs, the command field, the page's action (at most one quieter outline action beside it), the account; no heading below it. The command field narrows the page's rows and lists the actions that match, ⌘K focuses it, and on a phone it opens from a search button over the bar. Each app stays its own; no bar links to another app.
-- **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details. Rows with inline process trees align both marks to the parent title; `ItemMedia` opts into `data-align="start"`. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback.
-- **List endings.** A closing hairline marks the last row; installed web apps keep 16px plus the home-indicator inset below it.
+- **Row alignment.** Center leading marks and trailing actions against the whole row, including wrapped details; inline process trees align marks to the parent title. Stash reserves a 64pt media square even without a preview, using the source mark as its fallback. OPM chapters show a cover, two lines and a reading disc, not an x/y counter.
+- **List endings.** A closing hairline marks the last row; `pb-safe-bottom` clears the installed web app's home indicator.
 
 ## Elevation & Depth
 
-A tonal step and a hairline, never a shadow, gradient or glow. On iOS, Liquid Glass is for navigation and controls only.
+Use the primitive's theme elevation: tonal surfaces and hairlines, no added decorative shadow, gradient or glow. On iOS, Liquid Glass is for navigation and controls only.
 
 ## Shapes
 
-4px controls and badges, 6px surfaces, menus, popovers and dialogs, full circles for dots and avatars. iOS keeps the system's shapes.
+Use the theme's radius scale, full circles for dots and avatars. iOS keeps the system's shapes.
 
 ## Components
 
@@ -63,8 +52,8 @@ One vocabulary on both platforms: a row is an `Item` on iOS and a one-line hairl
 - **Tokens only.** shadcn's lint keeps web classes on the theme; `swiftui-theme-values` does the same for SwiftUI: spacing from `space`, type from `text` or a Dynamic Type style, colours from `colors`.
 - **App and process marks** are transparent, never tiles or letter placeholders, in every app and for every server's own favicon. Use canonical Deslop artwork and software marks installed through SVGL's shadcn registry; tiles belong only to installed home-screen and iOS icons, which must be opaque.
 - **Signal controls.** Quiet popover buttons carry provider-coloured marks, matching their world coverage. One top model filter scopes the thread; the inspector header has a bottom hairline. Entity details and the thread remain visible together.
-- **Loading.** The shell (app bar, headings, filters) renders at once, and data that is on its way shows as a skeleton shaped like it: `ItemListSkeleton` on the web, `ItemGroupSkeleton` (SwiftUI's placeholder redaction) on iOS. A skeleton is a Suspense fallback (`useAtomSuspense` with `includeFailure`), never an `onInitial` branch: React keeps a shown fallback at least 300ms, so it never blinks. Local work, like reading the saved session, shows the empty shell and no skeleton. A refresh keeps the current data, dimmed. A spinner only sits inside a control the user pressed, never alone on a page; no client-side caches to hide loading.
-- **Errors.** A page that cannot load shows the route's error boundary in its place, with a retry; nothing else catches a render or load failure. A page that loads only in part keeps what it has, under an `Alert` naming what is missing. A failed action says why where it was asked: under its field, in the dialog that stays open, or beneath the row that ran it (Layout, What needs you leads), through `ResultError`. Only an action with no such place, from the app bar, the account menu or a grid's column head, raises a toast; on iOS, a failed swipe or menu action raises the system alert. Never an error line at a page's foot.
+- **Loading.** Keep the shell (app bar, headings, filters) mounted. Suspend data readers beneath it with shape-matched fallbacks: `ItemListSkeleton` on the web, redacted `ItemGroupSkeleton` on iOS. Local session reads show the blank shell, not a flashing skeleton. Refreshes retain current data. Spinners belong only inside a pressed control; on-device saved lists support offline reading, not fake loading progress.
+- **Errors.** Web pages use the route error boundary and a retry when no usable content remains. Native readers use `includeFailure: true` to render `FailureScreen` instead of throwing into React Native. Partial failures retain available content with an `Alert` and a local retry. Failed actions explain why where they were asked, through `ResultError`; only actions without such a place raise a toast (a system alert for native swipe/menu actions). Never an error line at a page's foot.
 - **Lone states.** Whatever stands alone on a page or panel (nothing yet, nothing matches, expired, continuing, waiting for someone) is an `Empty`, with its title, an optional description and at most one way out, never a bare paragraph; `Page` centres it on the web, and the iOS `Empty` centres itself.
 - **Copy.** Headings, labels and errors only; no subtitle restating what the page already shows.
 - **Mobile gestures.** Apps pan instead of zooming; viewport metadata caps scale and shared controls use 16px text on coarse pointers to prevent focus zoom. Browsers may override zoom restrictions for accessibility.
@@ -75,7 +64,7 @@ Motion marks a change the user caused or should notice, and never holds content 
 
 - **Gate by frequency.** Keyboard actions and anything used a hundred times a day: none. Tens of times a day (press, hover, list navigation): under 150ms or none. Occasional (dialogs, sheets, toasts): standard. Rare (first run, success): may delight. Each animation names its purpose: feedback, where something came from, a state change, or a jump it smooths.
 - **Ingredients.** `transform`, `opacity` and `clip-path` only, never `transition: all`; two exceptions, since nothing else can do them: a row entering a list grows its grid row with its opacity, and a chart's axis eases through a registered custom property. Nothing grows from `scale(0)`: start at 0.95 with opacity 0. Popovers grow from their trigger, dialogs from the centre. Transitions, not keyframes, for anything that can retrigger. Exit faster than enter.
-- **Curves and time.** `ease-out` to enter or leave, `ease-in-out` to move on screen, linear only for progress, never `ease-in`. Press 100–160ms, popovers 125–200ms, menus 150–250ms, dialogs and sheets 200–300ms.
+- **Curves.** `ease-out` to enter or leave, `ease-in-out` to move on screen, linear only for progress, never `ease-in`.
 - **Press and hover.** Pressables scale to 0.97; hover motion only under `(hover: hover) and (pointer: fine)`.
 - **iOS.** Navigation, sheets and tab bars keep the system's motion, and tabs never slide. What a finger moves follows a spring (damping 1, or 0.8 after a flick). One haptic per committed action, on the same frame as its visual, never on its own.
 - **Reduced motion** drops movement and keeps fades and colour.
@@ -103,9 +92,4 @@ Construct icons on an explicit 64×64 grid: 2:1 diagonals are stepped cells, not
 | `icon.png` (iOS apps)                    | indexed PNG, 1024px                                                                                         | the in-app title, which needs a raster                                                                                |
 | `public/apple-touch-icon.png` (web apps) | indexed PNG, ~512px, a whole multiple of the cells                                                          | the home-screen icon of the installed web app, which iOS wants as a raster                                            |
 
-Every web app installs as its own app: `ServerRuntime.layerManifest` serves a standalone, dark manifest with both icons, the root keeps clear of the status bar with `safe-area`, and a scrolling page runs under the home indicator with `pb-safe` so its end scrolls clear.
-
-## Do's and Don'ts
-
-- Don't add a card per section, a colored side stripe or a color per item.
-- Don't use a hue beyond the app's primary, warning and error; exceptions are portfolio visitor cursors and Signal's semantic team identities on the world, authors and event labels. Team colour does not fill whole message cards.
+`ServerRuntime.layerWeb` serves each web app's standalone manifest and raster home-screen icon. Roots use `pt-safe-top`; scrolling pages use `pb-safe-bottom`.

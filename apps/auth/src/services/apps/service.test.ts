@@ -8,11 +8,20 @@ import {KeyValueStore} from 'effect/persistence'
 import {Apps} from '#services/apps/service.ts'
 
 // Each app's server as Auth reaches it: its runtime settings, and a manifest only where it serves pages.
-const SERVERS: Record<string, {auth: string; name: string; web: boolean}> = {
+const SERVERS: Record<string, {auth: string; name: string; web: boolean; status?: number; manifestStatus?: number}> = {
+	'https://broken.mp281x.xyz': {auth: 'not a URL', name: 'broken', web: true},
 	'https://elsewhere.mp281x.xyz': {auth: 'https://auth.example.com', name: 'elsewhere', web: true},
+	'https://limited.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', manifestStatus: 429, name: 'limited', web: true},
+	'https://restarting.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', name: 'restarting', status: 503, web: true},
 	'https://scope.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', name: 'scope', web: true},
 	'https://stash.mp281x.xyz': {auth: 'https://auth.mp281x.xyz', name: 'stash', web: false},
-	'https://stranger.example.com': {auth: 'https://auth.mp281x.xyz', name: 'stranger', web: true}
+	'https://stranger.example.com': {auth: 'https://auth.mp281x.xyz', name: 'stranger', web: true},
+	'https://unavailable.mp281x.xyz': {
+		auth: 'https://auth.mp281x.xyz',
+		manifestStatus: 503,
+		name: 'unavailable',
+		web: true
+	}
 }
 
 const servers = HttpClient.make(request =>
@@ -23,11 +32,17 @@ const servers = HttpClient.make(request =>
 		if (url.pathname === '/api/runtime') {
 			return HttpClientResponse.fromWeb(
 				request,
-				Response.json({auth: server.auth, name: server.name, traces: '', version: '0.1.1'})
+				Response.json(
+					{auth: server.auth, name: server.name, traces: '', version: '0.1.1'},
+					{status: server.status ?? 200}
+				)
 			)
 		}
 		if (url.pathname === '/manifest.webmanifest' && server.web) {
-			return HttpClientResponse.fromWeb(request, Response.json({name: server.name}))
+			return HttpClientResponse.fromWeb(
+				request,
+				Response.json({name: server.name}, {status: server.manifestStatus ?? 200})
+			)
 		}
 		return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 	})
@@ -42,6 +57,29 @@ const layer = pipe(
 			ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://auth.mp281x.xyz'}))
 		)
 	)
+)
+
+it.effect(
+	'does not turn an unavailable web manifest into an iOS launcher or a malformed issuer into a defect',
+	Effect.fnUntraced(function* () {
+		const apps = Context.get(yield* Layer.build(layer), Apps)
+		for (const origin of ['https://unavailable.mp281x.xyz', 'https://limited.mp281x.xyz']) {
+			assert.strictEqual((yield* Effect.flip(apps.register(origin))).error, 'temporarily_unavailable')
+		}
+		assert.strictEqual((yield* Effect.flip(apps.register('https://broken.mp281x.xyz')))._tag, 'AuthError')
+		assert.deepStrictEqual(yield* Effect.flatMap(Stream.runHead(apps.catalog), Effect.fromOption), [])
+	})
+)
+
+it.effect(
+	'keeps a restarting app announcement retryable',
+	Effect.fnUntraced(function* () {
+		const apps = Context.get(yield* Layer.build(layer), Apps)
+		assert.strictEqual(
+			(yield* Effect.flip(apps.register('https://restarting.mp281x.xyz'))).error,
+			'temporarily_unavailable'
+		)
+	})
 )
 
 it.effect(

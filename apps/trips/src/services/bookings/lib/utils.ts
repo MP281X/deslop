@@ -49,11 +49,8 @@ export function instantOf(time: LocalTime, timeZone: string) {
 	if (Option.isSome(String.match(/(?:Z|[+-]\d{2}:?\d{2})$/u)(time))) {
 		return Option.map(DateTime.make(time), DateTime.toEpochMillis)
 	}
-	// The wall-clock minutes, read as parts of the place's zone.
-	return pipe(
-		DateTime.makeZoned(`${String.slice(0, 16)(time)}:00Z`, {adjustForTimeZone: true, timeZone}),
-		Option.map(DateTime.toEpochMillis)
-	)
+	// The wall-clock parts, read in the place's zone without dropping seconds or fractions.
+	return pipe(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), Option.map(DateTime.toEpochMillis))
 }
 
 // "16:40" in the place's own time zone.
@@ -63,7 +60,12 @@ function clockAt(time: number, timeZone?: string) {
 		hourCycle: 'h23',
 		locale: 'en-GB',
 		minute: '2-digit',
-		timeZone: timeZone ?? 'UTC'
+		timeZone: pipe(
+			Option.fromUndefinedOr(timeZone),
+			Option.flatMap(DateTime.zoneMakeNamed),
+			Option.map(zone => zone.id),
+			Option.getOrElse(() => 'UTC')
+		)
 	})
 }
 

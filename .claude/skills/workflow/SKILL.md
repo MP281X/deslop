@@ -10,7 +10,7 @@ description: Load at task start, when the user changes direction, and before des
 - **Agreement.** The user's goal, accepted choices, rejected directions and order. A steer updates it; an approval accepts the proposal actually shown. Side-note constraints apply at once; extra work follows the main task.
 - **Reversals.** Discuss a deliberate reversal of an agreed approach before making it.
 - **Uncertainty.** Settle what is consequential early; give open-ended work a checkable finish. The strategy is yours, the agreed scope and quality are not.
-- **Continuity.** Carry valid evidence, pending work and IDs across batches and compaction; recover a missing decision from the thread, never guess.
+- **Continuity.** The todo list is the settled plan and checkpoint: decisions, remaining work and evidence, kept current across batches. Recover a missing decision from the thread, never guess; do not create a second checkpoint document.
 - **Evidence.** Ground consequential claims in the deciding source, trace or probe; name what stays unverified.
 
 ## Delivery
@@ -19,9 +19,7 @@ Build → prove the actual journey with the verification skill → draft push, p
 
 ## Delegation
 
-Bounded, independent work that saves time or adds judgment. Give the question, the user's constraints, raw evidence and an open question, without your verdict or summary. Choose a different family or lens, with no main transcript or other reports. A reviewer also gets immutable revisions and the verification skill. Keep parent and child investigations disjoint.
-
-**Models.** DeepSeek for bulk read-only work; Codex gpt-6.1-sol for UI review, contracts and CI; Opus for design, architecture and final verification; Sonnet, Haiku and Luna for bounded read-only work.
+Cheap, bounded, independent work that saves time or adds judgment. Give the question, the user's constraints, raw evidence and an open question, without your verdict or summary. Choose a different family or lens, with no main transcript or other reports. A reviewer also gets immutable revisions and the verification skill. Keep parent and child investigations disjoint.
 
 **Council.** Only for a hard-to-reverse decision with split evidence: two strong models with different lenses, each given the same question, evidence and criteria. Blind proposals first; hostile review of the draft second; no third round. Synthesize a decision-axis table with a dissent record — `axis | options | who proposed | evidence | adopted or rejected, with reason` — and choose; never a majority vote. Otherwise decide, or ask one reviewer.
 

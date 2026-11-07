@@ -1,13 +1,13 @@
 import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
-import {Headers, Url} from 'effect/http'
+import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
 import {AuthError, Resource} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
-import type {AuthorizeClient, AuthorizeParams, Origin} from '#services/tokens/schema.ts'
+import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin} from '#services/tokens/schema.ts'
 import {ClientInfo, ClientRequest} from '#services/tokens/schema.ts'
 
 // The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
@@ -16,6 +16,16 @@ const WORKERS: Record<string, string> = {
 	'100.68.201.107': 'dev',
 	'100.97.120.3': 'desktop',
 	'100.115.207.60': 'macbook-pro'
+}
+
+export const SESSION_COOKIE = '__Secure-session'
+
+export function browserToken(headers: Headers.Headers) {
+	return Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? ''
+}
+
+export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
+	return left.user.id === right.user.id && left.incarnation === right.incarnation
 }
 
 // The address as its own family, an IPv4-mapped IPv6 address read as that IPv4 address.

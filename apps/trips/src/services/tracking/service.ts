@@ -1,4 +1,3 @@
-import type {Schema} from 'effect'
 import {
 	Array,
 	Clock,
@@ -13,6 +12,7 @@ import {
 	Redacted,
 	Ref,
 	Schedule,
+	Schema,
 	Semaphore,
 	String,
 	pipe
@@ -23,7 +23,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {checkEvery, HOUR, isDue, MINUTE} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, Train} from '#services/bookings/schema.ts'
-import {BookingsError} from '#services/bookings/schema.ts'
+import {BookingsError, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {flightTracking, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlights, Usage, VtRun, VtStatus} from '#services/tracking/schema.ts'
@@ -70,6 +70,10 @@ export class Tracker extends Context.Service<
 			})
 
 			const flight = Effect.fnUntraced(function* (booking: Flight, now: number) {
+				const number = yield* pipe(
+					Schema.decodeEffect(TripNumber)(booking.number),
+					failed('This flight number is invalid. Add its ticket again.')
+				)
 				const apiKey = yield* Option.match(key, {
 					onNone: () => BookingsError.make({message: 'The server has no FlightAware key.'}),
 					onSome: Effect.succeed
@@ -77,7 +81,7 @@ export class Tracker extends Context.Service<
 				yield* spend
 				const answer = yield* pipe(
 					HttpClientRequest.get(
-						`https://aeroapi.flightaware.com/aeroapi/flights/${encodeURIComponent(`${booking.airlineCode}${booking.number}`)}`,
+						`https://aeroapi.flightaware.com/aeroapi/flights/${encodeURIComponent(`${booking.airlineCode}${number}`)}`,
 						{
 							headers: {'x-apikey': Redacted.value(apiKey)},
 							urlParams: {
@@ -120,8 +124,12 @@ export class Tracker extends Context.Service<
 			}
 
 			const train = Effect.fnUntraced(function* (booking: Train, now: number) {
+				const number = yield* pipe(
+					Schema.decodeEffect(TripNumber)(booking.number),
+					failed('This train number is invalid. Add its ticket again.')
+				)
 				// Today's run must be the booked one: it starts at most a day before the booked departure.
-				const run = Option.filter(yield* viaggiaTreno(`cercaNumeroTreno/${booking.number}`, VtRun, booking), found =>
+				const run = Option.filter(yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking), found =>
 					Option.exists(
 						Number.parse(found.millisDataPartenza),
 						started => started <= booking.departs && booking.departs - started < 30 * HOUR
@@ -132,7 +140,7 @@ export class Tracker extends Context.Service<
 					onSome: today =>
 						Effect.map(
 							viaggiaTreno(
-								`andamentoTreno/${today.codLocOrig}/${booking.number}/${today.millisDataPartenza}`,
+								`andamentoTreno/${today.codLocOrig}/${number}/${today.millisDataPartenza}`,
 								VtStatus,
 								booking
 							),

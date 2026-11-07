@@ -78,20 +78,7 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 ```
 
 - **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs`: `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`; new Claude processes pick them up, so never restart T3 or stop threads for them.
-- **Project scripts** only in `projectSettingsOverrides.<project id>.defaultProjectScripts`; legacy `projectScriptOverrides` and a checked-in `t3.json` stay unset. `install` runs on worktree creation and blocks the agent (`async: false`); `runOnSettle` runs on settle; the user runs `preview` and `stop` from the menu. Port: deslop's from the worktree path, passed as `PORT` through `vp run --no-cache`, since a cached script receives only tracked variables; Dual's from its `Preview ready:` line.
-
-```bash
-# deslop
-install: vp install --frozen-lockfile                                      # async: false
-preview: u=preview-${PWD##*/} p=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)); systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -E PATH="$HOME/.vite-plus/bin:$PATH" -E HOST=127.0.0.1 -E PORT=$p vp run --no-cache --filter @deslop/portfolio preview && until curl -fso /dev/null http://127.0.0.1:$p; do systemctl --user is-active -q $u || exit 1; sleep 2; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$(hostname -s).tailnet-8c4c.ts.net:$p
-stop: systemctl --user stop preview-${PWD##*/}; sudo tailscale serve --https=$((20000 + 0x$(printf %s "$PWD" | sha256sum | cut -c1-4) % 10000)) off 2>/dev/null || true   # runOnSettle
-
-# dual
-install: vp install --frozen-lockfile                                      # async: false
-preview: u=preview-${PWD##*/} h=$(hostname -s).tailnet-8c4c.ts.net; systemctl --user stop $u 2>/dev/null; systemd-run --user -G -d -u $u -p KillSignal=SIGINT -E PATH="$HOME/.vite-plus/bin:$PATH" -E DUAL_PREVIEW_HOST=$h bun run preview && until p=$(journalctl --user _SYSTEMD_INVOCATION_ID=$(systemctl --user show -p InvocationID --value $u) -o cat | grep -oPm1 'Preview ready: \S+:\K[0-9]+'); do systemctl --user is-active -q $u || exit 1; sleep 5; done && sudo tailscale serve --bg --https=$p http://127.0.0.1:$p >/dev/null && echo https://$h:$p && echo 'Login: admin@dual.local / preview-password'
-stop: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true
-settle: u=preview-${PWD##*/}; p=$(journalctl --user -u $u -o cat | grep -oP 'Preview ready: \S+:\K[0-9]+' | tail -1); systemctl --user stop $u; [ -z "$p" ] || sudo tailscale serve --https=$p off 2>/dev/null || true; [ ! -d infra/saas/.alchemy ] || bun run preview:destroy   # runOnSettle
-```
+- **Project scripts** live in T3, not this document. Read and update current scripts through `t3_project_read` / `t3_project_update`; keep the project's `defaultProjectScripts` in settings equal for future worktrees, remapping project IDs by workspace root between workers. A checked-in `t3.json` and legacy `projectScriptOverrides` stay unset.
 
 ## Upkeep
 
@@ -241,7 +228,7 @@ claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/
 **Browser sign-in.** A profile without the user's GitHub, such as the Datapizza work profile: **Sign in with a code** at https://auth.mp281x.xyz, which the user approves (`apps/auth/README.md`). A provider whose account lives in that profile, such as Dual, connects from its row on the gateway's page there.
 
 - **Connectors.** `.claude/settings.json` sets `disableClaudeAiConnectors`: no claude.ai connector, Mobbin included, only the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, T3's `http://127.0.0.1:<port>/mcp` included.
-- **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` (why in `.codex/global-config.toml`) is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.
+- **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity
 

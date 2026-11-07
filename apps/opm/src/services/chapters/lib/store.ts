@@ -1,15 +1,13 @@
-import {Array, Context, Effect, Layer, Option, Schema, SynchronizedRef, pipe} from 'effect'
+import {Array, Effect, Option, Schema, SynchronizedRef, pipe} from 'effect'
 
 import {KeyValueStore} from 'effect/persistence'
-
-import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
 
 const failed = Effect.mapError((cause: unknown) => ChaptersError.make({cause, message: 'The chapter storage failed.'}))
 
-export const openStore = Effect.fnUntraced(function* (directory: string) {
-	const store = Context.get(yield* Layer.build(layerKeyValueStore(directory)), KeyValueStore.KeyValueStore)
+export const openStore = Effect.fnUntraced(function* () {
+	const store = yield* KeyValueStore.KeyValueStore
 	const chapters = KeyValueStore.toSchemaStore(store, Schema.Array(Chapter))
 	const devices = KeyValueStore.toSchemaStore(store, Schema.Array(PushToken))
 	const tokens = yield* SynchronizedRef.make(Array.copy(Option.getOrElse(yield* devices.get('devices'), () => [])))

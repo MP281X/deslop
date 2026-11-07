@@ -13,6 +13,7 @@ import {
 	SESSION_PATH,
 	VERIFY_PATH,
 	localAuth,
+	failureOptions,
 	rejected
 } from '@deslop/runtime/auth/utils'
 
@@ -29,13 +30,15 @@ import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import {
 	addressGroup,
 	allowedRedirect,
+	browserToken,
 	callbackUrl,
 	clientAddress,
 	clientIdOf,
 	clientRequest,
 	cookieDomain,
 	originFrom,
-	returnable
+	returnable,
+	SESSION_COOKIE
 } from '#services/tokens/lib/utils.ts'
 import {
 	AuthorizeClient,
@@ -46,7 +49,7 @@ import {
 	TokenParams,
 	VerificationParams
 } from '#services/tokens/schema.ts'
-import {SESSION_COOKIE, Tokens} from '#services/tokens/service.ts'
+import {Tokens} from '#services/tokens/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
@@ -65,11 +68,11 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 			Effect.succeed(
 				HttpServerResponse.jsonUnsafe(
 					{error: failure.error ?? 'invalid_request', error_description: failure.message},
-					{status: 400}
+					failureOptions(failure, 400)
 				)
 			)
 		),
-		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
+		Effect.map(HttpServerResponse.setHeaders({'cache-control': 'no-store', pragma: 'no-cache'}))
 	)
 }
 
@@ -77,12 +80,12 @@ function originOf(request: HttpServerRequest.HttpServerRequest) {
 	return originFrom(request.headers, request.remoteAddress)
 }
 
-// The session and bearer endpoints answer the user as no-store JSON, or 401 once the request is refused.
+// The session and bearer endpoints answer no-store JSON, 401 for refused credentials, or retryable 503 during an outage.
 function answered<E, R>(answer: Effect.Effect<User, E, R>) {
 	return pipe(
 		answer,
 		Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-		Effect.orElseSucceed(() => HttpServerResponse.empty({status: 401}))
+		Effect.catch(error => Effect.succeed(HttpServerResponse.empty(failureOptions(error, 401))))
 	)
 }
 
@@ -190,7 +193,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						return yield* HttpServerResponse.schemaJson(App)(yield* apps.register(params.origin))
 					}),
 					Effect.catchIf(Schema.is(AuthError), failure =>
-						Effect.succeed(HttpServerResponse.text(failure.message, {status: 403}))
+						Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))
 					)
 				)
 			)
@@ -339,7 +342,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						yield* tokens.revoke(
 							yield* pipe(HttpServerRequest.schemaBodyUrlParams(RevokeParams), rejected('Invalid revocation request'))
 						)
-						return HttpServerResponse.empty()
+						return HttpServerResponse.empty({status: 200})
 					})
 				)
 			)
@@ -398,9 +401,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const finished = yield* github.finish(params.code, params.state)
 					return yield* pipe(
 						people.register(finished.profile),
-						// A browser already signed in, as a code session confirming with GitHub to add a passkey, swaps its session rather than keeping two.
-						Effect.tap(() => tokens.endSession(request.headers)),
-						Effect.flatMap(user => tokens.startSession(user, originOf(request), 'GitHub')),
+						Effect.flatMap(user =>
+							tokens.startSession(user, originOf(request), 'GitHub', browserToken(request.headers))
+						),
 						Effect.map(started =>
 							pipe(
 								HttpServerResponse.redirect(returnTo(finished.flow)),
@@ -477,7 +480,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 						const started = yield* tokens.startSession(
 							yield* people.allowed(yield* passkeys.signIn(input.response)),
 							originOf(request),
-							'Passkey'
+							'Passkey',
+							browserToken(request.headers)
 						)
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.jsonUnsafe(

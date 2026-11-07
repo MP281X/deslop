@@ -9,6 +9,7 @@ import {Entry, Frame, GameError, HistoryPage, RunState, Timeline, UsageLedger} f
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('signal.control', {error: GameError, payload: Schema.Struct({running: Schema.Boolean}), success: RunState}),
 	Rpc.make('signal.status', {stream: true, success: RunState}),
+	Rpc.make('signal.changes', {stream: true, success: Schema.Natural}),
 	Rpc.make('signal.history', {
 		error: GameError,
 		payload: Schema.Struct({
@@ -36,5 +37,5 @@ export class RpcContracts extends RpcGroup.make(
 		success: Schema.Array(Entry)
 	}),
 	Rpc.make('signal.timeline', {success: Timeline}),
-	Rpc.make('signal.usage', {error: GameError, success: UsageLedger})
+	Rpc.make('signal.usage', {error: GameError, stream: true, success: UsageLedger})
 ).middleware(RpcAuth) {}

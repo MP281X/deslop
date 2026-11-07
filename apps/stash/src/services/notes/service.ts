@@ -6,8 +6,10 @@ import {
 	Context,
 	DateTime,
 	Effect,
+	Equivalence,
 	FiberMap,
 	FileSystem,
+	HashSet,
 	Layer,
 	Option,
 	Path,
@@ -48,11 +50,11 @@ import type {Capture, Extraction, FileType, Image, NotesEvent, Picture, TagDefin
 import {ImageType, Note, NotesError, TagEntry} from '#services/notes/schema.ts'
 
 function withWords(note: Note, text: string) {
-	const known = pipe(note.text, String.toLowerCase, String.split(/\s+/u))
+	const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
 	const added = pipe(
 		commentFor(text),
 		String.split(' '),
-		Array.filter(word => String.isNonEmpty(word) && !Array.contains(known, String.toLowerCase(word)))
+		Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word)))
 	)
 	if (Array.isReadonlyArrayEmpty(added)) return note
 	return {...note, text: `${note.text}\n${Array.join(added, ' ')}`}
@@ -93,7 +95,7 @@ export class Notes extends Context.Service<
 		readonly list: Effect.Effect<Note[]>
 		readonly regenerate: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
-		readonly search: (input: {query: string}) => Effect.Effect<Note['id'][]>
+		readonly search: (input: {query: string}) => Stream.Stream<readonly Note['id'][]>
 		readonly tags: Effect.Effect<TagEntry[]>
 	}
 >()('@deslop/stash/services/notes/service/Notes') {
@@ -117,7 +119,7 @@ export class Notes extends Context.Service<
 
 				yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
 				yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
-				const store = yield* openStore(directory)
+				const store = yield* openStore()
 				const state = yield* SubscriptionRef.make(yield* store.load)
 				const definitions = yield* Ref.make(
 					Record.fromEntries(Array.map(yield* store.definitions, entry => [entry.tag, entry.definition] as const))
@@ -430,6 +432,7 @@ export class Notes extends Context.Service<
 						Effect.catchTag('PlatformError', cause =>
 							Effect.fail(NotesError.make({cause, message: 'The upload could not be written.'}))
 						),
+						Effect.andThen(pipe(fs.rename(partial, stored), storageFailed)),
 						Effect.onError(() =>
 							pipe(
 								fs.remove(partial, {force: true}),
@@ -437,7 +440,6 @@ export class Notes extends Context.Service<
 							)
 						)
 					)
-					yield* pipe(fs.rename(partial, stored), storageFailed)
 					const note = Note.make({
 						content: '',
 						createdAt: DateTime.toEpochMillis(yield* DateTime.now),
@@ -576,9 +578,12 @@ export class Notes extends Context.Service<
 						yield* pipe(fs.remove(path.join(images, input.id), {force: true}), storageFailed)
 						yield* pipe(fs.remove(path.join(files, input.id), {force: true}), storageFailed)
 					}),
-					search: Effect.fn('Notes.search')(function* (input) {
-						return Array.map(findNotes(yield* SubscriptionRef.get(state), input.query), note => note.id)
-					}),
+					search: input =>
+						pipe(
+							SubscriptionRef.changes(state),
+							Stream.map(all => Array.map(findNotes(all, input.query), note => note.id)),
+							Stream.changesWith(Array.makeEquivalence(Equivalence.String))
+						),
 					tags: tagEntries
 				})
 			})

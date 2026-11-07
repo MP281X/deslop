@@ -1,11 +1,62 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Effect, FileSystem, Option, Predicate, Ref, Sink, Stream, pipe} from 'effect'
+import {
+	Array,
+	ConfigProvider,
+	Effect,
+	Fiber,
+	FileSystem,
+	Option,
+	Predicate,
+	Queue,
+	Ref,
+	Sink,
+	Stream,
+	pipe
+} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {install, installUpdates, status, uninstall} from '#cli/service.ts'
+import {execute, install, installUpdates, status, uninstall} from '#cli/service.ts'
+
+it.effect('releases an interrupted command before its caller scope closes', () =>
+	Effect.scoped(
+		Effect.gen(function* () {
+			const released = yield* Ref.make(false)
+			const started = yield* Queue.unbounded<void>()
+			const spawner = ChildProcessSpawner.make(() =>
+				Effect.acquireRelease(
+					Effect.as(
+						Queue.offer(started, undefined),
+						ChildProcessSpawner.makeHandle({
+							all: Stream.empty,
+							exitCode: Effect.never,
+							getInputFd: () => Sink.drain,
+							getOutputFd: () => Stream.empty,
+							isRunning: Effect.succeed(true),
+							kill: () => Effect.void,
+							pid: ChildProcessSpawner.ProcessId(1),
+							stderr: Stream.empty,
+							stdin: Sink.drain,
+							stdout: Stream.empty,
+							unref: Effect.succeed(Effect.void)
+						})
+					),
+					() => Ref.set(released, true)
+				)
+			)
+			const pending = yield* pipe(
+				execute('stall', []),
+				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+				Effect.forkChild
+			)
+			yield* Queue.take(started)
+			yield* Fiber.interrupt(pending)
+			assert.isTrue(yield* Ref.get(released))
+		})
+	)
+)
 
 it.layer(NodeServices.layer)('Service lifecycle', test => {
 	test.effect(

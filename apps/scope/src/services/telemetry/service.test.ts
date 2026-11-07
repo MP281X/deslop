@@ -1,18 +1,186 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Exit, FileSystem, Layer, Option, Order, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Clock,
+	Context,
+	Effect,
+	Exit,
+	FileSystem,
+	Fiber,
+	Layer,
+	Option,
+	Order,
+	Queue,
+	Ref,
+	Schema,
+	Stream,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
-import {LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
+import {Entry, LogsRequest, Query, TracesRequest} from '#services/telemetry/schema.ts'
+import type {Overview} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const TRACE_ID = '1234567890abcdef1234567890abcdef'
 
 const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
 
+// One span of `@deslop/stash-server` from a release, or a local build when the version is empty.
+function release(version: string, id: string) {
+	return TracesRequest.make({
+		resourceSpans: [
+			{
+				resource: {
+					attributes: [
+						{key: 'service.name', value: {stringValue: '@deslop/stash-server'}},
+						...Array.map(Array.filter([version], String.isNonEmpty), value => ({
+							key: 'service.version',
+							value: {stringValue: value}
+						}))
+					]
+				},
+				scopeSpans: [
+					{
+						spans: [
+							{
+								endTimeUnixNano: '1781870000010000000',
+								name: 'share',
+								spanId: String.repeat(16)(id),
+								startTimeUnixNano: '1781870000000000000',
+								traceId: String.repeat(32)(id)
+							}
+						]
+					}
+				]
+			}
+		]
+	})
+}
+
 it.layer(platform)(test => {
+	test.effect(
+		'shares live recomputes across viewers and stops computing after the last viewer leaves',
+		Effect.fnUntraced(function* () {
+			const clock = yield* Clock.Clock
+			const reads = yield* Ref.make(0)
+			const telemetry = Context.get(
+				yield* Layer.build(
+					pipe(
+						Telemetry.layer(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()),
+						Layer.provide(
+							Layer.succeed(Clock.Clock, {
+								currentTimeMillis: Effect.tap(clock.currentTimeMillis, () => Ref.update(reads, count => count + 1)),
+								currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
+								currentTimeNanos: clock.currentTimeNanos,
+								currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
+								monotonicTimeNanos: clock.monotonicTimeNanos,
+								monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
+								sleep: duration => clock.sleep(duration)
+							})
+						)
+					)
+				),
+				Telemetry
+			)
+			yield* TestClock.adjust('2 seconds')
+			yield* telemetry.ingestTraces(release('0.1.1', 'a'))
+			const idle = yield* Ref.get(reads)
+			yield* TestClock.adjust('2 seconds')
+			assert.strictEqual(yield* Ref.get(reads), idle)
+			const pushed = yield* Queue.unbounded<Overview>()
+			const first = yield* Effect.forkScoped(Stream.runForEach(telemetry.overview, value => Queue.offer(pushed, value)))
+			const second = yield* Effect.forkScoped(
+				Stream.runForEach(telemetry.overview, value => Queue.offer(pushed, value))
+			)
+			assert.strictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
+			assert.strictEqual(yield* Ref.get(reads), idle + 1)
+			yield* telemetry.ingestTraces(release('0.1.1', 'b'))
+			yield* TestClock.adjust('2 seconds')
+			assert.strictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
+			yield* Fiber.interrupt(first)
+			yield* Fiber.interrupt(second)
+			yield* telemetry.ingestTraces(release('0.1.1', 'c'))
+			const closed = yield* Ref.get(reads)
+			yield* TestClock.adjust('2 seconds')
+			assert.strictEqual(yield* Ref.get(reads), closed)
+			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps[0]?.operations[0]?.count, 3)
+		})
+	)
+	test.effect(
+		'retains by receipt time without changing future client timestamps',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			yield* TestClock.setTime(1_781_870_000_000)
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					yield* telemetry.ingestTraces({
+						resourceSpans: [
+							{
+								scopeSpans: [
+									{
+										spans: [
+											{
+												name: 'future',
+												spanId: '1111111111111111',
+												startTimeUnixNano: '99999999999999999999',
+												traceId: TRACE_ID
+											}
+										]
+									}
+								]
+							}
+						]
+					})
+					yield* telemetry.ingestLogs({
+						resourceLogs: [
+							{
+								scopeLogs: [
+									{
+										logRecords: [
+											{body: {stringValue: 'future log'}, timeUnixNano: '99999999999999999999', traceId: TRACE_ID}
+										]
+									}
+								]
+							}
+						]
+					})
+					const trace = yield* telemetry.trace(TRACE_ID)
+					assert.strictEqual(trace.spans[0]?.time, '99999999999999999999')
+					assert.strictEqual(trace.spans[0]?.receivedAt, 1_781_870_000_000)
+					assert.strictEqual(trace.spans[0]?.payload['startTimeUnixNano'], '99999999999999999999')
+					assert.strictEqual(trace.logs[0]?.time, '99999999999999999999')
+				})
+			)
+			// The immediately previous release stored only the client's clock, without receipt timestamps.
+			for (const file of yield* fs.readDirectory(directory)) {
+				yield* pipe(
+					fs.readFileString(`${directory}/${file}`),
+					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Entry))),
+					Effect.map(Struct.omit(['receivedAt'])),
+					Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Entry))),
+					Effect.flatMap(value => fs.writeFileString(`${directory}/${file}`, value))
+				)
+			}
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.receivedAt, 1_781_870_000_000)
+				})
+			)
+			yield* TestClock.adjust('4 days')
+			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
+			assert.isEmpty(yield* fs.readDirectory(directory))
+		})
+	)
 	test.effect(
 		'keeps ingested spans across restarts for three days, past a broken entry file',
 		Effect.fnUntraced(function* () {
@@ -81,38 +249,6 @@ const query = Query.make({
 	traceId: ''
 })
 
-// One span of `@deslop/stash-server` from a release, or a local build when the version is empty.
-function release(version: string, id: string) {
-	return TracesRequest.make({
-		resourceSpans: [
-			{
-				resource: {
-					attributes: [
-						{key: 'service.name', value: {stringValue: '@deslop/stash-server'}},
-						...Array.map(Array.filter([version], String.isNonEmpty), value => ({
-							key: 'service.version',
-							value: {stringValue: value}
-						}))
-					]
-				},
-				scopeSpans: [
-					{
-						spans: [
-							{
-								endTimeUnixNano: '1781870000010000000',
-								name: 'share',
-								spanId: String.repeat(16)(id),
-								startTimeUnixNano: '1781870000000000000',
-								traceId: String.repeat(32)(id)
-							}
-						]
-					}
-				]
-			}
-		]
-	})
-}
-
 // The first letter of each kept trace of that service, which names it.
 const kept = Effect.fnUntraced(function* (telemetry: Telemetry['Service']) {
 	return Array.sort(
@@ -147,12 +283,7 @@ it.layer(platform)(test => {
 					yield* telemetry.ingestTraces(release('a3f9c21', 'e'))
 					assert.deepStrictEqual(yield* kept(telemetry), ['b', 'd', 'e'])
 					yield* TestClock.adjust('2 seconds')
-					assert.deepStrictEqual(
-						Option.map(Array.head(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps), app =>
-							Array.map(app.versions, running => running.version)
-						),
-						Option.some(['0.1.1000', 'a3f9c21'])
-					)
+					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps.length, 1)
 				})
 			)
 			assert.deepStrictEqual(yield* kept(Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)), [
@@ -170,6 +301,61 @@ it.layer(platform)(test => {
 })
 
 it.layer(layer)(test => {
+	test.effect(
+		'keeps subscriptions inspectable without counting their connection lifetimes as operations',
+		Effect.fnUntraced(function* () {
+			const telemetry = yield* Telemetry
+			yield* telemetry.ingestTraces({
+				resourceSpans: [
+					{
+						scopeSpans: [
+							{
+								spans: Array.flatMap(['stream', 'mcp', 'nested', 'action', 'client'], (name, index) => {
+									const traceId = `${index}${String.repeat(31)('a')}`
+									const root = {name, spanId: '1111111111111111', startTimeUnixNano: '1781870000000000000', traceId}
+									const stream = {
+										attributes: [{key: 'rpc.stream', value: {boolValue: true}}],
+										name: 'watch',
+										parentSpanId: root.spanId,
+										spanId: '2222222222222222',
+										startTimeUnixNano: root.startTimeUnixNano,
+										traceId
+									}
+									if (name === 'stream') return [{...root, attributes: stream.attributes}]
+									if (name === 'mcp') {
+										return [
+											{...root, name: 'POST /mcp'},
+											{...stream, attributes: [], name: 'McpServer.@effect/mcp/2026-07-28/subscriptions/listen'}
+										]
+									}
+									if (name === 'client') {
+										return [
+											{...root, attributes: [{key: 'rpc.method', value: {stringValue: 'watch'}}]},
+											{
+												...stream,
+												attributes: [...stream.attributes, {key: 'rpc.method', value: {stringValue: 'watch'}}]
+											}
+										]
+									}
+									if (name === 'nested') return [root, stream]
+									return [root]
+								})
+							}
+						]
+					}
+				]
+			})
+			yield* TestClock.adjust('2 seconds')
+			assert.sameMembers(
+				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps, app =>
+					Array.map(app.operations, operation => operation.name)
+				),
+				['nested', 'action']
+			)
+			assert.strictEqual((yield* telemetry.trace(`0${String.repeat(31)('a')}`)).spans.length, 1)
+			assert.strictEqual((yield* telemetry.traces({...query, limit: 20, runs: 'all', service: ''})).total, 5)
+		})
+	)
 	test.effect(
 		'keeps default searches current while allowing complete historical traces',
 		Effect.fnUntraced(function* () {
@@ -395,6 +581,7 @@ it.layer(layer)(test => {
 			assert.strictEqual(page.entries.length, 1)
 			assert.strictEqual((yield* telemetry.logs({...query, errors: true, service: 'logging'})).total, 1)
 			assert.strictEqual((yield* telemetry.trace('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')).logs.length, 1)
+			assert.strictEqual((yield* telemetry.traces({...query, service: 'logging'})).total, 0)
 			assert.deepStrictEqual(
 				Array.map(
 					(yield* telemetry.logs({...query, service: 'logging', text: 'standalone'})).entries,
@@ -448,6 +635,8 @@ it.layer(layer)(test => {
 				})
 			)
 			const trace = yield* telemetry.trace('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+			assert.strictEqual((yield* telemetry.traces({...query, service: 'logging'})).total, 1)
+			assert.strictEqual((yield* telemetry.traces({...query, service: 'logging', text: 'BYTES aae='})).total, 1)
 			assert.deepStrictEqual(
 				Array.map(trace.spans, span => Array.map(span.logs, log => log.name)),
 				[['attached']]

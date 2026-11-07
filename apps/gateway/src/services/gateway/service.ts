@@ -28,6 +28,7 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {CurrentUser} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
@@ -186,11 +187,13 @@ export class Gateway extends Context.Service<
 			}
 			const call = Effect.fn('Gateway.call')(
 				function* (server: Server, tool: string, input: unknown) {
-					const request = yield* Effect.flatMap(
-						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
-						Effect.fromOption
-					)
-					yield* auth.access(request.headers, `${url}/mcp`)
+					if (Option.isNone(yield* Effect.serviceOption(CurrentUser))) {
+						const request = yield* Effect.flatMap(
+							Effect.serviceOption(HttpServerRequest.HttpServerRequest),
+							Effect.fromOption
+						)
+						yield* auth.access(request.headers, `${url}/mcp`)
+					}
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, client =>
@@ -257,11 +260,6 @@ export class Gateway extends Context.Service<
 					const upstreamName = tool.name
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
 					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
-					if (Option.isNone(String.match(/^[a-zA-Z0-9_-]{1,64}$/u)(name))) {
-						return yield* AuthError.make({
-							message: `${server.name} has a tool name that cannot be namespaced: ${tool.name}`
-						})
-					}
 					if ((yield* Ref.get(installed))[name]?.fingerprint !== `${server.generation}:${fingerprint}`) {
 						yield* registry.addTool({
 							annotations: Context.empty(),

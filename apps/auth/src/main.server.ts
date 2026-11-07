@@ -2,6 +2,7 @@ import {NodeHttpClient} from '@effect/platform-node'
 
 import {Effect, Layer, Schema, pipe} from 'effect'
 
+import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
@@ -19,7 +20,7 @@ import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
-import {ToolHandlers} from '#tools/handlers.ts'
+import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
 
 // Each service builds on the ones below it: tokens and passkeys, then people (who may use them), then sign-ins.
 const layerServices = pipe(
@@ -41,9 +42,8 @@ CliRuntime.runApp({
 			HttpHandlers,
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
-				handlers: ToolHandlers,
 				instructions: 'Approve a sign-in you started with answer_request.',
-				tools: Tools
+				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
 			})
 		),
 		Layer.provide(layerServices)

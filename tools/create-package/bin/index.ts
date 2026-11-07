@@ -13,7 +13,11 @@ import packageJson from '#package.json' with {type: 'json'}
 const create = Command.make(
 	'create-package',
 	{
-		directory: pipe(Flag.String('directory'), Flag.withDescription('Defaults to packages/<name>'), Flag.optional),
+		directory: pipe(
+			Flag.String('directory'),
+			Flag.withDescription('Destination relative to the repository root; defaults to packages/<name>'),
+			Flag.optional
+		),
 		name: nameFlag('Unscoped package name')
 	},
 	Effect.fnUntraced(function* (input) {
@@ -24,7 +28,11 @@ const create = Command.make(
 				String.replaceAll('TemplatePackage', String.pascalCase(input.name)),
 				String.replaceAll('@deslop/template-package', `@deslop/${input.name}`)
 			),
-			to: Option.getOrElse(input.directory, () => path.join(import.meta.dirname, '../../../packages', input.name))
+			to: path.resolve(
+				import.meta.dirname,
+				'../../..',
+				Option.getOrElse(input.directory, () => path.join('packages', input.name))
+			)
 		})
 	})
 )

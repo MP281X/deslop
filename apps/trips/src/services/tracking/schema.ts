@@ -14,16 +14,13 @@ export const FaFlight = Schema.Struct({
 	aircraft_type: Nullable(Schema.String),
 	baggage_claim: Nullable(Schema.String),
 	cancelled: Schema.Boolean,
-	destination: Nullable(Schema.Struct({code_iata: Nullable(Schema.String)})),
 	diverted: Schema.Boolean,
 	estimated_in: Nullable(Schema.String),
-	estimated_on: Nullable(Schema.String),
 	estimated_out: Nullable(Schema.String),
 	fa_flight_id: Schema.String,
 	gate_destination: Nullable(Schema.String),
 	gate_origin: Nullable(Schema.String),
 	origin: Nullable(Schema.Struct({code_iata: Nullable(Schema.String)})),
-	progress_percent: Nullable(Schema.Finite),
 	scheduled_out: Nullable(Schema.String),
 	terminal_destination: Nullable(Schema.String),
 	terminal_origin: Nullable(Schema.String)
@@ -34,13 +31,15 @@ export const FaFlights = Schema.Struct({flights: Schema.Array(FaFlight)})
 
 // ViaggiaTreno's run lookup: today's run of a train number, from its origin station.
 export type VtRun = typeof VtRun.Type
-export const VtRun = Schema.Struct({codLocOrig: Schema.String, millisDataPartenza: Schema.String})
+export const VtRun = Schema.Struct({
+	codLocOrig: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]+$/u)),
+	millisDataPartenza: Schema.String.check(Schema.isPattern(/^\d+$/u))
+})
 
 export type VtStop = typeof VtStop.Type
 export const VtStop = Schema.Struct({
 	// 1 once the train reached the stop.
 	actualFermataType: Nullable(Schema.Finite),
-	arrivoReale: Nullable(Schema.Finite),
 	binarioEffettivoArrivoDescrizione: Nullable(Schema.String),
 	binarioEffettivoPartenzaDescrizione: Nullable(Schema.String),
 	binarioProgrammatoArrivoDescrizione: Nullable(Schema.String),

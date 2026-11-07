@@ -33,12 +33,12 @@ jobs:
       # An app's bundle carries no version, so its build replays from the task cache until its code changes.
       - name: Build every package
         run: |
-          vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp run build
 
       # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
       - name: Publish @deslop/coding-standards
         run: |
+          vp -C tools/coding-standards pm version "0.1.${{ github.run_number }}" -- --no-git-tag-version --no-git-checks
           vp -C tools/coding-standards pm pack --pack-destination "$RUNNER_TEMP/package"
           npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
           echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
@@ -47,7 +47,10 @@ jobs:
       # The apps publish side by side, each taking about ten seconds; the summary keeps their order.
       - name: Publish changed apps
         run: |
-          apps=(auth deploy gateway portfolio scope stash opm trips signal)
+          shopt -s nullglob
+          apps=(apps/*/package.json)
+          apps=("${apps[@]%/package.json}")
+          apps=("${apps[@]#apps/}")
           publish() {
             cd "apps/$1"
             fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
@@ -75,6 +78,7 @@ jobs:
   app:
     name: App
     needs: verify
+    if: needs.verify.outputs.mobile != '[]'
     permissions:
       contents: read
       actions: read
@@ -82,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [stash, opm, trips]
+        app: ${{ fromJSON(needs.verify.outputs.mobile) }}
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}

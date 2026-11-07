@@ -1,15 +1,13 @@
-import {Array, Context, Effect, Layer, Option, Schema, pipe} from 'effect'
+import {Array, Effect, Option, Schema, pipe} from 'effect'
 
 import {KeyValueStore} from 'effect/persistence'
-
-import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {Note, NotesError, TagDefinition} from '#services/notes/schema.ts'
 
 const failed = Effect.mapError((cause: unknown) => NotesError.make({cause, message: 'The note storage failed.'}))
 
-export const openStore = Effect.fnUntraced(function* (directory: string) {
-	const store = Context.get(yield* Layer.build(layerKeyValueStore(directory)), KeyValueStore.KeyValueStore)
+export const openStore = Effect.fnUntraced(function* () {
+	const store = yield* KeyValueStore.KeyValueStore
 	const notes = KeyValueStore.toSchemaStore(store, Schema.Array(Note))
 	const tags = KeyValueStore.toSchemaStore(store, Schema.Array(TagDefinition))
 	return {

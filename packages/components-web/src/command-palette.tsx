@@ -1,21 +1,21 @@
 import {Array, Boolean, Option, Record, String} from 'effect'
 
+import {Dialog} from '@base-ui/react/dialog'
 import {defaultFilter} from 'cmdk'
-import {AppWindow, Search} from 'lucide-react'
+import {AppWindow, Search, X} from 'lucide-react'
 import {useState, useSyncExternalStore} from 'react'
 import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
+import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from '#components/ui/command.tsx'
 import {
-	Command,
-	CommandDialog,
-	CommandEmpty,
-	CommandGroup,
-	CommandInput,
-	CommandItem,
-	CommandList,
-	CommandSeparator
-} from '#components/ui/command.tsx'
+	DialogClose,
+	DialogDescription,
+	DialogHeader,
+	DialogOverlay,
+	DialogPortal,
+	DialogTitle
+} from '#components/ui/dialog.tsx'
 import {Kbd} from '#components/ui/kbd.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
@@ -55,6 +55,21 @@ function AppIcon(props: {name: string; url: string}) {
 	)
 }
 
+export function otherApps(current: string) {
+	return {
+		items: Array.map(
+			Array.filter(APPS, app => app.name !== current),
+			app => ({
+				detail: new URL(app.url).hostname,
+				icon: <AppIcon name={app.name} url={app.url} />,
+				label: app.name,
+				run: () => location.assign(app.url)
+			})
+		),
+		label: 'Other apps'
+	}
+}
+
 function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem value={`${props.group}:${props.item.id ?? props.item.label}`} onSelect={props.onSelect}>
@@ -67,7 +82,7 @@ function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	)
 }
 
-// One search field over the page's records and actions, plus every other web tool; the bar opens it with ⌘K.
+// One search field over the caller's records and actions; the bar opens it with ⌘K.
 export function CommandPalette(props: {
 	current?: string
 	groups: readonly PaletteGroup[]
@@ -79,8 +94,8 @@ export function CommandPalette(props: {
 		item.run()
 	}
 	// cmdk keeps an item's first keywords, so the filter reads this render's text instead: stable value, current search.
-	const searchable: Record<string, string> = Record.fromEntries([
-		...Array.flatMap(props.groups, group =>
+	const searchable: Record<string, string> = Record.fromEntries(
+		Array.flatMap(props.groups, group =>
 			Array.map(
 				group.items,
 				item =>
@@ -89,78 +104,66 @@ export function CommandPalette(props: {
 						`${item.label} ${item.detail ?? ''} ${item.keywords ?? ''}`
 					] as const
 			)
-		),
-		...Array.map(APPS, app => [`Deslop:${app.name}`, `${app.name} ${new URL(app.url).hostname}`] as const)
-	])
+		)
+	)
 	return (
-		<CommandDialog
-			open={props.open}
-			onOpenChange={props.onOpenChange}
-			title="Search or run a command"
-			description="Jump to a record, run an action, or open another Deslop tool."
-			showCloseButton
-			className="sm:max-w-lg"
-		>
-			<Command
-				filter={(value, search) =>
-					defaultFilter(
-						Option.getOrElse(Record.get(searchable, value), () => value),
-						search
-					)
-				}
-			>
-				<CommandInput autoFocus placeholder={`Search ${props.current ?? 'Deslop'}…`} />
-				<CommandList className="max-h-96">
-					<CommandEmpty>No results.</CommandEmpty>
-					{Array.map(
-						Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
-						group => (
-							<CommandGroup key={group.label} heading={group.label}>
-								{Array.map(group.items, item => (
-									<Item
-										key={`${group.label}:${item.id ?? item.label}`}
-										group={group.label}
-										item={item}
-										onSelect={() => run(item)}
-									/>
-								))}
-							</CommandGroup>
-						)
-					)}
-					<CommandSeparator />
-					<CommandGroup heading="Other apps">
-						{Array.map(APPS, app => {
-							const item = {
-								detail: `${new URL(app.url).hostname}${Boolean.match(app.name === props.current, {
-									onFalse: () => '',
-									onTrue: () => ' · current'
-								})}`,
-								icon: <AppIcon name={app.name} url={app.url} />,
-								keywords: new URL(app.url).hostname,
-								label: app.name,
-								run: () => {
-									location.assign(app.url)
-								}
-							}
-							return <Item key={app.name} group="Deslop" item={item} onSelect={() => run(item)} />
-						})}
-					</CommandGroup>
-				</CommandList>
-				<div className="text-muted-foreground hidden items-center justify-between border-t px-3 py-2 text-xs sm:flex">
-					<span className="flex items-center gap-1">
-						<Kbd>↑</Kbd>
-						<Kbd>↓</Kbd>
-						<span>navigate</span>
-					</span>
-					<span className="flex items-center gap-1">
-						<Kbd>↵</Kbd>
-						<span>open</span>
-						<Kbd>esc</Kbd>
-						<span>close</span>
-					</span>
-				</div>
-			</Command>
-		</CommandDialog>
+		<Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogPortal>
+				<DialogOverlay />
+				<Dialog.Popup className="bg-popover text-popover-foreground ring-foreground/10 fixed inset-x-4 top-1/2 z-50 mx-auto flex max-h-dvh -translate-y-1/2 flex-col overflow-hidden rounded-lg ring-1 outline-none sm:max-w-lg">
+					<DialogHeader className="sr-only">
+						<DialogTitle>Search or run a command</DialogTitle>
+						<DialogDescription>Search available records and actions.</DialogDescription>
+					</DialogHeader>
+					<Command
+						className="min-h-0"
+						filter={(value, search) =>
+							defaultFilter(
+								Option.getOrElse(Record.get(searchable, value), () => value),
+								search
+							)
+						}
+					>
+						<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
+						<CommandList className="min-h-0">
+							<CommandEmpty>No results.</CommandEmpty>
+							{Array.map(
+								Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
+								group => (
+									<CommandGroup key={group.label} heading={group.label}>
+										{Array.map(group.items, item => (
+											<Item
+												key={`${group.label}:${item.id ?? item.label}`}
+												group={group.label}
+												item={item}
+												onSelect={() => run(item)}
+											/>
+										))}
+									</CommandGroup>
+								)
+							)}
+						</CommandList>
+						<div className="text-muted-foreground hidden items-center justify-between border-t px-3 py-2 text-xs sm:flex">
+							<span className="flex items-center gap-1">
+								<Kbd>↑</Kbd>
+								<Kbd>↓</Kbd>
+								<span>navigate</span>
+							</span>
+							<span className="flex items-center gap-1">
+								<Kbd>↵</Kbd>
+								<span>open</span>
+								<Kbd>esc</Kbd>
+								<span>close</span>
+							</span>
+						</div>
+					</Command>
+					<DialogClose render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}>
+						<X />
+						<span className="sr-only">Close</span>
+					</DialogClose>
+				</Dialog.Popup>
+			</DialogPortal>
+		</Dialog.Root>
 	)
 }
 

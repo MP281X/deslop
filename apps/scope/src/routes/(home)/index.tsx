@@ -1,4 +1,4 @@
-import {useAtom, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {
 	Array,
@@ -18,25 +18,24 @@ import {
 
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, ChevronRight, Copy, Globe, Server, Smartphone, Workflow} from 'lucide-react'
-import {Suspense, useState} from 'react'
-import type {ReactElement} from 'react'
+import {Check, ChevronRight, Copy, Globe, OctagonAlert, Server, Smartphone, Workflow} from 'lucide-react'
+import {Suspense, useState, useSyncExternalStore} from 'react'
+import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
+import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
-import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
-import {cn} from '@deslop/components-web/utils'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {cn, formatError} from '@deslop/components-web/utils'
+import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {ageOf, arrivalsAtom, copyAtom, durationOf, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
@@ -46,6 +45,8 @@ import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#service
 
 // The side an operation starts on, in words, so a search or a row can name it.
 const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
+
+const COMPACT_LAYOUT = '(width < 80rem)'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -103,21 +104,9 @@ type Pane = 'operations' | 'trace' | 'traces'
 type OperationKey = {app: string; name: string; runtime: Runtime}
 type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
 
-// A failure the page can't show as data: sign-in, then anything else as an error with a reload.
-function Failure(props: {cause: Cause.Cause<unknown>}) {
-	return Option.match(Cause.findErrorOption(props.cause), {
-		onNone: () => <Error error={Cause.squash(props.cause)} reset={() => location.reload()} />,
-		onSome: error =>
-			Boolean.match(needsSignIn(error), {
-				onFalse: () => <Error error={error} reset={() => location.reload()} />,
-				onTrue: () => <SignIn href={signInUrl(location.href)} />
-			})
-	})
-}
-
-function FailureContent(props: {error: unknown}) {
+function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	return <Error error={props.error} reset={() => location.reload()} />
+	return <Error error={props.error} reset={props.reset} />
 }
 
 // An attribute's value as OTLP wraps it, such as {stringValue: "…"}, shown as its one value.
@@ -320,12 +309,9 @@ function SpanRow(props: {
 	)
 }
 
-// A trace's spans under its root, each on the trace's time scale; where it broke starts picked, else the root's own details show.
-function Spans(props: {id: string; size: number}) {
-	const result = useAtomSuspense(traceAtom(`${props.id}:${props.size}`), {includeFailure: true})
+function TraceSpans(props: {trace: Trace}) {
 	const [picked, setPicked] = useState<string>()
-	if (AsyncResult.isFailure(result)) return <Failure cause={result.cause} />
-	const trace = result.value
+	const trace = props.trace
 	const root = Array.findFirst(trace.spans, span => span.depth === 0)
 	const below = Array.filter(trace.spans, span => !Option.exists(root, top => top.spanId === span.spanId))
 	const services = Record.fromEntries(Array.map(trace.spans, span => [span.spanId, span.service] as const))
@@ -362,56 +348,77 @@ function Spans(props: {id: string; size: number}) {
 	)
 }
 
+// A failed refresh keeps the last trace, but authorization failures never expose retained spans.
+function Spans(props: {id: string}) {
+	const atom = traceAtom(props.id)
+	const result = useAtomSuspense(atom, {includeFailure: true})
+	const refresh = useAtomRefresh(atom)
+	const value = AsyncResult.value(result)
+	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	return (
+		<>
+			{AsyncResult.isFailure(result) && (
+				<Alert variant="destructive" className="my-2">
+					<OctagonAlert />
+					<AlertTitle>Cannot update this trace</AlertTitle>
+					<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
+						{formatError(result.cause)}
+						<Button variant="outline" size="sm" onClick={refresh}>
+							Try again
+						</Button>
+					</AlertDescription>
+				</Alert>
+			)}
+			{Option.match(value, {onNone: () => null, onSome: trace => <TraceSpans trace={trace} />})}
+		</>
+	)
+}
+
 function SpansSkeleton() {
 	return (
-		<div aria-busy="true" role="status" aria-label="Spans" className="flex flex-col gap-2 py-2 pr-1 pl-10">
+		<div aria-busy="true" role="status" aria-label="Spans" className="flex flex-col pb-2">
 			{Array.map(Array.range(1, 4), row => (
-				<div key={row} className="flex items-center gap-3">
-					<Skeleton className="h-4 w-32" />
-					<Skeleton className="h-2 flex-1" />
+				<div key={row} aria-hidden className="flex h-8 items-center gap-3 pr-1 max-sm:h-11">
+					<span className="w-40 shrink-0 pl-6">
+						<Skeleton className="h-3 w-28" />
+					</span>
+					<Skeleton className="h-1.5 flex-1" />
+					<Skeleton className="h-3 w-14 shrink-0" />
+					<span className="size-3.5 shrink-0" />
 				</div>
 			))}
 		</div>
 	)
 }
 
-// A pane's header and rows while the overview loads, so the shell keeps its three columns.
-function PaneSkeleton(props: {className?: string; label: string; rows: number}) {
-	return (
-		<section
-			aria-busy="true"
-			role="status"
-			aria-label={props.label}
-			className={cn('flex min-h-0 flex-col', props.className)}
-		>
-			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-				<Skeleton className="h-4 w-24" />
-			</header>
-			<div className="p-2">
-				<ItemListSkeleton label={props.label} media rows={props.rows} />
-			</div>
-		</section>
-	)
+// Suspend the rows, not their shell. Home owns failures; ordinary outages retain the last overview.
+function OverviewContent(props: {children: (overview: Overview) => ReactNode}) {
+	return Option.match(AsyncResult.value(useAtomSuspense(overviewAtom, {includeFailure: true})), {
+		onNone: () => null,
+		onSome: props.children
+	})
 }
 
-function TraceSkeleton(props: {className?: string}) {
+function OverviewRowsSkeleton(props: {label: string; appHeading?: boolean}) {
 	return (
-		<section aria-busy="true" role="status" aria-label="Trace" className={cn('flex min-h-0 flex-col', props.className)}>
-			<header className="bg-background flex h-8 shrink-0 items-center gap-2 border-b px-3">
-				<Skeleton className="h-4 w-32" />
-			</header>
-			<SpansSkeleton />
-		</section>
-	)
-}
-
-function ScopeSkeleton(props: {isMobile: boolean}) {
-	if (props.isMobile) return <PaneSkeleton className="min-h-0 flex-1" label="Operations" rows={8} />
-	return (
-		<div className="grid-cols-scope grid min-h-0 flex-1">
-			<PaneSkeleton className="min-w-0 border-r" label="Operations" rows={8} />
-			<PaneSkeleton className="min-w-0 border-r" label="Traces" rows={6} />
-			<TraceSkeleton className="min-w-0" />
+		<div aria-busy="true" role="status" aria-label={props.label}>
+			{props.appHeading === true && (
+				<div aria-hidden className="flex h-8 items-center gap-2 border-b px-2.5">
+					<Skeleton className="size-5" />
+					<Skeleton className="h-3 w-24" />
+				</div>
+			)}
+			{Array.map(Array.range(1, 8), row => (
+				<div key={row} aria-hidden className="border-b">
+					<div className="flex h-8 items-center gap-2 px-2.5 max-sm:h-11">
+						<Skeleton className="size-3.5 shrink-0" />
+						<Skeleton className="h-3 w-1/3" />
+						<Skeleton className="ml-auto h-3 w-12" />
+					</div>
+				</div>
+			))}
 		</div>
 	)
 }
@@ -475,7 +482,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 					<span className="sr-only">typical </span>
 					{durationOf(props.operation.p50Ms)}
 				</span>
-				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
+				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 			</Button>
 		</div>
 	)
@@ -486,7 +493,7 @@ function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
 	onSelect: (app: string, operation: Operation) => void
-	overview: Overview
+	overview?: Overview
 }) {
 	return (
 		<section
@@ -496,48 +503,57 @@ function OperationsPane(props: {
 			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-2.5">
 				<span className="text-sm font-semibold">Operations</span>
 				<span className="text-muted-foreground font-mono text-xs">
-					{count.format(Array.reduce(props.overview.apps, 0, (sum, app) => sum + app.operations.length))}
+					{Option.match(Option.fromUndefinedOr(props.overview), {
+						onNone: () => <Skeleton className="h-3 w-4" />,
+						onSome: overview => count.format(Array.reduce(overview.apps, 0, (sum, app) => sum + app.operations.length))
+					})}
 				</span>
 				<span className="ml-auto flex items-center gap-1">
 					<span className="text-muted-foreground w-8 text-right text-xs">Failed</span>
 					<span className="text-muted-foreground w-10 text-right text-xs max-lg:hidden">Runs</span>
 					<span className="text-muted-foreground w-12 text-right text-xs">Typical</span>
-					<span className="size-3.5 sm:hidden" />
+					<span className="size-3.5 xl:hidden" />
 				</span>
 			</header>
-			{Array.match(props.overview.apps, {
-				onEmpty: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No traces yet</EmptyTitle>
-						</EmptyHeader>
-					</Empty>
-				),
-				onNonEmpty: apps => (
-					<>
-						{Array.map(apps, app => (
-							<section key={app.name} aria-label={app.name}>
-								<AppHeading app={app} />
-								<div role="list">
-									{Array.map(app.operations, operation => (
-										<OperationRow
-											key={`${operation.runtime} ${operation.name}`}
-											active={
-												props.activeKey !== undefined &&
-												props.activeKey.app === app.name &&
-												props.activeKey.runtime === operation.runtime &&
-												props.activeKey.name === operation.name
-											}
-											onSelect={() => props.onSelect(app.name, operation)}
-											operation={operation}
-										/>
+			<Suspense fallback={<OverviewRowsSkeleton appHeading label="Operations" />}>
+				<OverviewContent>
+					{overview =>
+						Array.match(overview.apps, {
+							onEmpty: () => (
+								<Empty>
+									<EmptyHeader>
+										<EmptyTitle>No traces yet</EmptyTitle>
+									</EmptyHeader>
+								</Empty>
+							),
+							onNonEmpty: apps => (
+								<>
+									{Array.map(apps, app => (
+										<section key={app.name} aria-label={app.name}>
+											<AppHeading app={app} />
+											<div role="list">
+												{Array.map(app.operations, operation => (
+													<OperationRow
+														key={`${operation.runtime} ${operation.name}`}
+														active={
+															props.activeKey !== undefined &&
+															props.activeKey.app === app.name &&
+															props.activeKey.runtime === operation.runtime &&
+															props.activeKey.name === operation.name
+														}
+														onSelect={() => props.onSelect(app.name, operation)}
+														operation={operation}
+													/>
+												))}
+											</div>
+										</section>
 									))}
-								</div>
-							</section>
-						))}
-					</>
-				)
-			})}
+								</>
+							)
+						})
+					}
+				</OverviewContent>
+			</Suspense>
 		</section>
 	)
 }
@@ -600,7 +616,7 @@ function TraceListRow(props: {
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
-					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 sm:hidden" />
+					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 				</Button>
 			</div>
 		</div>
@@ -613,64 +629,85 @@ function TracesPane(props: {
 	className?: string
 	now: number
 	onSelect: (trace: OperationTrace) => void
+	pending: boolean
 	selectedTrace?: OperationTrace
 }) {
-	return Option.match(Option.fromUndefinedOr(props.active), {
-		onNone: () => (
-			<section aria-label="Traces" className={cn('flex min-h-0 flex-col', props.className)}>
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>Select an operation</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			</section>
-		),
-		onSome: active => (
-			<section
-				aria-label="Traces"
-				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-			>
-				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2.5">
-					{Option.match(Option.fromUndefinedOr(marks[active.app.name]), {
+	const active = Option.fromUndefinedOr(props.active)
+	return (
+		<section
+			aria-label="Traces"
+			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+		>
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2.5">
+				{Option.match(
+					Option.flatMap(active, current => Option.fromUndefinedOr(marks[current.app.name])),
+					{
 						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
 						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-					})}
-					<span className="min-w-0 flex-1 truncate text-sm font-semibold max-sm:hidden">{active.operation.name}</span>
-					<span className="flex shrink-0 items-center gap-2 max-sm:ml-auto">
-						{active.operation.failures > 0 && (
-							<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
-								{active.operation.failures}
-								<span className="sr-only"> failed</span>
-							</Badge>
-						)}
-						<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-							{durationOf(active.operation.p50Ms)} typical
-						</span>
+					}
+				)}
+				<span className="min-w-0 flex-1 truncate text-sm font-semibold max-xl:hidden">
+					{Option.match(active, {onNone: () => 'Traces', onSome: current => current.operation.name})}
+				</span>
+				<span className="flex shrink-0 items-center gap-2 max-sm:ml-auto">
+					{Option.getOrUndefined(
+						Option.map(
+							Option.filter(active, current => current.operation.failures > 0),
+							current => (
+								<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
+									{current.operation.failures}
+									<span className="sr-only"> failed</span>
+								</Badge>
+							)
+						)
+					)}
+					<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+						{Option.match(active, {
+							onNone: () => props.pending && <Skeleton className="h-3 w-20" />,
+							onSome: current => `${durationOf(current.operation.p50Ms)} typical`
+						})}
 					</span>
-				</header>
-				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-1 border-b px-2.5 text-xs">
-					<span className="w-8">Age</span>
-					<span className="min-w-0 flex-1">Trace</span>
-					<span className="w-32 text-right">Failure</span>
-					<span className="w-14 text-right">Duration</span>
-					<span className="size-3.5 sm:hidden" />
-				</div>
-				<div role="list">
-					{Array.map(active.operation.traces, trace => (
-						<TraceListRow
-							key={trace.id}
-							active={props.selectedTrace?.id === trace.id}
-							arrived={Array.contains(props.arrived, trace.id)}
-							now={props.now}
-							onSelect={() => props.onSelect(trace)}
-							operation={active.operation.name}
-							trace={trace}
-						/>
-					))}
-				</div>
-			</section>
-		)
-	})
+				</span>
+			</header>
+			<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-1 border-b px-2.5 text-xs">
+				<span className="w-8">Age</span>
+				<span className="min-w-0 flex-1">Trace</span>
+				<span className="w-32 text-right">Failure</span>
+				<span className="w-14 text-right">Duration</span>
+				<span className="size-3.5 xl:hidden" />
+			</div>
+			<Suspense fallback={<OverviewRowsSkeleton label="Traces" />}>
+				<OverviewContent>
+					{() =>
+						Option.match(active, {
+							onNone: () => (
+								<Empty>
+									<EmptyHeader>
+										<EmptyTitle>Select an operation</EmptyTitle>
+									</EmptyHeader>
+								</Empty>
+							),
+							onSome: current => (
+								<div role="list">
+									{Array.map(current.operation.traces, trace => (
+										<TraceListRow
+											key={trace.id}
+											active={props.selectedTrace?.id === trace.id}
+											arrived={Array.contains(props.arrived, trace.id)}
+											now={props.now}
+											onSelect={() => props.onSelect(trace)}
+											operation={current.operation.name}
+											trace={trace}
+										/>
+									))}
+								</div>
+							)
+						})
+					}
+				</OverviewContent>
+			</Suspense>
+		</section>
+	)
 }
 
 // The trace's full id copies from its short form, the button confirming in place.
@@ -696,54 +733,86 @@ function CopyTrace(props: {id: string}) {
 }
 
 // The picked trace: its age, failure and duration, then its spans and the picked span's detail.
-function TracePane(props: {className?: string; now: number; trace?: OperationTrace}) {
-	return Option.match(Option.fromUndefinedOr(props.trace), {
-		onNone: () => (
-			<section aria-label="Trace" className={cn('flex min-h-0 flex-col', props.className)}>
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>Select a trace</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			</section>
-		),
-		onSome: trace => (
-			<section
-				aria-label="Trace"
-				className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+function TracePane(props: {className?: string; now: number; pending: boolean; trace?: OperationTrace}) {
+	const trace = Option.fromUndefinedOr(props.trace)
+	return (
+		<section aria-label="Trace" className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}>
+			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
+				<span
+					className="text-muted-foreground w-14 shrink-0 font-mono text-xs"
+					title={Option.getOrUndefined(
+						Option.map(trace, current =>
+							clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(current.time)), () => props.now))
+						)
+					)}
+				>
+					{Option.match(trace, {
+						onNone: () =>
+							Boolean.match(props.pending, {onFalse: () => 'Trace', onTrue: () => <Skeleton className="h-3 w-10" />}),
+						onSome: current =>
+							Boolean.match(ageOf(current.time, props.now) === 'now', {
+								onFalse: () => `${ageOf(current.time, props.now)} ago`,
+								onTrue: () => 'now'
+							})
+					})}
+				</span>
+				<span className="min-w-0 flex-1 truncate font-mono text-xs" title={props.trace?.id}>
+					{Option.match(trace, {
+						onNone: () => props.pending && <Skeleton className="h-3 w-16" />,
+						onSome: current => String.slice(0, 8)(current.id)
+					})}
+				</span>
+				{Option.match(trace, {
+					onNone: () => (
+						<span className="flex size-7 shrink-0 items-center justify-center max-sm:size-11">
+							{props.pending && <Skeleton className="size-4" />}
+						</span>
+					),
+					onSome: current => <CopyTrace id={current.id} />
+				})}
+				<span className="shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
+					{Option.match(trace, {
+						onNone: () => props.pending && <Skeleton className="h-3 w-12" />,
+						onSome: current => durationOf(current.durationMs)
+					})}
+				</span>
+			</header>
+			<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-3 border-b pr-4 pl-3 text-xs max-sm:top-11">
+				<span className="w-40 pl-6">Span</span>
+				<span className="min-w-0 flex-1">Timeline</span>
+				<span className="w-14 text-right">Duration</span>
+				<span className="size-3.5" />
+			</div>
+			<Suspense
+				fallback={
+					<div className="min-w-0 px-3">
+						<SpansSkeleton />
+					</div>
+				}
 			>
-				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
-					<span
-						className="text-muted-foreground w-14 shrink-0 font-mono text-xs"
-						title={clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(trace.time)), () => props.now))}
-					>
-						{Boolean.match(ageOf(trace.time, props.now) === 'now', {
-							onFalse: () => `${ageOf(trace.time, props.now)} ago`,
-							onTrue: () => 'now'
-						})}
-					</span>
-					<span className="min-w-0 flex-1 truncate font-mono text-xs" title={trace.id}>
-						{String.slice(0, 8)(trace.id)}
-					</span>
-					<CopyTrace id={trace.id} />
-					<span className="shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
-						{durationOf(trace.durationMs)}
-					</span>
-				</header>
-				<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center gap-3 border-b pr-4 pl-3 text-xs max-sm:top-11">
-					<span className="w-40 pl-6">Span</span>
-					<span className="min-w-0 flex-1">Timeline</span>
-					<span className="w-14 text-right">Duration</span>
-					<span className="size-3.5" />
-				</div>
-				<div className="min-w-0 px-3">
-					<Suspense fallback={<SpansSkeleton />}>
-						<Spans key={trace.id} id={trace.id} size={trace.durationMs} />
-					</Suspense>
-				</div>
-			</section>
-		)
-	})
+				<OverviewContent>
+					{() =>
+						Option.match(trace, {
+							onNone: () => (
+								<Empty>
+									<EmptyHeader>
+										<EmptyTitle>Select a trace</EmptyTitle>
+									</EmptyHeader>
+								</Empty>
+							),
+							onSome: current => (
+								<div className="min-w-0 px-3">
+									<Suspense fallback={<SpansSkeleton />}>
+										<Spans key={current.id} id={current.id} />
+									</Suspense>
+								</div>
+							)
+						})
+					}
+				</OverviewContent>
+			</Suspense>
+		</section>
+	)
 }
 
 // The operation the key names, with the app that owns it.
@@ -759,14 +828,23 @@ function findOperation(overview: Overview, key: OperationKey) {
 }
 
 function Home() {
-	const isMobile = useIsMobile()
+	// Three panes need readable trace and failure columns, not merely a non-phone viewport.
+	const isMobile = useSyncExternalStore(
+		onChange => {
+			const query = window.matchMedia(COMPACT_LAYOUT)
+			query.addEventListener('change', onChange)
+			return () => query.removeEventListener('change', onChange)
+		},
+		() => window.matchMedia(COMPACT_LAYOUT).matches,
+		() => false
+	)
 	const [pane, setPane] = useState<Pane>('operations')
 	const [selection, setSelection] = useState<OperationKey>()
 	const [selectedTrace, setSelectedTrace] = useState<OperationTrace>()
 	const overview = useAtomValue(overviewAtom)
+	const refresh = useAtomRefresh(overviewAtom)
 	const value = AsyncResult.value(overview)
-	const overviewError = AsyncResult.error(overview)
-	const authFailure = Option.filter(overviewError, Schema.is(AuthError))
+	const authFailure = Option.filter(AsyncResult.error(overview), isDenied)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const arrived = useAtomValue(arrivalsAtom).arrived
 
@@ -875,71 +953,99 @@ function Home() {
 							)
 					})
 				})}
-				palette={Boolean.match(Option.isSome(authFailure), {onFalse: () => [traces, operations], onTrue: () => []})}
+				palette={Boolean.match(Option.isSome(authFailure), {
+					onFalse: () => [traces, operations, otherApps('scope')],
+					onTrue: () => [otherApps('scope')]
+				})}
 			/>
+			{AsyncResult.isFailure(overview) && Option.isSome(value) && Option.isNone(authFailure) && (
+				<div className="shrink-0 px-3 py-2">
+					<Alert variant="destructive">
+						<OctagonAlert />
+						<AlertTitle>Cannot update live operations</AlertTitle>
+						<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
+							{formatError(overview.cause)}
+							<Button variant="outline" size="sm" onClick={refresh}>
+								Try again
+							</Button>
+						</AlertDescription>
+					</Alert>
+				</div>
+			)}
 			{Option.match(authFailure, {
 				onNone: () =>
-					Option.match(value, {
-						onNone: () =>
-							Option.match(overviewError, {
-								onNone: () => <ScopeSkeleton isMobile={isMobile} />,
-								onSome: error => <FailureContent error={error} />
-							}),
-						onSome: current => (
-							<div className="flex min-h-0 flex-1">
-								{Boolean.match(isMobile, {
-									onFalse: () => (
-										<div className="grid-cols-scope grid min-h-0 flex-1">
-											<OperationsPane
-												activeKey={Option.getOrUndefined(activeKey)}
-												className="min-w-0 border-r"
-												onSelect={selectOperation}
-												overview={current}
-											/>
-											<TracesPane
-												active={Option.getOrUndefined(activeOperation)}
-												arrived={arrived}
-												className="min-w-0 border-r"
-												now={now}
-												onSelect={selectTrace}
-												selectedTrace={Option.getOrUndefined(activeTrace)}
-											/>
-											<TracePane className="min-w-0" now={now} trace={Option.getOrUndefined(activeTrace)} />
-										</div>
-									),
-									onTrue: () => (
-										<>
-											{pipe(
-												Match.value(pane),
-												Match.when('operations', () => (
-													<OperationsPane
-														activeKey={Option.getOrUndefined(activeKey)}
-														className="min-h-0 flex-1"
-														onSelect={selectOperation}
-														overview={current}
-													/>
-												)),
-												Match.when('traces', () => (
-													<TracesPane
-														active={Option.getOrUndefined(activeOperation)}
-														arrived={arrived}
-														className="min-h-0 flex-1"
-														now={now}
-														onSelect={selectTrace}
-														selectedTrace={Option.getOrUndefined(activeTrace)}
-													/>
-												)),
-												Match.orElse(() => (
-													<TracePane className="min-h-0 flex-1" now={now} trace={Option.getOrUndefined(activeTrace)} />
-												))
-											)}
-										</>
-									)
-								})}
-							</div>
-						)
-					}),
-				onSome: error => <FailureContent error={error} />
+					Option.match(
+						Option.filter(AsyncResult.cause(overview), () => Option.isNone(value)),
+						{
+							onNone: () => (
+								<div className="flex min-h-0 flex-1">
+									{Boolean.match(isMobile, {
+										onFalse: () => (
+											<div className="grid-cols-scope grid min-h-0 flex-1">
+												<OperationsPane
+													activeKey={Option.getOrUndefined(activeKey)}
+													className="min-w-0 border-r"
+													onSelect={selectOperation}
+													overview={Option.getOrUndefined(value)}
+												/>
+												<TracesPane
+													active={Option.getOrUndefined(activeOperation)}
+													arrived={arrived}
+													className="min-w-0 border-r"
+													now={now}
+													onSelect={selectTrace}
+													pending={Option.isNone(value)}
+													selectedTrace={Option.getOrUndefined(activeTrace)}
+												/>
+												<TracePane
+													className="min-w-0"
+													now={now}
+													pending={Option.isNone(value)}
+													trace={Option.getOrUndefined(activeTrace)}
+												/>
+											</div>
+										),
+										onTrue: () => (
+											<>
+												{pipe(
+													Match.value(pane),
+													Match.when('operations', () => (
+														<OperationsPane
+															activeKey={Option.getOrUndefined(activeKey)}
+															className="min-h-0 flex-1"
+															onSelect={selectOperation}
+															overview={Option.getOrUndefined(value)}
+														/>
+													)),
+													Match.when('traces', () => (
+														<TracesPane
+															active={Option.getOrUndefined(activeOperation)}
+															arrived={arrived}
+															className="min-h-0 flex-1"
+															now={now}
+															onSelect={selectTrace}
+															pending={Option.isNone(value)}
+															selectedTrace={Option.getOrUndefined(activeTrace)}
+														/>
+													)),
+													Match.orElse(() => (
+														<TracePane
+															className="min-h-0 flex-1"
+															now={now}
+															pending={Option.isNone(value)}
+															trace={Option.getOrUndefined(activeTrace)}
+														/>
+													))
+												)}
+											</>
+										)
+									})}
+								</div>
+							),
+							onSome: cause => <FailureContent error={Cause.squash(cause)} reset={refresh} />
+						}
+					),
+				onSome: error => <FailureContent error={error} reset={refresh} />
 			})}
 		</div>
 	)

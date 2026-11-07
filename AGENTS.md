@@ -5,31 +5,25 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 ## Scope
 
 - No issue tracker: the request is the whole task.
-- One user's software on these two workers: no portability, multi-user or compatibility code. Apps and MCP endpoints are public behind the shared sign-in at `auth.mp281x.xyz`; admins in `GITHUB_ADMINS` let other GitHub accounts in, and everyone with access shares each app's data.
+- One user's software on these two workers: no portability, multi-user or compatibility code. Apps and MCP endpoints use the shared sign-in at `auth.mp281x.xyz`, except the public Portfolio. Admins in `GITHUB_ADMINS` let other GitHub accounts in; everyone with access shares each app's data.
 - Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
 ## Commands
 
-- **Verify**: `vp run fix && vp run test`.
-  - `fix`: Oxfmt, the typed Oxlint pass on tsrs with the Effect rules and TypeScript diagnostics, a syntax-only pass over the templates, then Fallow, writing fixes and failing on leftovers. CI runs `check`, the same without `--fix`.
-  - `check`: the gate and Fallow. `test`: each package's tests.
-  - **Task cache**: same `test` scripts in every `package.json`, root caches scripts; per worktree, since `vp test` and `vp check` keys hold the absolute path.
+- **Verify**: `vp run fix && vp run test`. `fix` writes fixes and fails on leftovers; CI's `check` does not write. `vite.config.ts` owns the gate and per-worktree task cache.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `RELEASING.md`, **Publish an iOS app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad/good pair and its count.
 - **Releases.** `RELEASING.md`: Simulator builds, deploy and its checks, publishing packages and iOS apps.
-- **Agent configuration.**
-  - `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down; they replace the provider prompts with goals and local facts the harness, T3 and tool descriptions don't say, and name each injected rule they override.
-  - **Canonical config.** The installed configuration is `~/deslop`; change it through a deslop PR, merge it, pull the canonical checkout, then install. Do not hand-edit the canonical checkout while other threads use it.
-  - **Lint tactics.** `vpx @deslop/coding-standards@latest` prints them when a diagnostic survives `vp run fix`; the text lives in `tools/coding-standards/src/main.cli.ts`. No skill files are installed.
-  - **Global skills**: workflow, environment, verification and pull-requests in `.claude/skills`, each linked globally; reply lives in the prompt.
+- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down. Skills live in `.claude/skills`; the environment skill owns installation and infrastructure. Change the installed `~/deslop` only through a merged PR, never while other threads use it.
+- **Lint tactics.** If a diagnostic survives `fix`, run `vpx @deslop/coding-standards@latest`; its text lives in `tools/coding-standards/src/main.cli.ts`.
 
 ## Patterns
 
 | Pattern          | Owner and canonical example                                                                                                                                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Service          | `tools/create-package/template/`, `apps/stash/src/services/notes/`                                                                                                                                                                   |
-| Web app          | `tools/create-app/template/web/`: `apps/portfolio` behind a Deslop sign-in                                                                                                                                                           |
+| Web app          | `tools/create-app/template/web/` for sign-in; `apps/portfolio` for a public app                                                                                                                                                      |
 | Mobile app       | `tools/create-app/template/mobile/`, which mirrors `apps/stash`                                                                                                                                                                      |
 | RPC              | `apps/portfolio/src/rpcs/` and its client in `apps/portfolio/src/lib/utils.ts`                                                                                                                                                       |
 | MCP tools        | `apps/scope/src/tools/`, served by `ServerRuntime.layerMcp` in `apps/scope/src/main.server.ts`                                                                                                                                       |
@@ -39,4 +33,4 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Documents
 
-Each fact has one home: code, then lint, this file, `CODING_STANDARDS.md`, `DESIGN.md` for every visual rule, `packages/components-web/src/theme.css` and `packages/components-mobile/src/theme.ts` for every token, `RELEASING.md`, a published package's `README.md`, and the environment skill for the user's infrastructure; comments only for what a name cannot say.
+Each fact has one home: code, then lint; this file for repository operation, an app's `AGENTS.md` for product intent, `CODING_STANDARDS.md` for judgment, `DESIGN.md` for visual rules, the web/mobile theme for tokens, `RELEASING.md` for releases, a published package's `README.md` for its contract, skills for procedures and the PR template for reviewer-facing sections. Comments explain only what a name cannot say.

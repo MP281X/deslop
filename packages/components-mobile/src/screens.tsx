@@ -17,7 +17,7 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
-import type {ReactNode} from 'react'
+import type {ComponentProps, ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
 import type {Session} from '@deslop/runtime/mobile/session'
@@ -43,7 +43,7 @@ export function BlankScreen() {
 	)
 }
 
-// Data on its way, as the list it will fill; a Suspense fallback, so React keeps it at least 300ms and it never blinks.
+// Data on its way, shaped like the list it will fill.
 export function LoadingScreen() {
 	return (
 		<Host style={{flex: 1}}>
@@ -52,27 +52,33 @@ export function LoadingScreen() {
 	)
 }
 
-// A failure thrown while rendering closes a React Native app, so its root reads the failure as a value and shows it here.
-export function FailureScreen(props: {
+export function FailureContent(props: {
 	cause: Cause.Cause<unknown>
 	name: string
 	onRetry: () => void
 	tint: ColorValue
 }) {
 	return (
+		<VStack spacing={space[3]} modifiers={FULL_SCREEN}>
+			<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
+			<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
+				{Cause.pretty(props.cause)}
+			</Text>
+			<Button
+				onPress={() => props.onRetry()}
+				modifiers={[buttonStyle('glassProminent'), tint(props.tint), foregroundStyle(colors.primaryForeground)]}
+			>
+				<Text modifiers={[text.title]}>Try Again</Text>
+			</Button>
+		</VStack>
+	)
+}
+
+// A root owns its Host; a reader already inside native navigation uses FailureContent.
+export function FailureScreen(props: ComponentProps<typeof FailureContent>) {
+	return (
 		<Host style={{flex: 1}}>
-			<VStack spacing={space[3]} modifiers={FULL_SCREEN}>
-				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>{props.name} hit an error</Text>
-				<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), lineLimit(6)]}>
-					{Cause.pretty(props.cause)}
-				</Text>
-				<Button
-					onPress={() => props.onRetry()}
-					modifiers={[buttonStyle('glassProminent'), tint(props.tint), foregroundStyle(colors.primaryForeground)]}
-				>
-					<Text modifiers={[text.title]}>Try Again</Text>
-				</Button>
-			</VStack>
+			<FailureContent {...props} />
 		</Host>
 	)
 }

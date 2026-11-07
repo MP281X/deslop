@@ -7,6 +7,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const game = yield* Game
 		return RpcContracts.of({
+			'signal.changes': () => game.revisions,
 			'signal.control': input => game.control(input.running),
 			'signal.history': input => game.history(input.actor, Option.fromUndefinedOr(input.before), input.at),
 			'signal.join': () => game.join,

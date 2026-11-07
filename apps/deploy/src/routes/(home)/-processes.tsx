@@ -1,7 +1,6 @@
 import {Array, Boolean, Option, String} from 'effect'
 
 import {ChevronRight} from 'lucide-react'
-import {useState} from 'react'
 
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {cn} from '@deslop/components-web/utils'
@@ -12,7 +11,7 @@ import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 
 // One process: its mark, name and what it holds of the app's memory as a bar; small ones read muted.
-function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
+function Line(props: {depth: number; node: ProcessNode}) {
 	return (
 		<span
 			className={cn(
@@ -48,12 +47,7 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
 				onFalse: () => <span className="size-3.5 shrink-0" />,
 				onTrue: () => (
-					<ChevronRight
-						className={cn(
-							'text-muted-foreground size-3.5 shrink-0 transition-transform',
-							props.open === true && 'rotate-90'
-						)}
-					/>
+					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/process:rotate-90" />
 				)
 			})}
 		</span>
@@ -62,17 +56,16 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean}) {
 
 // A parent opens on its own, as a small accordion; the first level starts open, deeper ones closed.
 function Node(props: {depth: number; node: ProcessNode}) {
-	const [open, setOpen] = useState(props.depth === 0 && !props.node.small)
 	if (Array.isArrayEmpty(props.node.children)) {
 		return <Line depth={props.depth} node={props.node} />
 	}
 	return (
-		<Collapsible open={open} onOpenChange={setOpen}>
+		<Collapsible defaultOpen={props.depth === 0 && !props.node.small}>
 			<CollapsibleTrigger
-				className="hover:bg-muted/50 w-full cursor-pointer text-left"
+				className="group/process hover:bg-muted/50 w-full cursor-pointer text-left"
 				aria-label={`${props.node.name} processes`}
 			>
-				<Line depth={props.depth} node={props.node} open={open} />
+				<Line depth={props.depth} node={props.node} />
 			</CollapsibleTrigger>
 			<CollapsibleContent>
 				{Array.map(props.node.children, child => (

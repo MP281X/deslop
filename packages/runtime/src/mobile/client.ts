@@ -13,7 +13,7 @@ import {AppState} from 'react-native'
 import {RPC_PATH} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
-import {RpcAuth} from '#auth/lib/utils.ts'
+import {layerRpcAuthClient} from '#auth/lib/utils.ts'
 import type {AuthError} from '#auth/schema.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
@@ -39,7 +39,7 @@ export function layerSignedIn<R>(applicationName: string, token: Effect.Effect<s
 	return (server: string) =>
 		pipe(
 			layer(applicationName)(server),
-			Layer.provideMerge(RpcAuth.layerClient(token)),
+			Layer.provideMerge(layerRpcAuthClient(token)),
 			Layer.provide(FetchHttpClient.layer)
 		)
 }

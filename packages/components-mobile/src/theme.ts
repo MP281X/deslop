@@ -1,7 +1,7 @@
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
-// theme.css owns these values, in the iPhone's light or dark appearance; theme.test.ts fails when they drift.
+// theme.css owns these values; components-web's theme test checks both iPhone appearances against it.
 export const colors = {
 	background: DynamicColorIOS({dark: '#0a0a0a', light: '#ffffff'}),
 	border: DynamicColorIOS({dark: '#222222', light: '#e5e5e5'}),
@@ -13,7 +13,7 @@ export const colors = {
 	warning: DynamicColorIOS({dark: '#d0a215', light: '#ad8301'})
 }
 
-// Each app's primary is one of these hues, named in DESIGN.md; it tints the app's controls, live states and icon.
+// Each app's primary tints its controls, live states and icon.
 export const hues = {
 	blue: DynamicColorIOS({dark: '#4385be', light: '#205ea6'}),
 	orange: DynamicColorIOS({dark: '#da702c', light: '#bc5215'}),

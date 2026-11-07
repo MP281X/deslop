@@ -4,6 +4,7 @@ import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -15,11 +16,14 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/Rp
 
 // Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('scope.overview', undefined)),
-			Stream.unwrap,
+	RpcClient.runtime.atom(get =>
+		withoutDeniedData(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('scope.overview', undefined)),
+				Stream.unwrap
+			),
 			WebRuntime.reconnecting
 		)
 	)
@@ -39,9 +43,12 @@ export const arrivalsAtom = Atom.make(get => {
 	}
 })
 
-// One trace, keyed by its id and length, so a trace that grows while open is read again.
-export const traceAtom = Atom.family((key: string) =>
-	RpcClient.query('scope.trace', {id: Option.getOrElse(Array.head(String.split(key, ':')), () => key)})
+// An open trace follows arrivals, including late children and logs that do not change its duration.
+export const traceAtom = Atom.family((id: string) =>
+	RpcClient.runtime.atom(get => {
+		get(overviewAtom)
+		return withoutDeniedData(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id}))))
+	})
 )
 
 // The page's clock, so ages keep counting on a quiet page.
