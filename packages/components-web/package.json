@@ -28,6 +28,7 @@
 		"@effect/atom-react": "latest",
 		"@fontsource-variable/geist": "latest",
 		"@fontsource-variable/geist-mono": "latest",
+		"@phosphor-icons/react": "latest",
 		"@shadcn/react": "latest",
 		"class-variance-authority": "latest",
 		"clsx": "latest",

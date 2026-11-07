@@ -6,7 +6,7 @@
 	"style": "base-mira",
 	"menuColor": "default",
 	"menuAccent": "subtle",
-	"iconLibrary": "lucide",
+	"iconLibrary": "phosphor",
 
 	"rsc": false,
 	"tsx": true,
