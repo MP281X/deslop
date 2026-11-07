@@ -99,26 +99,29 @@ function exported(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
 	return statementDeclaration(statement)
 }
 
+// The schema definitions one top-level declaration holds: a const's schema or schema class, or a schema class itself.
+function definitions(context: Context, declaration: ReturnType<typeof exported>) {
+	if (declaration?.type === 'VariableDeclaration' && declaration.kind === 'const') {
+		return Array.flatMap(declaration.declarations, variable => {
+			if (variable.init === null) return Array.empty<ESTree.Node>()
+			if (variable.init.type === 'ClassExpression') {
+				return Array.filter([variable.init], node => extendsSchema({context, node}))
+			}
+			return Array.filter([variable.init], node => definesSchema({context, node}))
+		})
+	}
+	if (declaration?.type === 'ClassDeclaration' || declaration?.type === 'ClassExpression') {
+		return Array.filter([declaration], node => extendsSchema({context, node}))
+	}
+	return Array.empty<ESTree.Node>()
+}
+
 export const serviceSchemaFile = defineRule({
 	create: context => ({
 		Program: program => {
 			if (!SERVICE_PATH.test(context.filename) || SCHEMA_FILE.test(context.filename) || isTestFile(context)) return
-			for (const statement of program.body) {
-				const declaration = exported(statement)
-				if (declaration?.type === 'VariableDeclaration' && declaration.kind === 'const') {
-					for (const variable of declaration.declarations) {
-						if (variable.init !== null && definesSchema({context, node: variable.init})) report(context, variable)
-						if (variable.init?.type === 'ClassExpression' && extendsSchema({context, node: variable.init})) {
-							report(context, variable.init)
-						}
-					}
-				}
-				if (declaration?.type === 'ClassDeclaration' && extendsSchema({context, node: declaration})) {
-					report(context, declaration)
-				}
-				if (declaration?.type === 'ClassExpression' && extendsSchema({context, node: declaration})) {
-					report(context, declaration)
-				}
+			for (const node of Array.flatMap(program.body, statement => definitions(context, exported(statement)))) {
+				report(context, node)
 			}
 		}
 	}),
