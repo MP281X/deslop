@@ -1,4 +1,4 @@
-import {useAtomSet} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
@@ -22,9 +22,11 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {Problem} from '@deslop/components-mobile/problem'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {AppTitle} from '@deslop/components-mobile/title'
@@ -41,7 +43,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {primary, readAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import icon from '#routes/icon.png'
 import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
@@ -150,6 +152,7 @@ export function ChaptersRoute(props: {
 	series: Series
 }) {
 	const query = useNativeState('')
+	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
 	const needle = String.toLowerCase(String.trim(searched))
 	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
@@ -225,6 +228,12 @@ export function ChaptersRoute(props: {
 				<ToolbarItem placement="principal">
 					<AppTitle logo={icon} name="opm" />
 				</ToolbarItem>
+				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
+				{AsyncResult.isFailure(useAtomValue(chaptersAtom)) && (
+					<ToolbarItem placement="topBarLeading">
+						<Problem label="Chapters not updating" onRetry={refresh} />
+					</ToolbarItem>
+				)}
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session.machine} />
 				</ToolbarItem>

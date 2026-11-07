@@ -2,7 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
+import {CopyIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -335,8 +335,7 @@ function AddDialog() {
 
 function Home() {
 	const send = useAtomSet(addAtom.send)
-	const [copy, copyText] = useAtom(copyAtom(ENDPOINT))
-	const copied = AsyncResult.isWaiting(copy)
+	const copyText = useAtomSet(copyAtom(ENDPOINT))
 	const servers = useAtomValue(serversAtom)
 	useAtomValue(problemSinceAtom(serversAtom))
 	const value = AsyncResult.value(servers)
@@ -381,14 +380,7 @@ function Home() {
 				onFalse: () => [],
 				onTrue: () => [{icon: <PlusIcon />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
 			}),
-			{
-				icon: Boolean.match(copied, {
-					onFalse: () => <CopyIcon />,
-					onTrue: () => <CheckIcon className="text-primary" />
-				}),
-				label: 'Copy MCP URL',
-				run: () => copyText()
-			}
+			{icon: <CopyIcon />, label: 'Copy MCP URL', run: () => copyText()}
 		],
 		label: 'Actions'
 	}

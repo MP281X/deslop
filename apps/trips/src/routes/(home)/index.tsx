@@ -14,6 +14,7 @@ import {
 	lineLimit,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
+	padding,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
@@ -22,6 +23,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {ClipboardSheet} from '@deslop/components-mobile/sheet'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
@@ -187,6 +189,12 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	}
 	return (
 		<>
+			{/* The bookings on screen stay through an outage; a dot above them marks that they stopped updating. */}
+			{AsyncResult.isFailure(loaded) && (
+				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
+					<Problem label="Bookings not updating" onRetry={refresh} />
+				</HStack>
+			)}
 			{Array.isReadonlyArrayEmpty(shown.success) && (
 				<Empty modifiers={[accessibilityLabel('No bookings')]}>
 					<EmptyHeader>

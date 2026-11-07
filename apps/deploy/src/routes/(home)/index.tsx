@@ -33,12 +33,11 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
-import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Progress, ProgressLabel} from '@deslop/components-web/ui/progress'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
-import {cn} from '@deslop/components-web/utils'
+import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -1013,7 +1012,7 @@ function RangeMenu(props: {
 }
 
 function Home() {
-	const isMobile = useIsMobile()
+	const isMobile = useMediaQuery('(width < 48rem)')
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	function view(next: Partial<Search>) {

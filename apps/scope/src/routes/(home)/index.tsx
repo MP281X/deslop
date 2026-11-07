@@ -19,7 +19,7 @@ import {
 import {CaretRightIcon, GlobeIcon, HardDrivesIcon, DeviceMobileIcon, DesktopIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useEffect, useRef, useSyncExternalStore} from 'react'
+import {Suspense, useEffect, useRef} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -34,7 +34,7 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
-import {cn} from '@deslop/components-web/utils'
+import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -46,8 +46,6 @@ import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#service
 
 // The side an operation starts on, in words, so a search or a row can name it.
 const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
-
-const COMPACT_LAYOUT = '(width < 80rem)'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -748,9 +746,7 @@ function TracesPane(props: {
 function TracePane(props: {
 	className?: string
 	detailOnly?: boolean
-	now: number
 	onPickSpan: (id: string) => void
-	pending: boolean
 	pickedSpan?: string
 	trace?: OperationTrace
 }) {
@@ -811,15 +807,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function Home() {
 	// Below desktop width, the same selection navigates one screen at a time.
-	const isMobile = useSyncExternalStore(
-		onChange => {
-			const query = window.matchMedia(COMPACT_LAYOUT)
-			query.addEventListener('change', onChange)
-			return () => query.removeEventListener('change', onChange)
-		},
-		() => window.matchMedia(COMPACT_LAYOUT).matches,
-		() => false
-	)
+	const isMobile = useMediaQuery('(width < 80rem)')
 	const navigation = navigationOf(route.useSearch())
 	const navigate = route.useNavigate()
 	function send(event: NavigationEvent) {
@@ -1025,10 +1013,8 @@ function Home() {
 												</div>
 												<TracePane
 													className="min-w-0"
-													now={now}
 													onPickSpan={selectSpan}
 													pickedSpan={pickedSpan}
-													pending={Option.isNone(value)}
 													trace={Option.getOrUndefined(activeTrace)}
 												/>
 											</div>
@@ -1057,10 +1043,8 @@ function Home() {
 														<TracePane
 															className="min-h-0 flex-1"
 															detailOnly={pane === 'Span'}
-															now={now}
 															onPickSpan={selectSpan}
 															pickedSpan={pickedSpan}
-															pending={Option.isNone(value)}
 															trace={Option.getOrUndefined(activeTrace)}
 														/>
 													))

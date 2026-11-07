@@ -35,7 +35,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 
 ## Components and recovery
 
-- Compose the public shadcn `base-mira` primitives in `packages/components-web/src/ui/` as shipped: they stay read-only, `theme.css` sets only tokens, and a call site's `className` only places a primitive, never restyles it. `components.json` selects Phosphor. Refresh through the CLI as `AGENTS.md` describes. Native components mirror their names over `@expo/ui` SwiftUI and take `modifiers` where web components take `className`.
+- Compose the public shadcn `base-mira` primitives in `packages/components-web/src/ui/` as shipped: they stay read-only, `theme.css` sets tokens and the shell every app shares (a full-height document, list-row dividers, iOS input size) but restyles no primitive, and a call site's `className` only places a primitive, never restyles it. `components.json` selects Phosphor. Refresh through the CLI as `AGENTS.md` describes. Native components mirror their names over `@expo/ui` SwiftUI and take `modifiers` where web components take `className`.
 - Phosphor replaces Lucide: regular at 16px and below, light at 20px and above. Keep accessible names on icon controls; hover/focus names unfamiliar kinds. Native system symbols retain native behaviour.
 - Every page action lives in the stock `CommandDialog` palette, opened from the search field centred on the page in the bar or ⌘K; the bar holds only controls that choose what the page shows. Command entries always have an icon; shortcuts use `CommandShortcut`.
 - Loading uses local Suspense with geometry-matched `ItemListSkeleton` or redacted native `Item` parts. Local session reads show the blank shell; no standalone spinner or fake progress. Pressed controls may show a spinner.
