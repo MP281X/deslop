@@ -905,6 +905,18 @@ function Home() {
 					onTrue: () => [otherApps('scope')]
 				})}
 			/>
+			{AsyncResult.isFailure(overview) && Option.isSome(value) && Option.isNone(authFailure) && (
+				<Alert variant="destructive" className="mx-3 my-2">
+					<OctagonAlert />
+					<AlertTitle>Cannot update live operations</AlertTitle>
+					<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
+						{formatError(overview.cause)}
+						<Button variant="outline" size="sm" onClick={refresh}>
+							Try again
+						</Button>
+					</AlertDescription>
+				</Alert>
+			)}
 			{Option.match(authFailure, {
 				onNone: () =>
 					Option.match(value, {

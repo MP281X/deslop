@@ -16,14 +16,15 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/Rp
 
 // Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
-	withoutDeniedData(
-		RpcClient.runtime.atom(
+	RpcClient.runtime.atom(get =>
+		withoutDeniedData(
+			get,
 			pipe(
 				RpcClient,
 				Effect.map(client => client('scope.overview', undefined)),
-				Stream.unwrap,
-				WebRuntime.reconnecting
-			)
+				Stream.unwrap
+			),
+			WebRuntime.reconnecting
 		)
 	)
 )
@@ -44,12 +45,10 @@ export const arrivalsAtom = Atom.make(get => {
 
 // An open trace follows arrivals, including late children and logs that do not change its duration.
 export const traceAtom = Atom.family((id: string) =>
-	withoutDeniedData(
-		RpcClient.runtime.atom(get => {
-			get(overviewAtom)
-			return Effect.flatMap(RpcClient, client => client('scope.trace', {id}))
-		})
-	)
+	RpcClient.runtime.atom(get => {
+		get(overviewAtom)
+		return withoutDeniedData(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id}))))
+	})
 )
 
 // The page's clock, so ages keep counting on a quiet page.

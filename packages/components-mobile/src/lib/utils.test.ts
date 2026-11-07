@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, Fiber, Function, Option, Queue, Ref, Schema, Stream, pipe} from 'effect'
+import {Array, Clock, Effect, Fiber, Function, Option, Queue, Record, Ref, Schedule, Schema, Stream, pipe} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
@@ -14,6 +14,10 @@ import {readClipboard} from '#lib/clipboard.ts'
 import {cachedList} from '#lib/utils.ts'
 
 const clipboard = vi.hoisted(() => ({count: 1}))
+const disk = vi.hoisted(() => {
+	const files: Record<string, string> = {}
+	return {files}
+})
 vi.mock('@expo/ui/swift-ui/modifiers', () => ({createModifier: () => undefined}))
 vi.mock('expo', () => ({requireNativeModule: () => ({clipboardChangeCount: () => clipboard.count})}))
 vi.mock('expo-asset', () => ({Asset: {}}))
@@ -21,22 +25,27 @@ vi.mock('react-native', () => ({Alert: {}}))
 vi.mock('expo-file-system', () => ({
 	File: class {
 		name = 'list.json'
-		uri = 'file:///list.json'
-		text = '[{"id":"old"}]'
-		exists = true
+		uri: string
+		constructor(uri: string) {
+			this.uri = uri
+		}
+		get exists() {
+			return disk.files[this.uri] !== undefined
+		}
 		textSync() {
-			if (!this.exists) throw new TypeError('File not found')
-			return this.text
+			const text = disk.files[this.uri]
+			if (text === undefined) throw new TypeError('File not found')
+			return text
 		}
 		writeSync(text: string) {
-			this.exists = true
-			this.text = text
+			disk.files[this.uri] = text
 		}
 		delete() {
-			this.exists = false
+			disk.files = Record.remove(disk.files, this.uri)
 		}
 		moveSync(file: {writeSync: (text: string) => void}) {
-			file.writeSync(this.text)
+			file.writeSync(this.textSync())
+			this.delete()
 		}
 	}
 }))
@@ -61,18 +70,38 @@ it.layer(AtomRegistry.layer)(test => {
 			name: 'keeps the cache during a temporary auth outage',
 			saved: false
 		},
+		{
+			error: AuthError.make({error: 'invalid_grant', message: 'Renew'}),
+			kept: false,
+			name: 'invalidates the cache before renewal swallows a refusal',
+			saved: false
+		},
 		{error: 'Offline', kept: true, name: 'keeps the cache during an ordinary outage', saved: false}
 	])('$name', scenario =>
 		Effect.scoped(
 			Effect.gen(function* () {
+				const clock = yield* Clock.Clock
 				const file = new File('file:///list.json')
+				file.writeSync('[{"id":"old"}]')
 				const incoming = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError | string>>()
 				const list = Atom.make(get =>
-					cachedList(
-						get,
-						file,
-						Schema.Struct({id: Schema.String}),
-						pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity))
+					pipe(
+						cachedList(
+							get,
+							file,
+							Schema.Struct({id: Schema.String}),
+							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)),
+							stream =>
+								Stream.retry(stream, $ =>
+									pipe(
+										$(Schedule.spaced('1 second')),
+										Schedule.while(
+											metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant'
+										)
+									)
+								)
+						),
+						Stream.provideService(Clock.Clock, clock)
 					)
 				)
 				const registry = yield* AtomRegistry.AtomRegistry
@@ -87,7 +116,10 @@ it.layer(AtomRegistry.layer)(test => {
 				)
 				yield* Queue.offer(incoming, Effect.succeed([{id: 'fresh'}]))
 				yield* Fiber.join(updated)
-				if (scenario.saved) yield* TestClock.adjust('3 seconds')
+				if (scenario.saved) {
+					yield* TestClock.adjust('3 seconds')
+					assert.strictEqual(file.textSync(), '[{"id":"fresh"}]')
+				}
 				const failed = yield* Effect.forkChild(
 					pipe(AtomRegistry.toStream(registry, list), Stream.filter(AsyncResult.isFailure), Stream.runHead)
 				)
@@ -111,6 +143,94 @@ it.layer(AtomRegistry.layer)(test => {
 				cold.mount(restarted)
 				yield* Queue.take(opened)
 				assert.strictEqual(Option.isSome(AsyncResult.value(cold.get(restarted))), scenario.kept)
+			})
+		)
+	)
+
+	test.effect('a denial invalidates pending writes from every registry sharing the file', () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const clock = yield* Clock.Clock
+				const first = yield* Effect.acquireRelease(
+					Effect.sync(() => AtomRegistry.make()),
+					registry => Effect.sync(() => registry.dispose())
+				)
+				const second = yield* Effect.acquireRelease(
+					Effect.sync(() => AtomRegistry.make()),
+					registry => Effect.sync(() => registry.dispose())
+				)
+				const a = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
+				const b = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
+				const file = new File('file:///shared.json')
+				file.writeSync('[{"id":"old"}]')
+				const readA = Atom.make(get =>
+					pipe(
+						cachedList(
+							get,
+							file,
+							Schema.Struct({id: Schema.String}),
+							pipe(Stream.fromQueue(a), Stream.mapEffect(Function.identity))
+						),
+						Stream.provideService(Clock.Clock, clock)
+					)
+				)
+				const readB = Atom.make(get =>
+					pipe(
+						cachedList(
+							get,
+							new File(file.uri),
+							Schema.Struct({id: Schema.String}),
+							pipe(Stream.fromQueue(b), Stream.mapEffect(Function.identity))
+						),
+						Stream.provideService(Clock.Clock, clock)
+					)
+				)
+				first.mount(readA)
+				second.mount(readB)
+				const updated = yield* Effect.forkChild(
+					pipe(
+						AtomRegistry.toStream(second, readB),
+						Stream.filter(result => Option.exists(AsyncResult.value(result), items => items[0]?.id === 'pending')),
+						Stream.runHead
+					)
+				)
+				yield* Queue.offer(b, Effect.succeed([{id: 'pending'}]))
+				yield* Fiber.join(updated)
+				const denied = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(first, readA), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+				)
+				yield* Queue.offer(a, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				yield* Fiber.join(denied)
+				assert.isFalse(file.exists)
+				yield* TestClock.adjust('3 seconds')
+				assert.isFalse(new File(file.uri).exists)
+				const cold = yield* Effect.acquireRelease(
+					Effect.sync(() => AtomRegistry.make()),
+					registry => Effect.sync(() => registry.dispose())
+				)
+				const opened = yield* Queue.unbounded<void>()
+				const restarted = Atom.make(get =>
+					cachedList(
+						get,
+						new File(file.uri),
+						Schema.Struct({id: Schema.String}),
+						Stream.concat(Stream.drain(Stream.fromEffect(Queue.offer(opened, undefined))), Stream.never)
+					)
+				)
+				cold.mount(restarted)
+				yield* Queue.take(opened)
+				assert.isTrue(Option.isNone(AsyncResult.value(cold.get(restarted))))
+				const fresh = yield* Effect.forkChild(
+					pipe(
+						AtomRegistry.toStream(second, readB),
+						Stream.filter(result => Option.exists(AsyncResult.value(result), items => items[0]?.id === 'authorized')),
+						Stream.runHead
+					)
+				)
+				yield* Queue.offer(b, Effect.succeed([{id: 'authorized'}]))
+				yield* Fiber.join(fresh)
+				yield* TestClock.adjust('3 seconds')
+				assert.strictEqual(new File(file.uri).textSync(), '[{"id":"authorized"}]')
 			})
 		)
 	)
@@ -173,6 +293,7 @@ it.layer(AtomRegistry.layer)(test => {
 			const opened = yield* Queue.unbounded<void>()
 			const resumed = Atom.make(0)
 			const file = new File('file:///list.json')
+			file.writeSync('[{"id":"old"}]')
 			const list = Atom.make(get => {
 				get(resumed)
 				return cachedList(
@@ -206,6 +327,7 @@ it.layer(AtomRegistry.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const signedIn = Atom.make(false)
 			const file = new File('file:///list.json')
+			file.writeSync('[{"id":"old"}]')
 			const list = Atom.make(get => {
 				if (!get(signedIn)) return Stream.never
 				return cachedList(get, file, Schema.Struct({id: Schema.String}), Stream.never)

@@ -19,7 +19,7 @@ import {RouterProvider, createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, AnyRouter, RouterOptions} from '@tanstack/react-router'
 import {FetchHttpClient} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
-import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
+import {Atom, AtomRegistry} from 'effect/reactivity'
 import * as Rpc from 'effect/rpc'
 import {Socket} from 'effect/socket'
 import {StrictMode} from 'react'
@@ -121,14 +121,9 @@ export function appIcons(icons: Record<string, string>) {
 }
 
 // A live stream recovers from transport and authorization outages, never a refusal or domain failure.
-export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>, get?: Atom.AtomContext) {
+export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
 	return pipe(
 		stream,
-		Stream.tapCause(cause =>
-			Effect.sync(() => {
-				get?.setSelf(AsyncResult.failureWithPrevious(cause, {previous: get.self<AsyncResult.AsyncResult<A, E>>()}))
-			})
-		),
 		Stream.retry($ =>
 			pipe(
 				$(Schedule.spaced('1 second')),

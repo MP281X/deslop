@@ -1,4 +1,4 @@
-import {Effect, Option, Stream, pipe} from 'effect'
+import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -18,19 +18,22 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/R
 export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
 
 export const inventoryAtom = Atom.keepAlive(
-	withoutDeniedData(
-		RpcClient.runtime.atom(get =>
+	RpcClient.runtime.atom(get =>
+		withoutDeniedData(
+			get,
 			pipe(
 				RpcClient,
 				Effect.map(client => client('deploy.inventory', undefined)),
 				Stream.unwrap,
-				Stream.tapError(error =>
+				Stream.tapCause(cause =>
 					Effect.sync(() => {
-						if (isDenied(error)) get.set(exposeTargetAtom, Option.none())
+						if (Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))) {
+							get.set(exposeTargetAtom, Option.none())
+						}
 					})
-				),
-				stream => WebRuntime.reconnecting(stream, get)
-			)
+				)
+			),
+			WebRuntime.reconnecting
 		)
 	)
 )
@@ -58,15 +61,16 @@ export const runAtom = Atom.family((_id: string) =>
 export const minutesAtom = Atom.make<HistoryQuery['minutes']>(60)
 
 // One reader retains the last range and its samples while a newer request connects.
-export const metricsAtom = withoutDeniedData(
-	RpcClient.runtime.atom(get => {
-		const minutes = get(minutesAtom)
-		return pipe(
+export const metricsAtom = RpcClient.runtime.atom(get => {
+	const minutes = get(minutesAtom)
+	return withoutDeniedData(
+		get,
+		pipe(
 			RpcClient,
 			Effect.map(client => client('deploy.metrics', {minutes})),
 			Stream.unwrap,
-			Stream.map(histories => ({histories, minutes})),
-			stream => WebRuntime.reconnecting(stream, get)
-		)
-	})
-)
+			Stream.map(histories => ({histories, minutes}))
+		),
+		WebRuntime.reconnecting
+	)
+})

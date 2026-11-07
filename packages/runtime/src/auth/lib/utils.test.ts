@@ -1,8 +1,23 @@
 import {assert, it} from '@effect/vitest'
 
-import {Cause, ConfigProvider, Effect, Exit, Option, pipe} from 'effect'
+import {
+	Cause,
+	Clock,
+	ConfigProvider,
+	Effect,
+	Exit,
+	Fiber,
+	Function,
+	Option,
+	Queue,
+	Schedule,
+	Schema,
+	Stream,
+	pipe
+} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
+import {TestClock} from 'effect/testing'
 
 import {adminIds, isAdmin, isDenied, needsSignIn, rejected, withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
@@ -11,124 +26,120 @@ function adminsWith(env: Record<string, string>) {
 	return pipe(adminIds, Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)))
 }
 
-it('does not resurrect denied data after another failure, and accepts a fresh success', () => {
-	const initial = AsyncResult.success('private')
-	const source = Atom.keepAlive(Atom.make<AsyncResult.AsyncResult<string, AuthError | string>>(initial))
-	const protectedData = withoutDeniedData(source)
-	const registry = AtomRegistry.make()
-	try {
-		const dispose = registry.mount(protectedData)
-		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('private'))
-		const denied = AsyncResult.failWithPrevious(AuthError.make({error: 'access_denied', message: 'Denied'}), {
-			previous: Option.some(initial)
-		})
-		registry.set(source, denied)
-		registry.set(source, AsyncResult.waiting(denied))
-		registry.set(
-			source,
-			AsyncResult.failWithPrevious<string, AuthError | string>('Retry failed', {previous: Option.some(denied)})
+const readFixture = Effect.gen(function* () {
+	const clock = yield* Clock.Clock
+	const incoming = yield* Queue.unbounded<Effect.Effect<string, AuthError | string>>()
+	const empty = Atom.make(false)
+	const atom = Atom.make(get => {
+		if (get(empty)) return withoutDeniedData(get, Stream.empty)
+		return pipe(
+			withoutDeniedData(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
+				Stream.retry(stream, $ =>
+					pipe(
+						$(Schedule.spaced('1 second')),
+						Schedule.while(metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant')
+					)
+				)
+			),
+			Stream.provideService(Clock.Clock, clock)
 		)
-		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.none())
-		assert.isTrue(Option.exists(AsyncResult.error(registry.get(protectedData)), isDenied))
-		dispose()
-		const rejoin = registry.mount(protectedData)
-		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.none())
-		const fresh = AsyncResult.success('fresh')
-		registry.set(source, fresh)
-		registry.set(source, AsyncResult.failWithPrevious('Later outage', {previous: Option.some(fresh)}))
-		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('fresh'))
-		rejoin()
-	} finally {
-		registry.dispose()
+	})
+	const registry = yield* AtomRegistry.AtomRegistry
+	yield* Atom.mount(atom)
+	return {
+		atom,
+		changed: () => Effect.forkChild(pipe(AtomRegistry.toStream(registry, atom), Stream.drop(1), Stream.runHead)),
+		empty,
+		incoming,
+		registry
 	}
 })
 
-it('keeps an initial denial through waiting and unrelated failures without a retained success', () => {
-	const source = Atom.make<AsyncResult.AsyncResult<string, AuthError | string>>(AsyncResult.initial())
-	const protectedData = withoutDeniedData(source)
-	const registry = AtomRegistry.make()
-	try {
-		registry.mount(protectedData)
-		registry.set(source, AsyncResult.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
-		registry.set(source, AsyncResult.initial(true))
-		assert.isTrue(Option.exists(AsyncResult.error(registry.get(protectedData)), isDenied))
-		registry.set(source, AsyncResult.fail('Offline'))
-		assert.isTrue(Option.exists(AsyncResult.error(registry.get(protectedData)), isDenied))
-		registry.set(source, AsyncResult.success('fresh'))
-		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('fresh'))
-	} finally {
-		registry.dispose()
-	}
-})
-
-it('retains authorized data during a temporary auth outage and an ordinary failure', () => {
-	const initial = AsyncResult.success('private')
-	const source = Atom.make<AsyncResult.AsyncResult<string, AuthError | string>>(initial)
-	const protectedData = withoutDeniedData(source)
-	const registry = AtomRegistry.make()
-	try {
-		registry.mount(protectedData)
-		const outage = AsyncResult.failWithPrevious(
-			AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}),
-			{previous: Option.some(initial)}
+it.layer(AtomRegistry.layer)(test => {
+	test.effect('keeps an initial refusal through an empty retry without any previous data', () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const env = yield* readFixture
+				const refused = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				yield* Fiber.join(refused)
+				env.registry.set(env.empty, true)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+			})
 		)
-		registry.set(source, outage)
-		assert.strictEqual(registry.get(protectedData), outage)
-		registry.set(
-			source,
-			AsyncResult.failWithPrevious<string, AuthError | string>('Offline', {previous: Option.some(outage)})
-		)
-		assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.some('private'))
-	} finally {
-		registry.dispose()
-	}
-})
+	)
 
-it('keeps authorization invalidation local to its registry', () => {
-	const initial = AsyncResult.success('private')
-	const source = Atom.make<AsyncResult.AsyncResult<string, AuthError>>(initial)
-	const protectedData = withoutDeniedData(source)
-	const first = AtomRegistry.make()
-	const second = AtomRegistry.make()
-	try {
-		first.mount(protectedData)
-		second.mount(protectedData)
-		const denied = AsyncResult.failWithPrevious(AuthError.make({error: 'access_denied', message: 'Denied'}), {
-			previous: Option.some(initial)
-		})
-		first.set(source, denied)
-		assert.strictEqual(first.get(source), denied)
-		second.set(source, AsyncResult.failure(Cause.die('Offline'), {previousSuccess: Option.some(initial)}))
-		assert.deepStrictEqual(AsyncResult.value(first.get(protectedData)), Option.none())
-		assert.deepStrictEqual(AsyncResult.value(second.get(protectedData)), Option.some('private'))
-	} finally {
-		first.dispose()
-		second.dispose()
-	}
-})
-
-it('invalidates retained data with any authorization failure in a combined cause', () => {
-	const denied = Cause.makeFailReason(AuthError.make({error: 'access_denied', message: 'Denied'}))
-	const offline = Cause.makeFailReason('Offline')
-	for (const reasons of [
-		[denied, offline],
-		[offline, denied]
-	]) {
-		const initial = AsyncResult.success('private')
-		const source = Atom.make<AsyncResult.AsyncResult<string, AuthError | string>>(initial)
-		const protectedData = withoutDeniedData(source)
-		const registry = AtomRegistry.make()
-		try {
-			registry.mount(protectedData)
-			registry.set(
-				source,
-				AsyncResult.failure(Cause.fromReasons<AuthError | string>(reasons), {previousSuccess: Option.some(initial)})
-			)
-			assert.deepStrictEqual(AsyncResult.value(registry.get(protectedData)), Option.none())
-		} finally {
-			registry.dispose()
+	test.effect.each([
+		{
+			cause: Cause.fail<AuthError | string>(AuthError.make({error: 'access_denied', message: 'Denied'})),
+			name: 'a terminal refusal'
+		},
+		{
+			cause: Cause.fail<AuthError | string>(AuthError.make({error: 'invalid_grant', message: 'Renew'})),
+			name: 'a refused bearer swallowed by renewal'
+		},
+		{
+			cause: Cause.fromReasons<AuthError | string>([
+				Cause.makeFailReason('Offline'),
+				Cause.makeFailReason(AuthError.make({error: 'access_denied', message: 'Denied'}))
+			]),
+			name: 'a denial after an ordinary error in a combined cause'
 		}
-	}
+	])('invalidates data before recovery after $name, until a real authorized emission', scenario =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const env = yield* readFixture
+				const first = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.succeed('private'))
+				yield* Fiber.join(first)
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+				const refusal = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.failCause(scenario.cause))
+				yield* Fiber.join(refusal)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+				yield* TestClock.adjust('1 second')
+				env.registry.set(env.empty, true)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+				env.registry.set(env.empty, false)
+				const failed = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.fail('Later outage'))
+				yield* Fiber.join(failed)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+				env.registry.refresh(env.atom)
+				const fresh = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.succeed('private'))
+				yield* Fiber.join(fresh)
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+				const outage = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.fail('Ordinary outage'))
+				yield* Fiber.join(outage)
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+			})
+		)
+	)
+
+	test.effect('retains authorized data during a temporary authorization outage', () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const env = yield* readFixture
+				const first = yield* env.changed()
+				yield* Queue.offer(env.incoming, Effect.succeed('private'))
+				yield* Fiber.join(first)
+				const outage = yield* env.changed()
+				yield* Queue.offer(
+					env.incoming,
+					Effect.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
+				)
+				yield* Fiber.join(outage)
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+				assert.isFalse(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+			})
+		)
+	)
 })
 
 it('redirects missing credentials, not authorization outages or denied access', () => {

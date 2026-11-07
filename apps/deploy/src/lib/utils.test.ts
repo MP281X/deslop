@@ -4,7 +4,7 @@ import {createServer} from 'node:http'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Fiber, Function, Layer, Match, Option, Queue, Ref, Stream, pipe} from 'effect'
+import {Array, Cause, Context, Effect, Fiber, Function, Layer, Match, Option, Queue, Ref, Stream, pipe} from 'effect'
 
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
@@ -26,11 +26,11 @@ const fixture = Effect.gen(function* () {
 	const closed = yield* Queue.unbounded<number>()
 	const hour = yield* Queue.unbounded<MachineHistory[]>()
 	const minute = yield* Queue.unbounded<MachineHistory[]>()
-	const authorization = yield* Ref.make(Option.none<AuthError>())
+	const authorization = yield* Ref.make(Option.none<Cause.Cause<AuthError>>())
 	function authenticate() {
 		return Effect.flatMap(
 			Ref.get(authorization),
-			Option.match({onNone: () => Effect.succeed(DEVELOPER), onSome: Effect.fail})
+			Option.match({onNone: () => Effect.succeed(DEVELOPER), onSome: Effect.failCause})
 		)
 	}
 	const inventory = yield* Queue.unbounded<Effect.Effect<Snapshot, DeployError>>()
@@ -157,7 +157,10 @@ it.layer(NodeServices.layer)(test => {
 				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
 				yield* Queue.offer(env.hour, [sample])
 				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				yield* Ref.set(env.authorization, Option.some(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				yield* Ref.set(
+					env.authorization,
+					Option.some(Cause.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				)
 				env.registry.set(minutesAtom, 10)
 				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
 				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(metricsAtom))))
@@ -191,7 +194,7 @@ it.layer(NodeServices.layer)(test => {
 				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
 				yield* Ref.set(
 					env.authorization,
-					Option.some(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
+					Option.some(Cause.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'})))
 				)
 				env.registry.set(minutesAtom, 1)
 				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
@@ -238,7 +241,15 @@ it.layer(NodeServices.layer)(test => {
 				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
 				assert.deepStrictEqual(env.registry.get(exposeTargetAtom), Option.some(port))
 				assert.isTrue(Option.isSome(AsyncResult.value(env.registry.get(inventoryAtom))))
-				yield* Ref.set(env.authorization, Option.some(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				yield* Ref.set(
+					env.authorization,
+					Option.some(
+						Cause.fromReasons([
+							Cause.makeFailReason(AuthError.make({error: 'temporarily_unavailable', message: 'Unavailable'})),
+							Cause.makeFailReason(AuthError.make({error: 'access_denied', message: 'Denied'}))
+						])
+					)
+				)
 				env.registry.refresh(inventoryAtom)
 				yield* pipe(
 					Stream.fromQueue(updates),
@@ -247,6 +258,11 @@ it.layer(NodeServices.layer)(test => {
 				)
 				assert.deepStrictEqual(env.registry.get(exposeTargetAtom), Option.none())
 				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(inventoryAtom))))
+				yield* Ref.set(env.authorization, Option.none())
+				env.registry.refresh(inventoryAtom)
+				yield* Queue.offer(env.inventory, Effect.succeed(Snapshot.make({items: [], sources: [], time: 2})))
+				yield* pipe(Stream.fromQueue(updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
+				assert.deepStrictEqual(env.registry.get(exposeTargetAtom), Option.none())
 			})
 		)
 	)

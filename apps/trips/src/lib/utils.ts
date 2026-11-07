@@ -106,9 +106,9 @@ export const bookingsAtom = Atom.keepAlive(
 			pipe(
 				Stream.unwrap(Effect.map(RpcClient, client => client('bookings.watch', undefined))),
 				Stream.scan(Array.empty<Booking>, apply),
-				Stream.drop(1),
-				session.renewing
-			)
+				Stream.drop(1)
+			),
+			session.renewing
 		)
 	})
 )

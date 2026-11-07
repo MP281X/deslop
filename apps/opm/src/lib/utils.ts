@@ -55,9 +55,9 @@ export const chaptersAtom = Atom.keepAlive(
 			pipe(
 				Stream.unwrap(Effect.map(RpcClient, client => client('library.watch', undefined))),
 				Stream.scan(Array.empty<ChapterItem>, apply),
-				Stream.drop(1),
-				session.renewing
-			)
+				Stream.drop(1)
+			),
+			session.renewing
 		)
 	})
 )

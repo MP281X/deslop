@@ -122,9 +122,9 @@ export const notesAtom = Atom.keepAlive(
 			pipe(
 				Stream.unwrap(Effect.map(RpcClient, client => client('notes.watch', undefined))),
 				Stream.scan(Array.empty<NoteItem>, apply),
-				Stream.drop(1),
-				session.renewing
-			)
+				Stream.drop(1)
+			),
+			session.renewing
 		)
 	})
 )
@@ -137,19 +137,20 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 export const queryAtom = Atom.make('')
 
 // Debounce typing once, then the server keeps the same full-text query current as notes change.
-export const searchAtom = withoutDeniedData(
-	RpcClient.runtime.atom(get => {
-		const query = String.trim(get(queryAtom))
-		if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
-		return pipe(
+export const searchAtom = RpcClient.runtime.atom(get => {
+	const query = String.trim(get(queryAtom))
+	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
+	return withoutDeniedData(
+		get,
+		pipe(
 			Effect.sleep('250 millis'),
 			Effect.andThen(Effect.map(RpcClient, client => client('notes.search', {query}))),
 			Stream.unwrap,
-			Stream.map(ids => Option.some(HashSet.fromIterable(ids))),
-			session.renewing
-		)
-	})
-)
+			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
+		),
+		session.renewing
+	)
+})
 
 const images = new Directory(Paths.cache, 'downloads')
 

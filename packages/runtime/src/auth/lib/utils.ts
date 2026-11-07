@@ -1,8 +1,22 @@
-import {Array, Cause, Config, Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Cause,
+	Config,
+	Context,
+	Effect,
+	Function,
+	MutableRef,
+	Option,
+	Predicate,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {Headers, HttpClient} from 'effect/http'
-import {AsyncResult, Atom} from 'effect/reactivity'
-import type {AtomRegistry} from 'effect/reactivity'
+import {AsyncResult} from 'effect/reactivity'
+import type {Atom, AtomRegistry} from 'effect/reactivity'
 import {RpcMiddleware} from 'effect/rpc'
 
 import type {User} from '#auth/schema.ts'
@@ -89,41 +103,54 @@ export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>
 	)
 }
 
-// Only fresh authorized data can clear a denial; later outages must not restore its retained value or hide the refusal.
-export function withoutDeniedData<A, E>(source: Atom.Atom<AsyncResult.AsyncResult<A, E>>) {
-	const denied = new WeakMap<AtomRegistry.AtomRegistry, Cause.Cause<E>>()
+// Observe the read before recovery can swallow its refusal. Only a real emission restores authorization, never empty completion.
+export function withoutDeniedData<A, E, R>(
+	get: Atom.AtomContext,
+	live: Stream.Stream<A, E, R>,
+	recover: (stream: Stream.Stream<A, E, R>) => Stream.Stream<A, E, R | AtomRegistry.AtomRegistry> = Function.identity
+) {
+	function denials(cause: Cause.Cause<E>) {
+		const reasons = Array.filter(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+		if (Array.isArrayEmpty(reasons)) return Option.none()
+		return Option.some(Cause.fromReasons(reasons))
+	}
+	const denied = MutableRef.make(
+		pipe(
+			get.self<AsyncResult.AsyncResult<A, E>>(),
+			Option.filter(AsyncResult.isFailure),
+			Option.flatMap(result => denials(result.cause))
+		)
+	)
+	function gated(cause: Cause.Cause<E>) {
+		return Option.match(MutableRef.get(denied), {
+			onNone: () => cause,
+			onSome: refusal =>
+				Cause.fromReasons([
+					...refusal.reasons,
+					...Array.filter(cause.reasons, reason => !Cause.isFailReason(reason) || !isDenied(reason.error))
+				])
+		})
+	}
+	const observed = pipe(
+		live,
+		Stream.tapCause(cause =>
+			Effect.sync(() => {
+				MutableRef.update(denied, previous => Option.orElse(denials(cause), () => previous))
+				const failure = gated(cause)
+				if (Option.isSome(MutableRef.get(denied))) {
+					get.setSelf(AsyncResult.failure(failure))
+					return
+				}
+				get.setSelf(AsyncResult.failureWithPrevious(failure, {previous: get.self<AsyncResult.AsyncResult<A, E>>()}))
+			})
+		)
+	)
 	return pipe(
-		Atom.transform(
-			source,
-			get => {
-				const result = get(source)
-				if (AsyncResult.isSuccess(result)) {
-					denied.delete(get.registry)
-					return result
-				}
-				if (AsyncResult.isFailure(result)) {
-					const refusals = Array.filter(
-						result.cause.reasons,
-						reason => Cause.isFailReason(reason) && isDenied(reason.error)
-					)
-					if (Array.isArrayNonEmpty(refusals)) denied.set(get.registry, Cause.fromReasons(refusals))
-				}
-				return Option.match(Option.fromUndefinedOr(denied.get(get.registry)), {
-					onNone: () => result,
-					onSome: refusal => {
-						if (!AsyncResult.isFailure(result)) return AsyncResult.failure(refusal, {waiting: result.waiting})
-						return AsyncResult.failure(
-							Cause.fromReasons([
-								...refusal.reasons,
-								...Array.filter(result.cause.reasons, reason => !Cause.isFailReason(reason) || !isDenied(reason.error))
-							]),
-							{waiting: result.waiting}
-						)
-					}
-				})
-			},
-			{initialValueTarget: source}
-		),
-		Atom.setLazy(false)
+		recover(observed),
+		Stream.tap(() => Effect.sync(() => MutableRef.set(denied, Option.none()))),
+		Stream.catchCause(cause => Stream.failCause(gated(cause))),
+		Stream.concat(
+			Stream.suspend(() => Option.match(MutableRef.get(denied), {onNone: () => Stream.empty, onSome: Stream.failCause}))
+		)
 	)
 }
