@@ -36,6 +36,7 @@ import {useIsMobile} from '@deslop/components-web/ui/hooks/use-mobile'
 import {Progress, ProgressLabel, ProgressValue} from '@deslop/components-web/ui/progress'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn, formatError} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -848,7 +849,13 @@ function MachineStrip(props: {
 	return Array.match(props.workers, {
 		onEmpty: () => null,
 		onNonEmpty: workers => (
-			<div role="tablist" aria-label="Machines" className="border-border flex shrink-0 border-b">
+			<ToggleGroup
+				aria-label="Machines"
+				className="border-border w-full shrink-0 rounded-none border-b"
+				spacing={0}
+				value={Option.toArray(Option.fromUndefinedOr(props.active))}
+				onValueChange={values => props.onSelect(values[0] ?? props.active ?? workers[0])}
+			>
 				{Array.map(workers, worker => {
 					const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 					const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
@@ -858,11 +865,9 @@ function MachineStrip(props: {
 					}
 					const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 					return (
-						<Button
+						<ToggleGroupItem
 							key={worker}
-							variant="ghost"
-							role="tab"
-							aria-selected={props.active === worker}
+							value={worker}
 							data-machine={machineName(worker)}
 							className={cn(
 								'machine flex h-12 min-w-0 flex-1 items-center justify-start gap-2 rounded-none border-b-2 px-3 text-left',
@@ -871,17 +876,16 @@ function MachineStrip(props: {
 									onTrue: () => 'border-b-(--machine) bg-muted/40'
 								})
 							)}
-							onClick={() => props.onSelect(worker)}
 						>
 							<MachineIcon worker={worker} />
-							<span className="min-w-0 truncate text-sm font-medium">{machineName(worker)}</span>
+							<span className="max-w-1/2 shrink-0 truncate text-sm font-medium">{machineName(worker)}</span>
 							<span className="flex size-3 shrink-0 items-center justify-center">
 								<StatusDot
 									status={Boolean.match(failed, {onFalse: () => 'live', onTrue: () => 'off'})}
 									className={Boolean.match(failed, {onFalse: () => 'bg-(--machine)', onTrue: () => undefined})}
 								/>
 							</span>
-							<span className="text-muted-foreground truncate font-mono text-xs">
+							<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
 								{Array.join(
 									[
 										...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
@@ -900,10 +904,10 @@ function MachineStrip(props: {
 									' · '
 								)}
 							</span>
-						</Button>
+						</ToggleGroupItem>
 					)
 				})}
-			</div>
+			</ToggleGroup>
 		)
 	})
 }
