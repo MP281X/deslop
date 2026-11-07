@@ -11,6 +11,7 @@ import type {ReactNode} from 'react'
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
@@ -537,19 +538,6 @@ function MetricsContent(props: {children: ReactNode}) {
 	)
 }
 
-function RowsSkeleton(props: {label: string; rows: number}) {
-	return (
-		<div aria-busy="true" role="status" aria-label={props.label}>
-			{Array.map(Array.range(1, props.rows), row => (
-				<div key={row} aria-hidden className="flex h-8 items-center gap-2 border-b px-3 max-sm:h-11">
-					<Skeleton className="size-5 shrink-0" />
-					<Skeleton className="h-4 w-1/3" />
-				</div>
-			))}
-		</div>
-	)
-}
-
 function ChartSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Usage history" className="flex min-h-0 flex-1 flex-col gap-4 p-3">
@@ -592,7 +580,7 @@ function AppsPane(props: {
 					<span className="text-muted-foreground font-mono text-xs">· {countLabel(jobs.length, 'job', 'jobs')}</span>
 				)}
 			</header>
-			<Suspense fallback={<RowsSkeleton label="Apps" rows={8} />}>
+			<Suspense fallback={<ItemListSkeleton label="Apps" media rowClassName="gap-2 px-3" rows={8} />}>
 				<InventoryContent>
 					{Array.match(props.rows, {
 						onEmpty: () => (
@@ -716,7 +704,7 @@ function ProcessPane(props: {
 				)}
 				{props.pending && <Skeleton className="h-3 w-16" />}
 			</header>
-			<Suspense fallback={<RowsSkeleton label="Processes" rows={5} />}>
+			<Suspense fallback={<ItemListSkeleton label="Processes" media rowClassName="gap-2 px-3" rows={5} />}>
 				<InventoryContent>
 					{Option.match(Option.fromUndefinedOr(row), {
 						onNone: () => (
