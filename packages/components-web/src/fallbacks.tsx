@@ -1,22 +1,28 @@
-import {OctagonAlert} from 'lucide-react'
+import {HouseIcon, QuestionIcon} from '@phosphor-icons/react'
 import {useEffect} from 'react'
+import type {ReactNode} from 'react'
 
-import {Alert, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
-import {Button, buttonVariants} from '#components/ui/button.tsx'
-import {Empty, EmptyContent, EmptyHeader, EmptyTitle} from '#components/ui/empty.tsx'
-import {formatError} from '#lib/utils.ts'
+import {Problem} from '#components/problem.tsx'
+import {buttonVariants} from '#components/ui/button.tsx'
+import {Empty} from '#components/ui/empty.tsx'
+
+export function EmptyState(props: {icon: ReactNode; label: string}) {
+	return (
+		<Empty role="status" aria-label={props.label}>
+			<span aria-hidden className="text-muted-foreground/40 flex items-center justify-center">
+				{props.icon}
+			</span>
+		</Empty>
+	)
+}
 
 export function NotFound() {
 	return (
-		<Empty>
-			<EmptyHeader>
-				<EmptyTitle>Page not found</EmptyTitle>
-			</EmptyHeader>
-			<EmptyContent>
-				<a className={buttonVariants({variant: 'outline'})} href="/">
-					Go home
-				</a>
-			</EmptyContent>
+		<Empty aria-label="Page not found">
+			<QuestionIcon weight="light" className="text-muted-foreground/40 size-6" />
+			<a className={buttonVariants({size: 'icon', variant: 'ghost'})} href="/" aria-label="Go home" title="Go home">
+				<HouseIcon className="size-4" />
+			</a>
 		</Empty>
 	)
 }
@@ -29,27 +35,10 @@ export function SignIn(props: {href: string}) {
 	return null
 }
 
-export function Error(props: {error: unknown; reset: () => void}) {
-	const message = formatError(props.error)
-
+export function Error(props: {error: unknown; label?: string; reset: () => void}) {
 	return (
-		<div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
-			<Alert variant="destructive" className="w-full max-w-lg select-text">
-				<OctagonAlert />
-				<AlertTitle>Something went wrong</AlertTitle>
-				<AlertDescription className="wrap-break-word whitespace-pre-wrap">{message}</AlertDescription>
-			</Alert>
-			<div className="flex gap-2">
-				<Button
-					variant="ghost"
-					onClick={async () => {
-						await navigator.clipboard.writeText(message)
-					}}
-				>
-					Copy error
-				</Button>
-				<Button onClick={props.reset}>Try again</Button>
-			</div>
+		<div className="flex min-h-0 flex-1 items-center justify-center p-3">
+			<Problem label={props.label ?? 'Unavailable'} reset={props.reset} />
 		</div>
 	)
 }

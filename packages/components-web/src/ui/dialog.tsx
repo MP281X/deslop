@@ -5,7 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "#lib/utils.ts"
 
 import { Button } from "#components/ui/button.tsx"
-import { XIcon } from "lucide-react"
+import { XIcon } from "@phosphor-icons/react"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />

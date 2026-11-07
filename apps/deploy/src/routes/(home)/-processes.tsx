@@ -1,6 +1,6 @@
 import {Array, Boolean, Option, String} from 'effect'
 
-import {ChevronRight} from 'lucide-react'
+import {CaretRightIcon} from '@phosphor-icons/react'
 
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {cn} from '@deslop/components-web/utils'
@@ -47,7 +47,7 @@ function Line(props: {depth: number; node: ProcessNode}) {
 			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
 				onFalse: () => <span className="size-3.5 shrink-0" />,
 				onTrue: () => (
-					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/process:rotate-90" />
+					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/process:rotate-90" />
 				)
 			})}
 		</span>

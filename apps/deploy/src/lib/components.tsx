@@ -1,6 +1,6 @@
 import {Boolean, String} from 'effect'
 
-import {Monitor, Server} from 'lucide-react'
+import {MonitorIcon, HardDrivesIcon} from '@phosphor-icons/react'
 
 export function machineName(worker: string) {
 	return String.split(worker, '.')[0]
@@ -19,8 +19,8 @@ export function MachineIcon(props: {worker: string}) {
 			data-machine={machineName(props.worker)}
 		>
 			{Boolean.match(machineName(props.worker) === 'desktop', {
-				onFalse: () => <Server className="size-4" />,
-				onTrue: () => <Monitor className="size-4" />
+				onFalse: () => <HardDrivesIcon className="size-4" />,
+				onTrue: () => <MonitorIcon className="size-4" />
 			})}
 		</span>
 	)

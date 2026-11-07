@@ -1,22 +1,15 @@
 import {Array, Boolean, Option, Record, String} from 'effect'
 
-import {Dialog} from '@base-ui/react/dialog'
+import {ArrowRightIcon, AppWindowIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
 import {defaultFilter} from 'cmdk'
-import {AppWindow, Search, X} from 'lucide-react'
 import {useState, useSyncExternalStore} from 'react'
 import type {ReactNode} from 'react'
 
 import {Button} from '#components/ui/button.tsx'
 import {Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from '#components/ui/command.tsx'
-import {
-	DialogClose,
-	DialogDescription,
-	DialogHeader,
-	DialogOverlay,
-	DialogPortal,
-	DialogTitle
-} from '#components/ui/dialog.tsx'
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '#components/ui/dialog.tsx'
 import {Kbd} from '#components/ui/kbd.tsx'
+import {Tooltip, TooltipContent, TooltipTrigger} from '#components/ui/tooltip.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
 const APPS = [
@@ -36,6 +29,7 @@ export type PaletteItem = {
 	keywords?: string
 	label: string
 	run: () => void
+	shortcut?: string
 }
 
 export type PaletteGroup = {items: readonly PaletteItem[]; label: string}
@@ -43,7 +37,7 @@ export type PaletteGroup = {items: readonly PaletteItem[]; label: string}
 // Another web tool's own mark; a tool whose icon doesn't load falls back to a window rather than a broken image.
 function AppIcon(props: {name: string; url: string}) {
 	const [failed, setFailed] = useState(false)
-	if (failed) return <AppWindow className="text-muted-foreground size-4" />
+	if (failed) return <AppWindowIcon className="text-muted-foreground size-4" />
 	return (
 		<img
 			src={`${props.url}/icon`}
@@ -73,11 +67,12 @@ export function otherApps(current: string) {
 function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem value={`${props.group}:${props.item.id ?? props.item.label}`} onSelect={props.onSelect}>
-			{props.item.icon}
+			{props.item.icon ?? <ArrowRightIcon className="text-muted-foreground size-4" />}
 			<span className="min-w-0 shrink truncate">{props.item.label}</span>
 			{props.item.detail !== undefined && (
 				<span className="text-muted-foreground ml-auto max-w-1/2 truncate text-xs">{props.item.detail}</span>
 			)}
+			{props.item.shortcut !== undefined && <Kbd className="ml-auto">{props.item.shortcut}</Kbd>}
 		</CommandItem>
 	)
 }
@@ -107,67 +102,62 @@ export function CommandPalette(props: {
 		)
 	)
 	return (
-		<Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogPortal>
-				<DialogOverlay />
-				<Dialog.Popup className="bg-popover text-popover-foreground ring-foreground/10 fixed inset-x-4 top-1/2 z-50 mx-auto flex max-h-dvh -translate-y-1/2 flex-col overflow-hidden rounded-lg ring-1 outline-none sm:max-w-lg">
-					<DialogHeader className="sr-only">
-						<DialogTitle>Search or run a command</DialogTitle>
-						<DialogDescription>Search available records and actions.</DialogDescription>
-					</DialogHeader>
-					<Command
-						className="min-h-0"
-						filter={(value, search) =>
-							defaultFilter(
-								Option.getOrElse(Record.get(searchable, value), () => value),
-								search
+		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogContent showCloseButton={false} className="max-h-palette flex flex-col sm:max-w-lg">
+				<DialogHeader className="sr-only">
+					<DialogTitle>Search or run a command</DialogTitle>
+					<DialogDescription>Search available records and actions.</DialogDescription>
+				</DialogHeader>
+				<Command
+					className="min-h-0"
+					filter={(value, search) =>
+						defaultFilter(
+							Option.getOrElse(Record.get(searchable, value), () => value),
+							search
+						)
+					}
+				>
+					<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
+					<CommandList className="min-h-0">
+						<CommandEmpty aria-label="No matches">
+							<MagnifyingGlassIcon weight="light" className="text-muted-foreground mx-auto size-6" />
+						</CommandEmpty>
+						{Array.map(
+							Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
+							group => (
+								<CommandGroup key={group.label} heading={group.label}>
+									{Array.map(group.items, item => (
+										<Item
+											key={`${group.label}:${item.id ?? item.label}`}
+											group={group.label}
+											item={item}
+											onSelect={() => run(item)}
+										/>
+									))}
+								</CommandGroup>
 							)
-						}
-					>
-						<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
-						<CommandList className="min-h-0">
-							<CommandEmpty>No results.</CommandEmpty>
-							{Array.map(
-								Array.filter(props.groups, group => Array.isReadonlyArrayNonEmpty(group.items)),
-								group => (
-									<CommandGroup key={group.label} heading={group.label}>
-										{Array.map(group.items, item => (
-											<Item
-												key={`${group.label}:${item.id ?? item.label}`}
-												group={group.label}
-												item={item}
-												onSelect={() => run(item)}
-											/>
-										))}
-									</CommandGroup>
-								)
-							)}
-						</CommandList>
-						<div className="text-muted-foreground hidden items-center justify-between border-t px-3 py-2 text-xs sm:flex">
-							<span className="flex items-center gap-1">
-								<Kbd>↑</Kbd>
-								<Kbd>↓</Kbd>
-								<span>navigate</span>
-							</span>
-							<span className="flex items-center gap-1">
-								<Kbd>↵</Kbd>
-								<span>open</span>
-								<Kbd>esc</Kbd>
-								<span>close</span>
-							</span>
-						</div>
-					</Command>
-					<DialogClose render={<Button variant="ghost" className="absolute top-2 right-2" size="icon-sm" />}>
-						<X />
-						<span className="sr-only">Close</span>
-					</DialogClose>
-				</Dialog.Popup>
-			</DialogPortal>
-		</Dialog.Root>
+						)}
+					</CommandList>
+					<div className="text-muted-foreground hidden items-center justify-between border-t px-3 py-2 text-xs sm:flex">
+						<span className="flex items-center gap-1">
+							<Kbd>↑</Kbd>
+							<Kbd>↓</Kbd>
+							<span>navigate</span>
+						</span>
+						<span className="flex items-center gap-1">
+							<Kbd>↵</Kbd>
+							<span>open</span>
+							<Kbd>esc</Kbd>
+							<span>close</span>
+						</span>
+					</div>
+				</Command>
+			</DialogContent>
+		</Dialog>
 	)
 }
 
-// The bar's search, shaped like the input it stands in for; the mobile form is the search icon alone.
+// One quiet entry point on every screen; the keyboard shortcut remains available without an imitation input.
 export function CommandTrigger(props: {label: string; onClick: () => void}) {
 	// The handler takes Meta or Control, so the label and the announced shortcut name the key the reader actually has.
 	const mac = useSyncExternalStore(
@@ -176,34 +166,20 @@ export function CommandTrigger(props: {label: string; onClick: () => void}) {
 		() => true
 	)
 	return (
-		<Button
-			variant="outline"
-			size="lg"
-			aria-keyshortcuts={Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'})}
-			aria-label={props.label}
-			onClick={props.onClick}
-			className="hidden w-64 justify-start sm:flex lg:absolute lg:top-2 lg:left-1/2 lg:-translate-x-1/2"
-		>
-			<Search className="size-3.5" />
-			<span className="min-w-0 flex-1 truncate text-left">Search</span>
-			<span className="ml-auto">
+		<Tooltip>
+			<TooltipTrigger
+				render={<Button variant="ghost" size="icon" />}
+				aria-keyshortcuts={Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'})}
+				aria-label={props.label}
+				onClick={props.onClick}
+				className="max-sm:size-11"
+			>
+				<MagnifyingGlassIcon className="size-4" />
+			</TooltipTrigger>
+			<TooltipContent>
+				{props.label}
 				<Kbd>{Boolean.match(mac, {onFalse: () => 'Ctrl K', onTrue: () => '⌘K'})}</Kbd>
-			</span>
-		</Button>
-	)
-}
-
-// The same field as an icon before the bar's actions on a phone.
-export function CommandIcon(props: {label: string; onClick: () => void}) {
-	return (
-		<Button
-			variant="ghost"
-			size="icon"
-			aria-label={props.label}
-			onClick={props.onClick}
-			className="max-sm:size-11 sm:hidden"
-		>
-			<Search />
-		</Button>
+			</TooltipContent>
+		</Tooltip>
 	)
 }

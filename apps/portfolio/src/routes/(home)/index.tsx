@@ -19,10 +19,10 @@ import {
 	pipe
 } from 'effect'
 
+import {ArrowUpRightIcon, CursorIcon} from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
-import {ArrowUpRight, MousePointer2} from 'lucide-react'
 import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
@@ -256,7 +256,7 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 	return (
 		<div className={cn('flex items-center gap-1', input.flip === true && '-translate-x-full flex-row-reverse')}>
-			<MousePointer2 className="size-4 text-(--cursor-color)" />
+			<CursorIcon className="size-4 text-(--cursor-color)" />
 			{Boolean.match(input.show === false, {
 				onFalse: () => (
 					<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
@@ -432,7 +432,7 @@ function ProjectRow(input: {project: {description: string; href: string; name: s
 					aria-label={`View ${input.project.name} on GitHub`}
 					className="text-primary hover:text-primary/80 transition-colors max-sm:inline-flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
 				>
-					<ArrowUpRight className="size-4" />
+					<ArrowUpRightIcon className="size-4" />
 				</a>
 			</div>
 			<p className="text-foreground/90 text-sm">{input.project.description}</p>

@@ -3,13 +3,13 @@ import {useAtomValue} from '@effect/atom-react'
 import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {useRender} from '@base-ui/react/use-render'
+import {CaretLeftIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {ChevronLeft} from 'lucide-react'
 import {useEffect, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {CommandIcon, CommandPalette, CommandTrigger} from '#components/command-palette.tsx'
+import {CommandPalette, CommandTrigger} from '#components/command-palette.tsx'
 import type {PaletteGroup} from '#components/command-palette.tsx'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button, buttonVariants} from '#components/ui/button.tsx'
@@ -22,6 +22,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
+import {Tooltip, TooltipContent, TooltipTrigger} from '#components/ui/tooltip.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
@@ -86,25 +87,21 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// A page action in the bar, its label folding away on a phone.
-export function AppBarAction(props: {
-	disabled?: boolean
-	icon: ReactNode
-	label: string
-	onClick: () => void
-	variant?: 'default' | 'outline'
-}) {
+// Static chrome stays quiet; its name is available without a permanently bright text button.
+export function AppBarAction(props: {disabled?: boolean; icon: ReactNode; label: string; onClick: () => void}) {
 	return (
-		<Button
-			aria-label={props.label}
-			className="max-sm:size-11"
-			variant={props.variant}
-			disabled={props.disabled}
-			onClick={props.onClick}
-		>
-			{props.icon}
-			<span className="max-sm:hidden">{props.label}</span>
-		</Button>
+		<Tooltip>
+			<TooltipTrigger
+				render={<Button variant="ghost" size="icon" />}
+				aria-label={props.label}
+				className="max-sm:size-11"
+				disabled={props.disabled}
+				onClick={props.onClick}
+			>
+				{props.icon}
+			</TooltipTrigger>
+			<TooltipContent>{props.label}</TooltipContent>
+		</Tooltip>
 	)
 }
 
@@ -132,11 +129,11 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3">
+			<header className="bg-background text-muted-foreground border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
 						<a href="/" className="flex shrink-0 items-center gap-2">
-							<img src={props.icon} alt="" className="pixelated size-8" />
+							<img src={props.icon} alt="" className="pixelated size-8 opacity-60" />
 							<span className="text-sm font-semibold">{props.name}</span>
 						</a>
 					),
@@ -150,7 +147,7 @@ export function AppBar(props: {
 										aria-label={props.name}
 										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
 									>
-										<img src={props.icon} alt="" className="pixelated size-8" />
+										<img src={props.icon} alt="" className="pixelated size-8 opacity-60" />
 									</a>
 								),
 								onSome: back => (
@@ -161,7 +158,7 @@ export function AppBar(props: {
 										aria-label={back.label}
 										onClick={back.onClick}
 									>
-										<ChevronLeft className="size-4" />
+										<CaretLeftIcon className="size-4" />
 									</Button>
 								)
 							})}
@@ -174,15 +171,10 @@ export function AppBar(props: {
 						{props.tabs}
 					</nav>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end sm:justify-center">
+				<div className="flex min-w-0 flex-1 items-center justify-end">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
-						onSome: () => (
-							<>
-								<CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
-								<CommandIcon label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
-							</>
-						)
+						onSome: () => <CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
 					})}
 				</div>
 				<div className="flex shrink-0 items-center gap-1.5">

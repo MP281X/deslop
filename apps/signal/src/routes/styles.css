@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--magenta);
+	--primary: var(--purple);
 }
 
 @media (pointer: coarse) {

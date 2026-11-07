@@ -1,4 +1,4 @@
-import {Boxes, Monitor, Server, Sparkles} from 'lucide-react'
+import {StackIcon, MonitorIcon, HardDrivesIcon, SparkleIcon} from '@phosphor-icons/react'
 
 // The single source for the home page and the CV, cut to what fits one printed A4 page.
 
@@ -24,14 +24,14 @@ export const summary = 'Building AI agents and web apps end to end with Effect a
 export const skills = [
 	{
 		area: 'Frontend',
-		icon: Monitor,
+		icon: MonitorIcon,
 		items: 'TypeScript, React, TanStack (Router, Query, Form, Table), Tailwind CSS, Vite+ (Vite, Vitest, Oxlint)'
 	},
-	{area: 'Backend & Data', icon: Server, items: 'Effect, Node.js, Bun, PostgreSQL, Drizzle, OpenAPI, SSE'},
-	{area: 'AI', icon: Sparkles, items: 'AI agents, MCP servers, Claude Code, Codex, OpenCode'},
+	{area: 'Backend & Data', icon: HardDrivesIcon, items: 'Effect, Node.js, Bun, PostgreSQL, Drizzle, OpenAPI, SSE'},
+	{area: 'AI', icon: SparkleIcon, items: 'AI agents, MCP servers, Claude Code, Codex, OpenCode'},
 	{
 		area: 'Cloud & DevOps',
-		icon: Boxes,
+		icon: StackIcon,
 		items: 'Docker, AWS, CI/CD (GitHub Actions, GitLab CI), OpenTelemetry, Git, Linux'
 	}
 ]

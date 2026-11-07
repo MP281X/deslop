@@ -12,10 +12,10 @@
 
 /* Each machine's charts and swatches draw in its own hue; the app's primary stays Deploy's blue. */
 @utility machine {
-	--machine: var(--blue);
+	--machine: var(--machine-dev);
 
 	&[data-machine='desktop'] {
-		--machine: var(--purple);
+		--machine: var(--machine-desktop);
 	}
 }
 

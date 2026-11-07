@@ -2,20 +2,21 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
+import {CheckIcon, CopyIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, Copy, OctagonAlert, Plus, Server} from 'lucide-react'
 import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
-import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Problem} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
@@ -31,11 +32,8 @@ import {
 	DialogFooter,
 	DialogTitle
 } from '@deslop/components-web/ui/dialog'
-import {Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {formatError} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -62,17 +60,9 @@ function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (!Schema.is(AuthError)(props.error)) return <Error error={props.error} reset={props.reset} />
 	if (props.error.error === 'access_denied') {
 		return (
-			<Empty>
-				<EmptyHeader>
-					<EmptyTitle>Admins only</EmptyTitle>
-					<EmptyDescription>{props.error.message}</EmptyDescription>
-				</EmptyHeader>
-				<EmptyContent>
-					<Button variant="outline" onClick={props.reset}>
-						Try again
-					</Button>
-				</EmptyContent>
-			</Empty>
+			<div className="flex flex-1 items-center justify-center">
+				<Problem label="Access denied" reset={props.reset} />
+			</div>
 		)
 	}
 	if (!needsSignIn(props.error)) return <Error error={props.error} reset={props.reset} />
@@ -135,7 +125,7 @@ function FirstImage(props: {sources: string[]}) {
 	return (
 		<span className="flex size-5 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
-				onNone: () => <Server className="text-muted-foreground size-4" />,
+				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
 					<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
 				)
@@ -161,18 +151,6 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
-// A state that needs the user takes the host's place; a reported failure shows in full beneath the row.
-function Reason(props: {server: ConnectionInfo}) {
-	return pipe(
-		Match.value(props.server.status),
-		Match.when('Expired', () => <span className="text-destructive truncate">Sign-in expired</span>),
-		Match.when('Not connected', () => <span className="text-muted-foreground truncate">Not connected</span>),
-		Match.orElse(() => (
-			<span className="text-muted-foreground truncate font-mono text-xs">{new URL(props.server.url).hostname}</span>
-		))
-	)
-}
-
 // The page has no detail pane, so a palette pick brings its row into view.
 function focusServer(server: ConnectionInfo) {
 	const row = document.getElementById(`server-${server.id}`)
@@ -185,82 +163,65 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	const connected = props.server.status === 'Connected'
 	return (
-		<div role="listitem" className="border-b">
+		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<ContextMenuTrigger
-					render={
-						<div
-							id={`server-${props.server.id}`}
-							role="button"
-							tabIndex={0}
-							aria-haspopup="menu"
-							aria-label={`${props.server.name}, ${reasonText(props.server)}`}
-							className="hover:bg-muted/50 focus-visible:ring-ring/30 flex h-8 items-center gap-2 px-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset max-sm:h-11"
-						/>
-					}
-				>
-					<ServerIcon server={props.server} />
-					<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-					<span className="flex min-w-0 flex-1">
-						<Reason server={props.server} />
-					</span>
-					{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-						<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden" title="Tools">
-							{Boolean.match(props.server.tools.length === 1, {
-								onFalse: () => `${props.server.tools.length} tools`,
-								onTrue: () => '1 tool'
-							})}
+				<div className="relative flex h-8 items-center gap-3 px-3 max-sm:h-11">
+					<ContextMenuTrigger
+						render={
+							<Button
+								variant="ghost"
+								data-row
+								id={`server-${props.server.id}`}
+								type="button"
+								aria-label={`${props.server.name}, ${reasonText(props.server)}`}
+								className="absolute inset-0 h-full w-full"
+							/>
+						}
+					/>
+					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
+						<ServerIcon server={props.server} />
+						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
+						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+							{new URL(props.server.url).hostname}
 						</span>
-					)}
-					<span
-						role="img"
-						title={props.server.status}
-						aria-label={props.server.status}
-						className="flex size-3 shrink-0 items-center justify-center"
-					>
-						<Status server={props.server} />
-					</span>
-					{(!connected || props.server.error !== undefined) && (
-						<Button
-							variant="ghost"
-							size="sm"
-							className="max-sm:h-11"
-							onClick={() => location.assign(connectUrl(props.server.id))}
-						>
-							{Boolean.match(props.server.status === 'Not connected', {
-								onFalse: () => 'Reconnect',
-								onTrue: () => 'Connect'
-							})}
-						</Button>
-					)}
-				</ContextMenuTrigger>
+						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+							<span
+								className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums"
+								title="Tools"
+							>
+								{props.server.tools.length}
+							</span>
+						)}
+					</div>
+					<div className="relative flex w-16 shrink-0 justify-end">
+						{connected && props.server.error === undefined && (
+							<span
+								role="img"
+								title={props.server.status}
+								aria-label={props.server.status}
+								className="flex size-3 shrink-0 items-center justify-center"
+							>
+								<Status server={props.server} />
+							</span>
+						)}
+						{(!connected || props.server.error !== undefined) && (
+							<Problem
+								label={Boolean.match(connected, {
+									onFalse: () => reasonText(props.server),
+									onTrue: () => 'Connection failed'
+								})}
+								reset={() => location.assign(connectUrl(props.server.id))}
+							/>
+						)}
+					</div>
+				</div>
 				<ContextMenuContent className="w-auto min-w-36">
 					<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
 						Remove
 					</ContextMenuItem>
 				</ContextMenuContent>
 			</ContextMenu>
-			{props.server.error !== undefined && (
-				<FieldError className="mr-1 mb-2 ml-9 wrap-anywhere">{props.server.error}</FieldError>
-			)}
-		</div>
-	)
-}
-
-function ServerRowsSkeleton() {
-	return (
-		<div aria-busy="true" role="status" aria-label="MCP servers">
-			{Array.map(Array.range(1, 5), row => (
-				<div key={row} aria-hidden className="border-b">
-					<div className="flex h-8 items-center gap-2 px-3 max-sm:h-11">
-						<Skeleton className="size-5 shrink-0" />
-						<Skeleton className="h-4 w-1/3" />
-						<Skeleton className="h-3 flex-1" />
-						<Skeleton className="size-2.5 shrink-0" />
-					</div>
-				</div>
-			))}
 		</div>
 	)
 }
@@ -274,30 +235,11 @@ function ServersContent() {
 	}
 	return (
 		<>
-			{AsyncResult.isFailure(result) && (
-				<div className="shrink-0 px-3 py-2">
-					<Alert variant="destructive">
-						<OctagonAlert />
-						<AlertTitle>Servers may be out of date</AlertTitle>
-						<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
-							{formatError(result.cause)}
-							<Button variant="outline" size="sm" onClick={refresh}>
-								Try again
-							</Button>
-						</AlertDescription>
-					</Alert>
-				</div>
-			)}
 			{Option.getOrUndefined(
 				Option.map(value, current =>
 					Array.match(Array.sort(current, urgency), {
 						onEmpty: () => (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>No servers yet</EmptyTitle>
-									<EmptyDescription>Add one from the bar to offer its tools.</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState label="No servers" icon={<img src={icon} alt="" className="pixelated size-8 opacity-50" />} />
 						),
 						onNonEmpty: servers => (
 							<div role="list" aria-label="MCP servers">
@@ -309,27 +251,23 @@ function ServersContent() {
 					})
 				)
 			)}
+			{AsyncResult.isFailure(result) && (
+				<div className="bg-background sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end px-3">
+					<Problem label="Servers out of date" warning reset={refresh} />
+				</div>
+			)}
 		</>
 	)
 }
 
-// The page is the list: one column of servers, centered at reading width on a wide screen.
-function ServersPane(props: {count?: number; pending: boolean}) {
+function ServersPane() {
 	return (
 		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-1 flex-col overflow-y-auto">
-			<div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
-				<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3">
-					<span className="text-sm font-semibold">Servers</span>
-					<span className="text-muted-foreground font-mono text-xs">
-						{Boolean.match(props.pending, {onFalse: () => props.count, onTrue: () => <Skeleton className="h-3 w-4" />})}
-					</span>
-				</header>
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-					<Suspense fallback={<ServerRowsSkeleton />}>
-						<ServersContent />
-					</Suspense>
-				</CatchBoundary>
-			</div>
+			<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
+					<ServersContent />
+				</Suspense>
+			</CatchBoundary>
 		</section>
 	)
 }
@@ -441,10 +379,13 @@ function Home() {
 		items: [
 			...Boolean.match(ready, {
 				onFalse: () => [],
-				onTrue: () => [{icon: <Plus />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
+				onTrue: () => [{icon: <PlusIcon />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
 			}),
 			{
-				icon: Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />}),
+				icon: Boolean.match(copied, {
+					onFalse: () => <CopyIcon />,
+					onTrue: () => <CheckIcon className="text-primary" />
+				}),
 				label: 'Copy MCP URL',
 				run: () => copyText()
 			}
@@ -464,24 +405,23 @@ function Home() {
 				action={
 					<>
 						<AppBarAction
-							icon={Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
+							icon={Boolean.match(copied, {
+								onFalse: () => <CopyIcon />,
+								onTrue: () => <CheckIcon className="text-primary" />
+							})}
 							label="Copy MCP URL"
-							variant="outline"
 							onClick={() => copyText()}
 						/>
-						<AppBarAction disabled={!ready} icon={<Plus />} label="Add server" onClick={() => send({_tag: 'Open'})} />
+						<AppBarAction
+							disabled={!ready}
+							icon={<PlusIcon />}
+							label="Add server"
+							onClick={() => send({_tag: 'Open'})}
+						/>
 					</>
 				}
 			/>
-			<ServersPane
-				count={Option.getOrUndefined(
-					Option.map(
-						Option.filter(value, () => Option.isNone(authFailure)),
-						connections => connections.length
-					)
-				)}
-				pending={AsyncResult.isInitial(servers)}
-			/>
+			<ServersPane />
 			<AddDialog />
 		</div>
 	)

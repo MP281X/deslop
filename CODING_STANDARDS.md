@@ -36,7 +36,7 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 
 - **Clients.** React: an `AtomRpc.Service` over `WebRuntime.layer` (Scope's page: `WebRuntime.layerProtocol`, so it never traces itself) or `MobileRuntime.layerSignedIn` once an app signs in (`layer` in the generated template, which has none); a command line: a scoped `RpcClient.make`. A stream syncs one keep-alive Atom that components read; components neither subscribe nor poll.
 - **Look** from `DESIGN.md`: on the web its tokens in `packages/components-web/src/theme.css` and the shadcn components; on iOS the shadcn-named components in `packages/components-mobile/src/ui/` over `@expo/ui`, with `packages/components-mobile/src/theme.ts`.
-- **Actions**: one icon entrypoint per context, no repeating text buttons; conventional icons get no tooltip.
+- **Actions**: one icon entrypoint per context, no repeating text buttons. Keep accessible names; hover and focus reveal names where icons replace visible labels.
 
 ## Tests and measurements
 

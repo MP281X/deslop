@@ -2,9 +2,9 @@ import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, Option, Predicate} from 'effect'
 
+import {CheckIcon, XIcon} from '@phosphor-icons/react'
 import {createFileRoute} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
-import {Check, X} from 'lucide-react'
 import {Suspense} from 'react'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
@@ -93,13 +93,13 @@ function Enter(props: {
 						{Boolean.match(answer.accept, {
 							onFalse: () => (
 								<>
-									<X className="size-3.5" />
+									<XIcon className="size-3.5" />
 									{signInLabel(answer.request.clientName, answer.request.device)} denied
 								</>
 							),
 							onTrue: () => (
 								<>
-									<Check className="text-primary size-3.5" />
+									<CheckIcon className="text-primary size-3.5" />
 									{signInLabel(answer.request.clientName, answer.request.device)} approved
 								</>
 							)

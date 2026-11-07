@@ -16,9 +16,17 @@ import {
 	pipe
 } from 'effect'
 
+import {
+	CheckIcon,
+	CaretRightIcon,
+	CopyIcon,
+	GlobeIcon,
+	HardDrivesIcon,
+	DeviceMobileIcon,
+	DesktopIcon
+} from '@phosphor-icons/react'
 import {createFileRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Check, ChevronRight, Copy, Globe, OctagonAlert, Server, Smartphone, Workflow} from 'lucide-react'
 import {Suspense, useState, useSyncExternalStore} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
@@ -26,7 +34,7 @@ import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {Alert, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
+import {Problem} from '@deslop/components-web/problem'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
@@ -34,7 +42,7 @@ import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
-import {cn, formatError} from '@deslop/components-web/utils'
+import {cn} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -75,11 +83,15 @@ const HTTP_ATTRIBUTES = [
 
 // The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone, a server or CI.
 const DEVICES: Record<Runtime, ReactElement> = {
-	ci: <Workflow role="img" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
-	mobile: <Smartphone role="img" aria-label="iOS" data-side="mobile" className="size-3.5 shrink-0 text-(--side)" />,
-	server: <Server role="img" aria-label="server" data-side="server" className="size-3.5 shrink-0 text-(--side)" />,
-	unknown: <Server aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
-	web: <Globe role="img" aria-label="web" data-side="web" className="size-3.5 shrink-0 text-(--side)" />
+	ci: <DesktopIcon role="img" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
+	mobile: (
+		<DeviceMobileIcon role="img" aria-label="iOS" data-side="mobile" className="size-3.5 shrink-0 text-(--side)" />
+	),
+	server: (
+		<HardDrivesIcon role="img" aria-label="server" data-side="server" className="size-3.5 shrink-0 text-(--side)" />
+	),
+	unknown: <HardDrivesIcon aria-hidden data-side="unknown" className="size-3.5 shrink-0 text-(--side)" />,
+	web: <GlobeIcon role="img" aria-label="web" data-side="web" className="size-3.5 shrink-0 text-(--side)" />
 }
 
 const clock = new Intl.DateTimeFormat(undefined, {
@@ -106,6 +118,7 @@ type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
 
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
+	if (isDenied(props.error)) return <Error error={props.error} label="Access denied" reset={props.reset} />
 	return <Error error={props.error} reset={props.reset} />
 }
 
@@ -260,7 +273,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 			{Option.match(Option.fromUndefinedOr(props.open), {
 				onNone: () => <span className="size-3.5 shrink-0" />,
 				onSome: open => (
-					<ChevronRight
+					<CaretRightIcon
 						className={cn('text-muted-foreground size-3.5 shrink-0 transition-transform', open && 'rotate-90')}
 					/>
 				)
@@ -360,16 +373,9 @@ function Spans(props: {id: string}) {
 	return (
 		<>
 			{AsyncResult.isFailure(result) && (
-				<Alert variant="destructive" className="my-2">
-					<OctagonAlert />
-					<AlertTitle>Cannot update this trace</AlertTitle>
-					<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
-						{formatError(result.cause)}
-						<Button variant="outline" size="sm" onClick={refresh}>
-							Try again
-						</Button>
-					</AlertDescription>
-				</Alert>
+				<div className="flex shrink-0 justify-end px-3">
+					<Problem label="Trace out of date" warning reset={refresh} />
+				</div>
 			)}
 			{Option.match(value, {onNone: () => null, onSome: trace => <TraceSpans trace={trace} />})}
 		</>
@@ -426,13 +432,13 @@ function OverviewRowsSkeleton(props: {label: string; appHeading?: boolean}) {
 // An app's mark, name and newest release at the top of its operations.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-8 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2.5">
+		<div className="bg-background sticky top-8 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-2.5 max-sm:top-11">
 			{Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
 				onNone: () =>
 					Boolean.match(
 						Array.every(props.app.operations, operation => operation.runtime === 'ci'),
 						{
-							onFalse: () => <Server className="text-muted-foreground size-4" />,
+							onFalse: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 							onTrue: () => (
 								<>
 									<GithubLight className="size-4 dark:hidden" />
@@ -482,7 +488,7 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 					<span className="sr-only">typical </span>
 					{durationOf(props.operation.p50Ms)}
 				</span>
-				<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
+				<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 			</Button>
 		</div>
 	)
@@ -493,27 +499,19 @@ function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
 	onSelect: (app: string, operation: Operation) => void
-	overview?: Overview
 }) {
+	const current = useAtomValue(overviewAtom)
+	const refresh = useAtomRefresh(overviewAtom)
 	return (
 		<section
 			aria-label="Operations"
 			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
 		>
-			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-2.5">
+			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-2.5 max-sm:h-11">
 				<span className="text-sm font-semibold">Operations</span>
-				<span className="text-muted-foreground font-mono text-xs">
-					{Option.match(Option.fromUndefinedOr(props.overview), {
-						onNone: () => <Skeleton className="h-3 w-4" />,
-						onSome: overview => count.format(Array.reduce(overview.apps, 0, (sum, app) => sum + app.operations.length))
-					})}
-				</span>
-				<span className="ml-auto flex items-center gap-1">
-					<span className="text-muted-foreground w-8 text-right text-xs">Failed</span>
-					<span className="text-muted-foreground w-10 text-right text-xs max-lg:hidden">Runs</span>
-					<span className="text-muted-foreground w-12 text-right text-xs">Typical</span>
-					<span className="size-3.5 xl:hidden" />
-				</span>
+				{AsyncResult.isFailure(current) && Option.isSome(AsyncResult.value(current)) && (
+					<Problem className="ml-auto" label="Operations out of date" warning reset={refresh} />
+				)}
 			</header>
 			<Suspense fallback={<OverviewRowsSkeleton appHeading label="Operations" />}>
 				<OverviewContent>
@@ -616,7 +614,7 @@ function TraceListRow(props: {
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
-					<ChevronRight className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
+					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 xl:hidden" />
 				</Button>
 			</div>
 		</div>
@@ -642,7 +640,7 @@ function TracesPane(props: {
 				{Option.match(
 					Option.flatMap(active, current => Option.fromUndefinedOr(marks[current.app.name])),
 					{
-						onNone: () => <Server className="text-muted-foreground size-4 shrink-0" />,
+						onNone: () => <HardDrivesIcon className="text-muted-foreground size-4 shrink-0" />,
 						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 					}
 				)}
@@ -723,7 +721,7 @@ function CopyTrace(props: {id: string}) {
 				aria-label={Boolean.match(copied, {onFalse: () => 'Copy trace ID', onTrue: () => 'Copied'})}
 				onClick={() => copyText(props.id)}
 			>
-				{Boolean.match(copied, {onFalse: () => <Copy />, onTrue: () => <Check className="text-primary" />})}
+				{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon className="text-primary" />})}
 			</Button>
 			<span role="status" className="sr-only">
 				{copied && 'Copied'}
@@ -958,20 +956,6 @@ function Home() {
 					onTrue: () => [otherApps('scope')]
 				})}
 			/>
-			{AsyncResult.isFailure(overview) && Option.isSome(value) && Option.isNone(authFailure) && (
-				<div className="shrink-0 px-3 py-2">
-					<Alert variant="destructive">
-						<OctagonAlert />
-						<AlertTitle>Cannot update live operations</AlertTitle>
-						<AlertDescription className="wrap-anywhere whitespace-pre-wrap">
-							{formatError(overview.cause)}
-							<Button variant="outline" size="sm" onClick={refresh}>
-								Try again
-							</Button>
-						</AlertDescription>
-					</Alert>
-				</div>
-			)}
 			{Option.match(authFailure, {
 				onNone: () =>
 					Option.match(
@@ -986,7 +970,6 @@ function Home() {
 													activeKey={Option.getOrUndefined(activeKey)}
 													className="min-w-0 border-r"
 													onSelect={selectOperation}
-													overview={Option.getOrUndefined(value)}
 												/>
 												<TracesPane
 													active={Option.getOrUndefined(activeOperation)}
@@ -1014,7 +997,6 @@ function Home() {
 															activeKey={Option.getOrUndefined(activeKey)}
 															className="min-h-0 flex-1"
 															onSelect={selectOperation}
-															overview={Option.getOrUndefined(value)}
 														/>
 													)),
 													Match.when('traces', () => (
