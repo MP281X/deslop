@@ -70,6 +70,7 @@ export default defineConfig({
 					'@deslop/coding-standards/no-native-emptiness-check': 'off',
 					'@deslop/coding-standards/no-native-method-call': 'off',
 					'effecttsgo/prefer-effect-array': 'off',
+					'effecttsgo/prefer-effect-string': 'off',
 					'eslint/no-restricted-globals': 'off',
 					'eslint/no-restricted-properties': 'off',
 					'typescript/no-unsafe-argument': 'off',

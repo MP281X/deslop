@@ -1,11 +1,15 @@
 <!--
-For a reviewer who was not in the conversation. Delete every comment and empty
-section, then read the rendered body back.
+For a reviewer who was not in the conversation. Each fact appears once: a
+diagram, table or capture is never restated in prose. Delete every comment and
+empty section, then read the rendered body back.
 -->
 
 ## Summary
 
-<!-- One line: what changes for whom. Then the change's shape. -->
+<!--
+One line: what changes for whom. Then the change's shape as one visual: an
+architecture diagram for a structural change, a diff for a contract.
+-->
 
 ## Evidence
 

@@ -35,7 +35,7 @@ Before any capture, remove what the change no longer needs: debug code, dead cod
   - nothing is cut, misaligned or overflowing, and spacing matches its siblings;
   - loading, empty and error states tell the truth: no error while data is loading;
   - every word is needed.
-- **Audit** every captured web state: pass the text of `page-audit.js` in this skill's directory to `preview_evaluate`. It returns cut text, page overflow, repeated text and actions, overlapping controls, unnamed controls, broken images and errors shown while loading; each entry is fixed or given a reason. Assert anything else a rule can check: element counts, computed colors.
+- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`. It returns what a reader would flag: cut text, page overflow, repeated text and actions, overlapping or unnamed controls, broken images, errors shown while loading, low contrast, tiny text, small touch targets on a phone, controls without a focus ring, rows a few pixels out of line, a component that renders differently across instances, and the page's type sizes and radii with their counts. Each entry is fixed or given a reason; a size or radius used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors.
 - **Performance**: the same workload, repeated runs, p50 and p95, resource cost; Scope traces and `measure_latency`.
 - **Unproved** claims say `unverified: <what was not run>`.
 

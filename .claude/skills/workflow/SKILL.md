@@ -7,16 +7,16 @@ description: Load at task start, when the user changes direction, before a plan 
 
 ## Plan card
 
-A data model, a screen, or work spanning more than one PR starts with one HTML page the user approves before the real build; prototypes are built to make the card:
+A data model, a screen, an architecture change, or work spanning more than one PR starts with a plan card: one `html_render` page in this thread that the user approves before the real build. Anything else that needs the user's attention is shown the same way, never as paragraphs.
 
-- **The thing itself.** Entities with one worked example; a screen as a working prototype on real primitives and fixture data, phone and desktop, with 2–3 variants when the direction is open: behind `?variant=` in a web app's preview, as Device-panel screens for a native app. A static mock only before the app exists.
-- **Choices.** Chosen, and rejected with the reason.
+- **Architecture.** A diagram of the parts and how data moves between them, before and after side by side, the changed parts in `--accent`.
+- **Data.** Entities and their relations with one worked example.
+- **Screens.** Mocks drawn in the page itself, phone and desktop, with the app's theme tokens and font so they look like the app: 2–3 variants side by side when the direction is open, each with a stable id like `nav-A`, and its states from empty to error to long. Mocks never go into the app's source or its preview.
+- **Choices.** The recommended option marked; rejected ones with the reason.
 - **Units.** The PRs or stack layers, and what each proves.
 - **Done.** The journeys the proof will show.
 
-Approval freezes the card. A message that changes an entity, a screen or a unit updates the card and gets it approved again before the build follows. A durable app decision goes in the app's `AGENTS.md`.
-
-The user starts from symptoms and finds what they want by reacting to concrete things. Map causes before options. A screen with no agreed direction gets a mix board in the app's preview route, or Device-panel screens for a native app: 2–4 axes (navigation, density, empty and error model, action placement), 2–3 variants each with stable ids like `nav-A`, a state scrubber from empty to error to long, and a copyable `mix` JSON; implement the chosen mix and remove the losers.
+The user starts from symptoms and finds what they want by reacting to concrete things: map causes before options, then show the options. Approval freezes the card. A message that changes an entity, a screen or a unit updates the card and gets it approved again before the build follows. A durable app decision goes in the app's `AGENTS.md`.
 
 ## Decide
 
@@ -25,7 +25,7 @@ A middle decision has a better answer that more evidence reveals; taste and prod
 ## Split and delegate
 
 - **Units.** Each owns a set of files and has a command that proves it done: a test, a check or a capture. Units that touch the same file are one unit; dependent units form a stack.
-- **Who.** DeepSeek V4.1 Flash (`opencode-zen`) for clear units: building to an approved card, sweeps, codemods, tests, inventories, research. GPT-6.1 Sol (`codex`) or Opus 5.5 (`claudeAgent`) for units that need judgment and as the other family for review. The main thread writes a unit itself only when briefing it costs more than doing it.
+- **Who.** A cheap model from another provider than the main thread's for clear units: DeepSeek V4.1 Flash (`opencode-zen`), GPT-6 Luna (`codex`) or Haiku 5.5 (`claudeAgent`), for building to an approved card, sweeps, codemods, tests, inventories, exploration and research. GPT-6.1 Sol (`codex`) or Opus 5.5 (`claudeAgent`) for units that need judgment and as the other family for review. The main thread writes a unit itself only when briefing it costs more than doing it.
 - **Where.** `isolation:'worktree'` for a unit that writes; `target.environmentId` of `dev` to run it on the other worker. Read-only units share the checkout.
 - **Brief.** Self-contained, since the worker has no history: objective, the card or its path, owned files, fixed decisions and what not to touch, the done command, the report format. Write the spec yourself; never "based on your findings".
 - **Worker rules**, copied into every writing brief: edit only the owned files; run checks scoped to them (`vp lint <paths>`, `vp test <files>`), never `vp run fix` or another repo-wide fix; commit on the branch; clone only under `/tmp/repos/`; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with evidence: command and exit code, capture paths, commit SHA.
