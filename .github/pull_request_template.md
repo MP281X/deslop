@@ -11,11 +11,13 @@ section, then read the rendered body back.
 
 <!--
 One line per claim, its capture under it: real input → result where it is
-consumed. A screenshot per state, a video per sequence, a request or trace for
-backend; command output supports a capture, never replaces it. Before/after on
-the same data only when the claim is a difference.
-Captures at the app's primary viewport and theme on representative data,
-native apps from a simulator, taken after a condition holds rather than a delay.
+consumed. A screenshot per state, a video per sequence, a backend change through
+the screen that shows it plus its Scope trace; command output supports a
+capture, never replaces it. Before/after on the same data only when the claim is
+a difference.
+Captures from the final head, at the app's primary viewport and theme on
+representative data, native apps from a simulator, taken after a condition holds
+rather than a delay.
 -->
 
 ## Merge danger

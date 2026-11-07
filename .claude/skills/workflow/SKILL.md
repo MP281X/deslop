@@ -1,27 +1,40 @@
 ---
 name: workflow
-description: Load at task start, when the user changes direction, and before design choices, research into unfamiliar APIs or architecture, or delegation.
+description: Load at task start, when the user changes direction, before a plan card, a design or architecture choice, research into unfamiliar APIs, and before splitting or delegating work.
 ---
 
 # Workflow
 
-## Outcome
+## Plan card
 
-- **Agreement.** The user's goal, accepted choices, rejected directions and order. A steer updates it; an approval accepts the proposal actually shown. Side-note constraints apply at once; extra work follows the main task.
-- **Reversals.** Discuss a deliberate reversal of an agreed approach before making it.
-- **Uncertainty.** Settle what is consequential early; give open-ended work a checkable finish. The strategy is yours, the agreed scope and quality are not.
-- **Continuity.** The todo list is the settled plan and checkpoint: decisions, remaining work and evidence, kept current across batches. Recover a missing decision from the thread, never guess; do not create a second checkpoint document.
-- **Evidence.** Ground consequential claims in the deciding source, trace or probe; name what stays unverified.
+A data model, a screen, or work spanning more than one PR starts with one HTML page the user approves before anything is built:
 
-## Delivery
+- **The thing itself.** Entities with one worked example; a screen as a working prototype in the app's preview on real primitives and fixture data, phone and desktop, 2–3 variants behind `?variant=` when the direction is open. A static mock only before the app exists.
+- **Choices.** Chosen, and rejected with the reason.
+- **Units.** The PRs or stack layers, and what each proves.
+- **Done.** The journeys the proof will show.
 
-Build → prove the actual journey with the verification skill → draft push, per pull-requests. Fix related findings in one batch and revalidate. Before replacement work, name superseded owners and paths and their replacement; verification closes each entry with deletion or a keep reason.
+Approval freezes the card. A message that changes an entity, a screen or a unit updates the card and gets it approved again before the build follows. A durable app decision goes in the app's `AGENTS.md`.
 
-## Delegation
+The user starts from symptoms and finds what they want by reacting to concrete things. Map causes before options. A screen with no agreed direction gets a mix board in the app's preview route: 2–4 axes (navigation, density, empty and error model, action placement), 2–3 variants each with stable ids like `nav-A`, a state scrubber from empty to error to long, and a copyable `mix` JSON; implement the chosen mix and remove the losers.
 
-Cheap, bounded, independent work that saves time or adds judgment. Give the question, the user's constraints, raw evidence and an open question, without your verdict or summary. Choose a different family or lens, with no main transcript or other reports. A reviewer also gets immutable revisions and the verification skill. Keep parent and child investigations disjoint.
+## Decide
 
-**Council.** Only for a hard-to-reverse decision with split evidence: two strong models with different lenses, each given the same question, evidence and criteria. Blind proposals first; hostile review of the draft second; no third round. Synthesize a decision-axis table with a dissent record — `axis | options | who proposed | evidence | adopted or rejected, with reason` — and choose; never a majority vote. Otherwise decide, or ask one reviewer.
+A middle decision has a better answer that more evidence reveals; taste and product stay with the user. Gather the deciding source, probe or a time-boxed spike in `/tmp/<task>/`. If it is still close, give one model from another family the question, the evidence and the criteria without your verdict, and adopt its answer unless it shows a flaw you can check. No rounds, votes or scores.
+
+## Split and delegate
+
+- **Units.** Each owns a set of files and has a command that proves it done: a test, a check or a capture. Units that touch the same file are one unit; dependent units form a stack.
+- **Who.** DeepSeek V4.1 Flash (`opencode-zen`) for clear units: building to an approved card, sweeps, codemods, tests, inventories, research. GPT-6.1 Sol (`codex`) or Opus 5.5 (`claudeAgent`) for units that need judgment and as the other family for review. The main thread writes a unit itself only when briefing it costs more than doing it.
+- **Where.** `isolation:'worktree'` for a unit that writes; `target.environmentId` of `dev` to run it on the other worker. Read-only units share the checkout.
+- **Brief.** Self-contained, since the worker has no history: objective, the card or its path, owned files, fixed decisions and what not to touch, the done command, the report format. Write the spec yourself; never "based on your findings".
+- **Worker rules**, copied into every writing brief: edit only the owned files; run checks scoped to them (`vp lint <paths>`, `vp test <files>`), never `vp run fix` or another repo-wide fix; commit on the branch; clone only under `/tmp/repos/`; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with evidence: command and exit code, capture paths, commit SHA.
+- **Persistent.** A follow-up for the same unit goes to its thread with `t3_thread_send`; the worker keeps its context and its completion wakes you. A new unit gets a new delegate.
+- **Overlap.** While workers run, build the next independent piece; wait only when the next step needs a result.
+
+## Integrate
+
+Read each worker's diff once against the card, not its summary; a missing proof is a gap, not a pass. Send a gap back once with the failing evidence, then take the unit over. Merge units in stack order, run full Verify once, then prove the integrated head with the verification skill.
 
 ## References
 
@@ -50,18 +63,3 @@ The repository's canonical examples lead; these fill a gap. Clones are read-only
 | Skills that augment a strong model          | https://github.com/cursor/plugins              | `pstack/skills/`                                                                                            |
 | Skill packaging and evaluation              | https://github.com/anthropics/skills           | `skills/skill-creator/`                                                                                     |
 | Effect knowledge for agents                 | https://github.com/Effect-TS/skills            | `skills/effect-ts/`                                                                                         |
-
-## Design
-
-The user starts from symptoms and rough ideas and finds what they want by reacting to concrete things.
-
-- **Map first.** Symptoms become a map of causes and options sized by impact, before any pick.
-- **Decisions.** Agreed, rejected and open choices, kept current as the user reacts; a durable app decision goes in the app's `AGENTS.md`.
-- **Exploration.** Build one mix board, not N mocks; the user mixes parts and comments per part. A screen change with no agreed direction does not start until the mix is agreed or the user waives it.
-  - **Axes.** 2–4 axes — navigation, density, empty/error model, action placement; 2–3 variants each with stable ids like `nav-A`, `empty-2`.
-  - **Material.** Real primitives from `components-web` or `components-mobile`; 2–3 real screens; one fixture data set; a state scrubber from empty through loading and error to long, on phone and desktop, light and dark.
-  - **Interaction.** Side-by-side or matrix; tabs, toggles or drag where behaviour matters; URL-hash state and a copyable `mix` JSON.
-  - **Where.** A route in the worktree preview for a web app, Device-panel screens for a native app; a standalone HTML board is only for pre-app exploration.
-  - **Record.** The chosen mix is stated in the thread; implement it. Live finalists run as `?variant=` in a web app's preview or as Device-panel screens for a native app on real data; losers go before the PR; validate the built journey against the pick at the same viewport.
-- **Alternatives.** For a user-owned, hard-to-reverse architecture choice, compare 3 genuinely different designs; decide reversible technical details yourself.
-- **Spikes.** The riskiest unknown gets a time-boxed throwaway in `/tmp/<task>/`; its result backs the recommendation, not a reading of docs.

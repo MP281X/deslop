@@ -40,7 +40,7 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 
 ## Tests and measurements
 
-- **Keep** tests of owned runtime behavior that survive an equivalent implementation; not private structure, library or type-system guarantees.
+- **Keep** tests of owned runtime behavior that fail when it breaks and survive an equivalent implementation; not private structure, mocks, library or type-system guarantees. No new test beats one that has to change with every refactor.
 - **One behavior per scenario.** Merge genuine subsets, keeping unique assertions, or drop the repeat from the broader test. Similar setup isn't duplication: different inputs, dependencies, timing, state or failure paths protect different behavior.
 - **E2E** proves the user's input through its outcome, relevant failures included, not merely that screens open.
 - **One-off assumptions**: inline probes or browser proofs; a fix alone doesn't earn a persistent test.

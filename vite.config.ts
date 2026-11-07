@@ -61,7 +61,8 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
+		// Skill scripts run inside a page through preview_evaluate, outside any Effect runtime or type information.
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**', '.claude/skills/**/*.js'],
 		overrides: [
 			{
 				// React Native styles are objects with no Tailwind classes to check.
