@@ -34,7 +34,7 @@ import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {Problem} from '@deslop/components-web/problem'
+import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
@@ -366,6 +366,7 @@ function Spans(props: {id: string}) {
 	const atom = traceAtom(props.id)
 	const result = useAtomSuspense(atom, {includeFailure: true})
 	const refresh = useAtomRefresh(atom)
+	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(atom)))
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
 		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
@@ -374,7 +375,7 @@ function Spans(props: {id: string}) {
 		<>
 			{AsyncResult.isFailure(result) && (
 				<div className="flex shrink-0 justify-end px-3">
-					<Problem label="Trace out of date" warning reset={refresh} />
+					<Problem label="Trace out of date" warning reset={refresh} since={since} />
 				</div>
 			)}
 			{Option.match(value, {onNone: () => null, onSome: trace => <TraceSpans trace={trace} />})}
@@ -502,6 +503,7 @@ function OperationsPane(props: {
 }) {
 	const current = useAtomValue(overviewAtom)
 	const refresh = useAtomRefresh(overviewAtom)
+	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
 	return (
 		<section
 			aria-label="Operations"
@@ -510,7 +512,7 @@ function OperationsPane(props: {
 			<header className="bg-background sticky top-0 z-30 flex h-8 shrink-0 items-center gap-1 border-b px-2.5 max-sm:h-11">
 				<span className="text-sm font-semibold">Operations</span>
 				{AsyncResult.isFailure(current) && Option.isSome(AsyncResult.value(current)) && (
-					<Problem className="ml-auto" label="Operations out of date" warning reset={refresh} />
+					<Problem className="ml-auto" label="Operations out of date" warning reset={refresh} since={since} />
 				)}
 			</header>
 			<Suspense fallback={<OverviewRowsSkeleton appHeading label="Operations" />}>
@@ -737,7 +739,7 @@ function TracePane(props: {className?: string; now: number; pending: boolean; tr
 		<section aria-label="Trace" className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}>
 			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
 				<span
-					className="text-muted-foreground w-14 shrink-0 font-mono text-xs"
+					className="text-muted-foreground w-14 shrink-0 font-mono text-xs whitespace-nowrap"
 					title={Option.getOrUndefined(
 						Option.map(trace, current =>
 							clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(current.time)), () => props.now))
@@ -747,11 +749,7 @@ function TracePane(props: {className?: string; now: number; pending: boolean; tr
 					{Option.match(trace, {
 						onNone: () =>
 							Boolean.match(props.pending, {onFalse: () => 'Trace', onTrue: () => <Skeleton className="h-3 w-10" />}),
-						onSome: current =>
-							Boolean.match(ageOf(current.time, props.now) === 'now', {
-								onFalse: () => `${ageOf(current.time, props.now)} ago`,
-								onTrue: () => 'now'
-							})
+						onSome: current => ageOf(current.time, props.now)
 					})}
 				</span>
 				<span className="min-w-0 flex-1 truncate font-mono text-xs" title={props.trace?.id}>
@@ -840,6 +838,7 @@ function Home() {
 	const [selection, setSelection] = useState<OperationKey>()
 	const [selectedTrace, setSelectedTrace] = useState<OperationTrace>()
 	const overview = useAtomValue(overviewAtom)
+	useAtomValue(problemSinceAtom(overviewAtom))
 	const refresh = useAtomRefresh(overviewAtom)
 	const value = AsyncResult.value(overview)
 	const authFailure = Option.filter(AsyncResult.error(overview), isDenied)

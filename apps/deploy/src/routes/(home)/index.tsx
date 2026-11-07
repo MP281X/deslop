@@ -12,7 +12,7 @@ import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Problem} from '@deslop/components-web/problem'
+import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -541,15 +541,17 @@ function MetricsContent(props: {children: ReactNode}) {
 function InventoryProblem() {
 	const result = useAtomValue(inventoryAtom)
 	const refresh = useAtomRefresh(inventoryAtom)
+	const problemSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(inventoryAtom)))
 	if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return null
-	return <Problem className="ml-auto" label="Inventory out of date" warning reset={refresh} />
+	return <Problem className="ml-auto" label="Inventory out of date" warning reset={refresh} since={problemSince} />
 }
 
 function MetricsProblem() {
 	const result = useAtomValue(metricsAtom)
 	const refresh = useAtomRefresh(metricsAtom)
+	const problemSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(metricsAtom)))
 	if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return null
-	return <Problem className="ml-auto" label="History out of date" warning reset={refresh} />
+	return <Problem className="ml-auto" label="History out of date" warning reset={refresh} since={problemSince} />
 }
 
 function ChartSkeleton() {
@@ -1036,6 +1038,8 @@ function Home() {
 	const [hovered, setHovered] = useState<string>()
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom)
+	useAtomValue(problemSinceAtom(inventoryAtom))
+	useAtomValue(problemSinceAtom(metricsAtom))
 	const refreshInventory = useAtomRefresh(inventoryAtom)
 	const refreshMetrics = useAtomRefresh(metricsAtom)
 	function retryFailed() {

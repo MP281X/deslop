@@ -14,7 +14,7 @@ import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Problem} from '@deslop/components-web/problem'
+import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
@@ -229,6 +229,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 function ServersContent() {
 	const result = useAtomSuspense(serversAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(serversAtom)
+	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(serversAtom)))
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
 		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
@@ -253,7 +254,7 @@ function ServersContent() {
 			)}
 			{AsyncResult.isFailure(result) && (
 				<div className="bg-background sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end px-3">
-					<Problem label="Servers out of date" warning reset={refresh} />
+					<Problem label="Servers out of date" warning reset={refresh} since={since} />
 				</div>
 			)}
 		</>
@@ -339,6 +340,7 @@ function Home() {
 	const [copy, copyText] = useAtom(copyAtom(ENDPOINT))
 	const copied = AsyncResult.isWaiting(copy)
 	const servers = useAtomValue(serversAtom)
+	useAtomValue(problemSinceAtom(serversAtom))
 	const value = AsyncResult.value(servers)
 	const authFailure = Option.filter(AsyncResult.error(servers), isDenied)
 	const sorted = Array.sort(
