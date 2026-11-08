@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {AiProvider} from '@deslop/runtime/ai'
+import {AiProvider} from '@deslop/runtime/ai/schema'
 
 export {AiProvider}
 export type AiKeyInfo = typeof AiKeyInfo.Type

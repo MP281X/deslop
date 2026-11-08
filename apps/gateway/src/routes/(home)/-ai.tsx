@@ -61,12 +61,11 @@ const IDENTITIES: Record<string, {color: string; name: string}> = {
 	gateway: {color: 'var(--pink)', name: 'Gateway'},
 	opm: {color: 'var(--ivory)', name: 'OPM'},
 	scope: {color: 'var(--cyan)', name: 'Scope'},
-	signal: {color: 'var(--purple)', name: 'Signal'},
 	stash: {color: 'var(--amber)', name: 'Stash'},
 	trips: {color: 'var(--orange)', name: 'Trips'}
 }
 const SPARE = ['var(--purple)', 'var(--cyan)', 'var(--blue)', 'var(--coral)', 'var(--machine-dev)', 'var(--ivory)']
-export const PROVIDER_NAMES = {
+const PROVIDER_NAMES = {
 	anthropic: 'Anthropic',
 	'opencode-go': 'OpenCode Go',
 	'opencode-zen': 'OpenCode Zen',

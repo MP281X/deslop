@@ -115,7 +115,7 @@ export type Period = typeof Period.Type
 export const Period = Schema.Literals(['24h', '7d', '30d'])
 
 // The period's buckets, ending with the current one: hours for a day, UTC days otherwise.
-export function periodRange(period: Period, now: number) {
+function periodRange(period: Period, now: number) {
 	const bucket = Boolean.match(period === '24h', {onFalse: () => 'day' as const, onTrue: () => 'hour' as const})
 	const size = Boolean.match(bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
 	const count = {'7d': 7, '24h': 24, '30d': 30}[period]

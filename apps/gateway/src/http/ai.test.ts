@@ -25,7 +25,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
-import {AiHttpHandlers} from '#http/ai.ts'
+import {AiHttpHandlers} from '#http/handlers.ts'
 import {AiUsageEntry} from '#services/ai/schema.ts'
 import {AiProxy} from '#services/ai/service.ts'
 

@@ -19,10 +19,8 @@ import type {Headers} from 'effect/http'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
+import type {AiProvider} from '#ai/schema.ts'
 import {localAuth} from '#auth/lib/utils.ts'
-
-export type AiProvider = typeof AiProvider.Type
-export const AiProvider = Schema.Literals(['anthropic', 'openrouter', 'opencode-zen', 'opencode-go'])
 
 export class AiUnavailable extends Schema.TaggedError<AiUnavailable>()('AiUnavailable', {message: Schema.String}) {}
 

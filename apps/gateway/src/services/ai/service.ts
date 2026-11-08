@@ -31,13 +31,12 @@ import {
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import type {AiProvider} from '@deslop/runtime/ai'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
 import {Origin} from '@deslop/runtime/schema'
 
-import type {AiUsageQuery} from '#services/ai/schema.ts'
+import type {AiProvider,AiUsageQuery} from '#services/ai/schema.ts'
 import {AiStoredGrant, AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
 
@@ -391,6 +390,5 @@ const make = Effect.gen(function* () {
 export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()(
 	'@deslop/gateway/services/ai/service/AiProxy'
 ) {
-	static readonly make = make
 	static readonly layer = Layer.effect(this, make)
 }
