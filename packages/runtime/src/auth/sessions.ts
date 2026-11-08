@@ -1,4 +1,5 @@
 import {
+	Array,
 	Clock,
 	Config,
 	Context,
@@ -7,6 +8,7 @@ import {
 	Layer,
 	MutableHashMap,
 	Option,
+	Order,
 	Redacted,
 	Schema,
 	Semaphore,
@@ -21,7 +23,7 @@ import {Cookies, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect
 import {Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import {REVOKE_PATH, SESSION_COOKIE, TOKEN_PATH, bearerOf, rejected} from '#auth/lib/utils.ts'
+import {REVOKE_PATH, SESSION_COOKIE, TOKEN_PATH, bearerOf, isJwt, rejected} from '#auth/lib/utils.ts'
 import type {CodeGrant} from '#auth/schema.ts'
 import {AccessClaims, AuthError, TokenResponse, User} from '#auth/schema.ts'
 
@@ -44,10 +46,6 @@ const Refusal = Schema.Struct({error: Schema.String, error_description: Schema.o
 // Auth turned a code or refresh token down, as opposed to not answering.
 class Refused extends Schema.TaggedError<Refused>()('Refused', {message: Schema.String}) {}
 
-export function isJwt(token: string) {
-	return Option.isSome(String.match(/^[\w-]+\.[\w-]+\.[\w-]+$/u)(token))
-}
-
 // A phone sends its session id as the bearer; a browser holds it in the session cookie.
 export function sessionIdOf(headers: Headers.Headers) {
 	return Option.orElse(
@@ -66,6 +64,8 @@ export class Sessions extends Context.Service<
 		readonly current: (id: string) => Effect.Effect<{token: string; user: User}, AuthError>
 		// Ends the sign-in at Auth too; a failed revocation still forgets the session.
 		readonly end: (id: string) => Effect.Effect<void, AuthError>
+		readonly remember: (token: string, claims: AccessClaims) => Effect.Effect<void>
+		readonly tokenFor: (userId: string) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/runtime/auth/sessions') {
 	static readonly layer = Layer.effect(
@@ -80,6 +80,8 @@ export class Sessions extends Context.Service<
 			const random = yield* SecureRandom.SecureRandom
 			const client = yield* HttpClient.HttpClient
 			const locks = MutableHashMap.empty<string, Semaphore.Semaphore>()
+			const bearers = MutableHashMap.empty<string, {token: string; expiresAt: number}>()
+			const app = yield* Config.String('APP_URL')
 
 			// Only a hash of the id is stored, so the store alone cannot act as anyone.
 			function keyOf(id: string) {
@@ -171,6 +173,36 @@ export class Sessions extends Context.Service<
 				)
 			}
 
+			const tokenFor = Effect.fn('Sessions.tokenFor')(function* (userId: string) {
+				const saved = yield* Effect.forEach(
+					yield* store.keys,
+					key => Effect.map(store.get(key), session => Option.map(session, value => ({key, value}))),
+					{concurrency: 'unbounded'}
+				)
+				const candidates = Array.sort(
+					Array.filter(Array.getSomes(saved), session => session.value.user.id === userId),
+					Order.mapInput(Order.flip(Order.Number), (session: {key: string; value: Stored}) => session.value.expiresAt)
+				)
+				for (const session of candidates) {
+					if (yield* fresh(session.value)) return session.value.access
+					const renewed = yield* Effect.result(
+						pipe(refreshed(session.key), rejected('AI access is temporarily unavailable'))
+					)
+					if (renewed._tag === 'Success') return renewed.success.access
+					if (Schema.is(AuthError)(renewed.failure) && renewed.failure.error === 'temporarily_unavailable') {
+						return yield* renewed.failure
+					}
+				}
+				const now = yield* Clock.currentTimeMillis
+				const bearer = Option.getOrUndefined(
+					Option.filter(MutableHashMap.get(bearers, userId), access => access.expiresAt >= now + 60_000)
+				)
+				if (bearer !== undefined) return bearer.token
+				MutableHashMap.remove(bearers, userId)
+				return yield* AuthError.make({
+					message: `Open ${String.capitalize(String.split(new URL(app).hostname, '.')[0])} once so it can use AI for you`
+				})
+			}, rejected('AI access is temporarily unavailable'))
 			return Sessions.of({
 				current: Effect.fn('Sessions.current')(function* (id: string) {
 					const key = yield* keyOf(id)
@@ -195,6 +227,10 @@ export class Sessions extends Context.Service<
 						Semaphore.withPermit(lockOf(key))
 					)
 				}, rejected('The session could not be ended')),
+				remember: (token, claims) =>
+					Effect.sync(() => {
+						MutableHashMap.set(bearers, claims.sub, {expiresAt: claims.exp * 1000, token})
+					}),
 				start: Effect.fn('Sessions.start')(function* (grant: CodeGrant) {
 					const tokens = yield* pipe(
 						granted({...grant, grant_type: 'authorization_code'}),
@@ -203,7 +239,8 @@ export class Sessions extends Context.Service<
 					const id = Base64Url.encode(yield* random.randomBytes(32))
 					yield* store.set(yield* keyOf(id), yield* stored(tokens, grant.client_id, yield* Clock.currentTimeMillis))
 					return id
-				}, rejected('The sign-in could not be completed'))
+				}, rejected('The sign-in could not be completed')),
+				tokenFor
 			})
 		})
 	)

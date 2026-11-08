@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Context, Effect, Layer, pipe} from 'effect'
+import {Context, Effect, Function, Layer, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
@@ -39,8 +39,7 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const gateway = AiGateway.of({
 			apiUrl: () => Effect.succeed('https://gateway.mp281x.xyz/ai/anthropic'),
-			authorize: () => client => client,
-			enroll: () => Effect.void
+			authorize: () => Effect.succeed(Function.identity)
 		})
 		const client = HttpClient.make(request =>
 			Effect.succeed(
@@ -63,8 +62,7 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const gateway = AiGateway.of({
 			apiUrl: () => Effect.fail(AiUnavailable.make({message: 'Start the app with --gateway'})),
-			authorize: () => client => client,
-			enroll: () => Effect.void
+			authorize: () => Effect.succeed(Function.identity)
 		})
 		const error = yield* Effect.flip(
 			(yield* open(

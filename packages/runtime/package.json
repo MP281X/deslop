@@ -13,6 +13,7 @@
 		"./cli/service": "./src/cli/service.ts",
 		"./auth/schema": "./src/auth/schema.ts",
 		"./auth/service": "./src/auth/service.ts",
+		"./auth/sessions": "./src/auth/sessions.ts",
 		"./auth/utils": "./src/auth/lib/utils.ts",
 		"./mobile": "./src/mobile/client.ts",
 		"./mobile/session": "./src/mobile/session.ts",

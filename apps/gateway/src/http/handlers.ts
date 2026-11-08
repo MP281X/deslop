@@ -67,7 +67,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			}
 			yield* connections.complete(params, route, user)
 			// Its tools are read now, not at an agent's next tools/list.
-			yield* gateway.connected
+			yield* gateway.connected(request.headers)
 			return HttpServerResponse.expireCookieUnsafe(
 				HttpServerResponse.redirect('/'),
 				`__Host-mcp-${params.state}`,
@@ -86,7 +86,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 export const AiHttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const ai = yield* AiProxy
-		yield* router.add('POST', '/ai/grants', ai.mint)
 		yield* router.add(
 			'*',
 			'/ai/:provider/*',

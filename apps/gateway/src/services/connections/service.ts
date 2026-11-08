@@ -1,7 +1,9 @@
 import {
 	Array,
+	Boolean,
 	Cache,
 	Clock,
+	Config,
 	Context,
 	Effect,
 	Layer,
@@ -28,12 +30,14 @@ import {
 } from '@modelcontextprotocol/client'
 import {SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
+import type {Headers} from 'effect/http'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {adminIds, isAdmin} from '@deslop/runtime/auth/utils'
+import {Auth} from '@deslop/runtime/auth/service'
+import {ISSUER_PATH, adminIds, isAdmin} from '@deslop/runtime/auth/utils'
 
 import {
 	clientMetadata,
@@ -66,6 +70,11 @@ type Pending = {
 	verifier: string
 }
 
+// A host without its first label: `auth.mp281x.xyz` is on `mp281x.xyz`.
+function siteOf(url: URL) {
+	return Array.join(Array.drop(String.split('.')(url.hostname), 1), '.')
+}
+
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => {
 		if (Schema.is(AuthError)(cause)) return cause
@@ -76,7 +85,7 @@ function failed(message: string) {
 export class Connections extends Context.Service<
 	Connections,
 	{
-		readonly add: (url: ServerUrl, user: User) => Effect.Effect<ConnectionInfo, AuthError>
+		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionInfo, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
 		// A tool call passing through, by server, for the page's port lights.
 		readonly called: (id: ServerId) => Effect.Effect<void>
@@ -96,8 +105,36 @@ export class Connections extends Context.Service<
 		const origin = yield* gatewayUrl
 		const callback = `${origin}/oauth/callback`
 		const clientInfo = clientMetadata(origin)
+		const auth = yield* Auth
+		const authUrl = Option.map(yield* Config.option(Config.String('AUTH_URL')), url => new URL(url))
+		// The caller's token opens every Deslop app, so only an HTTPS app on Auth's own site that names Auth receives it; any other server naming Auth stays third-party.
+		function deslop(url: string, authorizationServers: readonly string[]) {
+			const target = new URL(url)
+			return Option.exists(
+				authUrl,
+				issuer =>
+					target.protocol === 'https:' &&
+					String.isEmpty(target.port) &&
+					siteOf(target) === siteOf(issuer) &&
+					Array.contains(authorizationServers, new URL(ISSUER_PATH, issuer).href)
+			)
+		}
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
-		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
+		const cleaned = Record.map(
+			Option.getOrElse(yield* store.get('servers'), () => ({})),
+			connection => {
+				if (!deslop(connection.url, Option.toArray(Option.fromUndefinedOr(connection.oauth?.metadata.issuer)))) {
+					return connection
+				}
+				return {
+					...Struct.omit(connection, ['oauth', 'error']),
+					link: {_tag: 'Connected' as const},
+					mode: 'deslop' as const
+				}
+			}
+		)
+		yield* store.set('servers', cleaned)
+		const state = yield* SubscriptionRef.make(cleaned)
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
 		// Only the latest calls matter to a light, so a slow page drops the oldest.
@@ -278,7 +315,10 @@ export class Connections extends Context.Service<
 				)
 			)
 		}, failed('Cannot refresh this MCP; reconnect it from the MCP page'))
-		const discover = Effect.fnUntraced(function* (initial: Omit<Connection, 'link' | 'mode'>) {
+		const discover = Effect.fnUntraced(function* (
+			initial: Omit<Connection, 'link' | 'mode'>,
+			headers: Headers.Headers
+		) {
 			const probe = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 				id: 1,
 				jsonrpc: '2.0',
@@ -321,8 +361,15 @@ export class Connections extends Context.Service<
 			if (discovery.resourceMetadata !== undefined && discovery.resourceMetadata.resource !== initial.url) {
 				return yield* AuthError.make({message: 'The MCP metadata names a different resource URL.'})
 			}
-			if (discovery.authorizationServerMetadata === undefined) {
+			const own = deslop(initial.url, discovery.resourceMetadata?.authorization_servers ?? [])
+			if (own || discovery.authorizationServerMetadata === undefined) {
+				const access = yield* Boolean.match(own, {onFalse: () => Effect.undefined, onTrue: () => auth.token(headers)})
 				const transport = new StreamableHTTPClientTransport(new URL(initial.url), {
+					authProvider: {
+						token: () =>
+							// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's token contract requires a Promise.
+							Effect.runPromise(Effect.succeed(access))
+					},
 					fetch,
 					requestInit: {redirect: 'error'}
 				})
@@ -345,7 +392,7 @@ export class Connections extends Context.Service<
 					}),
 					icons: serverIcons(anonymous.getServerVersion()),
 					link: {_tag: 'Connected'},
-					mode: 'public',
+					mode: Boolean.match(own, {onFalse: () => 'public' as const, onTrue: () => 'deslop' as const}),
 					name: pipe(
 						Option.fromUndefinedOr(anonymous.getServerVersion()?.name),
 						Option.map(String.trim),
@@ -408,7 +455,7 @@ export class Connections extends Context.Service<
 
 		return Connections.of({
 			add: Effect.fn('Connections.add')(
-				function* (input: ServerUrl, user: User) {
+				function* (input: ServerUrl, user: User, headers: Headers.Headers) {
 					yield* admin(user)
 					const url = new URL(input).href
 					if (new URL(url).origin === origin) {
@@ -421,13 +468,10 @@ export class Connections extends Context.Service<
 					const base = serverName(url) || 'mcp'
 					const suffix = String.slice(0, 6)(String.toLowerCase(yield* nonce))
 					const id = Option.match(Record.get(current, base), {onNone: () => base, onSome: () => `${base}_${suffix}`})
-					const connection = yield* discover({
-						generation: yield* nonce,
-						id,
-						name: String.capitalize(base),
-						tools: [],
-						url
-					})
+					const connection = yield* discover(
+						{generation: yield* nonce, id, name: String.capitalize(base), tools: [], url},
+						headers
+					)
 					// Discovery takes seconds, so the URL and id are checked again where the server is saved.
 					yield* change(latest => {
 						if (Record.has(latest, id) || Array.some(Record.values(latest), row => row.url === url)) {

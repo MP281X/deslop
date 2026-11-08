@@ -6,6 +6,7 @@ import {assert, it} from '@effect/vitest'
 import {
 	Array,
 	Boolean,
+	Clock,
 	ConfigProvider,
 	Context,
 	Effect,
@@ -14,28 +15,64 @@ import {
 	Predicate,
 	Queue,
 	Redacted,
+	Ref,
 	Schema,
 	String,
 	pipe
 } from 'effect'
 
+import {Signature} from 'effect/crypto'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {Jwk, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import {GRANT_REFUSED} from '@deslop/runtime/ai/schema'
+import {AccessClaims} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {Sessions} from '@deslop/runtime/auth/sessions'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
 import {AiUsageEntry} from '#services/ai/schema.ts'
 import {AiProxy} from '#services/ai/service.ts'
 
-const APP = 'https://stash.mp281x.xyz'
-const GRANT_BODY = '{"app":"https://stash.mp281x.xyz"}'
+const APP = 'Stash'
 const JSON_BODY = '{ "model": "test", "usage": {"input_tokens": 10, "output_tokens": 5} }'
 const SSE_BODY =
 	'event: message_start\ndata: {"message":{"model":"test","usage":{"input_tokens":10}}}\n\nevent: message_delta\ndata: {"usage":{"output_tokens":5}}\n\n'
 
 const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient) {
+	const signature = Context.get(yield* Layer.build(NodeCrypto.layer), Signature.Signature)
+	const pair = yield* pipe(
+		Jwk.generateKeyPair({algorithm: 'EdDSA', kid: 'test'}),
+		Effect.provideService(Signature.Signature, signature)
+	)
+	const signingKey = yield* pipe(
+		Jwk.importPrivate(pair.privateKey, 'EdDSA'),
+		Effect.provideService(Signature.Signature, signature)
+	)
+	const down = yield* Ref.make(false)
+	const sign = Effect.fnUntraced(function* (expires: number = 600) {
+		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+		return Redacted.value(
+			yield* pipe(
+				Jwt.sign(
+					AccessClaims,
+					{
+						aud: 'deslop',
+						azp: APP,
+						exp: now + expires,
+						iat: now,
+						iss: 'https://auth.mp281x.xyz/api/auth',
+						name: 'Alice',
+						sid: 'family',
+						sub: 'alice'
+					},
+					signingKey,
+					{kid: 'test', typ: 'at+jwt'}
+				),
+				Effect.provideService(Signature.Signature, signature)
+			)
+		)
+	})
 	const saved = yield* Queue.unbounded<AiUsageEntry>()
 	const calls = yield* Queue.unbounded<{key: string; url: string; body: string}>()
 	const base = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
@@ -58,6 +95,10 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	})
 	const client = HttpClient.make(request =>
 		Effect.gen(function* () {
+			if (request.url === 'https://auth.mp281x.xyz/.well-known/jwks.json') {
+				if (yield* Ref.get(down)) return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 503}))
+				return HttpClientResponse.fromWeb(request, Response.json({keys: [pair.publicKey]}))
+			}
 			if (compressed !== undefined && String.includes('/gzip')(request.url)) return yield* compressed.get('/gzip')
 			if (request.url === 'https://models.dev/api.json') {
 				return HttpClientResponse.fromWeb(
@@ -91,16 +132,13 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 			)
 		})
 	)
-	const auth = Auth.of({
-		token: () => Effect.succeed('token'),
-		user: headers => Effect.succeed({id: headers['cookie'] ?? 'alice', name: 'Person'})
-	})
 	const services = pipe(
 		AiProxy.layer,
+		Layer.provide(Auth.layer),
+		Layer.provide(Sessions.layer),
 		Layer.provide(
 			Layer.mergeAll(
 				Layer.succeed(KeyValueStore.KeyValueStore, store),
-				Layer.succeed(Auth, auth),
 				Layer.succeed(HttpClient.HttpClient, client),
 				NodeCrypto.layer
 			)
@@ -113,7 +151,11 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 				pipe(
 					AiHttpHandlers,
 					Layer.provide(services),
-					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
+					Layer.provide(
+						ConfigProvider.layer(
+							ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+						)
+					)
 				)
 			)
 		),
@@ -122,27 +164,21 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	return {
 		ai: Context.get(context, AiProxy),
 		calls,
+		down,
 		request: (path: string, options?: RequestInit) =>
 			Effect.promise(() => web.handler(new Request(`https://gateway.mp281x.xyz${path}`, options))),
-		saved
+		saved,
+		sign
 	}
 })
 
-it.effect('forwards JSON and SSE unchanged using the grant owner key and meters models.dev cost', () =>
+it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its client label', () =>
 	pipe(
 		Effect.gen(function* () {
 			const f = yield* fixture()
 			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 			yield* f.ai.setKey('bob', 'anthropic', Redacted.make('bob-secret'))
-			const minted = yield* f.request('/ai/grants', {
-				body: GRANT_BODY,
-				headers: {'content-type': 'application/json', cookie: 'alice'},
-				method: 'POST'
-			})
-
-			const token = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({token: Schema.String})))(
-				yield* Effect.promise(() => minted.text())
-			)).token
+			const token = yield* f.sign()
 			for (const path of ['json', 'stream']) {
 				const response = yield* f.request(`/ai/anthropic/${path}?q=1`, {
 					body: '{ "model": "test" }',
@@ -181,17 +217,62 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 			const missing = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(missing.status, 402)
 			assert.include(yield* Effect.promise(() => missing.text()), 'Add your Anthropic key in Gateway')
-			yield* f.ai.revokeGrant('alice', APP)
-			const refused = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
-			assert.equal(refused.status, 401)
-			assert.equal(refused.headers.get(GRANT_REFUSED), 'true')
 		}),
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
-		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
+		Effect.provide(
+			ConfigProvider.layer(
+				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+			)
+		)
 	)
 )
 
-it.layer(NodeHttpServer.layerTest)(test => {
+it.live('refuses missing, invalid and expired bearers and has no credential-creation endpoint', () =>
+	pipe(
+		Effect.gen(function* () {
+			const f = yield* fixture()
+			for (const authorization of [
+				'',
+				'Bearer invalid',
+				'Bearer forged.token.signature',
+				`Bearer ${yield* f.sign(-1)}`
+			]) {
+				const response = yield* f.request('/ai/anthropic/json', {
+					headers: {authorization, cookie: '__Host-session=not-a-jwt'}
+				})
+				assert.equal(response.status, 401)
+				assert.deepEqual(yield* Effect.promise(() => response.json()), {error: {message: 'Sign in first'}})
+			}
+			assert.equal((yield* f.request(Array.join(['', 'ai', 'grants'], '/'), {method: 'POST'})).status, 404)
+		}),
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP entry point owns the configured service lifetime.
+		Effect.provide(
+			ConfigProvider.layer(
+				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+			)
+		)
+	)
+)
+
+it.live('answers 503 rather than a refusal while Auth cannot serve its key set', () =>
+	pipe(
+		Effect.gen(function* () {
+			const f = yield* fixture()
+			yield* Ref.set(f.down, true)
+			const response = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${yield* f.sign()}`}})
+			assert.equal(response.status, 503)
+			assert.equal(response.headers.get('retry-after'), '5')
+		}),
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP entry point owns the configured service lifetime.
+		Effect.provide(
+			ConfigProvider.layer(
+				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+			)
+		)
+	)
+)
+
+it.layer(NodeHttpServer.layerTest, {excludeTestServices: true})(test => {
 	test.effect(
 		'forwards decoded gzip JSON without stale encoding or hop-by-hop headers',
 		Effect.fnUntraced(
@@ -216,16 +297,8 @@ it.layer(NodeHttpServer.layerTest)(test => {
 				)
 				const f = yield* fixture(yield* HttpClient.HttpClient)
 				yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
-				const minted = yield* f.request('/ai/grants', {
-					body: GRANT_BODY,
-					headers: {'content-type': 'application/json', cookie: 'alice'},
-					method: 'POST'
-				})
 				const response = yield* f.request('/ai/anthropic/gzip', {
-					headers: {
-						'accept-encoding': 'gzip',
-						authorization: `Bearer ${(yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({token: Schema.String})))(yield* Effect.promise(() => minted.text()))).token}`
-					}
+					headers: {'accept-encoding': 'gzip', authorization: `Bearer ${yield* f.sign()}`}
 				})
 				assert.deepEqual(yield* Effect.promise(() => response.json()), {
 					model: 'test',
@@ -236,7 +309,11 @@ it.layer(NodeHttpServer.layerTest)(test => {
 				}
 			},
 			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This gzip HTTP test entry point owns its configured service lifetime.
-			Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
+			Effect.provide(
+				ConfigProvider.layer(
+					ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+				)
+			)
 		)
 	)
 })

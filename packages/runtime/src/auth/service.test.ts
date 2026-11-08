@@ -27,6 +27,7 @@ import {TestClock} from 'effect/testing'
 
 import {Auth, HttpAuth, layerMcpAuth} from './service.ts'
 
+import {AiGateway, AiUnavailable} from '#ai/service.ts'
 import {CurrentUser, DEVELOPER, RpcAuth, SESSION_COOKIE, needsSignIn} from '#auth/lib/utils.ts'
 import {AccessClaims, AuthError} from '#auth/schema.ts'
 import {Sessions} from '#auth/sessions.ts'
@@ -89,6 +90,7 @@ const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign:
 function layerAuth(client: HttpClient.HttpClient, settings: Record<string, string>) {
 	return pipe(
 		Auth.layer,
+		Layer.provideMerge(AiGateway.layer),
 		Layer.provideMerge(Sessions.layer),
 		Layer.provide(
 			Layer.mergeAll(KeyValueStore.layerMemory, NodeCrypto.layer, Layer.succeed(HttpClient.HttpClient, client))
@@ -207,6 +209,82 @@ it.layer(NodeCrypto.layer, {excludeTestServices: true})(test => {
 
 it.layer(NodeCrypto.layer)(test => {
 	test.effect(
+		'uses the freshest session for AI, then a recent verified bearer, and asks to open the app otherwise',
+		Effect.fnUntraced(function* () {
+			const refreshes = yield* Ref.make(0)
+			const issuerService = yield* issuer((form, sign) =>
+				Effect.orDie(
+					Effect.gen(function* () {
+						if (form.get('grant_type') === 'refresh_token') yield* Ref.update(refreshes, count => count + 1)
+						return Response.json({
+							access_token: yield* sign({azp: 'Stash', sid: form.get('code') ?? 'renewed'}),
+							expires_in: 600,
+							refresh_token: 'refresh'
+						})
+					})
+				)
+			)
+			const context = yield* Layer.build(
+				layerAuth(issuerService.client, {
+					APP_URL: 'https://stash.mp281x.xyz',
+					AUTH_URL: AUTH,
+					GATEWAY_URL: 'https://gateway.mp281x.xyz'
+				})
+			)
+			const auth = Context.get(context, Auth)
+			const sessions = Context.get(context, Sessions)
+			const gateway = Context.get(context, AiGateway)
+			const missing = yield* Effect.flip(gateway.authorize('github:42'))
+			assert.instanceOf(missing, AiUnavailable)
+			// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The instruction is the public recovery contract.
+			assert.equal(missing.message, 'Open Stash once so it can use AI for you')
+			const bearer = yield* issuerService.sign({azp: 'Claude Code', sid: 'bearer'})
+			assert.equal((yield* auth.user(Headers.fromInput({authorization: `Bearer ${bearer}`}))).client, 'Claude Code')
+			const echo = HttpClient.make(request =>
+				Effect.succeed(
+					HttpClientResponse.fromWeb(request, Response.json({authorization: request.headers['authorization']}))
+				)
+			)
+			function authorization() {
+				return Effect.gen(function* () {
+					return yield* (yield* (yield* gateway.authorize('github:42'))(echo).get(
+						'https://gateway.mp281x.xyz/ai/anthropic/v1/messages'
+					)).json
+				})
+			}
+			assert.deepEqual(yield* authorization(), {authorization: `Bearer ${bearer}`})
+			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:43')), AiUnavailable)
+			const first = yield* sessions.start({
+				client_id: 'stash',
+				code: 'first',
+				code_verifier: 'verifier',
+				redirect_uri: 'https://stash.mp281x.xyz/auth/callback'
+			})
+			yield* TestClock.adjust('1 second')
+			const second = yield* sessions.start({
+				client_id: 'stash',
+				code: 'second',
+				code_verifier: 'verifier',
+				redirect_uri: 'https://stash.mp281x.xyz/auth/callback'
+			})
+			const current = yield* sessions.current(second)
+			assert.deepEqual(yield* authorization(), {authorization: `Bearer ${current.token}`})
+			yield* TestClock.adjust('541 seconds')
+			assert.notDeepEqual(yield* authorization(), {authorization: `Bearer ${current.token}`})
+			assert.equal(yield* Ref.get(refreshes), 1)
+			yield* sessions.end(first)
+			yield* sessions.end(second)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailable)
+			yield* auth.user(
+				Headers.fromInput({
+					authorization: `Bearer ${yield* issuerService.sign({exp: Math.floor((yield* Clock.currentTimeMillis) / 1000) + 59})}`
+				})
+			)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailable)
+		})
+	)
+
+	test.effect(
 		"refreshes a session's access token once for concurrent requests and forgets the session Auth refuses",
 		Effect.fnUntraced(function* () {
 			const refreshes = yield* Queue.unbounded<string>()
@@ -292,7 +370,7 @@ it.layer(NodeCrypto.layer)(test => {
 									Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
 								)
 							),
-							Layer.provide(layerAuth(client, {}))
+							Layer.provide(layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'}))
 						),
 						{disableLogger: true}
 					)

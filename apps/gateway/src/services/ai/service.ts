@@ -10,6 +10,7 @@ import {
 	MutableList,
 	Option,
 	Redacted,
+	Result,
 	Schema,
 	Scope,
 	Semaphore,
@@ -18,8 +19,6 @@ import {
 	pipe
 } from 'effect'
 
-import {Digest, SecureRandom} from 'effect/crypto'
-import {Base64Url} from 'effect/encoding'
 import {
 	Headers,
 	HttpClient,
@@ -30,14 +29,12 @@ import {
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {GRANT_REFUSED} from '@deslop/runtime/ai/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
-import {Origin} from '@deslop/runtime/schema'
+import {bearerOf, failureOptions, isJwt, localAuth} from '@deslop/runtime/auth/utils'
 
 import type {AiProvider, AiUsageQuery} from '#services/ai/schema.ts'
-import {AiStoredGrant, AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
+import {AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
 
 const UPSTREAMS = {
@@ -68,14 +65,9 @@ const failed = Effect.mapError((cause: unknown) => AuthError.make({cause, messag
 const make = Effect.gen(function* () {
 	const kv = yield* KeyValueStore.KeyValueStore
 	const keys = KeyValueStore.toSchemaStore(kv, Schema.Array(AiStoredKey))
-	const grants = KeyValueStore.toSchemaStore(kv, Schema.Array(AiStoredGrant))
+	yield* kv.remove('ai-grants')
 	const usage = KeyValueStore.toSchemaStore(kv, Schema.Array(AiUsageEntry))
 	const auth = yield* Auth
-	const random = yield* SecureRandom.SecureRandom
-	const digestService = yield* Digest.Digest
-	function hash(token: string) {
-		return Effect.map(digestService.digest(Digest.sha256, new TextEncoder().encode(token)), Base64Url.encode)
-	}
 	const local = yield* localAuth
 	const client = yield* HttpClient.HttpClient
 	const scope = yield* Scope.Scope
@@ -85,7 +77,6 @@ const make = Effect.gen(function* () {
 	function loadKeys(id: string) {
 		return pipe(keys.get(`ai-keys/${id}`), Effect.map(Option.getOrElse(() => [])), failed)
 	}
-	const loadGrants = pipe(grants.get('ai-grants'), Effect.map(Option.getOrElse(() => [])), failed)
 	const saveUsage = Effect.fnUntraced(function* (id: string, entry: AiUsageEntry) {
 		const metered = {entry}
 		if (
@@ -140,13 +131,6 @@ const make = Effect.gen(function* () {
 		)
 	})
 	return {
-		grants: (id: string) =>
-			Effect.map(loadGrants, entries =>
-				Array.map(
-					Array.filter(entries, grant => grant.userId === id),
-					grant => ({app: grant.app, createdAt: grant.createdAt, lastUsedAt: grant.lastUsedAt})
-				)
-			),
 		keys: (id: string) =>
 			Effect.map(loadKeys(id), entries =>
 				Array.map(entries, key => ({
@@ -156,57 +140,21 @@ const make = Effect.gen(function* () {
 					provider: key.provider
 				}))
 			),
-		mint: pipe(
-			Effect.gen(function* () {
-				const request = yield* HttpServerRequest.HttpServerRequest
-				const input = yield* HttpServerRequest.schemaBodyJson(Schema.Struct({app: Origin}))
-				const user = yield* auth.user(request.headers)
-				const token = Base64Url.encode(yield* random.randomBytes(32))
-				const digest = yield* hash(token)
-				const now = yield* Clock.currentTimeMillis
-				yield* pipe(
-					Effect.gen(function* () {
-						yield* grants.set('ai-grants', [
-							...Array.filter(yield* loadGrants, grant => grant.userId !== user.id || grant.app !== input.app),
-							{app: input.app, createdAt: now, hash: digest, lastUsedAt: now, userId: user.id}
-						])
-					}),
-					Semaphore.withPermit(lock)
-				)
-				return HttpServerResponse.jsonUnsafe({token}, {headers: {'cache-control': 'no-store'}})
-			}),
-			Effect.orElseSucceed(() =>
-				HttpServerResponse.jsonUnsafe({error: {message: 'Sign in with a credential valid for this app'}}, {status: 401})
-			)
-		),
 		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const now = yield* Clock.currentTimeMillis
-			const digest = yield* hash(String.replace(/^Bearer /u, '')(request.headers['authorization'] ?? ''))
-			const grant = yield* pipe(
-				Effect.gen(function* () {
-					const current = yield* loadGrants
-					const found = Option.getOrUndefined(Array.findFirst(current, value => value.hash === digest))
-					if (found !== undefined) {
-						yield* grants.set(
-							'ai-grants',
-							Array.map(current, value => {
-								if (value.hash === digest) return {...value, lastUsedAt: now}
-								return value
-							})
-						)
-					}
-					return found
-				}),
-				Semaphore.withPermit(lock)
-			)
-			if (!local && grant === undefined) {
+			// Only an access token Auth signed spends a key, never a session on Gateway's own pages.
+			if (!local && !Option.exists(bearerOf(request.headers), isJwt)) {
+				return HttpServerResponse.jsonUnsafe({error: {message: 'Sign in first'}}, {status: 401})
+			}
+			const person = yield* Effect.result(auth.user(request.headers))
+			if (Result.isFailure(person)) {
 				return HttpServerResponse.jsonUnsafe(
-					{error: {message: 'Unknown or revoked AI grant'}},
-					{headers: {[GRANT_REFUSED]: 'true'}, status: 401}
+					{error: {message: person.failure.message}},
+					failureOptions(person.failure, 401)
 				)
 			}
-			const id = Boolean.match(local, {onFalse: () => grant?.userId ?? DEVELOPER.id, onTrue: () => DEVELOPER.id})
+			const id = person.success.id
 			const key = Option.getOrUndefined(Array.findFirst(yield* loadKeys(id), value => value.provider === provider))
 			if (key === undefined) {
 				return HttpServerResponse.jsonUnsafe(
@@ -266,7 +214,7 @@ const make = Effect.gen(function* () {
 			const body = web?.body ?? (yield* Stream.toReadableStreamEffect(response.stream))
 			const [forward, meter] = body.tee()
 			const entry: AiUsageEntry = {
-				app: Boolean.match(local, {onFalse: () => grant?.app ?? 'local', onTrue: () => 'local'}),
+				app: person.success.client ?? 'local',
 				at: now,
 				cacheReadTokens: 0,
 				cacheWriteTokens: 0,
@@ -334,18 +282,6 @@ const make = Effect.gen(function* () {
 					yield* keys.set(
 						`ai-keys/${id}`,
 						Array.filter(yield* loadKeys(id), key => key.provider !== provider)
-					)
-				}),
-				Semaphore.withPermit(lock),
-				failed
-			)
-		}),
-		revokeGrant: Effect.fnUntraced(function* (id: string, app: string) {
-			return yield* pipe(
-				Effect.gen(function* () {
-					yield* grants.set(
-						'ai-grants',
-						Array.filter(yield* loadGrants, grant => grant.userId !== id || grant.app !== app)
 					)
 				}),
 				Semaphore.withPermit(lock),

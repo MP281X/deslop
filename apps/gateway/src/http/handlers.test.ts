@@ -6,6 +6,7 @@ import {
 	Boolean,
 	Clock,
 	ConfigProvider,
+	Context,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -31,6 +32,7 @@ import {
 	HttpServerRequest,
 	HttpServerResponse
 } from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -41,7 +43,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
-import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, ConnectionStore, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
 import {Tools} from '#tools/contracts.ts'
@@ -111,6 +113,10 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 			resource: 'https://stash.mp281x.xyz/mcp',
 			scopes_supported: ['deslop']
 		})
+	}
+	// A server outside Deslop's site naming Auth, as one could to collect people's tokens.
+	if (url === 'https://mimic.example.com/.well-known/oauth-protected-resource/mcp') {
+		return Response.json({authorization_servers: [`${AUTH_URL}/api/auth`], resource: 'https://mimic.example.com/mcp'})
 	}
 	if (url === `${AUTH_URL}/.well-known/oauth-authorization-server/api/auth`) {
 		return Response.json({
@@ -217,7 +223,7 @@ function layerAuth(verified: Ref.Ref<number>) {
 	return Layer.succeedContext(
 		Auth.makeContext(
 			Auth.of({
-				token: () => Effect.succeed('token'),
+				token: headers => Effect.succeed(String.replace(/^Bearer /u, '')(headers['authorization'] ?? 'browser-access')),
 				user: headers => {
 					const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
 					if (!String.startsWith('agent.')(token)) {
@@ -460,7 +466,11 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AddServer)
 											return yield* HttpServerResponse.schemaJson(ConnectionInfo)(
-												yield* (yield* Connections).add(input.url, yield* CurrentUser)
+												yield* (yield* Connections).add(
+													input.url,
+													yield* CurrentUser,
+													(yield* HttpServerRequest.HttpServerRequest).headers
+												)
 											)
 										}),
 										refused
@@ -1058,46 +1068,95 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 	test.effect(
-		'connects a Deslop MCP like any provider, with Auth as its authorization server',
+		'forgets stored Deslop tokens at startup without changing third-party credentials',
+		Effect.fnUntraced(function* () {
+			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const store = KeyValueStore.toSchemaStore(
+				Context.get(yield* Layer.build(ServerRuntime.layerKeyValueStore(home)), KeyValueStore.KeyValueStore),
+				ConnectionStore
+			)
+			const saved = ConnectionStore.make({
+				mobbin: {
+					generation: 'mobbin',
+					id: 'mobbin',
+					link: {
+						_tag: 'Authorized',
+						expiresAt: 1_000_000,
+						token: {access_token: 'third-party-access', refresh_token: 'third-party-refresh', token_type: 'Bearer'}
+					},
+					mode: 'oauth',
+					name: 'Mobbin',
+					oauth: {
+						client: {_tag: 'Registered', clientId: 'mobbin-client'},
+						metadata: {
+							authorization_endpoint: `${PROVIDERS.mobbin.issuer}/authorize`,
+							issuer: PROVIDERS.mobbin.issuer,
+							token_endpoint: `${PROVIDERS.mobbin.issuer}/token`
+						},
+						scope: 'openid'
+					},
+					tools: [],
+					url: PROVIDERS.mobbin.url
+				},
+				stash: {
+					generation: 'stash',
+					id: 'stash',
+					link: {
+						_tag: 'Authorized',
+						expiresAt: 1_000_000,
+						token: {
+							access_token: 'obsolete-deslop-access',
+							refresh_token: 'obsolete-deslop-refresh',
+							token_type: 'Bearer'
+						}
+					},
+					mode: 'oauth',
+					name: 'Stash',
+					oauth: {
+						client: {_tag: 'Registered', clientId: 'gateway'},
+						metadata: {
+							authorization_endpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
+							issuer: `${AUTH_URL}/api/auth`,
+							token_endpoint: `${AUTH_URL}/api/auth/oauth2/token`
+						},
+						scope: 'deslop'
+					},
+					tools: [],
+					url: 'https://stash.mp281x.xyz/mcp'
+				}
+			})
+			yield* store.set('servers', saved)
+			assert.deepEqual(
+				Array.map(yield* listServers((yield* servers(home)).web), server => server.status),
+				['Connected', 'Connected']
+			)
+			const cleaned = Option.getOrThrow(yield* store.get('servers'))
+			assert.deepEqual(cleaned['mobbin'], saved['mobbin'])
+			assert.deepEqual(cleaned['stash'], {
+				generation: 'stash',
+				id: 'stash',
+				link: {_tag: 'Connected'},
+				mode: 'deslop',
+				name: 'Stash',
+				tools: [],
+				url: 'https://stash.mp281x.xyz/mcp'
+			})
+		})
+	)
+	test.effect(
+		'forwards the browser and each agent token to a Deslop MCP without connecting',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			const added = yield* addMcp(gateway.web, 'https://stash.mp281x.xyz/mcp')
-			assert.strictEqual(added.status, 'Not connected')
-			const start = yield* send(gateway.web, `/oauth/connect?id=${added.id}`, {headers: {cookie: SESSION}})
-			const target = new URL(start.headers.get('location') ?? '')
-			assert.deepStrictEqual(
-				[
-					`${target.origin}${target.pathname}`,
-					target.searchParams.get('redirect_uri'),
-					target.searchParams.get('resource'),
-					target.searchParams.get('scope')
-				],
-				[
-					`${AUTH_URL}/api/auth/oauth2/authorize`,
-					`${GATEWAY_URL}/oauth/callback/${added.id}`,
-					'https://stash.mp281x.xyz/mcp',
-					'deslop'
-				]
+			assert.strictEqual(added.status, 'Connected')
+			assert.strictEqual(gateway.registrations.length, 0)
+			assert.strictEqual(gateway.grants.length, 0)
+			assert.isTrue(
+				Array.some(
+					MutableList.toArray(gateway.upstreamRequests),
+					request => request.authorization === 'Bearer browser-access'
+				)
 			)
-			// Discovery registers once to check the provider, and each connection registers anew.
-			assert.deepStrictEqual(
-				Array.map(
-					MutableList.toArray(gateway.registrations),
-					registration => `${registration.url} ${registration.redirect}`
-				),
-				Array.replicate(`${AUTH_URL}/api/auth/oauth2/register ${GATEWAY_URL}/oauth/callback/${added.id}`, 2)
-			)
-			assert.strictEqual(
-				(yield* send(
-					gateway.web,
-					`/oauth/callback/${added.id}?${new URLSearchParams({code: 'approved', iss: `${AUTH_URL}/api/auth`, state: target.searchParams.get('state') ?? ''})}`,
-					{headers: {cookie: `${SESSION}; ${cookie(start)}`}}
-				)).headers.get('location'),
-				'/'
-			)
-			assert.deepStrictEqual(MutableList.toArray(gateway.grants), [
-				{client: 'client-2', grant: 'authorization_code', refresh: '', resource: 'https://stash.mp281x.xyz/mcp'}
-			])
 			assert.isTrue(
 				String.includes(`${added.id}__search`)(
 					yield* Effect.flatMap(modern(gateway.web, TOKEN, 'tools/list'), response =>
@@ -1105,20 +1164,38 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					)
 				)
 			)
-			assert.isTrue(
-				Array.some(
-					MutableList.toArray(gateway.upstreamRequests),
-					upstream =>
-						upstream.url === 'https://stash.mp281x.xyz/mcp' &&
-						upstream.authorization === 'Bearer upstream-authorization_code-1'
+			for (const token of [TOKEN, `${TOKEN}-laptop`]) {
+				yield* modern(gateway.web, token, 'tools/call', {
+					arguments: {query: 'pass-through'},
+					name: `${added.id}__search`
+				})
+				assert.isTrue(
+					Array.some(
+						MutableList.toArray(gateway.upstreamRequests),
+						request => request.method === 'tools/call' && request.authorization === `Bearer ${token}`
+					)
 				)
-			)
+			}
 			assert.deepStrictEqual(
 				Array.map(
 					Array.filter(yield* listServers(gateway.web), server => server.id === added.id),
 					server => server.icons
 				),
 				[[{src: 'https://example.com/icon.png', theme: 'dark'}]]
+			)
+		})
+	)
+	test.effect(
+		'never sends the caller’s token to a server outside Deslop that names Auth',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			assert.notStrictEqual((yield* addMcp(gateway.web, 'https://mimic.example.com/mcp')).status, 'Connected')
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			assert.isFalse(
+				Array.some(
+					MutableList.toArray(gateway.upstreamRequests),
+					request => new URL(request.url).hostname === 'mimic.example.com' && String.isNonEmpty(request.authorization)
+				)
 			)
 		})
 	)
@@ -1132,13 +1209,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* listServers(gateway.web), server => [server.status, server.tools]),
 				[['Connected', [{description: 'Search example', name: 'search'}]]]
 			)
-			// An agent's read hangs on Mobbin, having listed the servers before Stash connects.
+			// An agent's read hangs on Mobbin, having listed the servers before another provider connects.
 			yield* Ref.set(gateway.stall, true)
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
 			yield* Queue.take(gateway.stallReady)
-			const stash = yield* addMcp(gateway.web, 'https://stash.mp281x.xyz/mcp')
+			const other = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
 			const connecting = yield* Effect.forkScoped(
-				connect(gateway.web, stash.id, {code: 'approved', iss: `${AUTH_URL}/api/auth`})
+				connect(gateway.web, other.id, {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			)
 			yield* Ref.set(gateway.stall, false)
 			yield* TestClock.adjust('21 seconds')
@@ -1154,7 +1231,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				[
 					['mobbin', [{description: 'Search example', name: 'search'}]],
-					[stash.id, [{description: 'Search example', name: 'search'}]]
+					[other.id, [{description: 'Search example', name: 'search'}]]
 				]
 			)
 		})

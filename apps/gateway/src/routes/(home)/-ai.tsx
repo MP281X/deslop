@@ -43,7 +43,7 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-gro
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 
-import {aiGrantsAtom, aiKeysAtom, aiUsageAtom, removeKeyAtom, revokeGrantAtom, setKeyAtom} from '#lib/utils.ts'
+import {aiKeysAtom, aiUsageAtom, removeKeyAtom, setKeyAtom} from '#lib/utils.ts'
 import type {Period} from '#lib/utils.ts'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import {AiProvider} from '#services/ai/schema.ts'
@@ -106,17 +106,12 @@ function share(part: number, whole: number) {
 	return part / whole
 }
 
-// An app is its grant's origin, or `local` in developer mode; Deslop's own apps go by their names.
-function appKey(app: string) {
-	if (!URL.canParse(app)) return app
-	const host = new URL(app).hostname
-	return Option.getOrElse(Array.head(String.split('.')(host)), () => host)
-}
+// Auth's client label maps to the same identity on the chart and its rows.
+const appKey = String.toLowerCase
 function appName(app: string) {
 	const identity = IDENTITIES[appKey(app)]
 	if (identity !== undefined) return identity.name
-	if (!URL.canParse(app)) return String.capitalize(app)
-	return new URL(app).host
+	return app
 }
 
 function sums(cells: readonly AiUsageCell[], key: (cell: AiUsageCell) => string) {
@@ -318,62 +313,6 @@ function ConfirmDialog(props: {
 	)
 }
 
-function RevokeDialog(props: {app: string; onOpenChange: (open: boolean) => void; open: boolean}) {
-	const [result, revoke] = useAtom(revokeGrantAtom(props.app))
-	return (
-		<ConfirmDialog
-			action="Revoke"
-			description="Its AI calls stop at once; signing in to it again grants it anew."
-			open={props.open}
-			onOpenChange={props.onOpenChange}
-			result={result}
-			run={() => revoke()}
-			title={`Revoke ${appName(props.app)}?`}
-		/>
-	)
-}
-
-function AppRow(props: {
-	app: string
-	color: string
-	granted: boolean
-	onClick: () => void
-	selected: boolean
-	share: number
-	sum: Option.Option<Sum>
-}) {
-	const [confirm, setConfirm] = useState(false)
-	const reset = useAtomSet(revokeGrantAtom(props.app))
-	return (
-		<>
-			{props.granted && <RevokeDialog app={props.app} open={confirm} onOpenChange={setConfirm} />}
-			<ShareRow
-				color={props.color}
-				label={appName(props.app)}
-				menu={Boolean.match(props.granted, {
-					onFalse: () => undefined,
-					onTrue: () => (
-						<ContextMenuItem
-							variant="destructive"
-							className="max-sm:h-11"
-							onClick={() => {
-								reset(Atom.Reset)
-								setConfirm(true)
-							}}
-						>
-							Revoke
-						</ContextMenuItem>
-					)
-				})}
-				onClick={props.onClick}
-				selected={props.selected}
-				share={props.share}
-				sum={props.sum}
-			/>
-		</>
-	)
-}
-
 function UsageChart(props: {
 	apps: readonly {app: string; color: string; key: string}[]
 	metric: Metric
@@ -513,27 +452,6 @@ function Stats(props: {range: Range; report: AiUsageReport}) {
 	)
 }
 
-// Granted apps without calls in view, so each can still be revoked.
-function IdleGrants(props: {
-	apps: readonly string[]
-	colorOf: (app: string) => string
-	focus: Focus
-	onToggle: (focus: Focus) => void
-}) {
-	return Array.map(props.apps, app => (
-		<AppRow
-			key={app}
-			app={app}
-			color={props.colorOf(app)}
-			granted
-			onClick={() => props.onToggle({app})}
-			selected={props.focus.app === app}
-			share={0}
-			sum={Option.none()}
-		/>
-	))
-}
-
 function UsageReport(props: {
 	focus: Focus
 	metric: Metric
@@ -542,13 +460,6 @@ function UsageReport(props: {
 	range: Range
 	report: AiUsageReport
 }) {
-	const grants = Array.sort(
-		Array.map(
-			AsyncResult.getOrElse(useAtomValue(aiGrantsAtom), () => []),
-			grant => grant.app
-		),
-		Order.String
-	)
 	if (Array.isReadonlyArrayEmpty(props.report.cells)) {
 		return (
 			<>
@@ -563,19 +474,6 @@ function UsageReport(props: {
 						() => 'period'
 					)}
 				</p>
-				{Array.isReadonlyArrayNonEmpty(grants) && (
-					<section aria-label="By app" className="flex min-w-0 flex-col">
-						<GroupLabel>By app</GroupLabel>
-						<div role="list" aria-label="By app">
-							<IdleGrants
-								apps={grants}
-								colorOf={app => IDENTITIES[appKey(app)]?.color ?? 'var(--chart-3)'}
-								focus={props.focus}
-								onToggle={props.onFocus}
-							/>
-						</div>
-					</section>
-				)}
 			</>
 		)
 	}
@@ -631,7 +529,6 @@ function UsageReport(props: {
 	)
 	const appTotal = Number.sumAll(Array.map(appSums, value))
 	const modelTotal = Number.sumAll(Array.map(modelSums, value))
-	const granted = HashSet.fromIterable(grants)
 	// Tapping what is already chosen shows everything again.
 	function toggle(next: Focus) {
 		const same =
@@ -656,23 +553,16 @@ function UsageReport(props: {
 					<GroupLabel>By app</GroupLabel>
 					<div role="list" aria-label="By app">
 						{Array.map(appSums, sum => (
-							<AppRow
+							<ShareRow
 								key={sum.name}
-								app={sum.name}
+								label={appName(sum.name)}
 								color={colorOf(sum.name)}
-								granted={HashSet.has(granted, sum.name)}
 								onClick={() => toggle({app: sum.name})}
 								selected={props.focus.app === sum.name}
 								share={share(value(sum), appTotal)}
 								sum={Option.some(sum)}
 							/>
 						))}
-						<IdleGrants
-							apps={Array.filter(grants, app => !Array.some(appSums, sum => sum.name === app))}
-							colorOf={colorOf}
-							focus={props.focus}
-							onToggle={toggle}
-						/>
 					</div>
 				</section>
 				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">

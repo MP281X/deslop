@@ -95,7 +95,7 @@ export class Media extends Context.Service<
 				return yield* pipe(
 					OpenRouterClient.make({
 						apiUrl: yield* gateway.apiUrl('openrouter'),
-						transformClient: gateway.authorize(userId)
+						transformClient: yield* gateway.authorize(userId)
 					}),
 					Effect.provideService(HttpClient.HttpClient, http)
 				)

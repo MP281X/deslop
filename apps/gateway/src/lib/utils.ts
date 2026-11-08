@@ -124,7 +124,6 @@ function periodRange(period: Period, now: number) {
 }
 
 export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
-export const aiGrantsAtom = RpcClient.query('ai.grants', undefined, {reactivityKeys: ['ai-grants']})
 
 // One reader per period, its range taken when it runs, so a refresh moves the window to now.
 export const aiUsageAtom = Atom.family((period: Period) =>
@@ -152,20 +151,12 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 	)
 )
 
-// One per provider or app, so a failure stays with the dialog that caused it.
+// One per provider, so a failure stays with the dialog that caused it.
 export const removeKeyAtom = Atom.family((provider: AiProvider) =>
 	RpcClient.runtime.fn(() =>
 		Reactivity.mutation(
 			Effect.flatMap(RpcClient, client => client('ai.removeKey', {provider})),
 			['ai-keys']
-		)
-	)
-)
-export const revokeGrantAtom = Atom.family((app: string) =>
-	RpcClient.runtime.fn(() =>
-		Reactivity.mutation(
-			Effect.flatMap(RpcClient, client => client('ai.revokeGrant', {app})),
-			['ai-grants']
 		)
 	)
 )
