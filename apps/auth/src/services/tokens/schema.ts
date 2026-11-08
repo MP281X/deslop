@@ -1,6 +1,6 @@
 import {Context, Effect, Schema, pipe} from 'effect'
 
-import {ClientInfo, Resource, User} from '@deslop/runtime/auth/schema'
+import {ClientInfo, User} from '@deslop/runtime/auth/schema'
 
 // Credentials retain the registration that issued them, never a later membership with the same GitHub id.
 export type CredentialOwner = typeof CredentialOwner.Type
@@ -37,7 +37,6 @@ export type AuthorizeParams = typeof AuthorizeParams.Type
 export const AuthorizeParams = Schema.Struct({
 	code_challenge: Schema.optionalKey(Schema.NonEmptyString),
 	code_challenge_method: Schema.optionalKey(Schema.String),
-	resource: Schema.optionalKey(Schema.ArrayEnsure(Schema.String)),
 	response_type: Schema.optionalKey(Schema.String),
 	scope: Schema.optionalKey(Schema.String)
 })
@@ -50,23 +49,17 @@ export const ClientRequest = Schema.Struct({
 	clientName: Schema.String,
 	parent: Schema.optionalKey(Schema.NonEmptyString),
 	redirectUri: Schema.NonEmptyString,
-	resources: Schema.NonEmptyArray(Resource),
 	state: Schema.optionalKey(Schema.NonEmptyString)
 })
 
-// A command's sign-in: the client it names and the apps it asks for, approved by its code like any other.
+// A command's sign-in, approved by its code like any other.
 export type DeviceRequest = typeof DeviceRequest.Type
-export const DeviceRequest = Schema.Struct({
-	clientId: Schema.NonEmptyString,
-	clientName: Schema.String,
-	resources: Schema.Array(Resource)
-})
+export const DeviceRequest = Schema.Struct({clientId: Schema.NonEmptyString, clientName: Schema.String})
 
 // RFC 8628 §3.1.
 export type DeviceParams = typeof DeviceParams.Type
 export const DeviceParams = Schema.Struct({
 	client_id: Schema.NonEmptyString.check(Schema.isMaxLength(2048)),
-	resource: Schema.optionalKey(Schema.ArrayEnsure(Resource)),
 	scope: Schema.optionalKey(Schema.String)
 })
 
@@ -83,9 +76,6 @@ export const DeviceTokenParams = Schema.Struct({
 export type TokenGrant = typeof TokenGrant.Type
 export const TokenGrant = Schema.Struct({grant_type: Schema.String})
 
-type TokenResources = typeof TokenResources.Type
-const TokenResources = Schema.optionalKey(Schema.ArrayEnsure(Resource).check(Schema.isMinLength(1)))
-
 // OAuth 2.1 drops redirect_uri from the code exchange, and a public client may leave client_id out of a refresh; each is checked when sent.
 export type TokenParams = typeof TokenParams.Type
 export const TokenParams = Schema.Union([
@@ -94,14 +84,12 @@ export const TokenParams = Schema.Union([
 		code: Schema.NonEmptyString,
 		code_verifier: Schema.NonEmptyString,
 		grant_type: Schema.Literal('authorization_code'),
-		redirect_uri: Schema.optionalKey(Schema.String),
-		resource: TokenResources
+		redirect_uri: Schema.optionalKey(Schema.String)
 	}),
 	Schema.Struct({
 		client_id: Schema.optionalKey(Schema.String),
 		grant_type: Schema.Literal('refresh_token'),
-		refresh_token: Schema.NonEmptyString,
-		resource: TokenResources
+		refresh_token: Schema.NonEmptyString
 	})
 ])
 
@@ -142,8 +130,7 @@ export const Grant = Schema.Struct({
 			expiresAt: Schema.Finite,
 			generation: Schema.Int,
 			hash: Schema.String,
-			replaced: Schema.Array(Schema.String),
-			resources: Schema.Array(Resource)
+			replaced: Schema.Array(Schema.String)
 		},
 		Browser: {expiresAt: Schema.Finite, hash: Schema.String, via: SessionVia}
 	}),
@@ -166,8 +153,7 @@ export const SignedInApp = Schema.Struct({
 	family: Schema.NonEmptyString,
 	kind: Schema.Literals(['App', 'Browser']),
 	lastActive: Schema.Finite,
-	parent: Schema.optionalKey(Schema.NonEmptyString),
-	resources: Schema.Array(Resource)
+	parent: Schema.optionalKey(Schema.NonEmptyString)
 })
 
 export type FamilyParams = typeof FamilyParams.Type

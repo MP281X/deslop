@@ -42,10 +42,10 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {AccountAvatar, AppIcon, AppList, QrCode} from '#lib/components.tsx'
+import {AccountAvatar, AppIcon, SignInList, QrCode} from '#lib/components.tsx'
 import {
 	ADDING_PASSKEY,
-	APP_ROWS,
+	CLIENT_ROWS,
 	accountAtom,
 	approveLink,
 	addPasskeyAtom,
@@ -229,8 +229,8 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 					{
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
-							<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
-								<AppList pending={Option.some(value.request)} />
+							<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>
+								<SignInList pending={Option.some(value.request)} />
 							</Suspense>
 						)
 					}

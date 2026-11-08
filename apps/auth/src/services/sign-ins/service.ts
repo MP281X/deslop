@@ -352,21 +352,18 @@ export class SignIns extends Context.Service<
 								Browser: () => ({
 									clientName: browserLabel(origin),
 									device: deviceLabel(origin),
-									kind: 'Browser' as const,
-									resources: []
+									kind: 'Browser' as const
 								}),
 								// Named as its row will be once signed in.
 								Client: client => ({
 									clientName: clientLabel(client.request.clientName),
 									device: deviceLabel(origin),
-									kind: 'App' as const,
-									resources: client.request.resources
+									kind: 'App' as const
 								}),
 								Device: device => ({
 									clientName: clientLabel(device.request.clientName),
 									device: deviceLabel(origin),
-									kind: 'App' as const,
-									resources: device.request.resources
+									kind: 'App' as const
 								})
 							}),
 							createdAt: now,

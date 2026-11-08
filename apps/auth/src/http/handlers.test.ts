@@ -28,7 +28,6 @@ import {Jwk, Jwks, Jwt} from 'effect/jose'
 import {KeyValueStore, RateLimiter} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import type {Resource} from '@deslop/runtime/auth/schema'
 import {AccessClaims, AuthError, TokenResponse, User} from '@deslop/runtime/auth/schema'
 import {HttpAuth} from '@deslop/runtime/auth/service'
 import {ACCESS_SECONDS, AUTH_URL, CurrentUser, JWKS_PATH, clientIdOf} from '@deslop/runtime/auth/utils'
@@ -421,7 +420,7 @@ const authorize = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	session: string,
 	redirect: string,
-	resources: Resource[]
+	resource: string[]
 ) {
 	const registered = yield* send(web, '/api/auth/oauth2/register', {
 		body: yield* Schema.encodeEffect(Schema.fromJsonString(Registration))({
@@ -446,7 +445,7 @@ const authorize = Effect.fnUntraced(function* (
 				),
 				code_challenge_method: 'S256',
 				redirect_uri: redirect,
-				resource: resources,
+				resource,
 				response_type: 'code',
 				scope: 'deslop offline_access',
 				state: 'example-state'
@@ -458,8 +457,7 @@ const authorize = Effect.fnUntraced(function* (
 		clientId: registration.client_id,
 		cookie: pipe([session, cookie(request)], Array.filter(String.isNonEmpty), Array.join('; ')),
 		id: new URL(request.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? '',
-		redirect,
-		resources
+		redirect
 	}
 })
 
@@ -546,7 +544,7 @@ const exchange = Effect.fnUntraced(function* (
 				code_verifier: VERIFIER,
 				grant_type: 'authorization_code',
 				redirect_uri: request.redirect,
-				resource: request.resources
+				resource: 'https://scope.mp281x.xyz/mcp'
 			})
 		),
 		headers: {'content-type': 'application/x-www-form-urlencoded', 'x-forwarded-for': forwardedFor},
@@ -773,7 +771,6 @@ const authorizeWeb = Effect.fnUntraced(function* (
 			),
 			code_challenge_method: 'S256',
 			redirect_uri: redirect,
-			resource: 'https://scope.mp281x.xyz',
 			response_type: 'code',
 			scope: 'deslop offline_access',
 			state: 'web-state'
@@ -785,7 +782,6 @@ const authorizeWeb = Effect.fnUntraced(function* (
 		id: '',
 		path,
 		redirect,
-		resources: ['https://scope.mp281x.xyz'],
 		response: yield* send(web, path, {headers: {cookie: session}})
 	}
 })
@@ -1486,7 +1482,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	)
 
 	test.effect(
-		'binds consent and one-use PKCE codes to the browser, client, callback and resources',
+		'binds consent and one-use PKCE codes to the browser, client and callback while ignoring resource',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			assert.strictEqual((yield* send(web.issuer, '/me')).status, 401)
@@ -1524,8 +1520,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 							code,
 							code_verifier: 'wrong',
 							grant_type: 'authorization_code',
-							redirect_uri: request.redirect,
-							resource: request.resources
+							redirect_uri: request.redirect
 						})
 					),
 					headers: {'content-type': 'application/x-www-form-urlencoded'},
@@ -1711,15 +1706,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			const moved = yield* start({redirect_uri: 'http://127.0.0.1:50123/callback'})
 			assert.strictEqual(moved.status, 302)
-			const resources: Resource[] = ['https://scope.mp281x.xyz/mcp']
 			const callback = yield* consent(
 				web.issuer,
 				{
 					clientId: registration.client_id,
 					cookie: `${session}; ${cookie(moved)}`,
 					id: new URL(moved.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? '',
-					redirect: 'http://127.0.0.1:50123/callback',
-					resources
+					redirect: 'http://127.0.0.1:50123/callback'
 				},
 				true
 			)
@@ -1769,12 +1762,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				return new URL(yield* location(search)).searchParams.get('error')
 			})
 			assert.deepStrictEqual(
-				[
-					yield* returned({response_type: 'token'}),
-					yield* returned({response_type: ''}),
-					yield* returned({resource: 'https://evil.test'})
-				],
-				['unsupported_response_type', 'invalid_request', 'invalid_target']
+				[yield* returned({response_type: 'token'}), yield* returned({response_type: ''})],
+				['unsupported_response_type', 'invalid_request']
 			)
 			// An unknown client, a foreign callback or a left-out one among several never gets a redirect.
 			assert.deepStrictEqual(
@@ -2052,8 +2041,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			const signedIn = yield* apps(admin)
 			assert.deepStrictEqual(
-				Array.map(signedIn, app => [app.client, app.device, app.resources]),
-				[['Opencode', '93.184.216.34', ['https://scope.mp281x.xyz/mcp']]]
+				Array.map(signedIn, app => [app.client, app.device]),
+				[['Opencode', '93.184.216.34']]
 			)
 			yield* TestClock.adjust('1 hour')
 			const rotated = yield* refresh(web.issuer, request.clientId, granted.refresh_token)
@@ -2077,17 +2066,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				204
 			)
 			// The agent's own sign-in stays; the disconnected app has to sign in again.
-			assert.deepStrictEqual(
-				Array.map(yield* apps(admin), app => app.resources),
-				[['https://auth.mp281x.xyz/mcp']]
-			)
 			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${agent}`}})).status, 200)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, next.refresh_token)).status, 400)
 		})
 	)
 
 	test.effect(
-		'replaces a sign-in of the same client and apps from the same address, and keeps one from elsewhere',
+		'replaces a sign-in of the same client from the same address, and keeps one from elsewhere',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
 			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
@@ -2160,8 +2145,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			if (status._tag !== 'Waiting') return yield* Effect.die('Expected a waiting browser sign-in')
 			assert.deepStrictEqual(
-				[status.request.kind, status.request.clientName, status.request.device, status.request.resources],
-				['Browser', 'Safari', 'iPhone', []]
+				[status.request.kind, status.request.clientName, status.request.device],
+				['Browser', 'Safari', 'iPhone']
 			)
 			// A session in a browser grants every app, so an agent's token cannot approve one.
 			const byAgent = yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: browser.id})

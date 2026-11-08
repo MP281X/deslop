@@ -399,7 +399,6 @@ function layerSignIn(issuer: string) {
 							code_challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))),
 							code_challenge_method: 'S256',
 							redirect_uri: callback,
-							resource: canonical,
 							response_type: 'code',
 							scope: 'deslop offline_access',
 							state

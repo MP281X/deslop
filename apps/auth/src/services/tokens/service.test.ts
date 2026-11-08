@@ -1,7 +1,7 @@
 import {NodeCrypto} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Effect, Layer, Ref, String, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, Ref, Schema, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -13,6 +13,7 @@ import {TestClock} from 'effect/testing'
 import {AccessClaims} from '@deslop/runtime/auth/schema'
 import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
 
+import {Grants} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
@@ -54,8 +55,7 @@ const open = Effect.gen(function* () {
 			challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(VERIFIER))),
 			clientId: 'fixture',
 			clientName: 'Fixture',
-			redirectUri: 'http://127.0.0.1/callback',
-			resources: ['https://scope.mp281x.xyz/mcp']
+			redirectUri: 'http://127.0.0.1/callback'
 		},
 		USER
 	)
@@ -71,6 +71,34 @@ const open = Effect.gen(function* () {
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
+	test.effect(
+		'decodes the previous release grant while discarding its retired app field',
+		Effect.fnUntraced(function* () {
+			const grant = {
+				...USER,
+				client: 'Fixture',
+				createdAt: 0,
+				credential: {
+					_tag: 'App' as const,
+					clientId: 'fixture',
+					expiresAt: 1000,
+					generation: 0,
+					hash: 'hash',
+					replaced: []
+				},
+				device: 'iPhone',
+				lastActive: 0,
+				origin: {}
+			}
+			assert.deepStrictEqual(
+				yield* Schema.decodeUnknownEffect(Grants)({
+					fixture: {...grant, credential: {...grant.credential, 'resource\u0073': ['https://scope.mp281x.xyz/mcp']}}
+				}),
+				{fixture: grant}
+			)
+		})
+	)
+
 	test.effect(
 		'uses the configured Auth origin as the token issuer',
 		Effect.fnUntraced(function* () {

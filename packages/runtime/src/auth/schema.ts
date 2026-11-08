@@ -26,10 +26,6 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 export type User = typeof User.Type
 export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})
 
-export type Resource = typeof Resource.Type
-// The app or MCP endpoint a sign-in names, which Auth checks and records for display; the token it issues is valid at every app.
-export const Resource = Schema.String.check(Schema.isPattern(/^https:\/\/[a-z\d-]+\.mp281x\.xyz(?:\/mcp)?$/u))
-
 // What Auth signs into every access token: the person, the client that asked and the sign-in it belongs to, valid at every Deslop app for ten minutes.
 export type AccessClaims = typeof AccessClaims.Type
 export const AccessClaims = Schema.Struct({

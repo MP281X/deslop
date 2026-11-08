@@ -333,8 +333,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								_tag: 'Device',
 								request: {
 									clientId: params.client_id,
-									clientName: (yield* tokens.client({client_id: params.client_id})).clientName,
-									resources: params.resource ?? []
+									clientName: (yield* tokens.client({client_id: params.client_id})).clientName
 								}
 							},
 							originOf(request)

@@ -4,7 +4,7 @@ import {Base64Url} from 'effect/encoding'
 import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
-import {AuthError, ClientInfo, Resource} from '@deslop/runtime/auth/schema'
+import {AuthError, ClientInfo} from '@deslop/runtime/auth/schema'
 import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
 
 import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin} from '#services/tokens/schema.ts'
@@ -238,18 +238,11 @@ export const clientRequest = Effect.fnUntraced(function* (
 	) {
 		return yield* AuthError.make({error: 'invalid_scope', message: 'Only the deslop scope is supported'})
 	}
-	const resources = yield* pipe(
-		Schema.decodeUnknownEffect(Schema.NonEmptyArray(Resource))(params.resource ?? []),
-		Effect.mapError(cause =>
-			AuthError.make({cause, error: 'invalid_target', message: 'Name a Deslop app with the resource parameter'})
-		)
-	)
 	return ClientRequest.make({
 		challenge: params.code_challenge,
 		clientId: asked.client_id,
 		clientName: client.clientName,
 		redirectUri: client.redirectUri,
-		resources,
 		...Option.match(given(asked.state), {onNone: () => ({}), onSome: state => ({state})})
 	})
 })
