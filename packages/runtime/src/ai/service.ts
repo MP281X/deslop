@@ -1,5 +1,6 @@
 import {Boolean, Config, Context, Effect, Layer, Option, Record, Redacted, Ref, Schema, Semaphore, pipe} from 'effect'
 
+import {AiError} from 'effect/ai'
 import type {Headers} from 'effect/http'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -10,6 +11,19 @@ export type AiProvider = typeof AiProvider.Type
 export const AiProvider = Schema.Literals(['anthropic', 'openrouter', 'opencode-zen', 'opencode-go'])
 
 export class AiUnavailable extends Schema.TaggedError<AiUnavailable>()('AiUnavailable', {message: Schema.String}) {}
+
+const Refusal = Schema.fromJsonString(Schema.Struct({error: Schema.Struct({message: Schema.String})}))
+
+// Why an AI call through Gateway failed, in words for the person: Gateway's refusal ("Add an Anthropic key in Gateway"), which provider clients keep only in an unknown error's body, or the client's own message.
+export function aiFailure(cause: unknown) {
+	if (Schema.is(AiUnavailable)(cause)) return Option.some(cause.message)
+	if (!AiError.isAiError(cause)) return Option.none()
+	if (cause.reason._tag === 'NetworkError') return Option.some(cause.reason.description ?? cause.reason.message)
+	if (cause.reason._tag === 'UnknownError' && cause.reason.http?.body !== undefined) {
+		return Option.map(Schema.decodeOption(Refusal)(cause.reason.http.body), body => body.error.message)
+	}
+	return Option.some(cause.reason.message)
+}
 
 export class AiGateway extends Context.Service<
 	AiGateway,
