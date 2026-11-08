@@ -773,7 +773,7 @@ function AppsPane(props: {
 					{Array.match(props.rows, {
 						onEmpty: () => (
 							<EmptyState
-								icon={<AppWindowIcon className="size-5" />}
+								icon={<AppWindowIcon className="size-5" weight="light" />}
 								label="No apps in this range"
 								description="Nothing ran or failed in it. Try another machine or range."
 							/>
@@ -898,7 +898,7 @@ function ProcessPane(props: {
 					{Option.match(Option.fromUndefinedOr(props.row), {
 						onNone: () => (
 							<EmptyState
-								icon={<TerminalWindowIcon className="size-5" />}
+								icon={<TerminalWindowIcon className="size-5" weight="light" />}
 								label="Select an app"
 								description="Choose an app to see its processes and what they hold."
 							/>
@@ -916,7 +916,7 @@ function ProcessPane(props: {
 								{Array.match(processes, {
 									onEmpty: () => (
 										<EmptyState
-											icon={<TerminalWindowIcon className="size-5" />}
+											icon={<TerminalWindowIcon className="size-5" weight="light" />}
 											label="No processes right now"
 											description="Nothing of this app is running at the machine's last snapshot."
 										/>
@@ -1073,7 +1073,7 @@ function MachinePane(props: {
 						{
 							onNone: () => (
 								<EmptyState
-									icon={<ChartLineIcon className="size-5" />}
+									icon={<ChartLineIcon className="size-5" weight="light" />}
 									label={Boolean.match(props.worker === undefined, {
 										onFalse: () => 'No readings in this range',
 										onTrue: () => 'No machine'

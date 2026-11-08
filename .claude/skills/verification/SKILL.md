@@ -37,13 +37,13 @@ Before any capture, remove what the change no longer needs: debug code, dead cod
   - nothing is cut, misaligned or overflowing, and spacing matches its siblings;
   - loading, empty and error states tell the truth: no error while data is loading;
   - every word is needed.
-- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`; it returns what a reader would flag. Its `design` group measures Deslop's `DESIGN.md` and applies only in Deslop apps. Each entry is fixed or given a reason; a type size used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors. On iOS, read the `agent-device` snapshot of each captured state the same way: a label or button twice, a control without a name, a missing navigation title.
+- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`; it returns what a reader would flag. Its `design` group measures the Design section of Deslop's `AGENTS.md` and applies only in Deslop apps. Each entry is fixed or given a reason; a type size used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors. On iOS, read the `agent-device` snapshot of each captured state the same way: a label or button twice, a control without a name, a missing navigation title.
 - **Performance**: the same workload, repeated runs, p50 and p95, resource cost; Scope traces and `measure_latency`.
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review
 
-One reviewer from another model family, in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It reports only what a person would fix, grouped by class, each with the input, the observed result and `path:line`. "No findings" lists the probes it ran and one attempt to break the change; a UI reviewer opens its own preview tab, since reading source is not evidence. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; needing a third round means the approach is wrong. Not findings: taste without a rule, hypothetical callers, what lint covers.
+One reviewer from another model family, in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It reports only what a person would fix, grouped by class, each with the input, the observed result and `path:line`. "No findings" lists the probes it ran and one attempt to break the change; a UI reviewer opens its own preview tab, since reading source is not evidence. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; needing a third round means the approach is wrong. Not findings: taste without a rule, hypothetical callers, what lint and the judged rules cover (one function, component or test read alone). Its attention goes to what needs the whole codebase: contracts, data, ownership and the repository's recorded choices and design.
 
 | Severity | Meaning                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------- |
@@ -53,4 +53,4 @@ One reviewer from another model family, in a fresh context, read-only. Its brief
 
 ## Tests
 
-`CODING_STANDARDS.md` decides which tests to keep. A probe that reproduced a real failure is kept only when those rules keep it, at the narrowest public seam. A deleted test names its reason in the commit message.
+The repository's recorded test choices decide which tests to keep; the judged rules check each test's shape. A probe that reproduced a real failure is kept only when those rules keep it, at the narrowest public seam. A deleted test names its reason in the commit message.

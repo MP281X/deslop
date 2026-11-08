@@ -448,7 +448,7 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 					<EmptyState
 						label="No apps yet"
 						description="An app appears here the first time it announces itself."
-						icon={<AppWindowIcon className="size-5" />}
+						icon={<AppWindowIcon className="size-5" weight="light" />}
 					/>
 				),
 				onNonEmpty: () => (

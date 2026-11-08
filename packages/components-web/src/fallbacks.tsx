@@ -34,7 +34,7 @@ export function NotFound() {
 		<Empty aria-label="Page not found">
 			<EmptyHeader>
 				<EmptyMedia variant="icon">
-					<QuestionIcon className="size-5" />
+					<QuestionIcon className="size-5" weight="light" />
 				</EmptyMedia>
 				<h2 className="font-heading text-2xl leading-none tracking-tight">Page not found</h2>
 				<EmptyDescription>The link is old, or it never existed.</EmptyDescription>
