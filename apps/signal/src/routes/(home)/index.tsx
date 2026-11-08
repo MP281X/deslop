@@ -9,6 +9,7 @@ import {
 	ChatsIcon,
 	CheckIcon,
 	CoinsIcon,
+	CrosshairIcon,
 	EyeIcon,
 	RobotIcon,
 	SquaresFourIcon,
@@ -119,7 +120,7 @@ type WorldState = {dot: 'error' | 'live' | 'off' | 'quiet'; label: string; waiti
 
 // The spectator's own state, not the simulation's: a frozen view, a failed or absent stream, then the authoritative run.
 function worldState(live: boolean, failed: boolean, pending: boolean, running: boolean) {
-	if (!live) return {dot: 'quiet', label: 'Frozen', waiting: false} satisfies WorldState
+	if (!live) return {dot: 'quiet', label: 'History', waiting: false} satisfies WorldState
 	if (failed) return {dot: 'error', label: 'Offline', waiting: false} satisfies WorldState
 	if (pending) return {dot: 'live', label: 'Connecting', waiting: true} satisfies WorldState
 	if (running) return {dot: 'live', label: 'Live', waiting: false} satisfies WorldState
@@ -150,7 +151,7 @@ function teamColor(team: number) {
 
 // Team colour is an identity, so it stays itself on the map and in swatches; running text mixes it toward the foreground to read on both appearances.
 function teamTextColor(team: number) {
-	return `color-mix(in oklch, ${teamColor(team)} 72%, var(--foreground))`
+	return `color-mix(in oklch, ${teamColor(team)} 50%, var(--foreground))`
 }
 
 function teamName(team: number) {
@@ -1342,9 +1343,9 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 			<aside
 				aria-label="Inspector"
 				className={cn(
-					MAP_SURFACE,
-					'pointer-events-auto flex h-1/2 max-h-1/2 min-h-0 w-full flex-col overflow-hidden md:h-full md:max-h-full md:w-80',
-					actor !== undefined && 'h-2/3 max-h-2/3 lg:w-160'
+					// A panel holds dense text, so it stays opaque; only the small floating chrome blurs the world behind it.
+					'border-border bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col overflow-hidden border md:h-full md:max-h-full md:w-80',
+					actor !== undefined && 'max-h-2/3 lg:w-160'
 				)}
 			>
 				<header className="border-border flex h-11 flex-none items-center gap-2 border-b px-3">
@@ -1406,12 +1407,12 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 								)}
 								<Button
 									variant="ghost"
-									size="icon-sm"
-									className="ml-auto size-9 max-sm:size-11"
+									size="sm"
+									className="ml-auto max-sm:h-11"
 									onClick={props.clear}
 									aria-label="Clear entity selection"
 								>
-									<XIcon className="size-4" />
+									Clear
 								</Button>
 							</header>
 							<div className="min-h-0 flex-1">
@@ -1451,10 +1452,10 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 }
 
 function SpectatorControls(props: {
-	panelOpen: boolean
 	source: Source
 	tick: number
 	threadOpen: boolean
+	onCentre: () => void
 	onLive: () => void
 	onThreads: () => void
 }) {
@@ -1463,11 +1464,7 @@ function SpectatorControls(props: {
 	return (
 		<section
 			aria-label="Spectator controls"
-			className={cn(
-				'pointer-events-none absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4',
-				/* A phone's panel owns the bottom edge, so the floating controls step aside until it closes. */
-				props.panelOpen && 'max-md:hidden'
-			)}
+			className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4"
 		>
 			<div className={cn(MAP_CONTROLS, 'pointer-events-auto flex shrink-0 items-stretch p-1')}>
 				<Button
@@ -1475,11 +1472,21 @@ function SpectatorControls(props: {
 					variant={Boolean.match(chunks, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 					size="icon-sm"
 					aria-pressed={chunks}
-					aria-label="Team chunks"
-					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
+					aria-label="Chunk coverage"
+					title={Boolean.match(chunks, {onFalse: () => 'Show chunk coverage', onTrue: () => 'Hide chunk coverage'})}
 					onClick={() => setChunks(!chunks)}
 				>
 					<SquaresFourIcon className="size-4" />
+				</Button>
+				<Button
+					className="size-11 md:size-9"
+					variant="ghost"
+					size="icon-sm"
+					aria-label="Recenter the world"
+					title="Recenter the world"
+					onClick={props.onCentre}
+				>
+					<CrosshairIcon className="size-4" />
 				</Button>
 				<Button
 					className="size-11 md:size-9"
@@ -1954,7 +1961,14 @@ function Identity() {
 			<img src={icon} alt="" className="pixelated size-6 shrink-0 opacity-90" />
 			<h1 className="font-heading shrink-0 text-xl leading-none tracking-tight">Signal</h1>
 			<span aria-hidden="true" className="bg-border mx-0.5 h-3 w-px shrink-0" />
-			<span role="status" className="flex min-w-0 items-center gap-1.5">
+			<span
+				role="status"
+				className="flex min-w-0 items-center gap-1.5"
+				title={Boolean.match(state.label === 'Paused', {
+					onFalse: () => undefined,
+					onTrue: () => 'The server run is stopped; this page never starts or resumes it.'
+				})}
+			>
 				<StatusDot status={state.dot} waiting={state.waiting} />
 				<span
 					className={cn(
@@ -1977,6 +1991,7 @@ function Identity() {
 							Array.map(items, notice => String.split(' · ')(notice)[0]),
 							' · '
 						)}
+						description="Set OPENROUTER_API_KEY on the server run; local decisions may also be off there. This page never starts or resumes paid inference."
 					/>
 				)
 			})}
@@ -2003,14 +2018,37 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 						})
 					}
 				>
-					<ToggleGroupItem value="-1" aria-label="All models" title="All models" size="sm">
+					<ToggleGroupItem
+						value="-1"
+						aria-label="All models"
+						title="All models"
+						size="sm"
+						className="relative max-md:h-11"
+					>
 						<RobotIcon className="size-4" />
+						{/* The selected model keeps its fill and adds a rule in its own colour, which reads on both chrome appearances. */}
+						<span
+							aria-hidden="true"
+							className="bg-foreground pointer-events-none absolute inset-x-3 bottom-1 h-0.5 opacity-0 transition-opacity group-aria-pressed/toggle:opacity-100"
+						/>
 					</ToggleGroupItem>
 					{Array.map(props.view.teams, entry => (
-						<ToggleGroupItem key={entry.id} value={`${entry.id}`} aria-label={entry.name} title={entry.name} size="sm">
+						<ToggleGroupItem
+							key={entry.id}
+							value={`${entry.id}`}
+							aria-label={entry.name}
+							title={entry.name}
+							size="sm"
+							className="relative max-md:h-11"
+						>
 							<span className="block text-(--team-text)" style={{'--team-text': teamTextColor(entry.id)}}>
 								<TeamIcon team={entry.id} className="size-4" />
 							</span>
+							<span
+								aria-hidden="true"
+								className="bg-(--team) pointer-events-none absolute inset-x-3 bottom-1 h-0.5 opacity-0 transition-opacity group-aria-pressed/toggle:opacity-100"
+								style={{'--team': teamColor(entry.id)}}
+							/>
 						</ToggleGroupItem>
 					))}
 				</ToggleGroup>
@@ -2381,10 +2419,15 @@ function World(props: {seed: number; view: View}) {
 							/>
 							<ReplayLoading />
 							<SpectatorControls
-								panelOpen={Option.isSome(panel)}
 								source={source}
 								tick={cursor}
 								threadOpen={Option.exists(panel, selection => !selection.scoped)}
+								onCentre={() =>
+									Option.match(world, {
+										onNone: () => undefined,
+										onSome: active => active.renderer.centre()
+									})
+								}
 								onLive={() => setSource(Option.none())}
 								onThreads={() =>
 									setPanel(before =>
