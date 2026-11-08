@@ -4,11 +4,9 @@ import {String} from 'effect'
 
 import {Button, TextField, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
 import {
-	background,
 	disabled,
 	foregroundStyle,
 	frame,
-	labelStyle,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding
@@ -23,9 +21,7 @@ export function ComposeRoute(props: {onDone: () => void}) {
 	const write = useAtomSet(writeAtom)
 	const text = useNativeState(draft)
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle('New Note'), navigationBarTitleDisplayMode('inline')]}>
 			<TextField
 				text={text}
 				axis="vertical"
@@ -42,12 +38,11 @@ export function ComposeRoute(props: {onDone: () => void}) {
 				<ToolbarItem placement="topBarTrailing">
 					<Button
 						label="Save"
-						systemImage="checkmark"
 						onPress={() => {
 							write(draft)
 							props.onDone()
 						}}
-						modifiers={[labelStyle('iconOnly'), disabled(String.isEmpty(String.trim(draft)))]}
+						modifiers={[disabled(String.isEmpty(String.trim(draft)))]}
 					/>
 				</ToolbarItem>
 			</Toolbar.Content>

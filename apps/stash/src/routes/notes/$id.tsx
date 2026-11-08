@@ -8,6 +8,7 @@ import {
 	HStack,
 	Image,
 	Menu,
+	ProgressView,
 	ScrollView,
 	ShareLink,
 	Text,
@@ -16,19 +17,19 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
+	accessibilityAddTraits,
+	accessibilityElement,
 	accessibilityHidden,
 	accessibilityLabel,
 	aspectRatio,
-	background,
+	buttonBorderShape,
 	buttonStyle,
 	clipShape,
-	font,
+	controlSize,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineSpacing,
-	navigationBarTitleDisplayMode,
-	navigationTitle,
 	padding,
 	redacted,
 	resizable,
@@ -58,12 +59,10 @@ import {Byline} from '#lib/components.tsx'
 import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
-const prose = [
-	font({textStyle: 'body'}),
-	lineSpacing(space[1]),
-	foregroundStyle(colors.foreground),
-	textSelection(true)
-]
+const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
+
+// The summary is the deck above the body, quieter than the words it introduces.
+const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
 
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
@@ -111,7 +110,7 @@ function Body(props: {text: string}) {
 							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
 							() => (
 								<HStack key={index} alignment="firstTextBaseline" spacing={space[2]}>
-									<Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>
+									<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
 										{Boolean.match(String.startsWith('- ')(line), {
 											onFalse: () => String.replace(/\s.*$/u, '')(line),
 											onTrue: () => '•'
@@ -145,7 +144,11 @@ function Body(props: {text: string}) {
 
 function Placeholder() {
 	return (
-		<VStack alignment="leading" spacing={space[3]} modifiers={[redacted('placeholder')]}>
+		<VStack
+			alignment="leading"
+			spacing={space[3]}
+			modifiers={[redacted('placeholder'), accessibilityElement('ignore'), accessibilityLabel('Loading the note body')]}
+		>
 			<Body
 				text={
 					'The main point of the entry, in one or two plain sentences.\n- A takeaway a developer keeps from it.\n- Another takeaway with a tool and what it does.\n- A number that matters.'
@@ -185,7 +188,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
 	}
 	return (
-		<ScrollView modifiers={[background(colors.background)]}>
+		<ScrollView>
 			<VStack
 				alignment="leading"
 				spacing={space[4]}
@@ -196,7 +199,8 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 			>
 				<Text
 					modifiers={[
-						font({textStyle: 'title3', weight: 'semibold'}),
+						text.display,
+						accessibilityAddTraits(['isHeader']),
 						foregroundStyle(colors.foreground),
 						textSelection(true)
 					]}
@@ -206,27 +210,48 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				{props.note.image !== undefined && <Cover note={props.note} />}
 				{pipe(
 					Match.value(props.note.status),
-					Match.when('organizing', () => <Placeholder />),
+					Match.when('organizing', () => (
+						<Empty>
+							<EmptyHeader>
+								<EmptyMedia systemImage="sparkles" />
+								<EmptyTitle>Reading This Link</EmptyTitle>
+								<EmptyDescription>Stash is reading the source of this entry.</EmptyDescription>
+							</EmptyHeader>
+							<EmptyContent>
+								<ProgressView modifiers={[tint(primary)]} />
+							</EmptyContent>
+						</Empty>
+					)),
 					Match.when('failed', () => (
 						<Empty>
 							<EmptyHeader>
 								<EmptyMedia systemImage="exclamationmark.triangle" />
 								<EmptyTitle>Couldn’t Read This Link</EmptyTitle>
-								{props.note.issue !== undefined && <EmptyDescription>{props.note.issue}</EmptyDescription>}
+								<EmptyDescription>
+									{Option.getOrElse(
+										Option.filter(Option.fromUndefinedOr(props.note.issue), String.isNonEmpty),
+										() => 'The source could not be read.'
+									)}
+								</EmptyDescription>
 							</EmptyHeader>
 							<EmptyContent>
 								<Button
 									label="Try Again"
 									systemImage="arrow.clockwise"
 									onPress={props.onRetry}
-									modifiers={[buttonStyle('glass')]}
+									modifiers={[
+										buttonStyle('glassProminent'),
+										buttonBorderShape('capsule'),
+										controlSize('large'),
+										tint(primary)
+									]}
 								/>
 							</EmptyContent>
 						</Empty>
 					)),
 					Match.orElse(() => (
 						<VStack alignment="leading" spacing={space[4]}>
-							<Text modifiers={prose}>{props.note.summary}</Text>
+							{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
 							<Suspense fallback={<Placeholder />}>
 								<FullBody note={props.note} />
 							</Suspense>
@@ -263,9 +288,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 		Array.findFirst(shown.success, item => item.id === props.id),
 		{
 			onNone: () => (
-				<Empty
-					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-				>
+				<Empty>
 					<EmptyHeader>
 						<EmptyMedia systemImage="trash" />
 						<EmptyTitle>Note Deleted</EmptyTitle>
@@ -273,9 +296,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 				</Empty>
 			),
 			onSome: item => (
-				<Toolbar
-					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}
-				>
+				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
 						{Option.match(Option.fromNullishOr(item.url), {
