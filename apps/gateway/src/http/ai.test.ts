@@ -22,6 +22,7 @@ import {
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
+import {GRANT_REFUSED} from '@deslop/runtime/ai/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
@@ -185,7 +186,9 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 			assert.equal(missing.status, 402)
 			assert.include(yield* Effect.promise(() => missing.text()), 'Add your Anthropic key in Gateway')
 			yield* f.ai.revokeGrant('alice', APP)
-			assert.equal((yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})).status, 401)
+			const refused = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
+			assert.equal(refused.status, 401)
+			assert.equal(refused.headers.get(GRANT_REFUSED), 'true')
 		}),
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))

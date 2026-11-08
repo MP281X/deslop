@@ -7,17 +7,23 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 	const decoded = Schema.decodeOption(Schema.fromJsonString(Usage))(text)
 	if (decoded._tag === 'None') return entry
 	const usage = {...decoded.value.message?.usage, ...decoded.value.usage}
+	const cacheReadTokens =
+		usage.cache_read_input_tokens ?? decoded.value.usage?.prompt_tokens_details?.cached_tokens ?? entry.cacheReadTokens
+	const cacheWriteTokens =
+		usage.cache_creation_input_tokens ??
+		decoded.value.usage?.prompt_tokens_details?.cache_write_tokens ??
+		entry.cacheWriteTokens
 	return {
 		...entry,
-		cacheReadTokens:
-			usage.cache_read_input_tokens ??
-			decoded.value.usage?.prompt_tokens_details?.cached_tokens ??
-			entry.cacheReadTokens,
-		cacheWriteTokens:
-			usage.cache_creation_input_tokens ??
-			decoded.value.usage?.prompt_tokens_details?.cache_write_tokens ??
-			entry.cacheWriteTokens,
-		inputTokens: usage.input_tokens ?? usage.prompt_tokens ?? entry.inputTokens,
+		cacheReadTokens,
+		cacheWriteTokens,
+		// Input is stored without cached tokens, as Anthropic's messages report it; chat completions' prompt_tokens include them, whichever provider serves the shape.
+		inputTokens:
+			usage.input_tokens ??
+			Option.match(Option.fromUndefinedOr(usage.prompt_tokens), {
+				onNone: () => entry.inputTokens,
+				onSome: prompt => Number.max(0, prompt - cacheReadTokens - cacheWriteTokens)
+			}),
 		model: decoded.value.model ?? decoded.value.message?.model ?? entry.model,
 		outputTokens: usage.output_tokens ?? usage.completion_tokens ?? entry.outputTokens,
 		...Boolean.match(decoded.value.usage?.cost !== undefined || decoded.value.cost !== undefined, {
@@ -47,14 +53,7 @@ function totals(rows: AiUsageEntry[]) {
 			costUsd: sum.costUsd + (row.costUsd ?? 0),
 			inputTokens: sum.inputTokens + row.inputTokens,
 			outputTokens: sum.outputTokens + row.outputTokens,
-			tokens:
-				sum.tokens +
-				row.inputTokens +
-				row.outputTokens +
-				Boolean.match(row.provider === 'anthropic', {
-					onFalse: () => 0,
-					onTrue: () => row.cacheReadTokens + row.cacheWriteTokens
-				}),
+			tokens: sum.tokens + row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens,
 			unknownCostCalls:
 				sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
 		})

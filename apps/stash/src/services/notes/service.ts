@@ -371,14 +371,17 @@ export class Notes extends Context.Service<
 
 				function start(userId: string, note: Note) {
 					return pipe(
-						Option.match(Option.fromNullishOr(note.file), {
-							onNone: () =>
-								Option.match(Option.fromNullishOr(note.url), {
-									onNone: () => tag(userId, note.id, []),
-									onSome: link => reading.withPermit(organizeLink(userId, note, link))
-								}),
-							onSome: type => reading.withPermit(organizeFile(userId, note, type))
-						}),
+						updateNote(note.id, item => ({...item, requester: userId})),
+						Effect.andThen(
+							Option.match(Option.fromNullishOr(note.file), {
+								onNone: () =>
+									Option.match(Option.fromNullishOr(note.url), {
+										onNone: () => tag(userId, note.id, []),
+										onSome: link => reading.withPermit(organizeLink(userId, note, link))
+									}),
+								onSome: type => reading.withPermit(organizeFile(userId, note, type))
+							})
+						),
 						Effect.tapCause(cause =>
 							Boolean.match(Cause.hasInterruptsOnly(cause), {
 								onFalse: () =>
@@ -403,10 +406,10 @@ export class Notes extends Context.Service<
 					)
 				}
 
-				// A note interrupted by a restart has no request in scope, so it resumes as the developer, the identity a local install gives every call.
+				// A note interrupted by a restart resumes for the person who saved it; one the previous release left organizing has none and resumes as the developer.
 				yield* Effect.forEach(
 					Array.filter(yield* SubscriptionRef.get(state), note => note.status === 'organizing'),
-					note => start(DEVELOPER.id, note),
+					note => start(note.requester ?? DEVELOPER.id, note),
 					{concurrency: 1, discard: true}
 				)
 

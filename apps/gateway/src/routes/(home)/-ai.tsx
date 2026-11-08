@@ -513,6 +513,27 @@ function Stats(props: {range: Range; report: AiUsageReport}) {
 	)
 }
 
+// Granted apps without calls in view, so each can still be revoked.
+function IdleGrants(props: {
+	apps: readonly string[]
+	colorOf: (app: string) => string
+	focus: Focus
+	onToggle: (focus: Focus) => void
+}) {
+	return Array.map(props.apps, app => (
+		<AppRow
+			key={app}
+			app={app}
+			color={props.colorOf(app)}
+			granted
+			onClick={() => props.onToggle({app})}
+			selected={props.focus.app === app}
+			share={0}
+			sum={Option.none()}
+		/>
+	))
+}
+
 function UsageReport(props: {
 	focus: Focus
 	metric: Metric
@@ -521,7 +542,13 @@ function UsageReport(props: {
 	range: Range
 	report: AiUsageReport
 }) {
-	const grants = AsyncResult.getOrElse(useAtomValue(aiGrantsAtom), () => [])
+	const grants = Array.sort(
+		Array.map(
+			AsyncResult.getOrElse(useAtomValue(aiGrantsAtom), () => []),
+			grant => grant.app
+		),
+		Order.String
+	)
 	if (Array.isReadonlyArrayEmpty(props.report.cells)) {
 		return (
 			<>
@@ -536,6 +563,19 @@ function UsageReport(props: {
 						() => 'period'
 					)}
 				</p>
+				{Array.isReadonlyArrayNonEmpty(grants) && (
+					<section aria-label="By app" className="flex min-w-0 flex-col">
+						<GroupLabel>By app</GroupLabel>
+						<div role="list" aria-label="By app">
+							<IdleGrants
+								apps={grants}
+								colorOf={app => IDENTITIES[appKey(app)]?.color ?? 'var(--chart-3)'}
+								focus={props.focus}
+								onToggle={props.onFocus}
+							/>
+						</div>
+					</section>
+				)}
 			</>
 		)
 	}
@@ -591,7 +631,7 @@ function UsageReport(props: {
 	)
 	const appTotal = Number.sumAll(Array.map(appSums, value))
 	const modelTotal = Number.sumAll(Array.map(modelSums, value))
-	const granted = HashSet.fromIterable(Array.map(grants, grant => grant.app))
+	const granted = HashSet.fromIterable(grants)
 	// Tapping what is already chosen shows everything again.
 	function toggle(next: Focus) {
 		const same =
@@ -627,28 +667,12 @@ function UsageReport(props: {
 								sum={Option.some(sum)}
 							/>
 						))}
-						{/* A granted app without calls in view still shows, so it can be revoked. */}
-						{Array.map(
-							Array.filter(
-								Array.sort(
-									Array.map(grants, grant => grant.app),
-									Order.String
-								),
-								app => !Array.some(appSums, sum => sum.name === app)
-							),
-							app => (
-								<AppRow
-									key={app}
-									app={app}
-									color={colorOf(app)}
-									granted
-									onClick={() => toggle({app})}
-									selected={props.focus.app === app}
-									share={0}
-									sum={Option.none()}
-								/>
-							)
-						)}
+						<IdleGrants
+							apps={Array.filter(grants, app => !Array.some(appSums, sum => sum.name === app))}
+							colorOf={colorOf}
+							focus={props.focus}
+							onToggle={toggle}
+						/>
 					</div>
 				</section>
 				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">

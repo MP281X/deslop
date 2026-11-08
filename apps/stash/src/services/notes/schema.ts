@@ -46,6 +46,8 @@ export const Note = Schema.Struct({
 	id: NoteId,
 	image: Schema.optionalKey(ImageType),
 	issue: Schema.optionalKey(Schema.String),
+	// Whose AI keys organize the note, so a restart resumes it on their behalf.
+	requester: Schema.optionalKey(Schema.String),
 	screenText: Schema.optionalKey(Schema.String),
 	source: Source,
 	status: Schema.Literals(['organizing', 'ready', 'failed']),
@@ -59,7 +61,9 @@ export const Note = Schema.Struct({
 })
 
 export type NoteItem = typeof NoteItem.Type
-export const NoteItem = Note.mapFields(Struct.omit(['body', 'content', 'screenText', 'text', 'transcript']))
+export const NoteItem = Note.mapFields(
+	Struct.omit(['body', 'content', 'requester', 'screenText', 'text', 'transcript'])
+)
 
 export type NotesEvent = typeof NotesEvent.Type
 export const NotesEvent = Schema.Struct({

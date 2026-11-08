@@ -1,14 +1,15 @@
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Effect, Layer, Queue, Ref, pipe} from 'effect'
+import {ConfigProvider, Effect, Layer, Queue, Ref, String, pipe} from 'effect'
 
 import {Headers, HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
+import {GRANT_REFUSED} from '#ai/schema.ts'
 import {AiGateway, AiUnavailable} from '#ai/service.ts'
 
 it.effect(
-	're-enrolls after a revoked grant receives 401',
+	'keeps the grant through a provider 401 and re-enrolls after Gateway refuses it',
 	Effect.fnUntraced(function* () {
 		const minted = yield* Ref.make(0)
 		const client = HttpClient.make(request =>
@@ -19,10 +20,19 @@ it.effect(
 						Response.json({token: `grant-${yield* Ref.updateAndGet(minted, count => count + 1)}`})
 					)
 				}
+				if (String.endsWith('/wrong-key')(request.url)) {
+					return HttpClientResponse.fromWeb(
+						request,
+						Response.json({error: {message: 'invalid x-api-key'}}, {status: 401})
+					)
+				}
 				if (request.headers['authorization'] === 'Bearer grant-1') {
 					return HttpClientResponse.fromWeb(
 						request,
-						Response.json({error: {message: 'Unknown or revoked AI grant'}}, {status: 401})
+						Response.json(
+							{error: {message: 'Unknown or revoked AI grant'}},
+							{headers: {[GRANT_REFUSED]: 'true'}, status: 401}
+						)
 					)
 				}
 				return HttpClientResponse.fromWeb(request, Response.json({authorization: request.headers['authorization']}))
@@ -33,6 +43,9 @@ it.effect(
 				const gateway = yield* AiGateway
 				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
 				const authorized = gateway.authorize('alice')(client)
+				assert.equal((yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/wrong-key')).status, 401)
+				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				assert.equal(yield* Ref.get(minted), 1)
 				assert.equal((yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/v1/messages')).status, 401)
 				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
 				assert.equal(yield* Ref.get(minted), 2)

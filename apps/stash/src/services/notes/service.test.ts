@@ -189,6 +189,36 @@ it.layer(NodeServices.layer)('Notes', test => {
 	)
 
 	test.effect(
+		'resumes a note a restart interrupted with the AI keys of the person who saved it',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const reached = yield* Queue.unbounded<string>()
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const notes = yield* open({
+						directory,
+						organizer: Organizer.of({organize: userId => Effect.andThen(Queue.offer(reached, userId), Effect.never)}),
+						sources: recipe
+					})
+					yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
+					assert.strictEqual(yield* Queue.take(reached), USER)
+				})
+			)
+			const calls = yield* Ref.make(0)
+			const resumed = yield* open({
+				directory,
+				organizer: Organizer.of({
+					organize: (userId, input) =>
+						Effect.andThen(Queue.offer(reached, userId), counting(calls).organize(userId, input))
+				}),
+				sources: recipe
+			})
+			assert.strictEqual(yield* Queue.take(reached), USER)
+			assert.containsSubset((yield* settled(resumed, isReady))[0], {id: IDS[0], status: 'ready'})
+		})
+	)
+
+	test.effect(
 		'keeps the note untagged and says why when the link or the AI fails, or no key is set',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem

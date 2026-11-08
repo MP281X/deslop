@@ -8,7 +8,6 @@ import {
 	Function,
 	Layer,
 	MutableList,
-	Number,
 	Option,
 	Redacted,
 	Schema,
@@ -31,6 +30,7 @@ import {
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
+import {GRANT_REFUSED} from '@deslop/runtime/ai/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
@@ -80,6 +80,7 @@ const make = Effect.gen(function* () {
 	const client = yield* HttpClient.HttpClient
 	const scope = yield* Scope.Scope
 	const lock = yield* Semaphore.make(1)
+	const pricingLock = yield* Semaphore.make(1)
 	const pricing: {catalog: ModelsCatalog; refreshed: number} = {catalog: {}, refreshed: -Infinity}
 	function loadKeys(id: string) {
 		return pipe(keys.get(`ai-keys/${id}`), Effect.map(Option.getOrElse(() => [])), failed)
@@ -92,26 +93,27 @@ const make = Effect.gen(function* () {
 			entry.model !== undefined &&
 			entry.inputTokens + entry.outputTokens + entry.cacheReadTokens + entry.cacheWriteTokens > 0
 		) {
-			const now = yield* Clock.currentTimeMillis
-			if (now - pricing.refreshed >= 86_400_000) {
-				pricing.refreshed = now
-				pricing.catalog = yield* pipe(
-					client.get('https://models.dev/api.json'),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(ModelsCatalog)),
-					Effect.timeout('10 seconds'),
-					Effect.orElseSucceed(() => pricing.catalog)
-				)
-			}
+			// Calls finishing together wait for one refresh instead of pricing against the catalog before it.
+			yield* pipe(
+				Effect.gen(function* () {
+					const now = yield* Clock.currentTimeMillis
+					if (now - pricing.refreshed < 86_400_000) return
+					pricing.refreshed = now
+					pricing.catalog = yield* pipe(
+						client.get('https://models.dev/api.json'),
+						Effect.flatMap(HttpClientResponse.schemaBodyJson(ModelsCatalog)),
+						Effect.timeout('10 seconds'),
+						Effect.orElseSucceed(() => pricing.catalog)
+					)
+				}),
+				Semaphore.withPermit(pricingLock)
+			)
 			const catalogProvider = Boolean.match(entry.provider === 'opencode-zen', {
 				onFalse: () => entry.provider,
 				onTrue: () => 'opencode'
 			})
 			const cost = pricing.catalog[catalogProvider]?.models[entry.model]?.cost
 			if (cost !== undefined) {
-				const input = Boolean.match(entry.provider === 'anthropic', {
-					onFalse: () => Number.max(0, entry.inputTokens - entry.cacheReadTokens - entry.cacheWriteTokens),
-					onTrue: () => entry.inputTokens
-				})
 				if (
 					(entry.cacheReadTokens === 0 || cost.cache_read !== undefined) &&
 					(entry.cacheWriteTokens === 0 || cost.cache_write !== undefined)
@@ -120,7 +122,7 @@ const make = Effect.gen(function* () {
 						...entry,
 						costSource: 'models.dev',
 						costUsd:
-							(input * cost.input +
+							(entry.inputTokens * cost.input +
 								entry.outputTokens * cost.output +
 								entry.cacheReadTokens * (cost.cache_read ?? 0) +
 								entry.cacheWriteTokens * (cost.cache_write ?? 0)) /
@@ -202,7 +204,10 @@ const make = Effect.gen(function* () {
 				Semaphore.withPermit(lock)
 			)
 			if (!local && grant === undefined) {
-				return HttpServerResponse.jsonUnsafe({error: {message: 'Unknown or revoked AI grant'}}, {status: 401})
+				return HttpServerResponse.jsonUnsafe(
+					{error: {message: 'Unknown or revoked AI grant'}},
+					{headers: {[GRANT_REFUSED]: 'true'}, status: 401}
+				)
 			}
 			const id = Boolean.match(local, {onFalse: () => grant?.userId ?? DEVELOPER.id, onTrue: () => DEVELOPER.id})
 			const key = Option.getOrUndefined(Array.findFirst(yield* loadKeys(id), value => value.provider === provider))

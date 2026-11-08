@@ -20,6 +20,7 @@ import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from
 import {KeyValueStore} from 'effect/persistence'
 
 import type {AiProvider} from '#ai/schema.ts'
+import {GRANT_REFUSED} from '#ai/schema.ts'
 import {localAuth} from '#auth/lib/utils.ts'
 
 export class AiUnavailable extends Schema.TaggedError<AiUnavailable>()('AiUnavailable', {message: Schema.String}) {}
@@ -92,7 +93,7 @@ export class AiGateway extends Context.Service<
 								Effect.gen(function* () {
 									if (
 										local ||
-										response.status !== 401 ||
+										response.headers[GRANT_REFUSED] === undefined ||
 										!Option.exists(gateway, url => String.startsWith(`${url}/ai/`)(response.request.url))
 									) {
 										return
