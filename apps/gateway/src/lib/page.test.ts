@@ -6,6 +6,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Cause, Context, Effect, Function, Layer, MutableList, Option, Queue, Ref, Stream, pipe} from 'effect'
 
+import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
@@ -134,14 +135,16 @@ function render(result: Atom.Type<typeof serversAtom>) {
 	return Effect.scoped(
 		Effect.gen(function* () {
 			const env = yield* fixture
-			const component = yield* Effect.map(
-				Effect.promise(() => import('#routes/(home)/index.tsx')),
-				page => Option.getOrThrow(Option.fromUndefinedOr(page.Route.options.component))
+			// The page reads its view from the URL, so it renders inside the app's own router.
+			const router = yield* Effect.map(
+				Effect.promise(() => import('#routeTree.gen.ts')),
+				generated => createRouter({history: createMemoryHistory(), routeTree: generated.routeTree})
 			)
-			const preload = component.preload?.()
-			if (preload !== undefined) yield* Effect.promise(() => preload)
+			yield* Effect.promise(() => router.load())
 			env.registry.ensureNode(env.serversAtom).setInitialValue(result)
-			return renderToString(createElement(RegistryContext.Provider, {value: env.registry}, createElement(component)))
+			return renderToString(
+				createElement(RegistryContext.Provider, {value: env.registry}, createElement(RouterProvider, {router}))
+			)
 		})
 	)
 }
@@ -223,7 +226,8 @@ it.layer(NodeServices.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.initial())
 			assert.include(html, '>gateway</span>')
-			assert.notInclude(html, '>Servers</span>')
+			assert.include(html, 'aria-label="View"')
+			assert.notInclude(html, '>Servers</h2>')
 			assert.include(html, 'aria-label="Search gateway"')
 			assert.notInclude(html, 'aria-label="Add server"')
 			assert.notInclude(html, 'aria-label="Copy MCP URL"')

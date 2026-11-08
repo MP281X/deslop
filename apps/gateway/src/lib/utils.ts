@@ -1,8 +1,8 @@
-import {Boolean, Effect, Option, Schema, Stream, pipe} from 'effect'
+import {Boolean, Clock, Effect, Option, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {AsyncResult, Atom, AtomRpc} from 'effect/reactivity'
+import {AsyncResult, Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -10,6 +10,7 @@ import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import type {AiProvider} from '#services/ai/schema.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 
 export const ENDPOINT = `${window.location.origin}/mcp`
@@ -108,6 +109,65 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 			}
 		}
 	})
+)
+
+export type Period = typeof Period.Type
+export const Period = Schema.Literals(['24h', '7d', '30d'])
+
+// The period's buckets, ending with the current one: hours for a day, UTC days otherwise.
+export function periodRange(period: Period, now: number) {
+	const bucket = Boolean.match(period === '24h', {onFalse: () => 'day' as const, onTrue: () => 'hour' as const})
+	const size = Boolean.match(bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
+	const count = {'7d': 7, '24h': 24, '30d': 30}[period]
+	const to = (Math.floor(now / size) + 1) * size
+	return {bucket, count, from: to - count * size, size, to}
+}
+
+export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
+export const aiGrantsAtom = RpcClient.query('ai.grants', undefined, {reactivityKeys: ['ai-grants']})
+
+// One reader per period, its range taken when it runs, so a refresh moves the window to now.
+export const aiUsageAtom = Atom.family((period: Period) =>
+	pipe(
+		RpcClient.runtime.atom(
+			Effect.gen(function* () {
+				const range = periodRange(period, yield* Clock.currentTimeMillis)
+
+				return {
+					range,
+					report: yield* (yield* RpcClient)('ai.usage', {bucket: range.bucket, from: range.from, to: range.to})
+				}
+			})
+		),
+		Atom.withReactivity(['ai-usage'])
+	)
+)
+
+export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; secret: string}) =>
+	Reactivity.mutation(
+		Effect.flatMap(RpcClient, client =>
+			client('ai.setKey', {provider: input.provider, secret: Redacted.make(input.secret)})
+		),
+		['ai-keys']
+	)
+)
+
+// One per provider or app, so a failure stays with the dialog that caused it.
+export const removeKeyAtom = Atom.family((provider: AiProvider) =>
+	RpcClient.runtime.fn(() =>
+		Reactivity.mutation(
+			Effect.flatMap(RpcClient, client => client('ai.removeKey', {provider})),
+			['ai-keys']
+		)
+	)
+)
+export const revokeGrantAtom = Atom.family((app: string) =>
+	RpcClient.runtime.fn(() =>
+		Reactivity.mutation(
+			Effect.flatMap(RpcClient, client => client('ai.revokeGrant', {app})),
+			['ai-grants']
+		)
+	)
 )
 
 // A copy confirms in place for a moment, on touch too; a failure says why in a toast.

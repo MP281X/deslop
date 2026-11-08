@@ -2,17 +2,17 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CopyIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
-import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
+import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
+import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
-import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page, Section, Stat} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
@@ -35,13 +35,40 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn} from '@deslop/components-web/utils'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {isDenied} from '@deslop/runtime/auth/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
-import {addAtom, connectUrl, copyAtom, ENDPOINT, lastCallAtom, removeAtom, serversAtom} from '#lib/utils.ts'
+import {
+	addAtom,
+	connectUrl,
+	copyAtom,
+	ENDPOINT,
+	lastCallAtom,
+	Period,
+	removeAtom,
+	serversAtom,
+	setKeyAtom
+} from '#lib/utils.ts'
+import {AddKeyDialog, AiControls, AiPane, PROVIDERS} from '#routes/(home)/-ai.tsx'
+import {FailureContent} from '#routes/(home)/-failure.tsx'
 import icon from '#routes/icon.svg'
+import type {AiProvider} from '#services/ai/schema.ts'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
+
+type View = 'ai' | 'servers'
+type Search = typeof Search.Type
+// The view and what it shows live in the URL; Servers, the last week and cost are the defaults.
+const Search = Schema.Struct({
+	app: Schema.optionalKey(Schema.String),
+	bucket: Schema.optionalKey(Schema.Finite),
+	metric: Schema.optionalKey(Schema.Literal('tokens')),
+	model: Schema.optionalKey(Schema.String),
+	period: Schema.optionalKey(Period),
+	view: Schema.optionalKey(Schema.Literal('ai'))
+})
+const route = getRouteApi('/(home)/')
 
 // What needs the user first: an expired sign-in or a failure, then a server never connected, then the live ones.
 const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
@@ -56,16 +83,6 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 		Match.orElse(() => 2)
 	)
 )
-
-// A failure the page can't show as data: an admin's refusal, a sign-in, then anything else.
-function FailureContent(props: {error: unknown; reset: () => void}) {
-	if (!Schema.is(AuthError)(props.error)) return <Error error={props.error} reset={props.reset} />
-	if (props.error.error === 'access_denied') {
-		return <Error error={props.error} label="Access denied" reset={props.reset} />
-	}
-	if (!needsSignIn(props.error)) return <Error error={props.error} reset={props.reset} />
-	return <SignIn href={signInUrl(location.href)} />
-}
 
 // Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
 function Status(props: {server: ConnectionInfo}) {
@@ -277,8 +294,7 @@ function ServersContent(props: {onAdd: () => void}) {
 
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
-		<Page width="reading">
-			<h1 className="sr-only">Gateway</h1>
+		<>
 			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
@@ -295,7 +311,34 @@ function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo
 					<ServersContent onAdd={props.onAdd} />
 				</Suspense>
 			</CatchBoundary>
-		</Page>
+		</>
+	)
+}
+
+// Two views of one page, in the bar's section slot: the servers, then what AI calls through the gateway cost.
+function ViewToggle(props: {onView: (view: View) => void; view: View}) {
+	return (
+		<ToggleGroup
+			aria-label="View"
+			size="sm"
+			spacing={1}
+			variant="outline"
+			value={[props.view]}
+			onValueChange={values =>
+				Option.map(Array.head(values), value =>
+					props.onView(Boolean.match(value === 'ai', {onFalse: () => 'servers', onTrue: () => 'ai'}))
+				)
+			}
+		>
+			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
+				<HardDrivesIcon />
+				<span className="max-sm:sr-only">Servers</span>
+			</ToggleGroupItem>
+			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
+				<SparkleIcon />
+				<span className="max-sm:sr-only">AI</span>
+			</ToggleGroupItem>
+		</ToggleGroup>
 	)
 }
 
@@ -362,6 +405,29 @@ function AddDialog() {
 }
 
 function Home() {
+	const search = route.useSearch()
+	const navigate = route.useNavigate()
+	function show(next: Partial<Search>) {
+		navigate({search: previous => ({...previous, ...next})})
+	}
+	const view = search.view ?? 'servers'
+	const period = search.period ?? '7d'
+	const metric = search.metric ?? 'cost'
+	// Open, which opening it is (so each starts with an empty secret), and the provider it adds.
+	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; provider: AiProvider}>({
+		open: false,
+		opened: 0,
+		provider: PROVIDERS[0]
+	})
+	const resetKey = useAtomSet(setKeyAtom)
+	function addKey(provider: Option.Option<AiProvider>) {
+		resetKey(Atom.Reset)
+		setKeyDialog(previous => ({
+			open: true,
+			opened: previous.opened + 1,
+			provider: Option.getOrElse(provider, () => PROVIDERS[0])
+		}))
+	}
 	const send = useAtomSet(addAtom.send)
 	const copyText = useAtomSet(copyAtom(ENDPOINT))
 	const servers = useAtomValue(serversAtom)
@@ -408,6 +474,7 @@ function Home() {
 				onFalse: () => [],
 				onTrue: () => [{icon: <PlusIcon />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
 			}),
+			{icon: <KeyIcon />, label: 'Add key', run: () => addKey(Option.none())},
 			{icon: <CopyIcon />, label: 'Copy MCP URL', run: () => copyText()}
 		],
 		label: 'Actions'
@@ -422,11 +489,78 @@ function Home() {
 					onFalse: () => [actions, needsYou, all, otherApps('gateway')],
 					onTrue: () => [otherApps('gateway')]
 				})}
+				tabs={
+					<ViewToggle
+						view={view}
+						onView={next =>
+							show({
+								app: undefined,
+								bucket: undefined,
+								model: undefined,
+								view: Boolean.match(next === 'ai', {onFalse: () => undefined, onTrue: () => 'ai' as const})
+							})
+						}
+					/>
+				}
+				controls={
+					view === 'ai' && (
+						<div className="flex items-center gap-2 max-sm:hidden">
+							<AiControls
+								metric={metric}
+								period={period}
+								onMetric={next =>
+									show({
+										metric: Boolean.match(next === 'tokens', {
+											onFalse: () => undefined,
+											onTrue: () => 'tokens' as const
+										})
+									})
+								}
+								onPeriod={next => show({app: undefined, bucket: undefined, model: undefined, period: next})}
+							/>
+						</div>
+					)
+				}
 			/>
-			<ServersPane onAdd={() => send({_tag: 'Open'})} servers={sorted} />
+			{view === 'ai' && (
+				<div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-1 sm:hidden">
+					<AiControls
+						metric={metric}
+						period={period}
+						onMetric={next =>
+							show({
+								metric: Boolean.match(next === 'tokens', {onFalse: () => undefined, onTrue: () => 'tokens' as const})
+							})
+						}
+						onPeriod={next => show({app: undefined, bucket: undefined, model: undefined, period: next})}
+					/>
+				</div>
+			)}
+			<Page width="reading">
+				<h1 className="sr-only">Gateway</h1>
+				{Boolean.match(view === 'ai', {
+					onFalse: () => <ServersPane onAdd={() => send({_tag: 'Open'})} servers={sorted} />,
+					onTrue: () => (
+						<AiPane
+							focus={{app: search.app, bucket: search.bucket, model: search.model}}
+							metric={metric}
+							onAdd={addKey}
+							onFocus={focus => show({app: focus.app, bucket: focus.bucket, model: focus.model})}
+							period={period}
+						/>
+					)
+				})}
+			</Page>
 			<AddDialog />
+			<AddKeyDialog
+				key={keyDialog.opened}
+				open={keyDialog.open}
+				provider={keyDialog.provider}
+				onProvider={provider => setKeyDialog(previous => ({...previous, provider}))}
+				onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
+			/>
 		</div>
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})
