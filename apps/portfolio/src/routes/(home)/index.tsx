@@ -310,11 +310,19 @@ function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 	)
 }
 
-// Whether a cursor sits over the centered reading column, where its name would cover the text.
-function overContent(x: number, viewport: {width: number}) {
+// The name is a small mono chip; its width matters when it sits just outside the reading column.
+function labelWidth(label: string) {
+	return label.length * 8 + 28
+}
+
+// Whether a cursor's label would sit over the centered reading column, where it would cover the text.
+function overContent(x: number, viewport: {width: number}, label: string) {
+	const at = x * viewport.width
+	const width = labelWidth(label)
 	const left = (viewport.width - 768) / 2
 	const right = (viewport.width + 768) / 2
-	return x * viewport.width >= left && x * viewport.width <= right
+	if (at < left) return at + width > left
+	return at <= right || at - width < right
 }
 
 // Another visitor's cursor glides behind the page towards each position the server reports.
@@ -352,9 +360,9 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 			style={{'--cursor-color': input.cursor.color}}
 		>
 			<CursorLabel
-				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
+				flip={input.cursor.x * input.viewport.width + labelWidth(input.cursor.name) > input.viewport.width - 8}
 				label={input.cursor.name}
-				show={!overContent(input.cursor.x, input.viewport)}
+				show={!overContent(input.cursor.x, input.viewport, input.cursor.name)}
 			/>
 		</div>
 	)
@@ -372,9 +380,9 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 			}}
 		>
 			<CursorLabel
-				flip={input.cursor.x * input.viewport.width > input.viewport.width - 140}
+				flip={input.cursor.x * input.viewport.width + labelWidth('You') > input.viewport.width - 8}
 				label="You"
-				show={!overContent(input.cursor.x, input.viewport)}
+				show={!overContent(input.cursor.x, input.viewport, 'You')}
 			/>
 		</div>
 	)
@@ -388,7 +396,7 @@ function HeaderLink(input: {children: React.ReactNode; external?: boolean; href:
 			href={input.href}
 			target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
 			rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
-			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 items-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:pb-0.5"
+			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 min-w-11 items-center justify-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:justify-start sm:pb-0.5"
 		>
 			{input.children}
 			{external && <ArrowUpRightIcon className="size-3.5" />}
@@ -396,7 +404,7 @@ function HeaderLink(input: {children: React.ReactNode; external?: boolean; href:
 	)
 }
 
-// The masthead is the first ruled section: role and place set the stage, the name is the one serif statement.
+// The masthead is the first ruled section: role and place set the stage, the name is the one display statement.
 function ProfileSection() {
 	return (
 		<section
@@ -421,9 +429,9 @@ function ProfileSection() {
 
 				<h1
 					id="profile-title"
-					className="font-heading mt-4 text-6xl leading-none tracking-tight text-balance sm:text-7xl"
+					className="font-heading mt-4 text-5xl leading-none tracking-tight text-balance sm:text-7xl"
 				>
-					{profile.firstName} <span className="italic">{profile.lastName}</span>
+					{profile.firstName} {profile.lastName}
 				</h1>
 
 				<p className="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed text-pretty sm:text-lg">
@@ -615,14 +623,14 @@ function ContactSection() {
 		>
 			<div className="flex flex-col">
 				{Array.map(links, item => {
-					const internal = String.startsWith('/')(item.href)
+					const external = String.startsWith('http')(item.href)
 					return (
 						<a
 							key={item.label}
 							href={item.href}
 							className="group border-border hover:text-primary flex min-h-11 items-center justify-between gap-6 border-b py-2.5 text-sm transition-colors last:border-b-0"
-							target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
-							rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
+							target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
+							rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
 						>
 							<span className="tracking-label text-muted-foreground group-hover:text-primary text-xs font-semibold uppercase">
 								{item.label}
@@ -776,6 +784,7 @@ function PresenceUnavailable() {
 	return <PresenceHud state="offline" />
 }
 
+// oxlint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- The portfolio is one keyboard-scrolling region; it needs focus and paging keys.
 function PortfolioRoute() {
 	const viewport = {
 		height: useSyncExternalStore(
@@ -814,13 +823,8 @@ function PortfolioRoute() {
 		const target = sections()[index]
 		if (Predicate.isUndefined(target)) return
 
-		target.scrollIntoView({
-			behavior: Boolean.match(window.matchMedia('(prefers-reduced-motion: reduce)').matches, {
-				onFalse: () => 'smooth' as const,
-				onTrue: () => 'auto' as const
-			}),
-			block: 'start'
-		})
+		// A frequent keyboard jump lands at once; the scroll event then reads the section at the top.
+		target.scrollIntoView({behavior: 'auto', block: 'start'})
 		currentSectionRef.current = index
 	}
 
@@ -893,16 +897,43 @@ function PortfolioRoute() {
 	return (
 		<div
 			ref={containerRef}
-			className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			aria-label="Portfolio"
+			role="region"
+			className="focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			onKeyDown={event => {
+				if (event.target !== event.currentTarget) return
+				const page = event.currentTarget.clientHeight * 0.9
+				if (event.key === 'Home') {
+					event.preventDefault()
+					event.currentTarget.scrollTo({top: 0})
+					return
+				}
+				if (event.key === 'End') {
+					event.preventDefault()
+					event.currentTarget.scrollTo({top: event.currentTarget.scrollHeight})
+					return
+				}
+				if (event.key === ' ') {
+					event.preventDefault()
+					event.currentTarget.scrollBy({top: Boolean.match(event.shiftKey, {onFalse: () => page, onTrue: () => -page})})
+					return
+				}
+				const amount = {ArrowDown: 80, ArrowUp: -80, PageDown: page, PageUp: -page}[event.key]
+				if (amount !== undefined) {
+					event.preventDefault()
+					event.currentTarget.scrollBy({top: amount})
+				}
+			}}
 			onPointerMove={updatePointer}
 			onScroll={event => {
-				const viewportMiddle = event.currentTarget.scrollTop + event.currentTarget.clientHeight / 2
+				const top = event.currentTarget.scrollTop + 2
 				currentSectionRef.current = pipe(
 					sections(),
-					Array.findLastIndex(section => section.offsetTop <= viewportMiddle),
+					Array.findLastIndex(section => section.offsetTop <= top),
 					Option.getOrElse(() => 0)
 				)
 			}}
+			tabIndex={0}
 		>
 			<ProfileSection />
 			<SkillsSection />
