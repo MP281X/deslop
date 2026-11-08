@@ -54,6 +54,32 @@ export const ClientRequest = Schema.Struct({
 	state: Schema.optionalKey(Schema.NonEmptyString)
 })
 
+// A command's sign-in: the client it names and the apps it asks for, approved by its code like any other.
+export type DeviceRequest = typeof DeviceRequest.Type
+export const DeviceRequest = Schema.Struct({
+	clientId: Schema.NonEmptyString,
+	clientName: Schema.String,
+	resources: Schema.Array(Resource)
+})
+
+// RFC 8628 §3.1.
+export type DeviceParams = typeof DeviceParams.Type
+export const DeviceParams = Schema.Struct({
+	client_id: Schema.NonEmptyString.check(Schema.isMaxLength(2048)),
+	resource: Schema.optionalKey(Schema.ArrayEnsure(Resource)),
+	scope: Schema.optionalKey(Schema.String)
+})
+
+export const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
+
+// RFC 8628 §3.4.
+export type DeviceTokenParams = typeof DeviceTokenParams.Type
+export const DeviceTokenParams = Schema.Struct({
+	client_id: Schema.NonEmptyString,
+	device_code: Schema.NonEmptyString,
+	grant_type: Schema.Literal(DEVICE_GRANT)
+})
+
 export type TokenGrant = typeof TokenGrant.Type
 export const TokenGrant = Schema.Struct({grant_type: Schema.String})
 

@@ -15,6 +15,8 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 			'unsupported_grant_type',
 			'unsupported_response_type',
 			'access_denied',
+			'authorization_pending',
+			'expired_token',
 			'temporarily_unavailable'
 		])
 	),
