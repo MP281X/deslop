@@ -139,7 +139,6 @@ export class Tokens extends Context.Service<
 		Tokens,
 		Effect.gen(function* () {
 			const storage = yield* KeyValueStore.KeyValueStore
-			yield* storage.remove('grants')
 			const store = KeyValueStore.toSchemaStore(storage, Grants)
 			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('sign-ins'), () => ({})))
 			const issuer = `${new URL(yield* Config.String('APP_URL')).origin}${ISSUER_PATH}`

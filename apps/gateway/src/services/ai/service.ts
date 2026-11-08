@@ -65,7 +65,6 @@ const failed = Effect.mapError((cause: unknown) => AuthError.make({cause, messag
 const make = Effect.gen(function* () {
 	const kv = yield* KeyValueStore.KeyValueStore
 	const keys = KeyValueStore.toSchemaStore(kv, Schema.Array(AiStoredKey))
-	yield* kv.remove('ai-grants')
 	const usage = KeyValueStore.toSchemaStore(kv, Schema.Array(AiUsageEntry))
 	const auth = yield* Auth
 	const local = yield* localAuth

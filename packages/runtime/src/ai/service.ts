@@ -2,7 +2,6 @@ import {Boolean, Config, Context, Effect, Function, Layer, Option, Schema} from 
 
 import {AiError} from 'effect/ai'
 import {HttpClient, HttpClientRequest} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
 
 import type {AiProvider} from '#ai/schema.ts'
 import {localAuth} from '#auth/lib/utils.ts'
@@ -42,7 +41,6 @@ export class AiGateway extends Context.Service<
 			const gateway = yield* Config.option(Config.String('GATEWAY_URL'))
 			const local = yield* localAuth
 			const sessions = yield* Sessions
-			yield* (yield* KeyValueStore.KeyValueStore).remove('ai-gateway-grants')
 			return AiGateway.of({
 				apiUrl: provider =>
 					Option.match(gateway, {
