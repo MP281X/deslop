@@ -1,4 +1,5 @@
 import {
+	Array,
 	Clock,
 	Context,
 	Effect,
@@ -38,7 +39,7 @@ import {
 	deviceLabel
 } from '#services/tokens/lib/utils.ts'
 import {CredentialOwner} from '#services/tokens/schema.ts'
-import type {Origin} from '#services/tokens/schema.ts'
+import type {DeviceTokenParams, Origin, TokenResponse} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 export const REQUEST_COOKIE = '__Host-request-'
@@ -79,6 +80,14 @@ const deliver = Effect.fnUntraced(function* (input: {
 				onSome: user =>
 					Effect.map(tokens.issue(client.request, user), code =>
 						Collected.cases.Redirect.make({url: callbackUrl(client.request, {code}, tokens.issuer)})
+					)
+			}),
+		Device: device =>
+			Option.match(approver, {
+				onNone: () => Effect.succeed(Collected.cases.Denied.make({})),
+				onSome: user =>
+					Effect.map(tokens.device(device.request, user, input.origin), granted =>
+						Collected.cases.Granted.make({tokens: granted})
 					)
 			})
 	})
@@ -188,6 +197,7 @@ export class SignIns extends Context.Service<
 		) => Effect.Effect<{clientName: string}, AuthError>
 		readonly collect: (code: string, headers: Headers.Headers) => Effect.Effect<Collected, AuthError>
 		readonly lookup: (code: string) => Stream.Stream<Option.Option<PendingAuthorization>>
+		readonly poll: (params: DeviceTokenParams) => Effect.Effect<TokenResponse, AuthError>
 		readonly start: (delivery: Delivery, origin: Origin) => Effect.Effect<{code: string; receiver: string}, AuthError>
 		readonly status: (code: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
@@ -228,6 +238,26 @@ export class SignIns extends Context.Service<
 				}
 				return signIn
 			})
+			// Delivers an answered sign-in once: its redirect, browser session or a command's tokens.
+			const delivered = Effect.fnUntraced(function* (signIn: Open, previous: string) {
+				yield* signIn.ref.send({_tag: 'Collect', previous})
+				const done = yield* pipe(
+					Machine.waitFor(
+						signIn.ref,
+						snapshot =>
+							!SignInStates.matches(snapshot.state, 'Open') || SignInStates.matches(snapshot.state, 'Open.Failed')
+					),
+					Effect.mapError(() => expired)
+				)
+				return yield* Option.match(SignInStates.get(done.state, 'Delivered'), {
+					onNone: () =>
+						Option.match(SignInStates.get(done.state, 'Open.Failed'), {
+							onNone: () => Effect.fail(expired),
+							onSome: failed => Effect.fail(AuthError.make({message: failed.message}))
+						}),
+					onSome: found => Effect.succeed(found.collected)
+				})
+			})
 
 			return SignIns.of({
 				answer: Effect.fn('SignIns.answer')(function* (
@@ -257,40 +287,16 @@ export class SignIns extends Context.Service<
 					)
 					return {clientName: signIn.pending.clientName}
 				}, rejected('Cannot answer the sign-in')),
-				// Waits up to 50 seconds for the answer, below the proxy's timeout; a command repeats the request until it arrives.
+				// The page continues here once the sign-in is answered.
 				collect: Effect.fn('SignIns.collect')(function* (code: string, headers: Headers.Headers) {
 					const signIn = yield* received(
 						yield* Effect.mapError(Effect.fromOption(yield* find(code)), () => expired),
 						headers
 					)
-					const decided = yield* pipe(
-						Machine.waitFor(signIn.ref, snapshot => !SignInStates.matches(snapshot.state, 'Open.Waiting')),
-						Effect.timeoutOption('50 seconds'),
-						Effect.mapError(() => expired)
-					)
-					if (!Option.exists(decided, snapshot => SignInStates.matches(snapshot.state, 'Open'))) {
-						return yield* Option.match(decided, {
-							onNone: () => Effect.succeed(Collected.cases.Waiting.make({})),
-							onSome: () => Effect.fail(expired)
-						})
+					if (SignInStates.matches((yield* signIn.ref.snapshot).state, 'Open.Waiting')) {
+						return yield* AuthError.make({message: 'This sign-in is still waiting for approval'})
 					}
-					yield* signIn.ref.send({_tag: 'Collect', previous: browserToken(headers)})
-					const done = yield* pipe(
-						Machine.waitFor(
-							signIn.ref,
-							snapshot =>
-								!SignInStates.matches(snapshot.state, 'Open') || SignInStates.matches(snapshot.state, 'Open.Failed')
-						),
-						Effect.mapError(() => expired)
-					)
-					return yield* Option.match(SignInStates.get(done.state, 'Delivered'), {
-						onNone: () =>
-							Option.match(SignInStates.get(done.state, 'Open.Failed'), {
-								onNone: () => Effect.fail(expired),
-								onSome: failed => Effect.fail(AuthError.make({message: failed.message}))
-							}),
-						onSome: delivered => Effect.succeed(delivered.collected)
-					})
+					return yield* delivered(signIn, browserToken(headers))
 				}, rejected('Cannot complete the sign-in')),
 				lookup: code =>
 					Stream.map(watch(code), found =>
@@ -298,6 +304,33 @@ export class SignIns extends Context.Service<
 							Option.liftPredicate(current.signIn.pending, () => SignInStates.matches(current.state, 'Open.Waiting'))
 						)
 					),
+				// RFC 8628 §3.5: the command asks again every few seconds until the code is answered or expires.
+				poll: Effect.fn('SignIns.poll')(function* (params: DeviceTokenParams) {
+					const receiver = yield* hash(params.device_code)
+					const signIn = yield* Effect.mapError(
+						Effect.fromOption(
+							Array.findFirst(HashMap.toValues(yield* SubscriptionRef.get(open)), entry => entry.receiver === receiver)
+						),
+						() => AuthError.make({error: 'expired_token', message: 'The device code expired; sign in again'})
+					)
+					const snapshot = yield* signIn.ref.snapshot
+					if (
+						!Option.exists(
+							SignInStates.get(snapshot.state, 'Open'),
+							found => found.delivery._tag === 'Device' && found.delivery.request.clientId === params.client_id
+						)
+					) {
+						return yield* AuthError.make({error: 'invalid_grant', message: 'The device code belongs to another client'})
+					}
+					if (SignInStates.matches(snapshot.state, 'Open.Waiting')) {
+						return yield* AuthError.make({error: 'authorization_pending', message: 'Waiting for approval'})
+					}
+					const answer = yield* delivered(signIn, '')
+					if (answer._tag !== 'Granted') {
+						return yield* AuthError.make({error: 'access_denied', message: 'The sign-in was denied'})
+					}
+					return answer.tokens
+				}, rejected('Cannot complete the sign-in')),
 				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, origin: Origin) {
 					const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
 					const now = yield* Clock.currentTimeMillis
@@ -322,12 +355,18 @@ export class SignIns extends Context.Service<
 									kind: 'Browser' as const,
 									resources: []
 								}),
+								// Named as its row will be once signed in.
 								Client: client => ({
-									// Named as its row will be once signed in.
 									clientName: clientLabel(client.request.clientName),
 									device: deviceLabel(origin),
 									kind: 'App' as const,
 									resources: client.request.resources
+								}),
+								Device: device => ({
+									clientName: clientLabel(device.request.clientName),
+									device: deviceLabel(origin),
+									kind: 'App' as const,
+									resources: device.request.resources
 								})
 							}),
 							createdAt: now,

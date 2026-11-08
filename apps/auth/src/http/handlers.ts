@@ -6,6 +6,7 @@ import {RateLimiter} from 'effect/persistence'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {
 	APPS_PATH,
+	DEVICE_PATH,
 	ISSUER_PATH,
 	JWKS_PATH,
 	SESSION_COOKIE,
@@ -38,6 +39,9 @@ import {
 import {
 	AuthorizeClient,
 	AuthorizeParams,
+	DEVICE_GRANT,
+	DeviceParams,
+	DeviceTokenParams,
 	Registration,
 	RevokeParams,
 	TokenGrant,
@@ -189,7 +193,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 				authorization_endpoint: `${tokens.issuer}/oauth2/authorize`,
 				authorization_response_iss_parameter_supported: true,
 				code_challenge_methods_supported: ['S256'],
-				grant_types_supported: ['authorization_code', 'refresh_token'],
+				device_authorization_endpoint: `${origin}${DEVICE_PATH}`,
+				grant_types_supported: ['authorization_code', 'refresh_token', DEVICE_GRANT],
 				issuer: tokens.issuer,
 				jwks_uri: `${origin}${JWKS_PATH}`,
 				registration_endpoint: `${tokens.issuer}/oauth2/register`,
@@ -308,6 +313,44 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
+		// A command without a browser signs in with a code the person or their agent approves (RFC 8628).
+		yield* router.add(
+			'POST',
+			DEVICE_PATH,
+			limited(
+				'device',
+				10
+			)(
+				oauth(
+					Effect.gen(function* () {
+						const request = yield* HttpServerRequest.HttpServerRequest
+						const params = yield* pipe(
+							HttpServerRequest.schemaBodyUrlParams(DeviceParams),
+							rejected('Send a client_id')
+						)
+						const started = yield* signIns.start(
+							{
+								_tag: 'Device',
+								request: {
+									clientId: params.client_id,
+									clientName: (yield* tokens.client({client_id: params.client_id})).clientName,
+									resources: params.resource ?? []
+								}
+							},
+							originOf(request)
+						)
+						return HttpServerResponse.jsonUnsafe({
+							device_code: started.receiver,
+							expires_in: 600,
+							interval: 2,
+							user_code: started.code,
+							verification_uri: `${origin}/`,
+							verification_uri_complete: `${origin}/?${new URLSearchParams({code: started.code})}`
+						})
+					})
+				)
+			)
+		)
 		yield* router.add(
 			'POST',
 			`${ISSUER_PATH}/oauth2/token`,
@@ -318,10 +361,20 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const grant = yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenGrant), rejected('Send a grant_type'))
+						if (grant.grant_type === DEVICE_GRANT) {
+							return HttpServerResponse.jsonUnsafe(
+								yield* signIns.poll(
+									yield* pipe(
+										HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams),
+										rejected('Send the device_code and client_id')
+									)
+								)
+							)
+						}
 						if (grant.grant_type !== 'authorization_code' && grant.grant_type !== 'refresh_token') {
 							return yield* AuthError.make({
 								error: 'unsupported_grant_type',
-								message: 'Use grant_type authorization_code or refresh_token'
+								message: `Use grant_type authorization_code, refresh_token or ${DEVICE_GRANT}`
 							})
 						}
 						return Match.valueTags(
@@ -496,7 +549,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
-		// Delivers an answered sign-in to the browser or command holding its cookie; a command repeats it on 408 until it is answered.
+		// Delivers an answered sign-in to the browser holding its cookie; a command polls the token endpoint instead.
 		yield* router.add(
 			'GET',
 			'/auth/continue',
@@ -507,6 +560,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const collected = yield* signIns.collect(params.request, request.headers)
 					const cookie = `${REQUEST_COOKIE}${typedCode(params.request)}`
 					return Match.valueTags(collected, {
+						// A command's answer goes to its device code, never to a browser.
+						Denied: () => HttpServerResponse.text('This sign-in belongs to a command', {status: 400}),
+						Granted: () => HttpServerResponse.text('This sign-in belongs to a command', {status: 400}),
 						Redirect: found =>
 							HttpServerResponse.expireCookieUnsafe(HttpServerResponse.redirect(found.url), cookie, COOKIE),
 						Session: found =>
@@ -514,12 +570,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								HttpServerResponse.redirect(found.next ?? '/'),
 								HttpServerResponse.expireCookieUnsafe(cookie, COOKIE),
 								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, found.token, session(found.seconds))
-							),
-						Waiting: () =>
-							HttpServerResponse.text('Waiting for approval; repeat this request', {
-								headers: {'retry-after': '1'},
-								status: 408
-							})
+							)
 					})
 				}),
 				rejected('Cannot complete the sign-in'),

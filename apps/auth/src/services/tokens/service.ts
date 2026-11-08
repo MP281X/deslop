@@ -47,12 +47,14 @@ import type {
 	AuthorizeClient,
 	ClientRequest,
 	CredentialOwner,
+	DeviceRequest,
 	Grant,
 	Origin,
 	RevokeParams,
 	SessionVia,
 	SignedInApp,
-	TokenParams
+	TokenParams,
+	TokenResponse
 } from '#services/tokens/schema.ts'
 import {Exchange, Grants} from '#services/tokens/schema.ts'
 
@@ -99,6 +101,12 @@ export class Tokens extends Context.Service<
 		// Each saved change to the signed-in apps and browsers, starting with the current state.
 		readonly changes: Stream.Stream<void>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
+		// Signs a command in once its device code is approved.
+		readonly device: (
+			request: DeviceRequest,
+			owner: CredentialOwner,
+			origin: Origin
+		) => Effect.Effect<TokenResponse, AuthError>
 		readonly disconnect: (family: string, owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly endSession: (headers: Headers.Headers) => Effect.Effect<void, AuthError>
 		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
@@ -285,6 +293,53 @@ export class Tokens extends Context.Service<
 					}
 				}
 			})
+			// A client's new sign-in and its first tokens; it replaces an earlier one of the same client, device, browser and apps.
+			const signIn = Effect.fnUntraced(function* (
+				current: Grants,
+				now: number,
+				family: string,
+				request: DeviceRequest & {parent?: string},
+				owner: CredentialOwner,
+				origin: Origin
+			) {
+				const minted = yield* pipe(
+					mint(family, 0, owner, clientLabel(request.clientName), now),
+					rejected('Cannot sign the access token')
+				)
+				const grant: Grant = {
+					client: clientLabel(request.clientName),
+					createdAt: now,
+					credential: {
+						_tag: 'App',
+						clientId: request.clientId,
+						generation: 0,
+						replaced: [],
+						resources: request.resources,
+						...minted.refresh
+					},
+					device: deviceLabel(origin),
+					lastActive: now,
+					origin,
+					...Struct.pick(request, ['parent']),
+					...owner
+				}
+				const kept = Record.filter(
+					current,
+					other =>
+						!(
+							sameOwner(other, grant) &&
+							other.client === grant.client &&
+							other.device === grant.device &&
+							other.parent === grant.parent &&
+							other.credential._tag === 'App' &&
+							Array.makeEquivalence(String.Equivalence)(
+								Array.sort(other.credential.resources, String.Order),
+								Array.sort(request.resources, String.Order)
+							)
+						)
+				)
+				return [minted.tokens, {...kept, [family]: grant}] as const
+			})
 			const redeem = Effect.fnUntraced(
 				function* (
 					params: Extract<TokenParams, {grant_type: 'authorization_code'}>,
@@ -333,49 +388,8 @@ export class Tokens extends Context.Service<
 							) {
 								return yield* expired
 							}
-							const minted = yield* pipe(
-								mint(family, 0, fresh.owner, clientLabel(fresh.request.clientName), now),
-								rejected('Cannot sign the access token')
-							)
-							const grant: Grant = {
-								client: clientLabel(fresh.request.clientName),
-								createdAt: now,
-								credential: {
-									_tag: 'App',
-									clientId: fresh.request.clientId,
-									generation: 0,
-									replaced: [],
-									resources: fresh.request.resources,
-									...minted.refresh
-								},
-								device: deviceLabel(origin),
-								lastActive: now,
-								origin,
-								...Struct.pick(fresh.request, ['parent']),
-								...fresh.owner
-							}
-							// Each sign-in registers anew, so a second one of the same client, device and apps replaces the first.
-							return [
-								Exchange.cases.Granted.make({tokens: minted.tokens}),
-								{
-									...Record.filter(
-										current,
-										other =>
-											!(
-												sameOwner(other, grant) &&
-												other.client === grant.client &&
-												other.device === grant.device &&
-												other.parent === grant.parent &&
-												other.credential._tag === 'App' &&
-												Array.makeEquivalence(String.Equivalence)(
-													Array.sort(other.credential.resources, String.Order),
-													Array.sort(fresh.request.resources, String.Order)
-												)
-											)
-									),
-									[family]: grant
-								}
-							] as const
+							const started = yield* signIn(current, now, family, fresh.request, fresh.owner, origin)
+							return [Exchange.cases.Granted.make({tokens: started[0]}), started[1]] as const
 						})
 					)
 					if (result._tag === 'Granted') {
@@ -512,6 +526,10 @@ export class Tokens extends Context.Service<
 					)
 					return {clientName: client.name, redirectUri}
 				}),
+				device: Effect.fn('Tokens.device')(function* (request: DeviceRequest, owner: CredentialOwner, origin: Origin) {
+					const family = yield* secret(16)
+					return yield* change((current, now) => signIn(current, now, family, request, owner, origin))
+				}, rejected('Cannot sign the command in')),
 				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, owner: CredentialOwner) {
 					yield* change(current =>
 						Effect.gen(function* () {

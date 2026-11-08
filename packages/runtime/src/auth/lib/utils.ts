@@ -48,6 +48,7 @@ export function bearerOf(headers: Headers.Headers) {
 export const AUTHORIZE_PATH = `${ISSUER_PATH}/oauth2/authorize`
 export const TOKEN_PATH = `${ISSUER_PATH}/oauth2/token`
 export const REVOKE_PATH = `${ISSUER_PATH}/oauth2/revoke`
+export const DEVICE_PATH = `${ISSUER_PATH}/oauth2/device_authorization`
 export const JWKS_PATH = '/.well-known/jwks.json'
 
 // Where Auth returns an app's own sign-in, web or iOS, which the app's server finishes.

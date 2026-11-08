@@ -56,7 +56,7 @@ import {
 	RequestParams
 } from '#services/sign-ins/schema.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {FamilyParams, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
+import {DEVICE_GRANT, FamilyParams, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
@@ -553,6 +553,14 @@ const exchange = Effect.fnUntraced(function* (
 		method: 'POST'
 	})
 })
+
+function formPost(params: Record<string, string>) {
+	return {
+		body: UrlParams.toString(UrlParams.fromInput(params)),
+		headers: {'content-type': 'application/x-www-form-urlencoded'},
+		method: 'POST'
+	}
+}
 
 const refresh = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
@@ -2208,21 +2216,50 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	)
 
 	test.effect(
-		'delivers a command’s sign-in to its loopback callback once approved, answering 408 while it waits',
+		'signs a command in with a device code its agent approves, answering pending until then and the tokens once',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
-			const session = cookie(yield* signIn(web.issuer, 'octocat'))
-			const command = yield* authorize(web.issuer, '', 'http://127.0.0.1:34571/callback', [APPROVALS])
-			const early = yield* Effect.forkScoped(
-				send(web.issuer, `/auth/continue?request=${command.id}`, {headers: {cookie: command.cookie}})
+			const token = yield* agentToken(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
+			const client = clientIdOf({name: 'coding-standards', redirects: ['http://127.0.0.1/callback']})
+			const started = yield* send(
+				web.issuer,
+				'/api/auth/oauth2/device_authorization',
+				formPost({client_id: client, resource: 'https://gateway.mp281x.xyz'})
 			)
-			yield* TestClock.adjust('50 seconds')
-			assert.strictEqual((yield* Fiber.join(early)).status, 408)
-			const waiting = yield* Effect.forkScoped(delivered(web.issuer, command))
-			assert.strictEqual((yield* answer(web.issuer, session, command.id, true)).status, 204)
-			const callback = yield* Fiber.join(waiting)
-			assert.strictEqual(`${callback.origin}${callback.pathname}`, 'http://127.0.0.1:34571/callback')
-			assert.strictEqual((yield* exchange(web.issuer, command, callback.searchParams.get('code') ?? '')).status, 200)
+			const device = yield* Schema.decodeEffect(
+				Schema.fromJsonString(
+					Schema.Struct({
+						device_code: Schema.String,
+						user_code: Schema.String,
+						verification_uri_complete: Schema.String
+					})
+				)
+			)(yield* Effect.promise(() => started.text()))
+			assert.strictEqual(device.verification_uri_complete, `${AUTH_URL}/?code=${device.user_code}`)
+			const poll = Effect.fnUntraced(function* (clientId: string) {
+				const response = yield* send(
+					web.issuer,
+					'/api/auth/oauth2/token',
+					formPost({client_id: clientId, device_code: device.device_code, grant_type: DEVICE_GRANT})
+				)
+				return {status: response.status, text: yield* Effect.promise(() => response.text())}
+			})
+			assert.isTrue(String.includes('"authorization_pending"')((yield* poll(client)).text))
+			const other = clientIdOf({name: 'other', redirects: ['http://127.0.0.1/callback']})
+			assert.isTrue(String.includes('"invalid_grant"')((yield* poll(other)).text))
+			assert.strictEqual(
+				(yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: device.user_code})).status,
+				200
+			)
+			const granted = yield* poll(client)
+			assert.strictEqual(granted.status, 200)
+			const tokens = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(granted.text)
+			assert.strictEqual(
+				(yield* Schema.decodeUnknownEffect(AccessClaims)((yield* Jwt.decodeUnverified(tokens.access_token)).claims))
+					.azp,
+				'Coding-standards'
+			)
+			assert.isTrue(String.includes('"expired_token"')((yield* poll(client)).text))
 		})
 	)
 })
