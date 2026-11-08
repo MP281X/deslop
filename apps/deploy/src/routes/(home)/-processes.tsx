@@ -28,7 +28,9 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 					<ApplicationIcon name={props.node.name} small />
 				</ItemMedia>
 				<ItemContent className="min-w-0">
-					<div className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}>
+					<div
+						className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}
+					>
 						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case max-sm:max-w-3/5">
 							{props.node.name}
 						</span>

@@ -280,10 +280,7 @@ function RangeMenu(props: {
 				render={<Button variant="ghost" size="sm" className="max-lg:h-11" />}
 			>
 				{Option.match(current, {onNone: () => '—', onSome: range => range.label})}
-				{Boolean.match(props.pending, {
-					onFalse: () => <CaretDownIcon />,
-					onTrue: () => <Spinner />
-				})}
+				{Boolean.match(props.pending, {onFalse: () => <CaretDownIcon />, onTrue: () => <Spinner />})}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-36">
 				<DropdownMenuRadioGroup
@@ -1314,9 +1311,7 @@ function Home() {
 						onSome: row => workloadName(row.item)
 					})
 				),
-				Match.orElse(() =>
-					Option.match(Option.fromUndefinedOr(active), {onNone: () => 'Machine', onSome: machineName})
-				)
+				Match.orElse(() => Option.match(Option.fromUndefinedOr(active), {onNone: () => 'Machine', onSome: machineName}))
 			)
 	})
 	return (
