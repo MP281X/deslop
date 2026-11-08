@@ -1,6 +1,10 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Clock, Config, Context, DateTime, Effect, Layer, Option, Predicate, Redacted, String, pipe} from 'effect'
+import {Clock, Context, DateTime, Effect, Layer, Option, Predicate, Redacted, Schema, String, pipe} from 'effect'
+
+import {HttpClient} from 'effect/http'
+
+import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/ai'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookingsError, Extraction} from '#services/bookings/schema.ts'
@@ -32,59 +36,65 @@ function bounded(text: string) {
 
 export class Extractor extends Context.Service<
 	Extractor,
-	{readonly read: (source: BookingSource) => Effect.Effect<ExtractedItems, BookingsError>}
+	{readonly read: (userId: string, source: BookingSource) => Effect.Effect<ExtractedItems, BookingsError>}
 >()('@deslop/trips/services/bookings/lib/extraction/Extractor') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const key = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
-			const model = yield* pipe(
-				AnthropicLanguageModel.make({
-					config: {max_tokens: 16_000, output_config: {effort: 'high'}},
-					model: 'claude-haiku-5-5'
-				}),
-				Effect.provideServiceEffect(
-					AnthropicClient.AnthropicClient,
-					AnthropicClient.make({apiKey: Option.getOrUndefined(key)})
+			const gateway = yield* AiGateway
+			const http = yield* HttpClient.HttpClient
+			const model = Effect.fnUntraced(function* (userId: string) {
+				return yield* pipe(
+					AnthropicLanguageModel.make({
+						config: {max_tokens: 16_000, output_config: {effort: 'high'}},
+						model: 'claude-haiku-5-5'
+					}),
+					Effect.provideServiceEffect(
+						AnthropicClient.AnthropicClient,
+						pipe(
+							AnthropicClient.make({
+								apiUrl: yield* gateway.apiUrl('anthropic'),
+								transformClient: gateway.authorize(userId)
+							}),
+							Effect.provideService(HttpClient.HttpClient, http)
+						)
+					)
 				)
-			)
-
-			const generate = Effect.fn('Extractor.generate')(
-				function* (source: BookingSource) {
-					const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
-					function content() {
-						if (Predicate.hasProperty(source, 'image')) {
-							return [
-								{data: source.image, mediaType: 'image/jpeg', type: 'file' as const},
-								{text: today, type: 'text' as const}
-							]
-						}
-						return `${today}\n\n${bounded(source.text)}`
-					}
-					const response = yield* model.generateObject({
-						prompt: [
-							{content: INSTRUCTIONS, role: 'system'},
-							{content: content(), role: 'user'}
-						],
-						schema: Extraction
-					})
-					return response.value.items
-				},
-				Effect.timeout('3 minutes'),
-				// An overloaded API or an answer outside the schema usually succeeds on the next try.
-				Effect.retry({times: 1}),
-				Effect.mapError(cause =>
-					BookingsError.make({cause: Redacted.make(cause), message: 'The AI could not read the booking.'})
-				)
-			)
+			})
 
 			return Extractor.of({
-				read: Effect.fn('Extractor.read')(function* (source) {
-					return yield* Option.match(key, {
-						onNone: () => Effect.fail(BookingsError.make({message: 'The server has no AI key to read bookings.'})),
-						onSome: () => generate(source)
-					})
-				})
+				read: Effect.fn('Extractor.read')(
+					function* (userId, source) {
+						const anthropic = yield* model(userId)
+						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
+						function content() {
+							if (Predicate.hasProperty(source, 'image')) {
+								return [
+									{data: source.image, mediaType: 'image/jpeg', type: 'file' as const},
+									{text: today, type: 'text' as const}
+								]
+							}
+							return `${today}\n\n${bounded(source.text)}`
+						}
+						const response = yield* anthropic.generateObject({
+							prompt: [
+								{content: INSTRUCTIONS, role: 'system'},
+								{content: content(), role: 'user'}
+							],
+							schema: Extraction
+						})
+						return response.value.items
+					},
+					Effect.timeout('3 minutes'),
+					// An overloaded API or an answer outside the schema usually succeeds on the next try.
+					Effect.retry({times: 1, while: cause => !Schema.is(AiUnavailable)(cause)}),
+					Effect.mapError(cause =>
+						BookingsError.make({
+							cause: Redacted.make(cause),
+							message: Option.getOrElse(aiFailure(cause), () => 'The AI could not read the booking.')
+						})
+					)
+				)
 			})
 		})
 	)

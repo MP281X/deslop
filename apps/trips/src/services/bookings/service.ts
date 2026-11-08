@@ -27,7 +27,7 @@ export class Bookings extends Context.Service<
 		readonly list: Effect.Effect<BookingList>
 		readonly remove: (id: Booking['id']) => Effect.Effect<void, BookingsError>
 		readonly restore: (booking: Booking) => Effect.Effect<void, BookingsError>
-		readonly save: (source: BookingSource) => Effect.Effect<BookingList, BookingsError>
+		readonly save: (userId: string, source: BookingSource) => Effect.Effect<BookingList, BookingsError>
 		readonly update: (id: Booking['id'], change: (booking: Booking) => Booking) => Effect.Effect<void, BookingsError>
 	}
 >()('@deslop/trips/services/bookings/service/Bookings') {
@@ -149,8 +149,8 @@ export class Bookings extends Context.Service<
 						return Tuple.make(undefined, [...current, booking])
 					})
 				}),
-				save: Effect.fn('Bookings.save')(function* (source) {
-					const items = yield* extractor.read(source)
+				save: Effect.fn('Bookings.save')(function* (userId, source) {
+					const items = yield* extractor.read(userId, source)
 					if (Array.isReadonlyArrayEmpty(items)) {
 						return yield* BookingsError.make({
 							message: 'No booking found. Copy a confirmation or boarding pass and try again.'

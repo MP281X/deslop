@@ -4,7 +4,6 @@ import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
-	ConfigProvider,
 	Context,
 	Effect,
 	FileSystem,
@@ -23,12 +22,26 @@ import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {AiGateway} from '@deslop/runtime/ai'
 import {ToolPath} from '@deslop/runtime/server'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 
 const CAPTIONS = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHo preparato le lenticchie.\n'
+
+const USER = 'github:1'
+
+const GATEWAY = 'https://gateway.mp281x.xyz/ai/openrouter/v1'
+
+const gateway = AiGateway.of({
+	apiUrl: () => Effect.succeed(GATEWAY),
+	authorize: userId => client => {
+		assert.strictEqual(userId, USER)
+		return client
+	},
+	enroll: () => Effect.void
+})
 
 function argument(command: ChildProcess.StandardCommand, flag: string) {
 	return Schema.decodeUnknownSync(Schema.String)(
@@ -63,7 +76,7 @@ const open = Effect.fnUntraced(function* (
 				Layer.provide(Layer.succeed(ToolPath, name => Effect.succeed(`/fixture/tools/${name}`))),
 				Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
 				Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({OPENROUTER_API_KEY: 'unit-test-key'})))
+				Layer.provide(Layer.succeed(AiGateway, gateway))
 			)
 		),
 		Media
@@ -121,7 +134,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 				})
 			)
 			const error = yield* Effect.flip(
-				(yield* (yield* open(spawner)).read('https://www.youtube.com/watch?v=one')).transcript
+				(yield* (yield* open(spawner)).read(USER, 'https://www.youtube.com/watch?v=one')).transcript
 			)
 			assert.isTrue(Schema.is(MediaError)(error))
 			assert.strictEqual(yield* Ref.get(attempts), 1)
@@ -156,7 +169,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 					})
 				)
 				assert.deepStrictEqual(
-					yield* (yield* (yield* open(spawner)).read('https://www.youtube.com/watch?v=one')).transcript,
+					yield* (yield* (yield* open(spawner)).read(USER, 'https://www.youtube.com/watch?v=one')).transcript,
 					Option.some('[00:01] Ho preparato le lenticchie.\n')
 				)
 				assert.strictEqual(yield* Ref.get(attempts), 2)
@@ -185,7 +198,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 				})
 			)
 			assert.deepStrictEqual(
-				yield* (yield* (yield* open(spawner)).read('https://www.tiktok.com/@cook/video/1')).transcript,
+				yield* (yield* (yield* open(spawner)).read(USER, 'https://www.tiktok.com/@cook/video/1')).transcript,
 				Option.some('[00:01] Ho preparato le lenticchie.\n')
 			)
 		})
@@ -211,7 +224,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 				})
 			)
 			assert.deepStrictEqual(
-				yield* (yield* (yield* open(spawner)).read('https://www.tiktok.com/@cook/video/1')).transcript,
+				yield* (yield* (yield* open(spawner)).read(USER, 'https://www.tiktok.com/@cook/video/1')).transcript,
 				Option.some('[00:01] Ho preparato le lenticchie.\n')
 			)
 		})
@@ -236,7 +249,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 				})
 			)
 			assert.deepStrictEqual(
-				yield* (yield* open(spawner)).fileTranscript('upload.mp4'),
+				yield* (yield* open(spawner)).fileTranscript(USER, 'upload.mp4'),
 				Option.some('[00:01] Ho preparato le lenticchie.\n')
 			)
 		})
@@ -252,7 +265,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 			)
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
-					assert.strictEqual(request.url, 'https://openrouter.ai/api/v1/audio/transcriptions')
+					assert.strictEqual(request.url, `${GATEWAY}/audio/transcriptions`)
 					if (request.body._tag !== 'Uint8Array') return yield* Effect.die('Expected a JSON audio request')
 					const payload = yield* pipe(
 						Schema.decodeEffect(Schema.fromJsonString(STTRequest))(new TextDecoder().decode(request.body.body)),
@@ -279,7 +292,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 				})
 			)
 			assert.deepStrictEqual(
-				yield* (yield* open(yield* audioSpawner(), client)).fileTranscript('upload.mp4'),
+				yield* (yield* open(yield* audioSpawner(), client)).fileTranscript(USER, 'upload.mp4'),
 				Option.some(`[00:00] ${speech}\n[05:00] The final sentence.\n`)
 			)
 			assert.strictEqual(yield* Ref.get(calls), 2)
@@ -300,7 +313,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 							)
 						)
 					)
-				)).fileTranscript('upload.mp4')
+				)).fileTranscript(USER, 'upload.mp4')
 			)
 			assert.isTrue(Schema.is(MediaError)(error))
 			assert.isTrue(Redacted.isRedacted(error.cause))
@@ -330,7 +343,7 @@ it.layer(NodeServices.layer)('Media captions', test => {
 				})
 			)
 			assert.deepStrictEqual(
-				yield* (yield* (yield* open(spawner)).read('https://www.tiktok.com/@cook/video/1')).transcript,
+				yield* (yield* (yield* open(spawner)).read(USER, 'https://www.tiktok.com/@cook/video/1')).transcript,
 				Option.some('[00:01] Ho preparato le lenticchie.\n')
 			)
 			assert.strictEqual(yield* Ref.get(downloads), 1)
@@ -357,7 +370,7 @@ it.layer(NodeServices.layer)('Media captions', test => {
 				})
 			)
 			assert.deepStrictEqual(
-				yield* (yield* (yield* open(spawner)).read('https://www.youtube.com/watch?v=one')).transcript,
+				yield* (yield* (yield* open(spawner)).read(USER, 'https://www.youtube.com/watch?v=one')).transcript,
 				Option.some('[00:01] Ho preparato le lenticchie.\n')
 			)
 		})

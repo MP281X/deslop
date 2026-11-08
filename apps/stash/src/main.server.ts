@@ -7,6 +7,7 @@ import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {RpcSerialization} from 'effect/rpc'
 
 import {HttpAuth} from '@deslop/runtime/auth/service'
+import {CurrentUser} from '@deslop/runtime/auth/utils'
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
@@ -32,7 +33,7 @@ const routes = HttpRouter.use(router =>
 			'/api/capture',
 			Effect.gen(function* () {
 				return yield* HttpServerResponse.schemaJson(Note)(
-					yield* notes.capture(yield* HttpServerRequest.schemaBodyJson(Capture))
+					yield* notes.capture((yield* CurrentUser).id, yield* HttpServerRequest.schemaBodyJson(Capture))
 				)
 			})
 		)
@@ -45,7 +46,7 @@ const routes = HttpRouter.use(router =>
 					pipe(request.headers['content-type'] ?? '', String.split(';'), Array.headNonEmpty, String.trim)
 				)
 				return yield* HttpServerResponse.schemaJson(Note)(
-					yield* notes.captureFile({body: request.stream, id: (yield* noteIdParam).id, type})
+					yield* notes.captureFile((yield* CurrentUser).id, {body: request.stream, id: (yield* noteIdParam).id, type})
 				)
 			})
 		)

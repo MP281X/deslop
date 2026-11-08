@@ -5,7 +5,6 @@ import {OpenRouterClient} from '@effect/ai-openrouter'
 import {
 	Array,
 	Boolean,
-	Config,
 	Context,
 	Effect,
 	FileSystem,
@@ -24,8 +23,10 @@ import {
 } from 'effect'
 
 import {Base64} from 'effect/encoding'
+import {HttpClient} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {AiGateway} from '@deslop/runtime/ai'
 import {ToolPath} from '@deslop/runtime/server'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
@@ -60,9 +61,10 @@ export class Media extends Context.Service<
 	Media,
 	{
 		readonly fileFrames: (file: string) => Effect.Effect<Still[], MediaError>
-		readonly fileTranscript: (file: string) => Effect.Effect<Option.Option<string>, MediaError>
+		readonly fileTranscript: (userId: string, file: string) => Effect.Effect<Option.Option<string>, MediaError>
 		readonly frames: (link: string) => Effect.Effect<Still[], MediaError>
 		readonly read: (
+			userId: string,
 			link: string,
 			fallback?: string
 		) => Effect.Effect<{info: string; transcript: Effect.Effect<Option.Option<string>, MediaError>}, MediaError>
@@ -87,8 +89,17 @@ export class Media extends Context.Service<
 				)
 			})
 			const whisper = yield* Semaphore.make(1)
-			const key = yield* Config.option(Config.Redacted('OPENROUTER_API_KEY'))
-			const openRouter = yield* OpenRouterClient.make({apiKey: Option.getOrUndefined(key)})
+			const gateway = yield* AiGateway
+			const http = yield* HttpClient.HttpClient
+			const openRouter = Effect.fnUntraced(function* (userId: string) {
+				return yield* pipe(
+					OpenRouterClient.make({
+						apiUrl: yield* gateway.apiUrl('openrouter'),
+						transformClient: gateway.authorize(userId)
+					}),
+					Effect.provideService(HttpClient.HttpClient, http)
+				)
+			})
 			const ytDlpArgs = [
 				'--js-runtimes',
 				`node:${execPath}`,
@@ -154,7 +165,10 @@ export class Media extends Context.Service<
 				return Option.flatMap(Option.fromUndefinedOr((yield* probe(file)).format?.duration), Number.parse)
 			})
 
-			const listen = Effect.fnUntraced(function* (input: {file: string; seconds: Option.Option<number>}) {
+			const listen = Effect.fnUntraced(function* (
+				userId: string,
+				input: {file: string; seconds: Option.Option<number>}
+			) {
 				const media = yield* probe(input.file)
 				for (const track of Array.filter(media.streams, stream => stream.codec_type === 'subtitle')) {
 					const converted = yield* run('ffmpeg', [
@@ -178,11 +192,10 @@ export class Media extends Context.Service<
 					Option.flatMap(Option.fromUndefinedOr(media.format?.duration), Number.parse)
 				)
 				if (!Option.exists(seconds, value => value >= 1 && value <= MAX_WHISPER_SECONDS)) return Option.none()
-				if (Option.isNone(key)) {
-					return yield* MediaError.make({
-						message: 'No captions, and OPENROUTER_API_KEY is not configured for transcription.'
-					})
-				}
+				const speech = yield* pipe(
+					openRouter(userId),
+					Effect.mapError(cause => MediaError.make({cause: Redacted.make(cause), message: cause.message}))
+				)
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
 				// Five-minute lossless chunks stay below upload limits and the provider's one-minute processing timeout.
 				const extracted = yield* run('ffmpeg', [
@@ -228,7 +241,7 @@ export class Media extends Context.Service<
 									Effect.fnUntraced(function* (file) {
 										const duration = Option.getOrThrow(yield* lengthOf(path.join(work, file)))
 										const response = yield* pipe(
-											openRouter.client.createAudioTranscriptions({
+											speech.client.createAudioTranscriptions({
 												payload: {
 													input_audio: {data: Base64.encode(yield* fs.readFile(path.join(work, file))), format: 'flac'},
 													model: 'openai/whisper-large-v3-turbo',
@@ -312,7 +325,12 @@ export class Media extends Context.Service<
 				return {blocked: false, transcript: Option.none<string>()}
 			})
 
-			const transcribe = Effect.fnUntraced(function* (link: string, media: Metadata, fallback?: string) {
+			const transcribe = Effect.fnUntraced(function* (
+				userId: string,
+				link: string,
+				media: Metadata,
+				fallback?: string
+			) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-media-'})
 				for (const track of captionTracks(media)) {
 					// A broken authored track must not hide a working automatic or alternate-language track.
@@ -369,7 +387,7 @@ export class Media extends Context.Service<
 					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper')
 					return Option.none()
 				}
-				return yield* listen({file: audio, seconds})
+				return yield* listen(userId, {file: audio, seconds})
 			})
 
 			const sample = Effect.fnUntraced(function* (video: string, work: string) {
@@ -409,8 +427,8 @@ export class Media extends Context.Service<
 					withProcesses
 				),
 				fileTranscript: Effect.fn('Media.fileTranscript')(
-					function* (file) {
-						return yield* listen({file, seconds: Option.none()})
+					function* (userId, file) {
+						return yield* listen(userId, {file, seconds: Option.none()})
 					},
 					Effect.scoped,
 					withProcesses
@@ -446,7 +464,7 @@ export class Media extends Context.Service<
 					withProcesses
 				),
 				read: Effect.fn('Media.read')(
-					function* (link, fallback) {
+					function* (userId, link, fallback) {
 						const inspect = Effect.fnUntraced(function* (url: string) {
 							const dump = yield* fetch([
 								...ytDlpArgs,
@@ -525,7 +543,10 @@ export class Media extends Context.Service<
 							]),
 							'\n\n'
 						)
-						return {info, transcript: withProcesses(Effect.scoped(transcribe(found.url, found.media, fallback)))}
+						return {
+							info,
+							transcript: withProcesses(Effect.scoped(transcribe(userId, found.url, found.media, fallback)))
+						}
 					},
 					Effect.scoped,
 					withProcesses

@@ -2,6 +2,8 @@ import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
+import {CurrentUser} from '@deslop/runtime/auth/utils'
+
 import {Capture, Note, NoteId, NotesError, Tag} from '#services/notes/schema.ts'
 
 export type NoteRow = typeof NoteRow.Type
@@ -43,6 +45,7 @@ export const Tools = Toolkit.make(
 		success: Note
 	}).annotate(Tool.Readonly, true),
 	Tool.make('save_note', {
+		dependencies: [CurrentUser],
 		description:
 			'Save a link or a text, or retry one whose earlier save failed. It returns at once with status "organizing"; read_note shows "ready" or "failed" once reading, transcribing and tagging finish.',
 		failure: NotesError,
