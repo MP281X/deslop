@@ -40,20 +40,21 @@ it.effect(
 					authorization: 'Bearer grant-2'
 				})
 			}),
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns the complete Gateway service lifetime.
 			Effect.provide(
 				pipe(
 					AiGateway.layer,
 					Layer.provide(KeyValueStore.layerMemory),
-					Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
-				)
-			),
-			Effect.provide(
-				ConfigProvider.layer(
-					ConfigProvider.fromUnknown({
-						APP_URL: 'https://stash.mp281x.xyz',
-						AUTH_URL: 'https://auth.mp281x.xyz',
-						GATEWAY_URL: 'https://gateway.mp281x.xyz'
-					})
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+					Layer.provide(
+						ConfigProvider.layer(
+							ConfigProvider.fromUnknown({
+								APP_URL: 'https://stash.mp281x.xyz',
+								AUTH_URL: 'https://auth.mp281x.xyz',
+								GATEWAY_URL: 'https://gateway.mp281x.xyz'
+							})
+						)
+					)
 				)
 			)
 		)
@@ -86,20 +87,21 @@ it.effect(
 					'TransportError'
 				)
 			}),
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns the complete Gateway service lifetime.
 			Effect.provide(
 				pipe(
 					AiGateway.layer,
 					Layer.provide(KeyValueStore.layerMemory),
-					Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
-				)
-			),
-			Effect.provide(
-				ConfigProvider.layer(
-					ConfigProvider.fromUnknown({
-						APP_URL: 'https://stash.mp281x.xyz',
-						AUTH_URL: 'https://auth.mp281x.xyz',
-						GATEWAY_URL: 'https://gateway.mp281x.xyz'
-					})
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+					Layer.provide(
+						ConfigProvider.layer(
+							ConfigProvider.fromUnknown({
+								APP_URL: 'https://stash.mp281x.xyz',
+								AUTH_URL: 'https://auth.mp281x.xyz',
+								GATEWAY_URL: 'https://gateway.mp281x.xyz'
+							})
+						)
+					)
 				)
 			)
 		)
@@ -123,14 +125,15 @@ it.effect(
 					{authorization: ''}
 				)
 			}),
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This local test entry point owns the complete Gateway service lifetime.
 			Effect.provide(
 				pipe(
 					AiGateway.layer,
 					Layer.provide(KeyValueStore.layerMemory),
-					Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'http://localhost:3000'})))
 				)
-			),
-			Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'http://localhost:3000'})))
+			)
 		)
 	})
 )

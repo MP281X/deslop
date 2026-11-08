@@ -42,7 +42,7 @@ function developer() {
 function enrolled(user: User, headers: Headers.Headers) {
 	return Effect.gen(function* () {
 		const gateway = Context.getOrUndefined(yield* Effect.context(), AiGateway)
-		if (gateway) yield* gateway.enroll(user.id, headers)
+		if (gateway !== undefined) yield* gateway.enroll(user.id, headers)
 	})
 }
 

@@ -5,9 +5,9 @@ import {AiProvider} from '@deslop/runtime/ai'
 export {AiProvider}
 export type AiKeyInfo = typeof AiKeyInfo.Type
 export const AiKeyInfo = Schema.Struct({
-	addedAt: Schema.Number,
+	addedAt: Schema.Finite,
 	last4: Schema.String,
-	lastStatus: Schema.optional(Schema.Number),
+	lastStatus: Schema.optional(Schema.Finite),
 	provider: AiProvider
 })
 export type AiStoredKey = typeof AiStoredKey.Type
@@ -15,22 +15,22 @@ export const AiStoredKey = Schema.Struct({...AiKeyInfo.fields, secret: Schema.Re
 export type AiSetKey = typeof AiSetKey.Type
 export const AiSetKey = Schema.Struct({provider: AiProvider, secret: Schema.RedactedFromValue(Schema.NonEmptyString)})
 export type AiGrantInfo = typeof AiGrantInfo.Type
-export const AiGrantInfo = Schema.Struct({app: Schema.String, createdAt: Schema.Number, lastUsedAt: Schema.Number})
+export const AiGrantInfo = Schema.Struct({app: Schema.String, createdAt: Schema.Finite, lastUsedAt: Schema.Finite})
 export type AiStoredGrant = typeof AiStoredGrant.Type
 export const AiStoredGrant = Schema.Struct({...AiGrantInfo.fields, hash: Schema.String, userId: Schema.String})
 export type AiUsageEntry = typeof AiUsageEntry.Type
 export const AiUsageEntry = Schema.Struct({
 	app: Schema.String,
-	at: Schema.Number,
-	cacheReadTokens: Schema.Number,
-	cacheWriteTokens: Schema.Number,
+	at: Schema.Finite,
+	cacheReadTokens: Schema.Finite,
+	cacheWriteTokens: Schema.Finite,
 	costSource: Schema.Literals(['provider', 'models.dev', 'unknown']),
-	costUsd: Schema.optionalKey(Schema.Number),
-	inputTokens: Schema.Number,
+	costUsd: Schema.optionalKey(Schema.Finite),
+	inputTokens: Schema.Finite,
 	model: Schema.optional(Schema.String),
-	outputTokens: Schema.Number,
+	outputTokens: Schema.Finite,
 	provider: AiProvider,
-	status: Schema.Number
+	status: Schema.Finite
 })
 export type AiUsageQuery = typeof AiUsageQuery.Type
 export const AiUsageQuery = Schema.Struct({
@@ -80,10 +80,10 @@ export const ModelsCatalog = Schema.Record(
 			Schema.Struct({
 				cost: Schema.optionalKey(
 					Schema.Struct({
-						cache_read: Schema.optionalKey(Schema.Number),
-						cache_write: Schema.optionalKey(Schema.Number),
-						input: Schema.Number,
-						output: Schema.Number
+						cache_read: Schema.optionalKey(Schema.Finite),
+						cache_write: Schema.optionalKey(Schema.Finite),
+						input: Schema.Finite,
+						output: Schema.Finite
 					})
 				)
 			})
@@ -92,16 +92,16 @@ export const ModelsCatalog = Schema.Record(
 )
 export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
-	cost: Schema.optionalKey(Schema.Number),
+	cost: Schema.optionalKey(Schema.Finite),
 	message: Schema.optionalKey(
 		Schema.Struct({
 			model: Schema.optionalKey(Schema.String),
 			usage: Schema.optionalKey(
 				Schema.Struct({
-					cache_creation_input_tokens: Schema.optionalKey(Schema.Number),
-					cache_read_input_tokens: Schema.optionalKey(Schema.Number),
-					input_tokens: Schema.optionalKey(Schema.Number),
-					output_tokens: Schema.optionalKey(Schema.Number)
+					cache_creation_input_tokens: Schema.optionalKey(Schema.Finite),
+					cache_read_input_tokens: Schema.optionalKey(Schema.Finite),
+					input_tokens: Schema.optionalKey(Schema.Finite),
+					output_tokens: Schema.optionalKey(Schema.Finite)
 				})
 			)
 		})
@@ -109,17 +109,17 @@ export const Usage = Schema.Struct({
 	model: Schema.optionalKey(Schema.String),
 	usage: Schema.optionalKey(
 		Schema.Struct({
-			cache_creation_input_tokens: Schema.optionalKey(Schema.Number),
-			cache_read_input_tokens: Schema.optionalKey(Schema.Number),
-			completion_tokens: Schema.optionalKey(Schema.Number),
-			cost: Schema.optionalKey(Schema.Number),
-			input_tokens: Schema.optionalKey(Schema.Number),
-			output_tokens: Schema.optionalKey(Schema.Number),
-			prompt_tokens: Schema.optionalKey(Schema.Number),
+			cache_creation_input_tokens: Schema.optionalKey(Schema.Finite),
+			cache_read_input_tokens: Schema.optionalKey(Schema.Finite),
+			completion_tokens: Schema.optionalKey(Schema.Finite),
+			cost: Schema.optionalKey(Schema.Finite),
+			input_tokens: Schema.optionalKey(Schema.Finite),
+			output_tokens: Schema.optionalKey(Schema.Finite),
+			prompt_tokens: Schema.optionalKey(Schema.Finite),
 			prompt_tokens_details: Schema.optionalKey(
 				Schema.Struct({
-					cache_write_tokens: Schema.optionalKey(Schema.Number),
-					cached_tokens: Schema.optionalKey(Schema.Number)
+					cache_write_tokens: Schema.optionalKey(Schema.Finite),
+					cached_tokens: Schema.optionalKey(Schema.Finite)
 				})
 			)
 		})

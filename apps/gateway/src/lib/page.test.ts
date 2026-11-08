@@ -1,10 +1,8 @@
-import {createServer} from 'node:http'
-
 import {RegistryContext} from '@effect/atom-react'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Cause, Context, Effect, Function, Layer, MutableList, Option, Queue, Ref, Stream, pipe} from 'effect'
+import {Cause, Context, Effect, Function, Layer, Option, Queue, Ref, Stream, pipe} from 'effect'
 
 import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
@@ -33,13 +31,6 @@ const sample = ConnectionInfo.make({
 })
 
 const fixture = Effect.gen(function* () {
-	const sockets = MutableList.make<() => void>()
-	const node = createServer()
-	node.on('upgrade', (_request, socket) =>
-		MutableList.append(sockets, () => {
-			socket.destroy()
-		})
-	)
 	const opened = yield* Queue.unbounded<void>()
 	const complete = yield* Ref.make(false)
 	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionInfo[], AuthError>>()
@@ -84,13 +75,8 @@ const fixture = Effect.gen(function* () {
 				)
 			),
 			Layer.provide(ServerRuntime.layerProtocol),
-			Layer.provideMerge(NodeHttpServer.layer(() => node, {host: '127.0.0.1', port: 0}))
+			Layer.provideMerge(NodeHttpServer.layerTest)
 		)
-	)
-	yield* Effect.addFinalizer(() =>
-		Effect.sync(() => {
-			for (const close of MutableList.toArray(sockets)) close()
-		})
 	)
 	const origin = HttpServer.formatAddress(Context.get(context, HttpServer.HttpServer).address)
 	/* oxlint-disable no-restricted-globals, no-restricted-properties -- Scope the actual browser client's origin to this loopback server and restore its descriptor. */

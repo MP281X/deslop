@@ -1,4 +1,4 @@
-import {Effect, Schema} from 'effect'
+import {Effect, Schema, String} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
@@ -20,7 +20,7 @@ export const AiHttpHandlers = HttpRouter.use(router =>
 				}
 				return yield* ai.proxy(
 					provider.value,
-					(yield* HttpServerRequest.HttpServerRequest).url.slice(`/ai/${provider.value}/`.length)
+					String.slice(`/ai/${provider.value}/`.length)((yield* HttpServerRequest.HttpServerRequest).url)
 				)
 			})
 		)

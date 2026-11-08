@@ -30,6 +30,7 @@ import {AiUsageEntry} from '#services/ai/schema.ts'
 import {AiProxy} from '#services/ai/service.ts'
 
 const APP = 'https://stash.mp281x.xyz'
+const GRANT_BODY = '{"app":"https://stash.mp281x.xyz"}'
 const JSON_BODY = '{ "model": "test", "usage": {"input_tokens": 10, "output_tokens": 5} }'
 const SSE_BODY =
 	'event: message_start\ndata: {"message":{"model":"test","usage":{"input_tokens":10}}}\n\nevent: message_delta\ndata: {"usage":{"output_tokens":5}}\n\n'
@@ -44,12 +45,10 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 			return yield* pipe(
 				base.set(key, value),
 				Effect.tap(() => {
-					if (key.startsWith('ai-usage/') && Predicate.isString(value)) {
+					if (String.startsWith('ai-usage/')(key) && Predicate.isString(value)) {
 						return Queue.offer(
 							saved,
-							Option.getOrThrow(
-								Array.last(Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(AiUsageEntry)))(value))
-							)
+							Option.getOrThrow(Array.last(Schema.decodeSync(Schema.fromJsonString(Schema.Array(AiUsageEntry)))(value)))
 						)
 					}
 					return Effect.void
@@ -59,7 +58,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	})
 	const client = HttpClient.make(request =>
 		Effect.gen(function* () {
-			if (compressed && String.includes('/gzip')(request.url)) return yield* compressed.get('/gzip')
+			if (compressed !== undefined && String.includes('/gzip')(request.url)) return yield* compressed.get('/gzip')
 			if (request.url === 'https://models.dev/api.json') {
 				return HttpClientResponse.fromWeb(
 					request,
@@ -139,12 +138,14 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 			yield* f.ai.setKey('bob', 'anthropic', Redacted.make('bob-secret'))
 			const minted = yield* f.request('/ai/grants', {
-				body: JSON.stringify({app: APP}),
+				body: GRANT_BODY,
 				headers: {'content-type': 'application/json', cookie: 'alice'},
 				method: 'POST'
 			})
 
-			const token = (yield* Effect.promise(() => minted.json())).token
+			const token = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({token: Schema.String})))(
+				yield* Effect.promise(() => minted.text())
+			)).token
 			for (const path of ['json', 'stream']) {
 				const response = yield* f.request(`/ai/anthropic/${path}?q=1`, {
 					body: '{ "model": "test" }',
@@ -168,7 +169,7 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 				assert.equal(entry.app, APP)
 			}
 			const keys = yield* f.ai.keys('alice')
-			assert.equal(String.includes('alice-secret')(JSON.stringify(keys)), false)
+			assert.deepEqual(keys, [{addedAt: keys[0]?.addedAt ?? 0, last4: 'cret', lastStatus: 201, provider: 'anthropic'}])
 			assert.equal(keys[0]?.lastStatus, 201)
 			const response = yield* f.request('/ai/anthropic/cost', {
 				body: '{"model":"test"}',
@@ -186,6 +187,7 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 			yield* f.ai.revokeGrant('alice', APP)
 			assert.equal((yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})).status, 401)
 		}),
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
 	)
 )
@@ -196,13 +198,14 @@ it.effect('rejects grant enrollment with a bearer for a different app', () =>
 			const f = yield* fixture()
 			assert.equal(
 				(yield* f.request('/ai/grants', {
-					body: JSON.stringify({app: APP}),
+					body: GRANT_BODY,
 					headers: {authorization: 'Bearer https://trips.mp281x.xyz', 'content-type': 'application/json'},
 					method: 'POST'
 				})).status,
 				401
 			)
 		}),
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
 	)
 )
@@ -233,21 +236,25 @@ it.layer(NodeHttpServer.layerTest)(test => {
 				const f = yield* fixture(yield* HttpClient.HttpClient)
 				yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 				const minted = yield* f.request('/ai/grants', {
-					body: JSON.stringify({app: APP}),
+					body: GRANT_BODY,
 					headers: {'content-type': 'application/json', cookie: 'alice'},
 					method: 'POST'
 				})
 				const response = yield* f.request('/ai/anthropic/gzip', {
 					headers: {
 						'accept-encoding': 'gzip',
-						authorization: `Bearer ${(yield* Effect.promise(() => minted.json())).token}`
+						authorization: `Bearer ${(yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Struct({token: Schema.String})))(yield* Effect.promise(() => minted.text()))).token}`
 					}
 				})
-				assert.deepEqual(yield* Effect.promise(() => response.json()), JSON.parse(JSON_BODY))
+				assert.deepEqual(yield* Effect.promise(() => response.json()), {
+					model: 'test',
+					usage: {input_tokens: 10, output_tokens: 5}
+				})
 				for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'x-private']) {
 					assert.isNull(response.headers.get(name))
 				}
 			},
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This gzip HTTP test entry point owns its configured service lifetime.
 			Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
 		)
 	)

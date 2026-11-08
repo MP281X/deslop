@@ -1,4 +1,18 @@
-import {Boolean, Config, Context, Effect, Layer, Option, Record, Redacted, Ref, Schema, Semaphore, pipe} from 'effect'
+import {
+	Boolean,
+	Config,
+	Context,
+	Effect,
+	Layer,
+	Option,
+	Record,
+	Redacted,
+	Ref,
+	Schema,
+	Semaphore,
+	String,
+	pipe
+} from 'effect'
 
 import {AiError} from 'effect/ai'
 import type {Headers} from 'effect/http'
@@ -33,7 +47,7 @@ export class AiGateway extends Context.Service<
 		authorize: (userId: string) => (client: HttpClient.HttpClient) => HttpClient.HttpClient
 		enroll: (userId: string, headers: Headers.Headers) => Effect.Effect<void>
 	}
->()('@deslop/runtime/ai/AiGateway') {
+>()('@deslop/runtime/ai/service/AiGateway') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -52,7 +66,7 @@ export class AiGateway extends Context.Service<
 			return AiGateway.of({
 				apiUrl: provider =>
 					Option.match(gateway, {
-						onNone: () => Effect.fail(new AiUnavailable({message: 'Start the app with --gateway'})),
+						onNone: () => Effect.fail(AiUnavailable.make({message: 'Start the app with --gateway'})),
 						onSome: url =>
 							Effect.succeed(
 								`${url}/ai/${provider}${Boolean.match(provider === 'openrouter', {onFalse: () => '', onTrue: () => '/v1'})}`
@@ -64,15 +78,13 @@ export class AiGateway extends Context.Service<
 							Effect.gen(function* () {
 								if (local) return request
 								const token = (yield* Ref.get(grants))[userId]
-								if (!token) {
-									return yield* Effect.fail(
-										new HttpClientError.HttpClientError({
-											reason: new HttpClientError.TransportError({
-												description: 'AI access is unavailable; sign in again to enroll with Gateway',
-												request
-											})
+								if (token === undefined) {
+									return yield* new HttpClientError.HttpClientError({
+										reason: new HttpClientError.TransportError({
+											description: 'AI access is unavailable; sign in again to enroll with Gateway',
+											request
 										})
-									)
+									})
 								}
 								return HttpClientRequest.setHeader(request, 'authorization', `Bearer ${Redacted.value(token)}`)
 							})
@@ -83,13 +95,18 @@ export class AiGateway extends Context.Service<
 									if (
 										local ||
 										response.status !== 401 ||
-										!Option.exists(gateway, url => response.request.url.startsWith(`${url}/ai/`))
+										!Option.exists(gateway, url => String.startsWith(`${url}/ai/`)(response.request.url))
 									) {
 										return
 									}
 									const current = yield* Ref.get(grants)
 									const token = current[userId]
-									if (!token || response.request.headers['authorization'] !== `Bearer ${Redacted.value(token)}`) return
+									if (
+										token === undefined ||
+										response.request.headers['authorization'] !== `Bearer ${Redacted.value(token)}`
+									) {
+										return
+									}
 									const next = Record.remove(current, userId)
 									yield* pipe(
 										store.set('ai-gateway-grants', next),
@@ -104,7 +121,7 @@ export class AiGateway extends Context.Service<
 				enroll: Effect.fnUntraced(function* (userId, headers) {
 					return yield* pipe(
 						Effect.gen(function* () {
-							if (local || Option.isNone(gateway) || (yield* Ref.get(grants))[userId]) return
+							if (local || Option.isNone(gateway) || (yield* Ref.get(grants))[userId] !== undefined) return
 							const response = yield* client.execute(
 								yield* HttpClientRequest.bodyJson(
 									HttpClientRequest.post(`${Option.getOrElse(gateway, () => '')}/ai/grants`, {

@@ -215,6 +215,12 @@ export function runApp<A, E>(app: App<A, E>) {
 		)
 	})
 	NodeRuntime.runMain(
-		pipe(program, Effect.scoped, Effect.provide(layerPlatform), Effect.provideService(Logger.LogToStderr, true))
+		pipe(
+			program,
+			Effect.scoped,
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This shared CLI owns the application entry point and platform lifetime.
+			Effect.provide(layerPlatform),
+			Effect.provideService(Logger.LogToStderr, true)
+		)
 	)
 }

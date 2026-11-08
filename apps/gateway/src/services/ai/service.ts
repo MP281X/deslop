@@ -3,9 +3,9 @@ import {
 	Boolean,
 	Clock,
 	Context,
+	DateTime,
 	Effect,
 	Function,
-	HashSet,
 	Layer,
 	MutableList,
 	Number,
@@ -21,7 +21,14 @@ import {
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
-import {HttpClient, HttpClientRequest, HttpClientResponse, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {
+	Headers,
+	HttpClient,
+	HttpClientRequest,
+	HttpClientResponse,
+	HttpServerRequest,
+	HttpServerResponse
+} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import type {AiProvider} from '@deslop/runtime/ai'
@@ -83,7 +90,7 @@ const make = Effect.gen(function* () {
 		const metered = {entry}
 		if (
 			entry.costSource !== 'provider' &&
-			entry.model &&
+			entry.model !== undefined &&
 			entry.inputTokens + entry.outputTokens + entry.cacheReadTokens + entry.cacheWriteTokens > 0
 		) {
 			const now = yield* Clock.currentTimeMillis
@@ -101,14 +108,14 @@ const make = Effect.gen(function* () {
 				onTrue: () => 'opencode'
 			})
 			const cost = pricing.catalog[catalogProvider]?.models[entry.model]?.cost
-			if (cost) {
+			if (cost !== undefined) {
 				const input = Boolean.match(entry.provider === 'anthropic', {
 					onFalse: () => Number.max(0, entry.inputTokens - entry.cacheReadTokens - entry.cacheWriteTokens),
 					onTrue: () => entry.inputTokens
 				})
 				if (
-					(!entry.cacheReadTokens || cost.cache_read !== undefined) &&
-					(!entry.cacheWriteTokens || cost.cache_write !== undefined)
+					(entry.cacheReadTokens === 0 || cost.cache_read !== undefined) &&
+					(entry.cacheWriteTokens === 0 || cost.cache_write !== undefined)
 				) {
 					metered.entry = {
 						...entry,
@@ -123,7 +130,7 @@ const make = Effect.gen(function* () {
 				}
 			}
 		}
-		const key = `ai-usage/${id}/${String.slice(0, 7)(new Date(entry.at).toISOString())}`
+		const key = `ai-usage/${id}/${String.slice(0, 7)(DateTime.formatIsoDateUtc(DateTime.makeUnsafe(entry.at)))}`
 		yield* pipe(
 			Effect.gen(function* () {
 				yield* usage.set(key, [...Option.getOrElse(yield* usage.get(key), () => []), metered.entry])
@@ -134,13 +141,14 @@ const make = Effect.gen(function* () {
 	return {
 		grants: (id: string) =>
 			Effect.map(loadGrants, entries =>
-				entries
-					.filter(grant => grant.userId === id)
-					.map(grant => ({app: grant.app, createdAt: grant.createdAt, lastUsedAt: grant.lastUsedAt}))
+				Array.map(
+					Array.filter(entries, grant => grant.userId === id),
+					grant => ({app: grant.app, createdAt: grant.createdAt, lastUsedAt: grant.lastUsedAt})
+				)
 			),
 		keys: (id: string) =>
 			Effect.map(loadKeys(id), entries =>
-				entries.map(key => ({
+				Array.map(entries, key => ({
 					addedAt: key.addedAt,
 					last4: key.last4,
 					lastStatus: key.lastStatus,
@@ -161,7 +169,7 @@ const make = Effect.gen(function* () {
 				yield* pipe(
 					Effect.gen(function* () {
 						yield* grants.set('ai-grants', [
-							...(yield* loadGrants).filter(grant => grant.userId !== user.id || grant.app !== input.app),
+							...Array.filter(yield* loadGrants, grant => grant.userId !== user.id || grant.app !== input.app),
 							{app: input.app, createdAt: now, hash: digest, lastUsedAt: now, userId: user.id}
 						])
 					}),
@@ -169,27 +177,22 @@ const make = Effect.gen(function* () {
 				)
 				return HttpServerResponse.jsonUnsafe({token}, {headers: {'cache-control': 'no-store'}})
 			}),
-			Effect.catch(() =>
-				Effect.succeed(
-					HttpServerResponse.jsonUnsafe(
-						{error: {message: 'Sign in with a credential valid for this app'}},
-						{status: 401}
-					)
-				)
+			Effect.orElseSucceed(() =>
+				HttpServerResponse.jsonUnsafe({error: {message: 'Sign in with a credential valid for this app'}}, {status: 401})
 			)
 		),
 		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const now = yield* Clock.currentTimeMillis
-			const digest = yield* hash((request.headers['authorization'] ?? '').replace(/^Bearer /u, ''))
+			const digest = yield* hash(String.replace(/^Bearer /u, '')(request.headers['authorization'] ?? ''))
 			const grant = yield* pipe(
 				Effect.gen(function* () {
 					const current = yield* loadGrants
-					const found = current.find(value => value.hash === digest)
-					if (found) {
+					const found = Option.getOrUndefined(Array.findFirst(current, value => value.hash === digest))
+					if (found !== undefined) {
 						yield* grants.set(
 							'ai-grants',
-							current.map(value => {
+							Array.map(current, value => {
 								if (value.hash === digest) return {...value, lastUsedAt: now}
 								return value
 							})
@@ -199,38 +202,40 @@ const make = Effect.gen(function* () {
 				}),
 				Semaphore.withPermit(lock)
 			)
-			if (!local && !grant) {
+			if (!local && grant === undefined) {
 				return HttpServerResponse.jsonUnsafe({error: {message: 'Unknown or revoked AI grant'}}, {status: 401})
 			}
 			const id = Boolean.match(local, {onFalse: () => grant?.userId ?? DEVELOPER.id, onTrue: () => DEVELOPER.id})
-			const key = (yield* loadKeys(id)).find(value => value.provider === provider)
-			if (!key) {
+			const key = Option.getOrUndefined(Array.findFirst(yield* loadKeys(id), value => value.provider === provider))
+			if (key === undefined) {
 				return HttpServerResponse.jsonUnsafe(
 					{error: {message: `Add a ${NAMES[provider]} key in Gateway`}},
 					{status: 402}
 				)
 			}
-			const stripped = HashSet.fromIterable([
+			const headers = Headers.removeMany(request.headers, [
 				...FORBIDDEN,
-				...(request.headers['connection'] ?? '').split(',').map(value => value.trim().toLowerCase())
+				...Array.map(String.split(',')(request.headers['connection'] ?? ''), value =>
+					String.toLowerCase(String.trim(value))
+				)
 			])
-			const headers = Object.fromEntries(
-				Object.entries(request.headers).filter(entry => !HashSet.has(stripped, entry[0]))
-			)
-			if (provider === 'anthropic') headers['x-api-key'] = Redacted.value(key.secret)
-			else headers['authorization'] = `Bearer ${Redacted.value(key.secret)}`
 			const outgoing = {
 				model: Option.none<string>(),
 				request: HttpClientRequest.make(
 					yield* Schema.decodeUnknownEffect(
 						Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
 					)(request.method)
-				)(`${UPSTREAMS[provider]}/${rest}`, {headers})
+				)(`${UPSTREAMS[provider]}/${rest}`, {
+					headers: Boolean.match(provider === 'anthropic', {
+						onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(key.secret)}`),
+						onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(key.secret))
+					})
+				})
 			}
 			if (request.method !== 'GET' && request.method !== 'HEAD') {
-				if (request.headers['content-type']?.includes('application/json')) {
+				if (String.includes('application/json')(request.headers['content-type'] ?? '')) {
 					const body = new Uint8Array(yield* request.arrayBuffer)
-					const decoded = Schema.decodeUnknownOption(
+					const decoded = Schema.decodeOption(
 						Schema.fromJsonString(Schema.Struct({model: Schema.optionalKey(Schema.String)}))
 					)(new TextDecoder().decode(body))
 					outgoing.model = Option.flatMap(decoded, value => Option.fromUndefinedOr(value.model))
@@ -246,7 +251,7 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					yield* keys.set(
 						`ai-keys/${id}`,
-						(yield* loadKeys(id)).map(value => {
+						Array.map(yield* loadKeys(id), value => {
 							if (value.provider === provider && Redacted.value(value.secret) === Redacted.value(key.secret)) {
 								return {...value, lastStatus: response.status}
 							}
@@ -275,61 +280,51 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					const state = {current: entry, pending: ''}
 					const sse = String.includes('text/event-stream')(response.headers['content-type'] ?? '')
+					const decoder = new TextDecoder()
 					yield* pipe(
-						Effect.tryPromise(async () => {
-							const reader = meter.getReader()
-							const decoder = new TextDecoder()
-							try {
-								while (true) {
-									const chunk = await reader.read()
-									if (chunk.done) break
-									state.pending += decoder.decode(chunk.value, {stream: true})
-									if (sse) {
-										const lines = state.pending.split(/\r?\n/u)
-										state.pending = Option.getOrElse(Array.last(lines), () => '')
-										for (const line of Array.dropRight(lines, 1)) {
-											if (line.startsWith('data:')) {
-												state.current = readUsage(String.slice(5)(line).trim(), state.current)
-											}
-										}
-									}
-									if (state.pending.length > 10 * 1024 * 1024) {
-										await reader.cancel()
-										break
+						Stream.fromReadableStream({
+							evaluate: () => meter,
+							onError: cause => AuthError.make({cause, message: 'AI usage could not be read'})
+						}),
+						Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
+						Stream.runForEach(chunk =>
+							Effect.sync(() => {
+								state.pending += decoder.decode(chunk, {stream: true})
+								if (!sse) return
+								const lines = String.split(/\r?\n/u)(state.pending)
+								state.pending = Option.getOrElse(Array.last(lines), () => '')
+								for (const line of Array.dropRight(lines, 1)) {
+									if (String.startsWith('data:')(line)) {
+										state.current = readUsage(String.trim(String.slice(5)(line)), state.current)
 									}
 								}
-								state.current = readUsage(
-									Boolean.match(sse, {
-										onFalse: () => state.pending,
-										onTrue: () => state.pending.replace(/^data:\s*/u, '')
-									}),
-									state.current
-								)
-							} finally {
-								reader.releaseLock()
-							}
-						}),
+							})
+						),
 						Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
+					)
+					state.current = readUsage(
+						Boolean.match(sse, {
+							onFalse: () => state.pending,
+							onTrue: () => String.replace(/^data:\s*/u, '')(state.pending)
+						}),
+						state.current
 					)
 					yield* saveUsage(id, state.current)
 				}),
 				Effect.catch(error => Effect.logWarning('AI usage could not be saved', error)),
 				Effect.forkIn(scope)
 			)
-			const responseBlocked = HashSet.fromIterable([
+			const responseBlocked = [
 				...HOP_BY_HOP,
 				'content-encoding',
 				'content-length',
-				...(response.headers['connection'] ?? '').split(',').map(name => name.trim().toLowerCase())
-			])
+				...Array.map(String.split(',')(response.headers['connection'] ?? ''), name =>
+					String.toLowerCase(String.trim(name))
+				)
+			]
 			return HttpServerResponse.stream(
 				Stream.fromReadableStream({evaluate: () => forward, onError: Function.identity}),
-				{
-					headers: Object.fromEntries(
-						Object.entries(response.headers).filter(header => !HashSet.has(responseBlocked, header[0]))
-					),
-					status: response.status
-				}
+				{headers: Headers.removeMany(response.headers, responseBlocked), status: response.status}
 			)
 		}),
 		removeKey: Effect.fnUntraced(function* (id: string, provider: AiProvider) {
@@ -337,7 +332,7 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					yield* keys.set(
 						`ai-keys/${id}`,
-						(yield* loadKeys(id)).filter(key => key.provider !== provider)
+						Array.filter(yield* loadKeys(id), key => key.provider !== provider)
 					)
 				}),
 				Semaphore.withPermit(lock),
@@ -349,7 +344,7 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					yield* grants.set(
 						'ai-grants',
-						(yield* loadGrants).filter(grant => grant.userId !== id || grant.app !== app)
+						Array.filter(yield* loadGrants, grant => grant.userId !== id || grant.app !== app)
 					)
 				}),
 				Semaphore.withPermit(lock),
@@ -359,9 +354,8 @@ const make = Effect.gen(function* () {
 		setKey: Effect.fnUntraced(function* (id: string, provider: AiProvider, secret: Redacted.Redacted) {
 			return yield* pipe(
 				Effect.gen(function* () {
-					const current = yield* loadKeys(id)
 					yield* keys.set(`ai-keys/${id}`, [
-						...current.filter(key => key.provider !== provider),
+						...Array.filter(yield* loadKeys(id), key => key.provider !== provider),
 						{addedAt: yield* Clock.currentTimeMillis, last4: String.slice(-4)(Redacted.value(secret)), provider, secret}
 					])
 				}),
@@ -373,12 +367,10 @@ const make = Effect.gen(function* () {
 			return yield* pipe(
 				Effect.gen(function* () {
 					const months = MutableList.make<string>()
-					const date = new Date(query.from)
-					date.setUTCDate(1)
-					date.setUTCHours(0, 0, 0, 0)
-					while (date.getTime() < query.to) {
-						MutableList.append(months, String.slice(0, 7)(date.toISOString()))
-						date.setUTCMonth(date.getUTCMonth() + 1)
+					const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(query.from), 'month')}
+					while (DateTime.toEpochMillis(cursor.date) < query.to) {
+						MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
+						cursor.date = DateTime.add(cursor.date, {months: 1})
 					}
 					const entries = yield* Effect.forEach(
 						MutableList.toArray(months),
@@ -396,7 +388,9 @@ const make = Effect.gen(function* () {
 		})
 	}
 })
-export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()('@deslop/gateway/AiProxy') {
+export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()(
+	'@deslop/gateway/services/ai/service/AiProxy'
+) {
 	static readonly make = make
 	static readonly layer = Layer.effect(this, make)
 }
