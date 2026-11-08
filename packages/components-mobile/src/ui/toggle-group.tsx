@@ -6,7 +6,6 @@ import {
 	buttonStyle,
 	controlSize,
 	fixedSize,
-	foregroundStyle,
 	labelStyle,
 	lineLimit,
 	tint
@@ -49,21 +48,19 @@ export function ToggleGroupItem(props: {
 	value: string
 }) {
 	const group = useContext(ToggleGroupContext)
-	const look = Boolean.match(group.value === props.value, {
-		onFalse: () => ({foreground: colors.foreground, style: 'glass' as const, tint: colors.foreground}),
-		onTrue: () => ({foreground: colors.primaryForeground, style: 'glassProminent' as const, tint: group.tint})
-	})
+	const selected = group.value === props.value
 	return (
 		<Button
 			label={props.children}
 			systemImage={props.systemImage}
 			onPress={() => group.onValueChange(props.value)}
 			modifiers={[
-				buttonStyle(look.style),
+				buttonStyle(
+					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
+				),
 				buttonBorderShape('capsule'),
-				controlSize('regular'),
-				tint(look.tint),
-				foregroundStyle(look.foreground),
+				controlSize('large'),
+				...Boolean.match(selected, {onFalse: () => [], onTrue: () => [tint(group.tint)]}),
 				labelStyle('titleAndIcon'),
 				text.detail,
 				lineLimit(1),

@@ -2,9 +2,9 @@ import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Result} from 'effect'
 
-import {Button, Host, Image, Label, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
+import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
-	background,
+	buttonBorderShape,
 	buttonStyle,
 	clipShape,
 	controlSize,
@@ -12,6 +12,7 @@ import {
 	foregroundStyle,
 	frame,
 	labelStyle,
+	multilineTextAlignment,
 	padding,
 	resizable,
 	tint
@@ -29,12 +30,8 @@ import {colors, radius, space, text} from './theme.ts'
 import {ItemGroupSkeleton} from '#components/ui/skeleton.tsx'
 import {assetAtom} from '#lib/utils.ts'
 
-// The padding comes before the frame so the background behind it reaches every edge of the screen.
-const FULL_SCREEN = [
-	padding({all: space[6]}),
-	frame({maxHeight: Infinity, maxWidth: Infinity}),
-	background(colors.background)
-]
+// The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
+const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
 
 // Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
 export function BlankScreen() {
@@ -69,8 +66,8 @@ export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Su
 export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
 	const denied = deniedBy(props.cause)
 	return (
-		<VStack modifiers={FULL_SCREEN}>
-			<VStack spacing={space[2]}>
+		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
+			<VStack spacing={space[3]}>
 				<Label
 					icon={
 						<Image
@@ -80,14 +77,24 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					}
 					modifiers={[labelStyle('titleAndIcon')]}
 				>
-					<Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>
+					<Text modifiers={[text.body, foregroundStyle(colors.foreground), multilineTextAlignment('center')]}>
 						{Boolean.match(denied, {
 							onFalse: () => `${props.name} unavailable.`,
 							onTrue: () => 'You don’t have access.'
 						})}
 					</Text>
 				</Label>
-				<Button label="Retry" onPress={props.onRetry} modifiers={[tint(colors.destructive)]} />
+				<Button
+					label="Retry"
+					role="destructive"
+					onPress={props.onRetry}
+					modifiers={[
+						buttonStyle('glassProminent'),
+						buttonBorderShape('capsule'),
+						controlSize('regular'),
+						tint(colors.destructive)
+					]}
+				/>
 			</VStack>
 		</VStack>
 	)
@@ -102,32 +109,33 @@ export function FailureScreen(props: ComponentProps<typeof FailureContent>) {
 	)
 }
 
-// The app's icon in the middle of the screen and GitHub sign-in at the bottom.
+// The app's icon and a short statement in the middle of the screen, with GitHub sign-in at the bottom.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
 			<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
+				<Spacer />
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
-					modifiers={[
-						resizable(),
-						frame({height: 64, width: 64}),
-						clipShape('roundedRectangle', radius),
-						frame({maxHeight: Infinity}),
-						padding({bottom: space[16]})
-					]}
+					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
 				/>
+				<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
+					Sign in with GitHub to keep this app in sync.
+				</Text>
+				<Spacer />
 				<Button
 					onPress={() => props.onSignIn()}
 					modifiers={[
 						buttonStyle('glassProminent'),
+						buttonBorderShape('capsule'),
 						controlSize('large'),
 						tint(props.tint),
-						foregroundStyle(colors.primaryForeground),
 						disabled(props.waiting)
 					]}
 				>
-					<Text modifiers={[text.title, frame({maxWidth: Infinity})]}>Sign in with GitHub</Text>
+					<Text modifiers={[text.title]}>
+						{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
+					</Text>
 				</Button>
 			</VStack>
 		</Host>

@@ -34,12 +34,12 @@ export const radius = 12
 
 // System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
 export const text = {
-	body: font({textStyle: 'subheadline'}),
+	body: font({textStyle: 'body'}),
 	caption: font({textStyle: 'caption'}),
 	data: font({design: 'monospaced', textStyle: 'footnote'}),
 	detail: font({textStyle: 'footnote'}),
 	display: font({textStyle: 'largeTitle', weight: 'bold'}),
 	label: font({textStyle: 'caption2', weight: 'semibold'}),
-	row: font({textStyle: 'subheadline', weight: 'semibold'}),
+	row: font({textStyle: 'body', weight: 'semibold'}),
 	title: font({textStyle: 'headline'})
 }
