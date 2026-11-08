@@ -47,7 +47,6 @@ export function make(name: string, server: string, storage: Storage) {
 			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: extra.scheme})
 			const request = new AuthRequest({
 				clientId: clientIdOf({name, redirects: [redirectUri]}),
-				extraParams: {resource: server},
 				redirectUri,
 				scopes: ['deslop', 'offline_access']
 			})

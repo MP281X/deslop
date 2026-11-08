@@ -164,7 +164,7 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
-// An action from the account menu or a column's menu has no row to answer under, so it says how it failed in a toast.
+// An account-menu action has no row to answer under, so it says how it failed in a toast.
 function failedWith(title: string) {
 	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
 		Effect.tapError(effect, failure =>
@@ -172,13 +172,12 @@ function failedWith(title: string) {
 		)
 }
 
-// One column holds every sign-in of a client on one device; signing it out ends them all.
-export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
-	pipe(
+// Each client's failure stays under its row; signing it out ends all its families.
+export const disconnectAtom = Atom.family((_label: string) =>
+	RpcClient.runtime.fn((families: string[]) =>
 		Effect.flatMap(RpcClient, client =>
 			Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
-		),
-		failedWith('Cannot sign out')
+		)
 	)
 )
 
@@ -234,14 +233,8 @@ export const catalogAtom = Atom.keepAlive(
 	)
 )
 
-// The rows the app list's skeleton draws while it loads, about as many as it lists.
-export const APP_ROWS = 9
-
-// The apps a sign-in reaches, by origin; a browser session names no app.
-export function appOrigins(resources: PendingAuthorization['resources']) {
-	if (Array.isReadonlyArrayEmpty(resources)) return ['browser']
-	return Array.dedupe(Array.map(resources, resource => new URL(resource).origin))
-}
+// The rows the signed-in list's skeleton draws while it loads.
+export const CLIENT_ROWS = 9
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(

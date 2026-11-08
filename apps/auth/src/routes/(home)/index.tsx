@@ -13,8 +13,8 @@ import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 
-import {AppList} from '#lib/components.tsx'
-import {APP_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
+import {SignInList} from '#lib/components.tsx'
+import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
@@ -102,7 +102,7 @@ function Enter(props: {
 	)
 }
 
-// The code stays in its field while the grid shows what it asks for, both one centred column; a tall grid scrolls from its top.
+// The code and signed-in clients share one centred column.
 function Page(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
@@ -114,8 +114,8 @@ function Page(props: {
 		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
-			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
-				<AppList pending={props.pending} />
+			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>
+				<SignInList pending={props.pending} />
 			</Suspense>
 		</div>
 	)

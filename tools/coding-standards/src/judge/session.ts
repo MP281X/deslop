@@ -134,7 +134,7 @@ export const signIn = Effect.fnUntraced(function* (urls: Urls) {
 		client.execute(
 			HttpClientRequest.bodyUrlParams(
 				HttpClientRequest.post(`${urls.auth}/api/auth/oauth2/device_authorization`),
-				UrlParams.fromInput({client_id: registered.client_id, resource: urls.gateway})
+				UrlParams.fromInput({client_id: registered.client_id})
 			)
 		),
 		Effect.flatMap(HttpClientResponse.filterStatusOk),

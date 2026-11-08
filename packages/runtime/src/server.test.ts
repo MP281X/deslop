@@ -392,7 +392,6 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 						client_id: clientIdOf({name: 'Fixture', redirects: [callback]}),
 						code_challenge_method: 'S256',
 						redirect_uri: callback,
-						resource: 'https://scope.example.com',
 						response_type: 'code',
 						scope: 'deslop offline_access'
 					}

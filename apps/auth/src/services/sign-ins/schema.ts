@@ -1,7 +1,5 @@
 import {Schema} from 'effect'
 
-import {Resource} from '@deslop/runtime/auth/schema'
-
 import {ClientRequest, DeviceRequest, Origin, TokenResponse} from '#services/tokens/schema.ts'
 
 // An app or agent asks for tokens to Deslop apps; a browser asks for Auth's own session.
@@ -17,8 +15,7 @@ export const PendingAuthorization = Schema.Struct({
 	device: Schema.String,
 	expiresAt: Schema.Finite,
 	id: Schema.NonEmptyString,
-	kind: SignInKind,
-	resources: Schema.Array(Resource)
+	kind: SignInKind
 })
 
 // The waiting page's view: once decided, it continues at /auth/continue, which delivers the answer.

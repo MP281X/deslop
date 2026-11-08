@@ -309,14 +309,7 @@ export class Tokens extends Context.Service<
 				const grant: Grant = {
 					client: clientLabel(request.clientName),
 					createdAt: now,
-					credential: {
-						_tag: 'App',
-						clientId: request.clientId,
-						generation: 0,
-						replaced: [],
-						resources: request.resources,
-						...minted.refresh
-					},
+					credential: {_tag: 'App', clientId: request.clientId, generation: 0, replaced: [], ...minted.refresh},
 					device: deviceLabel(origin),
 					lastActive: now,
 					origin,
@@ -331,11 +324,7 @@ export class Tokens extends Context.Service<
 							other.client === grant.client &&
 							other.device === grant.device &&
 							other.parent === grant.parent &&
-							other.credential._tag === 'App' &&
-							Array.makeEquivalence(String.Equivalence)(
-								Array.sort(other.credential.resources, String.Order),
-								Array.sort(request.resources, String.Order)
-							)
+							other.credential._tag === 'App'
 						)
 				)
 				return [minted.tokens, {...kept, [family]: grant}] as const
@@ -483,10 +472,6 @@ export class Tokens extends Context.Service<
 								kind: entry[1].credential._tag,
 								lastActive: entry[1].lastActive,
 								...Struct.pick(entry[1], ['parent']),
-								resources: Match.valueTags(entry[1].credential, {
-									App: credential => credential.resources,
-									Browser: () => []
-								}),
 								...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
 									onNone: () => ({}),
 									onSome: address => ({address})

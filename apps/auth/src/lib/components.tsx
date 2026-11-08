@@ -10,22 +10,17 @@ import {toQR} from 'toqr'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
-import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuTrigger
-} from '@deslop/components-web/ui/dropdown-menu'
+	ContextMenu,
+	ContextMenuContent,
+	ContextMenuItem,
+	ContextMenuTrigger
+} from '@deslop/components-web/ui/context-menu'
 import {FieldDescription} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
-import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 import {cn} from '@deslop/components-web/utils'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
 import android from '#lib/brands/android.svg'
 import apple from '#lib/brands/apple.svg'
@@ -37,7 +32,6 @@ import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
 import {
 	ageLabel,
-	appOrigins,
 	appsAtom,
 	avatarUrl,
 	catalogAtom,
@@ -152,128 +146,60 @@ function ClientIcon(props: {client: Client}) {
 	})
 }
 
-// One row of the grid: an app, opened from its name when it has a site or a URL scheme.
-type Row = {name: string; open: Option.Option<string>; origin: string; web: boolean}
-
-// One column of the grid: a client signed in on one device, all its sign-ins together, or the sign-in waiting for an answer.
-type Column = {
-	// The address it last called from.
+type SignedInClient = {
 	address: Option.Option<string>
 	client: Client
 	families: string[]
-	key: string
 	label: string
 	lastActive: number
-	pending: boolean
-	resources: readonly PendingAuthorization['resources'][]
 }
 
-// A client's mark alone heads its column; hovering names it, its address and when it was active, and a click opens its sign-out.
-function ColumnHead(props: {column: Column; now: number}) {
-	const [disconnection, disconnect] = useAtom(disconnectAtom)
-	const detail = Array.join(
-		[
-			Boolean.match(props.column.pending, {
-				onFalse: () => {
-					const minutes = minutesSince(props.column.lastActive, props.now)
-					return `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
-				},
-				onTrue: () => 'waiting for an answer'
-			}),
-			// A client whose platform is unknown is already named by its address.
-			...Option.toArray(Option.filter(props.column.address, address => address !== props.column.client.device))
-		],
-		' · '
-	)
-	const name = `${props.column.label}, ${detail}`
+function ClientRow(props: {client: SignedInClient; now: number}) {
+	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
+	const minutes = minutesSince(props.client.lastActive, props.now)
+	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
+	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
-		<TableHead>
-			<span className="flex flex-col items-center gap-0.5">
-				{Boolean.match(props.column.pending, {
-					onFalse: () => (
-						<DropdownMenu>
-							<DropdownMenuTrigger
-								render={
-									<Button variant="ghost" size="icon" className="max-sm:size-11" title={name} aria-label={name} />
-								}
-							>
-								<ClientIcon client={props.column.client} />
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-auto min-w-48">
-								<DropdownMenuGroup>
-									<DropdownMenuLabel>
-										<span className="text-foreground block text-sm">{props.column.label}</span>
-										<span className="font-mono tabular-nums">{detail}</span>
-									</DropdownMenuLabel>
-								</DropdownMenuGroup>
-								<DropdownMenuItem
-									variant="destructive"
-									className="max-sm:h-11"
-									disabled={AsyncResult.isWaiting(disconnection)}
-									onClick={() => disconnect(props.column.families)}
-								>
-									Sign out
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					),
-					onTrue: () => (
-						<span
-							title={name}
-							aria-label={name}
-							role="img"
-							className="ring-primary flex size-7 items-center justify-center rounded-sm ring-1"
-						>
-							<ClientIcon client={props.column.client} />
-						</span>
-					)
-				})}
-			</span>
-		</TableHead>
+		<ContextMenu>
+			<div role="listitem" className="border-b">
+				<ContextMenuTrigger
+					render={
+						<div
+							role="button"
+							tabIndex={0}
+							aria-haspopup="menu"
+							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
+							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+						/>
+					}
+				>
+					<ClientIcon client={props.client.client} />
+					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
+					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					{Option.match(address, {
+						onNone: () => null,
+						onSome: value => (
+							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
+						)
+					})}
+				</ContextMenuTrigger>
+				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
+			</div>
+			<ContextMenuContent className="w-auto min-w-36">
+				<ContextMenuItem
+					variant="destructive"
+					className="max-sm:h-11"
+					disabled={AsyncResult.isWaiting(disconnection)}
+					onClick={() => disconnect(props.client.families)}
+				>
+					Sign out
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
 	)
 }
 
-// A waiting browser asks for web access; a signed-in browser holds Auth and its children's apps.
-function reaches(resources: PendingAuthorization['resources'], origin: string, web: boolean) {
-	const origins = appOrigins(resources)
-	return Array.contains(origins, origin) || (Array.contains(origins, 'browser') && web)
-}
-
-function holds(column: Column, row: Row) {
-	return Array.some(column.resources, resources => reaches(resources, row.origin, row.web))
-}
-
-// Whether the client could ever hold the app: a browser holds only web apps, and an iOS app only itself; an agent can hold any.
-function possible(column: Column, row: Row) {
-	if (column.client.kind === 'Browser') return row.web
-	return Option.match(column.client.app, {onNone: () => true, onSome: origin => origin === row.origin})
-}
-
-// Where a column's client holds the app, a dot in Auth's hue; where the waiting sign-in asks for it, the same dot breathing. A pairing that can't happen, like a browser and an iOS app, stays empty.
-function Cell(props: {column: Column; row: Row}) {
-	const held = holds(props.column, props.row)
-	if (!held && !possible(props.column, props.row)) return <TableCell className="w-7 max-sm:w-14" />
-	return (
-		<TableCell className="w-7 max-sm:w-14">
-			<span className="flex justify-center">
-				{Boolean.match(held, {
-					onFalse: () => <StatusDot status="off" />,
-					onTrue: () => <StatusDot waiting={props.column.pending} />
-				})}
-				<span className="sr-only">
-					{pipe(
-						Match.value({held, pending: props.column.pending}),
-						Match.when({held: false}, () => 'not signed in'),
-						Match.when({pending: true}, () => 'asked for'),
-						Match.orElse(() => 'signed in')
-					)}
-				</span>
-			</span>
-		</TableCell>
-	)
-}
-
-// A failed answer stays above the grid to retry. Where the sign-in started tells a stranger's code from one's own.
+// A failed answer stays above the clients to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const [choice, setChoice] = useState<boolean>()
@@ -289,14 +215,14 @@ function Answer(props: {request: PendingAuthorization}) {
 			<FieldDescription>
 				{Boolean.match(props.request.kind === 'Browser', {
 					onFalse: () =>
-						`${signInLabel(props.request.clientName, props.request.device)} asks for the apps its column marks`,
+						`Signs ${signInLabel(props.request.clientName, props.request.device)} in as you to every mp281x.xyz app for 30 days`,
 					onTrue: () =>
 						`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
 				})}
-				{Option.match(Option.fromUndefinedOr(props.request.address), {
-					onNone: () => '',
-					onSome: address => ` · from ${address}`
-				})}
+				{Option.match(
+					Option.filter(Option.fromUndefinedOr(props.request.address), address => address !== props.request.device),
+					{onNone: () => '', onSome: address => ` · from ${address}`}
+				)}
 				. Approve only a code you started yourself.
 			</FieldDescription>
 			<ResultError result={consent} />
@@ -330,12 +256,8 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
-// The waiting sign-in leads, then one column per client and device, the most recently active first.
-function columnsOf(
-	pending: Option.Option<PendingAuthorization>,
-	signIns: readonly SignedInApp[],
-	catalog: readonly {name: string; origin: string}[]
-) {
+// Browser children contribute activity to their browser, never rows of their own.
+function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
 	const children = Array.groupBy(
 		Array.filter(signIns, signIn => signIn.parent !== undefined),
 		signIn => signIn.parent ?? ''
@@ -344,155 +266,74 @@ function columnsOf(
 		Array.filter(signIns, signIn => signIn.parent === undefined),
 		signIn => {
 			if (signIn.kind !== 'Browser') return signIn
-			const apps = Option.getOrElse(Record.get(children, signIn.family), () => [])
 			return {
 				...signIn,
-				lastActive: Array.reduce(apps, signIn.lastActive, (latest, app) => Number.max(latest, app.lastActive)),
-				resources: [AUTH_URL, ...Array.flatMap(apps, app => app.resources)]
+				lastActive: Array.reduce(
+					Option.getOrElse(Record.get(children, signIn.family), () => []),
+					signIn.lastActive,
+					(latest, app) => Number.max(latest, app.lastActive)
+				)
 			}
 		}
 	)
 	const byName = Array.groupBy(catalog, app => String.toLowerCase(app.name))
-	function clientOf(name: string, device: string, kind: 'App' | 'Browser') {
-		return {
-			app: Option.map(
-				Option.filter(Array.head(byName[String.toLowerCase(name)] ?? []), () => kind === 'App'),
-				app => app.origin
-			),
-			device,
-			kind,
-			name
-		}
-	}
-	return [
-		...Option.match(pending, {
-			onNone: () => [],
-			onSome: request => [
-				{
-					address: Option.fromUndefinedOr(request.address),
-					client: clientOf(request.clientName, request.device, request.kind),
-					families: [],
-					key: 'pending',
-					label: signInLabel(request.clientName, request.device),
-					lastActive: 0,
-					pending: true,
-					resources: [request.resources]
-				}
-			]
-		}),
-		...pipe(
-			Array.groupBy(parents, signIn => signInLabel(signIn.client, signIn.device)),
-			Record.values,
-			Array.filter(Array.isReadonlyArrayNonEmpty),
-			Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),
-			Array.map(group => {
-				const lastActive = newest(group)
-				return {
-					address: pipe(
-						Array.findFirst(group, signIn => signIn.lastActive === lastActive),
-						Option.flatMap(signIn => Option.fromUndefinedOr(signIn.address))
+	return pipe(
+		Array.groupBy(parents, signIn => signInLabel(signIn.client, signIn.device)),
+		Record.values,
+		Array.filter(Array.isReadonlyArrayNonEmpty),
+		Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),
+		Array.map(group => {
+			const lastActive = newest(group)
+			return {
+				address: pipe(
+					Array.findFirst(group, signIn => signIn.lastActive === lastActive),
+					Option.flatMap(signIn => Option.fromUndefinedOr(signIn.address))
+				),
+				client: {
+					app: Option.map(
+						Option.filter(Array.head(byName[String.toLowerCase(group[0].client)] ?? []), () => group[0].kind === 'App'),
+						app => app.origin
 					),
-					client: clientOf(group[0].client, group[0].device, group[0].kind),
-					families: Array.map(group, signIn => signIn.family),
-					key: signInLabel(group[0].client, group[0].device),
-					label: signInLabel(group[0].client, group[0].device),
-					lastActive,
-					pending: false,
-					resources: Array.map(group, signIn => signIn.resources)
-				}
-			})
-		)
-	]
+					device: group[0].device,
+					kind: group[0].kind,
+					name: group[0].client
+				},
+				families: Array.map(group, signIn => signIn.family),
+				label: signInLabel(group[0].client, group[0].device),
+				lastActive
+			}
+		})
+	)
 }
 
-const appListAtom = Atom.make(get =>
+const signInListAtom = Atom.make(get =>
 	AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)})
 )
 
-// Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds; web apps first, then iOS apps.
-export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
-	const data = useAtomSuspense(appListAtom).value
-	const rows: Row[] = Array.sort(Order.flip(Order.mapInput(Order.Boolean, (row: Row) => row.web)))([
-		...Array.map(data.catalog, app => ({
-			name: app.name,
-			open: Option.some(app.open),
-			origin: app.origin,
-			web: String.startsWith('https://')(app.open)
-		})),
-		...pipe(
-			[
-				...Array.flatMap(data.signIns, signIn => appOrigins(signIn.resources)),
-				...Option.match(props.pending, {onNone: () => [], onSome: request => appOrigins(request.resources)})
-			],
-			Array.dedupe,
-			Array.filter(origin => origin !== 'browser' && !Array.some(data.catalog, app => app.origin === origin)),
-			Array.sort(String.Order),
-			Array.map(origin => ({
-				name: Option.getOrElse(Array.head(String.split(new URL(origin).hostname, '.')), () => origin),
-				open: Option.none<string>(),
-				origin,
-				web: false
-			}))
-		)
-	])
-	// Narrowing the apps narrows the clients to those holding one, so no column stands empty.
-	const columns = Array.filter(columnsOf(props.pending, data.signIns, data.catalog), column =>
-		Array.some(rows, row => holds(column, row))
-	)
+export function SignInList(props: {pending: Option.Option<PendingAuthorization>}) {
+	const data = useAtomSuspense(signInListAtom).value
+	const clients = clientsOf(data.signIns, data.catalog)
 	return (
-		<Section title="Apps" meta={`${rows.length} apps · ${columns.length} clients`} className="gap-0">
-			{/* A waiting sign-in's answer comes first, where the approving phone sees it without scrolling. */}
+		<Section
+			title="Signed in"
+			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
+			className="gap-0"
+		>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
-			{Array.match(rows, {
+			{Array.match(clients, {
 				onEmpty: () => (
 					<EmptyState
-						label="No apps yet"
-						description="An app appears here the first time it announces itself."
-						icon={<AppWindowIcon className="size-5" weight="light" />}
+						label="No sign-ins"
+						description="A browser, app or command appears here once it signs in."
+						icon={<HardDrivesIcon className="size-5" weight="light" />}
 					/>
 				),
-				onNonEmpty: () => (
-					<Table aria-label="Apps and the clients signed in to them">
-						<TableHeader>
-							{/* 48px rows on a phone leave each app's link a full 44px target above its divider. */}
-							<TableRow className="max-sm:h-12">
-								<TableHead>App</TableHead>
-								{Array.map(columns, column => (
-									<ColumnHead key={column.key} column={column} now={data.now} />
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{Array.map(rows, row => (
-								<TableRow key={row.origin} className="h-14 max-sm:h-12">
-									<TableHead scope="row">
-										{Option.match(row.open, {
-											onNone: () => (
-												<span className="flex items-center gap-3 text-sm font-medium">
-													<AppIcon origin={row.origin} />
-													{row.name}
-												</span>
-											),
-											onSome: url => (
-												<a
-													href={url}
-													target="_blank"
-													rel="noreferrer"
-													className="flex h-full w-full items-center gap-3 text-sm font-medium hover:underline"
-												>
-													<AppIcon origin={row.origin} />
-													{row.name}
-												</a>
-											)
-										})}
-									</TableHead>
-									{Array.map(columns, column => (
-										<Cell key={column.key} column={column} row={row} />
-									))}
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+				onNonEmpty: rows => (
+					<div role="list" aria-label="Signed-in clients">
+						{Array.map(rows, client => (
+							<ClientRow key={client.label} client={client} now={data.now} />
+						))}
+					</div>
 				)
 			})}
 		</Section>

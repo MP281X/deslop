@@ -109,8 +109,7 @@ const request = Effect.gen(function* () {
 		),
 		clientId: 'fixture',
 		clientName: 'Fixture',
-		redirectUri: 'http://127.0.0.1/callback',
-		resources: ['https://scope.mp281x.xyz/mcp']
+		redirectUri: 'http://127.0.0.1/callback'
 	} satisfies ClientRequest
 })
 
