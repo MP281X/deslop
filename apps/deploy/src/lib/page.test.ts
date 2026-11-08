@@ -121,7 +121,7 @@ it.effect(
 	'owns an initial inventory defect without hiding the machine charts',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.failure(Cause.die('Inventory decode failed')), AsyncResult.success(readings))
-		assert.include(html, 'Can’t load this view.')
+		assert.include(html, 'Can’t load this view')
 		assert.include(html, 'Retry')
 		assert.notInclude(html, 'Inventory decode failed')
 		assert.include(html, 'Memory')

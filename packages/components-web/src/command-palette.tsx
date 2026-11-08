@@ -1,11 +1,10 @@
-import {Array, Boolean, Option, Record, String} from 'effect'
+import {Array, Option, Record} from 'effect'
 
 import {ArrowRightIcon, AppWindowIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
 import {defaultFilter} from 'cmdk'
-import {useState, useSyncExternalStore} from 'react'
+import {useState} from 'react'
 import type {ReactNode} from 'react'
 
-import {Button} from '#components/ui/button.tsx'
 import {
 	Command,
 	CommandDialog,
@@ -16,7 +15,6 @@ import {
 	CommandList,
 	CommandShortcut
 } from '#components/ui/command.tsx'
-import {Kbd} from '#components/ui/kbd.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
 const APPS = [
@@ -76,7 +74,7 @@ function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem
 			value={`${props.group}:${props.item.id ?? props.item.label}`}
-			className="max-sm:h-11"
+			className="max-sm:min-h-11"
 			onSelect={props.onSelect}
 		>
 			{props.item.icon ?? <ArrowRightIcon />}
@@ -151,45 +149,5 @@ export function CommandPalette(props: {
 				</CommandList>
 			</Command>
 		</CommandDialog>
-	)
-}
-
-// A search field centred on the page from the small breakpoint up, its shortcut inside; on a phone, the same entry as an icon.
-export function CommandTrigger(props: {label: string; onClick: () => void}) {
-	// The handler takes Meta or Control, so the label and the announced shortcut name the key the reader actually has.
-	const mac = useSyncExternalStore(
-		() => () => {},
-		() => Option.isSome(String.match(/Mac|iPhone|iPad/u)(navigator.userAgent)),
-		() => true
-	)
-	const shortcut = {
-		aria: Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'}),
-		label: Boolean.match(mac, {onFalse: () => 'Ctrl K', onTrue: () => '⌘K'})
-	}
-	return (
-		<>
-			<Button
-				variant="outline"
-				size="lg"
-				aria-keyshortcuts={shortcut.aria}
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-72 -translate-x-1/2 sm:flex"
-			>
-				<MagnifyingGlassIcon />
-				<span className="flex-1 text-left">Search</span>
-				<Kbd>{shortcut.label}</Kbd>
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-keyshortcuts={shortcut.aria}
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="max-sm:size-11 sm:hidden"
-			>
-				<MagnifyingGlassIcon />
-			</Button>
-		</>
 	)
 }

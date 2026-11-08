@@ -29,8 +29,8 @@ const homePeopleRoute = homePeopleRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/people': typeof homePeopleRoute
   '/': typeof homeIndexRoute
+  '/people': typeof homePeopleRoute
 }
 export interface FileRoutesByTo {
   '/people': typeof homePeopleRoute
@@ -44,7 +44,7 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/people' | '/'
+  fullPaths: '/' | '/people'
   fileRoutesByTo: FileRoutesByTo
   to: '/people' | '/'
   id: '__root__' | '/(home)' | '/(home)/people' | '/(home)/'
@@ -59,7 +59,7 @@ declare module '@tanstack/react-router' {
     '/(home)': {
       id: '/(home)'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof homeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }

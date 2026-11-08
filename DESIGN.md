@@ -18,26 +18,29 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 - Scope sides: server blue, browser pink, iOS amber, CI violet. Deploy machines: dev spring blue, desktop autumn yellow. Kinds use tinted icons, not dots.
 - Error red; warning orange. Dots communicate problems and live activity, never health that needs no attention or the kind of a thing. Other identities draw from the same palette; magnitude uses opacity steps of one hue.
 - Burn-in: static chrome, app marks and tabs stay low-luminance. Bright colour belongs to changing information, not a permanently filled primary button in the bar.
-- Web UI: Geist at the shadcn style's own sizes and weights. Native UI keeps system fonts and Dynamic Type. Portfolio's editorial and printed document typography stays distinct.
+- Web UI uses the Sera shadcn style: Instrument Serif for the one display heading that names a view, Geist for every control, label and number, and Geist Mono for hosts, ids, times and figures. Component titles keep Sera's uppercase, tracked sans. Native UI keeps system fonts and Dynamic Type. Portfolio's editorial and printed document typography stays distinct.
 - Hosts, ids, times, figures and shortcuts in running text and table cells use tabular mono; inside a shadcn component they take its own font. Trailing values have fixed-width, right-aligned columns.
 
 ## Shape and layout
 
-- One 4px `--radius`. A selected row is the `secondary` variant of its button. System navigation and controls stay native on iOS, following Apple's current guidelines as closely as SwiftUI allows: a root list takes the system large title, which collapses inline as it scrolls; no custom title view, bar background or restyled system control.
+- Web surfaces are square: one 0px `--radius`, hairline rules and no decorative shadow. Popups are the only raised surface. A selected row is the `secondary` variant of its button. System navigation and controls stay native on iOS, following Apple's current guidelines as closely as SwiftUI allows: a root list takes the system large title, which collapses inline as it scrolls; no custom title view, bar background or restyled system control. Native tiles use the system's concentric 12pt radius.
+- The web masthead is 56px: app mark and serif name, ruled section tabs, one underlined search field centred on the page, then the controls that choose what the page shows. Page headers put a tracked uppercase eyebrow over one serif statement and a short deck. Content uses 24px gutters on a phone, 32px on a desktop, 56px rows on a pointer and 48px on touch.
+- A single reading column is 48rem; a standard tool page is 72rem; a full workspace such as Scope fills the viewport. Never stretch a list across an ultrawide.
 - The whole row opens its content; secondary actions use the existing context menu.
 - Dividers are separate, straight, inset lines, hidden next to hovered or selected rows.
 - Show each fact once: no value repeated as a chart, a figure and a percentage, and nothing in the bar that the selected row already shows.
 - The URL holds the view: selection, pane and range survive a reload, Back and a shared link. Memory holds only transient input such as an open dialog.
 - Keep app bars, navigation and pane geometry mounted through loading, updates and errors. Lists and detail regions scroll independently.
 - Detail tools use three columns from 1600px: list, trace/waterfall, selected detail at full height. Narrower desktops put detail below the waterfall, its fields in as many columns as fit. On iPhone, push full-screen with native back.
-- Empty regions show one faint icon centred in their own container: search for no matches, the app mark for nothing selected.
+- Empty regions show one restrained icon, a serif title and one sentence that says what to do next: search for no matches, the app mark for nothing selected. A blocking failure uses an Alert rule with a destructive Retry, never a hero.
 - Deploy ports: a port that opens something is a stock small button, whose 12px text reads at a glance, exposed in `default`, exposable in `secondary`; one that can't be exposed is a disabled `ghost` one, so all three share one box. Each is at least 7ch wide so a five-digit port is never cut.
 
 ## Components and recovery
 
-- Compose the public shadcn `base-mira` primitives in `packages/components-web/src/ui/` as shipped: they stay read-only and `theme.css` sets tokens and the shell every app shares (a full-height document, list-row dividers, iOS input size). Each control is the primitive made for its job: tabs switch between views, a button runs an action or opens something, a badge only labels. `components.json` selects Phosphor. Refresh through the CLI as `AGENTS.md` describes. Native components mirror their names over `@expo/ui` SwiftUI and take `modifiers` where web components take `className`.
+- Compose the public shadcn `base-sera` primitives in `packages/components-web/src/ui/` as shipped: they stay read-only and `theme.css` sets tokens and the shell every app shares (a full-height document, list-row dividers, iOS input size). Each control is the primitive made for its job: tabs switch between views, a button runs an action or opens something, a badge only labels. `components.json` selects Phosphor. Refresh through the CLI as `AGENTS.md` describes.
+- A call site places a primitive (margin, size, position, flex or grid placement) or picks a variant; it never repaints it. A new look is a variant on the shipped primitive, documented here first. Native components mirror their names over `@expo/ui` SwiftUI and take `modifiers` where web components take `className`.
 - Phosphor icons: regular at 16px and below, light at 20px and above; hover/focus names unfamiliar kinds. Native system symbols retain native behaviour.
-- Every page action lives in the stock `CommandDialog` palette, opened from the search field centred on the page in the bar or ⌘K; the bar holds only controls that choose what the page shows.
+- Every page action lives in the stock `CommandDialog` palette, opened from the underlined search field in the masthead or ⌘K; the bar holds only controls that choose what the page shows.
 - Loading uses local Suspense with geometry-matched `ItemListSkeleton` or redacted native `Item` parts. Local session reads show the blank shell.
 - Retain authorised content through ordinary outages. Beside usable content, a small status-coloured dot and age mark the affected row, tab or pane; hover/focus/tap exposes a few words and an icon retry. Interactive recovery uses a popover, not a button inside a tooltip.
 - Diagnostics belong in Scope, not in alerts. Stash's on-device search/body read failures use a quiet saved-copy indicator.

@@ -14,6 +14,7 @@ import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {Page, PageHeader, Section, Stat} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -168,7 +169,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-8 items-center gap-3 px-3 max-sm:h-11">
+				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -185,7 +186,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
 						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
 							{new URL(props.server.url).hostname}
-						</span>
+						</span>{' '}
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
 							<span
 								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
@@ -227,7 +228,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	)
 }
 
-function ServersContent() {
+function ServersContent(props: {onAdd: () => void}) {
 	const result = useAtomSuspense(serversAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(serversAtom)
 	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(serversAtom)))
@@ -241,20 +242,32 @@ function ServersContent() {
 				Option.map(value, current =>
 					Array.match(Array.sort(current, urgency), {
 						onEmpty: () => (
-							<EmptyState label="No servers" icon={<img src={icon} alt="" className="pixelated size-8 opacity-50" />} />
+							<EmptyState
+								label="No servers yet"
+								description="Add an MCP server and its tools appear in the gateway palette."
+								icon={<HardDrivesIcon className="size-5" />}
+								action={
+									<Button onClick={props.onAdd}>
+										<PlusIcon />
+										Add server
+									</Button>
+								}
+							/>
 						),
 						onNonEmpty: servers => (
-							<div role="list" aria-label="MCP servers">
-								{Array.map(servers, server => (
-									<ServerRow key={server.id} server={server} />
-								))}
-							</div>
+							<Section title="Servers" meta={`${servers.length} configured`}>
+								<div role="list" aria-label="MCP servers">
+									{Array.map(servers, server => (
+										<ServerRow key={server.id} server={server} />
+									))}
+								</div>
+							</Section>
 						)
 					})
 				)
 			)}
 			{AsyncResult.isFailure(result) && (
-				<div className="bg-background sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end px-3">
+				<div className="bg-background sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end">
 					<Problem label="Servers out of date" warning reset={refresh} since={since} />
 				</div>
 			)}
@@ -262,18 +275,31 @@ function ServersContent() {
 	)
 }
 
-function ServersPane() {
+function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
-		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-1 flex-col overflow-y-auto">
-			{/* A list of a few servers reads at a glance in a column centred on the page, as Auth's sign-ins do, not stretched across an ultrawide; a long list scrolls from its top. */}
-			<div className="m-auto flex w-full max-w-3xl flex-col px-2 py-6">
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-					<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
-						<ServersContent />
-					</Suspense>
-				</CatchBoundary>
+		<Page width="reading">
+			<PageHeader
+				eyebrow="MCP gateway"
+				title="Servers"
+				description="Every MCP server this gateway can reach. Connect one that needs a sign-in; remove one from its context menu."
+			/>
+			<div className="grid grid-cols-3 gap-6 border-b pb-5">
+				<Stat label="Configured" value={props.servers.length} />
+				<Stat
+					label="Connected"
+					value={Array.countBy(props.servers, server => server.status === 'Connected' && server.error === undefined)}
+				/>
+				<Stat
+					label="Need you"
+					value={Array.countBy(props.servers, server => server.status !== 'Connected' || server.error !== undefined)}
+				/>
 			</div>
-		</section>
+			<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} />}>
+					<ServersContent onAdd={props.onAdd} />
+				</Suspense>
+			</CatchBoundary>
+		</Page>
 	)
 }
 
@@ -401,7 +427,7 @@ function Home() {
 					onTrue: () => [otherApps('gateway')]
 				})}
 			/>
-			<ServersPane />
+			<ServersPane onAdd={() => send({_tag: 'Open'})} servers={sorted} />
 			<AddDialog />
 		</div>
 	)
