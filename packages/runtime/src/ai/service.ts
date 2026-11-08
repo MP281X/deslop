@@ -12,6 +12,7 @@ export const AiProvider = Schema.Literals(['anthropic', 'openrouter', 'opencode-
 
 export class AiUnavailable extends Schema.TaggedError<AiUnavailable>()('AiUnavailable', {message: Schema.String}) {}
 
+type Refusal = typeof Refusal.Type
 const Refusal = Schema.fromJsonString(Schema.Struct({error: Schema.Struct({message: Schema.String})}))
 
 // Why an AI call through Gateway failed, in words for the person: Gateway's refusal ("Add an Anthropic key in Gateway"), which provider clients keep only in an unknown error's body, or the client's own message.
@@ -44,7 +45,7 @@ export class AiGateway extends Context.Service<
 				yield* KeyValueStore.KeyValueStore,
 				Schema.Record(Schema.String, Schema.RedactedFromValue(Schema.String))
 			)
-			const grants = yield* Ref.make<Record<string, Redacted.Redacted<string>>>(
+			const grants = yield* Ref.make<Record<string, Redacted.Redacted>>(
 				Option.getOrElse(yield* store.get('ai-gateway-grants'), () => ({}))
 			)
 			const lock = yield* Semaphore.make(1)

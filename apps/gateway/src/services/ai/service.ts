@@ -356,7 +356,7 @@ const make = Effect.gen(function* () {
 				failed
 			)
 		}),
-		setKey: Effect.fnUntraced(function* (id: string, provider: AiProvider, secret: Redacted.Redacted<string>) {
+		setKey: Effect.fnUntraced(function* (id: string, provider: AiProvider, secret: Redacted.Redacted) {
 			return yield* pipe(
 				Effect.gen(function* () {
 					const current = yield* loadKeys(id)
