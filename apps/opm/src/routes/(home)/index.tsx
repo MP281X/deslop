@@ -2,18 +2,28 @@ import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
-import {Button, HStack, Menu, Picker, SwipeActions, Text, Toolbar, ToolbarItem, useNativeState} from '@expo/ui/swift-ui'
 import {
+	Button,
+	HStack,
+	Image,
+	Menu,
+	Picker,
+	Section,
+	SwipeActions,
+	Text,
+	Toolbar,
+	ToolbarItem,
+	useNativeState
+} from '@expo/ui/swift-ui'
+import {
+	accessibilityHidden,
 	accessibilityLabel,
-	background,
 	clipShape,
-	disabled,
+	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
-	lineLimit,
 	menuOrder,
-	listRowSeparator,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	opacity,
@@ -29,7 +39,7 @@ import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemActions,
@@ -61,12 +71,75 @@ function postedOn(postedAt: number) {
 	)
 }
 
+// The last chapter read, with its place in the list so the top row can say what it resumes.
+function resumingOf(chapters: ChapterList) {
+	return pipe(
+		resumeOf(chapters),
+		Option.flatMap(found =>
+			Option.map(
+				Array.findFirst(chapters, chapter => chapter.number === found.number),
+				chapter => ({chapter, page: found.page})
+			)
+		)
+	)
+}
+
+// The one row above the list: where reading stopped, and how much of the chapter is left.
+function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page?: number) => void; page: number}) {
+	const pages = Number.max(props.chapter.pages.length, 1)
+	const done = props.chapter.reading?.done === true
+	const page = Number.clamp(props.page + 1, {maximum: pages, minimum: 1})
+	return (
+		<Item
+			onPress={() => props.onOpen(props.chapter.number, props.page)}
+			modifiers={[
+				...itemRow,
+				accessibilityLabel(
+					Boolean.match(done, {
+						onFalse: () => `Continue reading Chapter ${props.chapter.number}, page ${page} of ${pages}`,
+						onTrue: () => `Read again Chapter ${props.chapter.number}, finished`
+					})
+				)
+			]}
+		>
+			<ItemMedia>
+				<Image
+					systemName={Boolean.match(done, {
+						onFalse: () => 'book.pages.fill' as const,
+						onTrue: () => 'arrow.counterclockwise' as const
+					})}
+					modifiers={[font({textStyle: 'title2'}), foregroundStyle(primary), accessibilityHidden(true)]}
+				/>
+			</ItemMedia>
+			<ItemContent>
+				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>
+					{Boolean.match(done, {onFalse: () => 'Continue Reading', onTrue: () => 'Read Again'})}
+				</Text>
+				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>
+					{`Chapter ${props.chapter.number} · ${Boolean.match(done, {
+						onFalse: () => `Page ${page} of ${pages}`,
+						onTrue: () => 'Finished'
+					})}`}
+				</Text>
+			</ItemContent>
+			<ItemActions>
+				<ChapterProgress
+					fraction={Boolean.match(done, {onFalse: () => props.page / pages, onTrue: () => 1})}
+					accent={primary}
+					read={colors.foreground}
+					modifiers={[frame({height: 18, width: 18})]}
+				/>
+			</ItemActions>
+		</Item>
+	)
+}
+
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
 function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (number: number) => void}) {
 	const read = useAtomSet(readAtom)
 	const done = props.chapter.reading?.done === true
 	return (
-		<SwipeActions modifiers={[...itemRow, listRowSeparator('hidden')]}>
+		<SwipeActions modifiers={itemRow}>
 			<Item onPress={() => props.onOpen(props.chapter.number)}>
 				<ItemMedia>
 					<Cover
@@ -74,26 +147,18 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						modifiers={[
 							frame({height: 68, width: 48}),
 							clipShape('roundedRectangle', radius),
-							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.55}))
+							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
+							accessibilityHidden(true)
 						]}
 					/>
 				</ItemMedia>
-				<ItemContent>
+				{/* Read rows recede as a whole, so the chapter number still leads the list. */}
+				<ItemContent modifiers={[opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.6}))]}>
 					<HStack spacing={space[2]}>
 						{props.fresh && <StatusDot status="live" tint={primary} />}
-						<ItemTitle
-							modifiers={[
-								Boolean.match(done, {onFalse: () => text.row, onTrue: () => text.body}),
-								foregroundStyle(
-									Boolean.match(done, {onFalse: () => colors.foreground, onTrue: () => colors.mutedForeground})
-								),
-								lineLimit(1)
-							]}
-						>
-							{`Chapter ${props.chapter.number}`}
-						</ItemTitle>
+						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					</HStack>
-					<ItemDescription modifiers={[lineLimit(1, {reservesSpace: true})]}>
+					<ItemDescription>
 						{Array.join(
 							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
@@ -159,7 +224,7 @@ export function ChaptersRoute(props: {
 		Array.map(chapter => chapter.number),
 		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
 	)
-	const resume = resumeOf(props.chapters)
+	const resume = resumingOf(props.chapters)
 	// A query matches a chapter's number from its start, or any part of its name.
 	const shown = pipe(
 		Array.sort(props.chapters, Order.flip(byNumber)),
@@ -169,13 +234,7 @@ export function ChaptersRoute(props: {
 		)
 	)
 	return (
-		<Toolbar
-			modifiers={[
-				navigationTitle(SERIES_NAMES[props.series]),
-				navigationBarTitleDisplayMode('large'),
-				background(colors.background)
-			]}
-		>
+		<Toolbar modifiers={[navigationTitle(SERIES_NAMES[props.series]), navigationBarTitleDisplayMode('large')]}>
 			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
 			<Toolbar
 				modifiers={[
@@ -187,46 +246,52 @@ export function ChaptersRoute(props: {
 					onEmpty: () =>
 						Boolean.match(String.isEmpty(needle), {
 							onFalse: () => (
-								<Empty modifiers={[accessibilityLabel('No matching chapters')]}>
+								<Empty>
 									<EmptyHeader>
 										<EmptyMedia systemImage="magnifyingglass" />
+										<EmptyTitle>No chapters match</EmptyTitle>
+										<EmptyDescription>Try another number or title.</EmptyDescription>
 									</EmptyHeader>
 								</Empty>
 							),
 							onTrue: () => (
-								<Empty modifiers={[accessibilityLabel('No chapters')]}>
+								<Empty>
 									<EmptyHeader>
 										<EmptyMedia systemImage="book.closed" />
+										<EmptyTitle>No chapters yet</EmptyTitle>
+										<EmptyDescription>New chapters appear here when they are posted.</EmptyDescription>
 									</EmptyHeader>
 								</Empty>
 							)
 						}),
 					onNonEmpty: chapters => (
 						<ItemGroup>
-							{Array.map(chapters, chapter => (
-								<ChapterRow
-									key={chapter.number}
-									chapter={chapter}
-									fresh={Option.exists(reached, number => chapter.number > number)}
-									onOpen={props.onOpen}
-								/>
-							))}
+							{/* A search is about the query, so the resume row waits until the full list is back. */}
+							{Boolean.match(String.isEmpty(needle), {
+								onFalse: () => undefined,
+								onTrue: () =>
+									Option.match(resume, {
+										onNone: () => undefined,
+										onSome: found => (
+											<Section>
+												<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
+											</Section>
+										)
+									})
+							})}
+							<Section>
+								{Array.map(chapters, chapter => (
+									<ChapterRow
+										key={chapter.number}
+										chapter={chapter}
+										fresh={Option.exists(reached, number => chapter.number > number)}
+										onOpen={props.onOpen}
+									/>
+								))}
+							</Section>
 						</ItemGroup>
 					)
 				})}
-				<Toolbar.Content>
-					<ToolbarItem placement="bottomBar">
-						<Button
-							label={Option.match(resume, {
-								onNone: () => 'Resume Reading',
-								onSome: found => `Resume Chapter ${found.number}`
-							})}
-							systemImage="book"
-							onPress={() => Option.map(resume, found => props.onOpen(found.number, found.page))}
-							modifiers={[labelStyle('iconOnly'), disabled(Option.isNone(resume))]}
-						/>
-					</ToolbarItem>
-				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
@@ -242,7 +307,11 @@ export function ChaptersRoute(props: {
 					<Menu
 						label={SERIES_NAMES[props.series]}
 						systemImage="books.vertical"
-						modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
+						modifiers={[
+							labelStyle('iconOnly'),
+							menuOrder('fixed'),
+							accessibilityLabel(`Series: ${SERIES_NAMES[props.series]}`)
+						]}
 					>
 						<Picker<Series>
 							label="Series"

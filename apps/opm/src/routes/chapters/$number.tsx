@@ -3,12 +3,18 @@ import {useAtomSet, useAtomValue} from '@effect/atom-react'
 import {Array, HashSet, Number, Option, pipe} from 'effect'
 
 import {Toolbar} from '@expo/ui/swift-ui'
-import {background, frame, navigationBarTitleDisplayMode, navigationTitle, padding} from '@expo/ui/swift-ui/modifiers'
+import {
+	accessibilityLabel,
+	frame,
+	navigationBarTitleDisplayMode,
+	navigationTitle,
+	padding
+} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {useRef, useState} from 'react'
 
-import {colors, space} from '@deslop/components-mobile/theme'
-import {Empty, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {space} from '@deslop/components-mobile/theme'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {readAtom, unreachableAtom} from '#lib/utils.ts'
@@ -41,10 +47,11 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 	if (!Array.isReadonlyArrayNonEmpty(shown)) {
 		if (gaveUp) {
 			return (
-				<Empty modifiers={[navigationTitle(''), background(colors.background)]}>
+				<Empty modifiers={[navigationTitle(`Chapter ${props.number}`), navigationBarTitleDisplayMode('inline')]}>
 					<EmptyHeader>
 						<EmptyMedia systemImage="book.closed" />
 						<EmptyTitle>Chapter Unavailable</EmptyTitle>
+						<EmptyDescription>This chapter isn’t available yet. Open it again from the chapters list.</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)
@@ -55,8 +62,9 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 				modifiers={[
 					frame({maxHeight: Infinity, maxWidth: Infinity}),
 					padding({all: space[4]}),
-					background(colors.background),
-					navigationTitle('')
+					navigationTitle(`Chapter ${props.number}`),
+					navigationBarTitleDisplayMode('inline'),
+					accessibilityLabel('Loading chapter')
 				]}
 			/>
 		)
