@@ -18,7 +18,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 - Scope sides: server blue, browser pink, iOS amber, CI violet. Deploy machines: dev spring blue, desktop autumn yellow. Kinds use tinted icons, not dots.
 - Error red; warning orange. Dots communicate problems and live activity, never health that needs no attention or the kind of a thing. Other identities draw from the same palette; magnitude uses opacity steps of one hue.
 - Burn-in: static chrome, app marks and tabs stay low-luminance. Bright colour belongs to changing information, not a permanently filled primary button in the bar.
-- Web UI uses the Sera shadcn style: Instrument Serif for the one display heading that names a view, Geist for every control, label and number, and Geist Mono for hosts, ids, times and figures. Component titles keep Sera's uppercase, tracked sans. Native UI keeps system fonts and Dynamic Type. Portfolio's editorial and printed document typography stays distinct.
+- Web UI uses the Sera shadcn style: Geist, semibold, for the one display heading that names a view, Geist for every control, label and number, and Geist Mono for hosts, ids, times and figures. Component titles keep Sera's uppercase, tracked sans. Native UI keeps system fonts and Dynamic Type. Portfolio's print document typography stays distinct.
 - Hosts, ids, times, figures and shortcuts in running text and table cells use tabular mono; inside a shadcn component they take its own font. Trailing values have fixed-width, right-aligned columns.
 
 ## Shape and layout

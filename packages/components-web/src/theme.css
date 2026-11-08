@@ -1,8 +1,6 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource/instrument-serif/400.css';
-@import '@fontsource/instrument-serif/400-italic.css';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
@@ -103,7 +101,7 @@
 
 @theme inline {
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-	--font-heading: 'Instrument Serif', ui-serif, Georgia, serif;
+	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 	--tracking-label: 0.14em;
 	--color-ring: var(--ring);
@@ -237,9 +235,13 @@
 		-webkit-user-select: none;
 	}
 
-	/* Sera headings are serif; everything else is the app's sans. */
+	/* The display heading uses the app's sans at display weight, not a second typeface. */
+	.font-heading {
+		font-weight: 600;
+	}
+
 	.cn-font-heading {
-		@apply font-heading;
+		@apply font-heading font-semibold;
 	}
 
 	/* A printed page, such as the portfolio's CV, flows onto as many sheets as it needs. */
