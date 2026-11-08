@@ -122,6 +122,7 @@ function MemberRow(props: {person: Person}) {
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
 					variant="destructive"
+					className="max-sm:h-11"
 					disabled={AsyncResult.isWaiting(removal)}
 					onClick={() => setConfirm(true)}
 				>

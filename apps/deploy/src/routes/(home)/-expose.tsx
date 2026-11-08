@@ -8,7 +8,14 @@ import {useState} from 'react'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle
+} from '@deslop/components-web/ui/dialog'
 import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
@@ -61,13 +68,13 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 				})
 			}}
 		>
-			<DialogTitle className="flex items-center gap-2">
-				<ApplicationIcon name={props.port.process ?? props.port.name} small />
-				Expose {props.port.process}
-				<Badge variant="outline" className="font-mono">
-					:{props.port.port}
-				</Badge>
-			</DialogTitle>
+			<DialogHeader>
+				<div className="flex items-center gap-2">
+					<ApplicationIcon name={props.port.process ?? props.port.name} small />
+					<DialogTitle>Expose {props.port.process}</DialogTitle>
+					<Badge variant="outline">:{props.port.port}</Badge>
+				</div>
+			</DialogHeader>
 			{/* Who reaches it, as tabs over the address: the tailnet's is fixed, a public one is typed. */}
 			<Tabs
 				value={kind}
@@ -75,11 +82,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					if (value === 'public' || value === 'tailnet') setKind(value)
 				}}
 			>
-				<TabsList className="w-full">
-					<TabsTrigger value="tailnet" disabled={pending}>
+				<TabsList className="w-full max-sm:group-data-horizontal/tabs:h-auto">
+					<TabsTrigger value="tailnet" disabled={pending} className="max-sm:h-11">
 						Tailnet
 					</TabsTrigger>
-					<TabsTrigger value="public" disabled={pending}>
+					<TabsTrigger value="public" disabled={pending} className="max-sm:h-11">
 						Public
 					</TabsTrigger>
 				</TabsList>
@@ -88,8 +95,8 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-tailnet">Address</FieldLabel>
 						<Input
 							id="expose-tailnet"
+							className="max-sm:h-11"
 							readOnly
-							className="font-mono"
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${props.port.port}`,
 								onTrue: () => ''
@@ -102,8 +109,8 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-public">Hostname</FieldLabel>
 						<Input
 							id="expose-public"
+							className="max-sm:h-11"
 							required={kind === 'public'}
-							className="font-mono"
 							placeholder="app.example.com"
 							autoCapitalize="none"
 							spellCheck={false}
@@ -116,9 +123,12 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			</Tabs>
 			<ResultError result={result} />
 			<DialogFooter>
-				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} />}>Cancel</DialogClose>
+				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} className="max-sm:h-11" />}>
+					Cancel
+				</DialogClose>
 				<Button
 					type="submit"
+					className="max-sm:h-11"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
 					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
@@ -140,7 +150,8 @@ export function ExposeDialog() {
 					if (!next) setTarget(Option.none())
 				}}
 			>
-				<DialogContent>
+				{/* Cancel already closes it, so the corner X would be the same action twice. */}
+				<DialogContent showCloseButton={false}>
 					<Expose key={open.port.id} items={open.snapshot.items} port={open.port} />
 				</DialogContent>
 			</Dialog>

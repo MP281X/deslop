@@ -5,14 +5,13 @@ import {renderToStaticMarkup} from 'react-dom/server'
 
 import {Error} from '#components/fallbacks.tsx'
 
-it('gives blocking failures a brief reason and visible app-accent recovery without exposing diagnostics', () => {
+it('gives blocking failures a brief reason and a destructive Retry without exposing diagnostics', () => {
 	const html = renderToStaticMarkup(
 		createElement(Error, {error: new TypeError('PRIVATE DIAGNOSTIC'), reset: () => undefined})
 	)
 	assert.include(html, 'role="alert"')
 	assert.include(html, 'Can’t load this view.')
-	assert.include(html, 'Retry')
-	assert.include(html, 'text-primary')
+	assert.match(html, /<button[^>]*bg-destructive\/10[^>]*>Retry<\/button>/u)
 	assert.notInclude(html, 'PRIVATE DIAGNOSTIC')
 	assert.notInclude(html, '0s')
 })

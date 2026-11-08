@@ -2,14 +2,14 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
+import {CopyIcon, PlusIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AppBar, AppBarAction} from '@deslop/components-web/app-bar'
+import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
@@ -34,6 +34,7 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
+import {cn} from '@deslop/components-web/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 
@@ -116,10 +117,15 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 }
 
 // Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
-function FirstImage(props: {sources: string[]}) {
+function FirstImage(props: {small?: boolean; sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-5 shrink-0 items-center justify-center">
+		<span
+			className={cn(
+				'flex shrink-0 items-center justify-center',
+				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
+			)}
+		>
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
@@ -130,8 +136,8 @@ function FirstImage(props: {sources: string[]}) {
 	)
 }
 
-// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
-function ServerIcon(props: {server: ConnectionInfo}) {
+// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first. Small, it takes the palette's icon slot so names line up with the actions'.
+function ServerIcon(props: {server: ConnectionInfo; small?: boolean}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
 		...Array.map(
@@ -144,7 +150,7 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
-	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
+	return <FirstImage key={Array.join(sources, ' ')} small={props.small} sources={sources} />
 }
 
 // The page has no detail pane, so a palette pick brings its row into view.
@@ -167,7 +173,6 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						render={
 							<Button
 								variant="ghost"
-								data-row
 								id={`server-${props.server.id}`}
 								type="button"
 								aria-label={`${props.server.name}, ${reasonText(props.server)}`}
@@ -183,7 +188,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						</span>
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
 							<span
-								className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums"
+								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
 								title="Tools"
 							>
 								{props.server.tools.length}
@@ -213,7 +218,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					</div>
 				</div>
 				<ContextMenuContent className="w-auto min-w-36">
-					<ContextMenuItem variant="destructive" onClick={() => setConfirm(true)}>
+					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={() => setConfirm(true)}>
 						Remove
 					</ContextMenuItem>
 				</ContextMenuContent>
@@ -260,11 +265,14 @@ function ServersContent() {
 function ServersPane() {
 	return (
 		<section aria-label="MCP servers" className="pb-safe-bottom flex min-h-0 flex-1 flex-col overflow-y-auto">
-			<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
-					<ServersContent />
-				</Suspense>
-			</CatchBoundary>
+			{/* A list of a few servers reads at a glance in a column centred on the page, as Auth's sign-ins do, not stretched across an ultrawide; a long list scrolls from its top. */}
+			<div className="m-auto flex w-full max-w-3xl flex-col px-2 py-6">
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+					<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} rowClassName="gap-3 px-3" />}>
+						<ServersContent />
+					</Suspense>
+				</CatchBoundary>
+			</div>
 		</section>
 	)
 }
@@ -333,8 +341,7 @@ function AddDialog() {
 
 function Home() {
 	const send = useAtomSet(addAtom.send)
-	const [copy, copyText] = useAtom(copyAtom(ENDPOINT))
-	const copied = AsyncResult.isWaiting(copy)
+	const copyText = useAtomSet(copyAtom(ENDPOINT))
 	const servers = useAtomValue(serversAtom)
 	useAtomValue(problemSinceAtom(serversAtom))
 	const value = AsyncResult.value(servers)
@@ -350,7 +357,7 @@ function Home() {
 			Array.filter(sorted, server => server.status !== 'Connected' || server.error !== undefined),
 			server => ({
 				detail: reasonText(server),
-				icon: <ServerIcon server={server} />,
+				icon: <ServerIcon server={server} small />,
 				id: server.id,
 				keywords: `${server.name} ${server.url}`,
 				label: server.name,
@@ -362,7 +369,7 @@ function Home() {
 	const all: PaletteGroup = {
 		items: Array.map(sorted, server => ({
 			detail: new URL(server.url).hostname,
-			icon: <ServerIcon server={server} />,
+			icon: <ServerIcon server={server} small />,
 			id: server.id,
 			keywords: `${server.name} ${server.url} ${Array.join(
 				Array.map(server.tools, tool => tool.name),
@@ -379,14 +386,7 @@ function Home() {
 				onFalse: () => [],
 				onTrue: () => [{icon: <PlusIcon />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
 			}),
-			{
-				icon: Boolean.match(copied, {
-					onFalse: () => <CopyIcon />,
-					onTrue: () => <CheckIcon className="text-primary" />
-				}),
-				label: 'Copy MCP URL',
-				run: () => copyText()
-			}
+			{icon: <CopyIcon />, label: 'Copy MCP URL', run: () => copyText()}
 		],
 		label: 'Actions'
 	}
@@ -400,24 +400,6 @@ function Home() {
 					onFalse: () => [actions, needsYou, all, otherApps('gateway')],
 					onTrue: () => [otherApps('gateway')]
 				})}
-				action={
-					<>
-						<AppBarAction
-							icon={Boolean.match(copied, {
-								onFalse: () => <CopyIcon />,
-								onTrue: () => <CheckIcon className="text-primary" />
-							})}
-							label="Copy MCP URL"
-							onClick={() => copyText()}
-						/>
-						<AppBarAction
-							disabled={!ready}
-							icon={<PlusIcon />}
-							label="Add server"
-							onClick={() => send({_tag: 'Open'})}
-						/>
-					</>
-				}
 			/>
 			<ServersPane />
 			<AddDialog />

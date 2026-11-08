@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -52,15 +52,15 @@ import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
+import type {ReactNode} from 'react'
 import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent} from '@deslop/components-mobile/screens'
-import {ClipboardSheet} from '@deslop/components-mobile/sheet'
+import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -92,17 +92,12 @@ import {
 	searchAtom,
 	session
 } from '#lib/utils.ts'
-import logo from '#routes/icon.png'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
 
 // Stash detects a link where Trips takes any text.
-const OFFERS = {
-	image: {question: 'Save the copied image?', symbol: 'photo'},
-	link: {question: 'Save the copied link?', symbol: 'link'},
-	text: {question: 'Save the copied link?', symbol: 'link'}
-} as const
+const OFFERS = {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'} as const
 
 // The title and one line of where it is from; the summary waits in the note, so the list scans fast.
 function Lines(props: {note: NoteItem}) {
@@ -278,21 +273,41 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
-function PasteSheet() {
+function PasteSheet(props: {children: ReactNode}) {
 	useAtomMount(clipboardReturnsAtom)
 	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
 	const send = useAtomSet(clipboardAtom.send)
 	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
 	return (
-		<ClipboardSheet
-			anchor={<AppTitle logo={logo} name="stash" />}
+		<ClipboardDialog
 			confirm="Save"
 			onAnswer={save => send({_tag: 'Answered', save})}
 			open={Option.isSome(offer)}
-			question={OFFERS[kind].question}
-			symbol={OFFERS[kind].symbol}
-			tint={primary}
-		/>
+			question={OFFERS[kind]}
+		>
+			{props.children}
+		</ClipboardDialog>
+	)
+}
+
+// The list on screen stays through an outage; a dot above it marks what stopped updating.
+function Outages() {
+	const notes = useAtomValue(notesAtom)
+	const refresh = useAtomRefresh(notesAtom)
+	const search = useAtomValue(searchAtom)
+	const refreshSearch = useAtomRefresh(searchAtom)
+	if (!AsyncResult.isFailure(notes) && !AsyncResult.isFailure(search)) return null
+	return (
+		<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
+			{AsyncResult.isFailure(notes) && <Problem label="Notes not updating" onRetry={refresh} />}
+			{AsyncResult.isFailure(search) && (
+				<Problem
+					label="Search unavailable"
+					saved={Option.isSome(pipe(search, AsyncResult.value, Option.flatten))}
+					onRetry={refreshSearch}
+				/>
+			)}
+		</HStack>
 	)
 }
 
@@ -315,105 +330,106 @@ export function HomeRoute(props: {
 	const refreshSearch = useAtomRefresh(searchAtom)
 	const found = pipe(search, AsyncResult.value, Option.flatten)
 	const [limit, setLimit] = useState(80)
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="Notes" onRetry={refresh} tint={primary} />
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name="Notes" onRetry={refresh} />
 	}
 	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
-		return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} tint={primary} />
+		return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} />
 	}
 	const notes = Array.filter(
-		loaded.value,
+		shown.success,
 		note =>
 			Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
 			(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
 			(props.kind === undefined || kindOf(note) === props.kind)
 	)
-	const tags = Array.map(tagCounts(loaded.value), entry => entry.tag)
+	const tags = Array.map(tagCounts(shown.success), entry => entry.tag)
 	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+		<Toolbar
+			modifiers={[navigationTitle('Stash'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
+		>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
-				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-					{AsyncResult.isFailure(search) && (
-						<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
-							<Problem label="Search unavailable" saved={Option.isSome(found)} onRetry={refreshSearch} />
-						</HStack>
-					)}
-					{Array.match(loaded.value, {
-						onEmpty: () => (
-							<Empty modifiers={[accessibilityLabel('Nothing saved')]}>
-								<EmptyHeader>
-									<EmptyMedia systemImage="tray" />
-								</EmptyHeader>
-							</Empty>
-						),
-						onNonEmpty: () => (
-							// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
-							<Overlay>
-								<ItemGroup>
-									{/* "all" clears the tag, and choosing the chosen tag again does too. */}
-									<ToggleGroup
-										value={props.tag ?? 'all'}
-										onValueChange={value =>
-											Boolean.match(value === 'all' || value === props.tag, {
-												onFalse: () => props.onTag(value),
-												onTrue: () => props.onTag()
-											})
-										}
-										tint={primary}
-										modifiers={[
-											listRowBackground(colors.background),
-											listRowSeparator('hidden'),
-											listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
-										]}
-									>
-										<ToggleGroupItem value="all" systemImage="tray">
-											all
-										</ToggleGroupItem>
-										{Array.map(tags, name => (
-											<ToggleGroupItem key={name} value={name}>
-												{name}
+				<PasteSheet>
+					<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+						<Outages />
+						{Array.match(shown.success, {
+							onEmpty: () => (
+								<Empty modifiers={[accessibilityLabel('Nothing saved')]}>
+									<EmptyHeader>
+										<EmptyMedia systemImage="tray" />
+									</EmptyHeader>
+								</Empty>
+							),
+							onNonEmpty: () => (
+								// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
+								<Overlay>
+									<ItemGroup>
+										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+										<ToggleGroup
+											value={props.tag ?? 'all'}
+											onValueChange={value =>
+												Boolean.match(value === 'all' || value === props.tag, {
+													onFalse: () => props.onTag(value),
+													onTrue: () => props.onTag()
+												})
+											}
+											tint={primary}
+											modifiers={[
+												listRowBackground(colors.background),
+												listRowSeparator('hidden'),
+												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
+											]}
+										>
+											<ToggleGroupItem value="all" systemImage="tray">
+												all
 											</ToggleGroupItem>
+											{Array.map(tags, name => (
+												<ToggleGroupItem key={name} value={name}>
+													{name}
+												</ToggleGroupItem>
+											))}
+										</ToggleGroup>
+										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+										{Array.map(Array.take(notes, limit), (note, position) => (
+											<NoteRow
+												key={note.id}
+												note={note}
+												onAppear={() => {
+													if (position === limit - 1) setLimit(limit + 80)
+												}}
+												onOpen={props.onOpen}
+												onRegenerate={id => regenerate(id)}
+												onRemove={id => remove(id)}
+											/>
 										))}
-									</ToggleGroup>
-									{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-									{Array.map(Array.take(notes, limit), (note, position) => (
-										<NoteRow
-											key={note.id}
-											note={note}
-											onAppear={() => {
-												if (position === limit - 1) setLimit(limit + 80)
-											}}
-											onOpen={props.onOpen}
-											onRegenerate={id => regenerate(id)}
-											onRemove={id => remove(id)}
-										/>
-									))}
-								</ItemGroup>
-								{filtered && Array.isReadonlyArrayEmpty(notes) && (
-									<Overlay.Content>
-										<Empty modifiers={[accessibilityLabel('No matching notes')]}>
-											{Boolean.match(String.isEmpty(query), {
-												onFalse: () => (
-													<EmptyHeader>
-														<EmptyMedia systemImage="magnifyingglass" />
-													</EmptyHeader>
-												),
-												onTrue: () => (
-													<EmptyHeader>
-														<EmptyMedia systemImage="tray" />
-													</EmptyHeader>
-												)
-											})}
-										</Empty>
-									</Overlay.Content>
-								)}
-							</Overlay>
-						)
-					})}
-				</VStack>
+									</ItemGroup>
+									{filtered && Array.isReadonlyArrayEmpty(notes) && (
+										<Overlay.Content>
+											<Empty modifiers={[accessibilityLabel('No matching notes')]}>
+												{Boolean.match(String.isEmpty(query), {
+													onFalse: () => (
+														<EmptyHeader>
+															<EmptyMedia systemImage="magnifyingglass" />
+														</EmptyHeader>
+													),
+													onTrue: () => (
+														<EmptyHeader>
+															<EmptyMedia systemImage="tray" />
+														</EmptyHeader>
+													)
+												})}
+											</Empty>
+										</Overlay.Content>
+									)}
+								</Overlay>
+							)
+						})}
+					</VStack>
+				</PasteSheet>
 				<Toolbar.Content>
 					<ToolbarItem placement="bottomBar">
 						<Button
@@ -426,11 +442,8 @@ export function HomeRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
-					<PasteSheet />
-				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session.machine} />
+					<AccountMenu session={session} />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
 					<FilterMenu kind={props.kind} onKind={props.onKind} />

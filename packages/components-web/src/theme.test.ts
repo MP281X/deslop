@@ -113,8 +113,7 @@ it.layer(NodeServices.layer)(test => {
 				['muted-foreground', '#666666'],
 				['accent', '#f0f0f0'],
 				['border', '#e5e5e5'],
-				['input', '#d9d9d9'],
-				['icon-tile', '#fafafa']
+				['input', '#d9d9d9']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}
@@ -149,8 +148,8 @@ it.layer(NodeServices.layer)(test => {
 			const darkDeclarations = [...declarations(dark), ...declarations(light)]
 			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
 			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#dcdcdc')
-			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#191818')
-			assert.strictEqual(resolved(darkDeclarations, 'border'), '#1a1a1a')
+			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#242323')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), '#222121')
 			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
 			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
 			assert.notInclude(source, '--green')

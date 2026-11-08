@@ -115,8 +115,9 @@ export const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		pipe(
 			Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => navigator.clipboard.writeText(value)}),
-			Effect.tapError(() => Effect.sync(() => toast.add({description: value, title: 'Cannot copy', type: 'error'}))),
-			Effect.andThen(Effect.sleep('1500 millis'))
+			// The palette closes as it runs, so the toast is the only place the copy can be confirmed.
+			Effect.tap(() => Effect.sync(() => toast.add({description: value, title: 'Copied', type: 'success'}))),
+			Effect.tapError(() => Effect.sync(() => toast.add({description: value, title: 'Cannot copy', type: 'error'})))
 		)
 	)
 )

@@ -18,6 +18,7 @@
 	"imports": {
 		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
+		"#routeTree.gen.ts": "./src/routeTree.gen.ts",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
 		"#services/*": "./src/services/*",

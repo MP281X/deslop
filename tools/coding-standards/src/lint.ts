@@ -802,7 +802,8 @@ export const lint: OxlintConfig = {
 		'typescript/no-confusing-void-expression': ['error', {ignoreVoidReturningFunctions: true}],
 		'typescript/no-deprecated': 'error',
 		'typescript/no-duplicate-type-constituents': 'error',
-		'typescript/no-floating-promises': 'error',
+		// `navigate` is TanStack Router's: a navigation settles its own failures in the route's error boundary, and its promise only says the loaders finished. tsgolint matches it by name only.
+		'typescript/no-floating-promises': ['error', {allowForKnownSafeCalls: [{from: 'file', name: 'navigate'}]}],
 		'typescript/no-for-in-array': 'error',
 		'typescript/no-generated-empty-object-type': 'error',
 		'typescript/no-misused-promises': ['error', {checksVoidReturn: {attributes: false}}],

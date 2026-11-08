@@ -22,7 +22,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
-import {Tooltip, TooltipContent, TooltipTrigger} from '#components/ui/tooltip.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
@@ -43,7 +42,10 @@ function AccountMenu() {
 	if (!AsyncResult.isSuccess(account)) return null
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger aria-label="Account" className="flex items-center justify-center max-sm:size-11">
+			<DropdownMenuTrigger
+				aria-label="Account"
+				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}
+			>
 				<Avatar size="sm">
 					<AvatarImage
 						src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(account.value.id)}?s=96`}
@@ -59,6 +61,7 @@ function AccountMenu() {
 				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					variant="destructive"
+					className="max-sm:h-11"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
@@ -87,29 +90,11 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// Static chrome stays quiet; its name is available without a permanently bright text button.
-export function AppBarAction(props: {disabled?: boolean; icon: ReactNode; label: string; onClick: () => void}) {
-	return (
-		<Tooltip>
-			<TooltipTrigger
-				render={<Button variant="ghost" size="icon" />}
-				aria-label={props.label}
-				className="max-sm:size-11"
-				disabled={props.disabled}
-				onClick={props.onClick}
-			>
-				{props.icon}
-			</TooltipTrigger>
-			<TooltipContent>{props.label}</TooltipContent>
-		</Tooltip>
-	)
-}
-
-// At 32px a 64-cell mark lands on whole device pixels of a 2x screen. `account` replaces the shared menu, as Auth's own does.
+// Actions live in the palette; `controls` only choose what the page shows, such as Deploy's range. `account` replaces the shared menu.
 export function AppBar(props: {
 	account?: ReactNode
-	action?: ReactNode
 	back?: {label: string; onClick: () => void}
+	controls?: ReactNode
 	icon: string
 	name: string
 	palette?: readonly PaletteGroup[]
@@ -132,7 +117,7 @@ export function AppBar(props: {
 			<header className="bg-background text-muted-foreground border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" className="flex shrink-0 items-center gap-2">
+						<a href="/" className="flex shrink-0 items-center gap-2 max-sm:h-11">
 							<img src={props.icon} alt="" className="pixelated size-8 opacity-60" />
 							<span className="text-sm font-semibold">{props.name}</span>
 						</a>
@@ -178,7 +163,7 @@ export function AppBar(props: {
 					})}
 				</div>
 				<div className="flex shrink-0 items-center gap-1.5">
-					{props.action}
+					{props.controls}
 					{props.account ?? <AccountMenu />}
 				</div>
 			</header>

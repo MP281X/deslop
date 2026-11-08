@@ -58,19 +58,17 @@ export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
 )
 
-export const minutesAtom = Atom.make<HistoryQuery['minutes']>(60)
-
-// One reader retains the last range and its samples while a newer request connects.
-export const metricsAtom = RpcClient.runtime.atom(get => {
-	const minutes = get(minutesAtom)
-	return withoutDeniedData(
-		get,
-		pipe(
-			RpcClient,
-			Effect.map(client => client('deploy.metrics', {minutes})),
-			Stream.unwrap,
-			Stream.map(histories => ({histories, minutes}))
-		),
-		WebRuntime.reconnecting
+// One reader per range, which comes from the URL; the page keeps showing the last range while a newer one loads.
+export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
+	RpcClient.runtime.atom(get =>
+		withoutDeniedData(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('deploy.metrics', {minutes})),
+				Stream.unwrap
+			),
+			WebRuntime.reconnecting
+		)
 	)
-})
+)

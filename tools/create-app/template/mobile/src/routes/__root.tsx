@@ -1,6 +1,6 @@
 import {useAtomMount} from '@effect/atom-react'
 
-import {Host, NavigationStack, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
+import {Host, NavigationStack, Text, Toolbar, VStack} from '@expo/ui/swift-ui'
 import {
 	background,
 	foregroundStyle,
@@ -13,19 +13,17 @@ import {
 import {Suspense} from 'react'
 
 import {colors, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {updateAtom} from '@deslop/runtime/mobile'
 
 import {primary} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
-import logo from '#routes/icon.png'
 
 export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
 		<Host style={{flex: 1}}>
 			<NavigationStack modifiers={[tint(primary), background(colors.background)]}>
-				<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
+				<Toolbar modifiers={[navigationTitle('template-app'), navigationBarTitleDisplayMode('large')]}>
 					<VStack modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity})]}>
 						<Suspense
 							fallback={
@@ -37,11 +35,6 @@ export function RootRoute() {
 							<HomeRoute />
 						</Suspense>
 					</VStack>
-					<Toolbar.Content>
-						<ToolbarItem placement="principal">
-							<AppTitle logo={logo} name="template-app" />
-						</ToolbarItem>
-					</Toolbar.Content>
 				</Toolbar>
 			</NavigationStack>
 		</Host>

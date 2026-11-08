@@ -9,7 +9,9 @@ import {RpcClientError} from 'effect/rpc'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import {Alert} from 'react-native'
 
-import {ISSUER, needsSignIn} from '#auth/lib/utils.ts'
+import {Account} from '#schema.ts'
+
+import {ISSUER, needsSignIn, rejected} from '#auth/lib/utils.ts'
 import {AuthError, ClientRegistration, Credentials, TokenResponse} from '#auth/schema.ts'
 import {activationsAtom, extra} from '#mobile/client.ts'
 
@@ -63,6 +65,10 @@ export function make(name: string, server: string, storage: Storage) {
 			yield* storage.clear
 			return yield* AuthError.make({message: `Sign in to ${name} again`})
 		}
+		// A proxy still waking after the phone resumes answers 5xx; that is an outage, not a refusal.
+		if (HttpClient.isTransientResponse(response)) {
+			return yield* AuthError.make({error: 'temporarily_unavailable', message: `Sign in to ${name}`})
+		}
 		// Once the server answers, the refresh token it rotated exists only in this response, so nothing stops it being saved.
 		return yield* Effect.uninterruptible(
 			Effect.gen(function* () {
@@ -106,7 +112,8 @@ export function make(name: string, server: string, storage: Storage) {
 					{onNone: () => renewed, onSome: credentials => Effect.succeed(credentials.accessToken)}
 				)
 			),
-			Effect.mapError(cause => AuthError.make({cause, message: `Sign in to ${name}`}))
+			// A dead socket or timeout while the phone resumes is an outage; only a missing or refused credential asks to sign in.
+			rejected(`Sign in to ${name}`)
 		)
 	}
 
@@ -238,8 +245,23 @@ export function make(name: string, server: string, storage: Storage) {
 	)
 	const signedIn = AtomMachine.matches(machine, 'SignedIn')
 
+	// Who is signed in, as the web app bar shows it: the app's server answers for its own bearer.
+	const account = runtime.atom(get => {
+		get(signedIn)
+		get(activationsAtom)
+		return pipe(
+			sessionToken(false),
+			Effect.flatMap(token =>
+				HttpClient.get(new URL('/auth/user', server).href, {headers: {authorization: `Bearer ${token}`}})
+			),
+			Effect.flatMap(HttpClientResponse.schemaBodyJson(Account)),
+			Effect.timeout('10 seconds')
+		)
+	})
+
 	return {
 		accessToken: sessionToken(false),
+		account,
 		machine,
 		// A refused stream renews the session before it opens again; only a refused refresh signs out.
 		renewing: <A, E, R>(live: Stream.Stream<A, E, R>) =>
@@ -286,3 +308,4 @@ export function make(name: string, server: string, storage: Storage) {
 }
 
 export type Session = ReturnType<typeof make>['machine']
+export type AppSession = ReturnType<typeof make>

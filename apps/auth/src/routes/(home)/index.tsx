@@ -3,12 +3,12 @@ import {useAtomMount, useAtomSet} from '@effect/atom-react'
 import {Array, Boolean, Option, Predicate} from 'effect'
 
 import {CheckIcon, XIcon} from '@phosphor-icons/react'
-import {createFileRoute} from '@tanstack/react-router'
+import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {Suspense} from 'react'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Field, FieldDescription, FieldError, FieldTitle} from '@deslop/components-web/ui/field'
+import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
@@ -20,6 +20,8 @@ import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
 type Answer = {accept: boolean; request: PendingAuthorization}
 
+const route = getRouteApi('/(home)/')
+
 // The last answer stays as one line under an empty code, ready for the next sign-in.
 function Enter(props: {
 	answered: Option.Option<Answer>
@@ -27,11 +29,11 @@ function Enter(props: {
 	state: 'Checking' | 'Found' | 'Missing' | 'Typing' | {failed: string}
 	typed: string
 }) {
+	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex max-w-sm flex-col gap-4">
+		<section className="flex w-full max-w-sm flex-col gap-4">
 			<Field data-invalid={invalid}>
-				<FieldTitle>Sign-in code</FieldTitle>
 				<InputOTP
 					id="code"
 					aria-label="Code of a sign-in to approve"
@@ -43,37 +45,26 @@ function Enter(props: {
 					pasteTransformer={typedCode}
 					pattern="^[A-Za-z]+$"
 					inputMode="text"
-					autoFocus={new URLSearchParams(location.search).has('code')}
+					autoFocus={linked}
 					autoComplete="off"
 					autoCapitalize="characters"
 					disabled={props.state === 'Checking'}
 					aria-invalid={invalid}
-					aria-describedby="code-description code-error"
+					aria-describedby="code-error"
 					containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
 				>
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot
-								key={index}
-								index={index}
-								aria-invalid={invalid}
-								className="h-11 flex-1 font-mono text-lg"
-							/>
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
 						))}
 					</InputOTPGroup>
 					<InputOTPSeparator />
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot
-								key={index}
-								index={index}
-								aria-invalid={invalid}
-								className="h-11 flex-1 font-mono text-lg"
-							/>
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
 						))}
 					</InputOTPGroup>
 				</InputOTP>
-				<FieldDescription id="code-description">From the app or device you are approving.</FieldDescription>
 				{props.state === 'Checking' && (
 					<p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
 						<Spinner />
@@ -111,7 +102,7 @@ function Enter(props: {
 	)
 }
 
-// The code stays in its field while the list shows what it asks for.
+// The code stays in its field while the grid shows what it asks for, both centred on the page; a tall grid scrolls from its top.
 function Page(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
@@ -120,17 +111,17 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<>
+		<div className="m-auto flex w-full flex-col items-center gap-6 py-6">
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
 				<AppList pending={props.pending} />
 			</Suspense>
-		</>
+		</div>
 	)
 }
 
 function SignIns() {
-	useAtomMount(linkedCodeAtom)
+	useAtomMount(linkedCodeAtom(route.useSearch({select: search => search.code ?? ''})))
 	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
 	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)

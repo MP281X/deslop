@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
 
 import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
@@ -14,19 +14,21 @@ import {
 	lineLimit,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
+	padding,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
+import type {ReactNode} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {FailureContent} from '@deslop/components-mobile/screens'
-import {ClipboardSheet} from '@deslop/components-mobile/sheet'
+import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
+import {Problem} from '@deslop/components-mobile/problem'
+import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -56,7 +58,6 @@ import {
 	tones,
 	undoAtom
 } from '#lib/utils.ts'
-import icon from '#routes/icon.png'
 import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 
@@ -143,24 +144,25 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	)
 }
 
-function PasteSheet() {
+function PasteSheet(props: {children: ReactNode}) {
 	useAtomMount(clipboardReturnsAtom)
 	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
 	const send = useAtomSet(clipboardAtom.send)
 	return (
-		<ClipboardSheet
-			anchor={<AppTitle logo={icon} name="trips" />}
-			confirm="Add booking"
-			detail={Boolean.match(
-				Option.exists(offer, current => current.kind === 'image'),
-				{onFalse: () => 'Copied text', onTrue: () => 'Copied screenshot'}
-			)}
+		<ClipboardDialog
+			confirm="Add"
 			onAnswer={save => send({_tag: 'Answered', save})}
 			open={Option.isSome(offer)}
-			question="Add from clipboard?"
-			symbol="ticket"
-			tint={primary}
-		/>
+			question={Boolean.match(
+				Option.exists(offer, current => current.kind === 'image'),
+				{
+					onFalse: () => 'Add a booking from the copied text?',
+					onTrue: () => 'Add a booking from the copied screenshot?'
+				}
+			)}
+		>
+			{props.children}
+		</ClipboardDialog>
 	)
 }
 
@@ -170,30 +172,38 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	const refresh = useAtomRefresh(bookingsAtom)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	if (AsyncResult.isFailure(loaded)) {
-		return <FailureContent cause={loaded.cause} name="Trips" onRetry={refresh} tint={primary} />
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
 	}
 	const current = Array.filter(
-		loaded.value,
+		shown.success,
 		booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now
 	)
-	const ahead = Array.filter(loaded.value, booking => startOf(booking) - 6 * HOUR > now)
+	const ahead = Array.filter(shown.success, booking => startOf(booking) - 6 * HOUR > now)
 	const past = Array.reverse(
-		Array.filter(loaded.value, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
+		Array.filter(shown.success, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
 	)
 	function daysOf(booking: Booking) {
 		return daysUntil(startOf(booking), now, zoneOf(booking))
 	}
+	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
-		<>
-			{Array.isReadonlyArrayEmpty(loaded.value) && (
+		<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+			{/* The bookings on screen stay through an outage; a dot above them marks that they stopped updating. */}
+			{AsyncResult.isFailure(loaded) && (
+				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
+					<Problem label="Bookings not updating" onRetry={refresh} />
+				</HStack>
+			)}
+			{Array.isReadonlyArrayEmpty(shown.success) && (
 				<Empty modifiers={[accessibilityLabel('No bookings')]}>
 					<EmptyHeader>
 						<EmptyMedia systemImage="ticket" />
 					</EmptyHeader>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(loaded.value) &&
+			{Array.isReadonlyArrayNonEmpty(shown.success) &&
 				Array.isReadonlyArrayEmpty(current) &&
 				Array.isReadonlyArrayEmpty(ahead) &&
 				Array.isReadonlyArrayEmpty(past) && (
@@ -239,7 +249,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 					)}
 				</ItemGroup>
 			)}
-		</>
+		</VStack>
 	)
 }
 
@@ -247,20 +257,21 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 export function HomeRoute(props: {onOpen: (id: string) => void}) {
 	const restore = useAtomSet(restoreAtom)
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
-			<Suspense
-				fallback={
-					<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
-				}
-			>
-				<Bookings onOpen={props.onOpen} />
-			</Suspense>
+		<Toolbar
+			modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
+		>
+			<PasteSheet>
+				<Suspense
+					fallback={
+						<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+					}
+				>
+					<Bookings onOpen={props.onOpen} />
+				</Suspense>
+			</PasteSheet>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
-					<PasteSheet />
-				</ToolbarItem>
 				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session.machine} />
+					<AccountMenu session={session} />
 				</ToolbarItem>
 				<MachineState machine={clipboardAtom} path="Answering">
 					{answering =>

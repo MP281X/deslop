@@ -4,7 +4,7 @@ import {DynamicColorIOS} from 'react-native'
 // Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
 export const colors = {
 	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#1a1a1a', light: '#e5e5e5'}),
+	border: DynamicColorIOS({dark: '#222121', light: '#e5e5e5'}),
 	card: DynamicColorIOS({dark: '#141313', light: '#fafafa'}),
 	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
 	foreground: DynamicColorIOS({dark: '#dcdcdc', light: '#0a0a0a'}),

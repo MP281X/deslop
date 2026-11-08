@@ -1,4 +1,4 @@
-import {useAtomSet} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
@@ -22,12 +22,13 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {Problem} from '@deslop/components-mobile/problem'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {AppTitle} from '@deslop/components-mobile/title'
 import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -41,9 +42,8 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {primary, readAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
-import icon from '#routes/icon.png'
 import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
@@ -150,6 +150,7 @@ export function ChaptersRoute(props: {
 	series: Series
 }) {
 	const query = useNativeState('')
+	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
 	const needle = String.toLowerCase(String.trim(searched))
 	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
@@ -168,7 +169,13 @@ export function ChaptersRoute(props: {
 		)
 	)
 	return (
-		<Toolbar modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline'), background(colors.background)]}>
+		<Toolbar
+			modifiers={[
+				navigationTitle(SERIES_NAMES[props.series]),
+				navigationBarTitleDisplayMode('large'),
+				background(colors.background)
+			]}
+		>
 			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
 			<Toolbar
 				modifiers={[
@@ -222,11 +229,14 @@ export function ChaptersRoute(props: {
 				</Toolbar.Content>
 			</Toolbar>
 			<Toolbar.Content>
-				<ToolbarItem placement="principal">
-					<AppTitle logo={icon} name="opm" />
-				</ToolbarItem>
+				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
+				{AsyncResult.isFailure(useAtomValue(chaptersAtom)) && (
+					<ToolbarItem placement="topBarLeading">
+						<Problem label="Chapters not updating" onRetry={refresh} />
+					</ToolbarItem>
+				)}
 				<ToolbarItem placement="topBarTrailing">
-					<AccountMenu session={session.machine} />
+					<AccountMenu session={session} />
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
 					<Menu

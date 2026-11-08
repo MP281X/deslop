@@ -140,6 +140,42 @@ it.layer(AtomRegistry.layer)(test => {
 			})
 		)
 	)
+
+	test.effect('shows no failure for one dropped read that its retry heals, only for a second in a row', () =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const clock = yield* Clock.Clock
+				const incoming = yield* Queue.unbounded<Effect.Effect<string, string>>()
+				const atom = Atom.make(get =>
+					pipe(
+						withoutDeniedData(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
+							Stream.retry(stream, Schedule.spaced('1 second'))
+						),
+						Stream.provideService(Clock.Clock, clock)
+					)
+				)
+				const registry = yield* AtomRegistry.AtomRegistry
+				yield* Atom.mount(atom)
+				const loaded = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(registry, atom), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
+				)
+				yield* Queue.offer(incoming, Effect.fail('Dropped before the first value'))
+				yield* TestClock.adjust('1 second')
+				assert.isFalse(AsyncResult.isFailure(registry.get(atom)))
+				yield* Queue.offer(incoming, Effect.succeed('private'))
+				yield* Fiber.join(loaded)
+				yield* Queue.offer(incoming, Effect.fail('Dropped on resume'))
+				yield* TestClock.adjust('1 second')
+				assert.isTrue(AsyncResult.isSuccess(registry.get(atom)))
+				const outage = yield* Effect.forkChild(
+					pipe(AtomRegistry.toStream(registry, atom), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+				)
+				yield* Queue.offer(incoming, Effect.fail('Still down'))
+				yield* Fiber.join(outage)
+				assert.deepStrictEqual(AsyncResult.value(registry.get(atom)), Option.some('private'))
+			})
+		)
+	)
 })
 
 it('redirects missing credentials, not authorization outages or denied access', () => {

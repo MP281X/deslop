@@ -1,4 +1,4 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {
 	Array,
@@ -16,18 +16,10 @@ import {
 	pipe
 } from 'effect'
 
-import {
-	CheckIcon,
-	CaretRightIcon,
-	CopyIcon,
-	GlobeIcon,
-	HardDrivesIcon,
-	DeviceMobileIcon,
-	DesktopIcon
-} from '@phosphor-icons/react'
-import {createFileRoute} from '@tanstack/react-router'
+import {CaretRightIcon, GlobeIcon, HardDrivesIcon, DeviceMobileIcon, DesktopIcon} from '@phosphor-icons/react'
+import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useEffect, useRef, useSyncExternalStore} from 'react'
+import {Suspense, useEffect, useRef} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -42,20 +34,18 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
-import {cn} from '@deslop/components-web/utils'
+import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {ageOf, copyAtom, durationOf, navigationAtom, nowAtom, overviewAtom, traceAtom} from '#lib/utils.ts'
-import type {OperationKey} from '#lib/utils.ts'
+import {ageOf, durationOf, navigationOf, nextSearch, nowAtom, overviewAtom, Search, traceAtom} from '#lib/utils.ts'
+import type {NavigationEvent, OperationKey} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
 
 // The side an operation starts on, in words, so a search or a row can name it.
 const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
-
-const COMPACT_LAYOUT = '(width < 80rem)'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -114,6 +104,7 @@ const clock = new Intl.DateTimeFormat(undefined, {
 	second: '2-digit'
 })
 const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
+const route = getRouteApi('/(home)/')
 
 type Attributes = typeof Attributes.Type
 const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
@@ -205,10 +196,10 @@ function hasDetail(span: Trace['spans'][number]) {
 	)
 }
 
-// The picked span's error, attributes and logs, each key over its value so a long key or URL never truncates.
+// The picked span's error, attributes and logs, each key over its value so a long key or URL never truncates; short pairs share a row, so the inspector fills its width before it scrolls.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	return (
-		<dl className="flex flex-col pb-1 font-mono text-xs">
+		<dl className="grid-cols-attributes grid gap-x-6 pb-1 font-mono text-xs">
 			{Array.map(
 				[
 					...Option.match(errorOf(props.span), {
@@ -219,7 +210,13 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 					...Array.map(props.span.logs, log => ({failed: log.status === 2, key: 'log', value: log.name}))
 				],
 				(line, index) => (
-					<div key={`${line.key}:${index}`} className="flex min-w-0 flex-col gap-0.5 py-1">
+					<div
+						key={`${line.key}:${index}`}
+						className={cn(
+							'flex min-w-0 flex-col gap-0.5 py-1',
+							(line.key === 'error' || line.key === 'log' || String.length(line.value) > 48) && 'col-span-full'
+						)}
+					>
 						<dt className={cn('text-muted-foreground wrap-anywhere', line.failed && 'text-destructive')}>{line.key}</dt>
 						<dd
 							className={cn('min-w-0 wrap-anywhere whitespace-pre-wrap select-text', line.failed && 'text-destructive')}
@@ -260,7 +257,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted/60 relative h-1.5 flex-1 rounded">
+			<span className="bg-muted/60 relative mx-2 h-1.5 flex-1 rounded">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
@@ -305,7 +302,7 @@ function SpanRow(props: {
 	const open = props.focus === props.span.spanId
 	if (!hasDetail(props.span)) {
 		return (
-			<div className="list-row flex h-8 w-full items-center gap-3 px-3 text-xs max-sm:h-11">
+			<div className="list-row flex h-8 w-full items-center gap-1 px-2.5 text-xs max-sm:h-11">
 				<SpanLine mark={props.mark(props.span)} span={props.span} />
 			</div>
 		)
@@ -313,11 +310,11 @@ function SpanRow(props: {
 	return (
 		<div data-selected={open} className="list-row">
 			<Button
-				data-row
-				variant="ghost"
+				size="lg"
+				variant={Boolean.match(open, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 				aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={() => props.onPick(props.span.spanId)}
-				className="aria-current:bg-accent aria-current:hover:bg-accent flex h-8 w-full items-center gap-3 px-3 py-0 text-left text-xs max-sm:h-11"
+				className="w-full max-sm:h-11"
 			>
 				<SpanLine mark={props.mark(props.span)} span={props.span} open={open} />
 			</Button>
@@ -325,8 +322,8 @@ function SpanRow(props: {
 	)
 }
 
-// One inspector: beside the waterfall on the G8, below it on smaller desktops, a separate phone screen.
-function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; spans: ReactNode}) {
+// One inspector: beside the waterfall from a large desktop up, below it on a smaller one, where its divider meets the list's; a separate phone screen.
+function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?: ReactNode; spans: ReactNode}) {
 	return (
 		<div className="inspection:grid-cols-trace inspection:grid-rows-1 grid min-h-0 flex-1 grid-rows-2 max-xl:grid-rows-1">
 			<section
@@ -334,6 +331,9 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; spans: Re
 				className={cn('flex min-h-0 min-w-0 flex-col overflow-y-auto', props.detailOnly === true && 'max-xl:hidden')}
 			>
 				{props.spans}
+				{props.problem !== undefined && (
+					<div className="bg-background sticky bottom-0 mt-auto flex shrink-0 justify-end px-3">{props.problem}</div>
+				)}
 			</section>
 			<section
 				aria-label="Span details"
@@ -348,7 +348,13 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; spans: Re
 	)
 }
 
-function TraceSpans(props: {detailOnly?: boolean; onPick: (id: string) => void; pickedSpan?: string; trace: Trace}) {
+function TraceSpans(props: {
+	detailOnly?: boolean
+	onPick: (id: string) => void
+	pickedSpan?: string
+	problem: ReactNode
+	trace: Trace
+}) {
 	const root = Array.findFirst(props.trace.spans, span => span.depth === 0)
 	const below = Array.filter(props.trace.spans, span => !Option.exists(root, top => top.spanId === span.spanId))
 	const services = Record.fromEntries(Array.map(props.trace.spans, span => [span.spanId, span.service] as const))
@@ -374,6 +380,7 @@ function TraceSpans(props: {detailOnly?: boolean; onPick: (id: string) => void; 
 	return (
 		<TraceLayout
 			detailOnly={props.detailOnly}
+			problem={props.problem}
 			details={Option.match(focus, {
 				onNone: () => (
 					<EmptyState label="Select a span" icon={<img src={icon} alt="" className="pixelated size-8 opacity-50" />} />
@@ -437,7 +444,13 @@ function Spans(props: {detailOnly?: boolean; id: string; onPick: (id: string) =>
 	return Option.match(value, {
 		onNone: () => null,
 		onSome: trace => (
-			<TraceSpans detailOnly={props.detailOnly} onPick={props.onPick} pickedSpan={props.pickedSpan} trace={trace} />
+			<TraceSpans
+				detailOnly={props.detailOnly}
+				onPick={props.onPick}
+				pickedSpan={props.pickedSpan}
+				problem={<TraceProblem id={props.id} />}
+				trace={trace}
+			/>
 		)
 	})
 }
@@ -536,18 +549,17 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 	return (
 		<div role="listitem" className="list-row" data-selected={props.active}>
 			<Button
-				data-row
 				size="lg"
-				variant="ghost"
-				className="aria-current:bg-accent aria-current:hover:bg-accent w-full justify-start text-left max-sm:h-11"
+				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+				className="w-full max-sm:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
 				{DEVICES[props.operation.runtime]}
-				<span className="min-w-0 flex-1 truncate font-mono">{props.operation.name}</span>
+				<span className="min-w-0 flex-1 truncate text-left font-mono">{props.operation.name}</span>
 				<span className="flex w-8 shrink-0 justify-end">
 					{props.operation.failures > 0 && (
-						<Badge variant="destructive" className="shrink-0 font-mono" title="Failed">
+						<Badge variant="destructive" className="shrink-0" title="Failed">
 							{props.operation.failures}
 							<span className="sr-only"> failed</span>
 						</Badge>
@@ -639,17 +651,19 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 	return (
 		<div role="listitem" className="list-row" data-selected={props.active}>
 			<Button
-				data-row
 				size="lg"
-				variant="ghost"
-				className="aria-current:bg-accent aria-current:hover:bg-accent w-full justify-start text-left max-sm:h-11"
+				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+				className="w-full max-sm:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="text-muted-foreground w-10 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
+				<span
+					className="text-muted-foreground w-10 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums"
+					title={clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(props.trace.time)), () => props.now))}
+				>
 					{ageOf(props.trace.time, props.now)}
 				</span>
-				<span className="text-muted-foreground min-w-20 flex-1 truncate font-mono text-xs">
+				<span className="text-muted-foreground min-w-20 flex-1 truncate text-left font-mono text-xs">
 					{String.slice(0, 8)(props.trace.id)}
 				</span>
 				<span className="flex w-4 shrink-0 justify-end">
@@ -729,78 +743,17 @@ function TracesPane(props: {
 	)
 }
 
-// The trace's full id copies from its short form, the button confirming in place.
-function CopyTrace(props: {id: string}) {
-	const [copy, copyText] = useAtom(copyAtom)
-	const copied = AsyncResult.isWaiting(copy)
-	return (
-		<>
-			<Button
-				variant="ghost"
-				size="icon"
-				className="max-sm:size-11"
-				aria-label={Boolean.match(copied, {onFalse: () => 'Copy trace ID', onTrue: () => 'Copied'})}
-				onClick={() => copyText(props.id)}
-			>
-				{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon className="text-primary" />})}
-			</Button>
-			<span role="status" className="sr-only">
-				{copied && 'Copied'}
-			</span>
-		</>
-	)
-}
-
-// The picked trace: its age, failure and duration, then its spans and the picked span's detail.
+// The picked trace's spans and the picked span's detail; its age, id and duration are already on its selected row.
 function TracePane(props: {
 	className?: string
 	detailOnly?: boolean
-	now: number
 	onPickSpan: (id: string) => void
-	pending: boolean
 	pickedSpan?: string
 	trace?: OperationTrace
 }) {
 	const trace = Option.fromUndefinedOr(props.trace)
 	return (
 		<section aria-label="Trace" className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-hidden', props.className)}>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
-				<span
-					className="text-muted-foreground w-14 shrink-0 font-mono text-xs whitespace-nowrap"
-					title={Option.getOrUndefined(
-						Option.map(trace, current =>
-							clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(current.time)), () => props.now))
-						)
-					)}
-				>
-					{Option.match(trace, {
-						onNone: () =>
-							Boolean.match(props.pending, {onFalse: () => 'Trace', onTrue: () => <Skeleton className="h-3 w-10" />}),
-						onSome: current => ageOf(current.time, props.now)
-					})}
-				</span>
-				<span className="min-w-0 flex-1 truncate font-mono text-xs" title={props.trace?.id}>
-					{Option.match(trace, {
-						onNone: () => props.pending && <Skeleton className="h-3 w-16" />,
-						onSome: current => String.slice(0, 8)(current.id)
-					})}
-				</span>
-				{Option.getOrUndefined(Option.map(trace, current => <TraceProblem id={current.id} />))}
-				{Option.match(trace, {
-					onNone: () => (
-						<span className="flex size-7 shrink-0 items-center justify-center max-sm:size-11">
-							{props.pending && <Skeleton className="size-4" />}
-						</span>
-					),
-					onSome: current => <CopyTrace id={current.id} />
-				})}
-				<span className="shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
-					{Option.match(trace, {
-						onNone: () => props.pending && <Skeleton className="h-3 w-12" />,
-						onSome: current => durationOf(current.durationMs)
-					})}
-				</span>
-			</header>
 			<Suspense fallback={<TraceLoading detailOnly={props.detailOnly} />}>
 				<OverviewContent>
 					{() =>
@@ -855,20 +808,12 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function Home() {
 	// Below desktop width, the same selection navigates one screen at a time.
-	const isMobile = useSyncExternalStore(
-		onChange => {
-			const query = window.matchMedia(COMPACT_LAYOUT)
-			query.addEventListener('change', onChange)
-			return () => query.removeEventListener('change', onChange)
-		},
-		() => window.matchMedia(COMPACT_LAYOUT).matches,
-		() => false
-	)
-	const navigation = AsyncResult.getOrElse(
-		AsyncResult.map(useAtomValue(navigationAtom.result), current => current.state),
-		() => ({path: 'Operations' as const, value: {selection: undefined}})
-	)
-	const send = useAtomSet(navigationAtom.send)
+	const isMobile = useMediaQuery('(width < 80rem)')
+	const navigation = navigationOf(route.useSearch())
+	const navigate = route.useNavigate()
+	function send(event: NavigationEvent) {
+		navigate({search: previous => nextSearch(previous, event)})
+	}
 	const pane = navigation.path
 	const root = useRef<HTMLDivElement>(null)
 	useEffect(() => {
@@ -911,7 +856,7 @@ function Home() {
 		})
 		return () => pending.disconnect()
 	}, [isMobile, pane, root])
-	const selection = navigation.value.selection?.operation
+	const selection = navigation.selection?.operation
 	const overview = useAtomValue(overviewAtom)
 	useAtomValue(problemSinceAtom(overviewAtom))
 	const refresh = useAtomRefresh(overviewAtom)
@@ -943,7 +888,7 @@ function Home() {
 	}))
 	const activeTrace = Option.flatMap(activeOperation, active =>
 		Option.orElse(
-			Option.flatMap(Option.fromUndefinedOr(navigation.value.selection?.traceId), selected =>
+			Option.flatMap(Option.fromUndefinedOr(navigation.selection?.traceId), selected =>
 				Array.findFirst(active.operation.traces, trace => trace.id === selected)
 			),
 			() => Array.head(active.operation.traces)
@@ -965,7 +910,7 @@ function Home() {
 	}
 	const pickedSpan = Option.getOrUndefined(
 		Option.flatMap(
-			Option.filter(Option.fromUndefinedOr(navigation.value.selection), selected =>
+			Option.filter(Option.fromUndefinedOr(navigation.selection), selected =>
 				Option.exists(activeTrace, trace => selected.traceId === trace.id)
 			),
 			selected => Option.fromUndefinedOr(selected.spanId)
@@ -1069,10 +1014,8 @@ function Home() {
 												</div>
 												<TracePane
 													className="min-w-0"
-													now={now}
 													onPickSpan={selectSpan}
 													pickedSpan={pickedSpan}
-													pending={Option.isNone(value)}
 													trace={Option.getOrUndefined(activeTrace)}
 												/>
 											</div>
@@ -1101,10 +1044,8 @@ function Home() {
 														<TracePane
 															className="min-h-0 flex-1"
 															detailOnly={pane === 'Span'}
-															now={now}
 															onPickSpan={selectSpan}
 															pickedSpan={pickedSpan}
-															pending={Option.isNone(value)}
 															trace={Option.getOrUndefined(activeTrace)}
 														/>
 													))
@@ -1123,4 +1064,4 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})

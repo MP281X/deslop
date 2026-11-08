@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Cause} from 'effect'
+import {Array, Boolean, Cause, Result} from 'effect'
 
 import {Button, Host, Image, Label, Rectangle, Text, VStack} from '@expo/ui/swift-ui'
 import {
@@ -17,6 +17,7 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
+import {AsyncResult} from 'effect/reactivity'
 import type {ComponentProps, ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
@@ -53,13 +54,20 @@ export function LoadingScreen() {
 	)
 }
 
-export function FailureContent(props: {
-	cause: Cause.Cause<unknown>
-	name: string
-	onRetry: () => void
-	tint: ColorValue
-}) {
-	const denied = Array.some(props.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+function deniedBy(cause: Cause.Cause<unknown>) {
+	return Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+}
+
+// What a reader shows: its value, kept through an ordinary outage, or the failure that blocks it when nothing has loaded or access was refused.
+export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Success<A, E>) {
+	if (AsyncResult.isSuccess(result)) return Result.succeed(result.value)
+	if (deniedBy(result.cause)) return Result.fail(result.cause)
+	return Result.fromOption(AsyncResult.value(result), () => result.cause)
+}
+
+// Retry takes the destructive hue of the failure it answers, not the app's accent.
+export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
+	const denied = deniedBy(props.cause)
 	return (
 		<VStack modifiers={FULL_SCREEN}>
 			<VStack spacing={space[2]}>
@@ -79,7 +87,7 @@ export function FailureContent(props: {
 						})}
 					</Text>
 				</Label>
-				<Button label="Retry" onPress={props.onRetry} modifiers={[tint(props.tint)]} />
+				<Button label="Retry" onPress={props.onRetry} modifiers={[tint(colors.destructive)]} />
 			</VStack>
 		</VStack>
 	)

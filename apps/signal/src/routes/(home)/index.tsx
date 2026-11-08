@@ -15,7 +15,7 @@ import {
 	WifiSlashIcon,
 	XIcon
 } from '@phosphor-icons/react'
-import {createFileRoute} from '@tanstack/react-router'
+import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import type {PointerEvent, ReactNode, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
@@ -28,8 +28,11 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/compo
 import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '@deslop/components-web/ui/popover'
 import {Spinner} from '@deslop/components-web/ui/spinner'
+import {Toggle} from '@deslop/components-web/ui/toggle'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {createCast} from './-cast.ts'
 import type {Cast} from './-cast.ts'
@@ -71,8 +74,8 @@ import {
 	threadFeedAtom,
 	runStateAtom,
 	seedAtom,
+	Search,
 	sourceAtom,
-	teamAtom,
 	usageAtom,
 	viewAtom
 } from '#lib/utils.ts'
@@ -85,8 +88,8 @@ import {tileOf} from '#services/world/lib/utils.ts'
 const ZOOM_STEP = 1.25
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 const chunksAtom = Atom.make(true)
+const route = getRouteApi('/(home)/')
 const USAGE_MODE = Boolean.match(import.meta.env.DEV, {onFalse: () => 'production', onTrue: () => 'development'})
-
 type Key = 'in' | 'leave' | 'next' | 'out' | 'previous'
 type Inspection = {actor: Option.Option<number>; entry: Option.Option<Experience>; scoped: boolean}
 
@@ -115,6 +118,14 @@ function teamColor(team: number) {
 function teamName(team: number) {
 	if (team === -1) return 'All models'
 	return TEAMS[team]?.name ?? `Team ${team}`
+}
+
+// The URL for a team, or for every team at -1.
+function teamSearch(team: number) {
+	return Option.match(Option.liftPredicate(team, Number.isGreaterThanOrEqualTo(0)), {
+		onNone: () => ({}),
+		onSome: entry => ({team: entry})
+	}) satisfies Search
 }
 
 // A team's units, in a stable order: by class, then by id.
@@ -189,13 +200,13 @@ function EntityReference(props: {id: number; tick: number; kind?: string; fallba
 	const member = useContext(Membership)[props.id]
 	const kind = props.kind ?? member?.kind
 	return (
-		<Button
-			variant="link"
+		<button
+			type="button"
 			title={Option.match(Option.fromUndefinedOr(kind), {
 				onNone: () => `Recorded entity #${props.id}`,
 				onSome: name => actorName(name, props.id)
 			})}
-			className="text-foreground pointer-events-auto inline-flex h-auto items-center gap-1 p-0 align-middle whitespace-normal underline decoration-dotted underline-offset-4"
+			className="pointer-events-auto inline-flex items-center gap-1 align-middle underline decoration-dotted underline-offset-4"
 			onClick={() =>
 				navigate.entity(
 					props.id,
@@ -212,7 +223,7 @@ function EntityReference(props: {id: number; tick: number; kind?: string; fallba
 				onNone: () => 'Recorded entity',
 				onSome: name => Boolean.match(name === 'home', {onFalse: () => fieldName(name), onTrue: () => 'Core'})
 			})}
-		</Button>
+		</button>
 	)
 }
 
@@ -237,10 +248,10 @@ function References(props: {text: string; tick: number}) {
 					return Option.match(String.match(/^\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)$/u)(part), {
 						onNone: () => <span key={index}>{part}</span>,
 						onSome: found => (
-							<Button
-								variant="link"
+							<button
+								type="button"
 								key={index}
-								className="pointer-events-auto h-auto p-0 underline decoration-dotted underline-offset-4"
+								className="pointer-events-auto underline decoration-dotted underline-offset-4"
 								onClick={() =>
 									navigate.place(
 										Option.getOrElse(Number.parse(found[1] ?? ''), () => 0),
@@ -250,7 +261,7 @@ function References(props: {text: string; tick: number}) {
 								}
 							>
 								this location
-							</Button>
+							</button>
 						)
 					})
 				}
@@ -467,21 +478,25 @@ function StructuredText(props: {text: string; tick: number}) {
 
 function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: boolean}) {
 	return (
-		<Collapsible className={cn('text-xs', props.compact !== true && 'relative mt-1')}>
+		<Collapsible className={cn(props.compact !== true && 'relative mt-1')}>
 			<CollapsibleTrigger
-				render={<Button variant="ghost" size="sm" />}
-				className={cn(
-					'group/disclosure text-muted-foreground max-w-full justify-start text-left whitespace-normal',
-					Boolean.match(props.compact === true, {
-						onFalse: () => 'h-auto px-0 py-1',
-						onTrue: () => 'absolute top-0 right-0 z-10 size-11 justify-center'
-					})
-				)}
+				render={
+					<Button
+						variant="ghost"
+						size={Boolean.match(props.compact === true, {onFalse: () => 'sm' as const, onTrue: () => 'icon' as const})}
+						className={Boolean.match(props.compact === true, {
+							onFalse: () => 'max-w-full',
+							onTrue: () => 'absolute top-0 right-0 z-10 size-11'
+						})}
+					/>
+				}
 			>
-				<CaretDownIcon className="size-4 shrink-0 group-data-panel-open/disclosure:rotate-180" />
-				<span className={cn('min-w-0', props.compact === true && 'sr-only')}>{props.title}</span>
+				<CaretDownIcon className="size-4 shrink-0 group-data-panel-open/button:rotate-180" />
+				<span className={cn('min-w-0 truncate', props.compact === true && 'sr-only')}>{props.title}</span>
 			</CollapsibleTrigger>
-			<CollapsibleContent className="space-y-3 py-2">{props.children}</CollapsibleContent>
+			<CollapsibleContent>
+				<div className="space-y-3 py-2 text-xs">{props.children}</div>
+			</CollapsibleContent>
 		</Collapsible>
 	)
 }
@@ -601,11 +616,7 @@ function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
 				</div>
 				{Option.getOrUndefined(
 					Option.map(commandPlace(props.outcome.command), at => (
-						<Button
-							variant="link"
-							className="underline underline-offset-4"
-							onClick={() => navigate.place(at.x, at.z, props.tick)}
-						>
+						<Button variant="link" onClick={() => navigate.place(at.x, at.z, props.tick)}>
 							{props.outcome.command._tag} here
 						</Button>
 					))
@@ -795,7 +806,7 @@ function PanelState(props: {
 	}
 	return (
 		<li>
-			<Empty className="py-6">
+			<Empty>
 				<EmptyHeader>
 					<EmptyTitle>{props.nothing}</EmptyTitle>
 				</EmptyHeader>
@@ -1133,7 +1144,7 @@ function Followed(props: {unit: UnitView}) {
 }
 
 function Sidebar(props: {close: () => void; clear: () => void; selection: Inspection; source: Source; view: View}) {
-	const filter = useAtomValue(teamAtom)
+	const filter = route.useSearch({select: search => search.team ?? -1})
 	const members = useContext(Membership)
 	const selected = Option.getOrUndefined(props.selection.entry)
 	const actor = Option.getOrUndefined(props.selection.actor)
@@ -1252,17 +1263,15 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 			className="absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4"
 		>
 			<div className="bg-popover flex shrink-0 rounded-md">
-				<Button
-					variant="ghost"
-					size="sm"
-					className={cn('min-h-11 min-w-11 px-1', chunks && 'text-primary')}
+				<Toggle
+					className="min-h-11 min-w-11"
 					aria-label="Team chunks"
-					aria-pressed={chunks}
+					pressed={chunks}
 					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
-					onClick={() => setChunks(shown => !shown)}
+					onPressedChange={setChunks}
 				>
-					<SquaresFourIcon className="size-4" />
-				</Button>
+					<SquaresFourIcon />
+				</Toggle>
 				<Button
 					variant="ghost"
 					size="icon"
@@ -1275,7 +1284,8 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 			</div>
 			<Button
 				variant="secondary"
-				className="bg-popover h-11 min-w-0 items-center gap-2 px-2 leading-none"
+				size="lg"
+				className="h-11 min-w-0"
 				aria-label={Boolean.match(live, {onFalse: () => 'Return to live', onTrue: () => 'Latest world view'})}
 				onClick={props.onLive}
 			>
@@ -1639,12 +1649,12 @@ function Spend() {
 				return (
 					<Popover>
 						<PopoverTrigger
-							render={<Button variant="ghost" className="bg-popover min-h-11 px-2 font-mono text-xs tabular-nums" />}
+							render={<Button variant="secondary" size="lg" className="min-h-11" />}
 							aria-label={`Total model spend: ${price}`}
 						>
 							{price}
 						</PopoverTrigger>
-						<PopoverContent align="end" className="gap-2">
+						<PopoverContent align="end">
 							<PopoverTitle>{fieldName(USAGE_MODE)} · reported spend</PopoverTitle>
 							<div className="flex h-2 gap-px overflow-hidden rounded-sm" aria-label="Cost by model">
 								{Array.map(
@@ -1689,41 +1699,40 @@ function Spend() {
 }
 
 function MapControls(props: {view: View; onTeam: (team: number) => void}) {
-	const team = useAtomValue(teamAtom)
 	return (
 		<nav
 			className="absolute inset-x-2 top-2 z-30 flex items-start justify-between gap-2 md:inset-x-4 md:top-4"
 			aria-label="Map controls"
 		>
-			<div className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Teams">
-				<Button
-					aria-label="All models"
-					aria-pressed={team === -1}
-					title="All models"
-					variant="secondary"
-					className={cn('bg-popover min-h-11 min-w-11 px-2', team === -1 && 'border-foreground/40')}
-					onClick={() => props.onTeam(-1)}
+			{/* The same map panel as the spectator controls below, so both float over the world alike. */}
+			<div className="bg-popover flex min-w-0 rounded-md">
+				<ToggleGroup
+					aria-label="Teams"
+					className="min-w-0"
+					value={[route.useSearch({select: search => `${search.team ?? -1}`})]}
+					onValueChange={values =>
+						Option.match(Option.flatMap(Array.head(values), Number.parse), {
+							onNone: () => undefined,
+							onSome: props.onTeam
+						})
+					}
 				>
-					<RobotIcon weight="light" className="size-5" />
-				</Button>
-				{Array.map(props.view.teams, entry => (
-					<Button
-						key={entry.id}
-						aria-label={entry.name}
-						aria-pressed={team === entry.id}
-						title={entry.name}
-						variant="secondary"
-						size="sm"
-						className={cn(
-							'bg-popover min-h-11 min-w-11 shrink-0 px-2 text-(--team) hover:text-(--team)',
-							team === entry.id && 'border-(--team)/60'
-						)}
-						style={{'--team': teamColor(entry.id)}}
-						onClick={() => props.onTeam(entry.id)}
-					>
-						<TeamIcon team={entry.id} className="size-5" />
-					</Button>
-				))}
+					<ToggleGroupItem value="-1" aria-label="All models" title="All models" className="min-h-11 min-w-11">
+						<RobotIcon weight="light" className="size-5" />
+					</ToggleGroupItem>
+					{Array.map(props.view.teams, entry => (
+						<ToggleGroupItem
+							key={entry.id}
+							value={`${entry.id}`}
+							aria-label={entry.name}
+							title={entry.name}
+							className="min-h-11 min-w-11"
+							style={{'--team': teamColor(entry.id)}}
+						>
+							<TeamIcon team={entry.id} className="size-5 text-(--team)" />
+						</ToggleGroupItem>
+					))}
+				</ToggleGroup>
 			</div>
 			<Spend />
 		</nav>
@@ -1744,18 +1753,19 @@ function World(props: {seed: number; view: View}) {
 	// The tile under the pointer, what the chunk worker said lies on it, and the pointer's place on screen.
 	const setGround = useAtomSet(groundAtom)
 	const setFollow = useAtomSet(followAtom)
-	const setTeam = useAtomSet(teamAtom)
+	const team = route.useSearch({select: search => search.team ?? -1})
+	const navigate = route.useNavigate()
 	const [source, setSource] = useAtom(sourceAtom)
 	const [panel, setPanel] = useState(Option.none<Inspection>)
 	const cursor = useAtomValue(cursorAtom)
 
 	const [portraits, setPortraits] = useState<Record<string, string>>({})
 	// What the key handler and the camera read, kept current outside render.
-	const latest = useRef({view: props.view})
+	const latest = useRef({team, view: props.view})
 	useEffect(() => {
-		latest.current = {view: props.view}
+		latest.current = {team, view: props.view}
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.invalidate()})
-	}, [props.view, world])
+	}, [props.view, team, world])
 
 	useEffect(() => {
 		const target = canvas.current
@@ -1826,7 +1836,6 @@ function World(props: {seed: number; view: View}) {
 		)
 		const chunksChanged = registry.subscribe(chunksAtom, renderer.invalidate)
 		const followChanged = registry.subscribe(followAtom, renderer.invalidate)
-		const teamChanged = registry.subscribe(teamAtom, renderer.invalidate)
 		const runChanged = registry.subscribe(runStateAtom, renderer.invalidate)
 		const sourceChanged = registry.subscribe(sourceAtom, renderer.invalidate)
 		const hoverChanged = registry.subscribe(hoverAtom, renderer.invalidate)
@@ -1843,10 +1852,10 @@ function World(props: {seed: number; view: View}) {
 					onSome: replay => replay.speed
 				})
 			)
-			renderer.aim(aimOf(current, registry.get(teamAtom), latest.current.view, active))
+			renderer.aim(aimOf(current, latest.current.team, latest.current.view, active))
 			renderer.focus(
 				Option.flatMap(current.id, id => cast.objectOf(id)),
-				teamColor(registry.get(teamAtom))
+				teamColor(latest.current.team)
 			)
 		})
 		// Once the camera has moved: health pips and the hover card follow their units. Zoomed far out, pips only clutter, so they hide.
@@ -1867,7 +1876,7 @@ function World(props: {seed: number; view: View}) {
 			}
 		})
 		function cycle(step: number) {
-			const own = unitsOf(latest.current.view.frame.units, registry.get(teamAtom))
+			const own = unitsOf(latest.current.view.frame.units, latest.current.team)
 			const current = registry.get(followAtom)
 			const index = Option.getOrElse(
 				Array.findFirstIndex(own, unit => Option.contains(current.id, unit.id)),
@@ -1894,7 +1903,7 @@ function World(props: {seed: number; view: View}) {
 			}
 		}
 		function pick(next: number) {
-			registry.set(teamAtom, next)
+			navigate({search: teamSearch(next)})
 			registry.set(followAtom, {free: Option.none(), id: Option.none()})
 			renderer.centre()
 		}
@@ -1931,7 +1940,6 @@ function World(props: {seed: number; view: View}) {
 			frames()
 			chunksChanged()
 			followChanged()
-			teamChanged()
 			runChanged()
 			sourceChanged()
 			hoverChanged()
@@ -1939,11 +1947,11 @@ function World(props: {seed: number; view: View}) {
 			cast.dispose()
 			renderer.dispose()
 		}
-	}, [registry, props.seed, setGround])
+	}, [registry, props.seed, setGround, navigate])
 
 	function followUnit(id: number) {
 		const unit = Option.getOrUndefined(Array.findFirst(props.view.frame.units, entry => entry.id === id))
-		if (unit?.team !== undefined) setTeam(unit.team)
+		if (unit?.team !== undefined) navigate({search: teamSearch(unit.team)})
 		setFollow({free: Option.none(), id: Option.some(id)})
 		setPanel(Option.some({actor: Option.some(id), entry: Option.none(), scoped: true}))
 		Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
@@ -2004,9 +2012,9 @@ function World(props: {seed: number; view: View}) {
 	return (
 		<Navigation
 			value={{
-				core: (team, tick) => {
+				core: (owner, tick) => {
 					Option.match(
-						Array.findFirst(props.view.teams, entry => entry.id === team),
+						Array.findFirst(props.view.teams, entry => entry.id === owner),
 						{onNone: () => undefined, onSome: entry => setFollow({free: Option.some(entry.home), id: Option.none()})}
 					)
 					setSource(Option.some({from: tick, speed: 0}))
@@ -2076,8 +2084,8 @@ function World(props: {seed: number; view: View}) {
 							/>
 							<Overlay buildings={props.view.buildings} inspection={panel} units={props.view.frame.units} />
 							<MapControls
-								onTeam={team => {
-									setTeam(team)
+								onTeam={next => {
+									navigate({search: teamSearch(next)})
 									setFollow({free: Option.none(), id: Option.none()})
 									setPanel(before =>
 										Option.map(before, () => ({actor: Option.none(), entry: Option.none(), scoped: false}))
@@ -2156,4 +2164,4 @@ function Signal() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Signal})
+export const Route = createFileRoute('/(home)/')({component: Signal, validateSearch: WebRuntime.searchOf(Search)})

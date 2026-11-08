@@ -1,63 +1,42 @@
 import {assert, it} from '@effect/vitest'
 
-import {Effect} from 'effect'
+import {Array} from 'effect'
 
-import {AtomRegistry} from 'effect/reactivity'
-
-import {navigationAtom} from '#lib/utils.ts'
+import {navigationOf, nextSearch} from '#lib/utils.ts'
+import type {NavigationEvent, Search} from '#lib/utils.ts'
 
 const OPERATION = {app: 'deploy', name: 'Inventory.snapshot', runtime: 'server' as const}
 
-const fixture = Effect.gen(function* () {
-	const registry = yield* AtomRegistry.AtomRegistry
-	yield* Effect.acquireRelease(
-		Effect.sync(() => registry.mount(navigationAtom.result)),
-		unmount => Effect.sync(unmount)
+function follow(events: NavigationEvent[], search: Search = {}) {
+	return Array.reduce(events, search, nextSearch)
+}
+
+it('backs out one inspector level at a time without losing the selected operation, trace or span', () => {
+	assert.strictEqual(navigationOf({}).path, 'Operations')
+	const span = follow([
+		{_tag: 'Operation', operation: OPERATION},
+		{_tag: 'Trace', selection: {operation: OPERATION, traceId: 'second'}},
+		{_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}}
+	])
+	assert.strictEqual(navigationOf(span).path, 'Span')
+	const backs = Array.scan(Array.replicate({_tag: 'Back'} as const, 4), span, nextSearch)
+	assert.deepStrictEqual(
+		Array.map(Array.drop(backs, 1), search => navigationOf(search).path),
+		['Trace', 'Traces', 'Operations', 'Operations']
 	)
-	return yield* AtomRegistry.getResult(registry, navigationAtom.ref)
+	for (const search of backs) {
+		assert.deepStrictEqual(navigationOf(search).selection, {operation: OPERATION, spanId: 'child', traceId: 'second'})
+	}
 })
 
-it.layer(AtomRegistry.layer)(test => {
-	test.effect(
-		'backs out one inspector level at a time without losing the selected operation, trace or span',
-		Effect.fnUntraced(function* () {
-			const navigation = yield* fixture
-			assert.strictEqual((yield* navigation.snapshot).state.state.path, 'Operations')
-			yield* navigation.send({_tag: 'Operation', operation: OPERATION})
-			assert.strictEqual((yield* navigation.snapshot).state.state.path, 'Traces')
-			yield* navigation.send({_tag: 'Trace', selection: {operation: OPERATION, traceId: 'second'}})
-			assert.strictEqual((yield* navigation.snapshot).state.state.path, 'Trace')
-			yield* navigation.send({_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}})
-			assert.strictEqual((yield* navigation.snapshot).state.state.path, 'Span')
-			for (const pane of ['Trace', 'Traces', 'Operations']) {
-				yield* navigation.send({_tag: 'Back'})
-				const snapshot = yield* navigation.snapshot
-				assert.strictEqual(snapshot.state.state.path, pane)
-				assert.deepStrictEqual(snapshot.state.state.value.selection, {
-					operation: OPERATION,
-					spanId: 'child',
-					traceId: 'second'
-				})
-			}
-			yield* navigation.send({_tag: 'Back'})
-			assert.strictEqual((yield* navigation.snapshot).state.state.path, 'Operations')
-		})
-	)
-
-	test.effect(
-		'a new operation or trace cannot inherit the previous span selection',
-		Effect.fnUntraced(function* () {
-			const navigation = yield* fixture
-			yield* navigation.send({_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}})
-			yield* navigation.send({_tag: 'Trace', selection: {operation: OPERATION, traceId: 'third'}})
-			assert.deepStrictEqual((yield* navigation.snapshot).state.state.value.selection, {
-				operation: OPERATION,
-				traceId: 'third'
-			})
-			yield* navigation.send({_tag: 'Operation', operation: {...OPERATION, name: 'Metrics.current'}})
-			assert.deepStrictEqual((yield* navigation.snapshot).state.state.value.selection, {
-				operation: {...OPERATION, name: 'Metrics.current'}
-			})
-		})
+it('a new operation or trace cannot inherit the previous span selection', () => {
+	const trace = follow([
+		{_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}},
+		{_tag: 'Trace', selection: {operation: OPERATION, traceId: 'third'}}
+	])
+	assert.deepStrictEqual(navigationOf(trace).selection, {operation: OPERATION, traceId: 'third'})
+	assert.deepStrictEqual(
+		navigationOf(nextSearch(trace, {_tag: 'Operation', operation: {...OPERATION, name: 'Metrics.current'}})).selection,
+		{operation: {...OPERATION, name: 'Metrics.current'}}
 	)
 })

@@ -9,6 +9,7 @@ import {
 	Option,
 	Schema,
 	Stream,
+	String,
 	pipe
 } from 'effect'
 
@@ -17,7 +18,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import type {AtomRegistry} from 'effect/reactivity'
 import {requireNativeModule} from 'expo'
 import {Asset} from 'expo-asset'
-import {File} from 'expo-file-system'
+import {File, Paths} from 'expo-file-system'
 import {Alert} from 'react-native'
 
 import {isDenied, withoutDeniedData} from '@deslop/runtime/auth/utils'
@@ -169,5 +170,21 @@ export const assetAtom = Atom.family((module: number | string) =>
 			}),
 			asset => asset.localUri ?? asset.uri
 		)
+	)
+)
+
+// The account's GitHub picture, downloaded once, since SwiftUI images read local files.
+export const avatarAtom = Atom.family((id: string) =>
+	Atom.make(
+		Effect.gen(function* () {
+			const github = String.replace('github:', '')(id)
+			const file = new File(Paths.cache, `avatar-${github}.png`)
+			if (file.exists) return file.uri
+			const downloaded = yield* Effect.tryPromise({
+				catch: cause => DeviceError.make({cause, message: 'The account picture could not be downloaded'}),
+				try: () => File.downloadFileAsync(`https://avatars.githubusercontent.com/u/${github}?s=96`, file)
+			})
+			return downloaded.uri
+		})
 	)
 )

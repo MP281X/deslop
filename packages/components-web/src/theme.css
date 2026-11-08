@@ -31,8 +31,6 @@
 	--accent: #f0f0f0;
 	--border: #e5e5e5;
 	--input: #d9d9d9;
-	--icon-tile: #fafafa;
-	--icon-shadow: #0d0c0c;
 
 	--primary: var(--slate);
 	--destructive: var(--red);
@@ -50,7 +48,6 @@
 	--chart-3: var(--purple);
 	--chart-4: var(--pink);
 	--chart-5: var(--amber);
-	--chart-6: var(--blue);
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -85,30 +82,24 @@
 		--card: #141313;
 		--popover: #141313;
 		--primary-foreground: #0d0c0c;
-		--secondary: #191818;
-		--muted: #141313;
+		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
+		--secondary: #242323;
+		--muted: #242323;
 		--muted-foreground: #8c8c8c;
-		--accent: #191818;
-		--border: #1a1a1a;
+		--accent: #242323;
+		--border: #222121;
 		--input: #282727;
-		--icon-tile: #191818;
 	}
 }
 
 @theme inline {
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--font-weight-normal: 450;
-	--font-weight-medium: 450;
-	--font-weight-semibold: 450;
-	--text-xs: 0.875rem;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
-	--color-icon-tile: var(--icon-tile);
-	--color-icon-shadow: var(--icon-shadow);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -128,7 +119,6 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
-	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -150,11 +140,6 @@
 	--spacing-safe-right: env(safe-area-inset-right);
 	--spacing-safe-bottom: env(safe-area-inset-bottom);
 	--spacing-safe-left: env(safe-area-inset-left);
-	--spacing-port: 9ch;
-	--spacing-palette: calc(100dvh - 2rem);
-	/* Deploy's machine identity, used by machine labels and icons. */
-	--color-machine-dev: var(--machine-dev);
-	--color-machine-desktop: var(--machine-desktop);
 }
 
 /* Pixel art keeps its hard edges when scaled. */
@@ -183,33 +168,20 @@
 	}
 }
 
-/* A single shape contract even when a refreshed registry component ships a pill or circular avatar. Dots stay round. */
-[data-slot='badge'],
-[data-slot='avatar'],
-[data-slot='avatar-image'],
-[data-slot='avatar-fallback'],
-[data-slot='avatar']::after {
-	border-radius: var(--radius);
-}
-
-[data-slot='kbd'] {
-	font-family: var(--font-mono);
-	font-size: var(--text-xs);
-}
-
-[data-slot='button'][data-row] {
-	border-radius: 0;
-}
-
 @layer base {
 	* {
-		@apply border-border outline-none;
+		@apply border-border outline-ring/50;
+	}
+
+	body {
+		@apply bg-background text-foreground;
 	}
 
 	/* Every app is a full-height shell whose own panes scroll, so the document never does. */
 	html {
-		@apply bg-background text-foreground font-sans antialiased select-none;
-		font-weight: 450;
+		@apply font-sans antialiased select-none;
+		scrollbar-color: var(--border) transparent;
+		scrollbar-width: thin;
 		height: 100%;
 		overflow: hidden;
 		overscroll-behavior: none;
@@ -218,7 +190,6 @@
 
 	/* Popups are placed against the body, which clips them, so one reaching past the bottom can't scroll the app. */
 	body {
-		font-size: 14px;
 		position: relative;
 		height: 100%;
 		overflow: clip;
@@ -233,37 +204,6 @@
 			overflow: visible;
 		}
 	}
-
-	/* A plain link shows keyboard focus; the button-shaped ones bring their own ring. */
-	a:focus-visible {
-		@apply outline-ring outline-2 outline-offset-2;
-	}
-
-	a[data-slot='button']:focus-visible {
-		outline: none;
-	}
-
-	button:focus-visible,
-	summary:focus-visible,
-	[role='button']:focus-visible {
-		@apply outline-ring outline-2 outline-offset-2;
-	}
-
-	button[data-slot='button']:focus-visible {
-		outline: none;
-	}
-
-	::selection {
-		background-color: color-mix(in srgb, var(--primary) 30%, transparent);
-	}
-}
-
-/* Override the stock button's active translation without removing colour feedback. */
-@media (prefers-reduced-motion: reduce) {
-	button:active,
-	a[data-slot='button']:active {
-		translate: none;
-	}
 }
 
 /* iOS focuses small form controls by zooming the page. Keep mobile input text at its non-zooming size. */
@@ -273,21 +213,4 @@
 	select {
 		font-size: 1rem;
 	}
-}
-
-/* Scrollbar */
-::-webkit-scrollbar {
-	height: 6px;
-	width: 6px;
-}
-::-webkit-scrollbar-thumb {
-	background-color: var(--color-border);
-	border-radius: var(--radius);
-}
-::-webkit-scrollbar-corner,
-::-webkit-scrollbar-track {
-	background-color: transparent;
-}
-::-webkit-scrollbar-button {
-	display: none;
 }

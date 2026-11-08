@@ -82,6 +82,12 @@ export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext:
 	}
 }
 
+// A route's `validateSearch`: the view a link names, or the page's default view when the link no longer decodes.
+export function searchOf<S extends Schema.Decoder<object>>(schema: S) {
+	return (search: Record<string, unknown>) =>
+		Option.getOrElse(Schema.decodeOption(schema)(search), () => Schema.decodeSync(schema)({}))
+}
+
 // The page's router under StrictMode, mounted where makeRouter found #root.
 export function mount(app: {root: Element; router: AnyRouter}) {
 	const errors = AtomRegistry.make()

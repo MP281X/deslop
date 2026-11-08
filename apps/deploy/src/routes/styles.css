@@ -4,6 +4,14 @@
 @theme {
 	/* The two sidebars hold equal width; the processes between them are the narrower, secondary pane. */
 	--grid-template-columns-split: 35% 30% 35%;
+	/* A port chip's least width, so single ports line up while a hostname keeps its full name. */
+	--spacing-port: 7ch;
+}
+
+/* Each machine's identity, used by machine labels and icons. */
+@theme inline {
+	--color-machine-dev: var(--machine-dev);
+	--color-machine-desktop: var(--machine-desktop);
 }
 
 :root {

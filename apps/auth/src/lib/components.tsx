@@ -44,8 +44,7 @@ import {
 	minuteAtom,
 	minutesSince,
 	newest,
-	signInLabel,
-	timeLabel
+	signInLabel
 } from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
@@ -186,14 +185,14 @@ function ColumnHead(props: {column: Column; now: number}) {
 	)
 	const name = `${props.column.label}, ${detail}`
 	return (
-		<TableHead className="px-0.5">
+		<TableHead>
 			<span className="flex flex-col items-center gap-0.5">
 				{Boolean.match(props.column.pending, {
 					onFalse: () => (
 						<DropdownMenu>
 							<DropdownMenuTrigger
 								render={
-									<Button variant="ghost" size="icon-sm" className="max-sm:size-11" title={name} aria-label={name} />
+									<Button variant="ghost" size="icon" className="max-sm:size-11" title={name} aria-label={name} />
 								}
 							>
 								<ClientIcon client={props.column.client} />
@@ -207,6 +206,7 @@ function ColumnHead(props: {column: Column; now: number}) {
 								</DropdownMenuGroup>
 								<DropdownMenuItem
 									variant="destructive"
+									className="max-sm:h-11"
 									disabled={AsyncResult.isWaiting(disconnection)}
 									onClick={() => disconnect(props.column.families)}
 								>
@@ -241,11 +241,18 @@ function holds(column: Column, row: Row) {
 	return Array.some(column.resources, resources => reaches(resources, row.origin, row.web))
 }
 
-// Where a column's client holds the app, a dot in Auth's hue; where the waiting sign-in asks for it, the same dot breathing.
+// Whether the client could ever hold the app: a browser holds only web apps, and an iOS app only itself; an agent can hold any.
+function possible(column: Column, row: Row) {
+	if (column.client.kind === 'Browser') return row.web
+	return Option.match(column.client.app, {onNone: () => true, onSome: origin => origin === row.origin})
+}
+
+// Where a column's client holds the app, a dot in Auth's hue; where the waiting sign-in asks for it, the same dot breathing. A pairing that can't happen, like a browser and an iOS app, stays empty.
 function Cell(props: {column: Column; row: Row}) {
 	const held = holds(props.column, props.row)
+	if (!held && !possible(props.column, props.row)) return <TableCell className="w-7 max-sm:w-14" />
 	return (
-		<TableCell className="w-7 px-0 max-sm:w-14">
+		<TableCell className="w-7 max-sm:w-14">
 			<span className="flex justify-center">
 				{Boolean.match(held, {
 					onFalse: () => <StatusDot status="off" />,
@@ -374,10 +381,10 @@ const appListAtom = Atom.make(get =>
 	AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)})
 )
 
-// Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds.
+// Apps down, signed-in clients across: a dot where one holds the other. Every app that announced itself, then any other a sign-in holds; web apps first, then iOS apps.
 export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const data = useAtomSuspense(appListAtom).value
-	const rows: Row[] = [
+	const rows: Row[] = Array.sort(Order.flip(Order.mapInput(Order.Boolean, (row: Row) => row.web)))([
 		...Array.map(data.catalog, app => ({
 			name: app.name,
 			open: Option.some(app.open),
@@ -399,23 +406,15 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				web: false
 			}))
 		)
-	]
+	])
 	// Narrowing the apps narrows the clients to those holding one, so no column stands empty.
 	const columns = Array.filter(columnsOf(props.pending, data.signIns, data.catalog), column =>
 		Array.some(rows, row => holds(column, row))
 	)
 	return (
-		<section className="flex flex-1 flex-col gap-3" aria-label="Apps">
+		<section className="flex w-full max-w-sm flex-col gap-3" aria-label="Apps">
 			{/* A waiting sign-in's answer comes first, where the approving phone sees it without scrolling. */}
-			{Option.match(props.pending, {
-				onNone: () => null,
-				onSome: request => (
-					<>
-						<Answer request={request} />
-						<p className="text-muted-foreground font-mono text-xs">open until {timeLabel(request.expiresAt)}</p>
-					</>
-				)
-			})}
+			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(rows, {
 				onEmpty: () => (
 					<Empty>
@@ -426,10 +425,11 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 				),
 				onNonEmpty: () => (
 					<div className="flex flex-col gap-3">
-						<Table aria-label="Apps and the clients signed in to them" className="w-auto border-b">
+						<Table aria-label="Apps and the clients signed in to them">
 							<TableHeader>
-								<TableRow className="max-sm:h-11">
-									<TableHead className="bg-background sticky left-0 z-10 w-40">
+								{/* 48px rows on a phone leave each app's link a full 44px target above its divider. */}
+								<TableRow className="max-sm:h-12">
+									<TableHead>
 										<span className="text-muted-foreground text-xs">App</span>
 									</TableHead>
 									{Array.map(columns, column => (
@@ -439,8 +439,8 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 							</TableHeader>
 							<TableBody>
 								{Array.map(rows, row => (
-									<TableRow key={row.origin} className="max-sm:h-11">
-										<TableHead scope="row" className="bg-background sticky left-0 z-10 w-40">
+									<TableRow key={row.origin} className="max-sm:h-12">
+										<TableHead scope="row">
 											{Option.match(row.open, {
 												onNone: () => (
 													<span className="flex items-center gap-2 text-sm font-medium">
