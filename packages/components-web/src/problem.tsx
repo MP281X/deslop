@@ -47,7 +47,6 @@ const ageAtom = Atom.family((identity: number | string) =>
 // One problem belongs beside the affected content. The popup works with hover, keyboard and touch.
 export function Problem(props: {
 	className?: string
-	description?: string
 	label: string
 	reset?: () => void
 	since?: number
@@ -117,9 +116,6 @@ export function Problem(props: {
 						</Button>
 					)}
 				</div>
-				{props.description !== undefined && (
-					<p className="text-muted-foreground mt-1 text-xs leading-relaxed">{props.description}</p>
-				)}
 			</PopoverContent>
 		</Popover>
 	)

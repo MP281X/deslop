@@ -103,8 +103,7 @@ import {tileOf} from '#services/world/lib/utils.ts'
 
 const MAP_SURFACE =
 	'border-border bg-popover/95 text-popover-foreground supports-backdrop-filter:bg-popover/85 border backdrop-blur-md'
-const MAP_CONTROLS =
-	'border-border bg-background/80 supports-backdrop-filter:bg-background/60 text-foreground border backdrop-blur-md'
+const MAP_CONTROLS = 'border-border bg-background/95 text-foreground border backdrop-blur-md'
 const ZOOM_STEP = 1.25
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 const chunksAtom = Atom.make(true)
@@ -233,7 +232,13 @@ function Portrait(props: {className?: string; kind: string}) {
 	})
 }
 
-function EntityReference(props: {id: number; tick: number; kind?: string; fallback?: {x: number; z: number}}) {
+function EntityReference(props: {
+	fallback?: {x: number; z: number}
+	id: number
+	kind?: string
+	standalone?: boolean
+	tick: number
+}) {
 	const navigate = useContext(Navigation)
 
 	const member = useContext(Membership)[props.id]
@@ -248,7 +253,10 @@ function EntityReference(props: {id: number; tick: number; kind?: string; fallba
 			type="button"
 			data-inline="true"
 			title={name}
-			className="text-foreground decoration-border pointer-events-auto inline-flex items-center gap-1 align-middle underline underline-offset-4"
+			className={cn(
+				'text-foreground decoration-border pointer-events-auto inline-flex items-center gap-1 align-middle underline underline-offset-4',
+				props.standalone === true && 'min-h-11'
+			)}
 			onClick={() =>
 				navigate.entity(
 					props.id,
@@ -269,7 +277,7 @@ function EntityReference(props: {id: number; tick: number; kind?: string; fallba
 	)
 }
 
-function References(props: {text: string; tick: number}) {
+function References(props: {standalone?: boolean; text: string; tick: number}) {
 	const navigate = useContext(Navigation)
 	return (
 		<>
@@ -294,7 +302,10 @@ function References(props: {text: string; tick: number}) {
 								type="button"
 								key={index}
 								data-inline="true"
-								className="text-foreground decoration-border pointer-events-auto underline underline-offset-4"
+								className={cn(
+									'text-foreground decoration-border pointer-events-auto underline underline-offset-4',
+									props.standalone === true && 'inline-flex min-h-11 items-center'
+								)}
 								onClick={() =>
 									navigate.place(
 										Option.getOrElse(Number.parse(found[1] ?? ''), () => 0),
@@ -690,18 +701,24 @@ function EventDetails(props: {entry: Experience}) {
 					<>
 						<dt className="text-muted-foreground font-mono text-xs">Subject</dt>
 						<dd className="col-span-2 min-w-0 text-xs">
-							<EntityReference id={props.entry.subject} tick={props.entry.tick} />
+							<EntityReference id={props.entry.subject} standalone tick={props.entry.tick} />
 						</dd>
 					</>
 				)}
 				<dt className="text-muted-foreground font-mono text-xs">Place</dt>
 				<dd className="col-span-2 min-w-0 text-xs">
-					<References text={`(${props.entry.x}, ${props.entry.z})`} tick={props.entry.tick} />
+					<References standalone text={`(${props.entry.x}, ${props.entry.z})`} tick={props.entry.tick} />
 				</dd>
 			</dl>
-			<RecordDetails title="Complete record">
-				<StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
-			</RecordDetails>
+			{/* The complete record is offered only when it adds words the thread row did not already show. */}
+			{Boolean.match(String.trim(eventText(props.entry)) === String.trim(eventSummary(props.entry)), {
+				onFalse: () => (
+					<RecordDetails title="Complete record">
+						<StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
+					</RecordDetails>
+				),
+				onTrue: () => null
+			})}
 		</div>
 	)
 }
@@ -1344,7 +1361,7 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 				aria-label="Inspector"
 				className={cn(
 					// A panel holds dense text, so it stays opaque; only the small floating chrome blurs the world behind it.
-					'border-border bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col overflow-hidden border md:h-full md:max-h-full md:w-80',
+					'border-border bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col overflow-hidden border md:max-h-full md:w-80',
 					actor !== undefined && 'max-h-2/3 lg:w-160'
 				)}
 			>
@@ -1940,17 +1957,41 @@ function Spend() {
 	})
 }
 
+// A configuration warning is a sentence, not a timer: it names the cause and how to restore decisions.
+function ConfigurationNotice() {
+	return Option.match(Option.liftPredicate(useAtomValue(configurationAtom), Array.isReadonlyArrayNonEmpty), {
+		onNone: () => null,
+		onSome: items => {
+			const label = Array.join(
+				Array.map(items, notice => String.split(' · ')(notice)[0]),
+				' · '
+			)
+			return (
+				<Popover>
+					<PopoverTrigger render={<Button variant="ghost" size="sm" className="max-sm:h-11" />} aria-label={label}>
+						<WarningCircleIcon className="text-warning size-3.5 shrink-0" />
+						<span className="tracking-label hidden text-xs font-semibold uppercase md:inline">{label}</span>
+					</PopoverTrigger>
+					<PopoverContent align="end">
+						<PopoverTitle>{label}</PopoverTitle>
+						<p className="text-muted-foreground text-xs leading-relaxed">
+							Set OPENROUTER_API_KEY on the server run; local decisions may also be off there. This page never starts or
+							resumes paid inference.
+						</p>
+					</PopoverContent>
+				</Popover>
+			)
+		}
+	})
+}
+
 // The mark, name and honest world state stay a compact mark over the map, never a bar.
 function Identity() {
 	const source = useAtomValue(sourceAtom)
 	const status = useAtomValue(runStateAtom)
-	const notices = useAtomValue(configurationAtom)
-	const state = worldState(
-		Option.isNone(source),
-		AsyncResult.isFailure(status),
-		Option.isNone(AsyncResult.value(status)),
-		Option.getOrUndefined(AsyncResult.value(status))?.running === true
-	)
+	const live = Option.isNone(source)
+	const running = Option.getOrUndefined(AsyncResult.value(status))?.running === true
+	const state = worldState(live, AsyncResult.isFailure(status), Option.isNone(AsyncResult.value(status)), running)
 	return (
 		<div
 			className={cn(
@@ -1982,19 +2023,27 @@ function Identity() {
 					{state.label}
 				</span>
 			</span>
-			{Option.match(Option.liftPredicate(notices, Array.isReadonlyArrayNonEmpty), {
-				onNone: () => null,
-				onSome: items => (
-					<Problem
-						warning
-						label={Array.join(
-							Array.map(items, notice => String.split(' · ')(notice)[0]),
-							' · '
-						)}
-						description="Set OPENROUTER_API_KEY on the server run; local decisions may also be off there. This page never starts or resumes paid inference."
-					/>
-				)
+			{/* A historical view still owes the run's own state: the world may be live or stopped behind it. */}
+			{Boolean.match(live, {
+				onFalse: () => (
+					<>
+						<span aria-hidden="true" className="bg-border mx-0.5 h-3 w-px shrink-0" />
+						<span className="flex min-w-0 items-center gap-1.5">
+							<StatusDot status={Boolean.match(running, {onFalse: () => 'quiet', onTrue: () => 'live'})} />
+							<span
+								className={cn(
+									'tracking-label text-xs font-semibold uppercase',
+									Boolean.match(running, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-foreground'})
+								)}
+							>
+								{Boolean.match(running, {onFalse: () => 'Paused', onTrue: () => 'Live'})}
+							</span>
+						</span>
+					</>
+				),
+				onTrue: () => null
 			})}
+			<ConfigurationNotice />
 		</div>
 	)
 }
@@ -2422,9 +2471,11 @@ function World(props: {seed: number; view: View}) {
 								source={source}
 								tick={cursor}
 								threadOpen={Option.exists(panel, selection => !selection.scoped)}
-								onCentre={() =>
+								onCentre={() => {
+									// A dragged view is a free aim of its own; recentering drops it for the team's Core.
+									setFollow({free: Option.none(), id: Option.none()})
 									Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
-								}
+								}}
 								onLive={() => setSource(Option.none())}
 								onThreads={() =>
 									setPanel(before =>
