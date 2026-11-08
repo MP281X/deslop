@@ -52,7 +52,7 @@ export const layerPeerAuth = Layer.effectContext(
 		)
 		return Auth.makeContext(
 			Auth.of({
-				access: auth.access,
+				token: auth.token,
 				user: Effect.fnUntraced(function* (headers: Headers.Headers) {
 					if (Option.contains(expected, yield* hash(headers['authorization'] ?? ''))) return PEER
 					return yield* auth.user(headers)

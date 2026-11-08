@@ -81,7 +81,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 									Layer.succeedContext(
 										Auth.makeContext(
 											Auth.of({
-												access: () => Effect.fail(AuthError.make({message: 'Sign in first'})),
+												token: () => Effect.fail(AuthError.make({message: 'Sign in first'})),
 												user: () => Effect.fail(AuthError.make({message: 'Sign in first'}))
 											})
 										)

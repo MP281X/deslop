@@ -1,18 +1,20 @@
 import {NodeCrypto} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Layer, Ref, String, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, Ref, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {Headers} from 'effect/http'
+import {Jwks, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {SESSION_COOKIE} from '#services/tokens/lib/utils.ts'
+import {AccessClaims} from '@deslop/runtime/auth/schema'
+import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
+
 import {Tokens} from '#services/tokens/service.ts'
 
-const RESOURCE = 'https://scope.mp281x.xyz/mcp'
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 const USER = {incarnation: 'fixture', user: {id: 'github:42', name: 'octocat'}}
 
@@ -40,7 +42,8 @@ const open = Effect.gen(function* () {
 								})
 						})
 					)
-				)
+				),
+				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://issuer.mp281x.xyz/nested'})))
 			)
 		),
 		Tokens
@@ -52,7 +55,7 @@ const open = Effect.gen(function* () {
 			clientId: 'fixture',
 			clientName: 'Fixture',
 			redirectUri: 'http://127.0.0.1/callback',
-			resources: [RESOURCE]
+			resources: ['https://scope.mp281x.xyz/mcp']
 		},
 		USER
 	)
@@ -68,6 +71,28 @@ const open = Effect.gen(function* () {
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
+	test.effect(
+		'uses the configured Auth origin as the token issuer',
+		Effect.fnUntraced(function* () {
+			const fixture = yield* open
+			const granted = yield* fixture.exchange
+			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
+			assert.strictEqual(
+				(yield* Effect.provideService(
+					Jwt.verifyWithKeySet(AccessClaims, granted.tokens.access_token, {
+						algorithms: ['EdDSA'],
+						audience: 'deslop',
+						issuer: 'https://issuer.mp281x.xyz/api/auth',
+						typ: 'at+jwt'
+					}),
+					Jwks.Jwks,
+					yield* Jwks.makeLocal(fixture.tokens.jwks)
+				)).claims.iss,
+				'https://issuer.mp281x.xyz/api/auth'
+			)
+		})
+	)
+
 	test.effect(
 		'accepts only a matching browser credential for replacement or sign-out',
 		Effect.fnUntraced(function* () {
@@ -87,10 +112,7 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 					USER
 				)
 				assert.deepStrictEqual(
-					yield* fixture.tokens.access(
-						Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`}),
-						RESOURCE
-					),
+					yield* fixture.tokens.verify(Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`})),
 					USER
 				)
 			}
@@ -118,10 +140,7 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 			yield* TestClock.adjust('2 minutes')
 			yield* Ref.set(fixture.failing, true)
 			assert.deepStrictEqual(
-				yield* fixture.tokens.access(
-					Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`}),
-					RESOURCE
-				),
+				yield* fixture.tokens.verify(Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`})),
 				USER
 			)
 		})

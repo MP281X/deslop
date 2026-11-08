@@ -23,7 +23,7 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER, adminIds, isAdmin, localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {DEVELOPER, adminIds, bearerOf, isAdmin, localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -61,7 +61,6 @@ export class People extends Context.Service<
 		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
 	}
 >()('@deslop/auth/services/people/service/People') {
-	// People also answers `Auth`: a token or session counts only while its account is allowed.
 	static readonly layer = Layer.effectContext(
 		Effect.gen(function* () {
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Members)
@@ -308,21 +307,31 @@ export class People extends Context.Service<
 					RpcOwner.of((effect, request) =>
 						Effect.flatMap(sessionOwner(request.headers), owner => Effect.provideService(effect, CurrentOwner, owner))
 					)
-				),
-				Context.merge(
-					Auth.makeContext(
-						Auth.of({
-							access: Effect.fn('Auth.access')(function* (headers: Headers.Headers, resource: string) {
-								if (local) return DEVELOPER
-								return (yield* allowed(yield* tokens.access(headers, resource))).user
-							}),
-							user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-								return (yield* sessionOwner(headers)).user
-							})
-						})
-					)
 				)
 			)
 		})
 	)
 }
+
+// Auth answers its own requests: its browser session, or an access token it signed whose sign-in is still live.
+export const layerIssuerAuth = Layer.effectContext(
+	Effect.gen(function* () {
+		const tokens = yield* Tokens
+		const people = yield* People
+		const local = yield* localAuth
+		return Auth.makeContext(
+			Auth.of({
+				token: (headers: Headers.Headers) => rejected('Sign in first')(Effect.fromOption(bearerOf(headers))),
+				user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
+					if (local) return DEVELOPER
+					return (yield* people.allowed(
+						yield* Boolean.match(headers['authorization'] !== undefined, {
+							onFalse: () => tokens.session(headers),
+							onTrue: () => tokens.verify(headers)
+						})
+					)).user
+				})
+			})
+		)
+	})
+)

@@ -14,25 +14,52 @@ import {
 	pipe
 } from 'effect'
 
+import {Base64Url} from 'effect/encoding'
 import {Headers, HttpClient} from 'effect/http'
 import {AsyncResult} from 'effect/reactivity'
 import type {Atom, AtomRegistry} from 'effect/reactivity'
 import {RpcMiddleware} from 'effect/rpc'
 
 import type {User} from '#auth/schema.ts'
-import {AuthError} from '#auth/schema.ts'
+import {AuthError, ClientInfo} from '#auth/schema.ts'
 
-// Native apps and MCP clients sign in here; backends verify their bearer here.
+// The Auth iOS apps sign in through.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
 
 // Auth serves and advertises its OAuth endpoints under this path, which its clients call.
 export const ISSUER_PATH = '/api/auth'
 export const ISSUER = `${AUTH_URL}${ISSUER_PATH}`
 
-// An app's server asks Auth about a bearer at `VERIFY_PATH` and about its session cookie at `SESSION_PATH`; at start it announces itself at `APPS_PATH`.
+// An app's server announces itself here at start.
 export const APPS_PATH = '/api/apps'
-export const SESSION_PATH = '/auth/session'
-export const VERIFY_PATH = '/auth/verify'
+
+// Every host's browser session: on an app, the id of the session its server keeps.
+export const SESSION_COOKIE = '__Host-session'
+
+// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
+export function bearerOf(headers: Headers.Headers) {
+	return Option.flatMapNullishOr(
+		String.match(/^bearer +(?<token>\S+) *$/iu)(headers['authorization'] ?? ''),
+		found => found.groups?.['token']
+	)
+}
+
+// Auth's OAuth endpoints under its issuer, and the public keys every app checks an access token's signature with.
+export const AUTHORIZE_PATH = `${ISSUER_PATH}/oauth2/authorize`
+export const TOKEN_PATH = `${ISSUER_PATH}/oauth2/token`
+export const REVOKE_PATH = `${ISSUER_PATH}/oauth2/revoke`
+export const JWKS_PATH = '/.well-known/jwks.json'
+
+// Where Auth returns an app's own sign-in, web or iOS, which the app's server finishes.
+export const CALLBACK_PATH = '/auth/callback'
+
+// An access token lives ten minutes, so a removed account or signed-out session stops working everywhere within that time.
+export const ACCESS_SECONDS = 600
+
+// A client id is its registration, encoded: anyone may register, and Auth checks the callbacks again at authorize.
+export function clientIdOf(client: ClientInfo) {
+	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientInfo))(client))
+}
 
 export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
 
@@ -51,7 +78,7 @@ export function isAdmin(admins: readonly string[], id: string) {
 	return Array.contains(admins, String.replace('github:', '')(id))
 }
 
-// Auth offers GitHub or a code another device approves, then returns to `next` on any mp281x.xyz app.
+// The app's own server starts the sign-in through Auth and returns to `next`.
 export function signInUrl(next: string) {
 	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }

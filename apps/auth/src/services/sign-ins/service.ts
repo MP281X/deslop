@@ -73,10 +73,12 @@ const deliver = Effect.fnUntraced(function* (input: {
 		Client: client =>
 			Option.match(approver, {
 				onNone: () =>
-					Effect.succeed(Collected.cases.Redirect.make({url: callbackUrl(client.request, {error: 'access_denied'})})),
+					Effect.succeed(
+						Collected.cases.Redirect.make({url: callbackUrl(client.request, {error: 'access_denied'}, tokens.issuer)})
+					),
 				onSome: user =>
 					Effect.map(tokens.issue(client.request, user), code =>
-						Collected.cases.Redirect.make({url: callbackUrl(client.request, {code})})
+						Collected.cases.Redirect.make({url: callbackUrl(client.request, {code}, tokens.issuer)})
 					)
 			})
 	})

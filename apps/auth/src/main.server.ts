@@ -16,7 +16,7 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
-import {People} from '#services/people/service.ts'
+import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
@@ -34,6 +34,7 @@ const layerServices = pipe(
 )
 
 CliRuntime.runApp({
+	auth: Layer.provide(layerIssuerAuth, layerServices),
 	icon,
 	// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
 	middleware: app => Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'")),

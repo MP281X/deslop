@@ -1,16 +1,101 @@
+import {NodeCrypto} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import type {Schema} from 'effect'
-import {Boolean, ConfigProvider, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
+import {
+	Boolean,
+	Clock,
+	ConfigProvider,
+	Context,
+	Deferred,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Queue,
+	Redacted,
+	Ref,
+	Schema,
+	pipe
+} from 'effect'
 
+import {Signature} from 'effect/crypto'
 import {Headers, HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {Jwk, Jwt} from 'effect/jose'
+import {KeyValueStore} from 'effect/persistence'
 import {Rpc, RpcMessage} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
 import {Auth, HttpAuth, layerMcpAuth} from './service.ts'
 
-import {CurrentUser, DEVELOPER, RpcAuth} from '#auth/lib/utils.ts'
-import {AuthError} from '#auth/schema.ts'
+import {CurrentUser, DEVELOPER, RpcAuth, SESSION_COOKIE, needsSignIn} from '#auth/lib/utils.ts'
+import {AccessClaims, AuthError} from '#auth/schema.ts'
+import {Sessions} from '#auth/sessions.ts'
+
+const AUTH = 'https://auth.mp281x.xyz'
+
+// Claims as Auth signs them, with any audience, so a token meant for something else can be made too.
+type AnyClaims = typeof AnyClaims.Type
+const AnyClaims = Schema.Struct({...AccessClaims.fields, aud: Schema.String})
+
+type Sign = (claims?: Partial<AnyClaims>) => Effect.Effect<string, Jwt.JwtError>
+
+// Auth as an app reaches it: its key set, which can go down, and its token endpoint, answered by `token`.
+const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign: Sign) => Effect.Effect<Response>) {
+	const pair = yield* Jwk.generateKeyPair({algorithm: 'EdDSA', kid: 'fixture'})
+	const key = yield* Jwk.importPrivate(pair.privateKey, 'EdDSA')
+	const signature = yield* Signature.Signature
+	const down = yield* Ref.make(false)
+	const sign: Sign = Effect.fnUntraced(function* (claims = {}) {
+		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
+		const signed = yield* pipe(
+			Jwt.sign(
+				AnyClaims,
+				{
+					aud: 'deslop',
+					azp: 'Fixture',
+					exp: now + 600,
+					iat: now,
+					iss: `${AUTH}/api/auth`,
+					name: 'octocat',
+					sid: 'family',
+					sub: 'github:42',
+					...claims
+				},
+				key,
+				{kid: 'fixture', typ: 'at+jwt'}
+			),
+			Effect.provideService(Signature.Signature, signature)
+		)
+		return Redacted.value(signed)
+	})
+	const client = HttpClient.make(request =>
+		Effect.gen(function* () {
+			if (request.url === `${AUTH}/.well-known/jwks.json`) {
+				if (yield* Ref.get(down)) return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 503}))
+				return HttpClientResponse.fromWeb(request, Response.json({keys: [pair.publicKey]}))
+			}
+			if (request.url === `${AUTH}/api/auth/oauth2/token` && request.body._tag === 'Uint8Array') {
+				return HttpClientResponse.fromWeb(
+					request,
+					yield* token(new URLSearchParams(new TextDecoder().decode(request.body.body)), sign)
+				)
+			}
+			return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+		})
+	)
+	return {client, down, sign}
+})
+
+function layerAuth(client: HttpClient.HttpClient, settings: Record<string, string>) {
+	return pipe(
+		Auth.layer,
+		Layer.provideMerge(Sessions.layer),
+		Layer.provide(
+			Layer.mergeAll(KeyValueStore.layerMemory, NodeCrypto.layer, Layer.succeed(HttpClient.HttpClient, client))
+		),
+		Layer.provideMerge(ConfigProvider.layer(ConfigProvider.fromUnknown(settings)))
+	)
+}
 
 it.effect('ends a running RPC once its credentials are rejected, not while the issuer is down', () =>
 	Effect.scoped(
@@ -21,13 +106,16 @@ it.effect('ends a running RPC once its credentials are rejected, not while the i
 				return Effect.fail(AuthError.make({error: current, message: 'rejected'}))
 			})
 			const watch = yield* Effect.forkScoped(
-				Context.get(Auth.makeContext(Auth.of({access: () => user, user: () => user})), RpcAuth)(Effect.never, {
-					client: new Rpc.ServerClient(0),
-					headers: Headers.empty,
-					payload: undefined,
-					requestId: RpcMessage.RequestId(0),
-					rpc: Rpc.make('watch')
-				})
+				Context.get(Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => user})), RpcAuth)(
+					Effect.never,
+					{
+						client: new Rpc.ServerClient(0),
+						headers: Headers.empty,
+						payload: undefined,
+						requestId: RpcMessage.RequestId(0),
+						rpc: Rpc.make('watch')
+					}
+				)
 			)
 			yield* TestClock.adjust('5 minutes')
 			yield* Ref.set(verdict, 'temporarily_unavailable')
@@ -40,130 +128,185 @@ it.effect('ends a running RPC once its credentials are rejected, not while the i
 	)
 )
 
-it.effect(
-	'distinguishes OAuth discovery, rejected credentials and an unavailable issuer',
-	Effect.fnUntraced(function* () {
-		const upstream = yield* Ref.make<{status: number; body: Schema.JsonObject}>({body: {}, status: 401})
-		const calls = yield* Ref.make(0)
-		const client = HttpClient.make(request =>
-			Effect.gen(function* () {
-				yield* Ref.update(calls, count => count + 1)
-				const response = yield* Ref.get(upstream)
-				return HttpClientResponse.fromWeb(request, Response.json(response.body, {status: response.status}))
-			})
-		)
-		const web = yield* Effect.acquireRelease(
-			Effect.sync(() =>
-				HttpRouter.toWebHandler(
-					pipe(
-						Layer.merge(
-							pipe(
-								HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})),
-								Layer.provide(HttpAuth.layer)
-							),
-							pipe(
-								HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
-								Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
-							)
+// A page behind `HttpAuth` and an MCP endpoint behind `layerMcpAuth`, in a server with its own clock.
+const serve = Effect.fnUntraced(function* (client: HttpClient.HttpClient) {
+	const web = yield* Effect.acquireRelease(
+		Effect.sync(() =>
+			HttpRouter.toWebHandler(
+				pipe(
+					Layer.merge(
+						pipe(
+							HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})),
+							Layer.provide(HttpAuth.layer)
 						),
-						Layer.provide(Auth.layer),
-						Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-						Layer.provide(
-							ConfigProvider.layer(
-								ConfigProvider.fromUnknown({APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
-							)
+						pipe(
+							HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
+							Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
 						)
 					),
-					{disableLogger: true}
-				)
-			),
-			value => Effect.promise(() => value.dispose())
+					Layer.provide(layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
+				),
+				{disableLogger: true}
+			)
+		),
+		value => Effect.promise(() => value.dispose())
+	)
+	return (path: string, headers: Record<string, string>) =>
+		Effect.promise(() =>
+			web.handler(
+				new Request(`https://scope.mp281x.xyz${path}`, {
+					headers,
+					method: Boolean.match(path === '/mcp', {onFalse: () => 'POST', onTrue: () => 'GET'})
+				})
+			)
 		)
-		const discovery = yield* Effect.promise(() => web.handler(new Request('https://scope.mp281x.xyz/mcp')))
-		assert.strictEqual(discovery.status, 401)
-		assert.include(discovery.headers.get('www-authenticate') ?? '', 'resource_metadata=')
-		assert.notInclude(discovery.headers.get('www-authenticate') ?? '', 'invalid_token')
-		assert.strictEqual(yield* Ref.get(calls), 0)
+})
 
-		const request = Effect.fnUntraced(function* (path: string) {
-			return yield* Effect.promise(() =>
-				web.handler(
-					new Request(`https://scope.mp281x.xyz${path}`, {
-						headers: {authorization: 'Bearer rejected-or-valid-probe'},
-						method: Boolean.match(path === '/mcp', {onFalse: () => 'POST', onTrue: () => 'GET'})
+it.layer(NodeCrypto.layer, {excludeTestServices: true})(test => {
+	test.effect(
+		"accepts Auth's signed access token and refuses an expired or foreign one",
+		Effect.fnUntraced(function* () {
+			const auth = yield* issuer(() => Effect.succeed(new Response(undefined, {status: 400})))
+			const request = yield* serve(auth.client)
+			const discovery = yield* request('/mcp', {})
+			assert.strictEqual(discovery.status, 401)
+			assert.include(discovery.headers.get('www-authenticate') ?? '', 'resource_metadata=')
+			assert.notInclude(discovery.headers.get('www-authenticate') ?? '', 'invalid_token')
+
+			const signed = {authorization: `Bearer ${yield* auth.sign()}`}
+			assert.strictEqual((yield* request('/mcp', signed)).status, 200)
+			assert.strictEqual((yield* request('/ingest', signed)).status, 200)
+
+			for (const claims of [{exp: 1}, {aud: 'elsewhere'}]) {
+				const refused = {authorization: `Bearer ${yield* auth.sign(claims)}`}
+				const rejected = yield* request('/mcp', refused)
+				assert.strictEqual(rejected.status, 401)
+				assert.include(rejected.headers.get('www-authenticate') ?? '', 'error="invalid_token"')
+				assert.strictEqual((yield* request('/ingest', refused)).status, 401)
+			}
+			// A session id is this app's own sign-in, never an MCP client's.
+			assert.strictEqual((yield* request('/mcp', {authorization: 'Bearer some-session'})).status, 401)
+		})
+	)
+
+	test.effect(
+		'answers 503 while Auth cannot serve its key set, not a refusal',
+		Effect.fnUntraced(function* () {
+			const auth = yield* issuer(() => Effect.succeed(new Response(undefined, {status: 400})))
+			yield* Ref.set(auth.down, true)
+			const request = yield* serve(auth.client)
+			const signed = {authorization: `Bearer ${yield* auth.sign()}`}
+			const unavailable = yield* request('/mcp', signed)
+			assert.strictEqual(unavailable.status, 503)
+			assert.strictEqual(unavailable.headers.get('retry-after'), '5')
+			assert.isFalse(unavailable.headers.has('www-authenticate'))
+			assert.strictEqual((yield* request('/ingest', signed)).status, 503)
+		})
+	)
+})
+
+it.layer(NodeCrypto.layer)(test => {
+	test.effect(
+		"refreshes a session's access token once for concurrent requests and forgets the session Auth refuses",
+		Effect.fnUntraced(function* () {
+			const refreshes = yield* Queue.unbounded<string>()
+			const release = yield* Deferred.make<void>()
+			const refused = yield* Ref.make(false)
+			const auth = yield* issuer((form, sign) =>
+				Effect.orDie(
+					Effect.gen(function* () {
+						if (form.get('grant_type') === 'authorization_code') {
+							return Response.json({access_token: yield* sign(), expires_in: 600, refresh_token: 'refresh-1'})
+						}
+						yield* Queue.offer(refreshes, form.get('refresh_token') ?? '')
+						if (yield* Ref.get(refused)) return Response.json({error: 'invalid_grant'}, {status: 400})
+						yield* Deferred.await(release)
+						return Response.json({
+							access_token: yield* sign({name: 'renamed'}),
+							expires_in: 600,
+							refresh_token: 'refresh-2'
+						})
 					})
 				)
 			)
-		})
-		const rejected = yield* request('/mcp')
-		assert.strictEqual(rejected.status, 401)
-		assert.include(rejected.headers.get('www-authenticate') ?? '', 'error="invalid_token"')
-		assert.strictEqual((yield* request('/ingest')).status, 401)
+			const context = yield* Layer.build(layerAuth(auth.client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
+			const service = Context.get(context, Auth)
+			const id = yield* Context.get(context, Sessions).start({
+				client_id: 'scope',
+				code: 'approved',
+				code_verifier: 'verifier',
+				redirect_uri: 'https://scope.mp281x.xyz/auth/callback'
+			})
+			const headers = Headers.fromInput({cookie: `${SESSION_COOKIE}=${id}`})
+			assert.strictEqual((yield* service.user(headers)).name, 'octocat')
 
-		yield* Ref.set(upstream, {body: {}, status: 503})
-		const unavailable = yield* request('/mcp')
-		assert.strictEqual(unavailable.status, 503)
-		assert.strictEqual(unavailable.headers.get('retry-after'), '5')
-		assert.isFalse(unavailable.headers.has('www-authenticate'))
-		assert.strictEqual((yield* request('/ingest')).status, 503)
+			yield* TestClock.adjust('541 seconds')
+			const first = yield* Effect.forkChild(service.token(headers))
+			assert.strictEqual(yield* Queue.take(refreshes), 'refresh-1')
+			const second = yield* Effect.forkChild(service.user(headers))
+			yield* TestClock.adjust(0)
+			yield* Deferred.succeed(release, undefined)
+			const renewed = yield* Fiber.join(first)
+			assert.strictEqual((yield* Fiber.join(second)).name, 'renamed')
+			assert.strictEqual(yield* service.token(headers), renewed)
+			assert.strictEqual(yield* Queue.size(refreshes), 0)
 
-		// A malformed successful verification is an issuer fault, not evidence that the token is invalid.
-		yield* Ref.set(upstream, {body: {}, status: 200})
-		assert.strictEqual((yield* request('/mcp')).status, 503)
-		yield* Ref.set(upstream, {body: {id: '42', name: 'authorized'}, status: 200})
-		assert.strictEqual((yield* request('/mcp')).status, 200)
-		assert.strictEqual((yield* request('/ingest')).status, 200)
-	})
-)
+			yield* Ref.set(refused, true)
+			yield* TestClock.adjust('541 seconds')
+			assert.isTrue(needsSignIn(yield* Effect.flip(service.user(headers))))
+			assert.strictEqual(yield* Queue.take(refreshes), 'refresh-2')
+			assert.isTrue(needsSignIn(yield* Effect.flip(service.token(headers))))
+			assert.strictEqual(yield* Queue.size(refreshes), 0)
+		}, Effect.scoped)
+	)
 
-it.effect(
-	'signs every request in as the developer without an issuer, never reaching one',
-	Effect.fnUntraced(function* () {
-		const calls = yield* Ref.make(0)
-		const client = HttpClient.make(request =>
-			Effect.as(
-				Ref.update(calls, count => count + 1),
-				HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))
-			)
-		)
-		const web = yield* Effect.acquireRelease(
-			Effect.sync(() =>
-				HttpRouter.toWebHandler(
-					pipe(
-						Layer.merge(
-							pipe(
-								HttpRouter.add(
-									'GET',
-									'/me',
-									Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
-								),
-								Layer.provide(HttpAuth.layer)
-							),
-							pipe(
-								HttpRouter.add(
-									'GET',
-									'/mcp',
-									Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
-								),
-								Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
-							)
-						),
-						Layer.provide(Auth.layer),
-						Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
-						Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({})))
-					),
-					{disableLogger: true}
+	test.effect(
+		'signs every request in as the developer without an issuer, never reaching one',
+		Effect.fnUntraced(function* () {
+			const calls = yield* Ref.make(0)
+			const client = HttpClient.make(request =>
+				Effect.as(
+					Ref.update(calls, count => count + 1),
+					HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))
 				)
-			),
-			value => Effect.promise(() => value.dispose())
-		)
-		for (const path of ['/me', '/mcp']) {
-			const response = yield* Effect.promise(() =>
-				web.handler(new Request(`https://desktop.tailnet-8c4c.ts.net:23475${path}`))
 			)
-			assert.strictEqual(response.status, 200)
-			assert.strictEqual(yield* Effect.promise(() => response.text()), DEVELOPER.name)
-		}
-		assert.strictEqual(yield* Ref.get(calls), 0)
-	})
-)
+			const web = yield* Effect.acquireRelease(
+				Effect.sync(() =>
+					HttpRouter.toWebHandler(
+						pipe(
+							Layer.merge(
+								pipe(
+									HttpRouter.add(
+										'GET',
+										'/me',
+										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
+									),
+									Layer.provide(HttpAuth.layer)
+								),
+								pipe(
+									HttpRouter.add(
+										'GET',
+										'/mcp',
+										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
+									),
+									Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
+								)
+							),
+							Layer.provide(layerAuth(client, {}))
+						),
+						{disableLogger: true}
+					)
+				),
+				value => Effect.promise(() => value.dispose())
+			)
+			for (const path of ['/me', '/mcp']) {
+				const response = yield* Effect.promise(() =>
+					web.handler(new Request(`https://desktop.tailnet-8c4c.ts.net:23475${path}`))
+				)
+				assert.strictEqual(response.status, 200)
+				assert.strictEqual(yield* Effect.promise(() => response.text()), DEVELOPER.name)
+			}
+			assert.strictEqual(yield* Ref.get(calls), 0)
+		})
+	)
+})

@@ -1,9 +1,8 @@
-import {Boolean, Config, Effect, Layer} from 'effect'
+import {Boolean, Effect, Layer} from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
 
 import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
-import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
@@ -16,12 +15,11 @@ export const layerMcpOwner = Layer.unwrap(
 		const tokens = yield* Tokens
 		const people = yield* People
 		const local = yield* localAuth
-		const resource = new URL(MCP_PATH, yield* Config.String('APP_URL')).href
 		return McpServer.middleware<{provides: CurrentOwner}>()((effect, request) =>
 			Effect.flatMap(
 				Effect.mapError(
 					Boolean.match(local, {
-						onFalse: () => Effect.flatMap(tokens.access(request.headers, resource), people.allowed),
+						onFalse: () => Effect.flatMap(tokens.verify(request.headers), people.allowed),
 						onTrue: () => Effect.succeed({incarnation: 'local', user: DEVELOPER})
 					}),
 					// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- MCP's wire error exposes no internal authorization cause.

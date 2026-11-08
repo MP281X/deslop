@@ -34,6 +34,7 @@ import {
 	layerNodeHttpServer,
 	layerProtocol,
 	layerRoutes,
+	layerSessionRoutes,
 	layerTelemetry,
 	layerWeb,
 	packageMetadata,
@@ -43,6 +44,7 @@ import {
 import {AiGateway} from '#ai/service.ts'
 import type {RpcAuth} from '#auth/lib/utils.ts'
 import {Auth} from '#auth/service.ts'
+import {Sessions} from '#auth/sessions.ts'
 import {AppError} from '#cli/schema.ts'
 import {install, installUpdates, status, uninstall} from '#cli/service.ts'
 import {activate, update} from '#cli/update.ts'
@@ -121,8 +123,10 @@ export type Routes<A, E> = Layer.Layer<
 >
 
 export type App<A, E> = {
+	// For the app that issues sign-ins, Auth: who sent each request, in place of the runtime's sessions and their routes.
+	readonly auth?: Layer.Layer<Auth | RpcAuth, E, Layer.Success<typeof layerPlatform>>
 	readonly icon: string
-	// The app's RPC, HTTP routes and `ServerRuntime.layerMcp` tools, with its own services provided; an app may answer `Auth` itself.
+	// The app's RPC, HTTP routes and `ServerRuntime.layerMcp` tools, with its own services provided.
 	readonly routes: Routes<A, E>
 	// Runs around matched routes before the response is sent, so headers and bodies can be changed.
 	readonly middleware?: <A, R>(
@@ -134,18 +138,25 @@ export type App<A, E> = {
 }
 
 function server<A, E>(app: App<A, E>) {
+	const routes = pipe(
+		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
+		Layer.provide(
+			Option.match(Option.fromUndefinedOr(app.middleware), {
+				onNone: () => Layer.empty,
+				onSome: middleware => HttpRouter.middleware()(middleware).layer
+			})
+		)
+	)
 	return pipe(
 		HttpRouter.serve(
 			pipe(
-				Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
-				Layer.provide(
-					Option.match(Option.fromUndefinedOr(app.middleware), {
-						onNone: () => Layer.empty,
-						onSome: middleware => HttpRouter.middleware()(middleware).layer
-					})
-				),
-				Layer.provide(Auth.layer),
-				Layer.provideMerge(pipe(AiGateway.layer, Layer.provide(layerDataStore)))
+				Option.match(Option.fromUndefinedOr(app.auth), {
+					onNone: () =>
+						pipe(Layer.merge(routes, layerSessionRoutes), Layer.provide(Auth.layer), Layer.provide(Sessions.layer)),
+					onSome: auth => pipe(routes, Layer.provide(auth))
+				}),
+				Layer.provideMerge(AiGateway.layer),
+				Layer.provide(layerDataStore)
 			),
 			{disableLogger: true, middleware: guard}
 		),

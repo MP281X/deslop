@@ -3,16 +3,13 @@ import {Array, Duration, Effect, Match, Option, Schema, String, pipe} from 'effe
 import {HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
-import {AuthError, User} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
+import {AuthError} from '@deslop/runtime/auth/schema'
 import {
 	APPS_PATH,
-	AUTH_URL,
-	ISSUER,
 	ISSUER_PATH,
-	SESSION_PATH,
-	VERIFY_PATH,
-	localAuth,
+	JWKS_PATH,
+	SESSION_COOKIE,
+	clientIdOf,
 	failureOptions,
 	rejected
 } from '@deslop/runtime/auth/utils'
@@ -33,12 +30,10 @@ import {
 	browserToken,
 	callbackUrl,
 	clientAddress,
-	clientIdOf,
 	clientRequest,
-	cookieDomain,
 	originFrom,
 	returnable,
-	SESSION_COOKIE
+	webRedirect
 } from '#services/tokens/lib/utils.ts'
 import {
 	AuthorizeClient,
@@ -46,18 +41,15 @@ import {
 	Registration,
 	RevokeParams,
 	TokenGrant,
-	TokenParams,
-	VerificationParams
+	TokenParams
 } from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
 
-// The shared session reaches every app on the parent domain, for as long as its grant lasts; without an issuer it stays on its own host.
-function sessionCookie(local: boolean) {
-	if (local) return {...COOKIE, domain: undefined}
-	return {...COOKIE, domain: cookieDomain(AUTH_URL)}
+function session(seconds: number) {
+	return {...COOKIE, maxAge: `${seconds} seconds` as const}
 }
 
 // OAuth endpoints answer failures as RFC 6749 JSON and are never cached.
@@ -78,15 +70,6 @@ function oauth<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespons
 
 function originOf(request: HttpServerRequest.HttpServerRequest) {
 	return originFrom(request.headers, request.remoteAddress)
-}
-
-// The session and bearer endpoints answer no-store JSON, 401 for refused credentials, or retryable 503 during an outage.
-function answered<E, R>(answer: Effect.Effect<User, E, R>) {
-	return pipe(
-		answer,
-		Effect.flatMap(user => HttpServerResponse.schemaJson(User)(user, {headers: {'cache-control': 'no-store'}})),
-		Effect.catch(error => Effect.succeed(HttpServerResponse.empty(failureOptions(error, 401))))
-	)
 }
 
 // A started sign-in shows its code at /?request=; the cookie binds its answer to this browser or command.
@@ -119,7 +102,7 @@ function githubFailed(cause: unknown, flow: Option.Option<SignInParams>) {
 }
 
 // Where a finished sign-in returns: the waiting sign-in or approve link it started from, else its page on this domain.
-function returnTo(flow: SignInParams) {
+function returnTo(flow: SignInParams, origin: string) {
 	return pipe(
 		UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
 		Option.liftPredicate(String.isNonEmpty),
@@ -127,7 +110,7 @@ function returnTo(flow: SignInParams) {
 			onNone: () =>
 				pipe(
 					Option.fromUndefinedOr(flow.next),
-					Option.filter(next => returnable(next, AUTH_URL)),
+					Option.filter(next => returnable(next, origin)),
 					Option.getOrElse(() => '/')
 				),
 			onSome: search => `/?${search}`
@@ -138,17 +121,13 @@ function returnTo(flow: SignInParams) {
 export const HttpHandlers = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const apps = yield* Apps
-		const auth = yield* Auth
 		const github = yield* GitHub
 		const passkeys = yield* Passkeys
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		const limiter = yield* RateLimiter.RateLimiter
-		const local = yield* localAuth
-		function session(seconds: number) {
-			return {...sessionCookie(local), maxAge: `${seconds} seconds` as const}
-		}
+		const origin = new URL(tokens.issuer).origin
 		// Anyone may call these, so each address (an IPv6 /64) gets a budget per minute; past it, 429. No shared budget, which one sender could spend for everyone.
 		function limited(route: string, perAddress: number) {
 			return Effect.fnUntraced(function* <E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
@@ -179,6 +158,11 @@ export const HttpHandlers = HttpRouter.use(router =>
 			})
 		}
 
+		yield* router.add(
+			'GET',
+			JWKS_PATH,
+			HttpServerResponse.jsonUnsafe(tokens.jwks, {headers: {'cache-control': 'public, max-age=300'}})
+		)
 		// Each app's server announces itself here at start; see `ServerRuntime.layerAnnounce`.
 		yield* router.add(
 			'POST',
@@ -202,16 +186,17 @@ export const HttpHandlers = HttpRouter.use(router =>
 			'GET',
 			`/.well-known/oauth-authorization-server${ISSUER_PATH}`,
 			HttpServerResponse.jsonUnsafe({
-				authorization_endpoint: `${ISSUER}/oauth2/authorize`,
+				authorization_endpoint: `${tokens.issuer}/oauth2/authorize`,
 				authorization_response_iss_parameter_supported: true,
 				code_challenge_methods_supported: ['S256'],
 				grant_types_supported: ['authorization_code', 'refresh_token'],
-				issuer: ISSUER,
-				registration_endpoint: `${ISSUER}/oauth2/register`,
+				issuer: tokens.issuer,
+				jwks_uri: `${origin}${JWKS_PATH}`,
+				registration_endpoint: `${tokens.issuer}/oauth2/register`,
 				response_types_supported: ['code'],
-				revocation_endpoint: `${ISSUER}/oauth2/revoke`,
+				revocation_endpoint: `${tokens.issuer}/oauth2/revoke`,
 				scopes_supported: ['deslop', 'offline_access'],
-				token_endpoint: `${ISSUER}/oauth2/token`,
+				token_endpoint: `${tokens.issuer}/oauth2/token`,
 				token_endpoint_auth_methods_supported: ['none']
 			})
 		)
@@ -237,7 +222,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						if (!Array.every(params.redirect_uris, allowedRedirect)) {
 							return yield* AuthError.make({
 								error: 'invalid_redirect_uri',
-								message: 'Use a loopback http://127.0.0.1 callback or a Stash, opm or Trips app callback'
+								message: 'Use a Deslop web or iOS callback, a loopback callback or a Gateway server callback'
 							})
 						}
 						const name = params.client_name ?? 'Unknown client'
@@ -256,7 +241,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
-		// An app's sign-in becomes a waiting sign-in under a fresh code, answered by an approval and delivered at /auth/continue.
+		// First-party web apps reuse this browser's session; other clients wait for an approval by code.
 		yield* router.add(
 			'GET',
 			`${ISSUER_PATH}/oauth2/authorize`,
@@ -277,14 +262,43 @@ export const HttpHandlers = HttpRouter.use(router =>
 							HttpServerRequest.schemaSearchParams(AuthorizeParams),
 							rejected('Invalid authorization request'),
 							Effect.flatMap(params => clientRequest(asked, client, params)),
-							Effect.flatMap(checked => signIns.start({_tag: 'Client', request: checked}, originOf(request))),
-							Effect.map(waitingAt),
+							Effect.flatMap(
+								Effect.fnUntraced(function* (checked) {
+									if (!webRedirect(checked.redirectUri)) {
+										return waitingAt(yield* signIns.start({_tag: 'Client', request: checked}, originOf(request)))
+									}
+									const browser = yield* pipe(
+										tokens.browserSession(request.headers),
+										Effect.tap(found => people.allowed(found.owner)),
+										Effect.result
+									)
+									if (browser._tag === 'Failure') {
+										if (
+											browser.failure.error === 'temporarily_unavailable' ||
+											browser.failure.error === 'access_denied'
+										) {
+											return yield* browser.failure
+										}
+										return HttpServerResponse.redirect(
+											`/?${new URLSearchParams({next: new URL(request.url, origin).href})}`
+										)
+									}
+									return HttpServerResponse.redirect(
+										callbackUrl(
+											checked,
+											{code: yield* tokens.issue({...checked, parent: browser.success.family}, browser.success.owner)},
+											tokens.issuer
+										)
+									)
+								})
+							),
 							Effect.catchIf(Schema.is(AuthError), failure =>
 								Effect.succeed(
 									HttpServerResponse.redirect(
 										callbackUrl(
 											{redirectUri: client.redirectUri, state: asked.state},
-											{error: failure.error ?? 'invalid_request', error_description: failure.message}
+											{error: failure.error ?? 'invalid_request', error_description: failure.message},
+											tokens.issuer
 										)
 									)
 								)
@@ -347,22 +361,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
-		// Apps read the session cookie and verify bearers here, through `Auth.layer`.
-		yield* router.add(
-			'GET',
-			SESSION_PATH,
-			answered(Effect.flatMap(HttpServerRequest.HttpServerRequest, request => auth.user(request.headers)))
-		)
-		yield* router.add(
-			'GET',
-			VERIFY_PATH,
-			answered(
-				Effect.gen(function* () {
-					const params = yield* HttpServerRequest.schemaSearchParams(VerificationParams)
-					return yield* auth.access((yield* HttpServerRequest.HttpServerRequest).headers, params.resource)
-				})
-			)
-		)
 		yield* router.add(
 			'GET',
 			'/auth/github',
@@ -406,7 +404,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						),
 						Effect.map(started =>
 							pipe(
-								HttpServerResponse.redirect(returnTo(finished.flow)),
+								HttpServerResponse.redirect(returnTo(finished.flow, origin)),
 								HttpServerResponse.expireCookieUnsafe(LOGIN_COOKIE, COOKIE),
 								HttpServerResponse.setCookieUnsafe(SESSION_COOKIE, started.token, session(started.seconds))
 							)
@@ -445,7 +443,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 									_tag: 'Browser',
 									...pipe(
 										Option.fromUndefinedOr(next),
-										Option.filter(page => returnable(page, AUTH_URL)),
+										Option.filter(page => returnable(page, origin)),
 										Option.match({onNone: () => ({}), onSome: page => ({next: page})})
 									)
 								},
@@ -486,7 +484,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.jsonUnsafe(
 								Option.match(
-									Option.filter(Option.fromUndefinedOr(input.next), page => returnable(page, AUTH_URL)),
+									Option.filter(Option.fromUndefinedOr(input.next), page => returnable(page, origin)),
 									{onNone: () => ({}), onSome: next => ({next})}
 								)
 							),
@@ -535,7 +533,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			oauth(
 				Effect.gen(function* () {
 					yield* tokens.endSession((yield* HttpServerRequest.HttpServerRequest).headers)
-					return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, sessionCookie(local))
+					return HttpServerResponse.expireCookieUnsafe(HttpServerResponse.empty(), SESSION_COOKIE, COOKIE)
 				})
 			)
 		)

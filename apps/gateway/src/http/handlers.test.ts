@@ -67,7 +67,7 @@ const PROVIDERS = {
 }
 // A session cookie or agent token names its account; Auth itself is tested in its own app.
 const SESSION = 'session=octocat'
-const TOKEN = 'agent-octocat'
+const TOKEN = 'agent.octocat.signature'
 
 const mcp = Layer.unwrap(
 	Effect.gen(function* () {
@@ -212,23 +212,22 @@ function account(login?: string) {
 	)
 }
 
-// Auth as the gateway sees it: an agent token for the gateway's MCP, or a browser session.
-function layerAuth(origin: string, verified: Ref.Ref<number>) {
+// Auth as the gateway sees it: an agent's access token, which names its account, or a browser session.
+function layerAuth(verified: Ref.Ref<number>) {
 	return Layer.succeedContext(
 		Auth.makeContext(
 			Auth.of({
-				access: (headers, resource) =>
-					Effect.andThen(
+				token: () => Effect.succeed('token'),
+				user: headers => {
+					const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
+					if (!String.startsWith('agent.')(token)) {
+						return account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
+					}
+					return Effect.andThen(
 						Ref.update(verified, count => count + 1),
-						Effect.suspend(() => {
-							const token = String.replace(/^Bearer /u, '')(headers['authorization'] ?? '')
-							if (resource !== `${origin}/mcp` || !String.startsWith('agent-')(token)) {
-								return Effect.fail(AuthError.make({message: 'Sign in first'}))
-							}
-							return account(String.split(String.slice(6)(token), '-')[0])
-						})
-					),
-				user: headers => account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
+						account(String.split(token, '.')[1])
+					)
+				}
 			})
 		)
 	)
@@ -523,7 +522,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 							)
 						)
 					),
-					Layer.provideMerge(layerAuth(origin, verified)),
+					Layer.provideMerge(layerAuth(verified)),
 					Layer.provideMerge(Layer.succeed(Clock.Clock, clock))
 				),
 				{disableLogger: true}

@@ -1,8 +1,9 @@
-import {NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import type {Path} from 'effect'
 import {
+	Array,
 	Boolean,
 	ConfigProvider,
 	Context,
@@ -12,24 +13,31 @@ import {
 	FileSystem,
 	Layer,
 	Queue,
+	Record,
+	Redacted,
 	Ref,
 	String,
 	pipe
 } from 'effect'
 
+import {Digest} from 'effect/crypto'
+import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {Jwk, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {guard, layerAnnounce, layerKeyValueStore, layerRoutes} from '#server.ts'
+import {guard, layerAnnounce, layerKeyValueStore, layerRoutes, layerSessionRoutes} from '#server.ts'
 
-import {DEVELOPER} from '#auth/lib/utils.ts'
-import {AuthError} from '#auth/schema.ts'
+import {SESSION_COOKIE, clientIdOf} from '#auth/lib/utils.ts'
+import {AccessClaims, AuthError} from '#auth/schema.ts'
 import {Auth} from '#auth/service.ts'
+import {Sessions} from '#auth/sessions.ts'
 
+// An app as the runtime serves it, reaching Auth through `client`.
 const handler = Effect.fnUntraced(function* (
 	settings: Record<string, string>,
-	auth: typeof Auth.Service = Auth.of({access: () => Effect.succeed(DEVELOPER), user: () => Effect.succeed(DEVELOPER)})
+	options: {auth?: typeof Auth.layer; client?: HttpClient.HttpClient} = {}
 ) {
 	return yield* Effect.acquireRelease(
 		Effect.sync(() =>
@@ -38,9 +46,24 @@ const handler = Effect.fnUntraced(function* (
 					Layer.mergeAll(
 						HttpRouter.add('POST', '/write', HttpServerResponse.empty()),
 						HttpRouter.add('POST', '/v1/traces', HttpServerResponse.empty()),
-						layerRoutes
+						layerRoutes,
+						layerSessionRoutes
 					),
-					Layer.provide(Layer.succeedContext(Auth.makeContext(auth))),
+					Layer.provide(options.auth ?? Auth.layer),
+					Layer.provide(Sessions.layer),
+					Layer.provide(
+						Layer.mergeAll(
+							KeyValueStore.layerMemory,
+							NodeCrypto.layer,
+							Layer.succeed(
+								HttpClient.HttpClient,
+								options.client ??
+									HttpClient.make(request =>
+										Effect.succeed(HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404})))
+									)
+							)
+						)
+					),
 					Layer.provideMerge(ConfigProvider.layer(ConfigProvider.fromUnknown(settings)))
 				),
 				{disableLogger: true, middleware: guard}
@@ -49,6 +72,11 @@ const handler = Effect.fnUntraced(function* (
 		web => Effect.promise(() => web.dispose())
 	)
 })
+
+// The `name=value` part of each cookie a response sets.
+function cookies(response: Response) {
+	return Array.map(response.headers.getSetCookie(), header => Array.headNonEmpty(String.split(header, ';')))
+}
 
 const send = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof handler>>,
@@ -202,14 +230,14 @@ it.effect('bounds a stalled announcement and respects Auth retry-after before re
 	)
 )
 
-it.layer(NodeServices.layer)('Server guard', test => {
+it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test => {
 	test.effect('keeps an authorization outage distinct from signing out', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const outage = Effect.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
 				const web = yield* handler(
 					{APP_URL: 'http://localhost:5000'},
-					Auth.of({access: () => outage, user: () => outage})
+					{auth: Layer.succeedContext(Auth.makeContext(Auth.of({token: () => outage, user: () => outage})))}
 				)
 				const response = yield* send(web, 'http://localhost:5000/auth/user', {host: 'localhost:5000'})
 				assert.strictEqual(response.status, 503)
@@ -299,24 +327,138 @@ it.layer(NodeServices.layer)('Server guard', test => {
 					(yield* send(web, `https://${host}/v1/traces`, {host, origin: 'https://evil.example.com'})).status,
 					204
 				)
-				const accepted = yield* send(
-					web,
-					`https://${host}/auth/sign-in?next=https%3A%2F%2Fscope.example.com%2Fdetail`,
-					{host}
-				)
-				assert.strictEqual(
-					accepted.headers.get('location'),
-					'https://auth.example.com/?next=https%3A%2F%2Fscope.example.com%2Fdetail'
-				)
-				assert.strictEqual(
-					(yield* send(web, `https://${host}/auth/sign-out`, {host})).headers.get('location'),
-					'https://auth.example.com/?sign-out=&next=https%3A%2F%2Fscope.example.com%2F'
-				)
-				assert.strictEqual(
-					(yield* send(web, `https://${host}/auth/sign-in?next=https%3A%2F%2Fevil.example.com`, {host})).status,
-					400
-				)
+				for (const path of ['/auth/sign-in', '/auth/sign-out']) {
+					assert.strictEqual(
+						(yield* send(web, `https://${host}${path}?next=https%3A%2F%2Fevil.example.com`, {host})).status,
+						400
+					)
+				}
 			})
+		)
+	)
+
+	test.effect('signs in through Auth into a session on this server, and signing out revokes it at Auth', () =>
+		pipe(
+			Effect.gen(function* () {
+				const access = Redacted.value(
+					yield* Jwt.sign(
+						AccessClaims,
+						{
+							aud: 'deslop',
+							azp: 'Fixture',
+							exp: 4_000_000_000,
+							iat: 0,
+							iss: 'https://auth.example.com/api/auth',
+							name: 'octocat',
+							sid: 'family',
+							sub: 'github:42'
+						},
+						yield* Jwk.importPrivate((yield* Jwk.generateKeyPair({algorithm: 'EdDSA'})).privateKey, 'EdDSA')
+					)
+				)
+				const calls = yield* Queue.unbounded<URLSearchParams>()
+				const client = HttpClient.make(request =>
+					Effect.gen(function* () {
+						if (request.body._tag !== 'Uint8Array') return yield* Effect.die('Auth takes forms')
+						yield* Queue.offer(calls, new URLSearchParams(new TextDecoder().decode(request.body.body)))
+						if (String.endsWith('/oauth2/token')(request.url)) {
+							return HttpClientResponse.fromWeb(
+								request,
+								Response.json({access_token: access, expires_in: 600, refresh_token: 'refresh-1'})
+							)
+						}
+						return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 200}))
+					})
+				)
+				const web = yield* handler(
+					{APP_URL: 'https://scope.example.com', AUTH_URL: 'https://auth.example.com'},
+					{client}
+				)
+				const host = 'scope.example.com'
+				const next = 'https://scope.example.com/detail'
+
+				const started = yield* send(web, `https://${host}/auth/sign-in?${new URLSearchParams({next})}`, {host})
+				const authorize = new URL(started.headers.get('location') ?? '')
+				assert.strictEqual(
+					`${authorize.origin}${authorize.pathname}`,
+					'https://auth.example.com/api/auth/oauth2/authorize'
+				)
+				const callback = 'https://scope.example.com/auth/callback'
+				assert.deepStrictEqual(
+					Record.fromEntries(
+						Array.filter([...authorize.searchParams], entry => !Array.contains(['code_challenge', 'state'], entry[0]))
+					),
+					{
+						client_id: clientIdOf({name: 'Fixture', redirects: [callback]}),
+						code_challenge_method: 'S256',
+						redirect_uri: callback,
+						resource: 'https://scope.example.com',
+						response_type: 'code',
+						scope: 'deslop offline_access'
+					}
+				)
+				const signIn = Array.join(cookies(started), '; ')
+				const state = authorize.searchParams.get('state') ?? ''
+
+				const forged = yield* send(
+					web,
+					`https://${host}/auth/callback?${new URLSearchParams({code: 'approved', iss: 'https://auth.example.com/api/auth', state: 'forged'})}`,
+					{cookie: signIn, host}
+				)
+				assert.strictEqual(forged.headers.get('location'), next)
+				assert.isFalse(Array.some(cookies(forged), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)))
+
+				const finished = yield* send(
+					web,
+					`https://${host}/auth/callback?${new URLSearchParams({code: 'approved', iss: 'https://auth.example.com/api/auth', state})}`,
+					{cookie: signIn, host}
+				)
+				assert.strictEqual(finished.headers.get('location'), next)
+				const exchange = yield* Queue.take(calls)
+				assert.strictEqual(exchange.get('code'), 'approved')
+				assert.strictEqual(exchange.get('redirect_uri'), callback)
+				// The verifier Auth receives is the one the challenge it saw was made from.
+				assert.strictEqual(
+					Base64Url.encode(
+						yield* (yield* Digest.Digest).digest(
+							Digest.sha256,
+							new TextEncoder().encode(exchange.get('code_verifier') ?? '')
+						)
+					),
+					authorize.searchParams.get('code_challenge')
+				)
+				const session = Array.join(
+					Array.filter(cookies(finished), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)),
+					'; '
+				)
+				assert.isTrue(String.isNonEmpty(session))
+
+				const user = yield* send(web, `https://${host}/auth/user`, {cookie: session, host})
+				assert.strictEqual(user.status, 200)
+				assert.include(yield* Effect.promise(() => user.json()), {id: 'github:42', name: 'octocat'})
+
+				const ended = yield* send(web, `https://${host}/auth/sign-out?${new URLSearchParams({next})}`, {
+					cookie: session,
+					host
+				})
+				assert.strictEqual(
+					ended.headers.get('location'),
+					`https://auth.example.com/?${new URLSearchParams({next, 'sign-out': ''})}`
+				)
+				const revoked = yield* Queue.take(calls)
+				assert.strictEqual(revoked.get('token'), 'refresh-1')
+				assert.strictEqual(revoked.get('client_id'), exchange.get('client_id'))
+				assert.strictEqual((yield* send(web, `https://${host}/auth/user`, {cookie: session, host})).status, 401)
+			}),
+			// The app's name, which its client id carries, comes from its package.
+			Effect.provideServiceEffect(
+				FileSystem.FileSystem,
+				Effect.map(FileSystem.FileSystem, fs => ({
+					...fs,
+					readFileString: () => Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}')
+				}))
+			),
+			Effect.scoped
 		)
 	)
 })

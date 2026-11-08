@@ -31,19 +31,12 @@ export const primary = hues.amber
 
 const listFile = new File(Paths.document, 'list.json')
 
-// The share extension refreshes the same Keychain credentials, so a refresh holds the lock both processes take.
+// The share extension sends the same session, from the Keychain item both processes share.
 export const session = MobileSession.make('Stash', SERVER, {
 	clear: Effect.try({
 		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
 		try: () => native.clearSession()
 	}),
-	lock: Effect.acquireRelease(
-		Effect.tryPromise({
-			catch: cause => AuthError.make({cause, message: 'The session lock could not be taken'}),
-			try: () => native.lockSession()
-		}),
-		lock => Effect.promise(() => native.unlockSession(lock))
-	),
 	read: Effect.try({
 		catch: cause => AuthError.make({cause, message: 'The Keychain could not read the session'}),
 		try: () => native.getSession()
@@ -57,7 +50,7 @@ export const session = MobileSession.make('Stash', SERVER, {
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layerSignedIn('@deslop/stash', session.accessToken)(SERVER)
+	protocol: MobileRuntime.layerSignedIn('@deslop/stash', session.bearer)(SERVER)
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.
@@ -124,7 +117,7 @@ export const notesAtom = Atom.keepAlive(
 				Stream.scan(Array.empty<NoteItem>, apply),
 				Stream.drop(1)
 			),
-			session.renewing
+			session.reopening
 		)
 	})
 )
@@ -148,7 +141,7 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 			Stream.unwrap,
 			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
 		),
-		session.renewing
+		session.reopening
 	)
 })
 
@@ -162,7 +155,7 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 			const file = new File(images, id)
 			if (file.exists) return file.uri
 			images.create({idempotent: true, intermediates: true})
-			const token = yield* session.accessToken
+			const token = yield* session.bearer
 			const downloaded = yield* Effect.tryPromise({
 				catch: cause => NotesError.make({cause, message: 'The note image could not be downloaded.'}),
 				try: () =>
@@ -246,7 +239,7 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 		})
 	)
 	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
-	const token = yield* session.accessToken
+	const token = yield* session.bearer
 	const id = Crypto.randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
 	const response = yield* pipe(

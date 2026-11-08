@@ -15,13 +15,13 @@ import {
 } from 'effect'
 
 import {AiError} from 'effect/ai'
-import type {Headers} from 'effect/http'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import type {AiProvider} from '#ai/schema.ts'
 import {GRANT_REFUSED} from '#ai/schema.ts'
 import {localAuth} from '#auth/lib/utils.ts'
+import type {AuthError} from '#auth/schema.ts'
 
 export class AiUnavailable extends Schema.TaggedError<AiUnavailable>()('AiUnavailable', {message: Schema.String}) {}
 
@@ -44,7 +44,8 @@ export class AiGateway extends Context.Service<
 	{
 		apiUrl: (provider: AiProvider) => Effect.Effect<string, AiUnavailable>
 		authorize: (userId: string) => (client: HttpClient.HttpClient) => HttpClient.HttpClient
-		enroll: (userId: string, headers: Headers.Headers) => Effect.Effect<void>
+		// Read only when the person has no grant yet: the access token the request acts with.
+		enroll: (userId: string, token: Effect.Effect<string, AuthError>) => Effect.Effect<void>
 	}
 >()('@deslop/runtime/ai/service/AiGateway') {
 	static readonly layer = Layer.effect(
@@ -117,17 +118,14 @@ export class AiGateway extends Context.Service<
 							)
 						)
 					),
-				enroll: Effect.fnUntraced(function* (userId, headers) {
+				enroll: Effect.fnUntraced(function* (userId, token) {
 					return yield* pipe(
 						Effect.gen(function* () {
 							if (local || Option.isNone(gateway) || (yield* Ref.get(grants))[userId] !== undefined) return
 							const response = yield* client.execute(
 								yield* HttpClientRequest.bodyJson(
 									HttpClientRequest.post(`${Option.getOrElse(gateway, () => '')}/ai/grants`, {
-										headers: Boolean.match(headers['authorization'] !== undefined, {
-											onFalse: () => ({cookie: headers['cookie'] ?? ''}),
-											onTrue: () => ({authorization: headers['authorization']})
-										})
+										headers: {authorization: `Bearer ${yield* token}`}
 									}),
 									{app}
 								)

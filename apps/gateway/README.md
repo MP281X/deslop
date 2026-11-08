@@ -15,7 +15,7 @@ gateway service install --url https://gateway.mp281x.xyz --auth https://auth.mp2
 
 Each person manages their own Anthropic, OpenRouter, OpenCode Zen and OpenCode Go keys. Keys stay in Gateway's owner-only data files; only their last four characters and last upstream status leave the server.
 
-App servers start with `--gateway https://gateway.mp281x.xyz`. The runtime enrolls each authenticated person with a grant for that app's `--url`; enrollment forwards the session cookie or app-audience bearer to `POST /ai/grants`. A new grant replaces the previous grant for that person and app. Revoking it immediately stops new proxy calls. Without `--auth`, calls use the local developer and need no grant.
+App servers start with `--gateway https://gateway.mp281x.xyz`. The runtime enrolls each authenticated person with a grant for that app's `--url`; enrollment sends the person's own access token to `POST /ai/grants`. A new grant replaces the previous grant for that person and app. Revoking it immediately stops new proxy calls. Without `--auth`, calls use the local developer and need no grant.
 
 Use `AiGateway` from `@deslop/runtime/ai`: `yield* gateway.apiUrl(provider)` and pass `gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. OpenRouter's scoped `withClientTransform` does not cover streaming chat completions. OpenRouter's base includes `/v1`; its Decisions client derives `/alpha/decisions` correctly. OpenCode bases expose protocol-family paths such as `/openai/v1/chat/completions` and `/anthropic/v1/messages` without translating them.
 

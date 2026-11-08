@@ -2,6 +2,7 @@ import {
 	Array,
 	Boolean,
 	Clock,
+	Config,
 	Context,
 	Effect,
 	HashMap,
@@ -11,22 +12,26 @@ import {
 	Option,
 	Order,
 	Record,
+	Redacted,
 	Ref,
+	Schema,
 	Semaphore,
 	Stream,
 	String,
+	Struct,
 	SubscriptionRef,
 	pipe
 } from 'effect'
 
-import {Digest, SecureRandom} from 'effect/crypto'
+import {Digest, SecureRandom, Signature} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import type {Headers} from 'effect/http'
+import {Jwk, Jwt} from 'effect/jose'
+import type {Jwks} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import type {Resource} from '@deslop/runtime/auth/schema'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {rejected} from '@deslop/runtime/auth/utils'
+import {AccessClaims, AuthError} from '@deslop/runtime/auth/schema'
+import {ACCESS_SECONDS, ISSUER_PATH, bearerOf, rejected} from '@deslop/runtime/auth/utils'
 
 import {
 	browserLabel,
@@ -71,26 +76,25 @@ function parts(token: string) {
 	)
 }
 
-// The grants still alive, each with only its unexpired access tokens.
+// A child cannot outlive the browser that started it.
 function live(grants: Grants, now: number) {
-	return Record.map(
-		Record.filter(grants, grant => grant.credential.expiresAt > now),
+	const current = Record.filter(grants, grant => grant.credential.expiresAt > now)
+	return Record.filter(
+		current,
 		grant =>
-			Match.valueTags(grant.credential, {
-				App: app => ({
-					...grant,
-					credential: {...app, access: Array.filter(app.access, entry => entry.expiresAt > now)}
-				}),
-				Browser: () => grant
-			})
+			grant.parent === undefined ||
+			Option.exists(Record.get(current, grant.parent), parent => parent.credential._tag === 'Browser')
 	)
+}
+
+function end(grants: Grants, family: string) {
+	return Record.filter(grants, (grant, key) => key !== family && grant.parent !== family)
 }
 
 // Signed-in apps and browsers live under ~/.deslop/auth; codes and sign-ins in progress stay in memory.
 export class Tokens extends Context.Service<
 	Tokens,
 	{
-		readonly access: (headers: Headers.Headers, resource: string) => Effect.Effect<CredentialOwner, AuthError>
 		readonly apps: (owner: CredentialOwner) => Stream.Stream<SignedInApp[], AuthError>
 		// Each saved change to the signed-in apps and browsers, starting with the current state.
 		readonly changes: Stream.Stream<void>
@@ -105,26 +109,53 @@ export class Tokens extends Context.Service<
 		) => Effect.Effect<Exchange, AuthError>
 		readonly forget: (owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly issue: (request: ClientRequest, owner: CredentialOwner) => Effect.Effect<string, AuthError>
+		readonly issuer: string
+		readonly jwks: Jwks.KeySet
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
 		readonly session: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 		readonly sessionVia: (headers: Headers.Headers) => Effect.Effect<SessionVia, AuthError>
 		// The session's account and how it signed in, read once.
 		readonly browserSession: (
 			headers: Headers.Headers
-		) => Effect.Effect<{owner: CredentialOwner; via: SessionVia}, AuthError>
+		) => Effect.Effect<{family: string; owner: CredentialOwner; via: SessionVia}, AuthError>
 		readonly startSession: (
 			owner: CredentialOwner,
 			origin: Origin,
 			via: SessionVia,
 			previous: string
 		) => Effect.Effect<{seconds: number; token: string}, AuthError>
+		readonly verify: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 	}
 >()('@deslop/auth/services/tokens/service/Tokens') {
 	static readonly layer = Layer.effect(
 		Tokens,
 		Effect.gen(function* () {
-			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Grants)
-			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('grants'), () => ({})))
+			const storage = yield* KeyValueStore.KeyValueStore
+			yield* storage.remove('grants')
+			const store = KeyValueStore.toSchemaStore(storage, Grants)
+			const grants = yield* SubscriptionRef.make<Grants>(Option.getOrElse(yield* store.get('sign-ins'), () => ({})))
+			const issuer = `${new URL(yield* Config.String('APP_URL')).origin}${ISSUER_PATH}`
+			const keys = KeyValueStore.toSchemaStore(storage, Schema.RedactedFromValue(Jwk.PrivateJwk))
+			const privateJwk = yield* Option.match(yield* keys.get('signing-key'), {
+				onNone: () =>
+					pipe(
+						Jwk.generateKeyPair({algorithm: 'EdDSA'}),
+						Effect.flatMap(pair => Jwk.importPrivate(pair.privateKey, 'EdDSA')),
+						Effect.flatMap(Jwk.exportPrivate),
+						Effect.tap(key => keys.set('signing-key', key))
+					),
+				onSome: Effect.succeed
+			})
+			const privateKey = yield* Jwk.importPrivate(privateJwk, 'EdDSA')
+			const kid = yield* Jwk.thumbprint(privateJwk)
+			const publicJwk = yield* Schema.decodeUnknownEffect(Jwk.PublicJwk)({
+				...Struct.omit(Redacted.value(privateJwk), ['d', 'key_ops']),
+				alg: 'EdDSA',
+				kid,
+				use: 'sig'
+			})
+			const publicKey = yield* Jwk.importPublic(publicJwk, 'EdDSA')
+			const signature = yield* Signature.Signature
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())
 			const redeeming = yield* Semaphore.make(1)
 			const random = yield* SecureRandom.SecureRandom
@@ -143,7 +174,7 @@ export class Tokens extends Context.Service<
 					Effect.gen(function* () {
 						const now = yield* Clock.currentTimeMillis
 						const [result, next] = yield* update(live(current, now), now)
-						yield* store.set('grants', next)
+						yield* store.set('sign-ins', next)
 						return [result, next] as const
 					})
 				)
@@ -164,8 +195,9 @@ export class Tokens extends Context.Service<
 					return yield* AuthError.make({message: 'Sign in first'})
 				}
 				return {
+					family: found.family,
 					owner: {incarnation: found.grant.incarnation, user: found.grant.user},
-					via: found.grant.credential.via ?? ('Code' as const)
+					via: found.grant.credential.via
 				}
 			}, rejected('Sign in first'))
 			const session = Effect.fn('Tokens.session')(function* (headers: Headers.Headers) {
@@ -174,24 +206,24 @@ export class Tokens extends Context.Service<
 			const sessionVia = Effect.fn('Tokens.sessionVia')(function* (headers: Headers.Headers) {
 				return (yield* browser(headers)).via
 			})
-			const access = Effect.fn('Tokens.access')(function* (headers: Headers.Headers, resource: string) {
-				// RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
-				const token = yield* Effect.fromOption(
-					Option.flatMapNullishOr(
-						String.match(/^bearer +(?<token>\S+) *$/iu)(headers['authorization'] ?? ''),
-						found => found.groups?.['token']
-					)
+			const verify = Effect.fn('Tokens.verify')(function* (headers: Headers.Headers) {
+				const verified = yield* Effect.provideService(
+					Jwt.verify(AccessClaims, yield* Effect.fromOption(bearerOf(headers)), publicKey, {
+						audience: 'deslop',
+						issuer,
+						typ: 'at+jwt'
+					}),
+					Signature.Signature,
+					signature
 				)
-				const found = yield* grantOf(token)
-				if (
-					found.grant.credential._tag !== 'App' ||
-					!Array.some(
-						found.grant.credential.access,
-						entry => entry.hash === found.hash && Array.contains(entry.resources, resource)
-					)
-				) {
-					return yield* AuthError.make({message: 'The token is not valid for this app'})
+				const now = yield* Clock.currentTimeMillis
+				const signedIn = yield* Effect.fromOption(
+					Record.get(live(yield* SubscriptionRef.get(grants), now), verified.claims.sid)
+				)
+				if (signedIn.credential._tag !== 'App' || signedIn.user.id !== verified.claims.sub) {
+					return yield* AuthError.make({message: 'Sign in first'})
 				}
+				const found = {family: verified.claims.sid, grant: signedIn, now}
 				// Touch the grant at most once a minute, so a token's last use shows without a write per tool call.
 				if (found.now - found.grant.lastActive > 60_000) {
 					yield* pipe(
@@ -216,35 +248,42 @@ export class Tokens extends Context.Service<
 			const mint = Effect.fnUntraced(function* (
 				family: string,
 				generation: number,
-				resources: readonly Resource[],
+				owner: CredentialOwner,
+				client: string,
 				now: number
 			) {
-				const accessSecret = yield* secret(32)
 				const refreshSecret = yield* secret(32)
-				// A queued iOS upload cannot refresh its bearer after the share sheet closes.
-				const seconds = Boolean.match(Array.contains(resources, 'https://stash.mp281x.xyz'), {
-					onFalse: () => 900,
-					onTrue: () => 90_000
-				})
+				const iat = Math.floor(now / 1000)
+				const access = yield* Effect.provideService(
+					Jwt.sign(
+						AccessClaims,
+						{
+							aud: 'deslop',
+							azp: client,
+							exp: iat + ACCESS_SECONDS,
+							iat,
+							iss: issuer,
+							name: owner.user.name,
+							sid: family,
+							sub: owner.user.id
+						},
+						privateKey,
+						{kid, typ: 'at+jwt'}
+					),
+					Signature.Signature,
+					signature
+				)
 				return {
-					access: {expiresAt: now + seconds * 1000, hash: yield* hash(accessSecret), resources},
 					// A refresh token lasts 30 days from its last use.
 					refresh: {expiresAt: now + 30 * 86_400_000, hash: yield* hash(refreshSecret)},
 					tokens: {
-						access_token: `${family}.${accessSecret}`,
-						expires_in: seconds,
+						access_token: Redacted.value(access),
+						expires_in: ACCESS_SECONDS,
 						refresh_token: `${family}.${generation}.${refreshSecret}`,
 						scope: 'deslop' as const,
 						token_type: 'Bearer' as const
 					}
 				}
-			})
-			const tokenResources = Effect.fnUntraced(function* (params: TokenParams, granted: readonly Resource[]) {
-				if (params.resource === undefined) return granted
-				if (!Array.every(params.resource, value => Array.contains(granted, value))) {
-					return yield* AuthError.make({error: 'invalid_target', message: 'The resource was not authorized'})
-				}
-				return params.resource
 			})
 			const redeem = Effect.fnUntraced(
 				function* (
@@ -285,21 +324,34 @@ export class Tokens extends Context.Service<
 								})
 							}
 							yield* allowed(fresh.owner)
-							const minted = yield* mint(family, 0, yield* tokenResources(params, fresh.request.resources), now)
+							if (
+								fresh.request.parent !== undefined &&
+								!Option.exists(
+									Record.get(current, fresh.request.parent),
+									parent => parent.credential._tag === 'Browser' && sameOwner(parent, fresh.owner)
+								)
+							) {
+								return yield* expired
+							}
+							const minted = yield* pipe(
+								mint(family, 0, fresh.owner, clientLabel(fresh.request.clientName), now),
+								rejected('Cannot sign the access token')
+							)
 							const grant: Grant = {
 								client: clientLabel(fresh.request.clientName),
 								createdAt: now,
 								credential: {
 									_tag: 'App',
-									access: [minted.access],
 									clientId: fresh.request.clientId,
 									generation: 0,
+									replaced: [],
 									resources: fresh.request.resources,
 									...minted.refresh
 								},
 								device: deviceLabel(origin),
 								lastActive: now,
 								origin,
+								...Struct.pick(fresh.request, ['parent']),
 								...fresh.owner
 							}
 							// Each sign-in registers anew, so a second one of the same client, device and apps replaces the first.
@@ -313,6 +365,7 @@ export class Tokens extends Context.Service<
 												sameOwner(other, grant) &&
 												other.client === grant.client &&
 												other.device === grant.device &&
+												other.parent === grant.parent &&
 												other.credential._tag === 'App' &&
 												Array.makeEquivalence(String.Equivalence)(
 													Array.sort(other.credential.resources, String.Order),
@@ -362,10 +415,7 @@ export class Tokens extends Context.Service<
 							})
 						}
 						// Only a spent token's secret proves a replay; a guess at the family ends nothing.
-						if (
-							presented.generation < credential.generation &&
-							Array.contains(Array.ensure(credential.replaced ?? []), presentedHash)
-						) {
+						if (presented.generation < credential.generation && Array.contains(credential.replaced, presentedHash)) {
 							return [
 								Exchange.cases.Replayed.make({
 									message: 'This refresh token was already used, so its sign-in is revoked; sign in again'
@@ -377,11 +427,9 @@ export class Tokens extends Context.Service<
 							return yield* expired
 						}
 						yield* allowed(grant)
-						const minted = yield* mint(
-							presented.family,
-							credential.generation + 1,
-							yield* tokenResources(params, credential.resources),
-							now
+						const minted = yield* pipe(
+							mint(presented.family, credential.generation + 1, grant, grant.client, now),
+							rejected('Cannot sign the access token')
 						)
 						return [
 							Exchange.cases.Granted.make({tokens: minted.tokens}),
@@ -391,9 +439,8 @@ export class Tokens extends Context.Service<
 									...grant,
 									credential: {
 										...credential,
-										access: [...credential.access, minted.access],
 										generation: credential.generation + 1,
-										replaced: [...Array.ensure(credential.replaced ?? []), credential.hash],
+										replaced: [...credential.replaced, credential.hash],
 										...minted.refresh
 									},
 									// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
@@ -421,6 +468,7 @@ export class Tokens extends Context.Service<
 								family: entry[0],
 								kind: entry[1].credential._tag,
 								lastActive: entry[1].lastActive,
+								...Struct.pick(entry[1], ['parent']),
 								resources: Match.valueTags(entry[1].credential, {
 									App: credential => credential.resources,
 									Browser: () => []
@@ -436,7 +484,6 @@ export class Tokens extends Context.Service<
 			})
 
 			return Tokens.of({
-				access,
 				// The list is read again on each change and once a minute, so expired sign-ins leave it.
 				apps: user =>
 					pipe(
@@ -471,7 +518,7 @@ export class Tokens extends Context.Service<
 							if (!Option.exists(Record.get(current, family), grant => sameOwner(grant, owner))) {
 								return yield* AuthError.make({message: 'This sign-in has already ended'})
 							}
-							return [undefined, Record.remove(current, family)] as const
+							return [undefined, end(current, family)] as const
 						})
 					)
 				}, rejected('Cannot sign this out')),
@@ -483,7 +530,7 @@ export class Tokens extends Context.Service<
 						),
 						{
 							onNone: () => Effect.void,
-							onSome: own => change(saved => Effect.succeed([undefined, Record.remove(saved, own.family)] as const))
+							onSome: own => change(saved => Effect.succeed([undefined, end(saved, own.family)] as const))
 						}
 					)
 				}, rejected('Cannot sign out')),
@@ -518,8 +565,10 @@ export class Tokens extends Context.Service<
 					)
 					return code
 				}, rejected('Cannot issue the authorization code')),
+				issuer,
+				jwks: {keys: [publicJwk]},
 				revoke: Effect.fn('Tokens.revoke')(function* (params: RevokeParams) {
-					// RFC 7009: the client's own refresh or live access token ends its sign-in; anything else changes nothing.
+					// RFC 7009: the client's own refresh token ends its sign-in; anything else changes nothing.
 					yield* Option.match(parts(params.token), {
 						onNone: () => Effect.void,
 						onSome: Effect.fnUntraced(function* (found) {
@@ -533,8 +582,7 @@ export class Tokens extends Context.Service<
 											grant =>
 												grant.credential._tag === 'App' &&
 												grant.credential.clientId === params.client_id &&
-												(grant.credential.hash === presented ||
-													Array.some(grant.credential.access, entry => entry.hash === presented))
+												grant.credential.hash === presented
 										),
 										{onFalse: () => current, onTrue: () => Record.remove(current, found.family)}
 									)
@@ -577,7 +625,7 @@ export class Tokens extends Context.Service<
 										grant => grant.credential._tag === 'Browser' && grant.credential.hash === prior.hash
 									)
 								) {
-									return Record.remove(current, prior.family)
+									return end(current, prior.family)
 								}
 								return current
 							}
@@ -599,7 +647,8 @@ export class Tokens extends Context.Service<
 						] as const)
 					})
 					return {seconds, token: `${family}.${sessionSecret}`}
-				}, rejected('Cannot start the session'))
+				}, rejected('Cannot start the session')),
+				verify
 			})
 		})
 	)

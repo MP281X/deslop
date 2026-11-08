@@ -27,7 +27,7 @@ export const session = MobileSession.make('opm', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layerSignedIn('@deslop/opm', session.accessToken)(SERVER)
+	protocol: MobileRuntime.layerSignedIn('@deslop/opm', session.bearer)(SERVER)
 }) {}
 
 // Chapters
@@ -57,7 +57,7 @@ export const chaptersAtom = Atom.keepAlive(
 				Stream.scan(Array.empty<ChapterItem>, apply),
 				Stream.drop(1)
 			),
-			session.renewing
+			session.reopening
 		)
 	})
 )

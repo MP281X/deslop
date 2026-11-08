@@ -20,17 +20,18 @@ import {
 	pipe
 } from 'effect'
 
-import {McpServer} from 'effect/ai'
+import {McpProtocol, McpServer} from 'effect/ai'
 import {Digest, SecureRandom, Signature} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
+import {Jwk, Jwks, Jwt} from 'effect/jose'
 import {KeyValueStore, RateLimiter} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import type {Resource} from '@deslop/runtime/auth/schema'
-import {AuthError, ClientRegistration, TokenResponse, User} from '@deslop/runtime/auth/schema'
-import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
-import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
+import {AccessClaims, AuthError, TokenResponse, User} from '@deslop/runtime/auth/schema'
+import {HttpAuth} from '@deslop/runtime/auth/service'
+import {ACCESS_SECONDS, AUTH_URL, CurrentUser, JWKS_PATH, clientIdOf} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
@@ -46,7 +47,7 @@ import {
 } from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
-import {People} from '#services/people/service.ts'
+import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {
 	AnswerParams,
 	AuthorizationStatus,
@@ -72,10 +73,17 @@ const me = pipe(
 	Layer.provide(HttpAuth.layer)
 )
 
-const mcp = ServerRuntime.layerMcp({
-	instructions: 'Approve a sign-in you started with answer_request.',
-	registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
-})
+const mcp = pipe(
+	McpServer.layerHttp({
+		instructions: 'Approve a sign-in you started with answer_request.',
+		name: 'Auth',
+		path: '/mcp',
+		protocols: [McpProtocol.v2025_06_18],
+		registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner)),
+		version: '1'
+	}),
+	Layer.provide(HttpAuth.layer)
+)
 
 const requestOwner = Effect.gen(function* () {
 	return yield* (yield* Tokens).session((yield* HttpServerRequest.HttpServerRequest).headers)
@@ -102,7 +110,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 					set: (key, value) =>
 						Effect.gen(function* () {
 							const grantFailed =
-								key === 'grants' &&
+								key === 'sign-ins' &&
 								Option.contains(
 									yield* Ref.get(failGrantWrite),
 									yield* Ref.updateAndGet(grantWrites, count => count + 1)
@@ -344,6 +352,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 							Layer.provide(HttpAuth.layer)
 						)
 					),
+					Layer.provideMerge(layerIssuerAuth),
 					Layer.provideMerge(Layer.mergeAll(SignIns.layer, RateLimiter.layer)),
 					Layer.provideMerge(People.layer),
 					Layer.provideMerge(
@@ -373,39 +382,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 		),
 		web => Effect.promise(() => web.dispose())
 	)
-	const app = yield* Effect.acquireRelease(
-		Effect.sync(() =>
-			HttpRouter.toWebHandler(
-				pipe(
-					me,
-					Layer.provide(Auth.layer),
-					Layer.provide(
-						Layer.merge(
-							Layer.succeed(
-								HttpClient.HttpClient,
-								HttpClient.make(request =>
-									Effect.map(
-										Effect.promise(() =>
-											issuer.handler(
-												new Request(new URL(`${request.url}?${UrlParams.toString(request.urlParams)}`), {
-													headers: request.headers
-												})
-											)
-										),
-										response => HttpClientResponse.fromWeb(request, response)
-									)
-								)
-							),
-							ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: API, AUTH_URL}))
-						)
-					)
-				),
-				{disableLogger: true}
-			)
-		),
-		web => Effect.promise(() => web.dispose())
-	)
-	return {app, failGrantWrite, grantWrites, issuer, ready}
+	return {failGrantWrite, grantWrites, issuer, ready}
 })
 
 function send(web: Effect.Success<ReturnType<typeof servers>>['issuer'], path: string, init?: RequestInit) {
@@ -456,9 +433,9 @@ const authorize = Effect.fnUntraced(function* (
 		method: 'POST'
 	})
 	assert.strictEqual(registered.status, 201)
-	const registration = yield* Schema.decodeEffect(Schema.fromJsonString(ClientRegistration))(
-		yield* Effect.promise(() => registered.text())
-	)
+	const registration = yield* Schema.decodeEffect(
+		Schema.fromJsonString(Schema.Struct({client_id: Schema.NonEmptyString}))
+	)(yield* Effect.promise(() => registered.text()))
 	const request = yield* send(
 		web,
 		`/api/auth/oauth2/authorize?${UrlParams.toString(
@@ -774,7 +751,229 @@ const replacement = Effect.fnUntraced(function* (
 	})
 })
 
+const authorizeWeb = Effect.fnUntraced(function* (
+	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
+	session: string
+) {
+	const redirect = 'https://scope.mp281x.xyz/auth/callback'
+	const clientId = clientIdOf({name: 'Scope', redirects: [redirect]})
+	const path = `/api/auth/oauth2/authorize?${UrlParams.toString(
+		UrlParams.fromInput({
+			client_id: clientId,
+			code_challenge: Base64Url.encode(
+				yield* (yield* Digest.Digest).digest(Digest.sha256, new TextEncoder().encode(VERIFIER))
+			),
+			code_challenge_method: 'S256',
+			redirect_uri: redirect,
+			resource: 'https://scope.mp281x.xyz',
+			response_type: 'code',
+			scope: 'deslop offline_access',
+			state: 'web-state'
+		})
+	)}`
+	return {
+		clientId,
+		cookie: session,
+		id: '',
+		path,
+		redirect,
+		resources: ['https://scope.mp281x.xyz'],
+		response: yield* send(web, path, {headers: {cookie: session}})
+	}
+})
+
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
+	test.effect(
+		'redirects first-party web authorization through Auth and answers immediately after sign-in',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const request = yield* authorizeWeb(web.issuer, '')
+			const signInPage = new URL(request.response.headers.get('location') ?? '', AUTH_URL)
+			assert.strictEqual(signInPage.pathname, '/')
+			assert.strictEqual(signInPage.searchParams.get('next'), new URL(request.path, AUTH_URL).href)
+			assert.isFalse(signInPage.searchParams.has('request'))
+			const signedIn = yield* signIn(
+				web.issuer,
+				'octocat',
+				`?${new URLSearchParams({next: signInPage.searchParams.get('next') ?? ''})}`
+			)
+			assert.strictEqual(signedIn.headers.get('location'), new URL(request.path, AUTH_URL).href)
+			const setCookie = signedIn.headers.getSetCookie()
+			assert.isTrue(
+				Array.some(
+					setCookie,
+					value =>
+						String.startsWith('__Host-session=')(value) &&
+						String.includes('HttpOnly')(value) &&
+						String.includes('Secure')(value) &&
+						String.includes('SameSite=Lax')(value) &&
+						String.includes('Path=/')(value)
+				)
+			)
+			assert.isFalse(Array.some(setCookie, value => String.includes('Domain=')(value)))
+			const response = yield* send(web.issuer, request.path, {headers: {cookie: cookie(signedIn)}})
+			const callback = new URL(response.headers.get('location') ?? '')
+			assert.strictEqual(`${callback.origin}${callback.pathname}`, request.redirect)
+			assert.strictEqual(callback.searchParams.get('state'), 'web-state')
+			assert.strictEqual(callback.searchParams.get('iss'), `${AUTH_URL}/api/auth`)
+			assert.isTrue(String.isNonEmpty(callback.searchParams.get('code') ?? ''))
+			assert.isEmpty(response.headers.getSetCookie())
+			assert.strictEqual((yield* exchange(web.issuer, request, callback.searchParams.get('code') ?? '')).status, 200)
+		})
+	)
+
+	test.effect(
+		'serves public signing keys that verify ten-minute tokens for every Deslop app',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const request = yield* authorizeWeb(web.issuer, cookie(yield* signIn(web.issuer, 'octocat')))
+			const response = yield* exchange(
+				web.issuer,
+				request,
+				new URL(request.response.headers.get('location') ?? '').searchParams.get('code') ?? ''
+			)
+			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+				yield* Effect.promise(() => response.text())
+			)
+			const keys = yield* send(web.issuer, JWKS_PATH)
+			assert.strictEqual(keys.headers.get('cache-control'), 'public, max-age=300')
+			const jwks = yield* Schema.decodeEffect(Schema.fromJsonString(Jwks.KeySet))(
+				yield* Effect.promise(() => keys.text())
+			)
+			assert.strictEqual(jwks.keys.length, 1)
+			const verified = yield* Effect.provideService(
+				Jwt.verifyWithKeySet(AccessClaims, token.access_token, {
+					algorithms: ['EdDSA'],
+					audience: 'deslop',
+					issuer: `${AUTH_URL}/api/auth`,
+					typ: 'at+jwt'
+				}),
+				Jwks.Jwks,
+				yield* Jwks.makeLocal(jwks)
+			)
+			assert.deepStrictEqual(verified.claims, {
+				aud: 'deslop',
+				azp: 'Scope',
+				exp: verified.claims.iat + ACCESS_SECONDS,
+				iat: verified.claims.iat,
+				iss: `${AUTH_URL}/api/auth`,
+				name: 'octocat',
+				sid: Array.headNonEmpty(String.split(token.refresh_token, '.')),
+				sub: 'github:42'
+			})
+			assert.strictEqual(
+				verified.protectedHeader.kid,
+				yield* Jwk.thumbprint(
+					yield* Schema.decodeUnknownEffect(Jwk.PublicJwk)(yield* Effect.fromOption(Array.head(jwks.keys)))
+				)
+			)
+			const metadata = yield* send(web.issuer, '/.well-known/oauth-authorization-server/api/auth')
+			assert.deepStrictEqual(
+				yield* Schema.decodeEffect(
+					Schema.fromJsonString(Schema.Struct({issuer: Schema.String, jwks_uri: Schema.String}))
+				)(yield* Effect.promise(() => metadata.text())),
+				{issuer: `${AUTH_URL}/api/auth`, jwks_uri: `${AUTH_URL}${JWKS_PATH}`}
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
+				200
+			)
+			assert.strictEqual(
+				(yield* send((yield* servers()).issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}}))
+					.status,
+				401
+			)
+			assert.strictEqual(
+				(yield* send(web.issuer, '/me', {headers: {authorization: 'Basic invalid', cookie: request.cookie}})).status,
+				401
+			)
+			yield* TestClock.adjust('10 minutes')
+			assert.strictEqual(
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
+				401
+			)
+			assert.strictEqual((yield* send(web.issuer, '/auth/session')).status, 404)
+			assert.strictEqual((yield* send(web.issuer, '/auth/verify')).status, 404)
+		})
+	)
+
+	test.effect(
+		'refuses first-party authorization for an account awaiting admission',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const callback = new URL(
+				(yield* authorizeWeb(web.issuer, cookie(yield* signIn(web.issuer, 'stranger')))).response.headers.get(
+					'location'
+				) ?? ''
+			)
+			assert.strictEqual(callback.searchParams.get('error'), 'access_denied')
+			assert.isFalse(callback.searchParams.has('code'))
+		})
+	)
+
+	for (const ending of ['sign-out', 'disconnect', 'replacement'] as const) {
+		test.effect(
+			`ends a browser's child grants on ${ending} without ending independent sign-ins`,
+			Effect.fnUntraced(function* () {
+				const web = yield* servers()
+				const session = cookie(yield* signIn(web.issuer, 'octocat'))
+				const independent = yield* agentToken(web.issuer, session)
+				const request = yield* authorizeWeb(web.issuer, session)
+				const response = yield* exchange(
+					web.issuer,
+					request,
+					new URL(request.response.headers.get('location') ?? '').searchParams.get('code') ?? ''
+				)
+				const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
+					yield* Effect.promise(() => response.text())
+				)
+				const list = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
+				const apps = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+					yield* Effect.promise(() => list.text())
+				)
+				const browser = yield* Effect.fromOption(Array.findFirst(apps, app => app.kind === 'Browser'))
+				assert.strictEqual(
+					(yield* Effect.fromOption(Array.findFirst(apps, app => app.client === 'Scope'))).parent,
+					browser.family
+				)
+				const unspent = yield* authorizeWeb(web.issuer, session)
+				if (ending === 'sign-out') {
+					assert.strictEqual(
+						(yield* send(web.issuer, '/auth/sign-out', {headers: {cookie: session}, method: 'POST'})).status,
+						204
+					)
+				} else if (ending === 'disconnect') {
+					assert.strictEqual(
+						(yield* send(web.issuer, `/disconnect?family=${browser.family}`, {
+							headers: {cookie: session},
+							method: 'POST'
+						})).status,
+						204
+					)
+				} else {
+					yield* signIn(web.issuer, 'octocat', '', session)
+				}
+				assert.strictEqual(
+					(yield* exchange(
+						web.issuer,
+						unspent,
+						new URL(unspent.response.headers.get('location') ?? '').searchParams.get('code') ?? ''
+					)).status,
+					400
+				)
+				assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 400)
+				assert.strictEqual(
+					(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
+					401
+				)
+				assert.strictEqual(
+					(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${independent}`}})).status,
+					200
+				)
+			})
+		)
+	}
+
 	test.effect(
 		'registers a credential ID to only one account under concurrent verified requests',
 		Effect.fnUntraced(function* () {
@@ -858,7 +1057,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Effect.promise(() => response.text())
 				)
 			)
-			yield* Ref.set(failing, Option.some('grants'))
+			yield* Ref.set(failing, Option.some('sign-ins'))
 			assert.strictEqual((yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})).status, 400)
 			yield* Ref.set(failing, Option.none())
 			const fresh = cookie(yield* signIn(web.issuer, 'stranger'))
@@ -885,7 +1084,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				[]
 			)
-			assert.strictEqual((yield* send(restarted.issuer, '/auth/session', {headers: {cookie: fresh}})).status, 200)
+			assert.strictEqual((yield* send(restarted.issuer, '/me', {headers: {cookie: fresh}})).status, 200)
 		})
 	)
 
@@ -1021,11 +1220,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const web = yield* servers(home)
-					assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: saved.session}})).status, 200)
+					assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: saved.session}})).status, 200)
 					assert.strictEqual(
-						(yield* send(web.issuer, `/auth/verify?resource=${API}`, {
-							headers: {authorization: `Bearer ${saved.token.access_token}`}
-						})).status,
+						(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${saved.token.access_token}`}})).status,
 						200
 					)
 					assert.strictEqual((yield* refresh(web.issuer, saved.clientId, saved.first.refresh_token)).status, 400)
@@ -1034,9 +1231,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const web = yield* servers(home)
 			assert.strictEqual((yield* refresh(web.issuer, saved.clientId, saved.token.refresh_token)).status, 400)
 			assert.strictEqual(
-				(yield* send(web.issuer, `/auth/verify?resource=${API}`, {
-					headers: {authorization: `Bearer ${saved.token.access_token}`}
-				})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${saved.token.access_token}`}})).status,
 				401
 			)
 		})
@@ -1245,7 +1440,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				const replace = yield* replacement(web.issuer, before, via)
 				yield* Ref.set(web.failGrantWrite, Option.some((yield* Ref.get(web.grantWrites)) + 1))
 				const failed = yield* replace()
-				assert.isFalse(String.includes('__Secure-session=')(cookie(failed)))
+				assert.isFalse(String.includes('__Host-session=')(cookie(failed)))
 				assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: before}})).status, 200)
 				yield* Ref.set(web.failGrantWrite, Option.none())
 				const after = cookie(yield* replace())
@@ -1286,7 +1481,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'binds consent and one-use PKCE codes to the browser, client, callback and resources',
 		Effect.fnUntraced(function* () {
 			const web = yield* servers()
-			assert.strictEqual((yield* send(web.app, '/me')).status, 401)
+			assert.strictEqual((yield* send(web.issuer, '/me')).status, 401)
 			// Registration is public, so a client names only a few short callbacks.
 			assert.strictEqual(
 				(yield* send(web.issuer, '/api/auth/oauth2/register', {
@@ -1301,12 +1496,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const session = cookie(yield* signIn(web.issuer, 'octocat'))
 			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: session}})).status, 200)
 			assert.strictEqual(
-				(yield* send(web.app, '/me', {headers: {cookie: session, origin: 'https://portfolio.mp281x.xyz'}})).status,
-				200
-			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(yield* signIn(web.issuer, 'stranger'))}}))
-					.status,
+				(yield* send(web.issuer, '/me', {headers: {cookie: cookie(yield* signIn(web.issuer, 'stranger'))}})).status,
 				401
 			)
 			const request = yield* authorize(web.issuer, session, 'stash://auth/callback', [
@@ -1339,22 +1529,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => response.text())
 			)
-			assert.strictEqual(token.expires_in, 90_000)
+			assert.strictEqual(token.expires_in, 600)
 			// The scheme is case-insensitive and may be followed by several spaces.
 			assert.strictEqual(
-				(yield* send(web.app, '/me', {headers: {authorization: `bearer  ${token.access_token}`}})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `bearer  ${token.access_token}`}})).status,
 				200
-			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://gateway.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${token.access_token}`}
-				})).status,
-				401
 			)
 			// A second redemption of the code revokes what the first one got.
 			assert.strictEqual((yield* exchange(web.issuer, request, code)).status, 400)
 			assert.strictEqual(
-				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
 				401
 			)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 400)
@@ -1452,7 +1636,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => winner.text())
 			)
 			assert.strictEqual(
-				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
 				401
 			)
 		})
@@ -1651,7 +1835,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => first.text())
 			)
-			assert.strictEqual(token.expires_in, 900)
+			assert.strictEqual(token.expires_in, 600)
 			assert.strictEqual(first.headers.get('cache-control'), 'no-store')
 			assert.strictEqual(first.headers.get('pragma'), 'no-cache')
 			const second = yield* refresh(web.issuer, request.clientId, token.refresh_token)
@@ -1664,7 +1848,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				yield* Effect.promise(() => third.text())
 			)
 			// The family is the public prefix of every bearer, so it alone revokes nothing and proves no replay.
-			const family = String.split(token.access_token, '.')[0]
+			const family = String.split(token.refresh_token, '.')[0]
 			assert.strictEqual(
 				(yield* send(web.issuer, '/api/auth/oauth2/revoke', {
 					body: UrlParams.toString(
@@ -1680,24 +1864,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				400
 			)
 			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${rotated.access_token}`}
-				})).status,
-				200
-			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${rotated.access_token}`}
-				})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${rotated.access_token}`}})).status,
 				200
 			)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, token.refresh_token)).status, 400)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, rotated.refresh_token)).status, 400)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, latest.refresh_token)).status, 400)
 			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://scope.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${rotated.access_token}`}
-				})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${rotated.access_token}`}})).status,
 				401
 			)
 			yield* authorize(web.issuer, session, 'opm://auth/callback', [API])
@@ -1719,7 +1893,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				200
 			)
 			assert.strictEqual(
-				(yield* send(web.app, '/me', {headers: {authorization: `Bearer ${active.access_token}`}})).status,
+				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${active.access_token}`}})).status,
 				401
 			)
 			assert.strictEqual(
@@ -1797,11 +1971,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const access = (yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => signedIn.text())
 			)).access_token
-			const verified = yield* send(
-				web.issuer,
-				`/auth/verify?resource=${encodeURIComponent('https://opm.mp281x.xyz')}`,
-				{headers: {authorization: `Bearer ${access}`}}
-			)
+			const verified = yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${access}`}})
 			assert.deepStrictEqual(
 				yield* Schema.decodeEffect(Schema.fromJsonString(User))(yield* Effect.promise(() => verified.text())),
 				{id: 'github:42', name: 'octocat'}
@@ -1817,7 +1987,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
 			const drifter = cookie(yield* signIn(web.issuer, 'drifter'))
 			const status = Effect.fnUntraced(function* (session: string) {
-				return (yield* send(web.issuer, '/auth/session', {headers: {cookie: session}})).status
+				return (yield* send(web.issuer, '/me', {headers: {cookie: session}})).status
 			})
 			const text = Effect.fnUntraced(function* (response: Response) {
 				return yield* Effect.promise(() => response.text())
@@ -1841,12 +2011,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})
 			assert.strictEqual(yield* status(stranger), 401)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://auth.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${member}`}
-				})).status,
-				401
-			)
+			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${member}`}})).status, 401)
 			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin'])
 		})
 	)
@@ -1908,12 +2073,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* apps(admin), app => app.resources),
 				[['https://auth.mp281x.xyz/mcp']]
 			)
-			assert.strictEqual(
-				(yield* send(web.issuer, '/auth/verify?resource=https://auth.mp281x.xyz/mcp', {
-					headers: {authorization: `Bearer ${agent}`}
-				})).status,
-				200
-			)
+			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${agent}`}})).status, 200)
 			assert.strictEqual((yield* refresh(web.issuer, request.clientId, next.refresh_token)).status, 400)
 		})
 	)
@@ -2003,12 +2163,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				headers: {cookie: browser.cookie}
 			})
 			assert.strictEqual(signedIn.headers.get('location'), 'https://stash.mp281x.xyz/notes')
-			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 200)
+			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: cookie(signedIn)}})).status, 200)
 			// A code may have been approved for another person's browser, so its session lasts 30 days, not a year.
 			assert.isTrue(
 				Array.some(
 					signedIn.headers.getSetCookie(),
-					value => String.startsWith('__Secure-session=')(value) && String.includes('Max-Age=2592000')(value)
+					value => String.startsWith('__Host-session=')(value) && String.includes('Max-Age=2592000')(value)
 				)
 			)
 			// The approved browser is listed among the account's sign-ins, and signing it out there ends its session.
@@ -2026,7 +2186,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					.status,
 				204
 			)
-			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 401)
+			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: cookie(signedIn)}})).status, 401)
 			// An approver removed before delivery delivers a denial.
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
 			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
@@ -2035,7 +2195,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})
 			const declined = yield* send(web.issuer, `/auth/continue?request=${late.id}`, {headers: {cookie: late.cookie}})
 			assert.strictEqual(declined.headers.get('location'), '/')
-			assert.isFalse(String.includes('__Secure-session=')(cookie(declined)))
+			assert.isFalse(String.includes('__Host-session=')(cookie(declined)))
 			// A page elsewhere is dropped, and a denied browser gets no session.
 			const elsewhere = yield* start('https://evil.test/')
 			assert.strictEqual((yield* answer(web.issuer, admin, elsewhere.id, false)).status, 204)
@@ -2043,7 +2203,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				headers: {cookie: elsewhere.cookie}
 			})
 			assert.strictEqual(denied.headers.get('location'), '/')
-			assert.isFalse(String.includes('__Secure-session=')(cookie(denied)))
+			assert.isFalse(String.includes('__Host-session=')(cookie(denied)))
 		})
 	)
 

@@ -160,10 +160,7 @@ const make = Effect.gen(function* () {
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
 				const input = yield* HttpServerRequest.schemaBodyJson(Schema.Struct({app: Origin}))
-				const user = yield* Boolean.match(request.headers['authorization'] !== undefined, {
-					onFalse: () => auth.user(request.headers),
-					onTrue: () => auth.access(request.headers, input.app)
-				})
+				const user = yield* auth.user(request.headers)
 				const token = Base64Url.encode(yield* random.randomBytes(32))
 				const digest = yield* hash(token)
 				const now = yield* Clock.currentTimeMillis

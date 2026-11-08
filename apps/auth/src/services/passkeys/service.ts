@@ -30,7 +30,7 @@ import {localAuth, rejected} from '@deslop/runtime/auth/utils'
 
 import type {Assertion, Passkey, Registration} from '#services/passkeys/schema.ts'
 import {ClientData, CreationOptions, RequestOptions, StoredPasskeys, Transport} from '#services/passkeys/schema.ts'
-import {browserLabel, cookieDomain, deviceLabel, sameOwner} from '#services/tokens/lib/utils.ts'
+import {browserLabel, deviceLabel, sameOwner} from '#services/tokens/lib/utils.ts'
 import type {CredentialOwner, Origin, SessionVia} from '#services/tokens/schema.ts'
 
 // How long a challenge stays answerable.
@@ -98,9 +98,9 @@ export class Passkeys extends Context.Service<
 				Option.getOrElse(yield* store.get('passkeys'), () => [])
 			)
 			const origin = new URL(yield* Config.String('APP_URL')).origin
-			// Every mp281x.xyz app can use a passkey later; without an issuer it belongs to this host alone, like the session cookie.
+			// Every mp281x.xyz app can use a passkey later; without an issuer it belongs to this host alone.
 			const rpID = Boolean.match(yield* localAuth, {
-				onFalse: () => cookieDomain(origin),
+				onFalse: () => 'mp281x.xyz',
 				onTrue: () => new URL(origin).hostname
 			})
 			// A challenge answers once, within five minutes, taken in one step: registrations by account, sign-ins by the challenge itself.
