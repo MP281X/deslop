@@ -16,7 +16,7 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Publish
 
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
-2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments hold what the body shows and how. A repository whose template lacks them follows `~/deslop/.github/pull_request_template.md`.
+2. **Describe** with the repository's template (`.github/pull_request_template.md`, `.gitlab/merge_request_templates/Default.md`); its comments hold what the body shows and how.
    - **Figures** stand in for an `html_render` page, which a PR cannot hold: lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
 
      ```bash
