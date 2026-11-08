@@ -30,7 +30,7 @@ The shared web surface: Sera shadcn primitives, the full-height shell, the comma
 
 ## Inventory
 
-The 66 installed primitives, grouped by the job they do. A component missing from this list is not installed; add it with the CLI.
+The 63 installed primitives, grouped by the job they do. A component missing from this list is not installed; add it with the CLI.
 
 **Actions and navigation** — `Button`, `Button Group`, `Toggle`, `Toggle Group`, `Breadcrumb`, `Navigation Menu`, `Menubar`, `Pagination`, `Sidebar`, `Tabs`, `Command`, `Dropdown Menu`, `Context Menu`, `Combobox`, `Select`, `Native Select`.
 
@@ -40,7 +40,7 @@ The 66 installed primitives, grouped by the job they do. A component missing fro
 
 **Feedback and status** — `Alert`, `Badge`, `Marker`, `Progress`, `Skeleton`, `Spinner`, `Toast`, `Kbd`, `Avatar`, `Trace`.
 
-**Data and documents** — `Chart`, `Code Block`, `Typography`, `Message`, `Message Scroller`, `Attachment`, `Bubble`, `Questionnaire`.
+**Data and documents** — `Chart`, `Code Block`, `Message`, `Message Scroller`, `Attachment`, `Bubble`, `Questionnaire`.
 
 **Direction** — `Direction` (RTL plumbing; the apps are English-only today).
 
