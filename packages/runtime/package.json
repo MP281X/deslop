@@ -6,6 +6,7 @@
 		"#*": "./src/*"
 	},
 	"exports": {
+		"./ai": "./src/ai/service.ts",
 		"./cli": "./src/cli.ts",
 		"./schema": "./src/schema.ts",
 		"./cli/service": "./src/cli/service.ts",

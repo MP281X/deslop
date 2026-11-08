@@ -1,4 +1,3 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Exercise the real page and atom over a scoped loopback RPC server.
 import {createServer} from 'node:http'
 
 import {RegistryContext} from '@effect/atom-react'
@@ -44,6 +43,12 @@ const fixture = Effect.gen(function* () {
 	const complete = yield* Ref.make(false)
 	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionInfo[], AuthError>>()
 	const handlers = RpcContracts.toLayer({
+		'ai.grants': () => Effect.never,
+		'ai.keys': () => Effect.never,
+		'ai.removeKey': () => Effect.never,
+		'ai.revokeGrant': () => Effect.never,
+		'ai.setKey': () => Effect.never,
+		'ai.usage': () => Effect.never,
 		'gateway.add': () => Effect.never,
 		'gateway.calls': () => Stream.never,
 		'gateway.remove': () => Effect.void,

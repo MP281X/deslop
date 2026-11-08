@@ -13,6 +13,7 @@ import {RpcSchema} from 'effect/rpc'
 
 import {MCP_METADATA_PATH} from '#schema.ts'
 
+import {AiGateway} from '#ai/service.ts'
 import {CurrentUser, DEVELOPER, RpcAuth, SESSION_PATH, VERIFY_PATH, localAuth} from '#auth/lib/utils.ts'
 import {AuthError, User} from '#auth/schema.ts'
 
@@ -38,6 +39,13 @@ function developer() {
 	return Effect.succeed(DEVELOPER)
 }
 
+function enrolled(user: User, headers: Headers.Headers) {
+	return Effect.gen(function* () {
+		const gateway = Context.getOrUndefined(yield* Effect.context<never>(), AiGateway)
+		if (gateway) yield* gateway.enroll(user.id, headers)
+	})
+}
+
 const unavailable = HttpServerResponse.text('The authorization service is temporarily unavailable; retry later', {
 	headers: {'retry-after': '5'},
 	status: 503
@@ -58,6 +66,7 @@ export class Auth extends Context.Service<
 				RpcAuth.of((effect, request) =>
 					pipe(
 						auth.user(request.headers),
+						Effect.tap(user => enrolled(user, request.headers)),
 						Effect.tap(() => {
 							if (RpcSchema.isStreamSchema(request.rpc.successSchema)) {
 								return Effect.annotateCurrentSpan('rpc.stream', true)
@@ -124,6 +133,7 @@ export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 					if (user.failure.error === 'temporarily_unavailable') return unavailable
 					return HttpServerResponse.text('Sign in first', {status: 401})
 				}
+				yield* enrolled(user.success, (yield* HttpServerRequest.HttpServerRequest).headers)
 				return yield* Effect.provideService(app, CurrentUser, user.success)
 			})
 	})
@@ -153,6 +163,7 @@ export function layerMcpAuth(resource: string) {
 							{headers: {'www-authenticate': `${challenge}, error="invalid_token"`}, status: 401}
 						)
 					}
+					yield* enrolled(user.success, headers)
 					return yield* Effect.provideService(app, CurrentUser, user.success)
 				})
 		})
