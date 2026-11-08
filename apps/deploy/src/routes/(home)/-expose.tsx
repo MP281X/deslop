@@ -69,9 +69,9 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			}}
 		>
 			<DialogHeader>
-				<div className="flex items-center gap-2">
+				<div className="flex min-w-0 items-center gap-2">
 					<ApplicationIcon name={props.port.process ?? props.port.name} small />
-					<DialogTitle>Expose {props.port.process}</DialogTitle>
+					<DialogTitle>{props.port.process ?? props.port.name}</DialogTitle>
 					<Badge variant="outline">:{props.port.port}</Badge>
 				</div>
 			</DialogHeader>
