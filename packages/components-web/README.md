@@ -6,7 +6,7 @@ The shared web surface: Sera shadcn primitives, the full-height shell, the comma
 
 - `src/ui/` holds the shipped Sera components. Refresh them with `vpx shadcn@latest add --all --overwrite` from this package; do not hand-edit their look. A call site may place a primitive, pick a variant or compose it, never repaint it.
 - Tokens live in `src/theme.css`; a component reads `--background`, `--foreground`, `--card`, `--muted-foreground`, `--border`, `--primary` and the chart/sidebar names. Never a raw colour in a component.
-- `cn` from `cn` is the registry's compiled class merger; app code imports `cn` from `./src/lib/utils.ts` through the package's `./utils` export. Both return the same signatures, so a component or a call site can move between them.
+- `cn` is the local class merger in `src/lib/utils.ts`, exported as `@deslop/components-web/utils`; primitives and call sites import that one helper. When the CLI vendors a primitive, point its `cn` import at `#lib/utils.ts` and drop the `cn` dependency.
 - Icons are Phosphor: regular at 16px and below, light at 20px and above. One icon set per surface.
 - A page action lives in the `CommandDialog` palette; a page control that chooses what the page shows stays in the masthead.
 
