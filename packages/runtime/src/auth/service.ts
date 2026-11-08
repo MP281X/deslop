@@ -8,18 +8,10 @@ import {RpcSchema} from 'effect/rpc'
 
 import {MCP_METADATA_PATH} from '#schema.ts'
 
-import {AiGateway} from '#ai/service.ts'
-import {CurrentUser, DEVELOPER, ISSUER_PATH, JWKS_PATH, RpcAuth, bearerOf, localAuth} from '#auth/lib/utils.ts'
+import {CurrentUser, DEVELOPER, ISSUER_PATH, JWKS_PATH, RpcAuth, bearerOf, isJwt, localAuth} from '#auth/lib/utils.ts'
 import {AccessClaims, AuthError} from '#auth/schema.ts'
 import type {User} from '#auth/schema.ts'
-import {Sessions, isJwt, sessionIdOf} from '#auth/sessions.ts'
-
-function enrolled(auth: typeof Auth.Service, user: User, headers: Headers.Headers) {
-	return Effect.gen(function* () {
-		const gateway = Context.getOrUndefined(yield* Effect.context(), AiGateway)
-		if (gateway !== undefined) yield* gateway.enroll(user.id, auth.token(headers))
-	})
-}
+import {Sessions, sessionIdOf} from '#auth/sessions.ts'
 
 const signInFirst = AuthError.make({message: 'Sign in first'})
 
@@ -31,8 +23,8 @@ const unavailable = HttpServerResponse.text('The authorization service is tempor
 export class Auth extends Context.Service<
 	Auth,
 	{
-		// Who sent the request: a verified access token, or the app's own session (cookie or a non-JWT bearer).
-		readonly user: (headers: Headers.Headers) => Effect.Effect<User, AuthError>
+		// A verified bearer also names its client; an app session or Auth's own sign-in names only the person.
+		readonly user: (headers: Headers.Headers) => Effect.Effect<User & {client?: string}, AuthError>
 		// The access token the request acts with: the bearer JWT as sent, or the session's current one, refreshed when needed.
 		readonly token: (headers: Headers.Headers) => Effect.Effect<string, AuthError>
 	}
@@ -45,7 +37,6 @@ export class Auth extends Context.Service<
 				RpcAuth.of((effect, request) =>
 					pipe(
 						auth.user(request.headers),
-						Effect.tap(user => enrolled(auth, user, request.headers)),
 						Effect.tap(() => {
 							if (RpcSchema.isStreamSchema(request.rpc.successSchema)) {
 								return Effect.annotateCurrentSpan('rpc.stream', true)
@@ -118,7 +109,8 @@ export class Auth extends Context.Service<
 								return AuthError.make({cause, message: 'Sign in first'})
 							})
 						)
-						return {id: access.claims.sub, name: access.claims.name}
+						yield* sessions.remember(token, access.claims)
+						return {client: access.claims.azp, id: access.claims.sub, name: access.claims.name}
 					})
 					function session(headers: Headers.Headers) {
 						return Option.match(sessionIdOf(headers), {
@@ -131,7 +123,7 @@ export class Auth extends Context.Service<
 							token: headers =>
 								Option.match(Option.filter(bearerOf(headers), isJwt), {
 									onNone: () => Effect.map(session(headers), current => current.token),
-									onSome: Effect.succeed
+									onSome: token => Effect.as(verified(token), token)
 								}),
 							user: headers =>
 								Option.match(Option.filter(bearerOf(headers), isJwt), {
@@ -151,13 +143,11 @@ export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 		const auth = yield* Auth
 		return app =>
 			Effect.gen(function* () {
-				const headers = (yield* HttpServerRequest.HttpServerRequest).headers
-				const user = yield* Effect.result(auth.user(headers))
+				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
 				if (Result.isFailure(user)) {
 					if (user.failure.error === 'temporarily_unavailable') return unavailable
 					return HttpServerResponse.text('Sign in first', {status: 401})
 				}
-				yield* enrolled(auth, user.success, headers)
 				return yield* Effect.provideService(app, CurrentUser, user.success)
 			})
 	})
@@ -194,7 +184,6 @@ export function layerMcpAuth(resource: string) {
 							{headers: {'www-authenticate': `${challenge}, error="invalid_token"`}, status: 401}
 						)
 					}
-					yield* enrolled(auth, user.success, headers)
 					return yield* Effect.provideService(app, CurrentUser, user.success)
 				})
 		})

@@ -14,10 +14,6 @@ export type AiStoredKey = typeof AiStoredKey.Type
 export const AiStoredKey = Schema.Struct({...AiKeyInfo.fields, secret: Schema.RedactedFromValue(Schema.String)})
 export type AiSetKey = typeof AiSetKey.Type
 export const AiSetKey = Schema.Struct({provider: AiProvider, secret: Schema.RedactedFromValue(Schema.NonEmptyString)})
-export type AiGrantInfo = typeof AiGrantInfo.Type
-export const AiGrantInfo = Schema.Struct({app: Schema.String, createdAt: Schema.Finite, lastUsedAt: Schema.Finite})
-export type AiStoredGrant = typeof AiStoredGrant.Type
-export const AiStoredGrant = Schema.Struct({...AiGrantInfo.fields, hash: Schema.String, userId: Schema.String})
 export type AiUsageEntry = typeof AiUsageEntry.Type
 export const AiUsageEntry = Schema.Struct({
 	app: Schema.String,

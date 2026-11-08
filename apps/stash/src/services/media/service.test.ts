@@ -7,6 +7,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	Function,
 	Layer,
 	Option,
 	Redacted,
@@ -36,11 +37,10 @@ const GATEWAY = 'https://gateway.mp281x.xyz/ai/openrouter/v1'
 
 const gateway = AiGateway.of({
 	apiUrl: () => Effect.succeed(GATEWAY),
-	authorize: userId => client => {
+	authorize: userId => {
 		assert.strictEqual(userId, USER)
-		return client
-	},
-	enroll: () => Effect.void
+		return Effect.succeed(Function.identity)
+	}
 })
 
 function argument(command: ChildProcess.StandardCommand, flag: string) {

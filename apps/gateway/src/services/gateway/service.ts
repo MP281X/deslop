@@ -25,6 +25,7 @@ import {McpSchema, McpServer} from 'effect/ai'
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
+import type {Headers} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
@@ -58,9 +59,9 @@ export class Gateway extends Context.Service<
 	Gateway,
 	{
 		// A provider that just connected: its tools are read even while another read runs, which listed the servers before it.
-		readonly connected: Effect.Effect<void>
+		readonly connected: (headers: Headers.Headers) => Effect.Effect<void>
 		// An agent's tools/list: a read already running reads the same servers, so it is not repeated.
-		readonly refresh: Effect.Effect<void>
+		readonly refresh: (headers: Headers.Headers) => Effect.Effect<void>
 	}
 >()('@deslop/gateway/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
@@ -138,7 +139,7 @@ export class Gateway extends Context.Service<
 					})
 				).layer
 			)
-			const upstreamFor = Effect.fnUntraced(function* (server: Server) {
+			const upstreamFor = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
 				const current = yield* connections.get(server.id)
 				if (
 					current.generation !== server.generation ||
@@ -147,12 +148,17 @@ export class Gateway extends Context.Service<
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
 				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
+				if (current.mode === 'deslop') return {token: yield* auth.token(headers), url: current.url}
 				return {token: yield* connections.token(server.id, server.generation), url: current.url}
 			})
-			function withClient<A>(server: Server, run: (client: Client) => Effect.Effect<A, AuthError>) {
+			function withClient<A>(
+				server: Server,
+				headers: Headers.Headers,
+				run: (client: Client) => Effect.Effect<A, AuthError>
+			) {
 				return pipe(
 					Effect.gen(function* () {
-						const upstream = yield* upstreamFor(server)
+						const upstream = yield* upstreamFor(server, headers)
 						const context = yield* Effect.context()
 						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
 							authProvider: {
@@ -187,16 +193,16 @@ export class Gateway extends Context.Service<
 			}
 			const call = Effect.fn('Gateway.call')(
 				function* (server: Server, tool: string, input: unknown) {
+					const request = yield* Effect.flatMap(
+						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
+						Effect.fromOption
+					)
 					if (Option.isNone(yield* Effect.serviceOption(CurrentUser))) {
-						const request = yield* Effect.flatMap(
-							Effect.serviceOption(HttpServerRequest.HttpServerRequest),
-							Effect.fromOption
-						)
 						yield* auth.user(request.headers)
 					}
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
-					return yield* withClient(server, client =>
+					return yield* withClient(server, request.headers, client =>
 						pipe(
 							Effect.tryPromise({
 								catch: rejected(server),
@@ -225,12 +231,12 @@ export class Gateway extends Context.Service<
 							)
 					)
 			)
-			const discover = Effect.fnUntraced(function* (server: Connection) {
+			const discover = Effect.fnUntraced(function* (server: Connection, headers: Headers.Headers) {
 				if (connectionStatus(server, yield* Clock.currentTimeMillis) !== 'Connected') {
 					return yield* updateVisible(server, HashSet.empty())
 				}
 				const found = yield* pipe(
-					withClient(server, client =>
+					withClient(server, headers, client =>
 						pipe(
 							Effect.tryPromise({catch: rejected(server), try: signal => client.listTools(undefined, {signal})}),
 							Effect.flatMap(result =>
@@ -295,28 +301,30 @@ export class Gateway extends Context.Service<
 					tools: Array.map(found.tools, tool => tool.name)
 				})
 			})
-			const read = pipe(
-				prune,
-				Effect.andThen(connections.definitions),
-				Effect.flatMap(definitions =>
-					Effect.forEach(
-						definitions,
-						server =>
-							pipe(
-								discover(server),
-								Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
-								Effect.catch(cause =>
-									connections.report(server.id, server.generation, {
-										_tag: 'Failed',
-										error: rejected(server)(cause).message
-									})
-								)
-							),
-						{concurrency: 6, discard: true}
-					)
-				),
-				Effect.andThen(prune)
-			)
+			function read(headers: Headers.Headers) {
+				return pipe(
+					prune,
+					Effect.andThen(connections.definitions),
+					Effect.flatMap(definitions =>
+						Effect.forEach(
+							definitions,
+							server =>
+								pipe(
+									discover(server, headers),
+									Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
+									Effect.catch(cause =>
+										connections.report(server.id, server.generation, {
+											_tag: 'Failed',
+											error: rejected(server)(cause).message
+										})
+									)
+								),
+							{concurrency: 6, discard: true}
+						)
+					),
+					Effect.andThen(prune)
+				)
+			}
 			// The caller waits up to 2 seconds; a slow read finishes in the gateway's scope, and its defect never fails the caller.
 			const settle = Effect.fnUntraced(function* (work: Effect.Effect<unknown>) {
 				yield* pipe(
@@ -326,8 +334,9 @@ export class Gateway extends Context.Service<
 				)
 			})
 			return Gateway.of({
-				connected: Effect.withSpan(settle(refreshes.withPermits(1)(read)), 'Gateway.connected'),
-				refresh: Effect.withSpan(settle(refreshes.withPermitsIfAvailable(1)(read)), 'Gateway.refresh')
+				connected: headers => Effect.withSpan(settle(refreshes.withPermits(1)(read(headers))), 'Gateway.connected'),
+				refresh: headers =>
+					Effect.withSpan(settle(refreshes.withPermitsIfAvailable(1)(read(headers))), 'Gateway.refresh')
 			})
 		})
 	)
@@ -349,7 +358,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {
-						yield* gateway.refresh
+						yield* gateway.refresh(request.headers)
 					}
 				}
 				return yield* app

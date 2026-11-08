@@ -44,6 +44,11 @@ export function bearerOf(headers: Headers.Headers) {
 	)
 }
 
+// An access token Auth signed, as opposed to a phone's session id, which it also sends as the bearer.
+export function isJwt(token: string) {
+	return Option.isSome(String.match(/^[\w-]+\.[\w-]+\.[\w-]+$/u)(token))
+}
+
 // Auth's OAuth endpoints under its issuer, and the public keys every app checks an access token's signature with.
 export const AUTHORIZE_PATH = `${ISSUER_PATH}/oauth2/authorize`
 export const TOKEN_PATH = `${ISSUER_PATH}/oauth2/token`

@@ -54,7 +54,7 @@ export class Extractor extends Context.Service<
 						pipe(
 							AnthropicClient.make({
 								apiUrl: yield* gateway.apiUrl('anthropic'),
-								transformClient: gateway.authorize(userId)
+								transformClient: yield* gateway.authorize(userId)
 							}),
 							Effect.provideService(HttpClient.HttpClient, http)
 						)

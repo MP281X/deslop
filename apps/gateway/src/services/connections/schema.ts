@@ -56,7 +56,7 @@ export const OAuth = Schema.Struct({
 	scope: Schema.String
 })
 
-// A public server takes no token; an OAuth server, the owner's apps included, the token the gateway holds.
+// Deslop servers take the caller's token; only third-party OAuth tokens are stored.
 export type Link = typeof Link.Type
 export const Link = Schema.TaggedUnion({
 	Authorized: {expiresAt: Schema.Finite, token: Token},
@@ -81,7 +81,7 @@ export const Connection = Schema.Struct({
 	// The server's own instructions from its last discovery: the first sentence is its line in the gateway's instructions.
 	instructions: Schema.optionalKey(Schema.String),
 	link: Link,
-	mode: Schema.Literals(['oauth', 'public']),
+	mode: Schema.Literals(['oauth', 'public', 'deslop']),
 	name: Schema.NonEmptyString,
 	oauth: Schema.optionalKey(OAuth),
 	// The tools a server offers, by name; the descriptions a later discovery found, kept apart so older rows still read.
