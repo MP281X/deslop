@@ -396,7 +396,7 @@ function HeaderLink(input: {children: React.ReactNode; external?: boolean; href:
 			href={input.href}
 			target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
 			rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
-			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 min-w-11 items-center justify-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:justify-start sm:pb-0.5"
+			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 min-w-11 items-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:pb-0.5"
 		>
 			{input.children}
 			{external && <ArrowUpRightIcon className="size-3.5" />}
@@ -439,6 +439,7 @@ function ProfileSection() {
 				</p>
 
 				<div className="mt-8 flex flex-col items-start sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-7">
+					<HeaderLink href="#section-projects">Selected work</HeaderLink>
 					<HeaderLink href={contacts.email.href}>{contacts.email.value}</HeaderLink>
 					<HeaderLink external href={contacts.github.href}>
 						{contacts.github.value}
@@ -457,7 +458,7 @@ function SkillsSection() {
 			id="section-skills"
 			label="Expertise"
 			meta={`${Array.length(skills)} disciplines`}
-			number="02"
+			number="04"
 		>
 			<dl className="divide-border flex flex-col divide-y">
 				{Array.map(skills, skill => (
@@ -490,9 +491,9 @@ function ProjectsSection() {
 		<RuledSection
 			className="pb-12 sm:pb-14"
 			id="section-projects"
-			label="Projects"
+			label="Selected work"
 			meta={`${Array.length(projects)} selected`}
-			number="04"
+			number="02"
 		>
 			<ol className="divide-border flex flex-col divide-y">
 				{Array.map(projects, project => (
@@ -569,17 +570,7 @@ function ExperienceSection() {
 
 function EducationSection() {
 	return (
-		<RuledSection
-			className="pb-12 sm:pb-14"
-			id="section-education"
-			label="Education"
-			meta={pipe(
-				education,
-				Array.map(entry => entry.period),
-				Array.join(' · ')
-			)}
-			number="05"
-		>
+		<RuledSection className="pb-12 sm:pb-14" id="section-education" label="Education" number="05">
 			<ol className="divide-border flex flex-col divide-y">
 				{Array.map(education, entry => (
 					<li key={entry.school} className="flex flex-col gap-1.5 py-5 sm:flex-row sm:gap-8">
@@ -725,24 +716,25 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 
 // Presence is a quiet line at the page's edge: live count, connecting, or unavailable, never a hero.
 function PresenceHud(input: {state: 'connecting' | 'live' | 'offline'; visitors?: PortfolioVisitors}) {
-	if (input.state === 'live' && Predicate.isNotUndefined(input.visitors)) {
-		return (
-			<div className="mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 font-mono text-xs sm:bottom-4 sm:left-4 print:hidden">
-				<VisitorCount visitors={input.visitors} />
-				<span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>
-			</div>
-		)
-	}
-
 	return (
-		<div className="mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 font-mono text-xs sm:bottom-4 sm:left-4 print:hidden">
-			<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
-			<span className="text-muted-foreground">
-				{Boolean.match(input.state === 'offline', {
-					onFalse: () => 'presence connecting',
-					onTrue: () => 'presence unavailable'
+		<div className="border-border bg-background/95 pb-safe-bottom pointer-events-none fixed inset-x-0 bottom-0 z-50 flex min-h-10 items-center justify-between border-t px-3 font-mono text-xs backdrop-blur sm:px-4 print:hidden">
+			<span className="flex items-center gap-2">
+				{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
+					onFalse: () => (
+						<>
+							<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
+							<span className="text-muted-foreground">
+								{Boolean.match(input.state === 'offline', {
+									onFalse: () => 'presence connecting',
+									onTrue: () => 'presence unavailable'
+								})}
+							</span>
+						</>
+					),
+					onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
 				})}
 			</span>
+			<span className="text-muted-foreground max-sm:hidden">j/k · ?</span>
 		</div>
 	)
 }
@@ -926,19 +918,25 @@ function PortfolioRoute() {
 			}}
 			onPointerMove={updatePointer}
 			onScroll={event => {
-				const top = event.currentTarget.scrollTop + 2
-				currentSectionRef.current = pipe(
-					sections(),
-					Array.findLastIndex(section => section.offsetTop <= top),
-					Option.getOrElse(() => 0)
+				currentSectionRef.current = Boolean.match(
+					event.currentTarget.scrollTop + event.currentTarget.clientHeight >= event.currentTarget.scrollHeight - 2,
+					{
+						onFalse: () =>
+							pipe(
+								sections(),
+								Array.findLastIndex(section => section.offsetTop <= event.currentTarget.scrollTop + 2),
+								Option.getOrElse(() => 0)
+							),
+						onTrue: () => Number.max(0, sections().length - 1)
+					}
 				)
 			}}
 			tabIndex={0}
 		>
 			<ProfileSection />
-			<SkillsSection />
-			<ExperienceSection />
 			<ProjectsSection />
+			<ExperienceSection />
+			<SkillsSection />
 			<EducationSection />
 			<ContactSection />
 
@@ -969,7 +967,7 @@ function PortfolioRoute() {
 				onClick={() => {
 					setShowShortcuts(show => !show)
 				}}
-				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-3 z-50 max-sm:hidden sm:right-4 sm:bottom-4 print:hidden"
+				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-14 z-50 max-sm:hidden sm:right-4 print:hidden"
 			>
 				?
 			</Button>
