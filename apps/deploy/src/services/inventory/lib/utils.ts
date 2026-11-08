@@ -1,4 +1,4 @@
-import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, HashMap, HashSet, Match, Number, Option, Order, Record, String, Tuple, pipe} from 'effect'
 
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
@@ -183,19 +183,37 @@ function sameSocket(listener: InventoryItem, binding: {address: string; port: nu
 	)
 }
 
+function socket(worker: string, binding: {address?: string; port?: number; protocol?: 'tcp' | 'udp'}) {
+	const loopback = Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(binding.address ?? ''))
+	return Tuple.make(
+		worker,
+		binding.protocol,
+		binding.port,
+		loopback,
+		Boolean.match(loopback, {onFalse: () => binding.address, onTrue: () => ''})
+	)
+}
+
 export function workloads(items: readonly InventoryItem[]) {
 	const listeners = Array.filter(items, item => item.kind === 'port')
+	const byUnit = Record.map(
+		Array.groupBy(listeners, listener => listener.worker),
+		worker => Array.groupBy(worker, listener => listener.unit ?? '')
+	)
+	const bySocket = HashMap.fromIterable(
+		Array.map(
+			Array.reverse(Array.filter(listeners, listener => listener.address !== 'container')),
+			listener => [socket(listener.worker, listener), listener] as const
+		)
+	)
 	const grouped = Array.map(
 		Array.filter(items, item => item.kind === 'service' || item.kind === 'container'),
 		item => {
-			const attached = Array.filter(
-				listeners,
-				listener => listener.worker === item.worker && listener.unit === item.name
-			)
+			const attached = Array.filter(byUnit[item.worker]?.[item.name] ?? [], listener => listener.unit === item.name)
 			const bindings = Array.map(item.bindings ?? [], binding => ({
 				...item,
 				...Option.getOrElse(
-					Array.findFirst(listeners, listener => listener.worker === item.worker && sameSocket(listener, binding)),
+					Option.filter(HashMap.get(bySocket, socket(item.worker, binding)), () => binding.address !== 'container'),
 					() => ({})
 				),
 				...binding,
@@ -209,62 +227,82 @@ export function workloads(items: readonly InventoryItem[]) {
 			return {item, listeners: [...attached, ...bindings]}
 		}
 	)
+	const services = HashSet.fromIterable(
+		Array.map(
+			Array.filter(grouped, row => row.item.kind === 'service'),
+			row => Tuple.make(row.item.worker, row.item.name)
+		)
+	)
+	const represented = HashSet.fromIterable(
+		Array.flatMap(grouped, row =>
+			Array.map(
+				Array.filter(row.listeners, binding => binding.address !== 'container'),
+				binding =>
+					socket(row.item.worker, {
+						address: binding.address ?? '',
+						port: binding.port ?? 0,
+						protocol: binding.protocol ?? 'tcp'
+					})
+			)
+		)
+	)
 	const loose = Array.filter(
 		listeners,
 		listener =>
-			!Array.some(
-				grouped,
-				row =>
-					row.item.worker === listener.worker &&
-					((row.item.kind === 'service' && row.item.name === listener.unit) ||
-						Array.some(row.listeners, binding =>
-							sameSocket(listener, {
-								address: binding.address ?? '',
-								port: binding.port ?? 0,
-								protocol: binding.protocol ?? 'tcp'
-							})
-						))
-			)
+			!HashSet.has(services, Tuple.make(listener.worker, listener.unit)) &&
+			(listener.address === 'container' || !HashSet.has(represented, socket(listener.worker, listener)))
 	)
 	const rows = [...grouped, ...Array.map(loose, item => ({item, listeners: [item]}))]
 	const exposures = [
 		...Array.filter(items, item => item.kind === 'exposure' && item.owned === true),
 		...Array.filter(items, item => item.kind === 'exposure' && item.owned !== true)
 	]
-	const linked = Array.map(rows, row => ({
-		...row,
-		exposures: Array.dedupeWith(
-			[
-				...Array.map(row.item.links ?? [], url => ({
-					...row.item,
-					id: `${row.item.id}:url:${url}`,
-					kind: 'exposure' as const,
-					owned: false,
-					publicAccess: true,
-					url
-				})),
-				...Array.filter(
-					exposures,
-					item =>
-						item.worker === row.item.worker &&
-						Array.some(row.listeners, listener =>
-							sameSocket(listener, {address: `127.0.0.1:${item.port}`, port: item.port ?? 0, protocol: 'tcp'})
-						)
-				)
-			],
-			(a: InventoryItem, b: InventoryItem) => a.url === b.url
+	const exposuresBySocket = Array.groupBy(
+		Array.map(exposures, (item, index) => ({index, item})),
+		entry => `${entry.item.worker}:${entry.item.port ?? 0}`
+	)
+	const linked = Array.map(rows, row => {
+		const reachable = Array.dedupe(
+			Array.map(
+				Array.filter(row.listeners, listener =>
+					sameSocket(listener, {address: `127.0.0.1:${listener.port}`, port: listener.port ?? 0, protocol: 'tcp'})
+				),
+				listener => listener.port ?? 0
+			)
 		)
-	}))
+		const exposed = pipe(
+			Array.flatMap(reachable, port => exposuresBySocket[`${row.item.worker}:${port}`] ?? []),
+			Array.sortWith(entry => entry.index, Order.Number),
+			Array.map(entry => entry.item)
+		)
+		return {
+			...row,
+			exposures: Array.dedupeWith(
+				[
+					...Array.map(row.item.links ?? [], url => ({
+						...row.item,
+						id: `${row.item.id}:url:${url}`,
+						kind: 'exposure' as const,
+						owned: false,
+						publicAccess: true,
+						url
+					})),
+					...exposed
+				],
+				(a: InventoryItem, b: InventoryItem) => a.url === b.url
+			)
+		}
+	})
+	const linkedIds = HashSet.fromIterable(
+		Array.flatMap(linked, row => Array.map(row.exposures, exposure => exposure.id))
+	)
+	const linkedUrls = HashSet.fromIterable(
+		Array.flatMap(linked, row => Array.map(row.exposures, exposure => Tuple.make(exposure.worker, exposure.url)))
+	)
 	const remaining = Array.map(
 		Array.filter(
 			exposures,
-			item =>
-				!Array.some(linked, row =>
-					Array.some(
-						row.exposures,
-						exposure => exposure.id === item.id || (exposure.url === item.url && exposure.worker === item.worker)
-					)
-				)
+			item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, Tuple.make(item.worker, item.url))
 		),
 		item => ({exposures: [item], item, listeners: []})
 	)
@@ -278,14 +316,13 @@ export function workloads(items: readonly InventoryItem[]) {
 		row => {
 			if (row.item.kind === 'container') return row
 			const candidates = ports(row.listeners)
+			const hasUi = Array.some(candidates, candidate => candidate.ui === true)
+			const exposedPorts = HashSet.fromIterable(Array.map(row.exposures, exposure => exposure.port))
 			return {
 				...row,
 				listeners: Array.filter(
 					candidates,
-					listener =>
-						!Array.some(candidates, candidate => candidate.ui === true) ||
-						listener.ui === true ||
-						Array.some(row.exposures, exposure => exposure.port === listener.port)
+					listener => !hasUi || listener.ui === true || HashSet.has(exposedPorts, listener.port)
 				)
 			}
 		}

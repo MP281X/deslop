@@ -5,7 +5,7 @@ import {Array, String} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
-import {lint} from './tools/coding-standards/src/lint.ts'
+import {deslopRules, lint} from './tools/coding-standards/src/lint.ts'
 
 export default defineConfig({
 	create: {
@@ -106,7 +106,8 @@ export default defineConfig({
 				files: ['tools/create-app/template/web/**'],
 				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
-		]
+		],
+		rules: deslopRules
 	},
 	run: {
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.
@@ -133,6 +134,8 @@ export default defineConfig({
 				cache: false,
 				command: [
 					'vp fmt',
+					// Jev's verdicts for units no cached verdict covers, which the judged lint rules then report; `check` skips it, so CI never calls Jev.
+					"node tools/coding-standards/src/main.cli.ts judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'",
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
 					'vp run fallow'

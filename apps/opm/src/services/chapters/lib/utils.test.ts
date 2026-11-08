@@ -70,6 +70,9 @@ it('unwraps pages of the dead image proxy and drops its error texts', () => {
 		),
 		[Option.some(['https://files.example.org/a.png']), Option.none(), Option.some(['https://i.example.org/b.png'])]
 	)
+})
+
+it('extracts chapter names without release labels', () => {
 	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
 	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')
 	assert.strictEqual(nameOf('Translated'), '')

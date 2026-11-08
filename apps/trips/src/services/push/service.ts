@@ -520,25 +520,24 @@ export class Push extends Context.Service<
 				const current = yield* SubscriptionRef.get(state)
 				const starters = Array.filter(current.devices, device => device.kind === 'start')
 				const records = Array.filter(current.activities, item => mine(item) && holds(item, window, now))
+				const startersByBundle = Array.groupBy(starters, device => device.bundle)
+				const recordsByBundle = Array.groupBy(records, item => item.bundle)
 				yield* Effect.forEach(
 					Array.dedupe([...Array.map(starters, device => device.bundle), ...Array.map(records, item => item.bundle)]),
 					bundle =>
-						Option.match(
-							Array.findFirst(records, item => item.bundle === bundle),
-							{
-								onNone: () =>
-									Option.match(
-										Array.findFirst(starters, device => device.bundle === bundle),
-										{onNone: () => Effect.void, onSome: target => launch(target, showing)}
-									),
-								onSome: record => {
-									if (record.endedAt !== undefined || (record.token === undefined && record.channel === undefined)) {
-										return Effect.void
-									}
-									return refresh(record, showing.props, now)
+						Option.match(Array.head(recordsByBundle[bundle] ?? []), {
+							onNone: () =>
+								Option.match(Array.head(startersByBundle[bundle] ?? []), {
+									onNone: () => Effect.void,
+									onSome: target => launch(target, showing)
+								}),
+							onSome: record => {
+								if (record.endedAt !== undefined || (record.token === undefined && record.channel === undefined)) {
+									return Effect.void
 								}
+								return refresh(record, showing.props, now)
 							}
-						),
+						}),
 					{concurrency: 1, discard: true}
 				)
 			})
@@ -594,6 +593,7 @@ export class Push extends Context.Service<
 					if (Option.isNone(signer)) return
 					const now = yield* Clock.currentTimeMillis
 					const all = yield* bookings.list
+					const byId = Array.groupBy(all, booking => booking.id)
 					yield* Effect.forEach(
 						all,
 						booking =>
@@ -614,9 +614,8 @@ export class Push extends Context.Service<
 					yield* Effect.forEach(
 						Array.filter((yield* SubscriptionRef.get(state)).activities, record => {
 							if (record.endedAt !== undefined) return false
-							return !Option.exists(
-								Array.findFirst(all, item => item.id === record.bookingId),
-								found => Option.exists(activeWindow(found, now), window => window.leg === record.leg)
+							return !Option.exists(Array.head(byId[record.bookingId] ?? []), found =>
+								Option.exists(activeWindow(found, now), window => window.leg === record.leg)
 							)
 						}),
 						record => finish(record, now),
@@ -628,7 +627,7 @@ export class Push extends Context.Service<
 							current.activities,
 							record => record.endedAt === undefined || now - record.endedAt < 2 * DAY
 						),
-						sent: Record.filter(current.sent, (_keys, id) => Array.some(all, booking => booking.id === id))
+						sent: Record.filter(current.sent, (_keys, id) => Record.has(byId, id))
 					}))
 				}),
 				Semaphore.withPermit(ticking),

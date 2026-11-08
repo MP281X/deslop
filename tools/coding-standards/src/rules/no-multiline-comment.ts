@@ -16,7 +16,7 @@ export const noMultilineComment = defineRule({
 				context.sourceCode.getAllComments(),
 				Array.filter(
 					comment =>
-						!matches(/^\s*(?:eslint|oxlint|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u)(
+						!matches(/^\s*(?:eslint|oxlint|judge-ignore|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u)(
 							comment.value
 						)
 				)

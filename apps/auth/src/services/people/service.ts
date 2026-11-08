@@ -4,6 +4,7 @@ import {
 	Clock,
 	Context,
 	Effect,
+	HashSet,
 	Layer,
 	Number,
 	Option,
@@ -138,10 +139,11 @@ export class People extends Context.Service<
 					Array.sort(Order.flip(Order.mapInput(Order.Number, (row: MemberRow) => row.since))),
 					Array.map(personOf)
 				)
+				const knownIds = HashSet.fromIterable(Array.map(known, person => person.id))
 				return Array.sort(
 					[
 						...Array.map(
-							Array.filter(admins, id => !Array.some(known, person => person.id === `github:${id}`)),
+							Array.filter(admins, id => !HashSet.has(knownIds, `github:${id}`)),
 							id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0})
 						),
 						...known

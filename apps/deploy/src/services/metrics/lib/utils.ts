@@ -98,6 +98,15 @@ function cpuUsage(current: {idle: number; total: number}, seconds: number, previ
 	)
 }
 
+// Each core's usage against the same core in the previous reading.
+function coreUsages(current: Counters, seconds: number, old?: Counters) {
+	const oldCores = Array.groupBy(old?.cores ?? [], core => core.id)
+	return Array.map(current.cores ?? [], core => ({
+		id: core.id,
+		...Record.getSomes({usage: cpuUsage(core, seconds, Option.getOrUndefined(Array.head(oldCores[core.id] ?? [])))})
+	}))
+}
+
 export function sample(current: Counters, memory: string, disk: string, previous?: Counters, load?: string) {
 	const values = Record.fromEntries(
 		Array.map(String.split(String.trim(memory), '\n'), line => {
@@ -109,16 +118,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
 	const old = Option.getOrUndefined(baseline)
 	const reading: Sample = {
-		cores: Array.map(current.cores ?? [], core => ({
-			id: core.id,
-			...Record.getSomes({
-				usage: cpuUsage(
-					core,
-					seconds,
-					Option.getOrUndefined(Array.findFirst(old?.cores ?? [], candidate => candidate.id === core.id))
-				)
-			})
-		})),
+		cores: coreUsages(current, seconds, old),
 		...Record.getSomes({
 			cpu: cpuUsage(
 				{idle: current.cpuIdle, total: current.cpuTotal},

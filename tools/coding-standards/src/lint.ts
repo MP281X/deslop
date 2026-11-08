@@ -5,6 +5,7 @@ import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
+import {JUDGED_RULES} from '#judge/rules.ts'
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
 import {functionDeclaration} from '#rules/function-declaration.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
@@ -110,6 +111,9 @@ const RUNNERS = [
 ]
 const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
+
+// Checks of Deslop's own choices, which only Deslop's Gateway and conventions can serve.
+const DESLOP_RULES = JUDGED_RULES
 
 const RULES = {
 	'explicit-effect-concurrency': explicitEffectConcurrency,
@@ -223,6 +227,7 @@ export const lint: OxlintConfig = {
 	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn', 'vitest'],
 	rules: {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
+		...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'off' as const]),
 
 		// Effect correctness
 		'effecttsgo/any-unknown-in-error-context': 'error',
@@ -886,7 +891,13 @@ export const lint: OxlintConfig = {
 	}
 }
 
-const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: RULES})
+// Deslop's own turns these on; every other codebase using `lint` keeps them off.
+export const deslopRules: OxlintConfig['rules'] = Record.mapEntries(DESLOP_RULES, (_, name) => [
+	`@deslop/coding-standards/${name}`,
+	'error' as const
+])
+
+const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: {...DESLOP_RULES, ...RULES}})
 
 // oxlint-disable-next-line import/no-default-export -- Vite+ loads a lint plugin from its module's default export.
 export default plugin

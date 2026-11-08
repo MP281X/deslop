@@ -360,6 +360,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 			const loaded = get(bookingsAtom)
 			if (!session.signedIn(get) || !AsyncResult.isSuccess(loaded)) return
 			const bookings = loaded.value
+			const bookingsById = Array.groupBy(bookings, booking => booking.id)
 			const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
 			const target = yield* apns
 			const client = yield* RpcClient
@@ -369,6 +370,10 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 					onNone: () => Result.failVoid,
 					onSome: entry => Result.succeed({activity, ...entry})
 				})
+			)
+			const runningByLeg = Record.map(
+				Array.groupBy(running, item => item.bookingId),
+				items => Array.groupBy(items, item => item.leg)
 			)
 
 			// Only a leg nobody started yet: the server may already show it from a push.
@@ -430,10 +435,10 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 
 			const show = Effect.fnUntraced(function* (journey: Flight | Train, leg: Leg) {
 				const props = activityProps(journey, bookings, now)
-				return yield* Option.match(
-					Array.findFirst(running, item => item.bookingId === journey.id && item.leg === leg),
-					{onNone: () => begin(journey, leg, props), onSome: mine => refresh(mine, props)}
-				)
+				return yield* Option.match(Array.head(runningByLeg[journey.id]?.[leg] ?? []), {
+					onNone: () => begin(journey, leg, props),
+					onSome: mine => refresh(mine, props)
+				})
 			})
 
 			const started = yield* Effect.forEach(
@@ -453,7 +458,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 					running,
 					item =>
 						!Array.some(
-							bookings,
+							bookingsById[item.bookingId] ?? [],
 							booking =>
 								booking.id === item.bookingId &&
 								Option.exists(activeWindow(booking, now), window => window.leg === item.leg)
@@ -575,6 +580,7 @@ export const calendarAtom = Atom.make(get =>
 						DateTime.toDateUtc(DateTime.makeUnsafe(now + 400 * 24 * HOUR))
 					)
 			})
+			const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
 			const bookings = Array.filter(
 				loaded.value,
 				booking => booking.status === 'confirmed' && endOf(booking) > now - 24 * HOUR
@@ -583,33 +589,30 @@ export const calendarAtom = Atom.make(get =>
 				bookings,
 				booking => {
 					const details = eventOf(booking)
-					return Option.match(
-						Array.findFirst(events, event => event.url === linkOf(booking.id)),
-						{
-							onNone: () =>
-								Effect.tryPromise({
-									catch: cause =>
-										BookingsError.make({cause, message: `${details.title} could not be added to the calendar.`}),
-									try: () => calendar.createEvent({...details, url: linkOf(booking.id)})
-								}),
-							onSome: event => {
-								if (
-									sameTime(event.startDate, details.startDate) &&
-									sameTime(event.endDate, details.endDate) &&
-									event.title === details.title &&
-									event.location === details.location &&
-									event.notes === details.notes
-								) {
-									return Effect.void
-								}
-								return Effect.tryPromise({
-									catch: cause =>
-										BookingsError.make({cause, message: `${details.title} could not be updated in the calendar.`}),
-									try: () => event.update(details)
-								})
+					return Option.match(Array.head(eventsByUrl[linkOf(booking.id)] ?? []), {
+						onNone: () =>
+							Effect.tryPromise({
+								catch: cause =>
+									BookingsError.make({cause, message: `${details.title} could not be added to the calendar.`}),
+								try: () => calendar.createEvent({...details, url: linkOf(booking.id)})
+							}),
+						onSome: event => {
+							if (
+								sameTime(event.startDate, details.startDate) &&
+								sameTime(event.endDate, details.endDate) &&
+								event.title === details.title &&
+								event.location === details.location &&
+								event.notes === details.notes
+							) {
+								return Effect.void
 							}
+							return Effect.tryPromise({
+								catch: cause =>
+									BookingsError.make({cause, message: `${details.title} could not be updated in the calendar.`}),
+								try: () => event.update(details)
+							})
 						}
-					)
+					})
 				},
 				{concurrency: 1, discard: true}
 			)
