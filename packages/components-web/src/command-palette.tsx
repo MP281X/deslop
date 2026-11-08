@@ -17,13 +17,13 @@ import {
 } from '#components/ui/command.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
-const APPS = [
+export const WEB_APPS = [
 	{name: 'deploy', url: 'https://deploy.mp281x.xyz'},
 	{name: 'scope', url: 'https://scope.mp281x.xyz'},
 	{name: 'gateway', url: 'https://gateway.mp281x.xyz'},
 	{name: 'auth', url: 'https://auth.mp281x.xyz'},
 	{name: 'signal', url: 'https://signal.mp281x.xyz'},
-	{name: 'portfolio', url: 'https://mp281x.xyz'}
+	{name: 'portfolio', url: 'https://portfolio.mp281x.xyz'}
 ] as const
 
 // `id` is the record's stable identity: cmdk selects by `value`, so it must not change when a label or detail updates.
@@ -57,7 +57,7 @@ function AppIcon(props: {name: string; url: string}) {
 export function otherApps(current: string) {
 	return {
 		items: Array.map(
-			Array.filter(APPS, app => app.name !== current),
+			Array.filter(WEB_APPS, app => app.name !== current),
 			app => ({
 				detail: new URL(app.url).hostname,
 				icon: <AppIcon name={app.name} url={app.url} />,

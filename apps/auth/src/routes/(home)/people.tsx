@@ -7,7 +7,9 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
+import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {PageHeader, Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
@@ -25,7 +27,6 @@ import {
 	DialogFooter,
 	DialogTitle
 } from '@deslop/components-web/ui/dialog'
-import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 
 import {AccountAvatar} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
@@ -48,7 +49,7 @@ function Identity(props: {person: Person}) {
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
 		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-8 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-11">
+			<div className="flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -110,7 +111,7 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-8 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-11"
+							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
 						/>
 					}
 				>
@@ -152,30 +153,43 @@ function MemberRow(props: {person: Person}) {
 
 // One list: whoever is asking for access first, then everyone with it.
 function Directory() {
-	return Array.match(
-		Array.sort(
-			useAtomSuspense(peopleAtom).value,
-			Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
-		),
-		{
-			onEmpty: () => (
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>No one yet</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			),
-			onNonEmpty: rows => (
-				<div role="list" aria-label="People">
-					{Array.map(rows, person =>
-						Boolean.match(person.role === 'Waiting', {
-							onFalse: () => <MemberRow key={person.id} person={person} />,
-							onTrue: () => <AskingRow key={person.id} person={person} />
-						})
-					)}
-				</div>
-			)
-		}
+	const people = Array.sort(
+		useAtomSuspense(peopleAtom).value,
+		Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
+	)
+	return (
+		<>
+			<PageHeader
+				eyebrow="Auth"
+				title="People"
+				description="Everyone who can sign in to a Deslop app. People asking for access lead; members keep access until an admin removes them."
+			/>
+			<Section
+				title="Directory"
+				meta={`${people.length} people · ${Array.countBy(people, person => person.role === 'Waiting')} waiting`}
+				className="gap-0"
+			>
+				{Array.match(people, {
+					onEmpty: () => (
+						<EmptyState
+							label="No one yet"
+							description="People appear here after they ask to join with GitHub."
+							icon={<AccountAvatar id="none" name="?" />}
+						/>
+					),
+					onNonEmpty: rows => (
+						<div role="list" aria-label="People">
+							{Array.map(rows, person =>
+								Boolean.match(person.role === 'Waiting', {
+									onFalse: () => <MemberRow key={person.id} person={person} />,
+									onTrue: () => <AskingRow key={person.id} person={person} />
+								})
+							)}
+						</div>
+					)
+				})}
+			</Section>
+		</>
 	)
 }
 

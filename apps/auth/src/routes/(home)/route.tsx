@@ -9,6 +9,7 @@ import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
+import {WEB_APPS} from '@deslop/components-web/command-palette'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
@@ -372,55 +373,85 @@ function AccountMenu(props: {account: SignedAccount}) {
 	)
 }
 
+// The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
+function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
+	return (
+		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+			{Array.map(props.apps, app => (
+				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
+					<AppIcon origin={app.origin} small />
+					<span className="truncate text-sm">{app.name}</span>
+				</span>
+			))}
+		</div>
+	)
+}
+
 // Without an account: GitHub, or a code approved from another browser, a phone or an agent.
 function SignIn() {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
+	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="m-auto flex w-full max-w-md flex-col gap-8 py-10" aria-label="Sign in">
-			<header className="flex flex-col gap-3">
+		<section className="grid items-center gap-12 py-10 lg:min-h-144 lg:grid-cols-2 lg:gap-20" aria-label="Sign in">
+			<div className="flex flex-col gap-7">
 				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Deslop</p>
-				<h1 className="font-heading text-5xl leading-none tracking-tight">Sign in</h1>
+				<h1 className="font-heading max-w-xl text-5xl leading-none tracking-tight text-balance sm:text-6xl">
+					One sign-in. Every tool.
+				</h1>
 				<p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
-					One account for the tools, the agents and every app on this worker.
+					Auth is the front door for the tools, the agents and every app on this worker. One account keeps them
+					together.
 				</p>
-			</header>
-			<div className="flex flex-col gap-2 border-t pt-6">
-				<Button
-					size="lg"
-					className="w-full max-sm:h-11"
-					disabled={AsyncResult.isWaiting(signIn)}
-					onClick={() => startSignIn()}
-				>
-					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-					Continue with GitHub
-				</Button>
-				<Button
-					size="lg"
-					variant="outline"
-					className="w-full max-sm:h-11"
-					disabled={AsyncResult.isWaiting(passkey)}
-					onClick={() => startPasskey(next)}
-				>
-					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
-					Continue with a passkey
-				</Button>
-				<Button
-					size="lg"
-					variant="ghost"
-					className="w-full max-sm:h-11"
-					disabled={AsyncResult.isWaiting(codeSignIn)}
-					onClick={() => startCodeSignIn(next)}
-				>
-					Use a sign-in code
-				</Button>
-				<Failures />
+				<Suite
+					apps={Boolean.match(Array.isReadonlyArrayNonEmpty(apps), {
+						onFalse: () => Array.map(WEB_APPS, app => ({name: app.name, origin: app.url})),
+						onTrue: () => apps
+					})}
+				/>
 			</div>
-			<p className="text-muted-foreground text-xs leading-relaxed">
-				Passkeys stay on this device. A code is approved from a browser or phone already signed in.
-			</p>
+			<div className="bg-card flex w-full flex-col gap-5 border p-6 lg:max-w-md lg:justify-self-end">
+				<div className="flex flex-col gap-2">
+					<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Welcome back</p>
+					<h2 className="font-heading text-3xl leading-none tracking-tight">Sign in</h2>
+					<p className="text-muted-foreground text-sm leading-relaxed">
+						Passkeys stay on this device. A code is approved from a browser or phone already signed in.
+					</p>
+				</div>
+				<div className="flex flex-col gap-2">
+					<Button
+						size="lg"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(signIn)}
+						onClick={() => startSignIn()}
+					>
+						{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+						Continue with GitHub
+					</Button>
+					<Button
+						size="lg"
+						variant="outline"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(passkey)}
+						onClick={() => startPasskey(next)}
+					>
+						{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
+						Continue with a passkey
+					</Button>
+					<Button
+						size="lg"
+						variant="ghost"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(codeSignIn)}
+						onClick={() => startCodeSignIn(next)}
+					>
+						Use a sign-in code
+					</Button>
+					<Failures />
+				</div>
+			</div>
 		</section>
 	)
 }
