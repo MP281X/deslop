@@ -32,7 +32,7 @@ private enum Outcome {
   case queued
 }
 
-// DESIGN.md's colors for Stash, as packages/components-mobile/src/theme.ts has them, in system fonts.
+// Stash's colors as packages/components-mobile/src/theme.ts has them, in system fonts.
 private enum Theme {
   static let app = Bundle(url: Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent())
   static let background = color(dark: 0x0a0a0a, light: 0xffffff)

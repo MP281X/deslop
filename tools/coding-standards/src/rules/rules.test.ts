@@ -1089,6 +1089,34 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'draws Phosphor icons light from 20px and regular up to 16px, fixing the weight',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource(
+					{
+						'icons.tsx': pipe(
+							[
+								"import {GearIcon, TrashIcon} from '@phosphor-icons/react'",
+								"import {Badge} from '@deslop/components-web/ui/badge'",
+								'',
+								'export function Large() { return <GearIcon className="size-6" /> }',
+								'export function LargeRegular() { return <GearIcon className="size-5" weight="regular" /> }',
+								'export function Small() { return <TrashIcon className="size-4" weight="light" /> }',
+								'export function Plain() { return <TrashIcon className="size-4" /> }',
+								'export function Labelled() { return <Badge onClick={() => undefined}>New</Badge> }'
+							],
+							Array.join('\n')
+						)
+					},
+					['--fix']
+				)
+				assert.include(result.sources[0] ?? '', '<GearIcon className="size-6" weight="light" />')
+				assert.include(result.sources[0] ?? '', '<GearIcon className="size-5" weight="light" />')
+				assert.include(result.sources[0] ?? '', '<TrashIcon className="size-4" />\n')
+				assert.deepStrictEqual(reportedLines(result, 'no-clickable-badge').reported, [9])
+			})
+		)
+
+		testApi.effect(
 			'keeps labeled tuples and component refs without opening object bypasses',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

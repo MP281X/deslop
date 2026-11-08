@@ -1,6 +1,6 @@
 # @deslop/components-web
 
-The shared web surface: Sera shadcn primitives, the full-height shell, the command palette and the small compositions every app repeats. `DESIGN.md` owns the visual rules; this file is the component contract.
+The shared web surface: Sera shadcn primitives, the full-height shell, the command palette and the small compositions every app repeats. The repository `AGENTS.md`'s Design owns the visual rules; this file is the component contract.
 
 ## Rules
 

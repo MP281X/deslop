@@ -54,7 +54,7 @@ const PERIODS = [
 	{label: '7d', name: 'last 7 days', value: '7d'},
 	{label: '30d', name: 'last 30 days', value: '30d'}
 ] satisfies {label: string; name: string; value: Period}[]
-// DESIGN.md's app identities; any other client takes a hue none of the shown apps holds.
+// Each app's identity hue; any other client takes a hue none of the shown apps holds.
 const IDENTITIES: Record<string, {color: string; name: string}> = {
 	auth: {color: 'var(--slate)', name: 'Auth'},
 	deploy: {color: 'var(--blue)', name: 'Deploy'},

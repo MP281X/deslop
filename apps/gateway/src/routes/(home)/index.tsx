@@ -262,7 +262,7 @@ function ServersContent(props: {onAdd: () => void}) {
 							<EmptyState
 								label="No servers yet"
 								description="Add an MCP server and its tools appear in the gateway palette."
-								icon={<HardDrivesIcon className="size-5" />}
+								icon={<HardDrivesIcon className="size-5" weight="light" />}
 								action={
 									<Button onClick={props.onAdd}>
 										<PlusIcon />

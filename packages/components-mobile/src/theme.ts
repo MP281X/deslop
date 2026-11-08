@@ -26,7 +26,7 @@ export const hues = {
 	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
 }
 
-// DESIGN.md's 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
+// The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
 export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
 
 // Concentric with the system's list rows, sheets and icon tiles.

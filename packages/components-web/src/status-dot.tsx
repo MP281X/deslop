@@ -16,7 +16,7 @@ const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
 	}
 })
 
-// DESIGN.md's status dot, beside a word that says the same: live in the app's hue, quiet muted, off hollow; a waiting one breathes.
+// The status dot, beside a word that says the same: live in the app's hue, quiet muted, off hollow; a waiting one breathes.
 export function StatusDot(props: VariantProps<typeof statusDotVariants> & {className?: string; waiting?: boolean}) {
 	return (
 		<span

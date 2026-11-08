@@ -164,7 +164,7 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
-// An action from the account menu or a column's menu has no row to answer under, so it says how it failed in a toast (DESIGN.md, Errors).
+// An action from the account menu or a column's menu has no row to answer under, so it says how it failed in a toast.
 function failedWith(title: string) {
 	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
 		Effect.tapError(effect, failure =>

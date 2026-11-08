@@ -249,7 +249,7 @@
 			'[aria-selected="true"], [aria-current]:not([aria-current="false"]), [aria-checked="true"], [data-state="active"], [data-state="on"], [data-selected="true"]'
 		)
 	)
-	// Deslop's DESIGN.md, measured; outside Deslop this group is informational.
+	// The Design section of Deslop's AGENTS.md, measured; outside Deslop this group is informational.
 	const design = {
 		brightBarButton: all
 			.filter(element => element.matches('header button, [data-slot="app-bar"] button, nav button'))

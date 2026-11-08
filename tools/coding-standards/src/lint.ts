@@ -8,10 +8,12 @@ import type {Plugin} from 'vite-plus/lint/plugins'
 import {JUDGED_RULES} from '#judge/rules.ts'
 import {explicitEffectConcurrency} from '#rules/explicit-effect-concurrency.ts'
 import {functionDeclaration} from '#rules/function-declaration.ts'
+import {iconWeight} from '#rules/icon-weight.ts'
 import {moduleConstant} from '#rules/module-constant.ts'
 import {motionLimits} from '#rules/motion-limits.ts'
 import {noAccumulatingCopy} from '#rules/no-accumulating-copy.ts'
 import {noBarrelModule} from '#rules/no-barrel-module.ts'
+import {noClickableBadge} from '#rules/no-clickable-badge.ts'
 import {noCompilerOptOut} from '#rules/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#rules/no-component-atom-allocation.ts'
 import {noConstantFunction} from '#rules/no-constant-function.ts'
@@ -113,7 +115,7 @@ const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
 // Checks of Deslop's own choices, which only Deslop's Gateway and conventions can serve.
-const DESLOP_RULES = JUDGED_RULES
+const DESLOP_RULES = {...JUDGED_RULES, 'icon-weight': iconWeight}
 
 const RULES = {
 	'explicit-effect-concurrency': explicitEffectConcurrency,
@@ -122,6 +124,7 @@ const RULES = {
 	'motion-limits': motionLimits,
 	'no-accumulating-copy': noAccumulatingCopy,
 	'no-barrel-module': noBarrelModule,
+	'no-clickable-badge': noClickableBadge,
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-constant-function': noConstantFunction,
@@ -177,6 +180,39 @@ const RULES = {
 	'schema-type-pair': schemaTypePair,
 	'service-schema-file': serviceSchemaFile,
 	'swiftui-theme-values': swiftuiThemeValues
+}
+
+const RESTRICTED_IMPORTS = {
+	paths: [
+		{importNames: REACT_LEGACY_APIS, message: REACT_LEGACY_MESSAGE, name: 'react'},
+		{message: 'Read and write data through Effect Atom.', name: '@tanstack/react-query'},
+		...Array.flatMap(['vitest', 'vite-plus/test', '@effect/vitest'], name => [
+			{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name},
+			{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name}
+		]),
+		{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
+	],
+	patterns: [
+		{message: 'Prove a screen in the browser; no UI tests.', regex: '^(?:@testing-library/|jsdom$|happy-dom$)'},
+		{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
+		{
+			message: 'Use glob from the FileSystem service.',
+			regex: '^(?:glob|fast-glob|globby|minimatch|picomatch|micromatch)(?:/|$)'
+		},
+		{message: 'Use Schema.', regex: '^(?:zod|valibot|yup|io-ts)(?:/|$)'},
+		{message: 'Use Csv from effect/encoding.', regex: '^(?:papaparse|csv-parse|csv-stringify)(?:/|$)'},
+		{message: 'Use Yaml from effect/encoding.', regex: '^(?:yaml|js-yaml)(?:/|$)'},
+		{message: 'Use Toml from effect/encoding.', regex: '^(?:smol-toml|@iarna/toml|toml)(?:/|$)'},
+		{message: 'Use Ini from effect/encoding.', regex: '^ini(?:/|$)'},
+		{message: 'Use Xml from effect/encoding.', regex: '^(?:fast-xml-parser|xml2js|sax)(?:/|$)'},
+		{message: 'Use Zip or Tar from effect/encoding.', regex: '^(?:jszip|fflate|adm-zip|tar|tar-stream)(?:/|$)'},
+		{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
+		{message: 'Use uuidV4 from the SecureRandom service in effect/crypto.', regex: '^uuid(?:/|$)'},
+		{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
+		{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
+		{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
+		{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
+	]
 }
 
 export const lint: OxlintConfig = {
@@ -426,41 +462,7 @@ export const lint: OxlintConfig = {
 			{message: 'Read configuration with Config and services from the context.', name: 'global'},
 			{message: 'Read configuration with Config and services from the context.', name: 'globalThis'}
 		],
-		'eslint/no-restricted-imports': [
-			'error',
-			{
-				paths: [
-					{importNames: REACT_LEGACY_APIS, message: REACT_LEGACY_MESSAGE, name: 'react'},
-					{message: 'Read and write data through Effect Atom.', name: '@tanstack/react-query'},
-					...Array.flatMap(['vitest', 'vite-plus/test', '@effect/vitest'], name => [
-						{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name},
-						{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name}
-					]),
-					{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
-				],
-				patterns: [
-					{message: 'Prove a screen in the browser; no UI tests.', regex: '^(?:@testing-library/|jsdom$|happy-dom$)'},
-					{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
-					{
-						message: 'Use glob from the FileSystem service.',
-						regex: '^(?:glob|fast-glob|globby|minimatch|picomatch|micromatch)(?:/|$)'
-					},
-					{message: 'Use Schema.', regex: '^(?:zod|valibot|yup|io-ts)(?:/|$)'},
-					{message: 'Use Csv from effect/encoding.', regex: '^(?:papaparse|csv-parse|csv-stringify)(?:/|$)'},
-					{message: 'Use Yaml from effect/encoding.', regex: '^(?:yaml|js-yaml)(?:/|$)'},
-					{message: 'Use Toml from effect/encoding.', regex: '^(?:smol-toml|@iarna/toml|toml)(?:/|$)'},
-					{message: 'Use Ini from effect/encoding.', regex: '^ini(?:/|$)'},
-					{message: 'Use Xml from effect/encoding.', regex: '^(?:fast-xml-parser|xml2js|sax)(?:/|$)'},
-					{message: 'Use Zip or Tar from effect/encoding.', regex: '^(?:jszip|fflate|adm-zip|tar|tar-stream)(?:/|$)'},
-					{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
-					{message: 'Use uuidV4 from the SecureRandom service in effect/crypto.', regex: '^uuid(?:/|$)'},
-					{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
-					{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
-					{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
-					{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
-				]
-			}
-		],
+		'eslint/no-restricted-imports': ['error', RESTRICTED_IMPORTS],
 		'eslint/no-restricted-properties': [
 			'error',
 			// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
@@ -892,10 +894,23 @@ export const lint: OxlintConfig = {
 }
 
 // Deslop's own turns these on; every other codebase using `lint` keeps them off.
-export const deslopRules: OxlintConfig['rules'] = Record.mapEntries(DESLOP_RULES, (_, name) => [
-	`@deslop/coding-standards/${name}`,
-	'error' as const
-])
+export const deslopRules: OxlintConfig['rules'] = {
+	...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
+	'eslint/no-restricted-imports': [
+		'error',
+		{
+			...RESTRICTED_IMPORTS,
+			patterns: [
+				...RESTRICTED_IMPORTS.patterns,
+				{
+					message: 'Store app data in Effect KeyValueStore; no SQL database or migrations.',
+					regex:
+						'^(?:better-sqlite3|sqlite3?|node:sqlite|@effect/sql(?:-[a-z-]+)?|drizzle-orm|kysely|prisma|@prisma/client)(?:/|$)'
+				}
+			]
+		}
+	]
+}
 
 const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: {...DESLOP_RULES, ...RULES}})
 
