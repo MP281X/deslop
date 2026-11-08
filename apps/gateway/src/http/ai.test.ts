@@ -1,4 +1,6 @@
-import {NodeCrypto} from '@effect/platform-node'
+import {gzipSync} from 'node:zlib'
+
+import {NodeCrypto, NodeHttpServer} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -17,7 +19,7 @@ import {
 	pipe
 } from 'effect'
 
-import {HttpClient, HttpClientResponse, HttpRouter} from 'effect/http'
+import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -32,7 +34,7 @@ const JSON_BODY = '{ "model": "test", "usage": {"input_tokens": 10, "output_toke
 const SSE_BODY =
 	'event: message_start\ndata: {"message":{"model":"test","usage":{"input_tokens":10}}}\n\nevent: message_delta\ndata: {"usage":{"output_tokens":5}}\n\n'
 
-const fixture = Effect.gen(function* () {
+const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient) {
 	const saved = yield* Queue.unbounded<AiUsageEntry>()
 	const calls = yield* Queue.unbounded<{key: string; url: string; body: string}>()
 	const base = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
@@ -57,6 +59,7 @@ const fixture = Effect.gen(function* () {
 	})
 	const client = HttpClient.make(request =>
 		Effect.gen(function* () {
+			if (compressed && String.includes('/gzip')(request.url)) return yield* compressed.get('/gzip')
 			if (request.url === 'https://models.dev/api.json') {
 				return HttpClientResponse.fromWeb(
 					request,
@@ -132,7 +135,7 @@ const fixture = Effect.gen(function* () {
 it.effect('forwards JSON and SSE unchanged using the grant owner key and meters models.dev cost', () =>
 	pipe(
 		Effect.gen(function* () {
-			const f = yield* fixture
+			const f = yield* fixture()
 			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 			yield* f.ai.setKey('bob', 'anthropic', Redacted.make('bob-secret'))
 			const minted = yield* f.request('/ai/grants', {
@@ -190,7 +193,7 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 it.effect('rejects grant enrollment with a bearer for a different app', () =>
 	pipe(
 		Effect.gen(function* () {
-			const f = yield* fixture
+			const f = yield* fixture()
 			assert.equal(
 				(yield* f.request('/ai/grants', {
 					body: JSON.stringify({app: APP}),
@@ -203,3 +206,49 @@ it.effect('rejects grant enrollment with a bearer for a different app', () =>
 		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
 	)
 )
+
+it.layer(NodeHttpServer.layerTest)(test => {
+	test.effect(
+		'forwards decoded gzip JSON without stale encoding or hop-by-hop headers',
+		Effect.fnUntraced(
+			function* () {
+				const bytes = gzipSync(JSON_BODY)
+				yield* Layer.build(
+					HttpRouter.serve(
+						HttpRouter.add(
+							'GET',
+							'/gzip',
+							HttpServerResponse.uint8Array(bytes, {
+								headers: {
+									connection: 'x-private',
+									'content-encoding': 'gzip',
+									'content-length': `${bytes.length}`,
+									'content-type': 'application/json',
+									'x-private': 'not-forwarded'
+								}
+							})
+						)
+					)
+				)
+				const f = yield* fixture(yield* HttpClient.HttpClient)
+				yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
+				const minted = yield* f.request('/ai/grants', {
+					body: JSON.stringify({app: APP}),
+					headers: {'content-type': 'application/json', cookie: 'alice'},
+					method: 'POST'
+				})
+				const response = yield* f.request('/ai/anthropic/gzip', {
+					headers: {
+						'accept-encoding': 'gzip',
+						authorization: `Bearer ${(yield* Effect.promise(() => minted.json())).token}`
+					}
+				})
+				assert.deepEqual(yield* Effect.promise(() => response.json()), JSON.parse(JSON_BODY))
+				for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'x-private']) {
+					assert.isNull(response.headers.get(name))
+				}
+			},
+			Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
+		)
+	)
+})

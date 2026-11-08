@@ -46,11 +46,7 @@ const NAMES = {
 	'opencode-zen': 'OpenCode Zen',
 	openrouter: 'OpenRouter'
 }
-const FORBIDDEN = [
-	'authorization',
-	'x-api-key',
-	'cookie',
-	'host',
+const HOP_BY_HOP = [
 	'connection',
 	'keep-alive',
 	'proxy-authenticate',
@@ -60,6 +56,7 @@ const FORBIDDEN = [
 	'transfer-encoding',
 	'upgrade'
 ]
+const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', ...HOP_BY_HOP]
 const failed = Effect.mapError((cause: unknown) => AuthError.make({cause, message: 'AI Gateway storage failed'}))
 
 const make = Effect.gen(function* () {
@@ -319,9 +316,20 @@ const make = Effect.gen(function* () {
 				Effect.catch(error => Effect.logWarning('AI usage could not be saved', error)),
 				Effect.forkIn(scope)
 			)
+			const responseBlocked = HashSet.fromIterable([
+				...HOP_BY_HOP,
+				'content-encoding',
+				'content-length',
+				...(response.headers['connection'] ?? '').split(',').map(name => name.trim().toLowerCase())
+			])
 			return HttpServerResponse.stream(
 				Stream.fromReadableStream({evaluate: () => forward, onError: Function.identity}),
-				{headers: response.headers, status: response.status}
+				{
+					headers: Object.fromEntries(
+						Object.entries(response.headers).filter(header => !HashSet.has(responseBlocked, header[0]))
+					),
+					status: response.status
+				}
 			)
 		}),
 		removeKey: Effect.fnUntraced(function* (id: string, provider: AiProvider) {

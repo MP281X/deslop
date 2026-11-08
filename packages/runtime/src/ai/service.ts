@@ -1,4 +1,4 @@
-import {Boolean, Config, Context, Effect, Layer, Option, Redacted, Ref, Schema, Semaphore, pipe} from 'effect'
+import {Boolean, Config, Context, Effect, Layer, Option, Record, Redacted, Ref, Schema, Semaphore, pipe} from 'effect'
 
 import type {Headers} from 'effect/http'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
@@ -44,22 +44,47 @@ export class AiGateway extends Context.Service<
 							)
 					}),
 				authorize: userId => http =>
-					HttpClient.mapRequestEffect(http, request =>
-						Effect.gen(function* () {
-							if (local) return request
-							const token = (yield* Ref.get(grants))[userId]
-							if (!token) {
-								return yield* Effect.fail(
-									new HttpClientError.HttpClientError({
-										reason: new HttpClientError.TransportError({
-											description: 'AI access is unavailable; sign in again to enroll with Gateway',
-											request
+					pipe(
+						HttpClient.mapRequestEffect(http, request =>
+							Effect.gen(function* () {
+								if (local) return request
+								const token = (yield* Ref.get(grants))[userId]
+								if (!token) {
+									return yield* Effect.fail(
+										new HttpClientError.HttpClientError({
+											reason: new HttpClientError.TransportError({
+												description: 'AI access is unavailable; sign in again to enroll with Gateway',
+												request
+											})
 										})
-									})
-								)
-							}
-							return HttpClientRequest.setHeader(request, 'authorization', `Bearer ${Redacted.value(token)}`)
-						})
+									)
+								}
+								return HttpClientRequest.setHeader(request, 'authorization', `Bearer ${Redacted.value(token)}`)
+							})
+						),
+						HttpClient.tap(response =>
+							pipe(
+								Effect.gen(function* () {
+									if (
+										local ||
+										response.status !== 401 ||
+										!Option.exists(gateway, url => response.request.url.startsWith(`${url}/ai/`))
+									) {
+										return
+									}
+									const current = yield* Ref.get(grants)
+									const token = current[userId]
+									if (!token || response.request.headers['authorization'] !== `Bearer ${Redacted.value(token)}`) return
+									const next = Record.remove(current, userId)
+									yield* pipe(
+										store.set('ai-gateway-grants', next),
+										Effect.ignore({log: 'Warn', message: 'The rejected AI grant could not be removed from storage'})
+									)
+									yield* Ref.set(grants, next)
+								}),
+								Semaphore.withPermit(lock)
+							)
+						)
 					),
 				enroll: Effect.fnUntraced(function* (userId, headers) {
 					return yield* pipe(

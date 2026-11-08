@@ -1,11 +1,64 @@
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Effect, Layer, Queue, pipe} from 'effect'
+import {ConfigProvider, Effect, Layer, Queue, Ref, pipe} from 'effect'
 
 import {Headers, HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {AiGateway, AiUnavailable} from '#ai/service.ts'
+
+it.effect(
+	're-enrolls after a revoked grant receives 401',
+	Effect.fnUntraced(function* () {
+		const minted = yield* Ref.make(0)
+		const client = HttpClient.make(request =>
+			Effect.gen(function* () {
+				if (request.url === 'https://gateway.mp281x.xyz/ai/grants') {
+					return HttpClientResponse.fromWeb(
+						request,
+						Response.json({token: `grant-${yield* Ref.updateAndGet(minted, count => count + 1)}`})
+					)
+				}
+				if (request.headers['authorization'] === 'Bearer grant-1') {
+					return HttpClientResponse.fromWeb(
+						request,
+						Response.json({error: {message: 'Unknown or revoked AI grant'}}, {status: 401})
+					)
+				}
+				return HttpClientResponse.fromWeb(request, Response.json({authorization: request.headers['authorization']}))
+			})
+		)
+		yield* pipe(
+			Effect.gen(function* () {
+				const gateway = yield* AiGateway
+				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				const authorized = gateway.authorize('alice')(client)
+				assert.equal((yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/v1/messages')).status, 401)
+				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				assert.equal(yield* Ref.get(minted), 2)
+				assert.deepEqual(yield* (yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/v1/messages')).json, {
+					authorization: 'Bearer grant-2'
+				})
+			}),
+			Effect.provide(
+				pipe(
+					AiGateway.layer,
+					Layer.provide(KeyValueStore.layerMemory),
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+				)
+			),
+			Effect.provide(
+				ConfigProvider.layer(
+					ConfigProvider.fromUnknown({
+						APP_URL: 'https://stash.mp281x.xyz',
+						AUTH_URL: 'https://auth.mp281x.xyz',
+						GATEWAY_URL: 'https://gateway.mp281x.xyz'
+					})
+				)
+			)
+		)
+	})
+)
 
 it.effect(
 	'enrolls once per person and applies the stored grant at the client construction boundary',

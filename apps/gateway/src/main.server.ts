@@ -1,8 +1,7 @@
-import {NodeHttpClient} from '@effect/platform-node'
-
 import {Array, Clock, Effect, Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
+import {FetchHttpClient} from 'effect/http'
 
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
@@ -22,7 +21,7 @@ import {ToolHandlers} from '#tools/handlers.ts'
 
 // Upstream servers and their providers are reached only at public HTTPS addresses. The registry is the memoized one layerMcp serves.
 const layerServices = pipe(
-	Layer.mergeAll(Gateway.layer, pipe(AiProxy.layer, Layer.provide(NodeHttpClient.layerUndici))),
+	Layer.mergeAll(Gateway.layer, pipe(AiProxy.layer, Layer.provide(FetchHttpClient.layer))),
 	Layer.provide(McpServer.McpServer.layer),
 	Layer.provideMerge(Connections.layer),
 	Layer.provide(Layer.mergeAll(ServerRuntime.layerDataStore, layerUpstream))
