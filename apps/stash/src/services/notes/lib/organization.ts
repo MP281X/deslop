@@ -1,6 +1,10 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Array, Config, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+import {Array, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+
+import {HttpClient} from 'effect/http'
+
+import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/ai'
 
 import {normalizeTags} from '#services/notes/lib/utils.ts'
 import type {Note, Picture, TagEntry} from '#services/notes/schema.ts'
@@ -82,32 +86,40 @@ function bounded(text: string) {
 export class Organizer extends Context.Service<
 	Organizer,
 	{
-		readonly organize: (input: {
-			images: Picture[]
-			note: Note
-			tags: TagEntry[]
-		}) => Effect.Effect<Organization, NotesError>
+		readonly organize: (
+			userId: string,
+			input: {images: Picture[]; note: Note; tags: TagEntry[]}
+		) => Effect.Effect<Organization, NotesError>
 	}
 >()('@deslop/stash/services/notes/lib/organization/Organizer') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const key = yield* Config.option(Config.Redacted('ANTHROPIC_API_KEY'))
-			const model = yield* pipe(
-				AnthropicLanguageModel.make({
-					config: {max_tokens: 32_000, output_config: {effort: 'high'}},
-					model: 'claude-haiku-5-5'
-				}),
-				Effect.provideServiceEffect(
-					AnthropicClient.AnthropicClient,
-					AnthropicClient.make({apiKey: Option.getOrUndefined(key)})
+			const gateway = yield* AiGateway
+			const http = yield* HttpClient.HttpClient
+			const model = Effect.fnUntraced(function* (userId: string) {
+				return yield* pipe(
+					AnthropicLanguageModel.make({
+						config: {max_tokens: 32_000, output_config: {effort: 'high'}},
+						model: 'claude-haiku-5-5'
+					}),
+					Effect.provideServiceEffect(
+						AnthropicClient.AnthropicClient,
+						pipe(
+							AnthropicClient.make({
+								apiUrl: yield* gateway.apiUrl('anthropic'),
+								transformClient: gateway.authorize(userId)
+							}),
+							Effect.provideService(HttpClient.HttpClient, http)
+						)
+					)
 				)
-			)
+			})
 
 			return Organizer.of({
 				organize: Effect.fn('Organizer.organize')(
-					function* (input) {
-						if (Option.isNone(key)) return yield* NotesError.make({message: 'Not tagged: the server has no AI key.'})
+					function* (userId, input) {
+						const anthropic = yield* model(userId)
 
 						const entry = Array.join(
 							[
@@ -140,7 +152,7 @@ export class Organizer extends Context.Service<
 							],
 							'\n\n'
 						)
-						const response = yield* model.generateObject({
+						const response = yield* anthropic.generateObject({
 							prompt: [
 								{content: INSTRUCTIONS, role: 'system'},
 								{
@@ -160,18 +172,14 @@ export class Organizer extends Context.Service<
 					},
 					Effect.timeout('5 minutes'),
 					// An overloaded API or an answer outside the schema usually succeeds on the next try.
-					Effect.retry({times: 1, while: cause => !Schema.is(NotesError)(cause)}),
-					Effect.mapError(cause =>
-						pipe(
-							Option.liftPredicate(cause, Schema.is(NotesError)),
-							Option.getOrElse(() =>
-								NotesError.make({
-									cause: Redacted.make(cause),
-									message: 'AI tagging failed; the note is saved as it is.'
-								})
-							)
-						)
-					)
+					Effect.retry({times: 1, while: cause => !Schema.is(NotesError)(cause) && !Schema.is(AiUnavailable)(cause)}),
+					Effect.mapError(cause => {
+						if (Schema.is(NotesError)(cause)) return cause
+						return NotesError.make({
+							cause: Redacted.make(cause),
+							message: Option.getOrElse(aiFailure(cause), () => 'AI tagging failed; the note is saved as it is.')
+						})
+					})
 				)
 			})
 		})

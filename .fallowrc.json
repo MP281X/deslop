@@ -26,6 +26,7 @@
 					"apps/*/src/services/*/{schema.ts,lib/utils.ts,lib/page.ts}",
 					"apps/*/src/{rpcs,tools}/contracts.ts",
 					"apps/portfolio/src/lib/portfolio.ts",
+					"packages/runtime/src/ai/schema.ts",
 					"packages/runtime/src/auth/schema.ts",
 					"packages/runtime/src/auth/lib/utils.ts",
 					"packages/runtime/src/net.ts",
@@ -41,6 +42,7 @@
 					"apps/*/src/services/**",
 					"apps/*/src/{http,rpcs,tools}/handlers.ts",
 					"packages/runtime/src/auth/service.ts",
+					"packages/runtime/src/ai/service.ts",
 					"packages/runtime/src/server.ts",
 					"packages/runtime/src/cli.ts",
 					"packages/runtime/src/cli/**"

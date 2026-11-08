@@ -11,6 +11,8 @@ import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookingList, BookingsError} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 
+const USER = 'github:1'
+
 const FLIGHT = {
 	airlineCode: 'BA',
 	airlineName: 'British Airways',
@@ -41,7 +43,8 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 		Effect.fnUntraced(function* () {
 			const seen = yield* Ref.make<BookingSource[]>([])
 			const extractor = Extractor.of({
-				read: Effect.fnUntraced(function* (source: BookingSource) {
+				read: Effect.fnUntraced(function* (userId: string, source: BookingSource) {
+					assert.strictEqual(userId, USER)
 					yield* Ref.update(seen, Array.append(source))
 					return [FLIGHT]
 				})
@@ -54,8 +57,8 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 			)
 			const text = {text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'}
 			const image = {image: new Uint8Array([255, 216, 255, 217])}
-			const first = yield* bookings.save(text)
-			const second = yield* bookings.save(image)
+			const first = yield* bookings.save(USER, text)
+			const second = yield* bookings.save(USER, image)
 			assert.deepStrictEqual(yield* Ref.get(seen), [text, image])
 			assert.deepStrictEqual(second, first)
 			assert.lengthOf(yield* bookings.list, 1)
@@ -82,18 +85,21 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 				),
 				Bookings
 			)
-			const saved = yield* bookings.save({text: 'Existing booking'})
+			const saved = yield* bookings.save(USER, {text: 'Existing booking'})
 			yield* Ref.set(items, [
 				{...FLIGHT, flightNumber: '554'},
 				{...FLIGHT, from: 'BAD'}
 			])
-			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save({image: new Uint8Array([1])}))))
+			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save(USER, {image: new Uint8Array([1])}))))
 			assert.deepStrictEqual(yield* bookings.list, saved)
 			yield* Ref.set(items, [])
-			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save({text: 'No booking'}))))
+			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save(USER, {text: 'No booking'}))))
 			assert.deepStrictEqual(yield* bookings.list, saved)
 			yield* Ref.set(rejected, true)
-			assert.deepStrictEqual(yield* Effect.result(bookings.save({image: new Uint8Array([1])})), Result.fail(failure))
+			assert.deepStrictEqual(
+				yield* Effect.result(bookings.save(USER, {image: new Uint8Array([1])})),
+				Result.fail(failure)
+			)
 			assert.deepStrictEqual(yield* bookings.list, saved)
 		})
 	)

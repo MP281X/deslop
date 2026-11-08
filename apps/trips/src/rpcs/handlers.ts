@@ -1,5 +1,7 @@
 import {Effect} from 'effect'
 
+import {CurrentUser} from '@deslop/runtime/auth/utils'
+
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Push} from '#services/push/service.ts'
@@ -16,7 +18,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'bookings.refresh': input => tracker.refresh(input.id),
 			'bookings.remove': input => bookings.remove(input.id),
 			'bookings.restore': input => bookings.restore(input),
-			'bookings.save': input => bookings.save(input),
+			'bookings.save': input => Effect.flatMap(CurrentUser, user => bookings.save(user.id, input)),
 			'bookings.watch': () => bookings.events,
 			'devices.register': input => push.register(input)
 		})

@@ -4,10 +4,10 @@ A reading list: it reads each saved link, transcribes its video and tags it. The
 
 ```bash
 npm install --global @deslop/stash
-stash service install --url https://stash.mp281x.xyz --auth https://auth.mp281x.xyz
+stash service install --url https://stash.mp281x.xyz --auth https://auth.mp281x.xyz --gateway https://gateway.mp281x.xyz
 ```
 
-- **Secrets** in `~/.deslop/stash.env`: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, optional `STASH_PROXY` for video downloads.
+- **Secrets** in `~/.deslop/stash.env`: optional `STASH_PROXY` for video downloads; AI keys live in Gateway.
 - **Bundled**: ffmpeg, ffprobe and yt-dlp, with their licenses in `bin/`.
 - **MCP** at `/mcp`: `search_notes`, `read_note`, `save_note`.
 

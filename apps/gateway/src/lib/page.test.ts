@@ -1,12 +1,10 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Exercise the real page and atom over a scoped loopback RPC server.
-import {createServer} from 'node:http'
-
 import {RegistryContext} from '@effect/atom-react'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Cause, Context, Effect, Function, Layer, MutableList, Option, Queue, Ref, Stream, pipe} from 'effect'
+import {Cause, Context, Effect, Function, Layer, Option, Queue, Ref, Stream, pipe} from 'effect'
 
+import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
 import {HttpRouter, HttpServer, HttpServerResponse} from 'effect/http'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
 import type {Atom} from 'effect/reactivity'
@@ -33,17 +31,16 @@ const sample = ConnectionInfo.make({
 })
 
 const fixture = Effect.gen(function* () {
-	const sockets = MutableList.make<() => void>()
-	const node = createServer()
-	node.on('upgrade', (_request, socket) =>
-		MutableList.append(sockets, () => {
-			socket.destroy()
-		})
-	)
 	const opened = yield* Queue.unbounded<void>()
 	const complete = yield* Ref.make(false)
 	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionInfo[], AuthError>>()
 	const handlers = RpcContracts.toLayer({
+		'ai.grants': () => Effect.never,
+		'ai.keys': () => Effect.never,
+		'ai.removeKey': () => Effect.never,
+		'ai.revokeGrant': () => Effect.never,
+		'ai.setKey': () => Effect.never,
+		'ai.usage': () => Effect.never,
 		'gateway.add': () => Effect.never,
 		'gateway.calls': () => Stream.never,
 		'gateway.remove': () => Effect.void,
@@ -78,13 +75,8 @@ const fixture = Effect.gen(function* () {
 				)
 			),
 			Layer.provide(ServerRuntime.layerProtocol),
-			Layer.provideMerge(NodeHttpServer.layer(() => node, {host: '127.0.0.1', port: 0}))
+			Layer.provideMerge(NodeHttpServer.layerTest)
 		)
-	)
-	yield* Effect.addFinalizer(() =>
-		Effect.sync(() => {
-			for (const close of MutableList.toArray(sockets)) close()
-		})
 	)
 	const origin = HttpServer.formatAddress(Context.get(context, HttpServer.HttpServer).address)
 	/* oxlint-disable no-restricted-globals, no-restricted-properties -- Scope the actual browser client's origin to this loopback server and restore its descriptor. */
@@ -129,14 +121,16 @@ function render(result: Atom.Type<typeof serversAtom>) {
 	return Effect.scoped(
 		Effect.gen(function* () {
 			const env = yield* fixture
-			const component = yield* Effect.map(
-				Effect.promise(() => import('#routes/(home)/index.tsx')),
-				page => Option.getOrThrow(Option.fromUndefinedOr(page.Route.options.component))
+			// The page reads its view from the URL, so it renders inside the app's own router.
+			const router = yield* Effect.map(
+				Effect.promise(() => import('#routeTree.gen.ts')),
+				generated => createRouter({history: createMemoryHistory(), routeTree: generated.routeTree})
 			)
-			const preload = component.preload?.()
-			if (preload !== undefined) yield* Effect.promise(() => preload)
+			yield* Effect.promise(() => router.load())
 			env.registry.ensureNode(env.serversAtom).setInitialValue(result)
-			return renderToString(createElement(RegistryContext.Provider, {value: env.registry}, createElement(component)))
+			return renderToString(
+				createElement(RegistryContext.Provider, {value: env.registry}, createElement(RouterProvider, {router}))
+			)
 		})
 	)
 }
@@ -218,7 +212,8 @@ it.layer(NodeServices.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.initial())
 			assert.include(html, '>gateway</span>')
-			assert.notInclude(html, '>Servers</span>')
+			assert.include(html, 'aria-label="View"')
+			assert.notInclude(html, '>Servers</h2>')
 			assert.include(html, 'aria-label="Search gateway"')
 			assert.notInclude(html, 'aria-label="Add server"')
 			assert.notInclude(html, 'aria-label="Copy MCP URL"')

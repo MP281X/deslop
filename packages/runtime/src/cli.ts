@@ -29,6 +29,7 @@ import {
 	appName,
 	guard,
 	layerAnnounce,
+	layerDataStore,
 	layerIcon,
 	layerNodeHttpServer,
 	layerProtocol,
@@ -39,6 +40,7 @@ import {
 	packageRoot
 } from '#server.ts'
 
+import {AiGateway} from '#ai/service.ts'
 import type {RpcAuth} from '#auth/lib/utils.ts'
 import {Auth} from '#auth/service.ts'
 import {AppError} from '#cli/schema.ts'
@@ -61,6 +63,7 @@ const SETTINGS = {
 		flag: 'auth',
 		schema: SecureOrigin
 	},
+	GATEWAY_URL: {description: 'Deslop Gateway origin for AI calls', flag: 'gateway', schema: Origin},
 	HOST: {description: `Listen address; defaults to ${DEFAULT_HOST}`, flag: 'host', schema: Schema.NonEmptyString},
 	OTEL_URL: {description: 'Scope origin to export traces and logs to', flag: 'traces', schema: Origin}
 } satisfies Record<string, Setting>
@@ -104,6 +107,7 @@ export type Provided =
 	| Layer.Success<typeof layerPlatform>
 	| HttpRouter.HttpRouter
 	| Auth
+	| AiGateway
 	| RpcAuth
 	| Layer.Success<typeof layerProtocol>
 
@@ -140,7 +144,8 @@ function server<A, E>(app: App<A, E>) {
 						onSome: middleware => HttpRouter.middleware()(middleware).layer
 					})
 				),
-				Layer.provide(Auth.layer)
+				Layer.provide(Auth.layer),
+				Layer.provideMerge(pipe(AiGateway.layer, Layer.provide(layerDataStore)))
 			),
 			{disableLogger: true, middleware: guard}
 		),

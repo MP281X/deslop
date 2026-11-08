@@ -1,4 +1,4 @@
-import {Effect, Option, pipe} from 'effect'
+import {Effect, Option, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
@@ -6,6 +6,8 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
+import {AiProvider} from '#services/ai/schema.ts'
+import {AiProxy} from '#services/ai/service.ts'
 import {clientMetadata, gatewayUrl} from '#services/connections/lib/utils.ts'
 import {Callback, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
@@ -77,6 +79,28 @@ export const HttpHandlers = HttpRouter.use(router =>
 			'GET',
 			'/oauth/callback/:id',
 			Effect.flatMap(HttpRouter.params, params => callback(Option.fromUndefinedOr(params['id'])))
+		)
+	})
+)
+
+export const AiHttpHandlers = HttpRouter.use(router =>
+	Effect.gen(function* () {
+		const ai = yield* AiProxy
+		yield* router.add('POST', '/ai/grants', ai.mint)
+		yield* router.add(
+			'*',
+			'/ai/:provider/*',
+			Effect.gen(function* () {
+				const params = yield* HttpRouter.params
+				const provider = Schema.decodeUnknownOption(AiProvider)(params['provider'])
+				if (provider._tag === 'None') {
+					return HttpServerResponse.jsonUnsafe({error: {message: 'Unknown AI provider'}}, {status: 404})
+				}
+				return yield* ai.proxy(
+					provider.value,
+					String.slice(`/ai/${provider.value}/`.length)((yield* HttpServerRequest.HttpServerRequest).url)
+				)
+			})
 		)
 	})
 )

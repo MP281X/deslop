@@ -27,6 +27,7 @@ import {
 	pipe
 } from 'effect'
 
+import {DEVELOPER} from '@deslop/runtime/auth/utils'
 import {dataDirectory, listEvents} from '@deslop/runtime/server'
 
 import {clock} from '#services/media/lib/utils.ts'
@@ -82,18 +83,17 @@ function optional<B>(message: string, fallback: () => B) {
 export class Notes extends Context.Service<
 	Notes,
 	{
-		readonly capture: (input: Capture) => Effect.Effect<Note, NotesError>
-		readonly captureFile: (input: {
-			body: Stream.Stream<Uint8Array, unknown>
-			id: Note['id']
-			type: FileType
-		}) => Effect.Effect<Note, NotesError>
+		readonly capture: (userId: string, input: Capture) => Effect.Effect<Note, NotesError>
+		readonly captureFile: (
+			userId: string,
+			input: {body: Stream.Stream<Uint8Array, unknown>; id: Note['id']; type: FileType}
+		) => Effect.Effect<Note, NotesError>
 		readonly changes: Stream.Stream<Note[]>
 		readonly events: Stream.Stream<NotesEvent>
 		readonly get: (input: Pick<Note, 'id'>) => Effect.Effect<Note, NotesError>
 		readonly image: (id: Note['id']) => Effect.Effect<Image, NotesError>
 		readonly list: Effect.Effect<Note[]>
-		readonly regenerate: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
+		readonly regenerate: (userId: string, input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly search: (input: {query: string}) => Stream.Stream<readonly Note['id'][]>
 		readonly tags: Effect.Effect<TagEntry[]>
@@ -173,7 +173,7 @@ export class Notes extends Context.Service<
 					yield* updateNote(id, note => ({...note, image: image.type}))
 				})
 
-				const tagNote = Effect.fnUntraced(function* (note: Note, stills: Picture[]) {
+				const tagNote = Effect.fnUntraced(function* (userId: string, note: Note, stills: Picture[]) {
 					const label = Boolean.match(note.file === undefined, {
 						onFalse: () => 'The saved photo',
 						onTrue: () => 'Preview image'
@@ -203,7 +203,7 @@ export class Notes extends Context.Service<
 					const known = yield* Ref.get(definitions)
 					const inUse = Array.map(entries, entry => entry.tag)
 					const organized = Result.map(
-						yield* Effect.result(organizer.organize({images: pictures, note, tags: entries})),
+						yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})),
 						organization => {
 							const tags = reuseTags(organization.tags, inUse)
 							return {
@@ -233,10 +233,10 @@ export class Notes extends Context.Service<
 				})
 
 				// One note at a time, so two notes read together cannot create rival tags for the same topic.
-				function tag(id: Note['id'], stills: Picture[]) {
+				function tag(userId: string, id: Note['id'], stills: Picture[]) {
 					return Effect.flatMap(
 						findNote(id),
-						Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(note, stills))})
+						Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})
 					)
 				}
 
@@ -265,11 +265,12 @@ export class Notes extends Context.Service<
 
 				// The video's details replace an X post's text only when the post itself could not be read.
 				const watch = Effect.fnUntraced(function* (
+					userId: string,
 					note: Note,
 					input: {slides: Picture[]; url: string; useInfo: boolean; video: string}
 				) {
 					const read = yield* pipe(
-						media.read(input.url, input.video),
+						media.read(userId, input.url, input.video),
 						Effect.asSome,
 						optional('The video could not be read', Option.none)
 					)
@@ -298,10 +299,10 @@ export class Notes extends Context.Service<
 						],
 						{concurrency: 2}
 					)
-					yield* tag(note.id, [...input.slides, ...Array.map(frames, still)])
+					yield* tag(userId, note.id, [...input.slides, ...Array.map(frames, still)])
 				})
 
-				const organizeLink = Effect.fnUntraced(function* (note: Note, link: string) {
+				const organizeLink = Effect.fnUntraced(function* (userId: string, note: Note, link: string) {
 					const extraction = yield* Effect.result(sources.extract(link))
 					yield* updateNote(note.id, item =>
 						Result.match(extraction, {
@@ -338,9 +339,9 @@ export class Notes extends Context.Service<
 								)
 						}),
 						{
-							onNone: () => tag(note.id, slides),
+							onNone: () => tag(userId, note.id, slides),
 							onSome: video =>
-								watch(note, {
+								watch(userId, note, {
 									slides,
 									url: Result.match(extraction, {onFailure: () => link, onSuccess: page => page.url}),
 									useInfo: Result.isFailure(extraction),
@@ -350,8 +351,8 @@ export class Notes extends Context.Service<
 					)
 				})
 
-				const organizeFile = Effect.fnUntraced(function* (note: Note, type: FileType) {
-					if (!isVideo(type)) return yield* tag(note.id, [])
+				const organizeFile = Effect.fnUntraced(function* (userId: string, note: Note, type: FileType) {
+					if (!isVideo(type)) return yield* tag(userId, note.id, [])
 					const stored = path.join(files, note.id)
 					const stills = yield* pipe(media.fileFrames(stored), optional('No video frames', Array.empty<Still>))
 					yield* pipe(
@@ -362,22 +363,25 @@ export class Notes extends Context.Service<
 						Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
 					)
 					yield* Option.match(
-						yield* pipe(media.fileTranscript(stored), optional('No transcript', Option.none<string>)),
+						yield* pipe(media.fileTranscript(userId, stored), optional('No transcript', Option.none<string>)),
 						{onNone: () => Effect.void, onSome: text => updateNote(note.id, item => ({...item, transcript: text}))}
 					)
-					yield* tag(note.id, Array.map(Array.drop(stills, 1), still))
+					yield* tag(userId, note.id, Array.map(Array.drop(stills, 1), still))
 				})
 
-				function start(note: Note) {
+				function start(userId: string, note: Note) {
 					return pipe(
-						Option.match(Option.fromNullishOr(note.file), {
-							onNone: () =>
-								Option.match(Option.fromNullishOr(note.url), {
-									onNone: () => tag(note.id, []),
-									onSome: link => reading.withPermit(organizeLink(note, link))
-								}),
-							onSome: type => reading.withPermit(organizeFile(note, type))
-						}),
+						updateNote(note.id, item => ({...item, requester: userId})),
+						Effect.andThen(
+							Option.match(Option.fromNullishOr(note.file), {
+								onNone: () =>
+									Option.match(Option.fromNullishOr(note.url), {
+										onNone: () => tag(userId, note.id, []),
+										onSome: link => reading.withPermit(organizeLink(userId, note, link))
+									}),
+								onSome: type => reading.withPermit(organizeFile(userId, note, type))
+							})
+						),
 						Effect.tapCause(cause =>
 							Boolean.match(Cause.hasInterruptsOnly(cause), {
 								onFalse: () =>
@@ -402,9 +406,10 @@ export class Notes extends Context.Service<
 					)
 				}
 
+				// A note interrupted by a restart resumes for the person who saved it; one the previous release left organizing has none and resumes as the developer.
 				yield* Effect.forEach(
 					Array.filter(yield* SubscriptionRef.get(state), note => note.status === 'organizing'),
-					start,
+					note => start(note.requester ?? DEVELOPER.id, note),
 					{concurrency: 1, discard: true}
 				)
 
@@ -412,11 +417,10 @@ export class Notes extends Context.Service<
 					NotesError.make({message: 'No note has this id; find its id with search_notes.'})
 				)
 
-				const receive = Effect.fnUntraced(function* (input: {
-					body: Stream.Stream<Uint8Array, unknown>
-					id: Note['id']
-					type: FileType
-				}) {
+				const receive = Effect.fnUntraced(function* (
+					userId: string,
+					input: {body: Stream.Stream<Uint8Array, unknown>; id: Note['id']; type: FileType}
+				) {
 					const stored = path.join(
 						Boolean.match(isVideo(input.type), {onFalse: () => images, onTrue: () => files}),
 						input.id
@@ -464,11 +468,14 @@ export class Notes extends Context.Service<
 							}
 						)
 					)
-					return yield* Option.match(earlier, {onNone: () => Effect.as(start(note), note), onSome: Effect.succeed})
+					return yield* Option.match(earlier, {
+						onNone: () => Effect.as(start(userId, note), note),
+						onSome: Effect.succeed
+					})
 				})
 
 				return Notes.of({
-					capture: Effect.fn('Notes.capture')(function* (input) {
+					capture: Effect.fn('Notes.capture')(function* (userId, input) {
 						const text = String.trim(input.text)
 						if (String.isEmpty(text)) return yield* NotesError.make({message: 'Paste a link or write a note.'})
 						const url = yield* pipe(
@@ -516,12 +523,12 @@ export class Notes extends Context.Service<
 								}
 							)
 						)
-						if (saved.fresh) yield* start(saved.note)
+						if (saved.fresh) yield* start(userId, saved.note)
 						return saved.note
 					}),
-					captureFile: Effect.fn('Notes.captureFile')(function* (input) {
+					captureFile: Effect.fn('Notes.captureFile')(function* (userId, input) {
 						return yield* Option.match(yield* findNote(input.id), {
-							onNone: () => receive(input),
+							onNone: () => receive(userId, input),
 							onSome: Effect.succeed
 						})
 					}),
@@ -545,7 +552,7 @@ export class Notes extends Context.Service<
 						return {bytes: yield* pipe(fs.readFile(path.join(images, id)), storageFailed), type}
 					}),
 					list: SubscriptionRef.get(state),
-					regenerate: Effect.fn('Notes.regenerate')(function* (input) {
+					regenerate: Effect.fn('Notes.regenerate')(function* (userId, input) {
 						yield* FiberMap.remove(runs, input.id)
 						const reset = yield* transact(current =>
 							Option.match(
@@ -562,7 +569,11 @@ export class Notes extends Context.Service<
 								}
 							)
 						)
-						yield* pipe(Effect.fromOption(reset), missing, Effect.flatMap(start))
+						yield* pipe(
+							Effect.fromOption(reset),
+							missing,
+							Effect.flatMap(note => start(userId, note))
+						)
 					}),
 					remove: Effect.fn('Notes.remove')(function* (input) {
 						yield* FiberMap.remove(runs, input.id)
