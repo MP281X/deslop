@@ -22,15 +22,18 @@
 
 	--background: #ffffff;
 	--foreground: #0a0a0a;
-	--card: #fafafa;
+	--card: #f8f7f4;
 	--popover: #ffffff;
 	--primary-foreground: #ffffff;
-	--secondary: #f2f2f2;
-	--muted: #f5f5f5;
-	--muted-foreground: #666666;
-	--accent: #f0f0f0;
-	--border: #e5e5e5;
-	--input: #d9d9d9;
+	--secondary: #f1f0ec;
+	--muted: #f5f4f1;
+	--muted-foreground: #64625d;
+	--accent: #f0efea;
+	--border: #e6e4de;
+	--input: #d8d6cf;
+	--surface: #f2f1ed;
+	--selection: #e8e6df;
+	--selection-foreground: #0a0a0a;
 
 	--primary: var(--slate);
 	--destructive: var(--red);
@@ -41,8 +44,9 @@
 	--popover-foreground: var(--foreground);
 	--secondary-foreground: var(--foreground);
 	--accent-foreground: var(--foreground);
+	--surface-foreground: var(--foreground);
 
-	/* shadcn's chart and sidebar names, so a component added with the CLI works: they point at the tokens above. */
+	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
 	--chart-1: var(--orange);
 	--chart-2: var(--cyan);
 	--chart-3: var(--purple);
@@ -57,7 +61,7 @@
 	--sidebar-border: var(--border);
 	--sidebar-ring: var(--ring);
 
-	--radius: 4px;
+	--radius: 0px;
 }
 
 /* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
@@ -78,23 +82,28 @@
 		--warning: oklch(from #ff9e3b l c h);
 
 		--background: #0d0c0c;
-		--foreground: #dcdcdc;
+		--foreground: #e3e1db;
 		--card: #141313;
 		--popover: #141313;
 		--primary-foreground: #0d0c0c;
 		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
 		--secondary: #242323;
 		--muted: #242323;
-		--muted-foreground: #8c8c8c;
+		--muted-foreground: #a19e96;
 		--accent: #242323;
-		--border: #222121;
-		--input: #282727;
+		--border: #262523;
+		--input: #2c2a27;
+		--surface: #191817;
+		--selection: #3a3833;
+		--selection-foreground: #f5f3ec;
 	}
 }
 
 @theme inline {
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--tracking-label: 0.14em;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
@@ -112,6 +121,10 @@
 	--color-popover: var(--popover);
 	--color-card-foreground: var(--card-foreground);
 	--color-card: var(--card);
+	--color-surface-foreground: var(--surface-foreground);
+	--color-surface: var(--surface);
+	--color-selection-foreground: var(--selection-foreground);
+	--color-selection: var(--selection);
 	--color-foreground: var(--foreground);
 	--color-background: var(--background);
 	--color-chart-1: var(--chart-1);
@@ -147,13 +160,14 @@
 	image-rendering: pixelated;
 }
 
-/* A row's fill can meet the pane edge; its divider is an independent, straight inset hairline. */
+/* Sera's display face, for the one heading that names a view. */
+/* A ruled row: the fill may meet the pane edge, the divider never does. */
 @utility list-row {
 	position: relative;
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 3);
+		inset-inline: calc(var(--spacing) * 4);
 		bottom: 0;
 		height: 1px;
 		background: var(--border);
@@ -180,6 +194,10 @@
 	/* Every app is a full-height shell whose own panes scroll, so the document never does. */
 	html {
 		@apply font-sans antialiased select-none;
+		font-synthesis: none;
+		text-rendering: optimizeLegibility;
+		-webkit-tap-highlight-color: transparent;
+		-webkit-text-size-adjust: 100%;
 		scrollbar-color: var(--border) transparent;
 		scrollbar-width: thin;
 		height: 100%;
@@ -188,12 +206,42 @@
 		touch-action: pan-x pan-y;
 	}
 
+	::selection {
+		background: var(--selection);
+		color: var(--selection-foreground);
+	}
+
 	/* Popups are placed against the body, which clips them, so one reaching past the bottom can't scroll the app. */
 	body {
 		position: relative;
 		height: 100%;
 		overflow: clip;
 		overscroll-behavior: none;
+	}
+
+	button,
+	a,
+	input,
+	textarea,
+	select,
+	[role='button'] {
+		touch-action: manipulation;
+	}
+
+	button,
+	[role='button'],
+	label {
+		user-select: none;
+		-webkit-user-select: none;
+	}
+
+	/* The display heading uses the app's sans at display weight, not a second typeface. */
+	.font-heading {
+		font-weight: 600;
+	}
+
+	.cn-font-heading {
+		@apply font-heading font-semibold;
 	}
 
 	/* A printed page, such as the portfolio's CV, flows onto as many sheets as it needs. */
@@ -212,5 +260,13 @@
 	textarea,
 	select {
 		font-size: 1rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		scroll-behavior: auto !important;
 	}
 }

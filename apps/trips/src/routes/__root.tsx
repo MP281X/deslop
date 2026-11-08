@@ -3,7 +3,7 @@ import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtom
 import {Array, Option, Result} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
-import {background, tint} from '@expo/ui/swift-ui/modifiers'
+import {tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
@@ -40,11 +40,7 @@ function AppRoutes() {
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack
-				path={path}
-				onPathChange={setPath}
-				modifiers={[tint(colors.foreground), background(colors.background)]}
-			>
+			<NavigationStack path={path} onPathChange={setPath} modifiers={[tint(colors.foreground)]}>
 				<HomeRoute onOpen={id => setPath([id])} />
 				{Array.map(path, value => (
 					<NavigationDestination key={value} value={value}>

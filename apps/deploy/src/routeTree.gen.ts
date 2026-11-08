@@ -29,8 +29,8 @@ const homeMonitorRoute = homeMonitorRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/monitor': typeof homeMonitorRoute
   '/': typeof homeIndexRoute
+  '/monitor': typeof homeMonitorRoute
 }
 export interface FileRoutesByTo {
   '/monitor': typeof homeMonitorRoute
@@ -44,7 +44,7 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/monitor' | '/'
+  fullPaths: '/' | '/monitor'
   fileRoutesByTo: FileRoutesByTo
   to: '/monitor' | '/'
   id: '__root__' | '/(home)' | '/(home)/monitor' | '/(home)/'
@@ -59,7 +59,7 @@ declare module '@tanstack/react-router' {
     '/(home)': {
       id: '/(home)'
       path: ''
-      fullPath: ''
+      fullPath: '/'
       preLoaderRoute: typeof homeRouteRouteImport
       parentRoute: typeof rootRouteImport
     }

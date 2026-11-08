@@ -2,8 +2,8 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 @theme {
-	/* The two sidebars hold equal width; the processes between them are the narrower, secondary pane. */
-	--grid-template-columns-split: 35% 30% 35%;
+	/* Under a wide screen's split, apps and charts share the top and processes take the lower band. */
+	--grid-template-rows-split: 3fr 2fr;
 	/* A port chip's least width, so single ports line up while a hostname keeps its full name. */
 	--spacing-port: 7ch;
 }

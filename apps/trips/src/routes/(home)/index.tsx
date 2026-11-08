@@ -4,14 +4,11 @@ import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
 
 import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
-	accessibilityLabel,
-	background,
 	fixedSize,
 	font,
 	foregroundStyle,
 	frame,
 	labelStyle,
-	lineLimit,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
@@ -29,16 +26,8 @@ import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
-import {
-	Item,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle,
-	itemRow
-} from '@deslop/components-mobile/ui/item'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {Spinner} from '@deslop/components-mobile/ui/spinner'
 
@@ -123,16 +112,14 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 					<Gutter countdown={props.countdown} />
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle modifiers={[lineLimit(1)]}>{headingOf(props.booking)}</ItemTitle>
-					<ItemDescription modifiers={[text.data]}>{scheduleOf(props.booking)}</ItemDescription>
+					<ItemTitle>{headingOf(props.booking)}</ItemTitle>
+					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{scheduleOf(props.booking)}</Text>
 					<HStack spacing={space[2]}>
 						<StatusDot status={dots[status.tone]} tint={primary} />
-						<Text modifiers={[text.detail, foregroundStyle(colors.foreground), lineLimit(1)]}>{status.label}</Text>
+						<Text modifiers={[text.detail, foregroundStyle(colors.foreground)]}>{status.label}</Text>
 						{Option.match(status.where, {
 							onNone: () => undefined,
-							onSome: where => (
-								<Text modifiers={[text.detail, foregroundStyle(tones[where.tone]), lineLimit(1)]}>· {where.text}</Text>
-							)
+							onSome: where => <Text modifiers={[text.detail, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
 						})}
 					</HStack>
 				</ItemContent>
@@ -197,43 +184,60 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 				</HStack>
 			)}
 			{Array.isReadonlyArrayEmpty(shown.success) && (
-				<Empty modifiers={[accessibilityLabel('No bookings')]}>
+				<Empty>
 					<EmptyHeader>
 						<EmptyMedia systemImage="ticket" />
+						<EmptyTitle>No trips yet</EmptyTitle>
+						<EmptyDescription>Paste a booking confirmation here and it will appear.</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(shown.success) &&
-				Array.isReadonlyArrayEmpty(current) &&
-				Array.isReadonlyArrayEmpty(ahead) &&
-				Array.isReadonlyArrayEmpty(past) && (
-					<Empty modifiers={[accessibilityLabel('No upcoming bookings')]}>
-						<EmptyHeader>
-							<EmptyMedia systemImage="ticket" />
-						</EmptyHeader>
-					</Empty>
-				)}
-			{Array.isReadonlyArrayNonEmpty([...current, ...ahead, ...past]) && (
+			{Array.isReadonlyArrayNonEmpty(shown.success) && (
 				<ItemGroup modifiers={[tint(primary)]}>
-					{Array.map(current, booking => (
-						<BookingRow key={booking.id} booking={booking} countdown={{_tag: 'Now'}} now={now} onOpen={props.onOpen} />
-					))}
-					{Array.map(ahead, (booking, position) => (
-						<BookingRow
-							key={booking.id}
-							booking={booking}
-							countdown={Option.match(Array.get(ahead, position - 1), {
-								onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-								onSome: before =>
-									Boolean.match(daysOf(before) === daysOf(booking), {
-										onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-										onTrue: () => ({_tag: 'SameDay'}) as const
-									})
-							})}
-							now={now}
-							onOpen={props.onOpen}
-						/>
-					))}
+					{Array.isReadonlyArrayNonEmpty(current) && (
+						<Section title="Now">
+							{Array.map(current, booking => (
+								<BookingRow
+									key={booking.id}
+									booking={booking}
+									countdown={{_tag: 'Now'}}
+									now={now}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					)}
+					{Array.isReadonlyArrayNonEmpty(ahead) && (
+						<Section title="Upcoming">
+							{Array.map(ahead, (booking, position) => (
+								<BookingRow
+									key={booking.id}
+									booking={booking}
+									countdown={Option.match(Array.get(ahead, position - 1), {
+										onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+										onSome: before =>
+											Boolean.match(daysOf(before) === daysOf(booking), {
+												onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+												onTrue: () => ({_tag: 'SameDay'}) as const
+											})
+									})}
+									now={now}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					)}
+					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
+						<Section>
+							<Empty>
+								<EmptyHeader>
+									<EmptyMedia systemImage="ticket" />
+									<EmptyTitle>Nothing coming up</EmptyTitle>
+									<EmptyDescription>Paste a new booking to add it.</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						</Section>
+					)}
 					{Array.isReadonlyArrayNonEmpty(past) && (
 						<Section title="Past" isExpanded={pastOpen} onIsExpandedChange={setPastOpen}>
 							{Array.map(past, booking => (
@@ -257,9 +261,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 export function HomeRoute(props: {onOpen: (id: string) => void}) {
 	const restore = useAtomSet(restoreAtom)
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('large')]}>
 			<PasteSheet>
 				<Suspense
 					fallback={
@@ -289,7 +291,7 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 								label={`Undo Delete ${titleOf(offered.value.booking)}`}
 								systemImage="arrow.uturn.backward"
 								onPress={() => restore(offered.value.booking)}
-								modifiers={[labelStyle('titleAndIcon'), lineLimit(1)]}
+								modifiers={[labelStyle('titleAndIcon')]}
 							/>
 						</ToolbarItem>
 					)}

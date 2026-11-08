@@ -10,7 +10,7 @@ it('gives blocking failures a brief reason and a destructive Retry without expos
 		createElement(Error, {error: new TypeError('PRIVATE DIAGNOSTIC'), reset: () => undefined})
 	)
 	assert.include(html, 'role="alert"')
-	assert.include(html, 'Can’t load this view.')
+	assert.include(html, 'Can’t load this view')
 	assert.match(html, /<button[^>]*bg-destructive\/10[^>]*>Retry<\/button>/u)
 	assert.notInclude(html, 'PRIVATE DIAGNOSTIC')
 	assert.notInclude(html, '0s')

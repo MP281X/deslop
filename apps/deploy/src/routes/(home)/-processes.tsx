@@ -4,6 +4,7 @@ import {CaretRightIcon} from '@phosphor-icons/react'
 
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
+import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {cn} from '@deslop/components-web/utils'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
@@ -11,64 +12,75 @@ import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 
-// One process: its mark, name and what it holds of the app's memory as a bar; small ones read muted.
-function Line(props: {depth: number; node: ProcessNode}) {
+// One process: its mark, name and what it holds of the app's memory; small ones read muted.
+function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
-		<span
-			className={cn(
-				'flex h-8 w-full min-w-0 items-center gap-2 pl-(--indent) text-xs font-normal max-sm:h-11',
-				props.node.small && 'text-muted-foreground'
-			)}
+		<div
+			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
-			title={`${mib.format(props.node.memory / 1024 ** 2)} MiB including child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 		>
-			<ApplicationIcon name={props.node.name} small />
-			<span className="max-w-2/5 shrink-0 truncate font-mono">{props.node.name}</span>
-			<span
-				className="text-muted-foreground min-w-0 flex-1 truncate font-mono"
-				title={Array.join(props.node.command ?? [], ' ')}
+			<Item
+				size="xs"
+				className="h-full min-w-0"
+				title={`${mib.format(props.node.memory / 1024 ** 2)} MiB including child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 			>
-				{/* The arguments that tell a process apart: no executable, no variable assignments, and paths cut to their last part; hovering shows them whole. */}
-				{Array.join(
-					Array.map(
-						Array.filter(Array.drop(props.node.command ?? [], 1), arg =>
-							Option.isNone(String.match(/^[A-Z_][A-Z0-9_]*=/u)(arg))
-						),
-						String.replaceAll(/(^|=)(?:\/[^/\s=]+)+\/([^/\s]+)/gu, '$1$2')
-					),
-					' '
-				)}
-			</span>
-			{Array.isArrayNonEmpty(props.node.children) && (
-				<span className="text-muted-foreground w-6 shrink-0 text-right font-mono">+{props.node.children.length}</span>
-			)}
-			<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
-				{mib.format(props.node.memory / 1024 ** 2)} MiB
-			</span>
-			{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
-				onFalse: () => <span className="size-3.5 shrink-0" />,
-				onTrue: () => (
-					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/button:rotate-90" />
-				)
-			})}
-		</span>
+				<ItemMedia variant="icon" className="ml-(--indent)">
+					<ApplicationIcon name={props.node.name} small />
+				</ItemMedia>
+				<ItemContent className="min-w-0">
+					<div
+						className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}
+					>
+						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case max-sm:max-w-3/5">
+							{props.node.name}
+						</span>
+						<span
+							className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case"
+							title={Array.join(props.node.command ?? [], ' ')}
+						>
+							{/* The arguments that tell a process apart: no executable, no variable assignments, and paths cut to their last part; hovering shows them whole. */}
+							{Array.join(
+								Array.map(
+									Array.filter(Array.drop(props.node.command ?? [], 1), arg =>
+										Option.isNone(String.match(/^[A-Z_][A-Z0-9_]*=/u)(arg))
+									),
+									String.replaceAll(/(^|=)(?:\/[^/\s=]+)+\/([^/\s]+)/gu, '$1$2')
+								),
+								' '
+							)}
+						</span>
+					</div>
+				</ItemContent>
+				<ItemActions className="shrink-0">
+					{Array.isArrayNonEmpty(props.node.children) && (
+						<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case max-sm:hidden">
+							+{props.node.children.length}
+						</span>
+					)}
+					<span className="text-muted-foreground shrink-0 font-mono text-xs tracking-normal normal-case tabular-nums">
+						{mib.format(props.node.memory / 1024 ** 2)} MiB
+					</span>
+					{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
+						onFalse: () => <span className="size-3.5 shrink-0" />,
+						onTrue: () => (
+							<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/button:rotate-90" />
+						)
+					})}
+				</ItemActions>
+			</Item>
+		</div>
 	)
 }
 
 // A parent opens on its own, as a small accordion; the first level starts open, deeper ones closed.
 function Node(props: {depth: number; node: ProcessNode}) {
 	if (Array.isArrayEmpty(props.node.children)) {
-		// The same box as a parent's large button, border included, so leaves and parents share heights and columns.
-		return (
-			<div className="border border-transparent px-2.5">
-				<Line depth={props.depth} node={props.node} />
-			</div>
-		)
+		return <Line depth={props.depth} node={props.node} padded />
 	}
 	return (
 		<Collapsible defaultOpen={props.depth === 0 && !props.node.small}>
 			<CollapsibleTrigger
-				render={<Button variant="ghost" size="lg" className="h-auto w-full" />}
+				render={<Button variant="ghost" size="sm" className="h-full w-full" />}
 				aria-label={`${props.node.name} processes`}
 			>
 				<Line depth={props.depth} node={props.node} />
@@ -84,7 +96,7 @@ function Node(props: {depth: number; node: ProcessNode}) {
 
 export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
-		<div className="px-3 pb-2">
+		<div className="min-w-0 px-2 pb-2">
 			{Array.map(props.tree, node => (
 				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
 			))}

@@ -22,18 +22,20 @@ import {
 } from '@expo/ui/swift-ui'
 import type {useNativeState} from '@expo/ui/swift-ui'
 import {
-	accessibilityHidden,
+	accessibilityAddTraits,
 	accessibilityElement,
-	accessibilityLabel,
+	accessibilityHidden,
 	alignmentGuide,
 	aspectRatio,
 	background,
+	buttonBorderShape,
+	buttonStyle,
 	clipShape,
+	controlSize,
 	foregroundStyle,
 	frame,
 	labelStyle,
 	lineLimit,
-	listRowBackground,
 	listRowInsets,
 	listRowSeparator,
 	menuOrder,
@@ -42,7 +44,6 @@ import {
 	onAppear,
 	pickerStyle,
 	padding,
-	redacted,
 	resizable,
 	searchable,
 	tag,
@@ -61,16 +62,15 @@ import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyHeader, EmptyMedia} from '@deslop/components-mobile/ui/empty'
 import {
-	Item,
-	ItemContent,
-	ItemDescription,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle,
-	itemRow
-} from '@deslop/components-mobile/ui/item'
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle
+} from '@deslop/components-mobile/ui/empty'
+import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
@@ -107,14 +107,18 @@ function Lines(props: {note: NoteItem}) {
 			{pipe(
 				Match.value(props.note.status),
 				Match.when('organizing', () => (
-					<ItemDescription modifiers={[text.caption, redacted('placeholder'), accessibilityLabel('Reading')]}>
-						Reading the source of this entry
-					</ItemDescription>
+					<HStack
+						spacing={space[1]}
+						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
+					>
+						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
+						<Text modifiers={[text.detail, lineLimit(1)]}>Reading the source</Text>
+					</HStack>
 				)),
 				Match.when('failed', () => (
 					<HStack spacing={space[1]} modifiers={[accessibilityElement('combine'), foregroundStyle(colors.destructive)]}>
 						<Image systemName="exclamationmark.triangle.fill" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.caption, lineLimit(1)]}>Couldn’t read this link</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>Couldn’t read this link</Text>
 					</HStack>
 				)),
 				Match.orElse(() => <Byline note={props.note} />)
@@ -190,7 +194,11 @@ function NoteRow(props: {
 				<ContextMenu.Trigger>
 					<Item
 						onPress={() => props.onOpen(props.note.id)}
-						modifiers={[alignmentGuide('listRowSeparatorLeading', 0), onAppear(props.onAppear)]}
+						modifiers={[
+							accessibilityAddTraits(['isButton']),
+							alignmentGuide('listRowSeparatorLeading', 0),
+							onAppear(props.onAppear)
+						]}
 					>
 						<ItemMedia>
 							<NoteMedia note={props.note} />
@@ -348,9 +356,7 @@ export function HomeRoute(props: {
 	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
-		<Toolbar
-			modifiers={[navigationTitle('Stash'), navigationBarTitleDisplayMode('large'), background(colors.background)]}
-		>
+		<Toolbar modifiers={[navigationTitle('Stash'), navigationBarTitleDisplayMode('large')]}>
 			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
 			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
 				<PasteSheet>
@@ -358,10 +364,25 @@ export function HomeRoute(props: {
 						<Outages />
 						{Array.match(shown.success, {
 							onEmpty: () => (
-								<Empty modifiers={[accessibilityLabel('Nothing saved')]}>
+								<Empty>
 									<EmptyHeader>
 										<EmptyMedia systemImage="tray" />
+										<EmptyTitle>Nothing saved yet</EmptyTitle>
+										<EmptyDescription>Share a link to Stash, or write a note.</EmptyDescription>
 									</EmptyHeader>
+									<EmptyContent>
+										<Button
+											label="Write a note"
+											systemImage="square.and.pencil"
+											onPress={props.onCompose}
+											modifiers={[
+												buttonStyle('glassProminent'),
+												buttonBorderShape('capsule'),
+												controlSize('large'),
+												tint(primary)
+											]}
+										/>
+									</EmptyContent>
 								</Empty>
 							),
 							onNonEmpty: () => (
@@ -379,7 +400,6 @@ export function HomeRoute(props: {
 											}
 											tint={primary}
 											modifiers={[
-												listRowBackground(colors.background),
 												listRowSeparator('hidden'),
 												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
 											]}
@@ -409,19 +429,17 @@ export function HomeRoute(props: {
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>
-											<Empty modifiers={[accessibilityLabel('No matching notes')]}>
-												{Boolean.match(String.isEmpty(query), {
-													onFalse: () => (
-														<EmptyHeader>
-															<EmptyMedia systemImage="magnifyingglass" />
-														</EmptyHeader>
-													),
-													onTrue: () => (
-														<EmptyHeader>
-															<EmptyMedia systemImage="tray" />
-														</EmptyHeader>
-													)
-												})}
+											<Empty>
+												<EmptyHeader>
+													<EmptyMedia
+														systemImage={Boolean.match(String.isEmpty(query), {
+															onFalse: () => 'magnifyingglass',
+															onTrue: () => 'tray'
+														})}
+													/>
+													<EmptyTitle>No notes match</EmptyTitle>
+													<EmptyDescription>Try another search or tag.</EmptyDescription>
+												</EmptyHeader>
 											</Empty>
 										</Overlay.Content>
 									)}

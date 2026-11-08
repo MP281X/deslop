@@ -1,7 +1,7 @@
-import {Array, Boolean, DateTime, Option, Schema, pipe} from 'effect'
+import {Array, Boolean, DateTime, Match, Option, Schema, pipe} from 'effect'
 
 import {HStack, Image, Text} from '@expo/ui/swift-ui'
-import {accessibilityElement, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
+import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, space, text} from '@deslop/components-mobile/theme'
@@ -22,9 +22,19 @@ function savedOn(createdAt: number) {
 	)
 }
 
+// The source mark is decoration; the byline's text names the source.
 function SourceIcon(props: {kind: Kind}) {
-	if (Schema.is(Brand)(props.kind)) return <BrandLogo brand={kinds[props.kind].logo} size={12} />
-	return <Image systemName={kinds[props.kind].symbol} size={11} modifiers={[foregroundStyle(colors.mutedForeground)]} />
+	return (
+		<HStack modifiers={[accessibilityHidden(true)]}>
+			{pipe(
+				Match.value(props.kind),
+				Match.when(Schema.is(Brand), kind => <BrandLogo brand={kinds[kind].logo} size={12} />),
+				Match.orElse(kind => (
+					<Image systemName={kinds[kind].symbol} size={11} modifiers={[foregroundStyle(colors.mutedForeground)]} />
+				))
+			)}
+		</HStack>
+	)
 }
 
 // The source's logo, who made the entry or the site it is on, and when it was saved.

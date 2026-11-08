@@ -64,15 +64,15 @@ export function UsageChart(props: {
 		() => props.value ?? ''
 	)
 	return (
-		<figure className={cn('flex flex-col', props.className)} aria-label={props.label}>
-			<figcaption className="mb-1 flex items-baseline justify-between gap-2 text-xs">
-				<span className="text-muted-foreground font-medium">{props.label}</span>
-				<span className="min-w-0 truncate font-mono tabular-nums" title={valueText}>
+		<figure className={cn('flex min-h-0 flex-col', props.className)} aria-label={props.label}>
+			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2 text-xs">
+				<span className="tracking-label font-semibold uppercase">{props.label}</span>
+				<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tabular-nums" title={valueText}>
 					{valueText}
 				</span>
 			</figcaption>
 			<div className="flex min-h-0 flex-1">
-				<div className="min-h-0 flex-1 pr-1">
+				<div className="min-h-0 flex-1">
 					<svg
 						viewBox={`0 0 100 ${HEIGHT}`}
 						preserveAspectRatio="none"
@@ -189,7 +189,9 @@ export function UsageChart(props: {
 export function Cores(props: {history: MachineHistory}) {
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
-			<figcaption className="text-muted-foreground mb-1 text-xs">Cores</figcaption>
+			<figcaption className="tracking-label text-muted-foreground mb-1.5 text-xs font-semibold uppercase">
+				Cores
+			</figcaption>
 			{Array.match(Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? [], {
 				onEmpty: () => <span className="text-muted-foreground text-xs">No readings</span>,
 				onNonEmpty: entries => (

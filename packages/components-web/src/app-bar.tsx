@@ -3,16 +3,16 @@ import {useAtomValue} from '@effect/atom-react'
 import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {useRender} from '@base-ui/react/use-render'
-import {CaretLeftIcon} from '@phosphor-icons/react'
+import {CaretLeftIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useEffect, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {CommandPalette, CommandTrigger} from '#components/command-palette.tsx'
+import {CommandPalette} from '#components/command-palette.tsx'
 import type {PaletteGroup} from '#components/command-palette.tsx'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
-import {Button, buttonVariants} from '#components/ui/button.tsx'
+import {Button} from '#components/ui/button.tsx'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -22,6 +22,7 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
+import {Kbd} from '#components/ui/kbd.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
@@ -44,7 +45,7 @@ function AccountMenu() {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				aria-label="Account"
-				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}
+				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
 			>
 				<Avatar size="sm">
 					<AvatarImage
@@ -72,25 +73,53 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as a tab in the bar, the current one filled; `render` is the router's link.
+// A section of the app as an underlined tab in the masthead, the current one ruled.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
 			className: cn(
-				buttonVariants({
-					variant: Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})
-				}),
-				'max-sm:h-11'
-			),
-			'data-slot': 'button'
+				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				Boolean.match(props.active, {
+					onFalse: () => 'text-muted-foreground hover:text-foreground',
+					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
+				})
+			)
 		},
 		render: props.render
 	})
 }
 
-// Actions live in the palette; `controls` only choose what the page shows, such as Deploy's range. `account` replaces the shared menu.
+// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
+function SearchTrigger(props: {label: string; onClick: () => void}) {
+	return (
+		<>
+			<Button
+				variant="search"
+				size="search"
+				aria-label={props.label}
+				onClick={props.onClick}
+				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
+			>
+				<MagnifyingGlassIcon className="size-4 shrink-0" />
+				<span className="flex-1">Search or jump to…</span>
+				<Kbd>⌘K</Kbd>
+			</Button>
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				aria-label={props.label}
+				onClick={props.onClick}
+				className="max-sm:size-11 xl:hidden"
+			>
+				<MagnifyingGlassIcon />
+			</Button>
+		</>
+	)
+}
+
+// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}
@@ -114,12 +143,12 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background text-muted-foreground border-border sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3">
+			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" className="flex shrink-0 items-center gap-2 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-8 opacity-60" />
-							<span className="text-sm font-semibold">{props.name}</span>
+						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
+							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
+							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
 						</a>
 					),
 					// The leading slot keeps its width on every pane, so the title and the right controls never move.
@@ -132,13 +161,13 @@ export function AppBar(props: {
 										aria-label={props.name}
 										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
 									>
-										<img src={props.icon} alt="" className="pixelated size-8 opacity-60" />
+										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
 									</a>
 								),
 								onSome: back => (
 									<Button
 										variant="ghost"
-										size="icon"
+										size="icon-sm"
 										className="max-sm:size-11"
 										aria-label={back.label}
 										onClick={back.onClick}
@@ -147,22 +176,24 @@ export function AppBar(props: {
 									</Button>
 								)
 							})}
-							<span className="max-w-40 min-w-0 truncate text-sm font-medium">{title}</span>
+							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
+								{title}
+							</span>
 						</div>
 					)
 				})}
 				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex items-center gap-1">
+					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
 						{props.tabs}
 					</nav>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end">
+				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
-						onSome: () => <CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
 					})}
 				</div>
-				<div className="flex shrink-0 items-center gap-1.5">
+				<div className="flex shrink-0 items-center gap-2">
 					{props.controls}
 					{props.account ?? <AccountMenu />}
 				</div>

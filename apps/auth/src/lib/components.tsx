@@ -7,6 +7,8 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 import {toQR} from 'toqr'
 
+import {EmptyState} from '@deslop/components-web/fallbacks'
+import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
@@ -19,7 +21,6 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
-import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
 import {FieldDescription} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
@@ -277,7 +278,13 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<>
+		<div className="bg-card flex flex-col gap-3 border p-5">
+			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
+				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+					{signInLabel(props.request.clientName, props.request.device)}
+				</span>
+			</div>
 			<FieldDescription>
 				{Boolean.match(props.request.kind === 'Browser', {
 					onFalse: () =>
@@ -318,7 +325,7 @@ function Answer(props: {request: PendingAuthorization}) {
 					Deny
 				</Button>
 			</div>
-		</>
+		</div>
 	)
 }
 
@@ -412,65 +419,61 @@ export function AppList(props: {pending: Option.Option<PendingAuthorization>}) {
 		Array.some(rows, row => holds(column, row))
 	)
 	return (
-		<section className="flex w-full max-w-sm flex-col gap-3" aria-label="Apps">
+		<Section title="Apps" meta={`${rows.length} apps · ${columns.length} clients`} className="gap-0">
 			{/* A waiting sign-in's answer comes first, where the approving phone sees it without scrolling. */}
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(rows, {
 				onEmpty: () => (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No apps yet</EmptyTitle>
-						</EmptyHeader>
-					</Empty>
+					<EmptyState
+						label="No apps yet"
+						description="An app appears here the first time it announces itself."
+						icon={<AppWindowIcon className="size-5" />}
+					/>
 				),
 				onNonEmpty: () => (
-					<div className="flex flex-col gap-3">
-						<Table aria-label="Apps and the clients signed in to them">
-							<TableHeader>
-								{/* 48px rows on a phone leave each app's link a full 44px target above its divider. */}
-								<TableRow className="max-sm:h-12">
-									<TableHead>
-										<span className="text-muted-foreground text-xs">App</span>
+					<Table aria-label="Apps and the clients signed in to them">
+						<TableHeader>
+							{/* 48px rows on a phone leave each app's link a full 44px target above its divider. */}
+							<TableRow className="max-sm:h-12">
+								<TableHead>App</TableHead>
+								{Array.map(columns, column => (
+									<ColumnHead key={column.key} column={column} now={data.now} />
+								))}
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{Array.map(rows, row => (
+								<TableRow key={row.origin} className="h-14 max-sm:h-12">
+									<TableHead scope="row">
+										{Option.match(row.open, {
+											onNone: () => (
+												<span className="flex items-center gap-3 text-sm font-medium">
+													<AppIcon origin={row.origin} />
+													{row.name}
+												</span>
+											),
+											onSome: url => (
+												<a
+													href={url}
+													target="_blank"
+													rel="noreferrer"
+													className="flex h-full w-full items-center gap-3 text-sm font-medium hover:underline"
+												>
+													<AppIcon origin={row.origin} />
+													{row.name}
+												</a>
+											)
+										})}
 									</TableHead>
 									{Array.map(columns, column => (
-										<ColumnHead key={column.key} column={column} now={data.now} />
+										<Cell key={column.key} column={column} row={row} />
 									))}
 								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{Array.map(rows, row => (
-									<TableRow key={row.origin} className="max-sm:h-12">
-										<TableHead scope="row">
-											{Option.match(row.open, {
-												onNone: () => (
-													<span className="flex items-center gap-2 text-sm font-medium">
-														<AppIcon origin={row.origin} />
-														{row.name}
-													</span>
-												),
-												onSome: url => (
-													<a
-														href={url}
-														target="_blank"
-														rel="noreferrer"
-														className="flex h-full w-full items-center gap-2 text-sm font-medium hover:underline"
-													>
-														<AppIcon origin={row.origin} />
-														{row.name}
-													</a>
-												)
-											})}
-										</TableHead>
-										{Array.map(columns, column => (
-											<Cell key={column.key} column={column} row={row} />
-										))}
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</div>
+							))}
+						</TableBody>
+					</Table>
 				)
 			})}
-		</section>
+		</Section>
 	)
 }

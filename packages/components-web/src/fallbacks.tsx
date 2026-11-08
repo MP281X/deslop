@@ -2,15 +2,29 @@ import {HouseIcon, QuestionIcon, WarningCircleIcon} from '@phosphor-icons/react'
 import {useEffect} from 'react'
 import type {ReactNode} from 'react'
 
-import {Button, buttonVariants} from '#components/ui/button.tsx'
-import {Empty} from '#components/ui/empty.tsx'
+import {Alert, AlertAction, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
+import {Button} from '#components/ui/button.tsx'
+import {Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia} from '#components/ui/empty.tsx'
 
-export function EmptyState(props: {icon: ReactNode; label: string}) {
+export function EmptyState(props: {action?: ReactNode; description?: string; icon: ReactNode; label: string}) {
+	// A pane with nothing selected keeps the icon alone; a first-run or blocked list teaches with a title and a sentence.
+	if (props.action === undefined && props.description === undefined) {
+		return (
+			<Empty role="status" aria-label={props.label}>
+				<EmptyMedia variant="icon">{props.icon}</EmptyMedia>
+			</Empty>
+		)
+	}
 	return (
 		<Empty role="status" aria-label={props.label}>
-			<span aria-hidden className="text-muted-foreground/40 flex items-center justify-center">
-				{props.icon}
-			</span>
+			<EmptyHeader>
+				<EmptyMedia variant="icon" className="mb-3">
+					{props.icon}
+				</EmptyMedia>
+				<h2 className="font-heading text-2xl leading-none tracking-tight">{props.label}</h2>
+				{props.description !== undefined && <EmptyDescription>{props.description}</EmptyDescription>}
+			</EmptyHeader>
+			{props.action !== undefined && <EmptyContent>{props.action}</EmptyContent>}
 		</Empty>
 	)
 }
@@ -18,10 +32,19 @@ export function EmptyState(props: {icon: ReactNode; label: string}) {
 export function NotFound() {
 	return (
 		<Empty aria-label="Page not found">
-			<QuestionIcon weight="light" className="text-muted-foreground/40 size-6" />
-			<a className={buttonVariants({size: 'icon', variant: 'ghost'})} href="/" aria-label="Go home" title="Go home">
-				<HouseIcon className="size-4" />
-			</a>
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<QuestionIcon className="size-5" />
+				</EmptyMedia>
+				<h2 className="font-heading text-2xl leading-none tracking-tight">Page not found</h2>
+				<EmptyDescription>The link is old, or it never existed.</EmptyDescription>
+			</EmptyHeader>
+			<EmptyContent>
+				<Button variant="outline" render={<a href="/" aria-label="Go home" />}>
+					<HouseIcon />
+					Go home
+				</Button>
+			</EmptyContent>
 		</Empty>
 	)
 }
@@ -36,16 +59,17 @@ export function SignIn(props: {href: string}) {
 
 export function Error(props: {error: unknown; label?: string; reset: () => void}) {
 	return (
-		<div className="flex min-h-0 flex-1 items-center justify-center p-3">
-			<div role="alert" aria-label={props.label ?? 'Unavailable'} className="flex flex-col items-center gap-2">
-				<p className="flex items-center gap-2">
-					<WarningCircleIcon aria-hidden className="text-destructive size-4 shrink-0" />
-					<span>{props.label ?? 'Can’t load this view.'}</span>
-				</p>
-				<Button variant="destructive" className="max-sm:h-11" onClick={props.reset}>
-					Retry
-				</Button>
-			</div>
+		<div className="flex min-h-0 flex-1 items-center justify-center p-6">
+			<Alert variant="destructive" role="alert" aria-label={props.label ?? 'Unavailable'} className="max-w-md">
+				<WarningCircleIcon />
+				<AlertTitle>{props.label ?? 'Can’t load this view'}</AlertTitle>
+				<AlertDescription>The server did not answer. Nothing was lost; try the same view again.</AlertDescription>
+				<AlertAction>
+					<Button variant="destructive" size="sm" className="max-sm:h-11" onClick={props.reset}>
+						Retry
+					</Button>
+				</AlertAction>
+			</Alert>
 		</div>
 	)
 }

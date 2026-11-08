@@ -32,7 +32,7 @@ function Enter(props: {
 	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex w-full max-w-sm flex-col gap-4">
+		<section className="flex w-full flex-col gap-4">
 			<Field data-invalid={invalid}>
 				<InputOTP
 					id="code"
@@ -102,7 +102,7 @@ function Enter(props: {
 	)
 }
 
-// The code stays in its field while the grid shows what it asks for, both centred on the page; a tall grid scrolls from its top.
+// The code stays in its field while the grid shows what it asks for, both one centred column; a tall grid scrolls from its top.
 function Page(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
@@ -111,7 +111,8 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full flex-col items-center gap-6 py-6">
+		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
 				<AppList pending={props.pending} />

@@ -3,7 +3,7 @@ import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtom
 import {Array, Option, Result, Schema} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
-import {background, tint} from '@expo/ui/swift-ui/modifiers'
+import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
 import {BlankScreen, FailureScreen, LoadingScreen, SessionGate, shownOf} from '@deslop/components-mobile/screens'
@@ -54,11 +54,7 @@ function AppRoutes() {
 
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack
-				path={path}
-				onPathChange={setPath}
-				modifiers={[tint(colors.foreground), background(colors.background)]}
-			>
+			<NavigationStack path={path} onPathChange={setPath} modifiers={[tint(colors.foreground)]}>
 				<ChaptersRoute
 					key={series}
 					chapters={Array.filter(chapters, chapter => chapter.series === series)}

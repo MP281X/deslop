@@ -58,3 +58,10 @@
 	size: A4;
 	margin: 10mm;
 }
+
+/* A dark-mode browser still prints the CV as a light document: the screen tokens never reach paper. */
+@media print {
+	:root {
+		color-scheme: light;
+	}
+}

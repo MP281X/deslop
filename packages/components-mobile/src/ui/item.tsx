@@ -3,17 +3,14 @@ import {Option} from 'effect'
 import {HStack, List, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
-	background,
 	contentShape,
 	foregroundStyle,
 	frame,
 	lineLimit,
-	listRowBackground,
 	listRowInsets,
-	listRowSeparatorTint,
 	listStyle,
 	onTapGesture,
-	scrollContentBackground,
+	scrollEdgeEffectStyle,
 	shapes
 } from '@expo/ui/swift-ui/modifiers'
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
@@ -23,23 +20,15 @@ import {colors, space, text} from '#components/theme.ts'
 
 // shadcn's Item on iOS by the same names; a caller's modifiers come first, so they win over the defaults like a className.
 
-// The modifiers that make a view a row of an ItemGroup: put them on the row's outermost view, such as its SwipeActions.
+// Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
 export const itemRow = [
-	listRowBackground(colors.background),
-	listRowSeparatorTint(colors.border),
+	frame({minHeight: 56}),
 	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
 	return (
-		<List
-			modifiers={[
-				...(props.modifiers ?? []),
-				listStyle('plain'),
-				scrollContentBackground('hidden'),
-				background(colors.background)
-			]}
-		>
+		<List modifiers={[...(props.modifiers ?? []), scrollEdgeEffectStyle('soft'), listStyle('insetGrouped')]}>
 			{props.children}
 		</List>
 	)

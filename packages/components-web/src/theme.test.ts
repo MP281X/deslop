@@ -107,13 +107,13 @@ it.layer(NodeServices.layer)(test => {
 				['popover', '#ffffff'],
 				['primary-foreground', '#ffffff'],
 				['foreground', '#0a0a0a'],
-				['card', '#fafafa'],
-				['secondary', '#f2f2f2'],
-				['muted', '#f5f5f5'],
-				['muted-foreground', '#666666'],
-				['accent', '#f0f0f0'],
-				['border', '#e5e5e5'],
-				['input', '#d9d9d9']
+				['card', '#f8f7f4'],
+				['secondary', '#f1f0ec'],
+				['muted', '#f5f4f1'],
+				['muted-foreground', '#64625d'],
+				['accent', '#f0efea'],
+				['border', '#e6e4de'],
+				['input', '#d8d6cf']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}
@@ -147,16 +147,16 @@ it.layer(NodeServices.layer)(test => {
 			const [light, dark = ''] = String.split(source, '@media screen and (prefers-color-scheme: dark)')
 			const darkDeclarations = [...declarations(dark), ...declarations(light)]
 			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
-			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#dcdcdc')
+			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#e3e1db')
 			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#242323')
-			assert.strictEqual(resolved(darkDeclarations, 'border'), '#222121')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), '#262523')
 			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
 			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
 			assert.notInclude(source, '--green')
-			assert.include(source, '--radius: 4px;')
+			assert.include(source, '--radius: 0px;')
 			assert.include(
 				yield* fs.readFileString(`${ROOT}/packages/components-mobile/src/theme.ts`),
-				'export const radius = 4'
+				'export const radius = 12'
 			)
 			for (const size of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']) {
 				assert.include(source, `--radius-${size}: var(--radius);`)

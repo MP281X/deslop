@@ -8,12 +8,12 @@ const STEPS: Record<number, number> = {1: 15_000, 10: 120_000, 60: 900_000}
 
 // The page's ranges, shortest first.
 export const RANGES = [
-	{label: '1m', minutes: 1},
-	{label: '10m', minutes: 10},
-	{label: '1h', minutes: 60},
-	{label: '24h', minutes: 1440},
-	{label: '7d', minutes: 10_080}
-] as const satisfies readonly {label: string; minutes: HistoryQuery['minutes']}[]
+	{label: '1m', minutes: 1, name: '1 minute'},
+	{label: '10m', minutes: 10, name: '10 minutes'},
+	{label: '1h', minutes: 60, name: '1 hour'},
+	{label: '24h', minutes: 1440, name: '24 hours'},
+	{label: '7d', minutes: 10_080, name: '7 days'}
+] as const satisfies readonly {label: string; minutes: HistoryQuery['minutes']; name: string}[]
 
 export function chartTicks(minutes: number, now: number) {
 	const window = chartWindow(minutes, now)

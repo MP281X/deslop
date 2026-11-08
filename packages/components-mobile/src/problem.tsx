@@ -3,7 +3,7 @@ import {useAtomValue} from '@effect/atom-react'
 import {Boolean, Clock, Effect, Number, Option, Stream} from 'effect'
 
 import {Button, HStack, Image, Menu, Section, Text} from '@expo/ui/swift-ui'
-import {accessibilityLabel, buttonStyle, foregroundStyle, frame} from '@expo/ui/swift-ui/modifiers'
+import {accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useId} from 'react'
 
@@ -31,7 +31,7 @@ export function Problem(props: {label: string; onRetry: () => void; saved?: bool
 	const age = useAtomValue(ageAtom(useId()))
 	return (
 		<Menu
-			modifiers={[buttonStyle('plain')]}
+			modifiers={[buttonStyle('plain'), menuIndicator('hidden')]}
 			label={
 				<HStack spacing={space[1]} modifiers={[frame({minHeight: 44, minWidth: 44}), accessibilityLabel(props.label)]}>
 					{Boolean.match(props.saved === true, {

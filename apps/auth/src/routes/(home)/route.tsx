@@ -9,6 +9,7 @@ import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
+import {WEB_APPS} from '@deslop/components-web/command-palette'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
@@ -138,38 +139,57 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
-	const title = `Sign in ${props.request.clientName} on ${props.request.device}`
 	return (
-		<section
-			className="flex flex-1 flex-col items-center justify-center gap-3 pb-12 text-center"
-			aria-labelledby="waiting-title"
-		>
-			<p id="waiting-title" title={title} className="max-w-full truncate text-base font-semibold">
-				{title}
-			</p>
-			{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-			<span className="bg-card text-foreground rounded-md border p-1.5">
-				<QrCode text={approveLink(props.request.id)} className="size-40" />
-			</span>
-			<Code id={props.request.id} />
-			<Countdown expiresAt={props.request.expiresAt} />
+		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
+			<header className="flex flex-col gap-2">
+				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
+				<h1
+					id="waiting-title"
+					title={`Sign in ${props.request.clientName} on ${props.request.device}`}
+					className="font-heading text-3xl leading-none tracking-tight"
+				>
+					{props.request.clientName}
+				</h1>
+				<p className="text-muted-foreground text-sm">on {props.request.device} · asks to sign in to Deslop</p>
+			</header>
+			<div className="flex items-start gap-5">
+				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
+				<span className="bg-background text-foreground shrink-0 border p-2">
+					<QrCode text={approveLink(props.request.id)} className="size-32" />
+				</span>
+				<div className="flex min-w-0 flex-col gap-2">
+					<span className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Code</span>
+					<Code id={props.request.id} />
+					<Countdown expiresAt={props.request.expiresAt} />
+					<p className="text-muted-foreground text-xs leading-relaxed">
+						Scan the code from a signed-in phone, or enter this code there.
+					</p>
+				</div>
+			</div>
 			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
 			{props.request.kind === 'App' && (
-				<span className="flex flex-wrap justify-center gap-1">
+				<div className="flex flex-col gap-2 border-t pt-4">
 					<Button
-						variant="ghost"
+						variant="outline"
 						size="sm"
+						className="w-full max-sm:h-11"
 						disabled={AsyncResult.isWaiting(passkey)}
 						onClick={() => startPasskey(next)}
 					>
 						<KeyIcon />
 						Approve here with a passkey
 					</Button>
-					<Button variant="ghost" size="sm" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
+					<Button
+						variant="ghost"
+						size="sm"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(signIn)}
+						onClick={() => startSignIn()}
+					>
 						<GitHubIcon />
 						Approve here with GitHub
 					</Button>
-				</span>
+				</div>
 			)}
 			<Failures />
 		</section>
@@ -353,45 +373,69 @@ function AccountMenu(props: {account: SignedAccount}) {
 	)
 }
 
+// The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
+function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
+	return (
+		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+			{Array.map(props.apps, app => (
+				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
+					<AppIcon origin={app.origin} small />
+					<span className="truncate text-sm">{app.name}</span>
+				</span>
+			))}
+		</div>
+	)
+}
+
 // Without an account: GitHub, or a code approved from another browser, a phone or an agent.
 function SignIn() {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
+	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="flex flex-1 flex-col items-center justify-center pb-12" aria-label="Sign in">
-			<div className="flex w-full max-w-sm flex-col gap-2">
-				<Button
-					size="lg"
-					className="max-sm:h-11"
-					disabled={AsyncResult.isWaiting(signIn)}
-					onClick={() => startSignIn()}
-				>
-					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-					Continue with GitHub
-				</Button>
-				<Button
-					size="lg"
-					variant="outline"
-					className="max-sm:h-11"
-					disabled={AsyncResult.isWaiting(passkey)}
-					onClick={() => startPasskey(next)}
-				>
-					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
-					Continue with a passkey
-				</Button>
-				<Button
-					size="lg"
-					variant="ghost"
-					className="max-sm:h-11"
-					disabled={AsyncResult.isWaiting(codeSignIn)}
-					onClick={() => startCodeSignIn(next)}
-				>
-					Use a sign-in code
-				</Button>
-				<Failures />
+		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
+			<h1 className="sr-only">Sign in</h1>
+			<div className="bg-card flex w-full flex-col gap-5 border p-6">
+				<div className="flex flex-col gap-2">
+					<Button
+						size="lg"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(signIn)}
+						onClick={() => startSignIn()}
+					>
+						{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+						Continue with GitHub
+					</Button>
+					<Button
+						size="lg"
+						variant="outline"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(passkey)}
+						onClick={() => startPasskey(next)}
+					>
+						{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
+						Continue with a passkey
+					</Button>
+					<Button
+						size="lg"
+						variant="ghost"
+						className="w-full max-sm:h-11"
+						disabled={AsyncResult.isWaiting(codeSignIn)}
+						onClick={() => startCodeSignIn(next)}
+					>
+						Use a sign-in code
+					</Button>
+					<Failures />
+				</div>
 			</div>
+			<Suite
+				apps={Boolean.match(Array.isReadonlyArrayNonEmpty(apps), {
+					onFalse: () => Array.map(WEB_APPS, app => ({name: app.name, origin: app.url})),
+					onTrue: () => apps
+				})}
+			/>
 		</section>
 	)
 }

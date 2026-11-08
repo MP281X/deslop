@@ -2,19 +2,30 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
-import {CaretRightIcon, ClockIcon, MonitorIcon, PlayIcon, HardDrivesIcon} from '@phosphor-icons/react'
+import {
+	AppWindowIcon,
+	CaretDownIcon,
+	CaretRightIcon,
+	ChartLineIcon,
+	ClockIcon,
+	HardDrivesIcon,
+	MonitorIcon,
+	PlayIcon,
+	TerminalWindowIcon
+} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useDeferredValue, useState} from 'react'
+import {Fragment, Suspense, useDeferredValue, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
-import {Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
+import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
@@ -25,17 +36,18 @@ import {
 import {
 	DropdownMenu,
 	DropdownMenuContent,
-	DropdownMenuLabel,
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
-import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Item, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {Progress, ProgressLabel} from '@deslop/components-web/ui/progress'
+import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
+import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
+import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -57,7 +69,7 @@ import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
-// A phone shows one pane at a time; a wide screen shows all three and ignores it.
+// A phone shows one pane at a time; a wide screen shows all three.
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['apps', 'machine', 'process'])
 
@@ -88,6 +100,12 @@ function dot(item: InventoryItem, state: string) {
 	if (state === 'stale' || state === 'public permission' || state === 'restarting') return 'warning'
 	if (Option.isSome(String.match(/running|online|listening|activating/u)(state))) return 'live'
 	return 'quiet'
+}
+
+// A row that needs a look leads the list, whether it is an app or a job.
+function needsAttention(row: ReturnType<typeof workloads>[number]) {
+	const light = dot(row.item, status(row.item))
+	return light === 'error' || light === 'warning'
 }
 
 // How long ago a service stopped: minutes within the hour, hours within two days, then days.
@@ -175,7 +193,7 @@ function text(row: ReturnType<typeof workloads>[number]) {
 }
 
 // The range's apps: a service or container that neither ran nor failed in it has no row. A job keeps its row to run it now, and a machine without history shows every app.
-function ranged(rows: readonly ReturnType<typeof workloads>[number][], minutes: number, history?: MachineHistory) {
+function ranged(rows: ReturnType<typeof workloads>, minutes: number, history?: MachineHistory) {
 	if (history === undefined) return rows
 	const recorded = HashSet.fromIterable(
 		Array.flatMap(history.samples, sample => Array.map(sample.apps ?? [], app => app.id))
@@ -208,12 +226,89 @@ function failedFor(
 	)
 }
 
+// The page's one range control: a line of ranges at the same height as every other control.
+function RangeToggle(props: {
+	minutes: HistoryQuery['minutes']
+	onChange: (minutes: HistoryQuery['minutes']) => void
+	pending: boolean
+}) {
+	return (
+		<div className="flex items-center gap-2">
+			<span aria-hidden={!props.pending} className="flex size-4 shrink-0 items-center justify-center">
+				{Boolean.match(props.pending, {onFalse: () => null, onTrue: () => <Spinner className="size-3.5" />})}
+			</span>
+			<ToggleGroup
+				aria-label="History range"
+				className="w-fit"
+				onValueChange={values => {
+					Option.map(
+						Option.flatMap(Option.fromUndefinedOr(Option.getOrUndefined(Array.head(values))), current =>
+							Array.findFirst(RANGES, range => `${range.minutes}` === current)
+						),
+						range => props.onChange(range.minutes)
+					)
+				}}
+				size="sm"
+				spacing={0}
+				value={[`${props.minutes}`]}
+				variant="outline"
+			>
+				{Array.map(RANGES, range => (
+					<ToggleGroupItem key={range.minutes} className="max-sm:h-11" value={`${range.minutes}`}>
+						{range.label}
+					</ToggleGroupItem>
+				))}
+			</ToggleGroup>
+		</div>
+	)
+}
+
+// A phone's bar keeps the range in the space of a word: the current range opens the five.
+function RangeMenu(props: {
+	minutes: HistoryQuery['minutes']
+	onChange: (minutes: HistoryQuery['minutes']) => void
+	pending: boolean
+}) {
+	const current = Array.findFirst(RANGES, range => range.minutes === props.minutes)
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				aria-label={Option.match(current, {
+					onNone: () => 'History range',
+					onSome: range => `History range: ${range.name}`
+				})}
+				render={<Button variant="ghost" size="sm" className="max-lg:h-11" />}
+			>
+				{Option.match(current, {onNone: () => '—', onSome: range => range.label})}
+				{Boolean.match(props.pending, {onFalse: () => <CaretDownIcon />, onTrue: () => <Spinner />})}
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-auto min-w-36">
+				<DropdownMenuRadioGroup
+					value={`${props.minutes}`}
+					onValueChange={value => {
+						Option.map(
+							Array.findFirst(RANGES, range => `${range.minutes}` === value),
+							range => props.onChange(range.minutes)
+						)
+					}}
+				>
+					{Array.map(RANGES, range => (
+						<DropdownMenuRadioItem key={range.minutes} className="max-lg:h-11" value={`${range.minutes}`}>
+							{range.name}
+						</DropdownMenuRadioItem>
+					))}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
 // Port chips of one least width: exposed in Deploy's primary, unexposed neutral; a public endpoint reads as its whole hostname.
 function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Button
 			size="sm"
-			className="min-w-port relative"
+			className="min-w-port relative max-sm:h-11"
 			nativeButton={false}
 			render={
 				<a
@@ -225,8 +320,7 @@ function Endpoint(props: {item: InventoryItem}) {
 				/>
 			}
 		>
-			<span aria-hidden className="absolute inset-x-0 -inset-y-3 sm:hidden" />
-			<span>
+			<span className="block max-w-48 truncate">
 				{Boolean.match(props.item.publicAccess === true, {
 					onFalse: () => `:${props.item.port}`,
 					onTrue: () => String.replace(/^https:\/\//u, '')(props.item.url)
@@ -256,7 +350,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 						Array.findFirst(props.free, port => port.id === listener.id),
 						{
 							onNone: () => (
-								<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port">
+								<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
 									:{listener.port}
 								</Button>
 							),
@@ -265,11 +359,11 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 									key={listener.id}
 									size="sm"
 									variant="secondary"
-									className="min-w-port relative"
+									className="min-w-port relative max-sm:h-11"
 									aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
 									onClick={() => expose(port)}
 								>
-									<span aria-hidden className="absolute inset-x-0 -inset-y-3 sm:hidden" />:{listener.port}
+									:{listener.port}
 								</Button>
 							)
 						}
@@ -349,7 +443,7 @@ function middle(value: string) {
 	return `${String.slice(0, 7)(value)}…${String.slice(-7)(value)}`
 }
 
-// One app in the list: its mark, name, ports or reason, its memory, its chart swatch and light, and the whole row opens.
+// One app in the list: its mark, name, ports or reason, memory and light; the whole row opens its processes.
 function AppListRow(props: {
 	bandOf: Record<string, string>
 	compact: boolean
@@ -390,10 +484,12 @@ function AppListRow(props: {
 	const highlighted = Option.exists(band, id => props.hovered === id)
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middle(fullName)})
+	const failing = light === 'error' || light === 'warning'
 	const next = Boolean.match(running, {
 		onFalse: () => nextRun(props.row.item.next ?? props.now, props.now),
 		onTrue: () => 'running'
 	})
+	const memory = appUsage(processes).memory
 	return (
 		<>
 			<ContextMenu disabled={Array.isArrayEmpty(owned)}>
@@ -402,65 +498,101 @@ function AppListRow(props: {
 					render={
 						<div
 							role="listitem"
-							className={cn(
-								'hover:bg-muted/50 focus-within:ring-ring/30 relative flex h-8 min-w-0 items-center gap-2 overflow-hidden border-b px-3 focus-within:ring-2 focus-within:ring-inset max-sm:h-12',
-								highlighted && 'bg-muted/60',
-								props.selected && 'bg-secondary'
-							)}
+							data-selected={props.selected}
+							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
 					}
 				>
 					{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
-					<button
-						type="button"
+					<Button
 						aria-label={`Open ${fullName}`}
-						className="absolute inset-0 outline-none"
+						variant={Boolean.match(props.selected, {
+							onFalse: () => 'ghost' as const,
+							onTrue: () => 'secondary' as const
+						})}
+						className="absolute inset-0 z-0 size-full"
 						onClick={props.onSelect}
 					/>
-					<span
-						className={cn(
-							'pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-2',
-							scheduled && 'opacity-60'
-						)}
-					>
-						<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
-						<span className="min-w-0 flex-1 truncate text-sm font-medium" title={fullName}>
-							{name}
-						</span>
-						{scheduled && (
-							<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs">
-								<ClockIcon className="size-3" />
-								{next}
+					<Item className="pointer-events-none relative z-10 h-full min-w-0 flex-1">
+						<ItemMedia variant="icon">
+							<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
+						</ItemMedia>
+						<ItemContent className="min-w-0">
+							<span
+								className={cn('min-w-0 truncate text-sm font-medium', scheduled && 'text-muted-foreground')}
+								title={fullName}
+							>
+								{name}
 							</span>
-						)}
+							{/* A phone reads the memory, and why a row needs a look, under its name; wider screens keep them in their columns. */}
+							<span className="flex min-w-0 items-center gap-1.5 font-mono text-xs tracking-normal normal-case tabular-nums sm:hidden">
+								<span className="text-muted-foreground shrink-0">{bytes(memory)}</span>
+								{Boolean.match(failing, {
+									onFalse: () =>
+										Boolean.match(scheduled, {
+											onFalse: () => null,
+											onTrue: () => (
+												<span className="text-muted-foreground flex min-w-0 items-center gap-1 truncate">
+													<ClockIcon className="size-3 shrink-0" />
+													{next}
+												</span>
+											)
+										}),
+									onTrue: () => (
+										<span
+											className={cn(
+												'truncate',
+												Boolean.match(light === 'error', {
+													onFalse: () => 'text-warning',
+													onTrue: () => 'text-destructive'
+												})
+											)}
+										>
+											{reason}
+										</span>
+									)
+								})}
+							</span>
+						</ItemContent>
+					</Item>
+					<div className="pointer-events-auto relative z-10 flex max-w-1/2 min-w-0 shrink items-center justify-end gap-1 overflow-hidden max-sm:max-w-1/3">
+						{Boolean.match(failing, {
+							onFalse: () =>
+								Boolean.match(scheduled, {
+									onFalse: () => <Endpoints free={props.free} row={props.row} />,
+									onTrue: () => (
+										<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs max-sm:hidden">
+											<ClockIcon className="size-3" />
+											{next}
+										</span>
+									)
+								}),
+							onTrue: () => (
+								<span
+									className={cn(
+										'truncate text-xs max-sm:hidden',
+										Boolean.match(light === 'error', {onFalse: () => 'text-warning', onTrue: () => 'text-destructive'})
+									)}
+									title={reason}
+								>
+									{reason}
+								</span>
+							)
+						})}
+					</div>
+					<div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-2">
 						<span
 							className={cn(
-								'pointer-events-auto flex max-w-1/2 shrink-0 items-center justify-end gap-1 max-sm:h-11',
-								props.row.item.scheduled === true && 'text-muted-foreground'
+								'w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden',
+								scheduled && 'text-muted-foreground'
 							)}
 						>
-							{Boolean.match(light === 'error' || light === 'warning', {
-								onFalse: () => <Endpoints free={props.free} row={props.row} />,
-								onTrue: () => (
-									<span
-										className={cn(
-											'truncate text-xs',
-											Boolean.match(light === 'error', {
-												onFalse: () => 'text-warning',
-												onTrue: () => 'text-destructive'
-											})
-										)}
-										title={reason}
-									>
-										{reason}
-									</span>
-								)
-							})}
+							{bytes(memory)}
 						</span>
 						{/* Only a problem earns a dot; a healthy row says nothing more. */}
-						{(light === 'error' || light === 'warning') && (
+						{failing && (
 							<span
 								title={state}
 								aria-label={state}
@@ -470,20 +602,20 @@ function AppListRow(props: {
 								<StatusDot status={light} />
 							</span>
 						)}
-					</span>
-					<span
-						className={cn(
-							'pointer-events-auto relative z-10 flex size-4 shrink-0 items-center justify-center',
-							scheduled && 'max-sm:size-11'
-						)}
-					>
-						{Boolean.match(scheduled, {
-							onFalse: () => <CaretRightIcon className="text-muted-foreground size-3.5" />,
-							onTrue: () => (
-								<RunNow busy={running} item={props.row.item} onRun={() => setRequested(Option.some(props.now))} />
-							)
-						})}
-					</span>
+						<span
+							className={cn(
+								'pointer-events-auto flex shrink-0 items-center justify-center',
+								Boolean.match(scheduled, {onFalse: () => 'size-4', onTrue: () => 'size-7 max-sm:size-11'})
+							)}
+						>
+							{Boolean.match(scheduled, {
+								onFalse: () => <CaretRightIcon className="text-muted-foreground size-3.5" />,
+								onTrue: () => (
+									<RunNow busy={running} item={props.row.item} onRun={() => setRequested(Option.some(props.now))} />
+								)
+							})}
+						</span>
+					</div>
 				</ContextMenuTrigger>
 				<ContextMenuContent className="w-auto min-w-36">
 					{Array.map(owned, exposure => (
@@ -551,13 +683,43 @@ function MetricsProblem(props: {minutes: HistoryQuery['minutes']}) {
 	return <Problem className="ml-auto" label="History out of date" warning reset={refresh} since={problemSince} />
 }
 
+// A mark, a line and a trailing figure, shaped like the rows that replace them.
+function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status" className="min-h-0 flex-1 overflow-hidden">
+			{Array.map(Array.range(1, props.rows), row => (
+				<div
+					key={row}
+					aria-hidden
+					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
+				>
+					<Skeleton className="size-5 shrink-0" />
+					<Skeleton className="h-3.5 w-1/3 max-w-40" />
+					<Skeleton className="ml-auto h-3 w-16" />
+				</div>
+			))}
+		</div>
+	)
+}
+
 function ChartSkeleton() {
 	return (
-		<div aria-busy="true" role="status" aria-label="Usage history" className="flex min-h-0 flex-1 flex-col gap-4 p-3">
-			<Skeleton className="h-4 w-1/3" />
-			<Skeleton className="min-h-40 flex-1" />
-			<Skeleton className="min-h-36 flex-1" />
+		<div
+			aria-busy="true"
+			aria-label="Usage history"
+			role="status"
+			className="flex min-h-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+		>
+			<div className="flex flex-wrap gap-3">
+				<Skeleton className="h-3 w-16" />
+				<Skeleton className="h-3 w-24" />
+				<Skeleton className="h-3 w-20" />
+			</div>
+			<Skeleton className="h-40 w-full" />
+			<Skeleton className="h-36 w-full" />
 			<Skeleton className="h-3 w-full" />
+			<Skeleton className="h-1 w-full" />
+			<Skeleton className="h-4 w-full" />
 		</div>
 	)
 }
@@ -572,80 +734,90 @@ function AppsPane(props: {
 	now: number
 	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
-	rows: readonly ReturnType<typeof workloads>[number][]
+	rows: ReturnType<typeof workloads>
 	selectedId?: string
 }) {
+	const inventory = useAtomValue(inventoryAtom)
+	const pending = AsyncResult.isInitial(inventory)
+	const ready = Option.isSome(AsyncResult.value(inventory))
 	const apps = Array.filter(props.rows, row => row.item.scheduled !== true)
-	const jobs = Array.filter(props.rows, row => row.item.scheduled === true)
+	const scheduled = Array.filter(props.rows, row => row.item.scheduled === true && !needsAttention(row))
+	const firstScheduled = Option.getOrUndefined(
+		Array.findFirstIndex(props.rows, row => row.item.scheduled === true && !needsAttention(row))
+	)
 	return (
-		<section
-			aria-label="Apps"
-			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-x-hidden overflow-y-auto', props.className)}
+		<Section
+			title="Apps"
+			className={cn('min-h-0 flex-1 gap-0', props.className)}
+			headerClassName="px-4"
+			actions={
+				<div className="flex items-center gap-2">
+					{Boolean.match(pending, {
+						onFalse: () =>
+							Boolean.match(ready, {
+								onFalse: () => null,
+								onTrue: () => (
+									<Badge variant="secondary" aria-label={`${apps.length} apps`}>
+										{apps.length}
+									</Badge>
+								)
+							}),
+						onTrue: () => <Skeleton className="h-3 w-10" />
+					})}
+					<InventoryProblem />
+				</div>
+			}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
-				<span className="text-sm font-semibold">Apps</span>
-				<InventoryProblem />
-			</header>
-			<Suspense fallback={<ItemListSkeleton label="Apps" media rowClassName="gap-2 px-3" rows={8} />}>
+			<Suspense fallback={<ListSkeleton label="Apps loading" rows={8} />}>
 				<InventoryContent>
 					{Array.match(props.rows, {
 						onEmpty: () => (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>No apps in this range</EmptyTitle>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState
+								icon={<AppWindowIcon className="size-5" />}
+								label="No apps in this range"
+								description="Nothing ran or failed in it. Try another machine or range."
+							/>
 						),
 						onNonEmpty: () => (
-							<div role="list">
-								{Array.map(apps, row => (
-									<AppListRow
-										key={row.item.id}
-										bandOf={props.bandOf}
-										compact={props.compact}
-										free={props.free}
-										hovered={props.hovered}
-										now={props.now}
-										onHover={props.onHover}
-										onSelect={() => props.onSelect(row)}
-										row={row}
-										selected={props.selectedId === row.item.id}
-									/>
-								))}
-								{Array.isReadonlyArrayNonEmpty(jobs) && (
-									<div className="bg-background text-muted-foreground sticky top-8 z-10 flex h-8 shrink-0 items-center border-b px-3 text-xs max-sm:top-11">
-										Scheduled
-									</div>
-								)}
-								{Array.map(jobs, row => (
-									<AppListRow
-										key={row.item.id}
-										bandOf={props.bandOf}
-										compact={props.compact}
-										free={props.free}
-										hovered={props.hovered}
-										now={props.now}
-										onHover={props.onHover}
-										onSelect={() => props.onSelect(row)}
-										row={row}
-										selected={props.selectedId === row.item.id}
-									/>
-								))}
-							</div>
+							<ScrollArea className="min-h-0 flex-1">
+								<div role="list" className="pr-2">
+									{Array.map(props.rows, (row, index) => (
+										<Fragment key={row.item.id}>
+											{index === firstScheduled && (
+												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
+													<span className="tracking-label font-semibold uppercase">Scheduled</span>
+													<Badge variant="secondary">{scheduled.length}</Badge>
+												</div>
+											)}
+											<AppListRow
+												bandOf={props.bandOf}
+												compact={props.compact}
+												free={props.free}
+												hovered={props.hovered}
+												now={props.now}
+												onHover={props.onHover}
+												onSelect={() => props.onSelect(row)}
+												row={row}
+												selected={props.selectedId === row.item.id}
+											/>
+										</Fragment>
+									))}
+								</div>
+							</ScrollArea>
 						)
 					})}
 				</InventoryContent>
 			</Suspense>
-		</section>
+		</Section>
 	)
 }
 
-// The selected app's processes, or a job's, with what the row cannot show: its state, ports and memory.
+// The selected app's processes, or a job's, with what the row cannot show: its state and next run.
 function ProcessPane(props: {
 	className?: string
 	now: number
+	pending: boolean
 	row?: ReturnType<typeof workloads>[number]
-	showName?: boolean
 }) {
 	const state = Option.match(Option.fromUndefinedOr(props.row), {
 		onNone: () => '',
@@ -667,88 +839,212 @@ function ProcessPane(props: {
 			entry => entry.name
 		)
 	)
+	const tree = processTree(processes)
+	const count = Array.reduce(tree, 0, (sum, node) => sum + node.count)
 	return (
-		<section
-			aria-label="Processes"
-			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
-		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
-				{Option.match(
-					Option.filter(Option.fromUndefinedOr(props.row), () => props.showName !== false),
-					{
-						onNone: () => <span className="flex-1 text-sm font-semibold">Processes</span>,
+		<Section
+			title="Processes"
+			className={cn('min-h-0 min-w-0 flex-1 gap-0', props.className)}
+			headerClassName="px-4"
+			actions={
+				<div className="flex min-w-0 items-center gap-2">
+					{Option.match(Option.fromUndefinedOr(props.row), {
+						onNone: () => null,
 						onSome: current => (
-							<>
+							<span className="flex min-w-0 items-center gap-2 max-lg:hidden">
 								<ApplicationIcon
 									name={workloadName(current.item)}
 									process={process}
 									container={current.item.kind === 'container'}
 								/>
-								<span className="min-w-0 flex-1 truncate text-sm font-semibold">{workloadName(current.item)}</span>
-							</>
+								<span className="max-w-40 min-w-0 truncate text-sm font-medium tracking-normal normal-case">
+									{workloadName(current.item)}
+								</span>
+							</span>
 						)
-					}
-				)}
-				{props.row !== undefined && (
-					<>
-						{(light === 'error' || light === 'warning') && (
-							<span
-								title={state}
-								aria-label={state}
-								role="img"
-								className="flex size-3 shrink-0 items-center justify-center"
-							>
-								<StatusDot status={light} />
-							</span>
-						)}
-						{props.row.item.scheduled === true && (
+					})}
+					{(light === 'error' || light === 'warning') && (
+						<span
+							title={state}
+							aria-label={state}
+							role="img"
+							className="flex size-3 shrink-0 items-center justify-center"
+						>
+							<StatusDot status={light} />
+						</span>
+					)}
+					{Boolean.match(props.row?.item.scheduled === true, {
+						onFalse: () => null,
+						onTrue: () => (
 							<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
-								{nextRun(props.row.item.next ?? props.now, props.now)}
+								{nextRun(props.row?.item.next ?? props.now, props.now)}
 							</span>
-						)}
-					</>
-				)}
-				<InventoryProblem />
-			</header>
-			<Suspense fallback={<ItemListSkeleton label="Processes" media rowClassName="gap-2 px-3" rows={5} />}>
+						)
+					})}
+					{Boolean.match(props.row !== undefined && !props.pending, {
+						onFalse: () => null,
+						onTrue: () => (
+							<Badge variant="secondary" aria-label={`${count} processes`}>
+								{count}
+							</Badge>
+						)
+					})}
+					<InventoryProblem />
+				</div>
+			}
+		>
+			<Suspense fallback={<ListSkeleton indent label="Processes loading" rows={6} />}>
 				<InventoryContent>
 					{Option.match(Option.fromUndefinedOr(props.row), {
 						onNone: () => (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>Select an app</EmptyTitle>
-								</EmptyHeader>
-							</Empty>
+							<EmptyState
+								icon={<TerminalWindowIcon className="size-5" />}
+								label="Select an app"
+								description="Choose an app to see its processes and what they hold."
+							/>
 						),
 						onSome: current => (
 							<>
-								{current.item.scheduled === true && (
-									<div className="px-3 pt-2">
-										<RunFailure item={current.item} />
-									</div>
-								)}
+								{Boolean.match(current.item.scheduled === true, {
+									onFalse: () => null,
+									onTrue: () => (
+										<div className="px-4 pt-2">
+											<RunFailure item={current.item} />
+										</div>
+									)
+								})}
 								{Array.match(processes, {
 									onEmpty: () => (
-										<Empty>
-											<EmptyHeader>
-												<EmptyTitle>No processes right now</EmptyTitle>
-											</EmptyHeader>
-										</Empty>
+										<EmptyState
+											icon={<TerminalWindowIcon className="size-5" />}
+											label="No processes right now"
+											description="Nothing of this app is running at the machine's last snapshot."
+										/>
 									),
-									onNonEmpty: () => <Processes tree={processTree(processes)} />
+									onNonEmpty: () => (
+										<ScrollArea className="min-h-0 min-w-0 flex-1">
+											<div className="pr-2">
+												<Processes tree={tree} />
+											</div>
+										</ScrollArea>
+									)
 								})}
 							</>
 						)
 					})}
 				</InventoryContent>
 			</Suspense>
-		</section>
+		</Section>
 	)
 }
 
 // A machine's graphs, on its own hue, at the range the bar carries.
+function MachineContent(props: {
+	history: MachineHistory
+	hovered?: string
+	labels: Record<string, string>
+	minutes: HistoryQuery['minutes']
+	onHover: (id?: string) => void
+}) {
+	const latest = Option.getOrUndefined(Array.last(props.history.samples))
+	const all = bands(props.history)
+	const storage = {
+		total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
+		used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
+	}
+	const names = Record.fromEntries([['other', 'Small apps'] as const, ['system', 'System'] as const])
+	const memoryTotal = latest?.memoryTotal ?? 0
+	const memoryPeak = peakOf(Array.map(all, band => ({values: band.memory})))
+	const cpuPeak = peakOf(Array.map(all, band => ({values: band.cpu})))
+	const memory = Option.map(Option.fromUndefinedOr(latest?.memoryUsed), value =>
+		Boolean.match(memoryTotal > 0, {
+			onFalse: () => bytes(value),
+			onTrue: () => `${bytes(value)} · peak ${bytes((memoryPeak / 100) * memoryTotal)}`
+		})
+	)
+	const cpu = Option.map(
+		Option.fromUndefinedOr(latest?.cpu),
+		value => `${size.format(value)}% · peak ${size.format(cpuPeak)}%`
+	)
+	const memoryTop = Array.take(
+		Array.sort(
+			Array.filter(all, band => band.kind === 'app'),
+			Order.mapInput(Order.flip(Order.Number), (band: Band) => Option.getOrElse(Array.last(band.memory), () => 0))
+		),
+		3
+	)
+	function bandName(id: string) {
+		return (
+			names[id] ??
+			props.labels[id] ??
+			String.replaceAll(
+				/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
+				''
+			)(String.replace(/^container:/u, 'container ')(id))
+		)
+	}
+	return (
+		<ScrollArea className="min-h-0 flex-1">
+			<div className="flex flex-col gap-4 px-4 pt-3 pb-4">
+				<div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+					{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
+						<span key={band.id} className="flex min-w-0 items-center gap-1.5">
+							<span
+								className="size-2 shrink-0 bg-(--machine) opacity-(--swatch-opacity)"
+								style={{'--swatch-opacity': band.opacity}}
+							/>
+							<span className="text-muted-foreground max-w-40 truncate" title={bandName(band.id)}>
+								{bandName(band.id)}
+							</span>
+						</span>
+					))}
+				</div>
+				<UsageChart
+					className="h-40"
+					history={props.history}
+					minutes={props.minutes}
+					hovered={props.hovered}
+					label="Memory"
+					layers={Array.map(all, band => ({...band, values: band.memory}))}
+					names={bandName}
+					onHover={props.onHover}
+					recorded={() => true}
+					value={Option.getOrUndefined(memory)}
+				/>
+				<UsageChart
+					className="h-36"
+					history={props.history}
+					minutes={props.minutes}
+					hovered={props.hovered}
+					label="CPU"
+					layers={Array.map(all, band => ({...band, values: band.cpu}))}
+					names={bandName}
+					onHover={props.onHover}
+					recorded={sample => sample.cpu !== undefined}
+					value={Option.getOrUndefined(cpu)}
+				/>
+				<TimeAxis history={props.history} minutes={props.minutes} />
+				{Boolean.match(storage.total > 0, {
+					onFalse: () => null,
+					onTrue: () => (
+						// The bar alone says how full the disks are; the figures wait on hover, or sit beside them on a phone.
+						<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
+							<Progress value={(storage.used / storage.total) * 100}>
+								<ProgressLabel>Disk</ProgressLabel>
+								<span className="text-muted-foreground ml-auto text-sm tabular-nums sm:hidden">
+									{bytes(storage.used)} of {bytes(storage.total)}
+								</span>
+							</Progress>
+						</div>
+					)
+				})}
+				<Cores history={props.history} />
+			</div>
+		</ScrollArea>
+	)
+}
+
 function MachinePane(props: {
-	available: boolean
 	className?: string
 	history?: MachineHistory
 	hovered?: string
@@ -758,142 +1054,55 @@ function MachinePane(props: {
 	worker?: string
 }) {
 	return (
-		<section
-			aria-label="Machine"
-			className={cn('pb-safe-bottom flex min-h-0 flex-col overflow-y-auto', props.className)}
+		<Section
+			title="Machine"
+			className={cn('min-h-0 flex-1 gap-0', props.className)}
+			headerClassName="px-4"
+			actions={
+				<div className="flex items-center gap-2">
+					<MetricsProblem minutes={props.minutes} />
+				</div>
+			}
 		>
-			<header className="bg-background sticky top-0 z-20 flex h-8 shrink-0 items-center gap-2 border-b px-3 max-sm:h-11">
-				{props.worker !== undefined && <MachineIcon worker={props.worker} />}
-				<span className="text-sm font-semibold">Machine</span>
-				<MetricsProblem minutes={props.minutes} />
-				{props.worker !== undefined && !props.available && (
-					<span role="img" aria-label="Unavailable" className="flex size-3 items-center justify-center">
-						<StatusDot status="off" />
-					</span>
-				)}
-			</header>
 			<Suspense fallback={<ChartSkeleton />}>
 				<MetricsContent minutes={props.minutes}>
-					{Option.match(Option.fromUndefinedOr(props.history), {
-						onNone: () => (
-							<Empty>
-								<EmptyHeader>
-									<EmptyTitle>
-										{Option.match(Option.fromUndefinedOr(props.worker), {
-											onNone: () => 'No machine',
-											onSome: () => 'No readings in this range'
-										})}
-									</EmptyTitle>
-								</EmptyHeader>
-							</Empty>
+					{Option.match(
+						Option.filter(Option.fromUndefinedOr(props.history), history =>
+							Array.isReadonlyArrayNonEmpty(history.samples)
 						),
-						onSome: history => {
-							const latest = Option.getOrUndefined(Array.last(history.samples))
-							const all = bands(history)
-							const storage = {
-								total: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total),
-								used: Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.used)
-							}
-							const names = Record.fromEntries([['other', 'Small apps'] as const, ['system', 'System'] as const])
-							const memoryTotal = latest?.memoryTotal ?? 0
-							const memoryPeak = peakOf(Array.map(all, band => ({values: band.memory})))
-							const cpuPeak = peakOf(Array.map(all, band => ({values: band.cpu})))
-							const memory = Option.map(Option.fromUndefinedOr(latest?.memoryUsed), value =>
-								Boolean.match(memoryTotal > 0, {
-									onFalse: () => bytes(value),
-									onTrue: () => `${bytes(value)} · peak ${bytes((memoryPeak / 100) * memoryTotal)}`
-								})
-							)
-							const cpu = Option.map(
-								Option.fromUndefinedOr(latest?.cpu),
-								value => `${size.format(value)}% · peak ${size.format(cpuPeak)}%`
-							)
-							const memoryTop = Array.take(
-								Array.sort(
-									Array.filter(all, band => band.kind === 'app'),
-									Order.mapInput(Order.flip(Order.Number), (band: Band) =>
-										Option.getOrElse(Array.last(band.memory), () => 0)
-									)
-								),
-								3
-							)
-							function bandName(id: string) {
-								return (
-									names[id] ??
-									props.labels[id] ??
-									String.replaceAll(
-										/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
-										''
-									)(String.replace(/^container:/u, 'container ')(id))
-								)
-							}
-							return (
-								<div className="flex min-h-0 flex-1 flex-col gap-4 px-3 pt-3 pb-3">
-									<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-										{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
-											<span key={band.id} className="flex min-w-0 items-center gap-1.5">
-												<span
-													className="size-2 shrink-0 rounded-sm bg-(--machine) opacity-(--swatch-opacity)"
-													style={{'--swatch-opacity': band.opacity}}
-												/>
-												<span className="text-muted-foreground max-w-40 truncate" title={bandName(band.id)}>
-													{bandName(band.id)}
-												</span>
-												<span className="font-mono tabular-nums">
-													{size.format(Option.getOrElse(Array.last(band.memory), () => 0))}%
-												</span>
-											</span>
-										))}
-									</div>
-									<UsageChart
-										className="min-h-40 flex-1"
-										history={history}
-										minutes={props.minutes}
-										hovered={props.hovered}
-										label="Memory"
-										layers={Array.map(all, band => ({...band, values: band.memory}))}
-										names={bandName}
-										onHover={props.onHover}
-										recorded={() => true}
-										value={Option.getOrUndefined(memory)}
-									/>
-									<UsageChart
-										className="min-h-36 flex-1"
-										history={history}
-										minutes={props.minutes}
-										hovered={props.hovered}
-										label="CPU"
-										layers={Array.map(all, band => ({...band, values: band.cpu}))}
-										names={bandName}
-										onHover={props.onHover}
-										recorded={sample => sample.cpu !== undefined}
-										value={Option.getOrUndefined(cpu)}
-									/>
-									<TimeAxis history={history} minutes={props.minutes} />
-									{Boolean.match(storage.total > 0, {
-										onFalse: () => null,
-										onTrue: () => (
-											// The bar alone says how full the disks are; the figures wait on hover.
-											<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
-												<Progress value={(storage.used / storage.total) * 100}>
-													<ProgressLabel>Disk</ProgressLabel>
-												</Progress>
-											</div>
-										)
+						{
+							onNone: () => (
+								<EmptyState
+									icon={<ChartLineIcon className="size-5" />}
+									label={Boolean.match(props.worker === undefined, {
+										onFalse: () => 'No readings in this range',
+										onTrue: () => 'No machine'
 									})}
-									<Cores history={history} />
-								</div>
+									description={Boolean.match(props.worker === undefined, {
+										onFalse: () => 'Nothing was recorded in this range. Try another one.',
+										onTrue: () => 'Pick a machine above to see its apps and load.'
+									})}
+								/>
+							),
+							onSome: history => (
+								<MachineContent
+									history={history}
+									hovered={props.hovered}
+									labels={props.labels}
+									minutes={props.minutes}
+									onHover={props.onHover}
+								/>
 							)
 						}
-					})}
+					)}
 				</MetricsContent>
 			</Suspense>
-		</section>
+		</Section>
 	)
 }
 
-// The two machines as one split at the top: their names, their size, and whether they answer.
-function MachineStrip(props: {
+// The two machines as one line at the top: their names, their size, and whether they answer.
+function MachineTabs(props: {
 	active?: string
 	histories: readonly MachineHistory[]
 	inventoryFailure: boolean
@@ -903,20 +1112,20 @@ function MachineStrip(props: {
 	workers: readonly string[]
 }) {
 	return Array.match(props.workers, {
-		onEmpty: () => (
-			<div className="flex h-12 shrink-0 items-center gap-3 px-3">
-				{props.pending && (
-					<>
+		onEmpty: () =>
+			Boolean.match(props.pending, {
+				onFalse: () => null,
+				onTrue: () => (
+					<div aria-busy="true" aria-label="Machines" role="status" className="flex h-12 shrink-0 items-center gap-3">
 						<Skeleton className="size-4" />
 						<Skeleton className="h-4 w-24" />
 						<Skeleton className="h-3 w-32" />
-					</>
-				)}
-			</div>
-		),
+					</div>
+				)
+			}),
 		onNonEmpty: workers => (
 			<Tabs
-				className="mx-2 mt-2 mb-1 shrink-0"
+				className="shrink-0"
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
@@ -926,33 +1135,37 @@ function MachineStrip(props: {
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
 						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-11">
+							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-12">
 								<MachineIcon worker={worker} />
-								<span className="truncate">{machineName(worker)}</span>
-								{/* Only an unreachable machine is marked; one that answers needs no dot. */}
-								{failed && (
-									<span
-										role="img"
-										aria-label="Unavailable"
-										className="flex size-3 shrink-0 items-center justify-center"
-									>
-										<StatusDot status="off" />
+								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+									<span className="flex min-w-0 items-center gap-1.5">
+										<span className="min-w-0 truncate">{machineName(worker)}</span>
+										{/* Only an unreachable machine is marked; one that answers needs no dot. */}
+										{failed && (
+											<span
+												role="img"
+												aria-label="Unavailable"
+												className="flex size-3 shrink-0 items-center justify-center"
+											>
+												<StatusDot status="off" />
+											</span>
+										)}
 									</span>
-								)}
-								<span className="text-muted-foreground truncate font-mono">
-									{Array.join(
-										[
-											...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
-												onFalse: () => [],
-												onTrue: () => [`${latest?.cores?.length} cores`]
-											}),
-											...Boolean.match(latest === undefined, {
-												onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
-												onTrue: () => []
-											})
-										],
-										' · '
-									)}
+									<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tracking-normal normal-case tabular-nums">
+										{Array.join(
+											[
+												...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
+													onFalse: () => [],
+													onTrue: () => [`${latest?.cores?.length} cores`]
+												}),
+												...Boolean.match(latest === undefined, {
+													onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
+													onTrue: () => []
+												})
+											],
+											' · '
+										)}
+									</span>
 								</span>
 							</TabsTrigger>
 						)
@@ -963,50 +1176,34 @@ function MachineStrip(props: {
 	})
 }
 
-// The bar's range: one chip, the five ranges, the page's one control for both lists.
-function RangeMenu(props: {
-	minutes: HistoryQuery['minutes']
-	onChange: (minutes: HistoryQuery['minutes']) => void
-	pending: boolean
+// The workers that did not answer, above the content they would have filled.
+function SourceProblems(props: {
+	onRetry: () => void
+	sources: readonly {error: string; name: string}[]
+	workers: readonly string[]
 }) {
-	const label = Option.match(
-		Array.findFirst(RANGES, range => range.minutes === props.minutes),
-		{onNone: () => '', onSome: range => range.label}
-	)
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger
-				render={<Button variant="ghost" size="sm" className="max-sm:h-11" />}
-				aria-label="History range"
-			>
-				{Boolean.match(props.pending, {onFalse: () => <ClockIcon className="size-3.5" />, onTrue: () => <Spinner />})}
-				{label}
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-auto min-w-32">
-				<DropdownMenuRadioGroup
-					value={`${props.minutes}`}
-					onValueChange={value =>
-						Option.match(
-							Array.findFirst(RANGES, range => `${range.minutes}` === value),
-							{onNone: () => undefined, onSome: range => props.onChange(range.minutes)}
-						)
-					}
-				>
-					<DropdownMenuLabel>History range</DropdownMenuLabel>
-					<DropdownMenuSeparator />
-					{Array.map(RANGES, range => (
-						<DropdownMenuRadioItem key={range.minutes} value={`${range.minutes}`} className="max-sm:h-11" closeOnClick>
-							{range.label}
-						</DropdownMenuRadioItem>
+	return Array.match(
+		Array.filter(props.sources, source => source.error !== '' && !Array.contains(props.workers, source.name)),
+		{
+			onEmpty: () => null,
+			onNonEmpty: sources => (
+				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
+					{Array.map(sources, source => (
+						<div key={source.name} className="flex items-center gap-1.5">
+							<MachineIcon worker={source.name} />
+							<Problem label={`${machineName(source.name)} unreachable`} reset={props.onRetry} />
+						</div>
 					))}
-				</DropdownMenuRadioGroup>
-			</DropdownMenuContent>
-		</DropdownMenu>
+				</div>
+			)
+		}
 	)
 }
 
 function Home() {
-	const isMobile = useMediaQuery('(width < 48rem)')
+	// 1024–1599 shows apps and charts with processes beneath; 1600 and up gives each pane a column.
+	const isNarrow = useMediaQuery('(width < 64rem)')
+	const isWide = useMediaQuery('(width >= 100rem)')
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	function view(next: Partial<Search>) {
@@ -1016,7 +1213,6 @@ function Home() {
 	// The charts keep the last loaded range, dimmed, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
 	const pane = search.pane ?? 'apps'
-	const [machineBack, setMachineBack] = useState<Pane>('apps')
 	const [hovered, setHovered] = useState<string>()
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom(shownMinutes))
@@ -1036,7 +1232,7 @@ function Home() {
 		Option.filter(AsyncResult.error(metrics), isDenied)
 	)
 	const refreshing = shownMinutes !== minutes
-
+	const inventoryPending = AsyncResult.isInitial(inventory)
 	const workers = Array.dedupe([
 		...Option.getOrElse(
 			Option.map(snapshot, value => value.workers ?? Array.map(value.items, item => item.worker)),
@@ -1096,64 +1292,43 @@ function Home() {
 		),
 		() => undefined
 	)
-	const activeAvailable = Option.match(Option.fromUndefinedOr(active), {
-		onNone: () => false,
-		onSome: current => !failedFor(current, inventoryFailure, sources, Option.getOrUndefined(history))
-	})
 
 	function selectRow(row: ReturnType<typeof workloads>[number]) {
 		view({app: row.item.id, pane: 'process'})
 	}
 
-	function selectWorker(next: string) {
-		setHovered(undefined)
-		view({
-			app: undefined,
-			machine: next,
-			pane: Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const})
-		})
-	}
-
-	function showMachine() {
-		setMachineBack(Boolean.match(pane === 'machine', {onFalse: () => pane, onTrue: () => machineBack}))
-		view({pane: 'machine'})
-	}
-
+	// A phone's bar names the pane and backs out to Machines; desktop and the wide two-column layout keep the wordmark.
+	const mobileTitle = Boolean.match(isNarrow, {
+		onFalse: () => undefined,
+		onTrue: () =>
+			pipe(
+				Match.value(pane),
+				Match.when('apps', () => 'Machines'),
+				Match.when('process', () =>
+					Option.match(Option.fromUndefinedOr(selectedRow), {
+						onNone: () => 'Processes',
+						onSome: row => workloadName(row.item)
+					})
+				),
+				Match.orElse(() => Option.match(Option.fromUndefinedOr(active), {onNone: () => 'Machine', onSome: machineName}))
+			)
+	})
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				icon={icon}
-				name="deploy"
-				title={Boolean.match(isMobile, {
-					onFalse: () => undefined,
-					onTrue: () =>
-						pipe(
-							Match.value(pane),
-							Match.when('process', () =>
-								Option.match(Option.fromUndefinedOr(selectedRow), {
-									onNone: () => 'Processes',
-									onSome: row => workloadName(row.item)
-								})
-							),
-							Match.when('machine', () =>
-								Option.match(Option.fromUndefinedOr(active), {onNone: () => 'Machine', onSome: machineName})
-							),
-							Match.orElse(() => 'deploy')
-						)
-				})}
-				back={Boolean.match(isMobile && pane !== 'apps', {
+				back={Boolean.match(isNarrow && pane !== 'apps', {
 					onFalse: () => undefined,
 					onTrue: () => ({
-						label: Boolean.match(pane === 'machine', {
-							onFalse: () => 'Apps',
-							onTrue: () => Boolean.match(machineBack === 'process', {onFalse: () => 'Apps', onTrue: () => 'Processes'})
-						}),
-						onClick: () =>
-							view({
-								pane: Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => machineBack})
-							})
+						label: 'Machines',
+						onClick: () => {
+							setHovered(undefined)
+							view({pane: 'apps'})
+						}
 					})
 				})}
+				icon={icon}
+				name="deploy"
+				title={mobileTitle}
 				palette={Boolean.match(Option.isSome(authFailure), {
 					onFalse: () => [
 						{
@@ -1161,7 +1336,11 @@ function Home() {
 								...Option.match(Option.fromUndefinedOr(active), {
 									onNone: () => [],
 									onSome: current => [
-										{icon: <MonitorIcon />, label: `Open ${machineName(current)} graphs`, run: showMachine}
+										{
+											icon: <MonitorIcon />,
+											label: `Open ${machineName(current)} graphs`,
+											run: () => view({pane: 'machine'})
+										}
 									]
 								}),
 								...Option.match(Option.fromUndefinedOr(selectedRow), {
@@ -1226,67 +1405,124 @@ function Home() {
 					],
 					onTrue: () => [otherApps('deploy')]
 				})}
-				controls={<RangeMenu minutes={minutes} pending={refreshing} onChange={range => view({range})} />}
+				controls={
+					<>
+						<div className="max-lg:hidden">
+							<RangeToggle minutes={minutes} pending={refreshing} onChange={range => view({range})} />
+						</div>
+						<div className="lg:hidden">
+							<RangeMenu minutes={minutes} pending={refreshing} onChange={range => view({range})} />
+						</div>
+					</>
+				}
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<div className="flex min-h-0 flex-1 flex-col">
-						<MachineStrip
+					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+						<h1 className="sr-only">Deploy</h1>
+						<MachineTabs
 							active={active}
 							histories={shownHistories}
 							inventoryFailure={inventoryFailure}
-							onSelect={selectWorker}
+							onSelect={next => {
+								setHovered(undefined)
+								view({
+									app: undefined,
+									machine: next,
+									pane: Boolean.match(pane === 'machine', {
+										onFalse: () => 'apps' as const,
+										onTrue: () => 'machine' as const
+									})
+								})
+							}}
 							pending={AsyncResult.isInitial(inventory) && AsyncResult.isInitial(metrics)}
 							sources={sources}
 							workers={workers}
 						/>
+						<SourceProblems onRetry={refreshInventory} sources={sources} workers={workers} />
 						<div
-							className="machine flex min-h-0 flex-1 flex-col"
+							className={cn(
+								'machine flex min-h-0 flex-1 flex-col gap-4',
+								refreshing && 'opacity-60 transition-opacity'
+							)}
 							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
 						>
-							<div className="flex shrink-0 items-center gap-2 px-3 empty:hidden">
-								{Array.map(
-									Array.filter(sources, source => source.error !== '' && !Array.contains(workers, source.name)),
-									source => (
-										<div key={source.name} className="flex items-center gap-1">
-											<MachineIcon worker={source.name} />
-											<Problem label={`${machineName(source.name)} unreachable`} reset={refreshInventory} />
-										</div>
-									)
-								)}
-							</div>
-							{Boolean.match(isMobile, {
-								onFalse: () => (
-									<div className="grid-cols-split grid min-h-0 flex-1">
-										<AppsPane
-											bandOf={bandOf}
-											className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
-											free={free}
-											compact={isMobile}
-											hovered={hovered}
-											onHover={setHovered}
-											now={now}
-											onSelect={selectRow}
-											rows={sorted}
-											selectedId={selectedRow?.item.id}
-										/>
-										<ProcessPane
-											className={cn('min-w-0 border-r', refreshing && 'opacity-60')}
-											now={now}
-											row={selectedRow}
-										/>
-										<MachinePane
-											available={activeAvailable}
-											className={cn('min-w-0', refreshing && 'opacity-60')}
-											history={Option.getOrUndefined(history)}
-											labels={bandNames}
-											minutes={shownMinutes}
-											hovered={hovered}
-											onHover={setHovered}
-											worker={active}
-										/>
-									</div>
-								),
+							{Boolean.match(isNarrow, {
+								onFalse: () =>
+									Boolean.match(isWide, {
+										onFalse: () => (
+											<div className="grid-rows-split grid min-h-0 flex-1">
+												<div className="grid min-h-0 grid-cols-2">
+													<AppsPane
+														bandOf={bandOf}
+														className="min-w-0 border-r"
+														compact={false}
+														free={free}
+														hovered={hovered}
+														now={now}
+														onHover={setHovered}
+														onSelect={selectRow}
+														rows={sorted}
+														selectedId={selectedRow?.item.id}
+													/>
+													<MachinePane
+														className="min-w-0"
+														history={Option.getOrUndefined(history)}
+														hovered={hovered}
+														labels={bandNames}
+														minutes={shownMinutes}
+														onHover={setHovered}
+														worker={active}
+													/>
+												</div>
+												<ProcessPane
+													className="min-h-0 border-t"
+													now={now}
+													pending={inventoryPending}
+													row={selectedRow}
+												/>
+											</div>
+										),
+										onTrue: () => (
+											<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
+												<ResizablePanel className="min-h-0" defaultSize="30%" minSize="20%">
+													<AppsPane
+														bandOf={bandOf}
+														className="h-full min-w-0"
+														compact={false}
+														free={free}
+														hovered={hovered}
+														now={now}
+														onHover={setHovered}
+														onSelect={selectRow}
+														rows={sorted}
+														selectedId={selectedRow?.item.id}
+													/>
+												</ResizablePanel>
+												<ResizableHandle />
+												<ResizablePanel className="min-h-0" defaultSize="36%" minSize="22%">
+													<ProcessPane
+														className="h-full min-h-0"
+														now={now}
+														pending={inventoryPending}
+														row={selectedRow}
+													/>
+												</ResizablePanel>
+												<ResizableHandle />
+												<ResizablePanel className="min-h-0" defaultSize="34%" minSize="22%">
+													<MachinePane
+														className="h-full min-h-0"
+														history={Option.getOrUndefined(history)}
+														hovered={hovered}
+														labels={bandNames}
+														minutes={shownMinutes}
+														onHover={setHovered}
+														worker={active}
+													/>
+												</ResizablePanel>
+											</ResizablePanelGroup>
+										)
+									}),
 								onTrue: () => (
 									<div className="flex min-h-0 flex-1 flex-col">
 										{pipe(
@@ -1294,33 +1530,26 @@ function Home() {
 											Match.when('apps', () => (
 												<AppsPane
 													bandOf={bandOf}
-													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
+													compact
 													free={free}
-													compact={isMobile}
 													hovered={hovered}
-													onHover={setHovered}
 													now={now}
+													onHover={setHovered}
 													onSelect={selectRow}
 													rows={sorted}
 													selectedId={selectedRow?.item.id}
 												/>
 											)),
 											Match.when('process', () => (
-												<ProcessPane
-													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
-													now={now}
-													row={selectedRow}
-													showName={false}
-												/>
+												<ProcessPane className="min-h-0" now={now} pending={inventoryPending} row={selectedRow} />
 											)),
 											Match.orElse(() => (
 												<MachinePane
-													available={activeAvailable}
-													className={cn('min-h-0 flex-1', refreshing && 'opacity-60')}
+													className="min-h-0"
 													history={Option.getOrUndefined(history)}
+													hovered={hovered}
 													labels={bandNames}
 													minutes={shownMinutes}
-													hovered={hovered}
 													onHover={setHovered}
 													worker={active}
 												/>
@@ -1330,7 +1559,7 @@ function Home() {
 								)
 							})}
 						</div>
-					</div>
+					</Page>
 				),
 				onSome: error => <FailureContent error={error} reset={retryFailed} />
 			})}

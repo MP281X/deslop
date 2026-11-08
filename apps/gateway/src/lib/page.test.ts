@@ -223,7 +223,7 @@ it.layer(NodeServices.layer)(test => {
 			assert.notInclude(html, 'aria-label="Add server"')
 			assert.notInclude(html, 'aria-label="Copy MCP URL"')
 			assert.include(html, 'aria-busy="true"')
-			assert.notInclude(html, 'aria-label="No servers"')
+			assert.notInclude(html, 'aria-label="No servers yet"')
 		})
 	)
 
@@ -231,7 +231,7 @@ it.layer(NodeServices.layer)(test => {
 		'treats an empty server list as loaded content',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.success([]))
-			assert.include(html, 'aria-label="No servers"')
+			assert.include(html, 'aria-label="No servers yet"')
 			assert.notInclude(html, 'aria-busy="true"')
 		})
 	)

@@ -1,11 +1,10 @@
-import {Array, Boolean, Option, Record, String} from 'effect'
+import {Array, Option, Record} from 'effect'
 
 import {ArrowRightIcon, AppWindowIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
 import {defaultFilter} from 'cmdk'
-import {useState, useSyncExternalStore} from 'react'
+import {useState} from 'react'
 import type {ReactNode} from 'react'
 
-import {Button} from '#components/ui/button.tsx'
 import {
 	Command,
 	CommandDialog,
@@ -16,16 +15,15 @@ import {
 	CommandList,
 	CommandShortcut
 } from '#components/ui/command.tsx'
-import {Kbd} from '#components/ui/kbd.tsx'
 
 // The web tools the bar can jump to; the iOS apps have no browser screen to land on.
-const APPS = [
+export const WEB_APPS = [
 	{name: 'deploy', url: 'https://deploy.mp281x.xyz'},
 	{name: 'scope', url: 'https://scope.mp281x.xyz'},
 	{name: 'gateway', url: 'https://gateway.mp281x.xyz'},
 	{name: 'auth', url: 'https://auth.mp281x.xyz'},
 	{name: 'signal', url: 'https://signal.mp281x.xyz'},
-	{name: 'portfolio', url: 'https://mp281x.xyz'}
+	{name: 'portfolio', url: 'https://portfolio.mp281x.xyz'}
 ] as const
 
 // `id` is the record's stable identity: cmdk selects by `value`, so it must not change when a label or detail updates.
@@ -59,7 +57,7 @@ function AppIcon(props: {name: string; url: string}) {
 export function otherApps(current: string) {
 	return {
 		items: Array.map(
-			Array.filter(APPS, app => app.name !== current),
+			Array.filter(WEB_APPS, app => app.name !== current),
 			app => ({
 				detail: new URL(app.url).hostname,
 				icon: <AppIcon name={app.name} url={app.url} />,
@@ -76,7 +74,7 @@ function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem
 			value={`${props.group}:${props.item.id ?? props.item.label}`}
-			className="max-sm:h-11"
+			className="max-sm:min-h-11"
 			onSelect={props.onSelect}
 		>
 			{props.item.icon ?? <ArrowRightIcon />}
@@ -129,7 +127,7 @@ export function CommandPalette(props: {
 				}
 			>
 				<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
-				<CommandList>
+				<CommandList className="sm:max-h-96">
 					<CommandEmpty aria-label="No matches">
 						<MagnifyingGlassIcon weight="light" className="text-muted-foreground mx-auto size-6" />
 					</CommandEmpty>
@@ -151,45 +149,5 @@ export function CommandPalette(props: {
 				</CommandList>
 			</Command>
 		</CommandDialog>
-	)
-}
-
-// A search field centred on the page from the small breakpoint up, its shortcut inside; on a phone, the same entry as an icon.
-export function CommandTrigger(props: {label: string; onClick: () => void}) {
-	// The handler takes Meta or Control, so the label and the announced shortcut name the key the reader actually has.
-	const mac = useSyncExternalStore(
-		() => () => {},
-		() => Option.isSome(String.match(/Mac|iPhone|iPad/u)(navigator.userAgent)),
-		() => true
-	)
-	const shortcut = {
-		aria: Boolean.match(mac, {onFalse: () => 'Control+K', onTrue: () => 'Meta+K'}),
-		label: Boolean.match(mac, {onFalse: () => 'Ctrl K', onTrue: () => '⌘K'})
-	}
-	return (
-		<>
-			<Button
-				variant="outline"
-				size="lg"
-				aria-keyshortcuts={shortcut.aria}
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-72 -translate-x-1/2 sm:flex"
-			>
-				<MagnifyingGlassIcon />
-				<span className="flex-1 text-left">Search</span>
-				<Kbd>{shortcut.label}</Kbd>
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-keyshortcuts={shortcut.aria}
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="max-sm:size-11 sm:hidden"
-			>
-				<MagnifyingGlassIcon />
-			</Button>
-		</>
 	)
 }

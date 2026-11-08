@@ -1,16 +1,12 @@
 {
 	"$schema": "https://ui.shadcn.com/schema.json",
-
 	"registries": {"@svgl": "https://svgl.app/r/{name}.json"},
-
-	"style": "base-mira",
+	"style": "base-sera",
 	"menuColor": "default",
 	"menuAccent": "subtle",
 	"iconLibrary": "phosphor",
-
 	"rsc": false,
 	"tsx": true,
-
 	"aliases": {
 		"lib": "#components/ui/lib",
 		"utils": "#lib/utils",
@@ -18,6 +14,5 @@
 		"components": "#components",
 		"hooks": "#components/ui/hooks"
 	},
-
 	"tailwind": {"config": "", "prefix": "", "baseColor": "zinc", "cssVariables": true, "css": "src/theme.css"}
 }
