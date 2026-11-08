@@ -112,7 +112,7 @@ const USAGE_MODE: UsageMode = Boolean.match(import.meta.env.DEV, {
 	onFalse: () => 'production',
 	onTrue: () => 'development'
 })
-type Key = 'in' | 'leave' | 'next' | 'out' | 'previous'
+type Key = 'down' | 'in' | 'leave' | 'left' | 'next' | 'out' | 'previous' | 'right' | 'up'
 type Inspection = {actor: Option.Option<number>; entry: Option.Option<Experience>; scoped: boolean}
 type UsageMode = 'development' | 'production'
 type WorldState = {dot: 'error' | 'live' | 'off' | 'quiet'; label: string; waiting: boolean}
@@ -197,6 +197,10 @@ function keyOf(event: KeyboardEvent) {
 	if (event.metaKey || event.ctrlKey || event.altKey) return Option.none<Key>()
 	if (event.code === 'BracketLeft') return Option.some<Key>('previous')
 	if (event.code === 'BracketRight') return Option.some<Key>('next')
+	if (event.code === 'ArrowLeft') return Option.some<Key>('left')
+	if (event.code === 'ArrowRight') return Option.some<Key>('right')
+	if (event.code === 'ArrowUp') return Option.some<Key>('up')
+	if (event.code === 'ArrowDown') return Option.some<Key>('down')
 	return symbolKey(event.key)
 }
 
@@ -249,12 +253,13 @@ function EntityReference(props: {
 	})
 	const label = String.replace(` #${props.id}`, '')(name)
 	return (
+		// oxlint-disable-next-line @deslop/coding-standards/no-native-control -- A reference is inline text; Button's box would break the sentence.
 		<button
 			type="button"
 			data-inline="true"
 			title={name}
 			className={cn(
-				'text-foreground decoration-border pointer-events-auto inline-flex items-center gap-1 align-middle underline underline-offset-4',
+				'text-foreground hover:text-muted-foreground pointer-events-auto inline-flex cursor-pointer items-center gap-1 align-middle underline decoration-current underline-offset-4',
 				props.standalone === true && 'min-h-11'
 			)}
 			onClick={() =>
@@ -298,12 +303,13 @@ function References(props: {standalone?: boolean; text: string; tick: number}) {
 					return Option.match(String.match(/^\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)$/u)(part), {
 						onNone: () => <span key={index}>{part}</span>,
 						onSome: found => (
+							// oxlint-disable-next-line @deslop/coding-standards/no-native-control -- A reference is inline text; Button's box would break the sentence.
 							<button
 								type="button"
 								key={index}
 								data-inline="true"
 								className={cn(
-									'text-foreground decoration-border pointer-events-auto underline underline-offset-4',
+									'text-foreground hover:text-muted-foreground pointer-events-auto cursor-pointer underline decoration-current underline-offset-4',
 									props.standalone === true && 'inline-flex min-h-11 items-center'
 								)}
 								onClick={() =>
@@ -692,11 +698,12 @@ function OriginalRequest(props: {text: string; tick: number}) {
 function EventDetails(props: {entry: Experience}) {
 	return (
 		<div className="space-y-4">
-			<div className="flex flex-wrap items-center gap-2">
-				<Badge variant="secondary">{props.entry.kind}</Badge>
-				<span className="text-muted-foreground text-xs">recorded event</span>
-			</div>
 			<dl className="grid grid-cols-3 gap-x-3 gap-y-1">
+				<dt className="text-muted-foreground font-mono text-xs">Event</dt>
+				<dd className="col-span-2 min-w-0 text-xs">
+					<Badge variant="secondary">{props.entry.kind}</Badge>{' '}
+					<span className="text-muted-foreground">recorded event</span>
+				</dd>
 				{props.entry.subject !== undefined && (
 					<>
 						<dt className="text-muted-foreground font-mono text-xs">Subject</dt>
@@ -882,7 +889,10 @@ function EventRecord(props: {entry: Experience}) {
 				<Button
 					variant="ghost"
 					className="absolute inset-0 z-0 size-full max-md:min-h-11"
-					aria-label={`${actorName(kind, props.entry.actor)} · ${props.entry.kind} at ${clockOf(props.entry.tick)}`}
+					aria-label={`${Boolean.match(team !== undefined, {
+						onFalse: () => '',
+						onTrue: () => `${teamName(team ?? -1)} · `
+					})}${actorName(kind, props.entry.actor)} · ${props.entry.kind} at ${clockOf(props.entry.tick)}`}
 					onClick={() => navigate.event(props.entry)}
 				>
 					<span className="sr-only">View this event in the world</span>
@@ -896,8 +906,11 @@ function EventRecord(props: {entry: Experience}) {
 				/>
 				<div className="pointer-events-none relative min-w-0 flex-1 pr-6">
 					<header className="flex items-baseline justify-between gap-2 text-xs">
-						<span className="truncate text-(--team-text)" style={{'--team-text': teamTextColor(team ?? -1)}}>
-							{actorName(kind, props.entry.actor)}
+						<span className="truncate">
+							{team !== undefined && <span className="text-muted-foreground">{teamName(team)} · </span>}
+							<span className="text-(--team-text)" style={{'--team-text': teamTextColor(team ?? -1)}}>
+								{actorName(kind, props.entry.actor)}
+							</span>
 						</span>
 						<time className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
 							{clockOf(props.entry.tick)}
@@ -1469,6 +1482,7 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 }
 
 function SpectatorControls(props: {
+	coverage: boolean
 	source: Source
 	tick: number
 	threadOpen: boolean
@@ -1486,11 +1500,24 @@ function SpectatorControls(props: {
 			<div className={cn(MAP_CONTROLS, 'pointer-events-auto flex shrink-0 items-stretch p-1')}>
 				<Button
 					className="size-11 md:size-9"
-					variant={Boolean.match(chunks, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+					variant={Boolean.match(props.coverage && chunks, {
+						onFalse: () => 'ghost' as const,
+						onTrue: () => 'secondary' as const
+					})}
 					size="icon-sm"
-					aria-pressed={chunks}
-					aria-label="Chunk coverage"
-					title={Boolean.match(chunks, {onFalse: () => 'Show chunk coverage', onTrue: () => 'Hide chunk coverage'})}
+					aria-pressed={props.coverage && chunks}
+					aria-label={Boolean.match(props.coverage, {
+						onFalse: () => 'Chunk coverage: nothing explored yet',
+						onTrue: () => 'Chunk coverage'
+					})}
+					title={Boolean.match(props.coverage, {
+						onFalse: () => 'Chunk coverage appears once a unit explores',
+						onTrue: () => {
+							if (chunks) return 'Hide chunk coverage'
+							return 'Show chunk coverage'
+						}
+					})}
+					disabled={!props.coverage}
 					onClick={() => setChunks(!chunks)}
 				>
 					<SquaresFourIcon className="size-4" />
@@ -2052,10 +2079,7 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 	return (
 		<header className="pointer-events-none absolute inset-x-2 top-2 z-30 flex flex-wrap items-start gap-2 md:inset-x-4 md:top-4 md:flex-nowrap md:justify-between">
 			<Identity />
-			<nav
-				aria-label="Models and spend"
-				className={cn(MAP_CONTROLS, 'pointer-events-auto flex min-w-0 items-stretch p-1')}
-			>
+			<nav aria-label="Models" className={cn(MAP_CONTROLS, 'pointer-events-auto flex min-w-0 items-stretch p-1')}>
 				<ToggleGroup
 					aria-label="Models"
 					className="min-w-0"
@@ -2279,12 +2303,22 @@ function World(props: {seed: number; view: View}) {
 			registry.set(followAtom, {free: Option.none(), id: Option.none()})
 			renderer.centre()
 		}
+		// Arrow keys pan by a screen step, as a drag does; the pan stays until a subject or recenter takes it back.
+		function glideBy(dx: number, dy: number) {
+			return () => {
+				renderer.pan(dx, dy)
+			}
+		}
 		const actions = {
+			down: glideBy(0, -80),
 			in: () => renderer.zoomBy(1 / ZOOM_STEP),
 			leave,
+			left: glideBy(80, 0),
 			next: () => cycle(1),
 			out: () => renderer.zoomBy(ZOOM_STEP),
-			previous: () => cycle(-1)
+			previous: () => cycle(-1),
+			right: glideBy(-80, 0),
+			up: glideBy(0, 80)
 		} satisfies Record<Key, () => void>
 		function keys(event: KeyboardEvent) {
 			if (event.target !== canvas.current) return
@@ -2454,6 +2488,23 @@ function World(props: {seed: number; view: View}) {
 								onPointerLeave={gestures.leave}
 								onWheel={gestures.wheel}
 							/>
+							{/* A cold server can take many seconds before its first frame; a themed wait is honest about the flat terrain behind it. */}
+							{props.view.count === 0 && (
+								<div className="bg-background absolute inset-0 z-20 flex items-center justify-center">
+									<div
+										role="status"
+										aria-label="Drawing the world"
+										className="flex max-w-xs flex-col items-center gap-3 px-6 text-center"
+									>
+										<img src={icon} alt="" className="pixelated size-8 opacity-80" />
+										<h2 className="font-heading text-2xl leading-none tracking-tight">Drawing the world</h2>
+										<p className="text-muted-foreground flex items-center gap-2 text-xs">
+											<Spinner className="size-3" />
+											Terrain is arriving.
+										</p>
+									</div>
+								</div>
+							)}
 							<Overlay buildings={props.view.buildings} inspection={panel} units={props.view.frame.units} />
 							<MapControls
 								onTeam={next => {
@@ -2468,12 +2519,18 @@ function World(props: {seed: number; view: View}) {
 							/>
 							<ReplayLoading />
 							<SpectatorControls
+								coverage={Array.isReadonlyArrayNonEmpty(props.view.zones)}
 								source={source}
 								tick={cursor}
 								threadOpen={Option.exists(panel, selection => !selection.scoped)}
 								onCentre={() => {
-									// A dragged view is a free aim of its own; recentering drops it for the team's Core.
-									setFollow({free: Option.none(), id: Option.none()})
+									// Recenter returns to what is selected, or the team's Core when the view stands alone.
+									const subject = Option.flatMap(panel, selection =>
+										Option.orElse(selection.actor, () =>
+											Option.flatMap(selection.entry, entry => Option.fromUndefinedOr(entry.subject))
+										)
+									)
+									setFollow({free: Option.none(), id: subject})
 									Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 								}}
 								onLive={() => setSource(Option.none())}
