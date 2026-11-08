@@ -100,7 +100,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				size="search"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-64 -translate-x-1/2 lg:flex"
+				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
 			>
 				<MagnifyingGlassIcon className="size-4 shrink-0" />
 				<span className="flex-1">Search or jump to…</span>
@@ -111,7 +111,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				size="icon-sm"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="max-sm:size-11 lg:hidden"
+				className="max-sm:size-11 xl:hidden"
 			>
 				<MagnifyingGlassIcon />
 			</Button>
@@ -143,7 +143,7 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
+			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
 						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
@@ -187,7 +187,7 @@ export function AppBar(props: {
 						{props.tabs}
 					</nav>
 				)}
-				<div className="relative flex min-w-0 flex-1 items-center justify-end">
+				<div className="flex min-w-0 flex-1 items-center justify-end">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
 						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
