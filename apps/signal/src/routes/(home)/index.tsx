@@ -2046,7 +2046,7 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 							</span>
 							<span
 								aria-hidden="true"
-								className="bg-(--team) pointer-events-none absolute inset-x-3 bottom-1 h-0.5 opacity-0 transition-opacity group-aria-pressed/toggle:opacity-100"
+								className="pointer-events-none absolute inset-x-3 bottom-1 h-0.5 bg-(--team) opacity-0 transition-opacity group-aria-pressed/toggle:opacity-100"
 								style={{'--team': teamColor(entry.id)}}
 							/>
 						</ToggleGroupItem>
@@ -2423,10 +2423,7 @@ function World(props: {seed: number; view: View}) {
 								tick={cursor}
 								threadOpen={Option.exists(panel, selection => !selection.scoped)}
 								onCentre={() =>
-									Option.match(world, {
-										onNone: () => undefined,
-										onSome: active => active.renderer.centre()
-									})
+									Option.match(world, {onNone: () => undefined, onSome: active => active.renderer.centre()})
 								}
 								onLive={() => setSource(Option.none())}
 								onThreads={() =>
