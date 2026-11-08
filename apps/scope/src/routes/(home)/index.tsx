@@ -732,6 +732,7 @@ function OperationsPane(props: {
 	return (
 		<Section
 			title="By app"
+			headerClassName="px-3"
 			meta={Option.match(AsyncResult.value(current), {
 				onNone: () => undefined,
 				onSome: overview => {
@@ -838,6 +839,7 @@ function TracesPane(props: {
 	return (
 		<Section
 			title="Traces"
+			headerClassName="px-3"
 			meta={Option.match(active, {
 				onNone: () => undefined,
 				onSome: current =>

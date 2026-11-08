@@ -48,12 +48,18 @@ export function Section(props: {
 	actions?: ReactNode
 	children: ReactNode
 	className?: string
+	headerClassName?: string
 	meta?: string
 	title: string
 }) {
 	return (
 		<section className={cn('flex flex-col', props.className)} aria-label={props.title}>
-			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-t pt-3 pb-2">
+			<div
+				className={cn(
+					'flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-t pt-3 pb-2',
+					props.headerClassName
+				)}
+			>
 				<div className="flex min-w-0 items-baseline gap-3">
 					<h2 className="tracking-label text-xs font-semibold uppercase">{props.title}</h2>
 					{props.meta !== undefined && (

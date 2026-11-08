@@ -4,13 +4,13 @@ import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, Sc
 
 import {
 	AppWindowIcon,
+	CaretDownIcon,
 	CaretRightIcon,
 	ChartLineIcon,
 	ClockIcon,
 	HardDrivesIcon,
 	MonitorIcon,
 	PlayIcon,
-	SquaresFourIcon,
 	TerminalWindowIcon
 } from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -33,6 +33,13 @@ import {
 	ContextMenuItem,
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger
+} from '@deslop/components-web/ui/dropdown-menu'
 import {Item, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {Progress, ProgressLabel} from '@deslop/components-web/ui/progress'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
@@ -62,7 +69,7 @@ import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
-// A phone shows one pane at a time; a wide screen shows all three and ignores it.
+// A phone shows one pane at a time; a wide screen shows all three.
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['apps', 'machine', 'process'])
 
@@ -78,13 +85,6 @@ const route = getRouteApi('/(home)/')
 
 const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
 const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
-
-// The three panes a phone switches between, each named as its section is.
-const PANES = [
-	{icon: <SquaresFourIcon />, label: 'Apps', value: 'apps'},
-	{icon: <TerminalWindowIcon />, label: 'Processes', value: 'process'},
-	{icon: <ChartLineIcon />, label: 'Machine', value: 'machine'}
-] as const satisfies readonly {icon: ReactNode; label: string; value: Pane}[]
 
 function status(item: InventoryItem) {
 	if (String.startsWith('stale')(item.state)) return 'stale'
@@ -263,31 +263,46 @@ function RangeToggle(props: {
 	)
 }
 
-// A phone's one-pane switch; it sits above the pane, never at the bottom of the screen.
-function PaneSwitcher(props: {onSelect: (pane: Pane) => void; pane: Pane}) {
+// A phone's bar keeps the range in the space of a word: the current range opens the five.
+function RangeMenu(props: {
+	minutes: HistoryQuery['minutes']
+	onChange: (minutes: HistoryQuery['minutes']) => void
+	pending: boolean
+}) {
+	const current = Array.findFirst(RANGES, range => range.minutes === props.minutes)
 	return (
-		<ToggleGroup
-			aria-label="Pane"
-			className="w-full shrink-0"
-			onValueChange={values => {
-				Option.map(
-					Option.flatMap(Option.fromUndefinedOr(Option.getOrUndefined(Array.head(values))), current =>
-						Array.findFirst(PANES, candidate => candidate.value === current)
-					),
-					entry => props.onSelect(entry.value)
-				)
-			}}
-			spacing={0}
-			value={[props.pane]}
-			variant="outline"
-		>
-			{Array.map(PANES, entry => (
-				<ToggleGroupItem key={entry.value} className="h-11 min-w-0 flex-1" value={entry.value}>
-					{entry.icon}
-					<span className="truncate">{entry.label}</span>
-				</ToggleGroupItem>
-			))}
-		</ToggleGroup>
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				aria-label={Option.match(current, {
+					onNone: () => 'History range',
+					onSome: range => `History range: ${range.name}`
+				})}
+				render={<Button variant="ghost" size="sm" className="max-lg:h-11" />}
+			>
+				{Option.match(current, {onNone: () => '—', onSome: range => range.label})}
+				{Boolean.match(props.pending, {
+					onFalse: () => <CaretDownIcon />,
+					onTrue: () => <Spinner />
+				})}
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-auto min-w-36">
+				<DropdownMenuRadioGroup
+					value={`${props.minutes}`}
+					onValueChange={value => {
+						Option.map(
+							Array.findFirst(RANGES, range => `${range.minutes}` === value),
+							range => props.onChange(range.minutes)
+						)
+					}}
+				>
+					{Array.map(RANGES, range => (
+						<DropdownMenuRadioItem key={range.minutes} className="max-lg:h-11" value={`${range.minutes}`}>
+							{range.name}
+						</DropdownMenuRadioItem>
+					))}
+				</DropdownMenuRadioGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	)
 }
 
@@ -487,10 +502,7 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn(
-								'list-row relative flex h-14 items-center gap-2 pr-3 max-sm:h-12',
-								highlighted && 'bg-muted/50'
-							)}
+							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -517,6 +529,35 @@ function AppListRow(props: {
 							>
 								{name}
 							</span>
+							{/* A phone reads the memory, and why a row needs a look, under its name; wider screens keep them in their columns. */}
+							<span className="flex min-w-0 items-center gap-1.5 font-mono text-xs tracking-normal normal-case tabular-nums sm:hidden">
+								<span className="text-muted-foreground shrink-0">{bytes(memory)}</span>
+								{Boolean.match(failing, {
+									onFalse: () =>
+										Boolean.match(scheduled, {
+											onFalse: () => null,
+											onTrue: () => (
+												<span className="text-muted-foreground flex min-w-0 items-center gap-1 truncate">
+													<ClockIcon className="size-3 shrink-0" />
+													{next}
+												</span>
+											)
+										}),
+									onTrue: () => (
+										<span
+											className={cn(
+												'truncate',
+												Boolean.match(light === 'error', {
+													onFalse: () => 'text-warning',
+													onTrue: () => 'text-destructive'
+												})
+											)}
+										>
+											{reason}
+										</span>
+									)
+								})}
+							</span>
 						</ItemContent>
 					</Item>
 					<div className="pointer-events-auto relative z-10 flex max-w-1/2 min-w-0 shrink items-center justify-end gap-1 overflow-hidden max-sm:max-w-1/3">
@@ -525,7 +566,7 @@ function AppListRow(props: {
 								Boolean.match(scheduled, {
 									onFalse: () => <Endpoints free={props.free} row={props.row} />,
 									onTrue: () => (
-										<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs">
+										<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs max-sm:hidden">
 											<ClockIcon className="size-3" />
 											{next}
 										</span>
@@ -534,7 +575,7 @@ function AppListRow(props: {
 							onTrue: () => (
 								<span
 									className={cn(
-										'truncate text-xs',
+										'truncate text-xs max-sm:hidden',
 										Boolean.match(light === 'error', {onFalse: () => 'text-warning', onTrue: () => 'text-destructive'})
 									)}
 									title={reason}
@@ -547,7 +588,7 @@ function AppListRow(props: {
 					<div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-2">
 						<span
 							className={cn(
-								'w-20 shrink-0 text-right font-mono text-xs tabular-nums max-sm:w-14',
+								'w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden',
 								scheduled && 'text-muted-foreground'
 							)}
 						>
@@ -653,7 +694,7 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 				<div
 					key={row}
 					aria-hidden
-					className={cn('list-row flex h-14 items-center gap-3 px-4 max-sm:h-12', props.indent === true && 'pl-8')}
+					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
 				>
 					<Skeleton className="size-5 shrink-0" />
 					<Skeleton className="h-3.5 w-1/3 max-w-40" />
@@ -711,6 +752,7 @@ function AppsPane(props: {
 		<Section
 			title="Apps"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
+			headerClassName="px-4"
 			actions={
 				<div className="flex items-center gap-2">
 					{Boolean.match(pending, {
@@ -805,13 +847,14 @@ function ProcessPane(props: {
 	return (
 		<Section
 			title="Processes"
-			className={cn('min-h-0 flex-1 gap-0', props.className)}
+			className={cn('min-h-0 min-w-0 flex-1 gap-0', props.className)}
+			headerClassName="px-4"
 			actions={
 				<div className="flex min-w-0 items-center gap-2">
 					{Option.match(Option.fromUndefinedOr(props.row), {
 						onNone: () => null,
 						onSome: current => (
-							<>
+							<span className="flex min-w-0 items-center gap-2 max-lg:hidden">
 								<ApplicationIcon
 									name={workloadName(current.item)}
 									process={process}
@@ -820,7 +863,7 @@ function ProcessPane(props: {
 								<span className="max-w-40 min-w-0 truncate text-sm font-medium tracking-normal normal-case">
 									{workloadName(current.item)}
 								</span>
-							</>
+							</span>
 						)
 					})}
 					{(light === 'error' || light === 'warning') && (
@@ -882,7 +925,7 @@ function ProcessPane(props: {
 										/>
 									),
 									onNonEmpty: () => (
-										<ScrollArea className="min-h-0 flex-1">
+										<ScrollArea className="min-h-0 min-w-0 flex-1">
 											<div className="pr-2">
 												<Processes tree={tree} />
 											</div>
@@ -987,10 +1030,13 @@ function MachineContent(props: {
 				{Boolean.match(storage.total > 0, {
 					onFalse: () => null,
 					onTrue: () => (
-						// The bar alone says how full the disks are; the figures wait on hover.
+						// The bar alone says how full the disks are; the figures wait on hover, or sit beside them on a phone.
 						<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
 							<Progress value={(storage.used / storage.total) * 100}>
 								<ProgressLabel>Disk</ProgressLabel>
+								<span className="text-muted-foreground ml-auto text-sm tabular-nums sm:hidden">
+									{bytes(storage.used)} of {bytes(storage.total)}
+								</span>
 							</Progress>
 						</div>
 					)
@@ -1014,6 +1060,7 @@ function MachinePane(props: {
 		<Section
 			title="Machine"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
+			headerClassName="px-4"
 			actions={
 				<div className="flex items-center gap-2">
 					<MetricsProblem minutes={props.minutes} />
@@ -1254,11 +1301,40 @@ function Home() {
 		view({app: row.item.id, pane: 'process'})
 	}
 
+	// A phone's bar names the pane and backs out to Machines; desktop and the wide two-column layout keep the wordmark.
+	const mobileTitle = Boolean.match(isNarrow, {
+		onFalse: () => undefined,
+		onTrue: () =>
+			pipe(
+				Match.value(pane),
+				Match.when('apps', () => 'Machines'),
+				Match.when('process', () =>
+					Option.match(Option.fromUndefinedOr(selectedRow), {
+						onNone: () => 'Processes',
+						onSome: row => workloadName(row.item)
+					})
+				),
+				Match.orElse(() =>
+					Option.match(Option.fromUndefinedOr(active), {onNone: () => 'Machine', onSome: machineName})
+				)
+			)
+	})
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
+				back={Boolean.match(isNarrow && pane !== 'apps', {
+					onFalse: () => undefined,
+					onTrue: () => ({
+						label: 'Machines',
+						onClick: () => {
+							setHovered(undefined)
+							view({pane: 'apps'})
+						}
+					})
+				})}
 				icon={icon}
 				name="deploy"
+				title={mobileTitle}
 				palette={Boolean.match(Option.isSome(authFailure), {
 					onFalse: () => [
 						{
@@ -1336,18 +1412,23 @@ function Home() {
 					onTrue: () => [otherApps('deploy')]
 				})}
 				controls={
-					<div className="max-sm:hidden">
-						<RangeToggle minutes={minutes} pending={refreshing} onChange={range => view({range})} />
-					</div>
+					<>
+						<div className="max-lg:hidden">
+							<RangeToggle minutes={minutes} pending={refreshing} onChange={range => view({range})} />
+						</div>
+						<div className="lg:hidden">
+							<RangeMenu minutes={minutes} pending={refreshing} onChange={range => view({range})} />
+						</div>
+					</>
 				}
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
 					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
-						<PageHeader
-							actions={
-								<div className="flex items-end gap-6">
-									<div className="hidden sm:block">
+						{Boolean.match(isNarrow, {
+							onFalse: () => (
+								<PageHeader
+									actions={
 										<Stat
 											label="Need you"
 											value={Option.match(snapshot, {
@@ -1359,16 +1440,14 @@ function Home() {
 												onSome: () => attention
 											})}
 										/>
-									</div>
-									<div className="sm:hidden">
-										<RangeToggle minutes={minutes} pending={refreshing} onChange={range => view({range})} />
-									</div>
-								</div>
-							}
-							description="Every app, its processes and the machine's load over one range."
-							eyebrow="Deploy"
-							title="Machines"
-						/>
+									}
+									description="Every app, its processes and the machine's load over one range."
+									eyebrow="Deploy"
+									title="Machines"
+								/>
+							),
+							onTrue: () => null
+						})}
 						<MachineTabs
 							active={active}
 							histories={shownHistories}
@@ -1473,14 +1552,7 @@ function Home() {
 										)
 									}),
 								onTrue: () => (
-									<div className="flex min-h-0 flex-1 flex-col gap-2">
-										<PaneSwitcher
-											onSelect={next => {
-												setHovered(undefined)
-												view({pane: next})
-											}}
-											pane={pane}
-										/>
+									<div className="flex min-h-0 flex-1 flex-col">
 										{pipe(
 											Match.value(pane),
 											Match.when('apps', () => (

@@ -16,20 +16,20 @@ const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
 		<div
-			className={cn('list-row h-10 w-full max-sm:h-12', props.padded === true && 'px-4')}
+			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
 		>
 			<Item
 				size="xs"
-				className="h-full"
+				className="h-full min-w-0"
 				title={`${mib.format(props.node.memory / 1024 ** 2)} MiB including child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 			>
 				<ItemMedia variant="icon" className="ml-(--indent)">
 					<ApplicationIcon name={props.node.name} small />
 				</ItemMedia>
-				<ItemContent>
-					<div className={cn('flex min-w-0 items-baseline gap-2', props.node.small && 'text-muted-foreground')}>
-						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case">
+				<ItemContent className="min-w-0">
+					<div className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}>
+						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case max-sm:max-w-3/5">
 							{props.node.name}
 						</span>
 						<span
@@ -51,7 +51,7 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 				</ItemContent>
 				<ItemActions className="shrink-0">
 					{Array.isArrayNonEmpty(props.node.children) && (
-						<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case">
+						<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case max-sm:hidden">
 							+{props.node.children.length}
 						</span>
 					)}
@@ -94,7 +94,7 @@ function Node(props: {depth: number; node: ProcessNode}) {
 
 export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
-		<div className="px-2 pb-2">
+		<div className="min-w-0 px-2 pb-2">
 			{Array.map(props.tree, node => (
 				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
 			))}

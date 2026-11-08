@@ -187,7 +187,7 @@ export function AppBar(props: {
 						{props.tabs}
 					</nav>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end">
+				<div className="flex min-w-0 max-xl:min-w-11 flex-1 items-center justify-end">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
 						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
