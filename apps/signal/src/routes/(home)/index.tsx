@@ -755,7 +755,7 @@ function Round(props: {entry: Entry}) {
 			<div className="relative flex items-start gap-3 px-4">
 				<Button
 					variant="ghost"
-					className="absolute inset-0 z-0 size-full"
+					className="absolute inset-0 z-0 size-full max-md:min-h-11"
 					aria-label={`${teamName(props.entry.team)} Core at ${clockOf(props.entry.tick)}`}
 					onClick={() => navigate.core(props.entry.team, props.entry.tick)}
 				>
@@ -863,7 +863,7 @@ function EventRecord(props: {entry: Experience}) {
 			<div className="relative flex items-start gap-3 px-4">
 				<Button
 					variant="ghost"
-					className="absolute inset-0 z-0 size-full"
+					className="absolute inset-0 z-0 size-full max-md:min-h-11"
 					aria-label={`${actorName(kind, props.entry.actor)} · ${props.entry.kind} at ${clockOf(props.entry.tick)}`}
 					onClick={() => navigate.event(props.entry)}
 				>
@@ -1451,6 +1451,7 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 }
 
 function SpectatorControls(props: {
+	panelOpen: boolean
 	source: Source
 	tick: number
 	threadOpen: boolean
@@ -1462,7 +1463,11 @@ function SpectatorControls(props: {
 	return (
 		<section
 			aria-label="Spectator controls"
-			className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4"
+			className={cn(
+				'pointer-events-none absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4',
+				/* A phone's panel owns the bottom edge, so the floating controls step aside until it closes. */
+				props.panelOpen && 'max-md:hidden'
+			)}
 		>
 			<div className={cn(MAP_CONTROLS, 'pointer-events-auto flex shrink-0 items-stretch p-1')}>
 				<Button
@@ -2376,6 +2381,7 @@ function World(props: {seed: number; view: View}) {
 							/>
 							<ReplayLoading />
 							<SpectatorControls
+								panelOpen={Option.isSome(panel)}
 								source={source}
 								tick={cursor}
 								threadOpen={Option.exists(panel, selection => !selection.scoped)}
