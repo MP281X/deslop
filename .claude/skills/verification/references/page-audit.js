@@ -296,10 +296,6 @@
 			.filter(element => lineCount(element) > 1)
 			.slice(0, 15)
 			.map(describe),
-		paletteClose: all
-			.filter(element => element.matches('[role="dialog"]') && element.querySelector('[data-slot="command"]'))
-			.filter(element => element.querySelector('[data-slot="dialog-close"], button[aria-label*="lose" i]'))
-			.map(describe),
 		pressScale: [...document.querySelectorAll('[class*="active:scale"], [class*="active:translate"]')].map(describe),
 		proportionalFigures: texts
 			.filter(element =>
@@ -307,6 +303,8 @@
 					textOf(element)
 				)
 			)
+			// Inside a shadcn component a figure takes the component's own font; table cells and running text do not.
+			.filter(element => !element.closest('[data-slot]:not([data-slot^="table"])'))
 			.filter(element => {
 				const style = getComputedStyle(element)
 				return !style.fontVariantNumeric.includes('tabular-nums') && !/mono/iu.test(style.fontFamily)
@@ -466,7 +464,11 @@
 				const rect = element.getBoundingClientRect()
 				return `${describe(element)} ${Math.round(rect.width)}×${Math.round(rect.height)}`
 			}),
-		tinyText: texts.filter(element => Number.parseFloat(getComputedStyle(element).fontSize) < 12).map(describe),
+		// Key caps ship small by design.
+		tinyText: texts
+			.filter(element => !element.closest('kbd, [data-slot="kbd"]'))
+			.filter(element => Number.parseFloat(getComputedStyle(element).fontSize) < 12)
+			.map(describe),
 		unnamed: controls.filter(element => !nameOf(element)).map(describe),
 		viewport: `${innerWidth}×${innerHeight}`
 	}

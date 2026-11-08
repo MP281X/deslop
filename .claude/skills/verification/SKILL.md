@@ -28,14 +28,16 @@ Before any capture, remove what the change no longer needs: debug code, dead cod
 - **Each touched screen**, in the running app on real or planted data:
   - cold first open, reload of a deep link, the first request failing, and on native background then resume;
   - hover, focus and keyboard on changed controls;
-  - 390 and 1440 wide, 3440 for wide layouts; light and dark when color changed.
+  - 390 and 1440 wide, 3440 for wide layouts; light and dark when color changed;
+  - an app with web and iOS clients: the same screen on both, side by side, with the same content, actions and identity (title, profile), each in its platform's own controls;
+  - every screen it reaches by navigation, not only the one edited.
 - **Read every capture as a page** before it counts, one line per capture saying what it shows:
   - it matches the plan card or the chosen variant;
   - nothing appears twice: a value, action, status or control already shown elsewhere;
   - nothing is cut, misaligned or overflowing, and spacing matches its siblings;
   - loading, empty and error states tell the truth: no error while data is loading;
   - every word is needed.
-- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`. It returns what a reader would flag: cut text, page overflow, repeated text and actions, overlapping or unnamed controls, broken images, errors shown while loading, low contrast, tiny text, small touch targets on a phone, controls without a focus ring, rows a few pixels out of line, a component that renders differently across instances, colors, fonts and radii outside the page's theme, and the type sizes in use. Its `design` group measures Deslop's `DESIGN.md` and applies only in Deslop apps. Each entry is fixed or given a reason; a type size used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors.
+- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`. It returns what a reader would flag: cut text, page overflow, repeated text and actions, overlapping or unnamed controls, broken images, errors shown while loading, low contrast, tiny text, small touch targets on a phone, controls without a focus ring, rows a few pixels out of line, a component that renders differently across instances, colors, fonts and radii outside the page's theme, and the type sizes in use. Its `design` group measures Deslop's `DESIGN.md` and applies only in Deslop apps. Each entry is fixed or given a reason; a type size used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors. On iOS, read the `agent-device` snapshot of each captured state the same way: a label or button twice, a control without a name, a missing navigation title.
 - **Performance**: the same workload, repeated runs, p50 and p95, resource cost; Scope traces and `measure_latency`.
 - **Unproved** claims say `unverified: <what was not run>`.
 
