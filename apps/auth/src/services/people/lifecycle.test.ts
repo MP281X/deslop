@@ -99,7 +99,7 @@ const open = Effect.gen(function* () {
 			tokens: Context.get(context, Tokens)
 		}
 	})
-	return {...(yield* reload), base, failing, holding, reached, release, reload}
+	return {...(yield* reload), failing, holding, reached, release, reload}
 })
 
 const request = Effect.gen(function* () {
@@ -155,20 +155,6 @@ it.layer(NodeCrypto.layer)(test => {
 				),
 				{_tag: 'Redirect', url: '/'}
 			)
-		})
-	)
-
-	test.effect(
-		'deletes obsolete grants without deleting membership on start',
-		Effect.fnUntraced(function* () {
-			const fixture = yield* open
-			const owner = yield* fixture.people.register(PROFILE)
-			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
-			yield* fixture.base.set('grants', 'obsolete access hashes and shared sessions')
-			const restarted = yield* fixture.reload
-			assert.isUndefined(yield* fixture.base.get('grants'))
-			assert.deepStrictEqual(yield* restarted.people.allowed(owner), owner)
-			assert.deepStrictEqual(yield* first(restarted.tokens.apps(owner)), [])
 		})
 	)
 

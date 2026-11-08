@@ -6,7 +6,6 @@ import {
 	Boolean,
 	Clock,
 	ConfigProvider,
-	Context,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -32,7 +31,6 @@ import {
 	HttpServerRequest,
 	HttpServerResponse
 } from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -43,7 +41,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
-import {AddServer, ConnectionInfo, ConnectionStore, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
 import {Tools} from '#tools/contracts.ts'
@@ -1065,82 +1063,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Ref.set(gateway.stall, false)
 			yield* TestClock.adjust('21 seconds')
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
-		})
-	)
-	test.effect(
-		'forgets stored Deslop tokens at startup without changing third-party credentials',
-		Effect.fnUntraced(function* () {
-			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = KeyValueStore.toSchemaStore(
-				Context.get(yield* Layer.build(ServerRuntime.layerKeyValueStore(home)), KeyValueStore.KeyValueStore),
-				ConnectionStore
-			)
-			const saved = ConnectionStore.make({
-				mobbin: {
-					generation: 'mobbin',
-					id: 'mobbin',
-					link: {
-						_tag: 'Authorized',
-						expiresAt: 1_000_000,
-						token: {access_token: 'third-party-access', refresh_token: 'third-party-refresh', token_type: 'Bearer'}
-					},
-					mode: 'oauth',
-					name: 'Mobbin',
-					oauth: {
-						client: {_tag: 'Registered', clientId: 'mobbin-client'},
-						metadata: {
-							authorization_endpoint: `${PROVIDERS.mobbin.issuer}/authorize`,
-							issuer: PROVIDERS.mobbin.issuer,
-							token_endpoint: `${PROVIDERS.mobbin.issuer}/token`
-						},
-						scope: 'openid'
-					},
-					tools: [],
-					url: PROVIDERS.mobbin.url
-				},
-				stash: {
-					generation: 'stash',
-					id: 'stash',
-					link: {
-						_tag: 'Authorized',
-						expiresAt: 1_000_000,
-						token: {
-							access_token: 'obsolete-deslop-access',
-							refresh_token: 'obsolete-deslop-refresh',
-							token_type: 'Bearer'
-						}
-					},
-					mode: 'oauth',
-					name: 'Stash',
-					oauth: {
-						client: {_tag: 'Registered', clientId: 'gateway'},
-						metadata: {
-							authorization_endpoint: `${AUTH_URL}/api/auth/oauth2/authorize`,
-							issuer: `${AUTH_URL}/api/auth`,
-							token_endpoint: `${AUTH_URL}/api/auth/oauth2/token`
-						},
-						scope: 'deslop'
-					},
-					tools: [],
-					url: 'https://stash.mp281x.xyz/mcp'
-				}
-			})
-			yield* store.set('servers', saved)
-			assert.deepEqual(
-				Array.map(yield* listServers((yield* servers(home)).web), server => server.status),
-				['Connected', 'Connected']
-			)
-			const cleaned = Option.getOrThrow(yield* store.get('servers'))
-			assert.deepEqual(cleaned['mobbin'], saved['mobbin'])
-			assert.deepEqual(cleaned['stash'], {
-				generation: 'stash',
-				id: 'stash',
-				link: {_tag: 'Connected'},
-				mode: 'deslop',
-				name: 'Stash',
-				tools: [],
-				url: 'https://stash.mp281x.xyz/mcp'
-			})
 		})
 	)
 	test.effect(

@@ -120,21 +120,7 @@ export class Connections extends Context.Service<
 			)
 		}
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
-		const cleaned = Record.map(
-			Option.getOrElse(yield* store.get('servers'), () => ({})),
-			connection => {
-				if (!deslop(connection.url, Option.toArray(Option.fromUndefinedOr(connection.oauth?.metadata.issuer)))) {
-					return connection
-				}
-				return {
-					...Struct.omit(connection, ['oauth', 'error']),
-					link: {_tag: 'Connected' as const},
-					mode: 'deslop' as const
-				}
-			}
-		)
-		yield* store.set('servers', cleaned)
-		const state = yield* SubscriptionRef.make(cleaned)
+		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
 		// Only the latest calls matter to a light, so a slow page drops the oldest.
