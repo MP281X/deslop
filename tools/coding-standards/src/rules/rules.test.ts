@@ -1,11 +1,16 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, describe, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Option, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, HashSet, Option, Order, Path, Record, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
+import {parseSync, visitorKeys} from 'oxc-parser'
 
 import plugin from '#lint.ts'
+
+import {questionKey, unitKey} from '#judge/cache.ts'
+import {JUDGED_RULES} from '#judge/rules.ts'
+import {importsOf, units} from '#judge/units.ts'
 
 type OxlintOutput = typeof OxlintOutput.Type
 const OxlintOutput = Schema.Struct({
@@ -96,15 +101,43 @@ function reportedLines(result: {sources: string[]; stdout: OxlintOutput}, rule: 
 	}
 }
 
+function component(name: string) {
+	return [
+		`export function ${name}() {`,
+		"\tconst [open, setOpen] = useState('')",
+		'\treturn (',
+		'\t\t<div>',
+		'\t\t\t<button onClick={() => setOpen(name)}>{open}</button>',
+		'\t\t</div>',
+		'\t)',
+		'}'
+	]
+}
+
+// Each unit the judge would ask about, as its kind and first line.
+function judgedUnits(filename: string, lines: string[]) {
+	const source = Array.join(lines, '\n')
+	return Array.map(
+		units({filename, program: parseSync(filename, source).program, source, visitorKeys}),
+		unit => `${unit.kind}:${unit.line}`
+	)
+}
+
+function body(count: number) {
+	return Array.makeBy(count, index => `\tconst value${index} = ${index}`)
+}
+
 function customCodes(output: OxlintOutput) {
-	const codes = pipe(
-		Record.keys(plugin.rules),
-		Array.map(rule => `@deslop/coding-standards(${rule})`)
+	const codes = HashSet.fromIterable(
+		pipe(
+			Record.keys(plugin.rules),
+			Array.map(rule => `@deslop/coding-standards(${rule})`)
+		)
 	)
 	return pipe(
 		output.diagnostics,
 		Array.map(diagnostic => diagnostic.code),
-		Array.filter(code => Array.contains(codes, code)),
+		Array.filter(code => HashSet.has(codes, code)),
 		Array.sort(String.Order)
 	)
 }
@@ -276,6 +309,8 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'// The loader reads the value first.',
 							'// Then it checks the value.',
 							'/* Explains the next line\n   across two lines */',
+							'// Compares the raw state.',
+							'// judge-ignore no-repeated-search -- this input keeps its reason',
 							'// oxlint-disable-next-line eqeqeq',
 							'const loose = source == "ready"',
 							'// oxlint-disable-next-line sort-keys -- this input keeps its order',
@@ -2330,6 +2365,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 
 		testApi.effect(
 			'keeps every schema definition in its service schema file',
+			// judge-ignore no-repeated-search -- This lint fixture has five fixed input paths; suffix matching resolves Oxlint's absolute filenames.
 			Effect.fnUntraced(function* () {
 				const inputs = {
 					'src/elsewhere/utils.ts': Array.join(
@@ -2523,6 +2559,100 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					)
 				])
 			})
+		)
+
+		testApi.effect(
+			'reports a judged rule from its cached verdict, and a judge-ignore as stale only once the verdict clearly passes',
+			Effect.fnUntraced(function* () {
+				const fs = yield* FileSystem.FileSystem
+				const path = yield* Path.Path
+				const rule = 'no-self-fetching-component'
+				const ignore = `// judge-ignore ${rule} -- the view lives in a parent route`
+				const source = Array.join(
+					[
+						"import {useState} from 'react'",
+						'',
+						...component('Flagged'),
+						'// The row a person opens first.',
+						ignore,
+						...component('Ignored'),
+						ignore,
+						...component('Passing'),
+						ignore,
+						...component('Wavering'),
+						...component('Unjudged'),
+						''
+					],
+					'\n'
+				)
+				const directory = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-judge-'})
+				const cache = path.join(directory, 'cache')
+				const file = path.join(directory, 'page.tsx')
+				yield* fs.makeDirectory(cache)
+				yield* fs.writeFileString(file, source)
+				const program = parseSync(file, source).program
+				const imports = importsOf(program, source)
+				const key = questionKey(JUDGED_RULES[rule].question)
+				// Flagged and Ignored fail the question, Passing passes it, Wavering sits just under the threshold, Unjudged has no verdict yet.
+				yield* Effect.forEach(
+					Array.zip(Array.take(units({filename: file, program, source, visitorKeys}), 4), [0.9, 0.9, 0.1, 0.7]),
+					entry =>
+						fs.writeFileString(path.join(cache, `${unitKey(entry[0], imports)}.json`), `{"${key}": ${entry[1]}}`),
+					{concurrency: 'unbounded'}
+				)
+				const handle = yield* ChildProcess.make('vp', ['lint', file, '--format=json'], {
+					cwd: path.resolve(import.meta.dirname, '../../../..'),
+					env: {DESLOP_JUDGE_CACHE: cache},
+					extendEnv: true,
+					stderr: 'pipe',
+					stdout: 'pipe'
+				})
+				const reported = pipe(
+					(yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(
+						yield* Stream.mkString(Stream.decodeText(handle.stdout))
+					)).diagnostics,
+					Array.filter(diagnostic => diagnostic.code === `@deslop/coding-standards(${rule})`),
+					Array.map(diagnostic => ({
+						line: diagnostic.labels[0]?.span.line ?? 0,
+						stale: String.includes('remove its judge-ignore')(diagnostic.message)
+					}))
+				)
+				assert.deepStrictEqual(reported, [
+					{line: 3, stale: false},
+					{line: 22, stale: true}
+				])
+			}, Effect.scoped)
+		)
+	})
+
+	it('judges whole functions up to 150 lines, the parts of a longer one, and each test case alone', () => {
+		assert.deepStrictEqual(
+			judgedUnits('src/page.tsx', [
+				'export function Page() {',
+				...body(5),
+				'\treturn null',
+				'}',
+				'const short = () => 1',
+				'export function helper() {',
+				...body(160),
+				'\tconst inner = () => {',
+				...body(6),
+				'\t}',
+				'}'
+			]),
+			['component:1', 'code:171']
+		)
+		assert.deepStrictEqual(
+			judgedUnits('src/page.test.ts', [
+				"it('first', () => {",
+				...body(2),
+				'})',
+				"it.effect('second', () => Effect.void)"
+			]),
+			['test:1', 'test:5']
+		)
+		assert.isTrue(
+			Array.every(judgedUnits('src/page.ts', ['export function Page() {', ...body(6), '}']), String.startsWith('code'))
 		)
 	})
 })

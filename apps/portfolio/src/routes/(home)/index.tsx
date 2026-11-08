@@ -6,6 +6,7 @@ import {
 	Effect,
 	Function,
 	HashMap,
+	HashSet,
 	MutableList,
 	Number,
 	Option,
@@ -93,6 +94,9 @@ const portfolioAtom = Atom.keepAlive(
 			Stream.mapAccum<Scene, PortfolioVisitors, Scene>(
 				() => ({trails: [], visitors: []}),
 				(scene, visitors) => {
+					const positions = HashSet.fromIterable(
+						Array.map(scene.visitors, visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+					)
 					// The latest 180 positions in the order visitors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
 						trails: Array.takeRight(
@@ -100,15 +104,7 @@ const portfolioAtom = Atom.keepAlive(
 								scene.trails,
 								Array.filter(
 									visitors,
-									visitor =>
-										!Array.some(
-											scene.visitors,
-											before =>
-												before.id === visitor.id &&
-												before.color === visitor.color &&
-												before.x === visitor.x &&
-												before.y === visitor.y
-										)
+									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 								)
 							),
 							180

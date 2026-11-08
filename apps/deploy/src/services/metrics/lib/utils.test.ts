@@ -225,6 +225,9 @@ it("reads apps from their own cgroups: services, containers and the slice a user
 	)
 	assert.isFalse(appCgroup(`${manager}/app.slice/app-org.chromium.Chromium-1.scope`, apps))
 	assert.isFalse(appCgroup('/system.slice/app-other.slice', ['other.service']))
+})
+
+it('excludes file cache and reclaimable slab from cgroup memory', () => {
 	assert.deepStrictEqual(
 		cgroupUsage(
 			'usage_usec 5000000\nuser_usec 4000000\n',

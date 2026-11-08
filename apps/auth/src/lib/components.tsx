@@ -352,10 +352,11 @@ function columnsOf(
 			}
 		}
 	)
+	const byName = Array.groupBy(catalog, app => String.toLowerCase(app.name))
 	function clientOf(name: string, device: string, kind: 'App' | 'Browser') {
 		return {
 			app: Option.map(
-				Array.findFirst(catalog, app => kind === 'App' && String.toLowerCase(app.name) === String.toLowerCase(name)),
+				Option.filter(Array.head(byName[String.toLowerCase(name)] ?? []), () => kind === 'App'),
 				app => app.origin
 			),
 			device,
@@ -384,19 +385,22 @@ function columnsOf(
 			Record.values,
 			Array.filter(Array.isReadonlyArrayNonEmpty),
 			Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),
-			Array.map(group => ({
-				address: pipe(
-					Array.findFirst(group, signIn => signIn.lastActive === newest(group)),
-					Option.flatMap(signIn => Option.fromUndefinedOr(signIn.address))
-				),
-				client: clientOf(group[0].client, group[0].device, group[0].kind),
-				families: Array.map(group, signIn => signIn.family),
-				key: signInLabel(group[0].client, group[0].device),
-				label: signInLabel(group[0].client, group[0].device),
-				lastActive: newest(group),
-				pending: false,
-				resources: Array.map(group, signIn => signIn.resources)
-			}))
+			Array.map(group => {
+				const lastActive = newest(group)
+				return {
+					address: pipe(
+						Array.findFirst(group, signIn => signIn.lastActive === lastActive),
+						Option.flatMap(signIn => Option.fromUndefinedOr(signIn.address))
+					),
+					client: clientOf(group[0].client, group[0].device, group[0].kind),
+					families: Array.map(group, signIn => signIn.family),
+					key: signInLabel(group[0].client, group[0].device),
+					label: signInLabel(group[0].client, group[0].device),
+					lastActive,
+					pending: false,
+					resources: Array.map(group, signIn => signIn.resources)
+				}
+			})
 		)
 	]
 }

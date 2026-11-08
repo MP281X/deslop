@@ -15,6 +15,7 @@ import {
 	Schema,
 	Semaphore,
 	String,
+	Tuple,
 	Struct,
 	pipe
 } from 'effect'
@@ -101,17 +102,14 @@ export class Gateway extends Context.Service<
 				yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const prune = Effect.gen(function* () {
-				const definitions = yield* connections.definitions
+				const connected = HashSet.fromIterable(
+					Array.map(
+						Array.filter(yield* connections.definitions, server => server.link._tag !== 'Disconnected'),
+						server => Tuple.make(server.id, server.generation)
+					)
+				)
 				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
-					if (
-						!Array.some(
-							definitions,
-							server =>
-								server.id === entry[1].id &&
-								server.generation === entry[1].generation &&
-								server.link._tag !== 'Disconnected'
-						)
-					) {
+					if (!HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))) {
 						yield* remove(entry[0])
 					}
 				}

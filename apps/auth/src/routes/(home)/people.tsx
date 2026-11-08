@@ -59,6 +59,7 @@ function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Per
 }
 
 // Someone asking for access leads the list, with the answer on the row.
+// judge-ignore no-repeated-text-action -- apps/auth/AGENTS.md requires Allow and Decline on each access-request row.
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (

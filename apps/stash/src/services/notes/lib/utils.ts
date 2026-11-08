@@ -115,10 +115,11 @@ function tagKey(tag: string) {
 
 // A plural, hyphen or spacing variant of a tag in use is that tag.
 export function reuseTags(tags: Note['tags'], existing: Note['tags']) {
+	const byKey = Array.groupBy(existing, tagKey)
 	return Array.dedupe(
 		Array.map(tags, tag =>
 			pipe(
-				Array.findFirst(existing, known => tagKey(known) === tagKey(tag)),
+				Array.head(byKey[tagKey(tag)] ?? []),
 				Option.getOrElse(() => tag)
 			)
 		)

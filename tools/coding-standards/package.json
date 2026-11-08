@@ -32,13 +32,12 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
+		"@effect/platform-node": "latest",
 		"@shadcn/lint": "latest",
 		"@typeonce/oxlint-plugin-effect-machine": "latest",
 		"effect": "latest",
+		"oxc-parser": "latest",
 		"oxlint-plugin-react-doctor": "latest"
-	},
-	"devDependencies": {
-		"@effect/platform-node": "latest"
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.67",

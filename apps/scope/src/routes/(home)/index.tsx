@@ -6,6 +6,7 @@ import {
 	Cause,
 	DateTime,
 	Formatter,
+	HashSet,
 	Match,
 	Number,
 	Option,
@@ -377,10 +378,14 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 // Effect marks every span a failure passed through, so where it broke is the failed span with no failed child.
 function brokeAt(spans: Trace['spans']) {
 	const failed = Array.filter(spans, span => span.status === 2)
-	const parents = Array.map(failed, span =>
-		Option.getOrElse(Option.filter(Option.fromNullishOr(span.payload['parentSpanId']), String.isString), () => '')
+	const parents = HashSet.fromIterable(
+		Array.map(failed, span =>
+			String.toLowerCase(
+				Option.getOrElse(Option.filter(Option.fromNullishOr(span.payload['parentSpanId']), String.isString), () => '')
+			)
+		)
 	)
-	return Array.findFirst(failed, span => !Array.some(parents, parent => String.toLowerCase(parent) === span.spanId))
+	return Array.findFirst(failed, span => !HashSet.has(parents, span.spanId))
 }
 
 // The picked span when it has detail, else where the failure broke, else the root.
