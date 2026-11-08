@@ -1,6 +1,16 @@
 # Dual
 
-Dual's `AGENTS.md` owns its commands, production data, app and coding standards; this is the user's access around it.
+Dual's `AGENTS.md` owns its commands, production data, app and coding standards; this is the user's access around it, and the facts code may assume.
+
+## Facts
+
+- **One production instance**; deploys stop and start. Nothing for rolling deploys, old and new servers side by side, or several instances.
+- **One Organization is one company**: B2B, no self sign-up. Names, ids and icons are visible to everyone in it. Access protects contents (prompts, steps, sub-workflow structure, Skill and Knowledge Base contents, Connection secrets) and lists, which show only what you were given; opening something without access says so.
+- **Sharing a resource lends its dependencies only while it runs**: a Workflow's Connection works inside that Workflow, nowhere else, and never appears as yours.
+- **Sharing a Deploy grants Use**: running it and seeing your own Runs.
+- **Space nesting is visual** and never grants permission. Nobody requests access; someone invites you.
+- **Model changes ship as one lossless database migration**; no runtime path for old data.
+- **Not Google scale**: borrow only what pays for itself.
 
 ## Workers
 
