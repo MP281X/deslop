@@ -1,4 +1,3 @@
-/* oxlint-disable shadcn/no-arbitrary-values -- The page's 0.15-0.35em letter-spacing sits beyond tracking-widest, and the auto/1fr shortcut columns have no scale step. */
 import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {
@@ -21,22 +20,24 @@ import {
 
 import {ArrowUpRightIcon, CursorIcon} from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
-import {createFileRoute} from '@tanstack/react-router'
+import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
 import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
 
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {RpcClient} from '#lib/utils.ts'
+import icon from '#routes/icon.svg'
 import {PortfolioColor} from '#services/presence/schema.ts'
 import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
+const SECTION_NAMES = ['profile', 'expertise', 'experience', 'projects', 'education', 'contact'] as const
 // A cursor not yet on screen: its empty viewport makes the first sync place it at its target instead of gliding there.
 const UNPLACED_MOTION = {lastFrameAt: 0, targetX: 0, targetY: 0, viewportHeight: 0, viewportWidth: 0, x: 0, y: 0}
 
@@ -202,9 +203,45 @@ function subscribeToResize(onStoreChange: () => void) {
 	}
 }
 
-// The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
-function Panel(input: {className?: string; children: React.ReactNode}) {
-	return <div className={cn('bg-background border-border border select-text', input.className)}>{input.children}</div>
+// A ruled label names each part of the page; its number and note stay in mono, the label itself a tracked sans.
+function SectionLabel(input: {id: string; label: string; meta?: React.ReactNode; number: string}) {
+	return (
+		<div className="border-border flex items-center justify-between gap-4 border-t pt-3 pb-5">
+			<div className="flex items-baseline gap-3">
+				<span aria-hidden className="text-muted-foreground font-mono text-xs tabular-nums">
+					{input.number}
+				</span>
+				<h2 id={input.id} className="tracking-label text-xs font-semibold uppercase">
+					{input.label}
+				</h2>
+			</div>
+			{Predicate.isNotUndefined(input.meta) && (
+				<span className="text-muted-foreground text-right font-mono text-xs tabular-nums">{input.meta}</span>
+			)}
+		</div>
+	)
+}
+
+// One opaque reading column over the live grid: every section carries the paper, so trails never run under a line.
+function RuledSection(input: {
+	children: React.ReactNode
+	className?: string
+	id: string
+	label: string
+	meta?: string
+	number: string
+}) {
+	return (
+		<section
+			aria-labelledby={input.id}
+			className={cn('relative z-10 mx-auto w-full max-w-3xl px-6 select-text sm:px-8', input.className)}
+		>
+			<div className="bg-background">
+				<SectionLabel id={input.id} label={input.label} meta={input.meta} number={input.number} />
+				{input.children}
+			</div>
+		</section>
+	)
 }
 
 function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; height: number}}) {
@@ -244,7 +281,11 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 	)
 
 	return (
-		<svg aria-hidden className="pointer-events-none fixed inset-0 z-1 size-full" shapeRendering="crispEdges">
+		<svg
+			aria-hidden
+			className="pointer-events-none fixed inset-0 z-1 size-full print:hidden"
+			shapeRendering="crispEdges"
+		>
 			{Array.map(MutableList.toArray(cells), (cell, index) => (
 				<rect key={index} x={cell.x} y={cell.y} width={24} height={24} fill={cell.color} fillOpacity={0.22} />
 			))}
@@ -259,7 +300,7 @@ function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 			<CursorIcon className="size-4 text-(--cursor-color)" />
 			{Boolean.match(input.show === false, {
 				onFalse: () => (
-					<span className="bg-background text-foreground rounded-sm border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">
+					<span className="bg-background text-foreground rounded-none border border-(--cursor-color) px-1.5 py-0.5 font-mono text-xs leading-none whitespace-nowrap">
 						{input.label}
 					</span>
 				),
@@ -339,249 +380,322 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 	)
 }
 
-function Section(input: {className?: string; children: React.ReactNode}) {
+// A header action is a link first: the value, a hairline underline, and a 44px row on a phone.
+function HeaderLink(input: {children: React.ReactNode; external?: boolean; href: string}) {
+	const external = input.external === true
 	return (
-		<section
-			className={cn(
-				'relative z-10 flex flex-col items-center overflow-hidden px-3 py-4 sm:px-6 sm:py-6',
-				input.className
-			)}
+		<a
+			href={input.href}
+			target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
+			rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
+			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 items-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:pb-0.5"
 		>
 			{input.children}
-		</section>
+			{external && <ArrowUpRightIcon className="size-3.5" />}
+		</a>
 	)
 }
 
-// A section of the column: its lowercase mono name over the rows a hairline splits.
-function SectionBody(input: {children: React.ReactNode; title: string}) {
+// The masthead is the first ruled section: role and place set the stage, the name is the one serif statement.
+function ProfileSection() {
 	return (
-		<Panel className="flex w-full max-w-3xl flex-col px-4 py-3 sm:px-6">
-			<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">{input.title}</h2>
-			<div className="divide-border flex flex-col divide-y">{input.children}</div>
-		</Panel>
-	)
-}
-
-function HeroSection() {
-	return (
-		<Section className="pt-10 sm:pt-20">
-			<Panel className="flex w-full max-w-3xl flex-col gap-3 px-4 py-6 sm:px-6">
-				<h1 className="text-foreground text-4xl font-semibold tracking-tight sm:text-5xl">
-					{profile.firstName} {profile.lastName}
-				</h1>
-				<p className="text-primary font-mono text-sm">{profile.title}</p>
-				<p className="text-foreground/90 text-base">{summary}</p>
-				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
-				<div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-					<a
-						href={contacts.email.href}
-						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
-					>
-						email
-					</a>
-					<a
-						href={contacts.github.href}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
-					>
-						github
-					</a>
-					<a
-						href="/cv"
-						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
-					>
-						cv
-					</a>
+		<section
+			aria-labelledby="profile-title"
+			className="relative z-10 mx-auto w-full max-w-3xl px-6 pt-10 pb-12 select-text sm:px-8 sm:pt-16 sm:pb-16"
+		>
+			<div className="bg-background">
+				<div className="border-border flex items-center justify-between gap-4 border-t pt-3 pb-10 sm:pb-14">
+					<div className="flex items-baseline gap-3">
+						<span aria-hidden className="text-muted-foreground font-mono text-xs tabular-nums">
+							01
+						</span>
+						<p className="tracking-label text-xs font-semibold uppercase">Profile</p>
+					</div>
+					<img alt="" className="pixelated size-6 shrink-0 opacity-90 sm:size-7" src={icon} />
 				</div>
-			</Panel>
-		</Section>
+
+				<div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+					<p className="text-sm font-medium">{profile.title}</p>
+					<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
+				</div>
+
+				<h1
+					id="profile-title"
+					className="font-heading mt-4 text-6xl leading-none tracking-tight text-balance sm:text-7xl"
+				>
+					{profile.firstName} <span className="italic">{profile.lastName}</span>
+				</h1>
+
+				<p className="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed text-pretty sm:text-lg">
+					{summary}
+				</p>
+
+				<div className="mt-8 flex flex-col items-start sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-7">
+					<HeaderLink href={contacts.email.href}>{contacts.email.value}</HeaderLink>
+					<HeaderLink external href={contacts.github.href}>
+						{contacts.github.value}
+					</HeaderLink>
+					<HeaderLink href="/cv">CV</HeaderLink>
+				</div>
+			</div>
+		</section>
 	)
 }
 
 function SkillsSection() {
 	return (
-		<Section>
-			<SectionBody title="skills">
+		<RuledSection
+			className="pb-12 sm:pb-14"
+			id="section-skills"
+			label="Expertise"
+			meta={`${Array.length(skills)} disciplines`}
+			number="02"
+		>
+			<dl className="divide-border flex flex-col divide-y">
 				{Array.map(skills, skill => (
-					<div key={skill.area} className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-6">
-						<h3 className="flex w-40 shrink-0 items-center gap-2 text-sm font-medium">
-							<skill.icon className="text-primary size-4" />
+					<div key={skill.area} className="flex flex-col gap-1 py-3.5 sm:flex-row sm:gap-8">
+						<dt className="tracking-label text-muted-foreground w-36 shrink-0 text-xs font-semibold uppercase">
 							{skill.area}
-						</h3>
-						<p className="text-muted-foreground text-sm">{skill.items}</p>
+						</dt>
+						<dd className="text-foreground/90 text-sm leading-relaxed">{skill.items}</dd>
 					</div>
 				))}
-			</SectionBody>
-		</Section>
-	)
-}
-
-function ProjectRow(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
-	return (
-		<div className="flex flex-col gap-1 py-3">
-			<div className="flex items-baseline justify-between gap-3">
-				<h3 className="text-sm font-medium">
-					{input.project.name}
-					<span className="text-muted-foreground ml-2 font-normal">{input.project.role}</span>
-				</h3>
-				<a
-					href={input.project.href}
-					target="_blank"
-					rel="noopener noreferrer"
-					aria-label={`View ${input.project.name} on GitHub`}
-					className="text-primary hover:text-primary/80 transition-colors max-sm:inline-flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
-				>
-					<ArrowUpRightIcon className="size-4" />
-				</a>
-			</div>
-			<p className="text-foreground/90 text-sm">{input.project.description}</p>
-			<p className="text-muted-foreground font-mono text-xs">{input.project.stack}</p>
-		</div>
+				<div className="flex flex-col gap-1 py-3.5 sm:flex-row sm:gap-8">
+					<dt className="tracking-label text-muted-foreground w-36 shrink-0 text-xs font-semibold uppercase">
+						Languages
+					</dt>
+					<dd className="text-foreground/90 text-sm leading-relaxed">
+						{pipe(
+							languages,
+							Array.map(entry => `${entry.language} (${entry.level})`),
+							Array.join(' · ')
+						)}
+					</dd>
+				</div>
+			</dl>
+		</RuledSection>
 	)
 }
 
 function ProjectsSection() {
 	return (
-		<Section>
-			<SectionBody title="projects">
+		<RuledSection
+			className="pb-12 sm:pb-14"
+			id="section-projects"
+			label="Projects"
+			meta={`${Array.length(projects)} selected`}
+			number="04"
+		>
+			<ol className="divide-border flex flex-col divide-y">
 				{Array.map(projects, project => (
-					<ProjectRow key={project.name} project={project} />
+					<li key={project.name} className="py-5">
+						<div className="flex items-baseline justify-between gap-4">
+							<h3 className="text-base font-semibold tracking-tight">{project.name}</h3>
+							<a
+								href={project.href}
+								target="_blank"
+								rel="noopener noreferrer"
+								aria-label={`View ${project.name} on GitHub`}
+								className="text-muted-foreground hover:text-primary tracking-label -mr-2 inline-flex h-11 items-center gap-1 px-2 text-xs font-semibold uppercase transition-colors sm:h-auto sm:py-0"
+							>
+								GitHub
+								<ArrowUpRightIcon className="size-3.5" />
+							</a>
+						</div>
+						<p className="text-muted-foreground mt-0.5 text-sm">{project.role}</p>
+						<p className="text-foreground/90 mt-2 text-sm leading-relaxed">{project.description}</p>
+						<p className="text-muted-foreground mt-2 font-mono text-xs">{project.stack}</p>
+					</li>
 				))}
-			</SectionBody>
-		</Section>
+			</ol>
+		</RuledSection>
 	)
 }
 
 function ExperienceSection() {
 	return (
-		<Section>
-			<SectionBody title="experience">
+		<RuledSection
+			className="pb-12 sm:pb-14"
+			id="section-experience"
+			label="Experience"
+			meta={`${Array.length(experience)} roles`}
+			number="03"
+		>
+			<ol className="divide-border flex flex-col divide-y">
 				{Array.map(experience, job => (
-					<div key={job.company} className="flex flex-col gap-2 py-3">
-						<div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
-							<h3 className="text-sm font-medium">
-								{job.company}
-								<span className="text-muted-foreground ml-2 font-normal">
-									{job.role}
-									{Predicate.isNotUndefined(job.note) && ` · ${job.note}`}
-								</span>
-							</h3>
-							<p className="text-muted-foreground font-mono text-xs sm:text-right">
-								{pipe([job.period, job.location], Array.filter(Predicate.isNotUndefined), Array.join(' · '))}
-							</p>
+					<li key={job.company} className="flex flex-col gap-2 py-5 sm:flex-row sm:gap-8">
+						<div className="text-muted-foreground flex flex-row flex-wrap items-baseline gap-x-2 font-mono text-xs sm:w-40 sm:shrink-0 sm:flex-col sm:items-start sm:gap-1">
+							<p className="whitespace-nowrap tabular-nums">{job.period}</p>
+							{Predicate.isNotUndefined(job.location) && (
+								<>
+									<span aria-hidden className="sm:hidden">
+										·
+									</span>
+									<p className="whitespace-nowrap">{job.location}</p>
+								</>
+							)}
 						</div>
-						<ul className="flex flex-col gap-1">
-							{Array.map(job.highlights, highlight => (
-								<li key={highlight} className="text-foreground/90 flex items-start gap-2 text-sm">
-									<span className="bg-muted-foreground mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
-									<span>{highlight}</span>
-								</li>
-							))}
-						</ul>
-					</div>
+						<div className="flex min-w-0 flex-1 flex-col gap-2">
+							<div>
+								<h3 className="text-sm font-semibold tracking-tight">{job.company}</h3>
+								<p className="text-muted-foreground text-sm">
+									{job.role}
+									{Predicate.isNotUndefined(job.note) && <span className="italic"> · {job.note}</span>}
+								</p>
+							</div>
+							<ul className="flex flex-col gap-1.5">
+								{Array.map(job.highlights, highlight => (
+									<li key={highlight} className="text-foreground/90 flex gap-3 text-sm leading-relaxed">
+										<span aria-hidden className="bg-muted-foreground/60 mt-2.5 h-px w-3 shrink-0" />
+										<span>{highlight}</span>
+									</li>
+								))}
+							</ul>
+						</div>
+					</li>
 				))}
-			</SectionBody>
-		</Section>
+			</ol>
+		</RuledSection>
 	)
 }
 
 function EducationSection() {
 	return (
-		<Section>
-			<SectionBody title="education and languages">
+		<RuledSection
+			className="pb-12 sm:pb-14"
+			id="section-education"
+			label="Education"
+			meta={pipe(
+				education,
+				Array.map(entry => entry.period),
+				Array.join(' · ')
+			)}
+			number="05"
+		>
+			<ol className="divide-border flex flex-col divide-y">
 				{Array.map(education, entry => (
-					<div key={entry.school} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
-						<h3 className="text-sm font-medium">
-							{entry.school}
-							<span className="text-muted-foreground ml-2 font-normal">
-								{entry.degree}
-								{Predicate.isNotUndefined(entry.grade) && ` (${entry.grade})`}
-							</span>
-						</h3>
-						<span className="text-muted-foreground font-mono text-xs">{entry.period}</span>
-					</div>
+					<li key={entry.school} className="flex flex-col gap-1.5 py-5 sm:flex-row sm:gap-8">
+						<p className="text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums sm:w-40 sm:shrink-0">
+							{entry.period}
+						</p>
+						<div>
+							<h3 className="text-sm font-semibold tracking-tight">{entry.degree}</h3>
+							<p className="text-muted-foreground mt-0.5 text-sm">
+								{entry.school}
+								{Predicate.isNotUndefined(entry.grade) && (
+									<>
+										{' · '}
+										<span className="font-mono text-xs tabular-nums">{entry.grade}</span>
+									</>
+								)}
+							</p>
+						</div>
+					</li>
 				))}
-				<div className="flex flex-wrap gap-x-6 gap-y-1 py-3">
-					{Array.map(languages, lang => (
-						<span key={lang.language} className="text-sm">
-							<span className="font-medium">{lang.language}</span>
-							<span className="text-muted-foreground ml-2 font-mono text-xs">{lang.level}</span>
-						</span>
-					))}
-				</div>
-			</SectionBody>
-		</Section>
+			</ol>
+		</RuledSection>
 	)
 }
 
 function ContactSection() {
+	const links = [
+		contacts.email,
+		contacts.pec,
+		contacts.phone,
+		contacts.github,
+		{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
+	]
 	return (
-		<Section className="pb-20 max-sm:pb-6">
-			<SectionBody title="contact">
-				{Array.map(
-					[
-						contacts.email,
-						contacts.pec,
-						contacts.phone,
-						contacts.github,
-						{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
-					],
-					item => {
-						const internal = String.startsWith('/')(item.href)
-						return (
-							<a
-								key={item.label}
-								href={item.href}
-								className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm transition-colors"
-								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
-								rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
-							>
-								<span className="text-muted-foreground">{item.label}</span>
-								<span className="font-mono text-xs break-all">{item.value}</span>
-							</a>
-						)
-					}
-				)}
-			</SectionBody>
-			<p className="bg-background text-muted-foreground mt-4 font-mono text-xs">
+		<RuledSection
+			className="pb-24 sm:pb-28"
+			id="section-contact"
+			label="Contact"
+			meta={`${Array.length(links)} ways`}
+			number="06"
+		>
+			<div className="flex flex-col">
+				{Array.map(links, item => {
+					const internal = String.startsWith('/')(item.href)
+					return (
+						<a
+							key={item.label}
+							href={item.href}
+							className="group border-border hover:text-primary flex min-h-11 items-center justify-between gap-6 border-b py-2.5 text-sm transition-colors last:border-b-0"
+							target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
+							rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
+						>
+							<span className="tracking-label text-muted-foreground group-hover:text-primary text-xs font-semibold uppercase">
+								{item.label}
+							</span>
+							<span className="group-hover:text-primary text-right font-mono text-xs break-all">{item.value}</span>
+						</a>
+					)
+				})}
+			</div>
+			<p className="text-muted-foreground mt-10 font-mono text-xs">
 				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
 			</p>
-		</Section>
+		</RuledSection>
+	)
+}
+
+// The shortcut legend is a printed card, not an app dialog: ruled rows and the page's own mono keys.
+function ShortcutRow(input: {keys: React.ReactNode; label: React.ReactNode}) {
+	return (
+		<div className="flex items-center justify-between gap-6 py-3">
+			<span className="text-sm">{input.label}</span>
+			{input.keys}
+		</div>
 	)
 }
 
 function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) => void}) {
 	return (
 		<Dialog open={input.open} onOpenChange={input.onOpenChange}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Keyboard shortcuts</DialogTitle>
+					<DialogTitle>Keyboard</DialogTitle>
+					<DialogDescription>The page moves without a mouse.</DialogDescription>
 				</DialogHeader>
-				<div className="text-muted-foreground grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-3 text-xs sm:gap-x-8">
-					<KbdGroup>
-						<Kbd>j</Kbd>
-						<Kbd>k</Kbd>
-					</KbdGroup>
-					<span>next / prev section</span>
-					<KbdGroup>
-						<Kbd>1</Kbd>–<Kbd>6</Kbd>
-					</KbdGroup>
-					<span>1 hero · 2 skills · 3 experience · 4 projects · 5 education · 6 contact</span>
-					<Kbd>r</Kbd>
-					<span>change cursor color</span>
-					<Kbd>?</Kbd>
-					<span>toggle this overlay</span>
-					<Kbd>Esc</Kbd>
-					<span>close this overlay</span>
+				<div className="divide-border flex flex-col divide-y">
+					<ShortcutRow
+						keys={
+							<KbdGroup>
+								<Kbd>j</Kbd>
+								<Kbd>k</Kbd>
+							</KbdGroup>
+						}
+						label="Next / previous section"
+					/>
+					<ShortcutRow
+						keys={
+							<KbdGroup>
+								<Kbd>1</Kbd>–<Kbd>6</Kbd>
+							</KbdGroup>
+						}
+						label={
+							<span className="flex flex-col gap-1">
+								Jump to a section
+								<span className="text-muted-foreground font-mono text-xs">
+									{pipe(
+										Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
+										Array.join(' · ')
+									)}
+								</span>
+							</span>
+						}
+					/>
+					<ShortcutRow keys={<Kbd>r</Kbd>} label="Change cursor color" />
+					<ShortcutRow keys={<Kbd>?</Kbd>} label="Toggle this panel" />
+					<ShortcutRow keys={<Kbd>Esc</Kbd>} label="Close this panel" />
 				</div>
 			</DialogContent>
 		</Dialog>
 	)
 }
 
-// The live count, its dot in the local cursor's colour; the fixed HUD adds the shortcut hint.
-function VisitorCount(props: {hint?: boolean; visitors: PortfolioVisitors}) {
+// The live count, its dot in the local cursor's color; the fixed HUD adds the shortcut hint.
+function VisitorCount(props: {visitors: PortfolioVisitors}) {
 	return (
 		<>
 			<span
@@ -593,12 +707,35 @@ function VisitorCount(props: {hint?: boolean; visitors: PortfolioVisitors}) {
 					)
 				}}
 			/>
-			<span className="text-primary">{Array.length(props.visitors)}</span>
+			<span className="text-foreground tabular-nums">{Array.length(props.visitors)}</span>
 			<span className="text-muted-foreground">
 				{Boolean.match(Array.length(props.visitors) === 1, {onFalse: () => 'visitors', onTrue: () => 'visitor'})}
 			</span>
-			{props.hint === true && <span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>}
 		</>
+	)
+}
+
+// Presence is a quiet line at the page's edge: live count, connecting, or unavailable, never a hero.
+function PresenceHud(input: {state: 'connecting' | 'live' | 'offline'; visitors?: PortfolioVisitors}) {
+	if (input.state === 'live' && Predicate.isNotUndefined(input.visitors)) {
+		return (
+			<div className="mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 font-mono text-xs sm:bottom-4 sm:left-4 print:hidden">
+				<VisitorCount visitors={input.visitors} />
+				<span className="text-muted-foreground max-sm:hidden">· j/k · ?</span>
+			</div>
+		)
+	}
+
+	return (
+		<div className="mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 font-mono text-xs sm:bottom-4 sm:left-4 print:hidden">
+			<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
+			<span className="text-muted-foreground">
+				{Boolean.match(input.state === 'offline', {
+					onFalse: () => 'presence connecting',
+					onTrue: () => 'presence unavailable'
+				})}
+			</span>
+		</div>
 	)
 }
 
@@ -607,10 +744,10 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 
 	return (
 		<>
-			<div className="trail-grid pointer-events-none fixed inset-0 z-1 w-screen" />
+			<div className="trail-grid pointer-events-none fixed inset-0 z-1 print:hidden" />
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
-			<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+			<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 				<OwnCursor
 					cursor={Option.getOrElse(
 						Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
@@ -619,7 +756,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 					viewport={input.viewport}
 				/>
 			</div>
-			<div className="max-sm:hidden">
+			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 					{Array.map(portfolio.value.visitors, cursor =>
 						Boolean.match(cursor.id === identity.id, {
@@ -630,16 +767,13 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 				</div>
 			</div>
 
-			<div className="border-border bg-background mb-safe-bottom ml-safe-left pointer-events-none fixed bottom-3 left-3 z-50 flex h-7 items-center gap-2 rounded-md border px-2 font-mono text-xs max-sm:hidden sm:bottom-4 sm:left-4">
-				<VisitorCount hint visitors={portfolio.value.visitors} />
-			</div>
-			<div className="relative z-10 flex justify-center px-3 pb-6 sm:hidden">
-				<Panel className="flex w-full max-w-3xl items-center gap-2 px-4 py-3 font-mono text-xs">
-					<VisitorCount visitors={portfolio.value.visitors} />
-				</Panel>
-			</div>
+			<PresenceHud state="live" visitors={portfolio.value.visitors} />
 		</>
 	)
+}
+
+function PresenceUnavailable() {
+	return <PresenceHud state="offline" />
 }
 
 function PortfolioRoute() {
@@ -759,7 +893,7 @@ function PortfolioRoute() {
 	return (
 		<div
 			ref={containerRef}
-			className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
 			onPointerMove={updatePointer}
 			onScroll={event => {
 				const viewportMiddle = event.currentTarget.scrollTop + event.currentTarget.clientHeight / 2
@@ -770,25 +904,30 @@ function PortfolioRoute() {
 				)
 			}}
 		>
-			<HeroSection />
+			<ProfileSection />
 			<SkillsSection />
 			<ExperienceSection />
 			<ProjectsSection />
 			<EducationSection />
 			<ContactSection />
 
-			<Suspense
-				fallback={
-					<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-						<OwnCursor
-							cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
-							viewport={viewport}
-						/>
-					</div>
-				}
-			>
-				<RealtimeLayer viewport={viewport} />
-			</Suspense>
+			<CatchBoundary getResetKey={() => 'presence'} errorComponent={PresenceUnavailable}>
+				<Suspense
+					fallback={
+						<>
+							<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
+								<OwnCursor
+									cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
+									viewport={viewport}
+								/>
+							</div>
+							<PresenceHud state="connecting" />
+						</>
+					}
+				>
+					<RealtimeLayer viewport={viewport} />
+				</Suspense>
+			</CatchBoundary>
 
 			<Button
 				variant="outline"
@@ -799,7 +938,7 @@ function PortfolioRoute() {
 				onClick={() => {
 					setShowShortcuts(show => !show)
 				}}
-				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-3 z-50 max-sm:hidden sm:right-4 sm:bottom-4"
+				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-3 z-50 max-sm:hidden sm:right-4 sm:bottom-4 print:hidden"
 			>
 				?
 			</Button>
