@@ -23,7 +23,6 @@ import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'ef
 import {KeyValueStore} from 'effect/persistence'
 
 import {GRANT_REFUSED} from '@deslop/runtime/ai/schema'
-import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
@@ -93,10 +92,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		})
 	)
 	const auth = Auth.of({
-		access: (headers, app) => {
-			if (headers['authorization'] === `Bearer ${app}`) return Effect.succeed({id: 'alice', name: 'Person'})
-			return Effect.fail(AuthError.make({message: 'Wrong resource'}))
-		},
+		token: () => Effect.succeed('token'),
 		user: headers => Effect.succeed({id: headers['cookie'] ?? 'alice', name: 'Person'})
 	})
 	const services = pipe(
@@ -189,24 +185,6 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 			const refused = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(refused.status, 401)
 			assert.equal(refused.headers.get(GRANT_REFUSED), 'true')
-		}),
-		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
-		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))
-	)
-)
-
-it.effect('rejects grant enrollment with a bearer for a different app', () =>
-	pipe(
-		Effect.gen(function* () {
-			const f = yield* fixture()
-			assert.equal(
-				(yield* f.request('/ai/grants', {
-					body: GRANT_BODY,
-					headers: {authorization: 'Bearer https://trips.mp281x.xyz', 'content-type': 'application/json'},
-					method: 'POST'
-				})).status,
-				401
-			)
 		}),
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))

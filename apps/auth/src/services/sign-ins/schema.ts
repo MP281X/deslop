@@ -4,7 +4,7 @@ import {Resource} from '@deslop/runtime/auth/schema'
 
 import {ClientRequest, Origin} from '#services/tokens/schema.ts'
 
-// An app or agent asks for tokens to Deslop apps; a browser asks for the shared session.
+// An app or agent asks for tokens to Deslop apps; a browser asks for Auth's own session.
 export type SignInKind = typeof SignInKind.Type
 export const SignInKind = Schema.Literals(['App', 'Browser'])
 

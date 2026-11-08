@@ -11,13 +11,17 @@ import {TestClock} from 'effect/testing'
 // oxlint-disable-next-line no-restricted-imports -- Node has no native host; only Expo and React Native imports are stubbed, not session, machine, atom or HTTP behavior.
 import {vi} from 'vite-plus/test'
 
+import {ISSUER} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 import {make} from '#mobile/session.ts'
 
 vi.mock('expo-auth-session', () => ({
 	AuthRequest: class {
+		clientId = 'fixture-client'
+		codeVerifier = 'fixture-verifier'
 		promptAsync() {
-			assert.fail('A stalled registration must not open the native sign-in sheet')
+			// oxlint-disable-next-line eslint/no-restricted-properties -- expo-auth-session's promptAsync answers with a Promise.
+			return Effect.runPromise(Effect.succeed({params: {code: 'approved', iss: ISSUER}, type: 'success'}))
 		}
 	},
 	makeRedirectUri: () => 'fixture://auth/callback'
@@ -28,10 +32,10 @@ vi.mock('react-native', () => ({Alert: {alert: () => {}}, AppState: {addEventLis
 
 class DataError extends Schema.TaggedError<DataError>()('DataError', {message: Schema.String}) {}
 
-function session() {
+function session(cleared: Ref.Ref<boolean>) {
 	return make('Fixture', 'https://fixture.example', {
-		clear: Effect.void,
-		read: Effect.succeed(''),
+		clear: Ref.set(cleared, true),
+		read: Effect.succeed('{"session":"fixture-session"}'),
 		write: () => Effect.void
 	})
 }
@@ -45,15 +49,29 @@ it.layer(AtomRegistry.layer)(test => {
 		})
 	]) {
 		test.effect(
-			`surfaces ${error._tag}: ${error.message} without retrying`,
+			`surfaces ${error._tag}: ${error.message} without retrying or signing out`,
 			Effect.fnUntraced(function* () {
-				const waiting = yield* Effect.forkChild(Stream.runCollect(session().renewing(Stream.fail(error))))
+				const cleared = yield* Ref.make(false)
+				const waiting = yield* Effect.forkChild(Stream.runCollect(session(cleared).reopening(Stream.fail(error))))
 				yield* TestClock.adjust('2 seconds')
 				assert.isDefined(waiting.pollUnsafe())
 				assert.strictEqual(yield* Effect.flip(Fiber.join(waiting)), error)
+				assert.isFalse(yield* Ref.get(cleared))
 			})
 		)
 	}
+
+	test.effect(
+		'signs out once the server refuses the session',
+		Effect.fnUntraced(function* () {
+			const cleared = yield* Ref.make(false)
+			const refusal = AuthError.make({message: 'Sign in first'})
+			const waiting = yield* Effect.forkChild(Stream.runCollect(session(cleared).reopening(Stream.fail(refusal))))
+			yield* TestClock.adjust('2 seconds')
+			assert.strictEqual(yield* Effect.flip(Fiber.join(waiting)), refusal)
+			assert.isTrue(yield* Ref.get(cleared))
+		})
+	)
 
 	for (const error of [
 		AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}),
@@ -62,10 +80,11 @@ it.layer(AtomRegistry.layer)(test => {
 		test.effect(
 			`reopens a live stream after ${error.message}`,
 			Effect.fnUntraced(function* () {
+				const cleared = yield* Ref.make(false)
 				const attempts = yield* Ref.make(0)
 				const waiting = yield* Effect.forkChild(
 					Stream.runCollect(
-						session().renewing(
+						session(cleared).reopening(
 							Stream.unwrap(
 								Effect.map(
 									Ref.getAndUpdate(attempts, count => count + 1),
@@ -81,16 +100,21 @@ it.layer(AtomRegistry.layer)(test => {
 				yield* TestClock.adjust('2 seconds')
 				assert.deepStrictEqual(yield* Fiber.join(waiting), ['recovered'])
 				assert.strictEqual(yield* Ref.get(attempts), 2)
+				assert.isFalse(yield* Ref.get(cleared))
 			})
 		)
 	}
 
 	test.effect(
-		'leaves signing-in after a registration request stalls for ten seconds',
+		'leaves signing-in after the server stalls exchanging the code for ten seconds',
 		Effect.fnUntraced(function* () {
-			const current = session()
+			const current = make('Fixture', 'https://fixture.example', {
+				clear: Effect.void,
+				read: Effect.succeed(''),
+				write: () => Effect.void
+			})
 			const clock = yield* Clock.Clock
-			const entered = yield* Queue.unbounded<void>()
+			const entered = yield* Queue.unbounded<string>()
 			const registry = yield* Effect.acquireRelease(
 				Effect.sync(() =>
 					AtomRegistry.make({
@@ -100,7 +124,7 @@ it.layer(AtomRegistry.layer)(test => {
 								Layer.merge(
 									Layer.succeed(
 										HttpClient.HttpClient,
-										HttpClient.make(() => Effect.andThen(Queue.offer(entered, undefined), Effect.never))
+										HttpClient.make(request => Effect.andThen(Queue.offer(entered, request.url), Effect.never))
 									),
 									Layer.succeed(Clock.Clock, clock)
 								),
@@ -114,7 +138,7 @@ it.layer(AtomRegistry.layer)(test => {
 			const signedOut = AtomMachine.matches(current.machine, 'SignedOut')
 			yield* pipe(AtomRegistry.toStreamResult(registry, signedOut), Stream.filter(Function.identity), Stream.runHead)
 			registry.set(current.machine.send, {_tag: 'SignIn'})
-			yield* Queue.take(entered)
+			assert.strictEqual(yield* Queue.take(entered), 'https://fixture.example/auth/session')
 			yield* TestClock.adjust('9999 millis')
 			assert.isFalse(AsyncResult.getOrElse(registry.get(signedOut), () => false))
 			yield* TestClock.adjust('1 millis')

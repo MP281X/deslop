@@ -1,22 +1,7 @@
 import {NodeCrypto} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {
-	Array,
-	ConfigProvider,
-	Context,
-	Deferred,
-	Effect,
-	Fiber,
-	Layer,
-	Option,
-	Record,
-	Ref,
-	Schema,
-	Stream,
-	Struct,
-	pipe
-} from 'effect'
+import {ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, Schema, Stream, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -26,23 +11,20 @@ import {RpcTest} from 'effect/rpc'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
-import {Members} from '#services/people/schema.ts'
-import {People} from '#services/people/service.ts'
+import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
-import {SESSION_COOKIE} from '#services/tokens/lib/utils.ts'
 import type {ClientRequest} from '#services/tokens/schema.ts'
-import {Grants} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const ADMIN = {id: 'github:42', name: 'admin'}
 const PROFILE = {id: 7, login: 'member'}
-const RESOURCE = 'https://scope.mp281x.xyz/mcp'
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 const open = Effect.gen(function* () {
@@ -74,6 +56,7 @@ const open = Effect.gen(function* () {
 	})
 	const layer = pipe(
 		RpcHandlers,
+		Layer.provideMerge(layerIssuerAuth),
 		Layer.provideMerge(SignIns.layer),
 		Layer.provideMerge(People.layer),
 		Layer.provideMerge(
@@ -127,7 +110,7 @@ const request = Effect.gen(function* () {
 		clientId: 'fixture',
 		clientName: 'Fixture',
 		redirectUri: 'http://127.0.0.1/callback',
-		resources: [RESOURCE]
+		resources: ['https://scope.mp281x.xyz/mcp']
 	} satisfies ClientRequest
 })
 
@@ -177,38 +160,16 @@ it.layer(NodeCrypto.layer)(test => {
 	)
 
 	test.effect(
-		'preserves immediately previous-release credentials until that registration is removed',
+		'deletes obsolete grants without deleting membership on start',
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
-			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
-			})
-			const members = (yield* fixture.base.get('members')) ?? ''
-			const grants = (yield* fixture.base.get('grants')) ?? ''
-			yield* fixture.base.set(
-				'members',
-				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
-					Array.map(yield* Schema.decodeEffect(Schema.fromJsonString(Members))(members), Struct.omit(['incarnation']))
-				)
-			)
-			yield* fixture.base.set(
-				'grants',
-				yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
-					Record.map(yield* Schema.decodeEffect(Schema.fromJsonString(Grants))(grants), Struct.omit(['incarnation']))
-				)
-			)
+			yield* fixture.base.set('grants', 'obsolete access hashes and shared sessions')
 			const restarted = yield* fixture.reload
-			assert.deepStrictEqual(yield* restarted.auth.user(headers), owner.user)
-			assert.strictEqual((yield* restarted.tokens.session(headers)).incarnation, 'legacy')
-			yield* Ref.set(fixture.failing, Option.some('grants'))
-			yield* Effect.flip(restarted.people.remove(owner.user.id, ADMIN))
-			yield* Ref.set(fixture.failing, Option.none())
-			const fresh = yield* restarted.people.register(PROFILE)
-			yield* restarted.people.admit({allow: true, id: fresh.user.id}, ADMIN)
-			assert.notStrictEqual(fresh.incarnation, 'legacy')
-			assert.strictEqual((yield* Effect.flip(restarted.auth.user(headers))).error, 'invalid_grant')
+			assert.isUndefined(yield* fixture.base.get('grants'))
+			assert.deepStrictEqual(yield* restarted.people.allowed(owner), owner)
+			assert.deepStrictEqual(yield* first(restarted.tokens.apps(owner)), [])
 		})
 	)
 
@@ -237,7 +198,7 @@ it.layer(NodeCrypto.layer)(test => {
 			)
 			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
 			const unspent = yield* fixture.tokens.issue(asked, owner)
-			yield* Ref.set(fixture.failing, Option.some('grants'))
+			yield* Ref.set(fixture.failing, Option.some('sign-ins'))
 			assert.strictEqual(
 				(yield* Effect.flip(fixture.people.remove(owner.user.id, ADMIN))).error,
 				'temporarily_unavailable'
@@ -264,7 +225,7 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.strictEqual((yield* Effect.flip(restarted.auth.user(headers))).error, 'invalid_grant')
 			assert.strictEqual(
 				(yield* Effect.flip(
-					restarted.auth.access(Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`}), RESOURCE)
+					restarted.auth.user(Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`}))
 				)).error,
 				'invalid_grant'
 			)
@@ -319,7 +280,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
 			const old = yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')
-			yield* Ref.set(fixture.holding, Option.some('grants'))
+			yield* Ref.set(fixture.holding, Option.some('sign-ins'))
 			const removing = yield* Effect.forkScoped(fixture.people.remove(owner.user.id, ADMIN))
 			yield* Effect.addFinalizer(() => Deferred.succeed(fixture.release, undefined))
 			yield* Deferred.await(fixture.reached)

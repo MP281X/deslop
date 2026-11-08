@@ -76,7 +76,7 @@ export const session = MobileSession.make('Trips', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layerSignedIn('@deslop/trips', session.accessToken)(SERVER)
+	protocol: MobileRuntime.layerSignedIn('@deslop/trips', session.bearer)(SERVER)
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.
@@ -108,7 +108,7 @@ export const bookingsAtom = Atom.keepAlive(
 				Stream.scan(Array.empty<Booking>, apply),
 				Stream.drop(1)
 			),
-			session.renewing
+			session.reopening
 		)
 	})
 )

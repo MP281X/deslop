@@ -67,9 +67,7 @@ const fixture = Effect.gen(function* () {
 					),
 					Layer.provide(
 						Layer.succeedContext(
-							Auth.makeContext(
-								Auth.of({access: () => Effect.succeed(DEVELOPER), user: () => Effect.succeed(DEVELOPER)})
-							)
+							Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => Effect.succeed(DEVELOPER)}))
 						)
 					)
 				)

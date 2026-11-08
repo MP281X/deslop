@@ -1,6 +1,6 @@
 import {Context, Effect, Schema, pipe} from 'effect'
 
-import {Resource, User} from '@deslop/runtime/auth/schema'
+import {ClientInfo, Resource, User} from '@deslop/runtime/auth/schema'
 
 // Credentials retain the registration that issued them, never a later membership with the same GitHub id.
 export type CredentialOwner = typeof CredentialOwner.Type
@@ -20,15 +20,9 @@ export const StoredOwner = Schema.Struct({
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({
 	client_name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100))),
-	redirect_uris: Schema.NonEmptyArray(Schema.NonEmptyString.check(Schema.isMaxLength(200))).check(
-		Schema.isMaxLength(4)
-	),
+	redirect_uris: ClientInfo.fields.redirects,
 	token_endpoint_auth_method: Schema.optionalKey(Schema.Literal('none'))
 })
-
-// A registered client is its own id: the name and callbacks it registered, so registration stores nothing.
-export type ClientInfo = typeof ClientInfo.Type
-export const ClientInfo = Schema.Struct({name: Schema.String, redirects: Registration.fields.redirect_uris})
 
 // What an authorization request must carry before the server may send any answer to its callback.
 export type AuthorizeClient = typeof AuthorizeClient.Type
@@ -54,6 +48,7 @@ export const ClientRequest = Schema.Struct({
 	challenge: Schema.NonEmptyString,
 	clientId: Schema.NonEmptyString,
 	clientName: Schema.String,
+	parent: Schema.optionalKey(Schema.NonEmptyString),
 	redirectUri: Schema.NonEmptyString,
 	resources: Schema.NonEmptyArray(Resource),
 	state: Schema.optionalKey(Schema.NonEmptyString)
@@ -104,10 +99,6 @@ export const Origin = Schema.Struct({
 	userAgent: Schema.optionalKey(Schema.String)
 })
 
-// A secret is stored only as its SHA-256.
-export type Access = typeof Access.Type
-export const Access = Schema.Struct({expiresAt: Schema.Finite, hash: Schema.String, resources: Schema.Array(Resource)})
-
 // How a browser signed in: GitHub and a passkey prove the owner's browser; a code may have been approved for someone else's.
 export type SessionVia = typeof SessionVia.Type
 export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
@@ -115,26 +106,25 @@ export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
 // One signed-in app or browser, keyed by its family: what the signed-in list shows and what signing it out removes.
 export type Grant = typeof Grant.Type
 export const Grant = Schema.Struct({
-	...StoredOwner.fields,
+	...CredentialOwner.fields,
 	client: Schema.String,
 	createdAt: Schema.Finite,
 	credential: Schema.TaggedUnion({
-		// Keep every spent token's hash until the family ends; the previous release stored only its latest one.
+		// Keep every spent refresh token's hash until the family ends.
 		App: {
-			access: Schema.Array(Access),
 			clientId: Schema.NonEmptyString,
 			expiresAt: Schema.Finite,
 			generation: Schema.Int,
 			hash: Schema.String,
-			replaced: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+			replaced: Schema.Array(Schema.String),
 			resources: Schema.Array(Resource)
 		},
-		// A session from before it was recorded reads as a code's, the least trusted.
-		Browser: {expiresAt: Schema.Finite, hash: Schema.String, via: Schema.optionalKey(SessionVia)}
+		Browser: {expiresAt: Schema.Finite, hash: Schema.String, via: SessionVia}
 	}),
 	device: Schema.String,
 	lastActive: Schema.Finite,
-	origin: Origin
+	origin: Origin,
+	parent: Schema.optionalKey(Schema.NonEmptyString)
 })
 
 export type Grants = typeof Grants.Type
@@ -150,6 +140,7 @@ export const SignedInApp = Schema.Struct({
 	family: Schema.NonEmptyString,
 	kind: Schema.Literals(['App', 'Browser']),
 	lastActive: Schema.Finite,
+	parent: Schema.optionalKey(Schema.NonEmptyString),
 	resources: Schema.Array(Resource)
 })
 
@@ -158,6 +149,3 @@ export const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
 
 export type RevokeParams = typeof RevokeParams.Type
 export const RevokeParams = Schema.Struct({client_id: Schema.NonEmptyString, token: Schema.NonEmptyString})
-
-export type VerificationParams = typeof VerificationParams.Type
-export const VerificationParams = Schema.Struct({resource: Resource})

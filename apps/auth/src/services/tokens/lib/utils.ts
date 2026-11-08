@@ -4,11 +4,11 @@ import {Base64Url} from 'effect/encoding'
 import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
-import {AuthError, Resource} from '@deslop/runtime/auth/schema'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {AuthError, ClientInfo, Resource} from '@deslop/runtime/auth/schema'
+import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
 
 import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin} from '#services/tokens/schema.ts'
-import {ClientInfo, ClientRequest} from '#services/tokens/schema.ts'
+import {ClientRequest} from '#services/tokens/schema.ts'
 
 // The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
 const WORKERS: Record<string, string> = {
@@ -17,8 +17,6 @@ const WORKERS: Record<string, string> = {
 	'100.97.120.3': 'desktop',
 	'100.115.207.60': 'macbook-pro'
 }
-
-export const SESSION_COOKIE = '__Secure-session'
 
 export function browserToken(headers: Headers.Headers) {
 	return Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE] ?? ''
@@ -81,14 +79,16 @@ export function originFrom(headers: Headers.Headers, remote: Option.Option<strin
 	}
 }
 
-// A client id is its registration, encoded: anyone may register, and the callbacks are checked again at authorize.
-export function clientIdOf(client: ClientInfo) {
-	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientInfo))(client))
-}
-
 // "Claude Code (auth)" reads Claude Code, "codex" Codex: the app, as the signed-in list names it.
 export function clientLabel(name: string) {
-	return pipe(name, String.replace(/\s*\([^)]*\)$/u, ''), String.trim, String.capitalize)
+	return pipe(
+		name,
+		String.replace(/\s*\([^)]*\)$/u, ''),
+		String.trim,
+		String.capitalize,
+		Option.liftPredicate(String.isNonEmpty),
+		Option.getOrElse(() => 'Unknown client')
+	)
 }
 
 function platform(userAgent: string) {
@@ -145,9 +145,16 @@ function loopback(redirect: string) {
 	)
 }
 
-// The iOS apps in their release and Simulator builds, a loopback callback of a desktop agent, or the gateway's callback for one of its servers.
+export function webRedirect(redirect: string) {
+	return Option.isSome(
+		String.match(/^https:\/\/[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.mp281x\.xyz\/auth\/callback$/u)(redirect)
+	)
+}
+
+// Deslop web and iOS apps, a desktop agent's loopback, or Gateway's per-server callback.
 export function allowedRedirect(redirect: string) {
 	return (
+		webRedirect(redirect) ||
 		Option.isSome(
 			String.match(/^https:\/\/gateway\.mp281x\.xyz\/oauth\/callback\/[a-z0-9][a-z0-9_-]{0,23}$/u)(redirect)
 		) ||
@@ -248,27 +255,27 @@ export const clientRequest = Effect.fnUntraced(function* (
 })
 
 // Where an authorization answer goes: the client's callback with its state and this issuer.
-export function callbackUrl(request: {redirectUri: string; state?: string}, answer: Record<string, string>) {
+export function callbackUrl(
+	request: {redirectUri: string; state?: string},
+	answer: Record<string, string>,
+	issuer: string
+) {
 	const target = new URL(request.redirectUri)
 	for (const entry of Record.toEntries(answer)) target.searchParams.set(entry[0], entry[1])
 	Option.map(given(request.state), sent => target.searchParams.set('state', sent))
-	target.searchParams.set('iss', `${AUTH_URL}/api/auth`)
+	target.searchParams.set('iss', issuer)
 	return target.href
 }
 
-// The session cookie is shared with every app on the auth app's parent domain.
-export function cookieDomain(url: string) {
-	return pipe(new URL(url).hostname, String.split('.'), Array.drop(1), Array.join('.'))
-}
-
-// A web sign-in returns to the page that started it only over https on the auth app's own domain or a subdomain.
+// A web sign-in returns to Auth itself or an https page on mp281x.xyz.
 export function returnable(next: string, url: string) {
-	const domain = cookieDomain(url)
+	const domain = 'mp281x.xyz'
 	return Result.match(Url.fromString(next), {
 		onFailure: () => false,
 		onSuccess: target =>
-			target.protocol === 'https:' &&
-			(target.hostname === domain || String.endsWith(`.${domain}`)(target.hostname)) &&
+			(target.origin === new URL(url).origin ||
+				(target.protocol === 'https:' &&
+					(target.hostname === domain || String.endsWith(`.${domain}`)(target.hostname)))) &&
 			String.isEmpty(target.username) &&
 			String.isEmpty(target.password)
 	})

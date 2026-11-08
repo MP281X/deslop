@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -25,6 +25,7 @@ import {FieldDescription} from '@deslop/components-web/ui/field'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Table, TableBody, TableCell, TableHead, TableHeader, TableRow} from '@deslop/components-web/ui/table'
 import {cn} from '@deslop/components-web/utils'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 
 import android from '#lib/brands/android.svg'
 import apple from '#lib/brands/apple.svg'
@@ -232,7 +233,7 @@ function ColumnHead(props: {column: Column; now: number}) {
 	)
 }
 
-// A browser session reaches every web app, so it counts under each one with a site.
+// A waiting browser asks for web access; a signed-in browser holds Auth and its children's apps.
 function reaches(resources: PendingAuthorization['resources'], origin: string, web: boolean) {
 	const origins = appOrigins(resources)
 	return Array.contains(origins, origin) || (Array.contains(origins, 'browser') && web)
@@ -335,6 +336,22 @@ function columnsOf(
 	signIns: readonly SignedInApp[],
 	catalog: readonly {name: string; origin: string}[]
 ) {
+	const children = Array.groupBy(
+		Array.filter(signIns, signIn => signIn.parent !== undefined),
+		signIn => signIn.parent ?? ''
+	)
+	const parents = Array.map(
+		Array.filter(signIns, signIn => signIn.parent === undefined),
+		signIn => {
+			if (signIn.kind !== 'Browser') return signIn
+			const apps = Option.getOrElse(Record.get(children, signIn.family), () => [])
+			return {
+				...signIn,
+				lastActive: Array.reduce(apps, signIn.lastActive, (latest, app) => Number.max(latest, app.lastActive)),
+				resources: [AUTH_URL, ...Array.flatMap(apps, app => app.resources)]
+			}
+		}
+	)
 	function clientOf(name: string, device: string, kind: 'App' | 'Browser') {
 		return {
 			app: Option.map(
@@ -363,7 +380,7 @@ function columnsOf(
 			]
 		}),
 		...pipe(
-			Array.groupBy(signIns, signIn => signInLabel(signIn.client, signIn.device)),
+			Array.groupBy(parents, signIn => signInLabel(signIn.client, signIn.device)),
 			Record.values,
 			Array.filter(Array.isReadonlyArrayNonEmpty),
 			Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),

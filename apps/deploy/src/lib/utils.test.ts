@@ -74,7 +74,11 @@ const fixture = Effect.gen(function* () {
 							HttpServerResponse.jsonUnsafe({name: 'deploy', traces: '', version: '0.1.0'})
 						)
 					),
-					Layer.provide(Layer.succeedContext(Auth.makeContext(Auth.of({access: authenticate, user: authenticate}))))
+					Layer.provide(
+						Layer.succeedContext(
+							Auth.makeContext(Auth.of({token: () => Effect.as(authenticate(), 'token'), user: authenticate}))
+						)
+					)
 				)
 			),
 			Layer.provide(ServerRuntime.layerProtocol),

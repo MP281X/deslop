@@ -45,9 +45,7 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 					Layer.provide(Layer.succeed(Fleet, fleet)),
 					Layer.provideMerge(
 						Layer.succeedContext(
-							Auth.makeContext(
-								Auth.of({access: () => Effect.succeed(DEVELOPER), user: () => Effect.succeed(DEVELOPER)})
-							)
+							Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => Effect.succeed(DEVELOPER)}))
 						)
 					)
 				)
@@ -115,9 +113,7 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 					),
 					Layer.provideMerge(
 						Layer.succeedContext(
-							Auth.makeContext(
-								Auth.of({access: () => Effect.succeed(DEVELOPER), user: () => Effect.succeed(DEVELOPER)})
-							)
+							Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => Effect.succeed(DEVELOPER)}))
 						)
 					)
 				)

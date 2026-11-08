@@ -192,7 +192,7 @@ export class Gateway extends Context.Service<
 							Effect.serviceOption(HttpServerRequest.HttpServerRequest),
 							Effect.fromOption
 						)
-						yield* auth.access(request.headers, `${url}/mcp`)
+						yield* auth.user(request.headers)
 					}
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
@@ -338,7 +338,6 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
 		const auth = yield* Auth
-		const url = yield* gatewayUrl
 		return app =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
@@ -346,7 +345,7 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 					request.method === 'POST' &&
 					request.url === MCP_PATH &&
 					request.headers['origin'] === undefined &&
-					Result.isSuccess(yield* Effect.result(auth.access(request.headers, `${url}${MCP_PATH}`)))
+					Result.isSuccess(yield* Effect.result(auth.user(request.headers)))
 				) {
 					const body = yield* Effect.result(request.json)
 					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {

@@ -4,4 +4,11 @@
 - A sign-in waiting for an answer leads as an outlined column whose dots breathe on the apps it asks for, under its Approve and Deny; the code field, with no visible label, stays above the grid, both one centred column of the same width, the grid's rows divided edge to edge. Rejected: a pinned app column, which hid the dividers.
 - An app's name opens it. Rejected: apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
 - The bar's palette lists every app that announced itself, Sign-ins, People for an admin, and signing out of every app; typing filters them. Searching is how the page moves; the grid itself is never narrowed.
+- A browser column holds Auth and only the web apps signed in from that browser. Their grants add dots to its column, never columns of their own; signing the browser out ends them all.
 - People are one line each: picture, name, GitHub handle; whoever asks for access leads with Allow and Decline on the row, an admin is marked, a member shows since when and is removed from the row's context menu.
+
+## Journeys
+
+- Sign into Auth with GitHub, a passkey or an approved code, then return to the requesting web app without a second approval.
+- Approve an iOS or agent sign-in by its code; its access token works across Deslop apps and refreshes without another approval.
+- Inspect the browser's signed-in apps and sign its column out to end them together.

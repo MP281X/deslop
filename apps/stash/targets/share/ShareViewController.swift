@@ -236,7 +236,7 @@ private struct Upload {
     request.httpMethod = "POST"
     request.timeoutInterval = 10
     request.setValue(type, forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(try await accessToken(validFor: 60))", forHTTPHeaderField: "Authorization")
+    request.setValue("Bearer \(try sessionId())", forHTTPHeaderField: "Authorization")
     let (_, response) = try await URLSession.shared.upload(for: request, from: payload)
     guard let response = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
     return response.statusCode
@@ -246,8 +246,8 @@ private struct Upload {
     var request = URLRequest(url: server.appendingPathComponent(path))
     request.httpMethod = "POST"
     request.setValue(type, forHTTPHeaderField: "Content-Type")
-    // A queued background request cannot replace its bearer after the extension closes, so it needs a day of validity.
-    request.setValue("Bearer \(try await accessToken(validFor: 86_460))", forHTTPHeaderField: "Authorization")
+    // The session id stays valid on the server however long the background upload waits.
+    request.setValue("Bearer \(try sessionId())", forHTTPHeaderField: "Authorization")
     let configuration = URLSessionConfiguration.background(withIdentifier: "\(group).share.\(id)")
     configuration.sharedContainerIdentifier = group
     configuration.isDiscretionary = false
@@ -263,58 +263,24 @@ private struct Upload {
       kSecAttrAccessGroup as String: keychainGroup]
   }
 
-  private func accessToken(validFor seconds: Double) async throws -> String {
-    let descriptor = try await SessionLock.acquire(group: group)
-    defer { SessionLock.release(descriptor) }
+  // The app's session on the Stash server, which the app saved after signing in.
+  private func sessionId() throws -> String {
     var query = keychainQuery
     query[kSecReturnData as String] = true
     query[kSecMatchLimit as String] = kSecMatchLimitOne
     var value: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &value)
-    guard status == errSecSuccess, let data = value as? Data else {
+    guard status == errSecSuccess, let data = value as? Data,
+      let saved = try? JSONDecoder().decode(StoredSession.self, from: data)
+    else {
       throw NSError(domain: "Stash", code: 401, userInfo: [NSLocalizedDescriptionKey: "Open Stash and sign in first."])
     }
-    var credentials = try JSONDecoder().decode(Credentials.self, from: data)
-    if credentials.expiresAt > (Date().timeIntervalSince1970 + seconds) * 1000 { return credentials.accessToken }
-    var form = URLComponents()
-    form.queryItems = [URLQueryItem(name: "client_id", value: credentials.clientId),
-      URLQueryItem(name: "grant_type", value: "refresh_token"),
-      URLQueryItem(name: "refresh_token", value: credentials.refreshToken),
-      URLQueryItem(name: "resource", value: "https://stash.mp281x.xyz")]
-    guard let endpoint = URL(string: "https://auth.mp281x.xyz/api/auth/oauth2/token") else {
-      throw CocoaError(.featureUnsupported)
-    }
-    var request = URLRequest(url: endpoint)
-    request.timeoutInterval = 10
-    request.httpMethod = "POST"
-    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-    request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
-    let (body, response) = try await URLSession.shared.data(for: request)
-    guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
-      throw NSError(domain: "Stash", code: 401, userInfo: [NSLocalizedDescriptionKey: "Open Stash and sign in again."])
-    }
-    let token = try JSONDecoder().decode(OAuthResponse.self, from: body)
-    credentials.accessToken = token.access_token
-    credentials.refreshToken = token.refresh_token
-    credentials.expiresAt = Date().timeIntervalSince1970 * 1000 + token.expires_in * 1000
-    let saved = SecItemUpdate(keychainQuery as CFDictionary,
-      [kSecValueData as String: try JSONEncoder().encode(credentials)] as CFDictionary)
-    guard saved == errSecSuccess else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(saved)) }
-    return credentials.accessToken
+    return saved.session
   }
 }
 
-private struct Credentials: Codable {
-  var accessToken: String
-  let clientId: String
-  var expiresAt: Double
-  var refreshToken: String
-}
-
-private struct OAuthResponse: Decodable {
-  let access_token: String
-  let expires_in: Double
-  let refresh_token: String
+private struct StoredSession: Decodable {
+  let session: String
 }
 
 private enum SharedText {

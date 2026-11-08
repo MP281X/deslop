@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {ConfigProvider, Effect, Layer, Queue, Ref, String, pipe} from 'effect'
 
-import {Headers, HttpClient, HttpClientResponse} from 'effect/http'
+import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {GRANT_REFUSED} from '#ai/schema.ts'
@@ -41,13 +41,13 @@ it.effect(
 		yield* pipe(
 			Effect.gen(function* () {
 				const gateway = yield* AiGateway
-				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				yield* gateway.enroll('alice', Effect.succeed('alice-access'))
 				const authorized = gateway.authorize('alice')(client)
 				assert.equal((yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/wrong-key')).status, 401)
-				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				yield* gateway.enroll('alice', Effect.succeed('alice-access'))
 				assert.equal(yield* Ref.get(minted), 1)
 				assert.equal((yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/v1/messages')).status, 401)
-				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				yield* gateway.enroll('alice', Effect.succeed('alice-access'))
 				assert.equal(yield* Ref.get(minted), 2)
 				assert.deepEqual(yield* (yield* authorized.get('https://gateway.mp281x.xyz/ai/anthropic/v1/messages')).json, {
 					authorization: 'Bearer grant-2'
@@ -80,7 +80,7 @@ it.effect(
 		const calls = yield* Queue.unbounded<string>()
 		const client = HttpClient.make(request =>
 			Effect.gen(function* () {
-				yield* Queue.offer(calls, request.headers['authorization'] ?? request.headers['cookie'] ?? '')
+				yield* Queue.offer(calls, request.headers['authorization'] ?? '')
 				return HttpClientResponse.fromWeb(request, Response.json({token: 'grant-for-alice'}))
 			})
 		)
@@ -88,9 +88,9 @@ it.effect(
 			Effect.gen(function* () {
 				const gateway = yield* AiGateway
 				assert.equal(yield* gateway.apiUrl('openrouter'), 'https://gateway.mp281x.xyz/ai/openrouter/v1')
-				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
-				assert.equal(yield* Queue.take(calls), 'session=alice')
-				yield* gateway.enroll('alice', Headers.fromInput({cookie: 'session=alice'}))
+				yield* gateway.enroll('alice', Effect.succeed('alice-access'))
+				assert.equal(yield* Queue.take(calls), 'Bearer alice-access')
+				yield* gateway.enroll('alice', Effect.die('An enrolled person needs no access token'))
 				yield* gateway.authorize('alice')(client).get('https://gateway.mp281x.xyz/ai/openrouter/alpha/decisions')
 				assert.equal(yield* Queue.take(calls), 'Bearer grant-for-alice')
 				assert.equal(
