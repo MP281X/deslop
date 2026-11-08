@@ -482,7 +482,10 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 		<div
 			className={cn(
 				'grid min-h-0 flex-1',
-				Boolean.match(props.detailOnly === true, {onFalse: () => 'grid-rows-2', onTrue: () => 'grid-rows-1'})
+				Boolean.match(props.detailOnly === true, {
+					onFalse: () => 'grid-rows-2 max-lg:grid-rows-1',
+					onTrue: () => 'grid-rows-1'
+				})
 			)}
 		>
 			<section
@@ -496,7 +499,10 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 				aria-label="Span details"
 				className={cn(
 					'flex min-h-0 min-w-0 flex-col border-t',
-					props.detailOnly === true && 'max-lg:border-t-0'
+					Boolean.match(props.detailOnly === true, {
+						onFalse: () => 'max-lg:hidden',
+						onTrue: () => 'max-lg:border-t-0'
+					})
 				)}
 			>
 				{props.details}
