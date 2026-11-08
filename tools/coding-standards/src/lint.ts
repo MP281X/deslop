@@ -37,6 +37,7 @@ import {noNativeMethodCall} from '#rules/no-native-method-call.ts'
 import {noOptionValueAccess} from '#rules/no-option-value-access.ts'
 import {noPipeMethod} from '#rules/no-pipe-method.ts'
 import {noPollingTest} from '#rules/no-polling-test.ts'
+import {noPrimitiveRestyle} from '#rules/no-primitive-restyle.ts'
 import {noPropertyAlias} from '#rules/no-property-alias.ts'
 import {noRedundantStateType} from '#rules/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#rules/no-redundant-use-ref-null-type.ts'
@@ -142,6 +143,7 @@ const RULES = {
 	'no-option-value-access': noOptionValueAccess,
 	'no-pipe-method': noPipeMethod,
 	'no-polling-test': noPollingTest,
+	'no-primitive-restyle': noPrimitiveRestyle,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-state-type': noRedundantStateType,
 	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
