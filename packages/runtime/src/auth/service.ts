@@ -39,13 +39,6 @@ function developer() {
 	return Effect.succeed(DEVELOPER)
 }
 
-function enrolled(user: User, headers: Headers.Headers) {
-	return Effect.gen(function* () {
-		const gateway = Context.getOrUndefined(yield* Effect.context(), AiGateway)
-		if (gateway !== undefined) yield* gateway.enroll(user.id, headers)
-	})
-}
-
 const unavailable = HttpServerResponse.text('The authorization service is temporarily unavailable; retry later', {
 	headers: {'retry-after': '5'},
 	status: 503
@@ -66,7 +59,6 @@ export class Auth extends Context.Service<
 				RpcAuth.of((effect, request) =>
 					pipe(
 						auth.user(request.headers),
-						Effect.tap(user => enrolled(user, request.headers)),
 						Effect.tap(() => {
 							if (RpcSchema.isStreamSchema(request.rpc.successSchema)) {
 								return Effect.annotateCurrentSpan('rpc.stream', true)
@@ -89,13 +81,19 @@ export class Auth extends Context.Service<
 			)
 		)
 
-	// Signed-in requests verify with the issuer: a bearer for this app's canonical origin, else the shared session cookie.
+	// A bearer for this app's origin or the session cookie; enrollment lives here because request fibers cannot see AiGateway.
 	static readonly layer = Layer.effectContext(
 		Effect.gen(function* () {
 			if (yield* localAuth) return Auth.makeContext(Auth.of({access: developer, user: developer}))
 			const issuer = yield* Config.String('AUTH_URL')
 			const canonical = new URL(yield* Config.String('APP_URL')).origin
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+			const gateway = yield* Effect.serviceOption(AiGateway)
+			function enrolled(verified: Effect.Effect<User, AuthError>, headers: Headers.Headers) {
+				return Effect.tap(verified, user =>
+					Option.match(gateway, {onNone: () => Effect.void, onSome: ai => ai.enroll(user.id, headers)})
+				)
+			}
 			const access = Effect.fn('Auth.access')(function* (headers: Headers.Headers, audience: string) {
 				return yield* pipe(
 					client.get(new URL(VERIFY_PATH, issuer).href, {
@@ -108,15 +106,19 @@ export class Auth extends Context.Service<
 			}, rejected('Sign in first'))
 			return Auth.makeContext(
 				Auth.of({
-					access,
-					user: Effect.fn('Auth.user')(function* (headers: Headers.Headers) {
-						if (Option.isSome(Headers.get(headers, 'authorization'))) return yield* access(headers, canonical)
-						return yield* pipe(
-							client.get(new URL(SESSION_PATH, issuer).href, {headers: {cookie: headers['cookie'] ?? ''}}),
-							Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
-							Effect.timeout('10 seconds')
-						)
-					}, rejected('Sign in first'))
+					access: (headers, audience) => enrolled(access(headers, audience), headers),
+					user: Effect.fn('Auth.user')(
+						function* (headers: Headers.Headers) {
+							if (Option.isSome(Headers.get(headers, 'authorization'))) return yield* access(headers, canonical)
+							return yield* pipe(
+								client.get(new URL(SESSION_PATH, issuer).href, {headers: {cookie: headers['cookie'] ?? ''}}),
+								Effect.flatMap(HttpClientResponse.schemaBodyJson(User)),
+								Effect.timeout('10 seconds')
+							)
+						},
+						rejected('Sign in first'),
+						enrolled
+					)
 				})
 			)
 		})
@@ -133,7 +135,6 @@ export const HttpAuth = HttpRouter.middleware<{provides: CurrentUser}>()(
 					if (user.failure.error === 'temporarily_unavailable') return unavailable
 					return HttpServerResponse.text('Sign in first', {status: 401})
 				}
-				yield* enrolled(user.success, (yield* HttpServerRequest.HttpServerRequest).headers)
 				return yield* Effect.provideService(app, CurrentUser, user.success)
 			})
 	})
@@ -163,7 +164,6 @@ export function layerMcpAuth(resource: string) {
 							{headers: {'www-authenticate': `${challenge}, error="invalid_token"`}, status: 401}
 						)
 					}
-					yield* enrolled(user.success, headers)
 					return yield* Effect.provideService(app, CurrentUser, user.success)
 				})
 		})

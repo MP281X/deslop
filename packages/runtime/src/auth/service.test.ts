@@ -1,14 +1,16 @@
 import {assert, it} from '@effect/vitest'
 
 import type {Schema} from 'effect'
-import {Boolean, ConfigProvider, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
+import {Boolean, ConfigProvider, Context, Effect, Exit, Fiber, Layer, Ref, String, pipe} from 'effect'
 
 import {Headers, HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 import {Rpc, RpcMessage} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
 import {Auth, HttpAuth, layerMcpAuth} from './service.ts'
 
+import {AiGateway} from '#ai/service.ts'
 import {CurrentUser, DEVELOPER, RpcAuth} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
@@ -165,5 +167,81 @@ it.effect(
 			assert.strictEqual(yield* Effect.promise(() => response.text()), DEVELOPER.name)
 		}
 		assert.strictEqual(yield* Ref.get(calls), 0)
+	})
+)
+
+it.effect(
+	'enrolls each signed-in person with Gateway from page, MCP and RPC requests',
+	Effect.fnUntraced(function* () {
+		const minted = yield* Ref.make<string[]>([])
+		const client = HttpClient.make(request =>
+			Effect.gen(function* () {
+				if (String.endsWith('/ai/grants')(request.url)) {
+					yield* Ref.update(minted, list => [
+						...list,
+						request.headers['authorization'] ?? request.headers['cookie'] ?? ''
+					])
+					return HttpClientResponse.fromWeb(request, Response.json({token: 'grant'}))
+				}
+				const id = Boolean.match(String.includes('/verify')(request.url), {
+					onFalse: () => `github:${request.headers['cookie']}`,
+					onTrue: () => 'github:mcp'
+				})
+				return HttpClientResponse.fromWeb(request, Response.json({id, name: id}))
+			})
+		)
+		// Wired as the runtime's server wires an app: Auth beneath the routes, Gateway merged around both.
+		function services<A, E, R>(routes: Layer.Layer<A, E, R>) {
+			return pipe(
+				routes,
+				Layer.provideMerge(Auth.layer),
+				Layer.provideMerge(pipe(AiGateway.layer, Layer.provide(KeyValueStore.layerMemory))),
+				Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+				Layer.provide(
+					ConfigProvider.layer(
+						ConfigProvider.fromUnknown({
+							APP_URL: 'https://stash.mp281x.xyz',
+							AUTH_URL: 'https://auth.mp281x.xyz',
+							GATEWAY_URL: 'https://gateway.mp281x.xyz'
+						})
+					)
+				)
+			)
+		}
+		const web = yield* Effect.acquireRelease(
+			Effect.sync(() =>
+				HttpRouter.toWebHandler(
+					services(
+						Layer.merge(
+							pipe(
+								HttpRouter.add('GET', '/me', HttpServerResponse.empty({status: 200})),
+								Layer.provide(HttpAuth.layer)
+							),
+							pipe(
+								HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
+								Layer.provide(layerMcpAuth('https://stash.mp281x.xyz/mcp'))
+							)
+						)
+					),
+					{disableLogger: true}
+				)
+			),
+			value => Effect.promise(() => value.dispose())
+		)
+		yield* Effect.promise(() => web.handler(new Request('https://stash.mp281x.xyz/me', {headers: {cookie: 'page'}})))
+		yield* Effect.promise(() =>
+			web.handler(new Request('https://stash.mp281x.xyz/mcp', {headers: {authorization: 'Bearer mcp'}}))
+		)
+		// The handler's own outcome is irrelevant; it only has to end so the RPC does too.
+		yield* Effect.exit(
+			Context.get(yield* Layer.build(services(Layer.empty)), RpcAuth)(Effect.die('handled'), {
+				client: new Rpc.ServerClient(0),
+				headers: Headers.fromInput({cookie: 'app'}),
+				payload: undefined,
+				requestId: RpcMessage.RequestId(0),
+				rpc: Rpc.make('save')
+			})
+		)
+		assert.deepStrictEqual(yield* Ref.get(minted), ['page', 'Bearer mcp', 'app'])
 	})
 )

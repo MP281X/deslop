@@ -195,18 +195,24 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 	)
 )
 
-it.effect('rejects grant enrollment with a bearer for a different app', () =>
+it.effect('enrolls with a bearer for the app or its MCP endpoint, never one for a different app', () =>
 	pipe(
 		Effect.gen(function* () {
 			const f = yield* fixture()
-			assert.equal(
-				(yield* f.request('/ai/grants', {
-					body: GRANT_BODY,
-					headers: {authorization: 'Bearer https://trips.mp281x.xyz', 'content-type': 'application/json'},
-					method: 'POST'
-				})).status,
-				401
+			const statuses = yield* Effect.forEach(
+				[APP, `${APP}/mcp`, 'https://trips.mp281x.xyz', 'https://trips.mp281x.xyz/mcp'],
+				bearer =>
+					Effect.map(
+						f.request('/ai/grants', {
+							body: GRANT_BODY,
+							headers: {authorization: `Bearer ${bearer}`, 'content-type': 'application/json'},
+							method: 'POST'
+						}),
+						response => response.status
+					),
+				{concurrency: 'unbounded'}
 			)
+			assert.deepEqual(statuses, [200, 200, 401, 401])
 		}),
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({AUTH_URL: 'https://auth.mp281x.xyz'})))

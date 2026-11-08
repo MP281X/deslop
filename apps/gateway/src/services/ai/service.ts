@@ -34,7 +34,7 @@ import {GRANT_REFUSED} from '@deslop/runtime/ai/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
-import {Origin} from '@deslop/runtime/schema'
+import {MCP_PATH, Origin} from '@deslop/runtime/schema'
 
 import type {AiProvider, AiUsageQuery} from '#services/ai/schema.ts'
 import {AiStoredGrant, AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
@@ -162,7 +162,11 @@ const make = Effect.gen(function* () {
 				const input = yield* HttpServerRequest.schemaBodyJson(Schema.Struct({app: Origin}))
 				const user = yield* Boolean.match(request.headers['authorization'] !== undefined, {
 					onFalse: () => auth.user(request.headers),
-					onTrue: () => auth.access(request.headers, input.app)
+					// An app enrolls with whichever bearer signed the person in: one for its origin or one for its MCP endpoint.
+					onTrue: () =>
+						Effect.catch(auth.access(request.headers, input.app), () =>
+							auth.access(request.headers, new URL(MCP_PATH, input.app).href)
+						)
 				})
 				const token = Base64Url.encode(yield* random.randomBytes(32))
 				const digest = yield* hash(token)
