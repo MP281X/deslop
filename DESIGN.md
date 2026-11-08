@@ -14,7 +14,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 ## Colour and type
 
 - Dragon neutrals: near-black background, one-step neutral selected/hover fill, straight hairlines.
-- App identity: Deploy blue, Scope cyan, Gateway pink, Auth slate, Signal violet, Stash amber, Trips orange, OPM ivory. Portfolio keeps its coral bolt.
+- App identity: Deploy blue, Scope cyan, Gateway pink, Auth slate, Stash amber, Trips orange, OPM ivory. Portfolio keeps its coral bolt.
 - Scope sides: server blue, browser pink, iOS amber, CI violet. Deploy machines: dev spring blue, desktop autumn yellow. Kinds use tinted icons, not dots.
 - Error red; warning orange. Dots communicate problems and live activity, never health that needs no attention or the kind of a thing. Other identities draw from the same palette; magnitude uses opacity steps of one hue.
 - Burn-in: static chrome, app marks and tabs stay low-luminance. Bright colour belongs to changing information, not a permanently filled primary button in the bar.

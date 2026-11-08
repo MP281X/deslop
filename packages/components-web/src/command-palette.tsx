@@ -22,7 +22,6 @@ export const WEB_APPS = [
 	{name: 'scope', url: 'https://scope.mp281x.xyz'},
 	{name: 'gateway', url: 'https://gateway.mp281x.xyz'},
 	{name: 'auth', url: 'https://auth.mp281x.xyz'},
-	{name: 'signal', url: 'https://signal.mp281x.xyz'},
 	{name: 'portfolio', url: 'https://portfolio.mp281x.xyz'}
 ] as const
 

@@ -1204,13 +1204,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.deepStrictEqual(
 				[
-					yield* landing({next: 'https://signal.mp281x.xyz/?invite=abc'}),
+					yield* landing({next: 'https://stash.mp281x.xyz/?invite=abc'}),
 					yield* landing({next: 'https://evil.test/'}),
-					yield* landing({next: 'http://signal.mp281x.xyz/'}),
-					yield* landing({code: 'WDJB-MJHT', next: 'https://signal.mp281x.xyz/'}),
+					yield* landing({next: 'http://stash.mp281x.xyz/'}),
+					yield* landing({code: 'WDJB-MJHT', next: 'https://stash.mp281x.xyz/'}),
 					yield* landing({})
 				],
-				['https://signal.mp281x.xyz/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
+				['https://stash.mp281x.xyz/?invite=abc', '/', '/', '/?code=WDJB-MJHT', '/']
 			)
 		})
 	)
@@ -1983,7 +1983,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					id: new URL(started.headers.get('location') ?? '', AUTH_URL).searchParams.get('request') ?? ''
 				}
 			})
-			const browser = yield* start('https://signal.mp281x.xyz/world')
+			const browser = yield* start('https://stash.mp281x.xyz/notes')
 			const waiting = yield* send(web.issuer, `/auth/request?request=${browser.id}`, {
 				headers: {cookie: browser.cookie}
 			})
@@ -2002,7 +2002,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const signedIn = yield* send(web.issuer, `/auth/continue?request=${browser.id}`, {
 				headers: {cookie: browser.cookie}
 			})
-			assert.strictEqual(signedIn.headers.get('location'), 'https://signal.mp281x.xyz/world')
+			assert.strictEqual(signedIn.headers.get('location'), 'https://stash.mp281x.xyz/notes')
 			assert.strictEqual((yield* send(web.issuer, '/auth/session', {headers: {cookie: cookie(signedIn)}})).status, 200)
 			// A code may have been approved for another person's browser, so its session lasts 30 days, not a year.
 			assert.isTrue(
@@ -2030,7 +2030,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// An approver removed before delivery delivers a denial.
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
 			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
-			const late = yield* start('https://signal.mp281x.xyz/world')
+			const late = yield* start('https://stash.mp281x.xyz/notes')
 			assert.strictEqual((yield* answer(web.issuer, stranger, late.id, true)).status, 204)
 			yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})
 			const declined = yield* send(web.issuer, `/auth/continue?request=${late.id}`, {headers: {cookie: late.cookie}})
