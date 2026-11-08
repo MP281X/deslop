@@ -183,7 +183,7 @@ it.effect('forwards JSON and SSE unchanged using the grant owner key and meters 
 			yield* f.ai.removeKey('alice', 'anthropic')
 			const missing = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(missing.status, 402)
-			assert.include(yield* Effect.promise(() => missing.text()), 'Add a Anthropic key in Gateway')
+			assert.include(yield* Effect.promise(() => missing.text()), 'Add your Anthropic key in Gateway')
 			yield* f.ai.revokeGrant('alice', APP)
 			assert.equal((yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})).status, 401)
 		}),

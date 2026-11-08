@@ -27,7 +27,7 @@ export class AiUnavailable extends Schema.TaggedError<AiUnavailable>()('AiUnavai
 type Refusal = typeof Refusal.Type
 const Refusal = Schema.fromJsonString(Schema.Struct({error: Schema.Struct({message: Schema.String})}))
 
-// Why an AI call through Gateway failed, in words for the person: Gateway's refusal ("Add an Anthropic key in Gateway"), which provider clients keep only in an unknown error's body, or the client's own message.
+// Why an AI call through Gateway failed, in words for the person: Gateway's refusal ("Add your Anthropic key in Gateway"), which provider clients keep only in an unknown error's body, or the client's own message.
 export function aiFailure(cause: unknown) {
 	if (Schema.is(AiUnavailable)(cause)) return Option.some(cause.message)
 	if (!AiError.isAiError(cause)) return Option.none()

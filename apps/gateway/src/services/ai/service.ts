@@ -36,7 +36,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
 import {Origin} from '@deslop/runtime/schema'
 
-import type {AiProvider,AiUsageQuery} from '#services/ai/schema.ts'
+import type {AiProvider, AiUsageQuery} from '#services/ai/schema.ts'
 import {AiStoredGrant, AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
 
@@ -208,7 +208,7 @@ const make = Effect.gen(function* () {
 			const key = Option.getOrUndefined(Array.findFirst(yield* loadKeys(id), value => value.provider === provider))
 			if (key === undefined) {
 				return HttpServerResponse.jsonUnsafe(
-					{error: {message: `Add a ${NAMES[provider]} key in Gateway`}},
+					{error: {message: `Add your ${NAMES[provider]} key in Gateway`}},
 					{status: 402}
 				)
 			}
