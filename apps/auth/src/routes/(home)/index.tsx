@@ -111,14 +111,8 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-8 py-6">
-			<header className="flex flex-col items-center gap-3 text-center">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Shared sign-in</p>
-				<h1 className="font-heading text-4xl leading-none tracking-tight sm:text-5xl">Sign-ins</h1>
-				<p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
-					Enter the code an app or agent shows, or review the clients already signed in.
-				</p>
-			</header>
+		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Apps" media rows={APP_ROWS} />}>
 				<AppList pending={props.pending} />

@@ -14,7 +14,7 @@ import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Page, PageHeader, Section, Stat} from '@deslop/components-web/page'
+import {Page, Section, Stat} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -278,12 +278,8 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<Page width="reading">
-			<PageHeader
-				eyebrow="MCP gateway"
-				title="Servers"
-				description="Every MCP server this gateway can reach. Connect one that needs a sign-in; remove one from its context menu."
-			/>
-			<div className="grid grid-cols-3 gap-6 border-b pb-5">
+			<h1 className="sr-only">Gateway</h1>
+			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"

@@ -24,7 +24,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 ## Shape and layout
 
 - Web surfaces are square: one 0px `--radius`, hairline rules and no decorative shadow. Popups are the only raised surface. A selected row is the `secondary` variant of its button. System navigation and controls stay native on iOS, following Apple's current guidelines as closely as SwiftUI allows: a root list takes the system large title, which collapses inline as it scrolls; no custom title view, bar background or restyled system control. Native tiles use the system's concentric 12pt radius.
-- The web masthead is 56px: app mark and serif name, ruled section tabs, one underlined search field centred on the page, then the controls that choose what the page shows. Page headers put a tracked uppercase eyebrow over one serif statement and a short deck. Content uses 24px gutters on a phone, 32px on a desktop, 56px rows on a pointer and 48px on touch.
+- The web masthead is 56px: app mark and name, ruled section tabs, one underlined search field centred on the page, then the controls that choose what the page shows. No page title or deck: the masthead and the pane labels already name the view, and personal tools need the rows more than a restatement. Content uses 24px gutters on a phone, 32px on a desktop, 56px rows on a pointer and 48px on touch.
 - A single reading column is 48rem; a standard tool page is 72rem; a full workspace such as Scope fills the viewport. Never stretch a list across an ultrawide.
 - The whole row opens its content; secondary actions use the existing context menu.
 - Dividers are separate, straight, inset lines, hidden next to hovered or selected rows.
@@ -32,7 +32,7 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 - The URL holds the view: selection, pane and range survive a reload, Back and a shared link. Memory holds only transient input such as an open dialog.
 - Keep app bars, navigation and pane geometry mounted through loading, updates and errors. Lists and detail regions scroll independently.
 - Detail tools use three columns from 1600px: list, trace/waterfall, selected detail at full height. Narrower desktops put detail below the waterfall, its fields in as many columns as fit. On iPhone, push full-screen with native back.
-- Empty regions show one restrained icon, a serif title and one sentence that says what to do next: search for no matches, the app mark for nothing selected. A blocking failure uses an Alert rule with a destructive Retry, never a hero.
+- Empty regions show one restrained icon, and a sentence only when it says what to do next and the pane's label doesn't: search for no matches, the app mark for nothing selected. A blocking failure uses an Alert rule with a destructive Retry, never a hero.
 - Deploy ports: a port that opens something is a stock small button, whose 12px text reads at a glance, exposed in `default`, exposable in `secondary`; one that can't be exposed is a disabled `ghost` one, so all three share one box. Each is at least 7ch wide so a five-digit port is never cut.
 
 ## Components and recovery

@@ -26,7 +26,7 @@ import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {Page, PageHeader, Section, Stat} from '@deslop/components-web/page'
+import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -691,15 +691,15 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
 					{DEVICES[props.operation.runtime]}
 					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
-					<span className="flex w-10 shrink-0 justify-end">
-						{props.operation.failures > 0 && (
+					{props.operation.failures > 0 && (
+						<span className="flex w-10 shrink-0 justify-end max-sm:w-8">
 							<Badge variant="destructive" className="shrink-0" title={`${props.operation.failures} failed`}>
 								<StatusDot status="error" />
 								{props.operation.failures}
 								<span className="sr-only"> failed</span>
 							</Badge>
-						)}
-					</span>
+						</span>
+					)}
 					<span
 						className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-lg:hidden"
 						title="Runs"
@@ -707,13 +707,13 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 						{count.format(props.operation.count)}×<span className="sr-only"> runs</span>
 					</span>
 					<span
-						className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums"
+						className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:w-12"
 						title="Typical"
 					>
 						<span className="sr-only">typical </span>
 						{durationOf(props.operation.p50Ms)}
 					</span>
-					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 lg:hidden" />
+					<CaretRightIcon className="text-muted-foreground hidden size-3.5 shrink-0 sm:max-lg:block" />
 				</span>
 			</Button>
 		</div>
@@ -736,8 +736,16 @@ function OperationsPane(props: {
 			meta={Option.match(AsyncResult.value(current), {
 				onNone: () => undefined,
 				onSome: overview => {
-					const total = Array.length(Array.flatMap(overview.apps, app => app.operations))
-					return `${count.format(total)} ${Boolean.match(total === 1, {onFalse: () => 'operations', onTrue: () => 'operation'})}`
+					const operations = Array.flatMap(overview.apps, app => app.operations)
+					const total = Array.length(operations)
+					const failing = Array.countBy(operations, operation => operation.failures > 0)
+					return Array.join(
+						[
+							`${count.format(total)} ${Boolean.match(total === 1, {onFalse: () => 'operations', onTrue: () => 'operation'})}`,
+							...Boolean.match(failing > 0, {onFalse: () => [], onTrue: () => [`${count.format(failing)} failing`]})
+						],
+						' · '
+					)
 				}
 			})}
 			actions={Boolean.match(AsyncResult.isFailure(current) && Option.isSome(AsyncResult.value(current)), {
@@ -1100,6 +1108,15 @@ function findOperation(overview: Overview, key: OperationKey) {
 	)
 }
 
+function renderPage(children: ReactNode) {
+	return (
+		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+			<h1 className="sr-only">Scope</h1>
+			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
+		</Page>
+	)
+}
+
 function Home() {
 	// Below desktop width, the same selection navigates one screen at a time; from 1600px the detail stands beside the waterfall.
 	const isMobile = useMediaQuery('(width < 64rem)')
@@ -1248,37 +1265,6 @@ function Home() {
 		}),
 		label: 'Traces'
 	}
-	const pageHeader = Boolean.match(isMobile, {
-		onFalse: () => (
-			<PageHeader
-				eyebrow="Live telemetry"
-				title="Operations"
-				description="Every app’s operations, failures first. Pick one, then a trace and a span."
-				actions={
-					<div className="flex items-start gap-6">
-						<Stat
-							label="Apps"
-							value={Option.match(value, {onNone: () => '—', onSome: current => count.format(current.apps.length)})}
-						/>
-						<Stat
-							label="Failing"
-							value={Option.match(value, {
-								onNone: () => '—',
-								onSome: current =>
-									count.format(
-										Array.countBy(
-											Array.flatMap(current.apps, app => app.operations),
-											operation => operation.failures > 0
-										)
-									)
-							})}
-						/>
-					</div>
-				}
-			/>
-		),
-		onTrue: () => null
-	})
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
 			Boolean.match(isWide, {
@@ -1321,15 +1307,6 @@ function Home() {
 			/>
 		)
 	})
-	function renderPage(children: ReactNode) {
-		return (
-			<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
-				{pageHeader}
-				<div className="flex min-h-0 flex-1 flex-col">{children}</div>
-			</Page>
-		)
-	}
-
 	return (
 		<div ref={root} className="flex min-h-0 flex-1 flex-col">
 			<AppBar

@@ -21,7 +21,7 @@ import type {ReactNode} from 'react'
 import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {Page, PageHeader, Section, Stat} from '@deslop/components-web/page'
+import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -1276,7 +1276,6 @@ function Home() {
 		onNone: () => [],
 		onSome: current => Array.filter(rows, row => row.item.worker === current)
 	})
-	const attention = Array.countBy(activeRows, needsAttention)
 	const bandNames = Record.fromEntries(
 		Array.flatMap(activeRows, row =>
 			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
@@ -1420,29 +1419,7 @@ function Home() {
 			{Option.match(authFailure, {
 				onNone: () => (
 					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
-						{Boolean.match(isNarrow, {
-							onFalse: () => (
-								<PageHeader
-									actions={
-										<Stat
-											label="Need you"
-											value={Option.match(snapshot, {
-												onNone: () =>
-													Boolean.match(inventoryPending, {
-														onFalse: () => '—',
-														onTrue: () => <Skeleton className="h-6 w-8" />
-													}),
-												onSome: () => attention
-											})}
-										/>
-									}
-									description="Every app, its processes and the machine's load over one range."
-									eyebrow="Deploy"
-									title="Machines"
-								/>
-							),
-							onTrue: () => null
-						})}
+						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}
 							histories={shownHistories}

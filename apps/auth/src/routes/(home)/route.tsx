@@ -395,31 +395,9 @@ function SignIn() {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="grid items-center gap-12 py-10 lg:min-h-144 lg:grid-cols-2 lg:gap-20" aria-label="Sign in">
-			<div className="flex flex-col gap-7">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Deslop</p>
-				<h1 className="font-heading max-w-xl text-5xl leading-none tracking-tight text-balance sm:text-6xl">
-					One sign-in. Every tool.
-				</h1>
-				<p className="text-muted-foreground max-w-prose text-sm leading-relaxed text-pretty">
-					Auth is the front door for the tools, the agents and every app on this worker. One account keeps them
-					together.
-				</p>
-				<Suite
-					apps={Boolean.match(Array.isReadonlyArrayNonEmpty(apps), {
-						onFalse: () => Array.map(WEB_APPS, app => ({name: app.name, origin: app.url})),
-						onTrue: () => apps
-					})}
-				/>
-			</div>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6 lg:max-w-md lg:justify-self-end">
-				<div className="flex flex-col gap-2">
-					<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Welcome back</p>
-					<h2 className="font-heading text-3xl leading-none tracking-tight">Sign in</h2>
-					<p className="text-muted-foreground text-sm leading-relaxed">
-						Passkeys stay on this device. A code is approved from a browser or phone already signed in.
-					</p>
-				</div>
+		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
+			<h1 className="sr-only">Sign in</h1>
+			<div className="bg-card flex w-full flex-col gap-5 border p-6">
 				<div className="flex flex-col gap-2">
 					<Button
 						size="lg"
@@ -452,6 +430,12 @@ function SignIn() {
 					<Failures />
 				</div>
 			</div>
+			<Suite
+				apps={Boolean.match(Array.isReadonlyArrayNonEmpty(apps), {
+					onFalse: () => Array.map(WEB_APPS, app => ({name: app.name, origin: app.url})),
+					onTrue: () => apps
+				})}
+			/>
 		</section>
 	)
 }

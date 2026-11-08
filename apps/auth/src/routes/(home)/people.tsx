@@ -9,7 +9,7 @@ import type {ReactNode} from 'react'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {PageHeader, Section} from '@deslop/components-web/page'
+import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
@@ -159,11 +159,7 @@ function Directory() {
 	)
 	return (
 		<>
-			<PageHeader
-				eyebrow="Auth"
-				title="People"
-				description="Everyone who can sign in to a Deslop app. People asking for access lead; members keep access until an admin removes them."
-			/>
+			<h1 className="sr-only">People</h1>
 			<Section
 				title="Directory"
 				meta={`${people.length} people · ${Array.countBy(people, person => person.role === 'Waiting')} waiting`}
