@@ -127,7 +127,7 @@ export function CommandPalette(props: {
 				}
 			>
 				<CommandInput placeholder={`Search ${props.current ?? 'Deslop'}…`} />
-				<CommandList>
+				<CommandList className="sm:max-h-96">
 					<CommandEmpty aria-label="No matches">
 						<MagnifyingGlassIcon weight="light" className="text-muted-foreground mx-auto size-6" />
 					</CommandEmpty>
