@@ -2,7 +2,6 @@ import {useAtomMount} from '@effect/atom-react'
 
 import {Host, NavigationStack, Text, Toolbar, VStack} from '@expo/ui/swift-ui'
 import {
-	background,
 	foregroundStyle,
 	frame,
 	navigationBarTitleDisplayMode,
@@ -22,7 +21,7 @@ export function RootRoute() {
 	useAtomMount(updateAtom)
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack modifiers={[tint(primary), background(colors.background)]}>
+			<NavigationStack modifiers={[tint(primary)]}>
 				<Toolbar modifiers={[navigationTitle('template-app'), navigationBarTitleDisplayMode('large')]}>
 					<VStack modifiers={[frame({maxHeight: Infinity, maxWidth: Infinity})]}>
 						<Suspense
