@@ -6,10 +6,11 @@
 }
 
 @media (pointer: coarse) {
-	button:not([data-slot='button']) {
+	/* Text references stay inline; the world's controls carry the 44px touch target. */
+	button:not([data-slot='button']):not([data-inline]) {
 		min-width: 44px;
 	}
-	button:not([data-slot='button']),
+	button:not([data-slot='button']):not([data-inline]),
 	summary {
 		min-height: 44px;
 	}

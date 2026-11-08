@@ -1,34 +1,40 @@
-import {RegistryContext, useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {RegistryContext, useAtom, useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Predicate, Record, Schema, String, Struct} from 'effect'
+import {Array, Boolean, Number, Option, Order, Predicate, Record, Schema, String, Struct} from 'effect'
 
 import {
-	WarningIcon,
 	ArrowUpRightIcon,
-	CaretDownIcon,
-	SquaresFourIcon,
-	RobotIcon,
-	EyeIcon,
-	ChatsIcon,
-	PauseIcon,
 	BroadcastIcon,
+	CaretDownIcon,
+	ChatsIcon,
+	CheckIcon,
+	CoinsIcon,
+	EyeIcon,
+	RobotIcon,
+	SquaresFourIcon,
+	WarningCircleIcon,
+	WarningIcon,
 	WifiSlashIcon,
 	XIcon
 } from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import type {PointerEvent, ReactNode, WheelEvent} from 'react'
+import type {PointerEvent, ReactNode, RefObject, UIEvent, WheelEvent} from 'react'
 import {createContext, useContext, useEffect, useRef, useState} from 'react'
 
-import {SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Alert, AlertTitle} from '@deslop/components-web/ui/alert'
+import {Error, SignIn} from '@deslop/components-web/fallbacks'
+import {Problem} from '@deslop/components-web/problem'
+import {StatusDot} from '@deslop/components-web/status-dot'
+import {Alert, AlertAction, AlertDescription, AlertTitle} from '@deslop/components-web/ui/alert'
+import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
-import {Empty, EmptyHeader, EmptyTitle} from '@deslop/components-web/ui/empty'
+import {Empty, EmptyDescription, EmptyHeader, EmptyMedia} from '@deslop/components-web/ui/empty'
 import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '@deslop/components-web/ui/popover'
+import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
-import {Toggle} from '@deslop/components-web/ui/toggle'
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
 import {cn} from '@deslop/components-web/utils'
 import {needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
@@ -80,18 +86,45 @@ import {
 	viewAtom
 } from '#lib/utils.ts'
 import type {Follow, Source, View} from '#lib/utils.ts'
+import icon from '#routes/icon.svg'
 import {TEAMS, TICK_HZ} from '#services/game/lib/utils.ts'
-import type {BuildingView, Entry, Experience, LocalDecision, TeamView, UnitView} from '#services/game/schema.ts'
+import type {
+	BuildingView,
+	Entry,
+	Experience,
+	LocalDecision,
+	TeamView,
+	UnitView,
+	UsageLedger
+} from '#services/game/schema.ts'
 import {UnitKind} from '#services/game/schema.ts'
 import {tileOf} from '#services/world/lib/utils.ts'
 
+const MAP_SURFACE =
+	'border-border bg-popover/95 text-popover-foreground supports-backdrop-filter:bg-popover/85 border backdrop-blur-md'
+const MAP_CONTROLS =
+	'border-border bg-background/80 supports-backdrop-filter:bg-background/60 text-foreground border backdrop-blur-md'
 const ZOOM_STEP = 1.25
 const groundAtom = Atom.make({at: Option.none<{x: number; z: number}>(), info: Option.none<Inspected>(), x: 0, y: 0})
 const chunksAtom = Atom.make(true)
 const route = getRouteApi('/(home)/')
-const USAGE_MODE = Boolean.match(import.meta.env.DEV, {onFalse: () => 'production', onTrue: () => 'development'})
+const USAGE_MODE: UsageMode = Boolean.match(import.meta.env.DEV, {
+	onFalse: () => 'production',
+	onTrue: () => 'development'
+})
 type Key = 'in' | 'leave' | 'next' | 'out' | 'previous'
 type Inspection = {actor: Option.Option<number>; entry: Option.Option<Experience>; scoped: boolean}
+type UsageMode = 'development' | 'production'
+type WorldState = {dot: 'error' | 'live' | 'off' | 'quiet'; label: string; waiting: boolean}
+
+// The spectator's own state, not the simulation's: a frozen view, a failed or absent stream, then the authoritative run.
+function worldState(live: boolean, failed: boolean, pending: boolean, running: boolean) {
+	if (!live) return {dot: 'quiet', label: 'Frozen', waiting: false} satisfies WorldState
+	if (failed) return {dot: 'error', label: 'Offline', waiting: false} satisfies WorldState
+	if (pending) return {dot: 'live', label: 'Connecting', waiting: true} satisfies WorldState
+	if (running) return {dot: 'live', label: 'Live', waiting: false} satisfies WorldState
+	return {dot: 'off', label: 'Paused', waiting: false} satisfies WorldState
+}
 
 function percent(share: number) {
 	return `${Number.round(Number.clamp(share, {maximum: 1, minimum: 0}) * 100, 0)}%`
@@ -113,6 +146,11 @@ function clockOf(tick: number) {
 
 function teamColor(team: number) {
 	return TEAMS[team]?.color ?? '#888888'
+}
+
+// Team colour is an identity, so it stays itself on the map and in swatches; running text mixes it toward the foreground to read on both appearances.
+function teamTextColor(team: number) {
+	return `color-mix(in oklch, ${teamColor(team)} 72%, var(--foreground))`
 }
 
 function teamName(team: number) {
@@ -199,14 +237,17 @@ function EntityReference(props: {id: number; tick: number; kind?: string; fallba
 
 	const member = useContext(Membership)[props.id]
 	const kind = props.kind ?? member?.kind
+	const name = Option.match(Option.fromUndefinedOr(kind), {
+		onNone: () => `Recorded entity #${props.id}`,
+		onSome: current => actorName(current, props.id)
+	})
+	const label = String.replace(` #${props.id}`, '')(name)
 	return (
 		<button
 			type="button"
-			title={Option.match(Option.fromUndefinedOr(kind), {
-				onNone: () => `Recorded entity #${props.id}`,
-				onSome: name => actorName(name, props.id)
-			})}
-			className="pointer-events-auto inline-flex items-center gap-1 align-middle underline decoration-dotted underline-offset-4"
+			data-inline="true"
+			title={name}
+			className="text-foreground decoration-border pointer-events-auto inline-flex items-center gap-1 align-middle underline underline-offset-4"
 			onClick={() =>
 				navigate.entity(
 					props.id,
@@ -219,10 +260,10 @@ function EntityReference(props: {id: number; tick: number; kind?: string; fallba
 			}
 		>
 			{kind !== undefined && <Portrait kind={kind} className="inline-block size-5" />}
-			{Option.match(Option.fromUndefinedOr(kind), {
-				onNone: () => 'Recorded entity',
-				onSome: name => Boolean.match(name === 'home', {onFalse: () => fieldName(name), onTrue: () => 'Core'})
-			})}
+			<span>
+				{label}
+				{label !== name && <span className="font-mono"> #{props.id}</span>}
+			</span>
 		</button>
 	)
 }
@@ -251,7 +292,8 @@ function References(props: {text: string; tick: number}) {
 							<button
 								type="button"
 								key={index}
-								className="pointer-events-auto underline decoration-dotted underline-offset-4"
+								data-inline="true"
+								className="text-foreground decoration-border pointer-events-auto underline underline-offset-4"
 								onClick={() =>
 									navigate.place(
 										Option.getOrElse(Number.parse(found[1] ?? ''), () => 0),
@@ -274,7 +316,10 @@ function Swatch(props: {className?: string; team: number}) {
 	return (
 		<i
 			aria-hidden="true"
-			className={cn('inline-block size-2 flex-none bg-(--team)', props.className)}
+			className={cn(
+				'outline-border inline-block size-2 flex-none bg-(--team) outline-1 -outline-offset-1',
+				props.className
+			)}
 			style={{'--team': teamColor(props.team)}}
 		/>
 	)
@@ -299,17 +344,16 @@ function Meter(props: {children: ReactNode; value: string}) {
 	return (
 		<span className="mt-2 flex items-center gap-2">
 			<span className="flex-1">{props.children}</span>
-			<span className="text-muted-foreground min-w-12 text-right whitespace-nowrap tabular-nums">{props.value}</span>
+			<span className="text-muted-foreground min-w-12 text-right font-mono text-xs whitespace-nowrap tabular-nums">
+				{props.value}
+			</span>
 		</span>
 	)
 }
 
 function Panel(props: {children: ReactNode; className?: string; label?: string}) {
 	return (
-		<section
-			aria-label={props.label}
-			className={cn('bg-popover text-popover-foreground absolute border', props.className)}
-		>
+		<section aria-label={props.label} className={cn(MAP_SURFACE, 'absolute', props.className)}>
 			{props.children}
 		</section>
 	)
@@ -333,15 +377,24 @@ function Notice(props: {text: string; tick: number}) {
 				<References text={props.text} tick={props.tick} />
 			</li>
 		),
-		onSome: found => (
-			<li className="bg-muted/60 px-3 py-2 leading-relaxed">
-				<span className="mb-1 flex items-center gap-1.5">
-					<Swatch team={Option.getOrElse(Number.parse(found[1] ?? ''), () => 0)} />
-					{teamName(Option.getOrElse(Number.parse(found[1] ?? ''), () => 0))}
-				</span>
-				<References text={found[2] ?? ''} tick={props.tick} />
-			</li>
-		)
+		onSome: found => {
+			const team = Option.getOrElse(Number.parse(found[1] ?? ''), () => 0)
+			return (
+				<li
+					className="bg-muted/40 border-l-2 border-(--team) px-3 py-2 leading-relaxed"
+					style={{'--team': teamColor(team)}}
+				>
+					<span
+						className="mb-1 flex items-center gap-1.5 text-xs text-(--team-text)"
+						style={{'--team-text': teamTextColor(team)}}
+					>
+						<Swatch team={team} />
+						{teamName(team)}
+					</span>
+					<References text={found[2] ?? ''} tick={props.tick} />
+				</li>
+			)
+		}
 	})
 }
 
@@ -389,7 +442,7 @@ function DataValue(props: {field?: string; tick: number; value: unknown}) {
 	if (Array.isArray(props.value)) {
 		if (Array.isReadonlyArrayEmpty(props.value)) return <span className="text-muted-foreground">None</span>
 		return (
-			<ul className="space-y-1">
+			<ul className="marker:text-muted-foreground list-disc space-y-1 pl-4">
 				{Array.map(props.value, (value, index) => (
 					<li key={index}>
 						<DataValue
@@ -413,10 +466,17 @@ function DataValue(props: {field?: string; tick: number; value: unknown}) {
 				<dl className="grid grid-cols-3 gap-x-3 gap-y-1">
 					{Array.map(data.fields, field => (
 						<div key={field[0]} className="contents">
-							<dt className={cn('text-muted-foreground', Predicate.isObject(field[1]) && 'col-span-3')}>
+							<dt
+								className={cn('text-muted-foreground font-mono text-xs', Predicate.isObject(field[1]) && 'col-span-3')}
+							>
 								{fieldName(field[0])}
 							</dt>
-							<dd className={cn('col-span-2 min-w-0 break-words', Predicate.isObject(field[1]) && 'col-span-3')}>
+							<dd
+								className={cn(
+									'col-span-2 min-w-0 text-xs leading-relaxed break-words',
+									Predicate.isObject(field[1]) && 'col-span-3'
+								)}
+							>
 								<DataValue
 									field={field[0]}
 									value={field[1]}
@@ -454,12 +514,12 @@ function DataValue(props: {field?: string; tick: number; value: unknown}) {
 		})
 	}
 	if (Predicate.isNumber(props.value)) {
-		if (props.field === 'tick') return <time>{clockOf(props.value)}</time>
-		if (props.field === 'health') return <span>{percent(props.value)}</span>
+		if (props.field === 'tick') return <time className="font-mono tabular-nums">{clockOf(props.value)}</time>
+		if (props.field === 'health') return <span className="font-mono tabular-nums">{percent(props.value)}</span>
 		if (entityField(props.field ?? '')) {
 			return <References text={`#${props.value}`} tick={props.tick} />
 		}
-		return <span>{props.value.toLocaleString('en')}</span>
+		return <span className="font-mono tabular-nums">{props.value.toLocaleString('en')}</span>
 	}
 	return <span>{Boolean.match(props.value === true, {onFalse: () => 'No', onTrue: () => 'Yes'})}</span>
 }
@@ -476,7 +536,7 @@ function StructuredText(props: {text: string; tick: number}) {
 	)
 }
 
-function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: boolean}) {
+function RecordDetails(props: {children: ReactNode; contentClassName?: string; title: ReactNode; compact?: boolean}) {
 	return (
 		<Collapsible className={cn(props.compact !== true && 'relative mt-1')}>
 			<CollapsibleTrigger
@@ -485,20 +545,37 @@ function RecordDetails(props: {children: ReactNode; title: ReactNode; compact?: 
 						variant="ghost"
 						size={Boolean.match(props.compact === true, {onFalse: () => 'sm' as const, onTrue: () => 'icon' as const})}
 						className={Boolean.match(props.compact === true, {
-							onFalse: () => 'max-w-full',
+							onFalse: () => 'w-full max-sm:h-11',
 							onTrue: () => 'absolute top-0 right-0 z-10 size-11'
 						})}
 					/>
 				}
 			>
-				<CaretDownIcon className="size-4 shrink-0 group-data-panel-open/button:rotate-180" />
-				<span className={cn('min-w-0 truncate', props.compact === true && 'sr-only')}>{props.title}</span>
+				<span className={cn('flex w-full min-w-0 items-center gap-1.5', props.compact === true && 'justify-center')}>
+					<CaretDownIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-data-panel-open/button:rotate-180" />
+					<span className={cn('min-w-0 truncate', props.compact === true && 'sr-only')}>{props.title}</span>
+				</span>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<div className="space-y-3 py-2 text-xs">{props.children}</div>
+				<div
+					className={cn(
+						'text-xs',
+						Boolean.match(props.compact === true, {
+							onFalse: () => 'border-border mt-1 ml-1 space-y-3 border-l py-2 pr-1 pl-3',
+							onTrue: () => 'border-border mt-1 space-y-3 border-t pt-3'
+						}),
+						props.contentClassName
+					)}
+				>
+					{props.children}
+				</div>
 			</CollapsibleContent>
 		</Collapsible>
 	)
+}
+
+function FieldLabel(props: {children: ReactNode}) {
+	return <p className="text-muted-foreground tracking-label mb-1 text-xs font-semibold uppercase">{props.children}</p>
 }
 
 function DecisionRequest(props: {request: LocalDecision}) {
@@ -512,11 +589,16 @@ function DecisionRequest(props: {request: LocalDecision}) {
 	)
 	return (
 		<Membership value={{...members, ...requestMembers(props.request, members)}}>
-			<div className="space-y-3">
-				{Record.isEmptyRecord(state) && <StructuredText text={props.request.state} tick={props.request.tick} />}
+			<div className="space-y-4">
+				{Record.isEmptyRecord(state) && (
+					<RecordDetails title="Recorded state">
+						<StructuredText text={props.request.state} tick={props.request.tick} />
+					</RecordDetails>
+				)}
 				{Record.has(state, 'self') && (
 					<div>
-						<p className="text-muted-foreground mb-1">At decision · {clockOf(props.request.tick)}</p>
+						<FieldLabel>At decision</FieldLabel>
+						<p className="text-muted-foreground mb-2 font-mono text-xs tabular-nums">{clockOf(props.request.tick)}</p>
 						<DataValue
 							value={Option.match(Schema.decodeUnknownOption(DataRecord)(state['self']), {
 								onNone: () => state['self'],
@@ -528,7 +610,7 @@ function DecisionRequest(props: {request: LocalDecision}) {
 				)}
 				{Predicate.isString(state['guidance']) && String.isNonEmpty(state['guidance']) && (
 					<div>
-						<p className="text-muted-foreground mb-1">Guidance</p>
+						<FieldLabel>Guidance</FieldLabel>
 						<StructuredText text={state['guidance']} tick={props.request.tick} />
 					</div>
 				)}
@@ -543,11 +625,14 @@ function DecisionRequest(props: {request: LocalDecision}) {
 					</RecordDetails>
 				)}
 				<div>
-					<p className="text-muted-foreground mb-1 text-xs">Available choices</p>
+					<FieldLabel>Available choices</FieldLabel>
 					<ul className="space-y-2">
 						{Array.map(Record.toEntries(props.request.choices), choice => (
-							<li key={choice[0]} className="leading-relaxed">
-								<References text={choice[1]} tick={props.request.tick} />
+							<li key={choice[0]} className="flex gap-2">
+								<span className="text-muted-foreground mt-0.5 shrink-0 font-mono text-xs">{choice[0]}</span>
+								<span className="min-w-0 flex-1 leading-relaxed">
+									<References text={choice[1]} tick={props.request.tick} />
+								</span>
 							</li>
 						))}
 					</ul>
@@ -580,23 +665,48 @@ function DecisionRequest(props: {request: LocalDecision}) {
 function OriginalRequest(props: {text: string; tick: number}) {
 	return Option.match(decisionDetails(props.text), {
 		onNone: () => (
-			<div>
-				<p className="text-muted-foreground">Original text · older request format</p>
-				<StructuredText text={props.text} tick={props.tick} />
+			<div className="space-y-2">
+				<p className="text-muted-foreground text-xs">This record holds a request in an earlier format.</p>
+				<RecordDetails title="Recorded request">
+					<StructuredText text={props.text} tick={props.tick} />
+				</RecordDetails>
 			</div>
 		),
 		onSome: request => <DecisionRequest request={request} />
 	})
 }
 
-function RequestDetails(props: {entry: Experience}) {
-	if (props.entry.context === undefined) {
-		return (
-			<RecordDetails title="Complete event">
+// An event without a decision request repeats none of its thread message; it shows what was recorded around it.
+function EventDetails(props: {entry: Experience}) {
+	return (
+		<div className="space-y-4">
+			<div className="flex flex-wrap items-center gap-2">
+				<Badge variant="secondary">{props.entry.kind}</Badge>
+				<span className="text-muted-foreground text-xs">recorded event</span>
+			</div>
+			<dl className="grid grid-cols-3 gap-x-3 gap-y-1">
+				{props.entry.subject !== undefined && (
+					<>
+						<dt className="text-muted-foreground font-mono text-xs">Subject</dt>
+						<dd className="col-span-2 min-w-0 text-xs">
+							<EntityReference id={props.entry.subject} tick={props.entry.tick} />
+						</dd>
+					</>
+				)}
+				<dt className="text-muted-foreground font-mono text-xs">Place</dt>
+				<dd className="col-span-2 min-w-0 text-xs">
+					<References text={`(${props.entry.x}, ${props.entry.z})`} tick={props.entry.tick} />
+				</dd>
+			</dl>
+			<RecordDetails title="Complete record">
 				<StructuredText text={eventText(props.entry)} tick={props.entry.tick} />
 			</RecordDetails>
-		)
-	}
+		</div>
+	)
+}
+
+function RequestDetails(props: {entry: Experience}) {
+	if (props.entry.context === undefined) return <EventDetails entry={props.entry} />
 	return <OriginalRequest text={props.entry.context} tick={props.entry.tick} />
 }
 
@@ -606,22 +716,30 @@ function Outcome(props: {outcome: Entry['commands'][number]; tick: number}) {
 		<li>
 			<RecordDetails
 				title={
-					<span className={cn(!props.outcome.ok && 'text-destructive')}>
-						{Boolean.match(props.outcome.ok, {onFalse: () => '✕', onTrue: () => '✓'})} {props.outcome.command._tag}
+					<span className="inline-flex items-center gap-1.5">
+						{Boolean.match(props.outcome.ok, {
+							onFalse: () => <XIcon className="text-destructive size-3 shrink-0" />,
+							onTrue: () => <CheckIcon className="text-muted-foreground size-3 shrink-0" />
+						})}
+						<span className={cn('font-mono tracking-normal normal-case', !props.outcome.ok && 'text-destructive')}>
+							{props.outcome.command._tag}
+						</span>
 					</span>
 				}
 			>
-				<div className="py-2 text-xs">
+				<div>
+					<FieldLabel>Arguments</FieldLabel>
 					<DataValue value={argumentsOf(props.outcome.command)} tick={props.tick} />
 				</div>
 				{Option.getOrUndefined(
 					Option.map(commandPlace(props.outcome.command), at => (
-						<Button variant="link" onClick={() => navigate.place(at.x, at.z, props.tick)}>
-							{props.outcome.command._tag} here
+						<Button variant="link" size="xs" className="h-auto" onClick={() => navigate.place(at.x, at.z, props.tick)}>
+							<span className="tracking-normal normal-case">{props.outcome.command._tag} here</span>
 						</Button>
 					))
 				)}
-				<div className="pb-2 leading-relaxed break-words">
+				<div className="leading-relaxed break-words">
+					<FieldLabel>Result</FieldLabel>
 					<StructuredText text={props.outcome.text} tick={props.tick} />
 				</div>
 			</RecordDetails>
@@ -633,44 +751,65 @@ function Round(props: {entry: Entry}) {
 	const navigate = useContext(Navigation)
 	const summary = roundSummary(props.entry)
 	return (
-		<li className="relative border-t py-2 [&:has(>[data-slot=collapsible][data-open])_[data-preview]]:hidden">
-			<div className="relative flex items-start gap-2 pr-10">
+		<li className="list-row relative py-3 [&:has(>[data-slot=collapsible][data-open])_[data-preview]]:hidden">
+			<div className="relative flex items-start gap-3 px-4">
 				<Button
 					variant="ghost"
-					className="absolute inset-0 h-full w-full"
+					className="absolute inset-0 z-0 size-full"
 					aria-label={`${teamName(props.entry.team)} Core at ${clockOf(props.entry.tick)}`}
 					onClick={() => navigate.core(props.entry.team, props.entry.tick)}
 				>
 					<span className="sr-only">View this message in the world</span>
 				</Button>
-				<Portrait kind={`home:${props.entry.team}`} className="pointer-events-none relative size-9" />
-				<div className="pointer-events-none relative min-w-0 flex-1">
+				<Portrait kind={`home:${props.entry.team}`} className="pointer-events-none relative size-8" />
+				<div className="pointer-events-none relative min-w-0 flex-1 pr-11">
 					<header className="flex items-baseline justify-between gap-2 text-xs">
-						<span className="text-(--team)" style={{'--team': teamColor(props.entry.team)}}>
+						<span className="truncate text-(--team-text)" style={{'--team-text': teamTextColor(props.entry.team)}}>
 							{teamName(props.entry.team)} Core
 						</span>
-						<time className="text-muted-foreground shrink-0 font-mono">{clockOf(props.entry.tick)}</time>
+						<time className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
+							{clockOf(props.entry.tick)}
+						</time>
 					</header>
-					{props.entry.status !== 'done' && <span className="text-destructive text-xs">{props.entry.status}</span>}
-					{(summary.failed > 0 || summary.unreadable > 0) && (
-						<p className="text-destructive flex flex-wrap items-center gap-1 text-xs">
-							<WarningIcon className="size-3" />
-							{summary.failed > 0 && <span>Failed commands: {summary.failed}</span>}
-							{summary.unreadable > 0 && <span>Unreadable calls: {summary.unreadable}</span>}
-						</p>
+					{(props.entry.status !== 'done' || summary.failed > 0 || summary.unreadable > 0) && (
+						<div className="mt-1 flex flex-wrap items-center gap-1.5">
+							{props.entry.status !== 'done' && (
+								<Badge
+									variant={Boolean.match(props.entry.status === 'failed', {
+										onFalse: () => 'secondary',
+										onTrue: () => 'destructive'
+									})}
+								>
+									{props.entry.status}
+								</Badge>
+							)}
+							{summary.failed > 0 && (
+								<Badge variant="destructive">
+									<WarningIcon />
+									{summary.failed} failed
+								</Badge>
+							)}
+							{summary.unreadable > 0 && (
+								<Badge variant="destructive">
+									<WarningIcon />
+									{summary.unreadable} unreadable
+								</Badge>
+							)}
+						</div>
 					)}
 					{String.isNonEmpty(String.trim(props.entry.text)) && (
 						<div data-preview className="line-clamp-2 leading-relaxed">
 							<References text={summary.text} tick={props.entry.tick} />
 						</div>
 					)}
+					<ArrowUpRightIcon aria-hidden="true" className="text-muted-foreground absolute right-0 bottom-0 size-3" />
 				</div>
 			</div>
 			<RecordDetails compact title="Core details">
 				<StructuredText text={props.entry.text} tick={props.entry.tick} />
 				{Array.isReadonlyArrayNonEmpty(props.entry.notices) && (
 					<RecordDetails title="Received updates">
-						<ul className="flex flex-col gap-1 py-2">
+						<ul className="space-y-1.5 py-2">
 							{Array.map(props.entry.notices, (notice, index) => (
 								<Notice key={index} text={notice} tick={props.entry.observed ?? props.entry.tick} />
 							))}
@@ -680,21 +819,21 @@ function Round(props: {entry: Entry}) {
 				{Option.getOrUndefined(
 					Option.map(Option.filter(Option.fromUndefinedOr(props.entry.reasoning), String.isNonEmpty), reasoning => (
 						<RecordDetails title="Reasoning">
-							<p className="text-muted-foreground mt-2 leading-relaxed whitespace-pre-wrap">
+							<p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
 								<References text={String.trim(reasoning)} tick={props.entry.tick} />
 							</p>
 						</RecordDetails>
 					))
 				)}
 				{Array.isReadonlyArrayNonEmpty(props.entry.commands) && (
-					<ul className="flex flex-col gap-1">
+					<ul className="space-y-1">
 						{Array.map(props.entry.commands, (outcome, index) => (
 							<Outcome key={index} outcome={outcome} tick={props.entry.tick} />
 						))}
 					</ul>
 				)}
 				<RecordDetails title="Original observation · active request may be abbreviated">
-					<div className="mt-2 text-xs">
+					<div className="text-xs">
 						<StructuredText text={props.entry.observation} tick={props.entry.observed ?? props.entry.tick} />
 					</div>
 				</RecordDetails>
@@ -712,15 +851,19 @@ function EventRecord(props: {entry: Experience}) {
 	const members = useContext(Membership)
 	const team = historyTeam(props.entry, members)
 	const kind = actorKind(props.entry, members)
+	const selected = Option.contains(navigate.selected, props.entry.id)
 	return (
 		<li
-			aria-current={Option.contains(navigate.selected, props.entry.id)}
-			className={cn('relative border-t py-2', Option.contains(navigate.selected, props.entry.id) && 'bg-muted/50')}
+			aria-current={selected}
+			data-selected={selected}
+			className={cn('list-row relative py-3', selected && 'bg-secondary')}
+			style={{'--team': teamColor(team ?? -1)}}
 		>
-			<div className="relative flex items-start gap-2 pr-10">
+			{selected && <i aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 bg-(--team)" />}
+			<div className="relative flex items-start gap-3 px-4">
 				<Button
 					variant="ghost"
-					className="absolute inset-0 h-full w-full"
+					className="absolute inset-0 z-0 size-full"
 					aria-label={`${actorName(kind, props.entry.actor)} · ${props.entry.kind} at ${clockOf(props.entry.tick)}`}
 					onClick={() => navigate.event(props.entry)}
 				>
@@ -731,41 +874,37 @@ function EventRecord(props: {entry: Experience}) {
 						onFalse: () => kind,
 						onTrue: () => `home:${team}`
 					})}
-					className="pointer-events-none relative size-9"
+					className="pointer-events-none relative size-8"
 				/>
-				<div className="pointer-events-none relative min-w-0 flex-1">
+				<div className="pointer-events-none relative min-w-0 flex-1 pr-6">
 					<header className="flex items-baseline justify-between gap-2 text-xs">
-						<span className="text-(--team)" style={{'--team': teamColor(team ?? -1)}}>
+						<span className="truncate text-(--team-text)" style={{'--team-text': teamTextColor(team ?? -1)}}>
 							{actorName(kind, props.entry.actor)}
 						</span>
-						<time className="text-muted-foreground shrink-0 font-mono">{clockOf(props.entry.tick)}</time>
+						<time className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
+							{clockOf(props.entry.tick)}
+						</time>
 					</header>
 					<div className="line-clamp-2 leading-relaxed break-words">
 						<References text={eventSummary(props.entry)} tick={props.entry.tick} />
 					</div>
+					<ArrowUpRightIcon aria-hidden="true" className="text-muted-foreground absolute right-0 bottom-0 size-3" />
 				</div>
 			</div>
-			<Button
-				variant="ghost"
-				size="icon"
-				className="absolute top-1 right-0 min-h-11 min-w-9"
-				aria-label={`Inspect ${actorName(kind, props.entry.actor)} at ${clockOf(props.entry.tick)}`}
-				onClick={() => navigate.event(props.entry)}
-			>
-				<ArrowUpRightIcon className="size-3" />
-			</Button>
 		</li>
 	)
 }
 
 function Observations(props: {entries: readonly Experience[]}) {
 	return (
-		<li className="border-t py-2">
+		<li className="list-row relative">
 			<RecordDetails
+				contentClassName="mt-0 ml-0 border-l-0 py-0 pl-0"
 				title={
 					<span className="inline-flex items-center gap-2">
-						<EyeIcon className="size-3" />
-						{props.entries.length} observations<time className="font-mono">{clockOf(props.entries[0]?.tick ?? 0)}</time>
+						<EyeIcon className="size-3 shrink-0" />
+						<span>{props.entries.length} observations</span>
+						<time className="font-mono text-xs tabular-nums">{clockOf(props.entries[0]?.tick ?? 0)}</time>
 					</span>
 				}
 			>
@@ -779,36 +918,77 @@ function Observations(props: {entries: readonly Experience[]}) {
 	)
 }
 
-// A thread panel's lone states (DESIGN.md, Errors and Lone states): a failed read keeps what loaded under an alert, loading is a skeleton, nothing is an Empty.
+// Rows shaped like an event: a portrait, an author line and a two-line summary.
+function ThreadSkeleton(props: {label: string}) {
+	return (
+		<div role="status" aria-busy="true" aria-label={props.label} className="px-4">
+			{Array.map(Array.range(0, 2), row => (
+				<div key={row} aria-hidden="true" className="flex items-start gap-3 py-3">
+					<Skeleton className="size-8 shrink-0" />
+					<div className="flex min-w-0 flex-1 flex-col gap-2">
+						<div className="flex items-center justify-between gap-3">
+							<Skeleton className="h-3 w-24" />
+							<Skeleton className="h-3 w-12" />
+						</div>
+						<Skeleton className="h-3 w-full" />
+						<Skeleton className="h-3 w-2/3" />
+					</div>
+				</div>
+			))}
+		</div>
+	)
+}
+
+// A pane keeps what loaded under a quiet problem; a blocking read failure offers a destructive retry; loading is a skeleton and nothing is an Empty.
 function PanelState(props: {
 	empty: boolean
 	failed: string
+	icon: ReactNode
 	label: string
 	nothing: string
 	result: AsyncResult.AsyncResult<unknown, unknown>
+	retry: () => void
 }) {
-	if (AsyncResult.isFailure(props.result)) {
+	const failure = AsyncResult.isFailure(props.result)
+	if (failure && props.empty) {
 		return (
-			<li>
+			<li className="p-4">
 				<Alert variant="destructive">
+					<WarningCircleIcon />
 					<AlertTitle>{props.failed}</AlertTitle>
+					<AlertDescription>The server did not answer. Nothing was lost; try the same view again.</AlertDescription>
+					<AlertAction>
+						<Button variant="destructive" size="sm" className="max-sm:h-11" onClick={props.retry}>
+							Retry
+						</Button>
+					</AlertAction>
 				</Alert>
 			</li>
 		)
 	}
-	if (!props.empty) return null
-	if (AsyncResult.isInitial(props.result)) {
+	if (!props.empty) {
+		return Boolean.match(failure, {
+			onFalse: () => null,
+			onTrue: () => (
+				<li className="flex items-center px-4 py-2">
+					<Problem warning label={props.failed} reset={props.retry} />
+				</li>
+			)
+		})
+	}
+	if (Option.isNone(AsyncResult.value(props.result))) {
 		return (
 			<li>
-				<ItemListSkeleton label={props.label} rows={3} />
+				<ThreadSkeleton label={props.label} />
 			</li>
 		)
 	}
 	return (
 		<li>
-			<Empty>
+			<Empty role="status" aria-label={props.label}>
 				<EmptyHeader>
-					<EmptyTitle>{props.nothing}</EmptyTitle>
+					<EmptyMedia variant="icon">{props.icon}</EmptyMedia>
+					<h2 className="font-heading text-lg leading-snug tracking-tight">{props.nothing}</h2>
 				</EmptyHeader>
 			</Empty>
 		</li>
@@ -829,12 +1009,12 @@ function ThreadPage(props: {
 		Option.map(expanded, page => page.upper),
 		() => props.before ?? -1
 	)
-	const result = useAtomValue(
-		Boolean.match(props.before === undefined && Option.isNone(expanded), {
-			onFalse: () => feedAtom(before),
-			onTrue: () => threadFeedAtom
-		})
-	)
+	const source = Boolean.match(props.before === undefined && Option.isNone(expanded), {
+		onFalse: () => feedAtom(before),
+		onTrue: () => threadFeedAtom
+	})
+	const result = useAtomValue(source)
+	const retry = useAtomRefresh(source)
 	const currentPage = Option.getOrElse(AsyncResult.value(result), () => ({before: -1, entries: []}))
 	const entries = currentPage.entries
 	const events = Record.fromEntries(
@@ -876,9 +1056,11 @@ function ThreadPage(props: {
 						Option.map(
 							Option.filter(Array.head(entries), () => currentPage.before >= 0),
 							() => (
-								<li>
+								<li className="list-row relative py-2">
 									<Button
 										variant="ghost"
+										size="sm"
+										className="w-full max-sm:h-11"
 										onClick={() => {
 											props.onEarlier()
 											setExpanded(
@@ -889,7 +1071,7 @@ function ThreadPage(props: {
 											)
 										}}
 									>
-										Earlier records
+										<span className="w-full text-left">Earlier records</span>
 									</Button>
 								</li>
 							)
@@ -898,15 +1080,17 @@ function ThreadPage(props: {
 				onSome: page => (
 					<>
 						{props.before === undefined && (
-							<li>
+							<li className="list-row relative py-2">
 								<Button
 									variant="ghost"
+									size="sm"
+									className="w-full max-sm:h-11"
 									onClick={() => {
 										setExpanded(Option.none())
 										props.onLatest()
 									}}
 								>
-									Latest records
+									<span className="w-full text-left">Latest records</span>
 								</Button>
 							</li>
 						)}
@@ -922,10 +1106,12 @@ function ThreadPage(props: {
 			})}
 			<PanelState
 				result={result}
-				empty={Array.isReadonlyArrayEmpty(entries)}
+				empty={Array.isReadonlyArrayEmpty(groups)}
 				failed="Decisions could not be read"
+				icon={<ChatsIcon weight="light" className="size-5" />}
 				label="Decisions"
 				nothing="No decisions in this part of the recording"
+				retry={retry}
 			/>
 			{Array.map(groups, group => {
 				const entry = Option.getOrThrow(Array.head(group))
@@ -955,53 +1141,49 @@ function ThreadPage(props: {
 	)
 }
 
-function WorldConfiguration() {
-	const notices = useAtomValue(configurationAtom)
-	if (Array.isReadonlyArrayEmpty(notices)) return null
-	return (
-		<div role="status" className="text-warning px-3 pb-2 text-xs">
-			{Array.join(
-				Array.map(notices, notice => String.split(' · ')(notice)[0]),
-				' · '
-			)}
-		</div>
-	)
+// A thread keeps its reader pinned to the newest record until they page back or scroll away.
+function usePinnedScroller(root: RefObject<HTMLDivElement | null>) {
+	const pinned = useRef(true)
+	function scrollToEnd() {
+		const viewport = root.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')
+		viewport?.scrollTo({top: viewport.scrollHeight})
+	}
+	return {
+		pin: (value: boolean) => {
+			pinned.current = value
+		},
+		read: () => {
+			if (pinned.current) scrollToEnd()
+		},
+		track: (event: UIEvent<HTMLDivElement>) => {
+			if (!(event.target instanceof HTMLElement)) return
+			pinned.current = event.target.scrollHeight - event.target.scrollTop - event.target.clientHeight < 24
+		}
+	}
 }
 
 function Thread(props: {status?: TeamView['status']; team: number}) {
-	const list = useRef<HTMLOListElement>(null)
-	const pinned = useRef(true)
-	useEffect(() => {
-		if (pinned.current) list.current?.scrollTo({top: list.current.scrollHeight})
-	})
+	const root = useRef<HTMLDivElement>(null)
+	const scroller = usePinnedScroller(root)
 	return (
-		<ol
-			ref={list}
-			onScroll={event => {
-				pinned.current =
-					event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight < 24
-			}}
-			className="flex min-h-0 flex-col overflow-y-auto overscroll-contain px-3 pb-3 select-text"
-		>
-			<ThreadPage
-				team={props.team}
-				onEarlier={() => {
-					pinned.current = false
-				}}
-				onLatest={() => {
-					pinned.current = true
-				}}
-				onRead={() => {
-					if (pinned.current) list.current?.scrollTo({top: list.current.scrollHeight})
-				}}
-			/>
-			{props.status === 'thinking' && (
-				<li className="text-muted-foreground flex items-center gap-2 py-3">
-					<Spinner className="size-3" />
-					Thinking
-				</li>
-			)}
-		</ol>
+		<div ref={root} className="min-h-0 flex-1">
+			<ScrollArea className="size-full" onScrollCapture={scroller.track}>
+				<ol className="pb-2 select-text">
+					<ThreadPage
+						team={props.team}
+						onEarlier={() => scroller.pin(false)}
+						onLatest={() => scroller.pin(true)}
+						onRead={() => scroller.read()}
+					/>
+					{props.status === 'thinking' && (
+						<li className="text-muted-foreground flex items-center gap-2 px-4 py-3 text-xs">
+							<Spinner className="size-3" />
+							Thinking
+						</li>
+					)}
+				</ol>
+			</ScrollArea>
+		</div>
 	)
 }
 
@@ -1025,14 +1207,14 @@ function HistoryPage(props: {
 	onRead: () => void
 }) {
 	const [expanded, setExpanded] = useState(() => Option.none<{before: number; upper: number}>())
-	const result = useAtomValue(
-		historyAtom(
-			`${props.actor}:${Option.getOrElse(
-				Option.map(expanded, page => page.upper),
-				() => props.before ?? 0
-			)}`
-		)
+	const source = historyAtom(
+		`${props.actor}:${Option.getOrElse(
+			Option.map(expanded, page => page.upper),
+			() => props.before ?? 0
+		)}`
 	)
+	const result = useAtomValue(source)
+	const retry = useAtomRefresh(source)
 	const entries = Option.getOrElse(AsyncResult.value(result), () => [])
 	useEffect(() => {
 		if (props.before === undefined) props.onRead()
@@ -1045,15 +1227,17 @@ function HistoryPage(props: {
 						Option.map(
 							Option.filter(Array.head(entries), () => entries.length === 100),
 							first => (
-								<li>
+								<li className="list-row relative py-2">
 									<Button
 										variant="ghost"
+										size="sm"
+										className="w-full max-sm:h-11"
 										onClick={() => {
 											props.onEarlier()
 											setExpanded(Option.some({before: first.id, upper: Option.getOrThrow(Array.last(entries)).id + 1}))
 										}}
 									>
-										Earlier events
+										<span className="w-full text-left">Earlier events</span>
 									</Button>
 								</li>
 							)
@@ -1062,15 +1246,17 @@ function HistoryPage(props: {
 				onSome: page => (
 					<>
 						{props.before === undefined && (
-							<li>
+							<li className="list-row relative py-2">
 								<Button
 									variant="ghost"
+									size="sm"
+									className="w-full max-sm:h-11"
 									onClick={() => {
 										setExpanded(Option.none())
 										props.onLatest()
 									}}
 								>
-									Latest events
+									<span className="w-full text-left">Latest events</span>
 								</Button>
 							</li>
 						)}
@@ -1088,8 +1274,10 @@ function HistoryPage(props: {
 				result={result}
 				empty={Array.isReadonlyArrayEmpty(entries)}
 				failed="History could not be read"
+				icon={<EyeIcon weight="light" className="size-5" />}
 				label="History"
 				nothing="No recording here yet"
+				retry={retry}
 			/>
 			{Array.map(Record.values(Array.groupBy(entries, entry => `${entry.actor}:${entry.tick}`)), entriesInTick => (
 				<HistoryGroup key={Option.getOrThrow(Array.head(entriesInTick)).id} entries={entriesInTick} />
@@ -1099,32 +1287,20 @@ function HistoryPage(props: {
 }
 
 function Chronicle(props: {actor: number}) {
-	const list = useRef<HTMLDivElement>(null)
-	const pinned = useRef(true)
+	const root = useRef<HTMLDivElement>(null)
+	const scroller = usePinnedScroller(root)
 	return (
-		<div
-			ref={list}
-			onScroll={event => {
-				pinned.current =
-					event.currentTarget.scrollHeight - event.currentTarget.scrollTop - event.currentTarget.clientHeight < 24
-			}}
-			aria-label="Private individual history"
-			className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 select-text"
-		>
-			<ol className="flex flex-col gap-4">
-				<HistoryPage
-					actor={props.actor}
-					onEarlier={() => {
-						pinned.current = false
-					}}
-					onLatest={() => {
-						pinned.current = true
-					}}
-					onRead={() => {
-						if (pinned.current) list.current?.scrollTo({top: list.current.scrollHeight})
-					}}
-				/>
-			</ol>
+		<div ref={root} role="region" aria-label="Private individual history" className="min-h-0 flex-1">
+			<ScrollArea className="size-full" onScrollCapture={scroller.track}>
+				<ol className="pb-2 select-text">
+					<HistoryPage
+						actor={props.actor}
+						onEarlier={() => scroller.pin(false)}
+						onLatest={() => scroller.pin(true)}
+						onRead={() => scroller.read()}
+					/>
+				</ol>
+			</ScrollArea>
 		</div>
 	)
 }
@@ -1166,17 +1342,24 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 			<aside
 				aria-label="Inspector"
 				className={cn(
-					'bg-popover text-popover-foreground pointer-events-auto flex max-h-1/2 min-h-0 w-full flex-col overflow-hidden rounded-md md:max-h-full md:w-80',
-					actor !== undefined && 'max-h-2/3 lg:w-160'
+					MAP_SURFACE,
+					'pointer-events-auto flex h-1/2 max-h-1/2 min-h-0 w-full flex-col overflow-hidden md:h-full md:max-h-full md:w-80',
+					actor !== undefined && 'h-2/3 max-h-2/3 lg:w-160'
 				)}
 			>
-				<header className="border-border flex min-h-11 flex-none items-center gap-2 border-b px-3">
-					<ChatsIcon className="size-4" />
-					<span>
-						{Option.match(scopedActor, {onNone: () => 'Thread', onSome: id => `${actorName(kind, id)} history`})}
-					</span>
+				<header className="border-border flex h-11 flex-none items-center gap-2 border-b px-3">
+					{Option.match(scopedActor, {
+						onNone: () => <ChatsIcon className="size-4 shrink-0" />,
+						onSome: () => <EyeIcon className="size-4 shrink-0" />
+					})}
+					<h2 className="font-heading min-w-0 truncate text-lg leading-none tracking-tight">
+						{Option.match(scopedActor, {onNone: () => 'Thread', onSome: id => actorName(kind, id)})}
+					</h2>
+					<Badge variant="secondary" className="shrink-0">
+						{Option.match(scopedActor, {onNone: () => teamName(filter), onSome: () => 'History'})}
+					</Badge>
 					<Button
-						className="ml-auto min-h-11 min-w-11"
+						className="ml-auto size-9 max-sm:size-11"
 						size="icon-sm"
 						aria-label="Close inspector"
 						variant="ghost"
@@ -1187,7 +1370,6 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 				</header>
 				<div className="flex min-h-0 flex-1 flex-col lg:flex-row">
 					<div className="flex min-h-28 min-w-0 flex-1 flex-col">
-						<WorldConfiguration />
 						{Option.match(scopedActor, {
 							onNone: () => (
 								<Thread
@@ -1208,41 +1390,57 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 						<section
 							aria-label="Entity details"
 							className={cn(
-								'flex max-h-60 min-h-0 shrink-0 flex-col border-t lg:max-h-none lg:w-80 lg:border-t-0 lg:border-l',
+								'border-border flex max-h-60 min-h-0 shrink-0 flex-col border-t lg:max-h-none lg:w-80 lg:border-t-0 lg:border-l',
 								selected !== undefined && 'h-56 lg:h-auto'
 							)}
 						>
-							<header className="flex min-h-11 shrink-0 items-center gap-2 px-3">
+							<header className="border-border flex h-11 shrink-0 items-center gap-2 border-b px-3">
 								<Portrait kind={kind} className="size-7" />
-								<span>{actorName(kind, actor)}</span>
+								<span className="tracking-label min-w-0 truncate text-xs font-semibold uppercase">
+									{actorName(kind, actor)}
+								</span>
 								{selected !== undefined && (
-									<time className="text-muted-foreground text-xs">{clockOf(selected.tick)}</time>
+									<time className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
+										{clockOf(selected.tick)}
+									</time>
 								)}
 								<Button
 									variant="ghost"
-									size="icon"
-									className="ml-auto min-h-11 min-w-9"
+									size="icon-sm"
+									className="ml-auto size-9 max-sm:size-11"
 									onClick={props.clear}
 									aria-label="Clear entity selection"
 								>
-									<XIcon className="size-3" />
+									<XIcon className="size-4" />
 								</Button>
 							</header>
-							<div className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 text-xs select-text">
-								{Option.getOrUndefined(
-									Option.map(
-										Option.filter(unit, () => selected?.context === undefined),
-										current => <Followed unit={current} />
-									)
-								)}
-								{Option.match(props.selection.entry, {
-									onNone: () => (
-										<p className="text-muted-foreground">
-											Select a decision in the thread to inspect its perception and choices.
-										</p>
-									),
-									onSome: entry => <RequestDetails entry={entry} />
-								})}
+							<div className="min-h-0 flex-1">
+								<ScrollArea className="size-full">
+									<div className="p-3 text-xs select-text">
+										{Option.getOrUndefined(
+											Option.map(
+												Option.filter(unit, () => selected?.context === undefined),
+												current => <Followed unit={current} />
+											)
+										)}
+										{Option.match(props.selection.entry, {
+											onNone: () => (
+												<Empty role="status" aria-label="No decision selected">
+													<EmptyHeader>
+														<EmptyMedia variant="icon">
+															<EyeIcon weight="light" className="size-5" />
+														</EmptyMedia>
+														<h2 className="font-heading text-lg leading-snug tracking-tight">Nothing selected</h2>
+														<EmptyDescription>
+															Choose a message in the thread to read its recorded perception and choices.
+														</EmptyDescription>
+													</EmptyHeader>
+												</Empty>
+											),
+											onSome: entry => <RequestDetails entry={entry} />
+										})}
+									</div>
+								</ScrollArea>
 							</div>
 						</section>
 					)}
@@ -1252,87 +1450,61 @@ function Sidebar(props: {close: () => void; clear: () => void; selection: Inspec
 	)
 }
 
-function SpectatorControls(props: {source: Source; tick: number; onLive: () => void; onThreads: () => void}) {
+function SpectatorControls(props: {
+	source: Source
+	tick: number
+	threadOpen: boolean
+	onLive: () => void
+	onThreads: () => void
+}) {
 	const [chunks, setChunks] = useAtom(chunksAtom)
 	const live = Option.isNone(props.source)
-	const status = useAtomValue(runStateAtom)
-	const run = Option.getOrUndefined(AsyncResult.value(status))
 	return (
 		<section
 			aria-label="Spectator controls"
-			className="absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4"
+			className="pointer-events-none absolute inset-x-2 bottom-2 z-30 flex items-end justify-between gap-2 md:inset-x-4 md:bottom-4"
 		>
-			<div className="bg-popover flex shrink-0 rounded-md">
-				<Toggle
-					className="min-h-11 min-w-11"
-					aria-label="Team chunks"
-					pressed={chunks}
-					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
-					onPressedChange={setChunks}
-				>
-					<SquaresFourIcon />
-				</Toggle>
+			<div className={cn(MAP_CONTROLS, 'pointer-events-auto flex shrink-0 items-stretch p-1')}>
 				<Button
-					variant="ghost"
-					size="icon"
-					className="min-h-11 min-w-11"
-					aria-label="Threads"
+					className="size-11 md:size-9"
+					variant={Boolean.match(chunks, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+					size="icon-sm"
+					aria-pressed={chunks}
+					aria-label="Team chunks"
+					title={Boolean.match(chunks, {onFalse: () => 'Show team chunks', onTrue: () => 'Hide team chunks'})}
+					onClick={() => setChunks(!chunks)}
+				>
+					<SquaresFourIcon className="size-4" />
+				</Button>
+				<Button
+					className="size-11 md:size-9"
+					variant={Boolean.match(props.threadOpen, {
+						onFalse: () => 'ghost' as const,
+						onTrue: () => 'secondary' as const
+					})}
+					size="icon-sm"
+					aria-pressed={props.threadOpen}
+					aria-label="Thread"
+					title={Boolean.match(props.threadOpen, {onFalse: () => 'Show thread', onTrue: () => 'Hide thread'})}
 					onClick={props.onThreads}
 				>
 					<ChatsIcon className="size-4" />
 				</Button>
 			</div>
-			<Button
-				variant="secondary"
-				size="lg"
-				className="h-11 min-w-0"
-				aria-label={Boolean.match(live, {onFalse: () => 'Return to live', onTrue: () => 'Latest world view'})}
-				onClick={props.onLive}
-			>
-				{!live && (
-					<time className="text-muted-foreground font-mono text-xs">
-						{String.replace(/^0:/u, '')(clockOf(props.tick))}
-					</time>
-				)}
-				<span
-					className={cn(
-						'text-primary flex h-full items-center leading-none',
-						live && run?.running !== true && 'text-muted-foreground'
-					)}
-				>
-					{Boolean.match(live, {
-						onFalse: () => (
-							<span className="flex items-center gap-1 leading-none">
-								<BroadcastIcon className="size-4" />
-								Live
-								<ArrowUpRightIcon className="size-3" />
-							</span>
-						),
-						onTrue: () =>
-							Boolean.match(AsyncResult.isFailure(status), {
-								onFalse: () => (
-									<span className="flex items-center gap-1.5 leading-none">
-										{Boolean.match(run?.running === true, {
-											onFalse: () => (
-												<>
-													<PauseIcon className="size-4" />
-													Paused
-												</>
-											),
-											onTrue: () => (
-												<>
-													<BroadcastIcon className="size-4" />
-													Live
-												</>
-											)
-										})}
-									</span>
-								),
-								onTrue: () => <WifiSlashIcon className="size-4" aria-label="Disconnected" />
-							})
-					})}
-				</span>
-			</Button>
+			{!live && (
+				<div className={cn(MAP_CONTROLS, 'pointer-events-auto flex shrink-0 items-stretch p-1')}>
+					<Button variant="ghost" size="sm" className="max-sm:h-11" aria-label="Return to live" onClick={props.onLive}>
+						<time className="text-muted-foreground font-mono text-xs tracking-normal normal-case tabular-nums">
+							{String.replace(/^0:/u, '')(clockOf(props.tick))}
+						</time>
+						<span className="flex items-center gap-1 leading-none">
+							<BroadcastIcon className="size-4" />
+							Live
+							<ArrowUpRightIcon className="size-3" />
+						</span>
+					</Button>
+				</div>
+			)}
 		</section>
 	)
 }
@@ -1340,8 +1512,8 @@ function SpectatorControls(props: {source: Source; tick: number; onLive: () => v
 // The hover card: the portrait beside what the unit or creature is doing, with its health.
 function Card(props: {unit: UnitView}) {
 	return (
-		<div className="bg-popover text-popover-foreground absolute bottom-7 left-0 flex w-60 -translate-x-1/2 items-center gap-3 border p-2.5">
-			<Portrait kind={props.unit.kind} className="size-10" />
+		<div className={cn(MAP_SURFACE, 'absolute bottom-7 left-0 flex w-60 -translate-x-1/2 items-center gap-3 p-2.5')}>
+			<Portrait kind={props.unit.kind} className="size-9" />
 			<div className="min-w-0 flex-1">
 				<p className="flex items-center gap-1.5 first-letter:uppercase">
 					{props.unit.team !== undefined && <Swatch team={props.unit.team} />}
@@ -1358,7 +1530,7 @@ function Card(props: {unit: UnitView}) {
 // The hover card for the ground: the building on it with what it is doing, an ore field with the ore it has left, or what stands on the tile.
 function GroundCard(props: {building: Option.Option<BuildingView>; info: Option.Option<Inspected>}) {
 	return (
-		<div className="bg-popover text-popover-foreground absolute bottom-4 left-0 w-max max-w-60 -translate-x-1/2 px-2 py-1.5">
+		<div className={cn(MAP_SURFACE, 'absolute bottom-4 left-0 w-max max-w-60 -translate-x-1/2 px-2.5 py-1.5')}>
 			{Option.getOrUndefined(
 				Option.map(props.building, building => (
 					<p className="flex items-start gap-1.5">
@@ -1376,7 +1548,7 @@ function GroundCard(props: {building: Option.Option<BuildingView>; info: Option.
 					field => (
 						<p>
 							{String.capitalize(field.material)} ·{' '}
-							<span className="text-muted-foreground">
+							<span className="text-muted-foreground font-mono text-xs tabular-nums">
 								{field.left.toLocaleString('en', {maximumFractionDigits: 1, notation: 'compact'})} left
 							</span>
 						</p>
@@ -1387,10 +1559,20 @@ function GroundCard(props: {building: Option.Option<BuildingView>; info: Option.
 	)
 }
 
-function Status(props: {children: ReactNode}) {
+function Status(props: {children: ReactNode; icon?: ReactNode; tone?: 'quiet' | 'warning'}) {
 	return (
-		<Panel className="right-4 bottom-4 left-4 z-50 mx-auto w-fit max-w-full px-3 py-2">
-			<p role="status" className="text-muted-foreground">
+		<Panel className="pointer-events-none inset-x-4 bottom-16 z-50 mx-auto w-fit max-w-full px-3 py-2 md:bottom-4">
+			<p
+				role="status"
+				className={cn(
+					'flex items-center gap-2 text-xs',
+					Boolean.match(props.tone === 'warning', {
+						onFalse: () => 'text-muted-foreground',
+						onTrue: () => 'text-warning'
+					})
+				)}
+			>
+				{props.icon}
 				{props.children}
 			</p>
 		</Panel>
@@ -1636,78 +1818,177 @@ function useMapGestures(props: {
 	}
 }
 
-// The world view and everything over it: the canvas belongs to the renderer, and frames reach it through the registry, not React.
-function Spend() {
-	return Option.getOrUndefined(
-		Option.map(
-			Option.filter(
-				Option.map(AsyncResult.value(useAtomValue(usageAtom)), ledger => spendOf(ledger, USAGE_MODE)),
-				total => total.reported > 0
-			),
-			total => {
-				const price = `$${total.cost.toLocaleString('en', {maximumFractionDigits: 4, minimumFractionDigits: 2})}`
-				return (
-					<Popover>
-						<PopoverTrigger
-							render={<Button variant="secondary" size="lg" className="min-h-11" />}
-							aria-label={`Total model spend: ${price}`}
-						>
-							{price}
-						</PopoverTrigger>
-						<PopoverContent align="end">
-							<PopoverTitle>{fieldName(USAGE_MODE)} · reported spend</PopoverTitle>
-							<div className="flex h-2 gap-px overflow-hidden rounded-sm" aria-label="Cost by model">
-								{Array.map(
-									total.models,
-									(model, index) =>
-										model.cost > 0 && (
-											<span
-												key={model.model}
-												className="bg-foreground flex-(--share) opacity-(--strength)"
-												style={{
-													'--share': (model.cost / total.cost) * 100,
-													'--strength': Number.max(0.25, 1 - index * 0.2)
-												}}
-												title={model.model}
-											/>
-										)
-								)}
-							</div>
-							{Array.map(
-								total.models,
-								model =>
-									model.reported > 0 && (
-										<div key={model.model} className="flex items-center justify-between gap-2">
-											<span className="truncate">{model.model}</span>
-											<span className="tabular-nums">
-												${model.cost.toLocaleString('en', {maximumFractionDigits: 4})}
-											</span>
-										</div>
-									)
-							)}
-							{total.reported < total.calls && (
-								<p className="text-muted-foreground">
-									Cost reported for {total.reported} of {total.calls} requests. Unreported costs aren’t included.
-								</p>
-							)}
-						</PopoverContent>
-					</Popover>
-				)
-			}
+// Money is a figure: mono, tabular, and only a reported cost is a price rather than a missing one.
+function priceOf(cost: number) {
+	return `$${cost.toLocaleString('en', {maximumFractionDigits: 4, minimumFractionDigits: 2})}`
+}
+
+function SpendDetail(props: {mode: UsageMode; total: ReturnType<typeof spendOf>}) {
+	if (props.total.reported === 0) {
+		return (
+			<Empty role="status" aria-label={`No reported ${props.mode} spend`}>
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<CoinsIcon weight="light" className="size-5" />
+					</EmptyMedia>
+					<h2 className="font-heading text-lg leading-snug tracking-tight">No reported spend</h2>
+					<EmptyDescription>{fieldName(props.mode)} has no request whose cost was reported.</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
 		)
+	}
+	return (
+		<>
+			<div className="border-border divide-border divide-y border-y">
+				{Array.map(
+					Array.sortWith(props.total.models, model => model.cost, Order.flip(Number.Order)),
+					model =>
+						model.reported > 0 && (
+							<div key={model.model} className="flex items-baseline justify-between gap-3 py-2">
+								<span className="min-w-0 truncate font-mono text-xs">{model.model}</span>
+								<span className="shrink-0 font-mono text-xs tabular-nums">{priceOf(model.cost)}</span>
+							</div>
+						)
+				)}
+			</div>
+			{props.total.reported < props.total.calls && (
+				<p className="text-muted-foreground text-xs leading-relaxed">
+					Cost reported for {props.total.reported} of {props.total.calls} requests. Unreported costs aren’t included.
+				</p>
+			)}
+		</>
+	)
+}
+
+// The build's environment wins when it has reported spend; otherwise the other environment is the useful one.
+function preferredMode(development: ReturnType<typeof spendOf>, production: ReturnType<typeof spendOf>) {
+	if (USAGE_MODE === 'development') {
+		if (development.reported > 0 || production.reported === 0) return 'development' satisfies UsageMode
+		return 'production' satisfies UsageMode
+	}
+	if (production.reported > 0 || development.reported === 0) return 'production' satisfies UsageMode
+	return 'development' satisfies UsageMode
+}
+
+function SpendBody(props: {ledger: UsageLedger}) {
+	const development = spendOf(props.ledger, 'development')
+	const production = spendOf(props.ledger, 'production')
+	const [mode, setMode] = useState<UsageMode>(() => preferredMode(development, production))
+	if (development.reported === 0 && production.reported === 0) return null
+	const total = Boolean.match(mode === 'development', {onFalse: () => production, onTrue: () => development})
+	const price = Boolean.match(total.reported > 0, {onFalse: () => '—', onTrue: () => priceOf(total.cost)})
+	return (
+		<div className="border-border flex items-center border-l">
+			<Popover>
+				<PopoverTrigger
+					render={<Button variant="ghost" size="sm" className="max-sm:h-11" />}
+					aria-label={Boolean.match(total.reported > 0, {
+						onFalse: () => `No reported ${mode} model spend`,
+						onTrue: () => `${fieldName(mode)} reported model spend: ${price}`
+					})}
+				>
+					<span className="font-mono text-xs tracking-normal normal-case tabular-nums">{price}</span>
+					<Badge variant="secondary">
+						{Boolean.match(mode === 'development', {onFalse: () => 'Prod', onTrue: () => 'Dev'})}
+					</Badge>
+				</PopoverTrigger>
+				<PopoverContent align="end">
+					<PopoverTitle>Reported spend</PopoverTitle>
+					<Tabs
+						value={mode}
+						onValueChange={value =>
+							setMode(Boolean.match(value === 'production', {onFalse: () => 'development', onTrue: () => 'production'}))
+						}
+					>
+						<TabsList variant="line" className="w-full">
+							<TabsTrigger value="development" className="flex-1">
+								Development
+							</TabsTrigger>
+							<TabsTrigger value="production" className="flex-1">
+								Production
+							</TabsTrigger>
+						</TabsList>
+						<TabsContent value="development">
+							<SpendDetail mode="development" total={development} />
+						</TabsContent>
+						<TabsContent value="production">
+							<SpendDetail mode="production" total={production} />
+						</TabsContent>
+					</Tabs>
+				</PopoverContent>
+			</Popover>
+		</div>
+	)
+}
+
+function Spend() {
+	return Option.match(AsyncResult.value(useAtomValue(usageAtom)), {
+		onNone: () => null,
+		onSome: ledger => <SpendBody ledger={ledger} />
+	})
+}
+
+// The mark, name and honest world state stay a compact mark over the map, never a bar.
+function Identity() {
+	const source = useAtomValue(sourceAtom)
+	const status = useAtomValue(runStateAtom)
+	const notices = useAtomValue(configurationAtom)
+	const state = worldState(
+		Option.isNone(source),
+		AsyncResult.isFailure(status),
+		Option.isNone(AsyncResult.value(status)),
+		Option.getOrUndefined(AsyncResult.value(status))?.running === true
+	)
+	return (
+		<div
+			className={cn(
+				MAP_CONTROLS,
+				'pointer-events-auto flex h-11 min-w-0 shrink-0 items-center gap-2.5 px-3 max-sm:h-13'
+			)}
+		>
+			<img src={icon} alt="" className="pixelated size-6 shrink-0 opacity-90" />
+			<h1 className="font-heading shrink-0 text-xl leading-none tracking-tight">Signal</h1>
+			<span aria-hidden="true" className="bg-border mx-0.5 h-3 w-px shrink-0" />
+			<span role="status" className="flex min-w-0 items-center gap-1.5">
+				<StatusDot status={state.dot} waiting={state.waiting} />
+				<span
+					className={cn(
+						'tracking-label text-xs font-semibold uppercase',
+						Boolean.match(state.dot === 'live', {
+							onFalse: () => 'text-muted-foreground',
+							onTrue: () => 'text-foreground'
+						})
+					)}
+				>
+					{state.label}
+				</span>
+			</span>
+			{Option.match(Option.liftPredicate(notices, Array.isReadonlyArrayNonEmpty), {
+				onNone: () => null,
+				onSome: items => (
+					<Problem
+						warning
+						label={Array.join(
+							Array.map(items, notice => String.split(' · ')(notice)[0]),
+							' · '
+						)}
+					/>
+				)
+			})}
+		</div>
 	)
 }
 
 function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 	return (
-		<nav
-			className="absolute inset-x-2 top-2 z-30 flex items-start justify-between gap-2 md:inset-x-4 md:top-4"
-			aria-label="Map controls"
-		>
-			{/* The same map panel as the spectator controls below, so both float over the world alike. */}
-			<div className="bg-popover flex min-w-0 rounded-md">
+		<header className="pointer-events-none absolute inset-x-2 top-2 z-30 flex flex-wrap items-start gap-2 md:inset-x-4 md:top-4 md:flex-nowrap md:justify-between">
+			<Identity />
+			<nav
+				aria-label="Models and spend"
+				className={cn(MAP_CONTROLS, 'pointer-events-auto flex min-w-0 items-stretch p-1')}
+			>
 				<ToggleGroup
-					aria-label="Teams"
+					aria-label="Models"
 					className="min-w-0"
 					value={[route.useSearch({select: search => `${search.team ?? -1}`})]}
 					onValueChange={values =>
@@ -1717,25 +1998,20 @@ function MapControls(props: {view: View; onTeam: (team: number) => void}) {
 						})
 					}
 				>
-					<ToggleGroupItem value="-1" aria-label="All models" title="All models" className="min-h-11 min-w-11">
-						<RobotIcon weight="light" className="size-5" />
+					<ToggleGroupItem value="-1" aria-label="All models" title="All models" size="sm">
+						<RobotIcon className="size-4" />
 					</ToggleGroupItem>
 					{Array.map(props.view.teams, entry => (
-						<ToggleGroupItem
-							key={entry.id}
-							value={`${entry.id}`}
-							aria-label={entry.name}
-							title={entry.name}
-							className="min-h-11 min-w-11"
-							style={{'--team': teamColor(entry.id)}}
-						>
-							<TeamIcon team={entry.id} className="size-5 text-(--team)" />
+						<ToggleGroupItem key={entry.id} value={`${entry.id}`} aria-label={entry.name} title={entry.name} size="sm">
+							<span className="block text-(--team-text)" style={{'--team-text': teamTextColor(entry.id)}}>
+								<TeamIcon team={entry.id} className="size-4" />
+							</span>
 						</ToggleGroupItem>
 					))}
 				</ToggleGroup>
-			</div>
-			<Spend />
-		</nav>
+				<Spend />
+			</nav>
+		</header>
 	)
 }
 
@@ -1743,7 +2019,11 @@ function ReplayLoading() {
 	const loading = useAtomValue(loadingAtom)
 	const source = useAtomValue(sourceAtom)
 	if (!loading) return null
-	return <Status>{Option.match(source, {onNone: () => 'Rejoining live', onSome: () => 'Loading history'})}</Status>
+	return (
+		<Status icon={<Spinner className="size-3 shrink-0" />}>
+			{Option.match(source, {onNone: () => 'Rejoining live', onSome: () => 'Loading history'})}
+		</Status>
+	)
 }
 
 function World(props: {seed: number; view: View}) {
@@ -2098,15 +2378,18 @@ function World(props: {seed: number; view: View}) {
 							<SpectatorControls
 								source={source}
 								tick={cursor}
+								threadOpen={Option.exists(panel, selection => !selection.scoped)}
 								onLive={() => setSource(Option.none())}
 								onThreads={() =>
 									setPanel(before =>
-										Option.some(
-											Option.match(before, {
-												onNone: () => ({actor: Option.none(), entry: Option.none(), scoped: false}),
-												onSome: selection => ({...selection, scoped: false})
-											})
-										)
+										Option.match(before, {
+											onNone: () => Option.some({actor: Option.none(), entry: Option.none(), scoped: false}),
+											onSome: selection =>
+												Boolean.match(selection.scoped, {
+													onFalse: () => Option.none(),
+													onTrue: () => Option.some({actor: Option.none(), entry: Option.none(), scoped: false})
+												})
+										})
 									)
 								}
 							/>
@@ -2131,24 +2414,51 @@ function World(props: {seed: number; view: View}) {
 
 function Signal() {
 	const result = useAtomValue(hudAtom)
+	const seed = useAtomValue(seedAtom)
+	const retry = useAtomRefresh(viewAtom)
 	return (
 		<main className="relative min-h-0 flex-1 overflow-hidden text-sm select-none">
 			{Option.getOrUndefined(
 				Option.map(
 					Option.flatMap(AsyncResult.value(result), view => Option.fromUndefinedOr(view.frame.problem)),
-					text => <Status>{text}</Status>
+					text => (
+						<Status tone="warning" icon={<WarningIcon className="size-4 shrink-0" />}>
+							{text}
+						</Status>
+					)
 				)
 			)}
 			{/* The world stays on screen while its stream starts over, as a replay begins or ends. */}
-			{Option.match(useAtomValue(seedAtom), {
+			{Option.match(seed, {
 				onNone: () =>
 					Option.match(
 						Option.filter(AsyncResult.error(result), () => AsyncResult.isFailure(result)),
 						{
-							onNone: () => <Status>Connecting</Status>,
-							onSome: error =>
-								Boolean.match(needsSignIn(error), {
-									onFalse: () => <Status>Reconnecting</Status>,
+							onNone: () => (
+								<div className="absolute inset-0 flex">
+									<Empty role="status" aria-label="Connecting to Signal">
+										<EmptyHeader>
+											<EmptyMedia>
+												<img src={icon} alt="" className="pixelated size-10 opacity-90" />
+											</EmptyMedia>
+											<h2 className="font-heading text-3xl leading-none tracking-tight">Connecting to the world</h2>
+											<EmptyDescription>
+												<span className="inline-flex items-center gap-2">
+													<Spinner className="size-3" />
+													The stream is starting.
+												</span>
+											</EmptyDescription>
+										</EmptyHeader>
+									</Empty>
+								</div>
+							),
+							onSome: failure =>
+								Boolean.match(needsSignIn(failure), {
+									onFalse: () => (
+										<div className="absolute inset-0 flex flex-col">
+											<Error error={failure} label="Signal is unavailable" reset={retry} />
+										</div>
+									),
 									onTrue: () => <SignIn href={signInUrl(location.href)} />
 								})
 						}
@@ -2156,7 +2466,18 @@ function Signal() {
 				onSome: known => (
 					<>
 						<World seed={known} view={Option.getOrElse(AsyncResult.value(result), () => EMPTY)} />
-						{Option.getOrUndefined(Option.map(AsyncResult.error(result), error => <Status>{error.message}</Status>))}
+						{Option.getOrUndefined(
+							Option.map(AsyncResult.error(result), failure =>
+								Boolean.match(needsSignIn(failure), {
+									onFalse: () => (
+										<Status tone="warning" icon={<WifiSlashIcon className="size-4 shrink-0" />}>
+											World stream interrupted
+										</Status>
+									),
+									onTrue: () => <SignIn href={signInUrl(location.href)} />
+								})
+							)
+						)}
 					</>
 				)
 			})}
