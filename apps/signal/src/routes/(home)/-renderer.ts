@@ -586,7 +586,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	renderer.shadowMap.enabled = true
 	renderer.shadowMap.type = THREE.PCFShadowMap
 	const scene = new THREE.Scene()
-	scene.background = new THREE.Color('#f2f2f4')
+	// A chunk not yet built leaves the base visible; a muted grass is ground, not a blank page.
+	scene.background = new THREE.Color('#9aac77')
 	const down = Array.range(0, FOG_SIZE - 1)
 	const fogIndices = {down, pixels: Array.range(0, FOG_SIZE * FOG_SIZE - 1), up: Array.reverse(down)}
 	const fogDistance = new Float32Array(FOG_SIZE * FOG_SIZE)
@@ -726,6 +727,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 	const simulation = {previous: 0, speed: 0, tick: 0}
 	const footprints = {sent: Option.none<{d: number; w: number; x: number; z: number}[]>()}
 	const listeners = {all: Array.empty<(seconds: number, delta: number) => void>(), drawn: Array.empty<() => void>()}
+	// The first built chunk is the first ground the camera can trust; a reset puts the world back to waiting.
+	const terrain = {listeners: Array.empty<(ready: boolean) => void>(), ready: false}
 	const raycaster = new THREE.Raycaster()
 	const direction = new THREE.Vector3()
 	// The latest tile asked about under the pointer; answers to older asks are dropped.
@@ -1140,6 +1143,10 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 					wanted: loaded.wanted
 				})
 				paintGround(message.cx, message.cz)
+				if (!terrain.ready) {
+					terrain.ready = true
+					for (const listener of terrain.listeners) listener(true)
+				}
 			}
 		})
 	}
@@ -1319,6 +1326,11 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 		onInspected(listener: (answer: Inspected) => void) {
 			inspection.listeners = [...inspection.listeners, listener]
 		},
+		// Whether the first ground a camera can trust has arrived; a reset waits for it again.
+		onTerrain(listener: (ready: boolean) => void) {
+			terrain.listeners = [...terrain.listeners, listener]
+			if (terrain.ready) listener(true)
+		},
 		// Drags the view by screen pixels: the ground under the pointer follows it.
 		pan(dx: number, dy: number) {
 			const perPixel = (view.zoom * 2) / Number.max(1, view.size.height)
@@ -1354,6 +1366,8 @@ export function createRenderer(canvas: HTMLCanvasElement, seed: number) {
 			groundTexture.needsUpdate = true
 			zoneData.set(new Uint8Array(zoneData.length))
 			zoneTexture.needsUpdate = true
+			terrain.ready = false
+			for (const listener of terrain.listeners) listener(false)
 			drawing.invalidate()
 		},
 		scene,

@@ -2142,6 +2142,25 @@ function ReplayLoading() {
 	)
 }
 
+function DrawingWorld() {
+	return (
+		<div id="drawing-world" className="bg-background absolute inset-0 z-20 flex items-center justify-center">
+			<div
+				role="status"
+				aria-label="Drawing the world"
+				className="flex max-w-xs flex-col items-center gap-3 px-6 text-center"
+			>
+				<img src={icon} alt="" className="pixelated size-8 opacity-80" />
+				<h2 className="font-heading text-2xl leading-none tracking-tight">Drawing the world</h2>
+				<p className="text-muted-foreground flex items-center gap-2 text-xs">
+					<Spinner className="size-3" />
+					Terrain is arriving.
+				</p>
+			</div>
+		</div>
+	)
+}
+
 function World(props: {seed: number; view: View}) {
 	const registry = useContext(RegistryContext)
 	const canvas = useRef<HTMLCanvasElement>(null)
@@ -2168,6 +2187,10 @@ function World(props: {seed: number; view: View}) {
 		if (target === null) return
 		target.addEventListener('wheel', preventMapWheel, {passive: false})
 		const renderer = createRenderer(target, props.seed)
+		const overlay = document.getElementById('drawing-world')
+		renderer.onTerrain(ready => {
+			if (overlay !== null) overlay.style.display = Boolean.match(ready, {onFalse: () => 'flex', onTrue: () => 'none'})
+		})
 		const cast = createCast(renderer)
 		const active = {cast, renderer}
 		cast.onPortrait(() => setPortraits(cast.portraits()))
@@ -2488,23 +2511,7 @@ function World(props: {seed: number; view: View}) {
 								onPointerLeave={gestures.leave}
 								onWheel={gestures.wheel}
 							/>
-							{/* A cold server can take many seconds before its first frame; a themed wait is honest about the flat terrain behind it. */}
-							{props.view.count === 0 && (
-								<div className="bg-background absolute inset-0 z-20 flex items-center justify-center">
-									<div
-										role="status"
-										aria-label="Drawing the world"
-										className="flex max-w-xs flex-col items-center gap-3 px-6 text-center"
-									>
-										<img src={icon} alt="" className="pixelated size-8 opacity-80" />
-										<h2 className="font-heading text-2xl leading-none tracking-tight">Drawing the world</h2>
-										<p className="text-muted-foreground flex items-center gap-2 text-xs">
-											<Spinner className="size-3" />
-											Terrain is arriving.
-										</p>
-									</div>
-								</div>
-							)}
+							<DrawingWorld />
 							<Overlay buildings={props.view.buildings} inspection={panel} units={props.view.frame.units} />
 							<MapControls
 								onTeam={next => {
