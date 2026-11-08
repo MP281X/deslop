@@ -64,6 +64,7 @@ import {preferEffectCountBy} from '#rules/prefer-effect-count-by.ts'
 import {preserveErrorCause} from '#rules/preserve-error-cause.ts'
 import {requireUnicodeRegexp} from '#rules/require-unicode-regexp.ts'
 import {schemaTypePair} from '#rules/schema-type-pair.ts'
+import {serviceSchemaFile} from '#rules/service-schema-file.ts'
 import {swiftuiThemeValues} from '#rules/swiftui-theme-values.ts'
 
 const REACT_LEGACY_APIS = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
@@ -170,6 +171,7 @@ const RULES = {
 	'preserve-error-cause': preserveErrorCause,
 	'require-unicode-regexp': requireUnicodeRegexp,
 	'schema-type-pair': schemaTypePair,
+	'service-schema-file': serviceSchemaFile,
 	'swiftui-theme-values': swiftuiThemeValues
 }
 

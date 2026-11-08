@@ -23,7 +23,7 @@ The user's choices; add a row when they pick, reject or correct one not covered 
 
 ## Layout
 
-- **Schemas** of a service all live in its `schema.ts`, an outside source's answer included, such as `FxPost` in `apps/stash/src/services/*/schema.ts`. `lib/utils.ts`: pure helpers.
+- **Schemas.** An outside source's answer belongs to the service that consumes it, such as `FxPost` in `apps/stash/src/services/*/schema.ts`; `lib/utils.ts`: pure helpers.
 - **Ownership.** Page-private components and helpers stay with their consumer; shared behavior has one owner. A new abstraction adds a capability the owner lacks or lightens what a reader holds, never just shorter files.
 - **Directness.** Domain names and plain control flow over wrappers and configuration languages; colocation balanced against navigable file size.
 - **Processes** with named states and events (a sign-in, an import, a playback) are `@typeonce/effect-machine` machines, not coordinated flags, timers and effects: states own their data and running work; `Machine.start` in the owning service, `AtomMachine` on a client, `MachineState` from `@typeonce/effect-machine-react` to render.
