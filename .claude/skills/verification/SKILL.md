@@ -18,11 +18,11 @@ A bug or a failed check starts at Diagnose. Finished work goes Cleanup, Prove, R
 
 ## Cleanup
 
-Before any capture, remove what the change no longer needs: debug code, dead code, duplicates, restyled shadcn components, unused files and the leftovers listed under Cleanup in Work. `rg` and Fallow rank candidates; deleting code something may still call needs caller or registration evidence plus a reachable-path probe. Proof shows the code that will merge.
+Before any capture, remove what the change no longer needs: debug code, dead code, duplicates, unused files and the leftovers listed under Cleanup in Work. `rg` and Fallow rank candidates; deleting code something may still call needs caller or registration evidence plus a reachable-path probe. Proof shows the code that will merge.
 
 ## Prove
 
-- **Fresh.** The preview runs the latest commit; confirm it before the first capture. Captures come after the last edit and are labelled with the commit; a later edit retakes every capture it affects.
+- **Fresh.** The preview runs the latest commit; confirm it before the first capture. Captures come after the last edit, and each caption, in the thread and in the PR body, names its short commit. Before every push and every reply that shows proof, retake each capture whose screen or flow changed since its commit.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
 - **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with the Scope trace for the backend path where the app exports traces.
 - **Each touched screen**, in the running app on real or planted data:
@@ -37,7 +37,7 @@ Before any capture, remove what the change no longer needs: debug code, dead cod
   - nothing is cut, misaligned or overflowing, and spacing matches its siblings;
   - loading, empty and error states tell the truth: no error while data is loading;
   - every word is needed.
-- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`. It returns what a reader would flag: cut text, page overflow, repeated text and actions, overlapping or unnamed controls, broken images, errors shown while loading, low contrast, tiny text, small touch targets on a phone, controls without a focus ring, rows a few pixels out of line, a component that renders differently across instances, colors, fonts and radii outside the page's theme, and the type sizes in use. Its `design` group measures Deslop's `DESIGN.md` and applies only in Deslop apps. Each entry is fixed or given a reason; a type size used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors. On iOS, read the `agent-device` snapshot of each captured state the same way: a label or button twice, a control without a name, a missing navigation title.
+- **Audit** every captured web state: pass the text of `references/page-audit.js` to `preview_evaluate`; it returns what a reader would flag. Its `design` group measures Deslop's `DESIGN.md` and applies only in Deslop apps. Each entry is fixed or given a reason; a type size used once is a one-off to remove. Assert anything else a rule can check: element counts, computed colors. On iOS, read the `agent-device` snapshot of each captured state the same way: a label or button twice, a control without a name, a missing navigation title.
 - **Performance**: the same workload, repeated runs, p50 and p95, resource cost; Scope traces and `measure_latency`.
 - **Unproved** claims say `unverified: <what was not run>`.
 

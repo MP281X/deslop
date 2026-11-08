@@ -136,7 +136,6 @@ Remove rebuildable data and settled work; keep what a working or unsettled threa
 4. **Caches.** No build running: `docker image prune -a -f`, `docker builder prune -a -f` (tens of GB). No install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune.
 5. **Versions.** Keep the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`); Node runtimes under `~/.vite-plus/js_runtime/node` a running process uses, plus each major's newest patch; the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
 6. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Delete every `~/.t3/runtime/versions/<version>` except its `activeVersion`, the one `ExecStart` names in `~/.config/systemd/user/t3code.service`, and a newer download.
-7. **Scratch.** This user's top-level `/tmp` entries older than a day, except `claude-*`, `codex*`, `/tmp/repos` and `/tmp/<name>` paths unsettled threads' turn items mention (`rg -o '/tmp/[A-Za-z0-9._-]+'` over their `payload_json`).
 
 ## Check
 

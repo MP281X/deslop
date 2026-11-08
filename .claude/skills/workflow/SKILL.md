@@ -16,7 +16,9 @@ A data model, a screen, an architecture change, or work spanning more than one P
 - **Units.** The PRs or stack layers, and what each proves.
 - **Done.** The journeys the proof will show.
 
-The user starts from symptoms and finds what they want by reacting to concrete things: map causes before options, then show the options. Approval freezes the card. A message that changes an entity, a screen or a unit updates the card and gets it approved again before the build follows. A durable app decision goes in the app's `AGENTS.md`.
+The user starts from symptoms and finds what they want by reacting to concrete things: map causes before options, then show the options. Approval freezes the card; a card the user hasn't answered is unapproved, and no brief or reply calls it approved or chosen. A durable app decision goes in the app's `AGENTS.md`.
+
+**Steers re-plan.** A message that changes an entity, a screen or a unit is planned like the first request: redraw the card around it, carry every settled decision over without asking it again, and rewrite the unmerged layers it reshapes rather than stacking a fix on top. A screen change shows its mock before any edit. Workers on parts the steer doesn't touch keep going.
 
 ## Decide
 
@@ -25,7 +27,7 @@ A middle decision has a better answer that more evidence reveals; taste and prod
 ## Split and delegate
 
 - **Units.** Each owns a set of files and has a command that proves it done: a test, a check or a capture. Units that touch the same file are one unit; dependent units form a stack.
-- **Who.** A cheap model from another provider than the main thread's for clear units: DeepSeek V4.1 Flash (`opencode-zen`), GPT-6 Luna (`codex`) or Haiku 5.5 (`claudeAgent`), for building to an approved card, sweeps, codemods, tests, inventories, exploration and research. GPT-6.1 Sol (`codex`) or Opus 5.5 (`claudeAgent`) for units that need judgment and as the other family for review. The main thread writes a unit itself only when briefing it costs more than doing it.
+- **Who.** A cheap model from another provider than the main thread's for clear units: DeepSeek V4.1 Flash (`opencode-zen`), GPT-6 Luna (`codex`) or Haiku 5.5 (`claudeAgent`), for building to an approved card, sweeps, codemods, tests, inventories, exploration and research. GPT-6.1 Sol (`codex`) or Opus 5.5 (`claudeAgent`) for units that need judgment and as the other family for review. The main thread writes a unit itself only when briefing it costs more than doing it, and never reads logs, the web or a wide code search itself: a cheap worker reads them and returns a cited report.
 - **Where.** `isolation:'worktree'` for a unit that writes; `target.environmentId` of `dev` to run it on the other worker. Read-only units share the checkout.
 - **Brief.** Self-contained, since the worker has no history: objective, the card or its path, owned files, fixed decisions and what not to touch, the done command, the report format. Write the spec yourself; never "based on your findings".
 - **Worker rules**, copied into every writing brief: edit only the owned files; run checks scoped to them (`vp lint <paths>`, `vp test <files>`), never `vp run fix` or another repo-wide fix; commit on the branch; clone only under `/tmp/repos/`; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with evidence: command and exit code, capture paths, commit SHA.
