@@ -84,12 +84,9 @@ const HTTP_ATTRIBUTES = [
 // The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
-// The icicle's lanes: a 22px box, 2px between lanes, 6px box padding and gap between its name and time, 4px after an outside label; 8px covers the 12px mono face's advance.
+// The icicle's lanes: a 22px box with 2px between lanes.
 const ICICLE_LANE = 24
 const ICICLE_BOX = 22
-const ICICLE_TEXT = 6
-const ICICLE_GAP = 4
-const ICICLE_CHAR = 8
 
 const KINDS: Record<Runtime, ReactElement> = {
 	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
@@ -320,12 +317,13 @@ function ErrorText(props: {message: string}) {
 	})
 }
 
-// A span opens only when it has something its row doesn't already show.
-function hasDetail(span: Trace['spans'][number]) {
+// GitHub's mark for a CI app or span, filling its 16px slot where the pixel icons keep a margin.
+function CiMark() {
 	return (
-		Option.isSome(errorOf(span)) ||
-		Array.isReadonlyArrayNonEmpty(attributesOf(span)) ||
-		Array.isReadonlyArrayNonEmpty(span.logs)
+		<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+			<GithubLight className="size-3.5 dark:hidden" />
+			<GithubDark className="hidden size-3.5 dark:block" />
+		</span>
 	)
 }
 
@@ -337,15 +335,21 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 				Array.every(props.app.operations, operation => operation.runtime === 'ci'),
 				{
 					onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-					// GitHub's mark fills its box edge to edge where the pixel icons keep a margin, so it sits at 14px in the same 16px slot.
-					onTrue: () => (
-						<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-							<GithubLight className="size-3.5 dark:hidden" />
-							<GithubDark className="hidden size-3.5 dark:block" />
-						</span>
-					)
+					onTrue: () => <CiMark />
 				}
 			),
+		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
+	})
+}
+
+// The mark of the app that ran a span: its own icon, GitHub's for CI, else a server glyph.
+function SpanMark(props: {span: Trace['spans'][number]}) {
+	return Option.match(Option.fromUndefinedOr(marks[appName(props.span.service)]), {
+		onNone: () =>
+			Boolean.match(props.span.runtime === 'ci', {
+				onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
+				onTrue: () => <CiMark />
+			}),
 		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 	})
 }
@@ -665,7 +669,7 @@ function TimeAxis(props: {totalMs: number}) {
 	)
 }
 
-// One lane per span depth, each span a box on the trace's time scale; a short box borrows the free lane after it for its label.
+// One lane per span depth, each span a box on the trace's time scale with its name and duration inside; arrow keys walk the tree.
 function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Trace}) {
 	const total = Number.max(props.trace.durationMs, 1)
 	const lanes = Array.reduce(props.trace.spans, 0, (deepest, span) => Number.max(deepest, span.depth)) + 1
@@ -681,32 +685,12 @@ function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Tra
 	}, [])
 	const rows = Array.map(props.trace.spans, span => {
 		const fraction = span.durationMs / total
-		const box = fraction * width
 		const time = durationOf(span.durationMs)
-		const label = `${span.name} ${time}`
-		const inline = width === 0 || box >= time.length * ICICLE_CHAR + ICICLE_TEXT * 2 + ICICLE_TEXT
-		const free = Number.max(
-			0,
-			((Number.min(
-				Array.reduce(
-					Array.filter(props.trace.spans, other => other.depth === span.depth && other.offsetMs > span.offsetMs),
-					Infinity,
-					(soonest, other) => Number.min(soonest, other.offsetMs)
-				),
-				total
-			) -
-				span.offsetMs -
-				span.durationMs) /
-				total) *
-				width
-		)
 		return {
-			box,
-			inline,
-			label,
+			label: `${span.name} ${time}`,
+			// 8px covers the 12px mono face's advance; 6px pads the box and separates its name and time.
+			labelled: width === 0 || fraction * width >= time.length * 8 + 6 * 2 + 6,
 			left: (span.offsetMs / total) * 100,
-			outside: !inline && free >= label.length * ICICLE_CHAR + ICICLE_GAP,
-			outsideLeft: (span.offsetMs / total) * width + Number.max(box, 1) + ICICLE_GAP,
 			picked: span.spanId === props.focus,
 			span,
 			time,
@@ -714,6 +698,28 @@ function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Tra
 			width: fraction * 100
 		}
 	})
+	function moveFocus(span: Trace['spans'][number], key: string) {
+		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
+		const index = Option.getOrElse(
+			Array.findFirstIndex(siblings, other => other.spanId === span.spanId),
+			() => 0
+		)
+		Option.match(
+			pipe(
+				Match.value(key),
+				Match.when('ArrowLeft', () => Array.get(siblings, index - 1)),
+				Match.when('ArrowRight', () => Array.get(siblings, index + 1)),
+				Match.when('ArrowUp', () => Array.findFirst(props.trace.spans, other => other.spanId === span.parentSpanId)),
+				Match.when('ArrowDown', () => Array.findFirst(props.trace.spans, other => other.parentSpanId === span.spanId)),
+				Match.orElse(() => Option.none<Trace['spans'][number]>())
+			),
+			{
+				onNone: () => undefined,
+				onSome: next =>
+					surface.current?.querySelector<HTMLButtonElement>(`[data-span-id="${next.spanId}"] button`)?.focus()
+			}
+		)
+	}
 	return (
 		<div className="mt-1.5 mb-2 px-4">
 			<div
@@ -736,7 +742,7 @@ function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Tra
 							data-app={appName(row.span.service)}
 							className={cn(
 								'text-background absolute inset-0 flex items-center overflow-hidden text-xs',
-								Boolean.match(row.inline, {onFalse: () => undefined, onTrue: () => 'px-1.5'}),
+								Boolean.match(row.labelled, {onFalse: () => undefined, onTrue: () => 'px-1.5'}),
 								Boolean.match(row.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'}),
 								Boolean.match(row.picked, {
 									onFalse: () => undefined,
@@ -744,10 +750,10 @@ function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Tra
 								})
 							)}
 						>
-							{Boolean.match(row.inline, {
+							{Boolean.match(row.labelled, {
 								onFalse: () => null,
 								onTrue: () => (
-									<span className="flex w-full min-w-0 items-center gap-1.5">
+									<span className="flex w-full min-w-0 items-center justify-between gap-1.5">
 										<span className="min-w-0 truncate">{row.span.name}</span>
 										<span className="shrink-0 opacity-70">{row.time}</span>
 									</span>
@@ -760,48 +766,53 @@ function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Tra
 							aria-label={row.label}
 							title={row.label}
 							onClick={() => props.onPick(row.span.spanId)}
+							onKeyDown={event => {
+								if (String.startsWith('Arrow')(event.key)) {
+									event.preventDefault()
+									moveFocus(row.span, event.key)
+								}
+							}}
 							className="absolute inset-0 h-full w-full border-0 bg-transparent p-0 outline-none"
 						/>
 					</div>
 				))}
-				{Array.map(rows, row =>
-					Boolean.match(row.outside, {
-						onFalse: () => null,
-						onTrue: () => (
-							<span
-								key={`label:${row.span.spanId}`}
-								aria-hidden
-								data-icicle-label=""
-								className="text-muted-foreground pointer-events-none absolute top-(--label-top) left-(--label-left) h-5.5 text-xs leading-5.5 whitespace-nowrap"
-								style={{'--label-left': `${row.outsideLeft}px`, '--label-top': `${row.top}px`}}
-							>
-								{row.label}
-							</span>
-						)
-					})
-				)}
 			</div>
 		</div>
 	)
 }
 
-// The picked span's error, attributes and logs, as stock-height rows with no dividers between them; a span with none shows no rows.
+// The picked span's identity above its details: its app's mark, its name, where it started, and its duration.
+function SpanHeader(props: {span: Trace['spans'][number]}) {
+	return (
+		<div role="listitem" className="col-span-2 flex h-8 items-center gap-3 max-sm:h-11">
+			<SpanMark span={props.span} />
+			<span
+				className={cn(
+					'min-w-0 truncate',
+					Boolean.match(props.span.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+				)}
+			>
+				{props.span.name}
+			</span>
+			<span className="text-muted-foreground shrink-0 truncate">
+				{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}
+			</span>
+			<span className="ml-auto shrink-0 tabular-nums">{durationOf(props.span.durationMs)}</span>
+		</div>
+	)
+}
+
+// The picked span's header, error, attributes and logs, as stock-height rows with no dividers between them.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
-	if (
-		!Option.isSome(error) &&
-		!Array.isReadonlyArrayNonEmpty(attributes) &&
-		!Array.isReadonlyArrayNonEmpty(props.span.logs)
-	) {
-		return null
-	}
 	return (
 		<div
 			role="list"
 			aria-label="Span details"
 			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4 text-xs"
 		>
+			<SpanHeader span={props.span} />
 			{Option.match(error, {
 				onNone: () => null,
 				onSome: message => (
@@ -861,21 +872,17 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 	)
 }
 
-// The picked span's details alone, for the phone's pushed span screen; a picked span with none says so with the same symbol.
+// The picked span's details alone, for the phone's pushed span screen.
 function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	return Option.match(props.focus, {
 		onNone: () => <EmptyState label="Select a span" icon={<EmptyIcon />} />,
-		onSome: span =>
-			Boolean.match(hasDetail(span), {
-				onFalse: () => <EmptyState label="No details" icon={<EmptyIcon />} />,
-				onTrue: () => (
-					<ScrollArea className="min-h-0 flex-1">
-						<div className="flex flex-col">
-							<SpanDetail span={span} />
-						</div>
-					</ScrollArea>
-				)
-			})
+		onSome: span => (
+			<ScrollArea className="min-h-0 flex-1">
+				<div className="flex flex-col">
+					<SpanDetail span={span} />
+				</div>
+			</ScrollArea>
+		)
 	})
 }
 
@@ -913,7 +920,7 @@ function SpansList(props: {
 					/>
 				</div>
 			</div>
-			{Boolean.match(props.inlineDetails && Option.exists(props.focus, hasDetail), {
+			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
 				onFalse: () => null,
 				onTrue: () => (
 					<div className="border-t">
@@ -938,18 +945,11 @@ function brokeAt(spans: Trace['spans']) {
 	return Array.findFirst(failed, span => !HashSet.has(parents, span.spanId))
 }
 
-// The span the URL picks, else where the failure broke, else the first span with details.
+// The span the URL picks, else where the failure broke, else the first span.
 function focusOf(trace: Trace, pickedSpan?: string) {
-	const root = Array.findFirst(trace.spans, span => span.depth === 0)
 	return Option.orElse(
 		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
-		() =>
-			pipe(
-				brokeAt(trace.spans),
-				Option.orElse(() => root),
-				Option.filter(hasDetail),
-				Option.orElse(() => Array.findFirst(trace.spans, hasDetail))
-			)
+		() => Option.orElse(brokeAt(trace.spans), () => Array.findFirst(trace.spans, span => span.depth === 0))
 	)
 }
 

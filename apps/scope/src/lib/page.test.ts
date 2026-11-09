@@ -458,6 +458,20 @@ it.effect(
 )
 
 it.effect(
+	'shows the picked span’s identity even when it has no detail rows',
+	Effect.fnUntraced(function* () {
+		const html = yield* render(
+			AsyncResult.success(trace),
+			undefined,
+			`/?source=deploy&app=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
+		)
+		assert.include(html, 'aria-label="Span details"')
+		assert.include(html, 'deploy · at 0 ms')
+		assert.include(html, 'Private retained span')
+	})
+)
+
+it.effect(
 	'marks a failed trace without repeating its diagnostic on the row or its hover name',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
