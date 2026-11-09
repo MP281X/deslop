@@ -1082,8 +1082,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Queue.offer(theirs, value)
 				)
 			)
-			assert.strictEqual((yield* Queue.take(mine)).report.totals.calls, 0)
-			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 0)
+			assert.deepStrictEqual((yield* Queue.take(mine)).report.byProvider, [])
+			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [])
 			const called = yield* send(gateway.web, '/ai/anthropic/json', {
 				body: '{"model":"test"}',
 				headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
@@ -1093,7 +1093,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Effect.promise(() => called.text())
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
-			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 1)
+			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [
+				{costUsd: 0.123, name: 'anthropic', unknownCostCalls: 0}
+			])
 			// Another person's call never reaches this reader, not even as a tick.
 			assert.strictEqual(yield* Queue.size(mine), 0)
 		})

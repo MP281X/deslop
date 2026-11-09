@@ -34,35 +34,18 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 	})
 }
 
-// judge-ignore no-reinvented-helper -- one pass folds eight fields; no library call sums a struct.
 function totals(rows: AiUsageEntry[]) {
-	return Array.reduce(
-		rows,
-		{
-			cacheReadTokens: 0,
-			cacheWriteTokens: 0,
-			calls: 0,
-			costUsd: 0,
-			inputTokens: 0,
-			outputTokens: 0,
-			tokens: 0,
-			unknownCostCalls: 0
-		},
-		(sum, row) => ({
-			cacheReadTokens: sum.cacheReadTokens + row.cacheReadTokens,
-			cacheWriteTokens: sum.cacheWriteTokens + row.cacheWriteTokens,
-			calls: sum.calls + 1,
-			costUsd: sum.costUsd + (row.costUsd ?? 0),
-			inputTokens: sum.inputTokens + row.inputTokens,
-			outputTokens: sum.outputTokens + row.outputTokens,
-			tokens: sum.tokens + row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens,
-			unknownCostCalls:
-				sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
-		})
-	)
+	return Array.reduce(rows, {costUsd: 0, unknownCostCalls: 0}, (sum, row) => ({
+		costUsd: sum.costUsd + (row.costUsd ?? 0),
+		unknownCostCalls:
+			sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
+	}))
 }
-function grouped(rows: AiUsageEntry[], key: (entry: AiUsageEntry) => string) {
-	return Array.map(Record.toEntries(Array.groupBy(rows, key)), entry => ({name: entry[0], ...totals(entry[1])}))
+function grouped(rows: AiUsageEntry[]) {
+	return Array.map(Record.toEntries(Array.groupBy(rows, entry => entry.provider)), entry => ({
+		name: entry[0],
+		...totals(entry[1])
+	}))
 }
 export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
 	const selected = Array.filter(entries, entry => entry.at >= query.from && entry.at < query.to)
@@ -71,25 +54,13 @@ export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
 		return Math.floor(entry.at / size) * size
 	}
 	return {
-		byApp: grouped(selected, entry => entry.app),
-		byModel: grouped(selected, entry => entry.model ?? 'unknown'),
-		byProvider: grouped(selected, entry => entry.provider),
-		// Each bucket, app and model on their own, so the page can narrow one breakdown by the other or by a bucket.
-		cells: Array.map(
-			Record.values(
-				Array.groupBy(selected, entry => `${bucket(entry)}\u0000${entry.app}\u0000${entry.model ?? 'unknown'}`)
-			),
-			group => ({app: group[0].app, at: bucket(group[0]), model: group[0].model ?? 'unknown', ...totals(group)})
-		),
+		byProvider: grouped(selected),
 		series: Array.sort(
 			Array.map(Record.values(Array.groupBy(selected, entry => `${bucket(entry)}`)), group => ({
 				at: bucket(group[0]),
-				byApp: grouped(group, entry => entry.app),
-				byModel: grouped(group, entry => entry.model ?? 'unknown'),
-				byProvider: grouped(group, entry => entry.provider)
+				byProvider: grouped(group)
 			})),
 			Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
-		),
-		totals: totals(selected)
+		)
 	}
 }
