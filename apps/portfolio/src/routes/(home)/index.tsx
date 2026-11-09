@@ -572,7 +572,7 @@ function PresenceHud(input: {
 						aria-haspopup="dialog"
 						aria-label="Toggle keyboard shortcuts"
 						onClick={input.onToggleShortcuts}
-						className="pointer-events-auto -mr-1"
+						className="pointer-events-auto -mr-1 pointer-coarse:hidden"
 					>
 						?
 					</Button>
