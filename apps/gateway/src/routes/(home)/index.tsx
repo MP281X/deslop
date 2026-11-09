@@ -38,7 +38,7 @@ import {
 } from '#lib/utils.ts'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
-import {providerCost, providerSeries, serverCalls, serverSeries} from '#routes/(home)/-usage.ts'
+import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import {PROVIDER_NAMES} from '#services/ai/schema.ts'
 import type {AiKeyInfo, AiProvider, AiUsageReport} from '#services/ai/schema.ts'
@@ -177,6 +177,7 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	const needsUser = !connected || props.server.error !== undefined
 	const failed = props.server.status === 'Expired' || props.server.error !== undefined
 	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
+	const series = serverSeries(props.report, props.server.id, props.period)
 	function connect() {
 		setConnecting(true)
 		location.assign(connectUrl(props.server.id))
@@ -216,12 +217,9 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 							</Button>
 						)
 					})}
-					<Sparkline
-						color={serverHue(props.server)}
-						values={serverSeries(props.report, props.server.id, props.period)}
-					/>
+					<Sparkline color={serverHue(props.server)} values={series} />
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-						{count.format(serverCalls(props.report, props.server.id))}
+						{count.format(Number.sumAll(series))}
 					</span>
 				</ItemActions>
 			</Item>

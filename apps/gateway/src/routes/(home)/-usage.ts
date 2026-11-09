@@ -1,4 +1,4 @@
-import {Array, Number, Option} from 'effect'
+import {Array, Option} from 'effect'
 
 import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai/schema.ts'
 import type {McpUsageServer} from '#services/connections/schema.ts'
@@ -60,14 +60,5 @@ export function serverSeries(report: readonly McpUsageServer[], id: string, rang
 			),
 			() => 0
 		)
-	)
-}
-export function serverCalls(report: readonly McpUsageServer[], id: string) {
-	return Option.getOrElse(
-		Option.map(
-			Array.findFirst(report, row => row.id === id),
-			row => Number.sumAll(Array.map(row.series, bucket => bucket.calls))
-		),
-		() => 0
 	)
 }
