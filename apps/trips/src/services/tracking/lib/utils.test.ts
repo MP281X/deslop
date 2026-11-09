@@ -1,12 +1,11 @@
 import {assert, it} from '@effect/vitest'
 
-import {DateTime, Option, Schema} from 'effect'
+import {DateTime, Option} from 'effect'
 
 import {HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
 import {Flight, Train} from '#services/bookings/schema.ts'
 import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
 import type {FaFlight} from '#services/tracking/schema.ts'
-import {VtRun} from '#services/tracking/schema.ts'
 
 const ANSWER: FaFlight = {
 	cancelled: false,
@@ -17,14 +16,6 @@ const ANSWER: FaFlight = {
 	scheduled_out: '2026-10-28T15:40:00Z',
 	terminal_origin: '3'
 }
-
-it('rejects provider run identifiers that can change the lookup path', () => {
-	assert.isTrue(Schema.is(VtRun)({codLocOrig: 'S08409', millisDataPartenza: '1793991829384'}))
-	for (const segment of ['.', '..', '../S08409', 'S08409?other=1']) {
-		assert.isFalse(Schema.is(VtRun)({codLocOrig: segment, millisDataPartenza: '1793991829384'}))
-		assert.isFalse(Schema.is(VtRun)({codLocOrig: 'S08409', millisDataPartenza: segment}))
-	}
-})
 
 it('keeps the gate a flight left for the change it shows', () => {
 	const first = flightTracking({...ANSWER, gate_origin: 'A3'}, 1)

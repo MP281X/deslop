@@ -4,6 +4,7 @@ import {
 	Array,
 	Boolean,
 	Cause,
+	Clock,
 	ConfigProvider,
 	Context,
 	Deferred,
@@ -235,6 +236,51 @@ it.layer(
 			assert.isTrue(Exit.hasFails(yield* Effect.exit(tracker.refresh(FLIGHT.id))))
 			assert.strictEqual(yield* store.get('aeroapi'), 'corrupt')
 			assert.strictEqual(yield* Ref.get(calls), 0)
+		})
+	)
+
+	test.effect(
+		'treats a malformed run lookup as no answer and makes no paid request',
+		Effect.fnUntraced(function* () {
+			const now = yield* Clock.currentTimeMillis
+			const train = Train.make({...TRAIN, arrives: now + 2 * HOUR, departs: now + HOUR})
+			const store = yield* KeyValueStore.KeyValueStore
+			yield* store.clear
+			const state = yield* Ref.make<BookingList>([])
+			const initial = yield* Queue.unbounded<void>()
+			const calls = yield* Ref.make(0)
+			const client = HttpClient.make(request =>
+				Effect.gen(function* () {
+					yield* Ref.update(calls, count => count + 1)
+					return HttpClientResponse.fromWeb(
+						request,
+						Response.json({codLocOrig: '../S08409', millisDataPartenza: 'not-a-number'})
+					)
+				})
+			)
+			const tracker = Context.get(
+				yield* Layer.build(
+					pipe(
+						Tracker.layer,
+						Layer.provide(
+							Layer.succeed(Bookings, {
+								...bookingsAt(state),
+								list: Effect.tap(Ref.get(state), () => Queue.offer(initial, undefined))
+							})
+						),
+						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+					)
+				),
+				Tracker
+			)
+			yield* Queue.take(initial)
+			yield* Ref.set(state, [train])
+			const lookup = yield* Effect.forkScoped(Effect.exit(tracker.refresh(train.id)))
+			yield* TestClock.adjust('5 seconds')
+			const result = yield* Fiber.join(lookup)
+			assert.strictEqual(yield* Ref.get(calls), 3)
+			assert.isTrue(Exit.hasFails(result), Exit.match(result, {onFailure: Cause.pretty, onSuccess: () => 'no failure'}))
+			assert.isUndefined(yield* store.get('aeroapi'))
 		})
 	)
 })
