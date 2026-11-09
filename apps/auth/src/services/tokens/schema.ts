@@ -154,8 +154,5 @@ export const SignedInApp = Schema.Struct({
 	parent: Schema.optionalKey(Schema.NonEmptyString)
 })
 
-export type FamilyParams = typeof FamilyParams.Type
-export const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
-
 export type RevokeParams = typeof RevokeParams.Type
 export const RevokeParams = Schema.Struct({client_id: Schema.NonEmptyString, token: Schema.NonEmptyString})

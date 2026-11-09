@@ -42,6 +42,3 @@ export const GitHubUser = Schema.Struct({
 
 export type AdmitParams = typeof AdmitParams.Type
 export const AdmitParams = Schema.Struct({allow: Schema.Boolean, id: Schema.NonEmptyString})
-
-export type PersonParams = typeof PersonParams.Type
-export const PersonParams = Schema.Struct({id: Schema.NonEmptyString})

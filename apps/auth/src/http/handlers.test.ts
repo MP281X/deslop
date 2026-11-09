@@ -45,7 +45,7 @@ import {
 	RequestOptions
 } from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
-import {AdmitParams, Person, PersonParams} from '#services/people/schema.ts'
+import {AdmitParams, Person} from '#services/people/schema.ts'
 import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {
 	AnswerParams,
@@ -55,7 +55,7 @@ import {
 	RequestParams
 } from '#services/sign-ins/schema.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {DEVICE_GRANT, FamilyParams, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
+import {DEVICE_GRANT, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
@@ -66,6 +66,10 @@ const GITHUB_IDS: Record<string, number> = {drifter: 9, octocat: 42, stranger: 7
 const IPHONE_SAFARI =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
 const VERIFIER = String.repeat(43)('x')
+type FamilyParams = typeof FamilyParams.Type
+const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
+type PersonParams = typeof PersonParams.Type
+const PersonParams = Schema.Struct({id: Schema.NonEmptyString})
 
 const me = pipe(
 	HttpRouter.add('GET', '/me', Effect.flatMap(CurrentUser, HttpServerResponse.schemaJson(User))),
