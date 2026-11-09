@@ -497,17 +497,11 @@ function layerSignIn(issuer: string) {
 	)
 }
 
-// Without an issuer every request is the developer, so there is nothing to sign in to.
-const notConfigured = HttpServerResponse.text('Sign-in is not configured for this app', {status: 503})
-
+// Without an issuer every request is the developer, so there are no sign-in routes.
 export const layerSessionRoutes = Layer.unwrap(
 	Effect.gen(function* () {
 		return Option.match(yield* Config.option(Config.String('AUTH_URL')), {
-			onNone: () =>
-				Layer.mergeAll(
-					HttpRouter.add('GET', '/auth/sign-in', notConfigured),
-					HttpRouter.add('GET', '/auth/sign-out', notConfigured)
-				),
+			onNone: () => Layer.empty,
 			onSome: layerSignIn
 		})
 	})

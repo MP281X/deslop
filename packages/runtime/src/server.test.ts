@@ -293,7 +293,6 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const signIn = yield* send(web, 'https://dev.example.ts.net:25270/auth/sign-in', {
 					host: 'dev.example.ts.net:25270'
 				})
-				assert.strictEqual(signIn.status, 503)
 				assert.isNull(signIn.headers.get('location'))
 			})
 		)
