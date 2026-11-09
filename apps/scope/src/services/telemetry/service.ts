@@ -268,7 +268,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					entries: Array.map(Array.take(Array.drop(ordered, query.offset), query.limit), found => {
 						const records = byTrace[found.id] ?? []
 						const view = traceView(records, found.id)
-						const root = Option.getOrElse(Array.head(view.spans), () => Option.getOrThrow(Array.head(records)))
+						const root = Option.getOrThrow(Array.head(view.spans))
 						return {
 							durationMs: found.durationMs,
 							errors: Array.countBy(records, entry => entry.status === 2),
