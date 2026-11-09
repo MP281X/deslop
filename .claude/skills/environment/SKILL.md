@@ -5,7 +5,7 @@ description: Load before worker operations, previews, devices, tracing, deployme
 
 # Environment
 
-Two headless Debian workers in one tailnet, same user, paths and agent configuration.
+Two headless Debian workers in one tailnet, same user and paths.
 
 | Name          | Address          | Role                                                                                          |
 | ------------- | ---------------- | --------------------------------------------------------------------------------------------- |
@@ -15,11 +15,11 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 | `iphone`      | `100.117.217.10` | T3 client only                                                                                |
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
-- **Tools.** `vp` and `vpx` (Vite+) on `PATH` everywhere, also over SSH; systemd units need `~/.vite-plus/bin`. Passwordless sudo on the workers; `gh`, `glab` and the MCP gateway signed in.
+- **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.
 - **Scratch** under `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
 - **Task-local auxiliary services** run as temporary containers, not host installs.
-- **Agent sign-in.** Claude: `claude mcp login --no-browser gateway`; Codex uses its configured gateway MCP sign-in. Approve the code in the URL it prints at https://auth.mp281x.xyz.
+- **Agent sign-in:** [MCP sign-in](references/maintenance.md#mcp-sign-in).
 
 | Reference                                | For                                                       |
 | ---------------------------------------- | --------------------------------------------------------- |
@@ -28,6 +28,8 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 settings, updates, clean |
 
 ## Previews
+
+Rerun the project's preview script after edits.
 
 - **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it only through the project's `preview` script from the worktree root, which prints the stable HTTPS URL and replaces the previous run; the repository's own preview command or a background task bypasses the unit and dies with the turn.
 
@@ -39,17 +41,17 @@ Two headless Debian workers in one tailnet, same user, paths and agent configura
 
 ## Tools
 
-One chain per trigger; if it returns no data, say so and proceed. Missing MCP data permits continued investigation, not a successful verification claim.
+One chain per trigger; no data means report it and investigate further, not verification.
 
-| Missing fact                             | First call                                                                                                                                         |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime error, trace or latency          | Scope: `list_services` → `find` → `read_trace` / `measure_latency`                                                                                 |
-| Runtime service, port or container state | Deploy: `inventory` / `resource_history` — not `ps`, `docker ps`, `ss` or `systemctl`; unit health is the maintenance check's `systemctl --failed` |
-| Sign-in blocked                          | Auth: `answer_request`                                                                                                                             |
-| Saved article, video or post             | Stash: `search_notes` / `read_note`                                                                                                                |
-| Design reference                         | Mobbin: `search_screens` / `search_flows` / `save_content`                                                                                         |
-| Dual behavior or skill                   | DualOS: `dual_context` → `read_skill` → `execute`                                                                                                  |
-| A tool seems missing                     | `list_mcp_connections` before assuming it is absent                                                                                                |
+| Missing fact                             | First call                                                                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime error, trace or latency          | Call Scope's `list_services`, then `find`, then `read_trace` or `measure_latency`.                                                                                |
+| Runtime service, port or container state | Call Deploy's `inventory` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`; check unit health with the maintenance check's `systemctl --failed`. |
+| Sign-in blocked                          | Call Auth's `answer_request`.                                                                                                                                     |
+| Saved article, video or post             | Call Stash's `search_notes` or `read_note`.                                                                                                                       |
+| Design reference                         | Call Mobbin's `search_screens`, `search_flows` or `save_content`.                                                                                                 |
+| Dual behavior or skill                   | Call DualOS's `dual_context`, then `read_skill`, then `execute`.                                                                                                  |
+| A tool seems missing                     | Call `list_mcp_connections` before assuming it is absent.                                                                                                         |
 
 ## Diagnostics
 

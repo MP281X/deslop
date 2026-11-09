@@ -20,13 +20,10 @@ Mermaid architecture or flow for a structural change, a diff for a contract.
 ## Evidence
 
 <!--
-One line per claim, its capture under it: real input → result where it is
-consumed. A screenshot per state, a motion video per journey, a backend change
-through the screen that shows it plus its Scope trace; command output supports a
-capture, never replaces it; a mock is never proof. Before/after on the same data
-only when the claim is a difference, as a | Before | After | table.
-Captures from the final head after the last edit, on representative data,
-native apps from a simulator, taken after a condition holds rather than a delay.
+Write one line per claim, with its capture under it, showing the real input and
+the result where it is consumed. Use a screenshot per state and a motion video
+per journey. Follow the verification skill for the proof procedure. Use a
+| Before | After | table on the same data only when the claim is a difference.
 T3 Code shows an image at most 480 px wide: crop a desktop capture to the region
 its claim is about, in dark, unless the claim is the whole layout. Captions say
 what changed, not how it was captured. An unchecked task-list item under its

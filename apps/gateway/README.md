@@ -1,27 +1,16 @@
 # Gateway
 
-One MCP endpoint for every MCP server you connect; add servers on its page.
-
 ```bash
 npm install --global @deslop/gateway
 gateway service install --url https://gateway.mp281x.xyz --auth https://auth.mp281x.xyz --admins <github-id>
 ```
 
-- **Register** only `https://<gateway>/mcp` in each harness; tools are named `<server>__<tool>`.
-- **Admins** (`--admins`) add and connect servers; everyone signed in shares them.
-- **Deslop servers** name Auth in their protected-resource metadata and take the caller's own access token for discovery and calls, without Connect or stored tokens. Only third-party OAuth servers keep the Connect flow.
-- **Own tool**: `list_mcp_connections` explains a missing or failing server.
+Register only `https://<gateway>/mcp` in each harness. Admins add and connect servers; everyone signed in shares them. AI keys and usage belong to each person, as described in this app's `AGENTS.md`.
 
 ## AI proxy
 
-Each person manages their own Anthropic, OpenRouter, OpenCode Zen and OpenCode Go keys. Keys stay in Gateway's owner-only data files; only their last four characters and last upstream status leave the server.
+App servers start with `--gateway https://gateway.mp281x.xyz`.
 
-App servers start with `--gateway https://gateway.mp281x.xyz`. Every AI call sends the person's signed access JWT; Gateway verifies it and records its `azp` client label as the app. No app-specific credential is issued. Without `--auth`, calls use the local developer.
-
-Use `AiGateway` from `@deslop/runtime/ai`: `yield* gateway.apiUrl(provider)` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. The runtime prefers the person's freshest server-side session, refreshing it when needed, then a recently verified bearer with at least 60 seconds left. Otherwise it asks the person to open the app once. OpenRouter's scoped `withClientTransform` does not cover streaming chat completions. OpenRouter's base includes `/v1`; its Decisions client derives `/alpha/decisions` correctly. OpenCode bases expose protocol-family paths such as `/openai/v1/chat/completions` and `/anthropic/v1/messages` without translating them.
-
-`/ai/<provider>/<rest>` forwards method, query, body and upstream status. Fetch decodes compressed responses; stale encoding and length headers, hop-by-hop headers and headers nominated by `Connection` are removed from the streamed answer. Caller credentials and hop-by-hop headers are removed before inserting the person's provider key. Missing keys return HTTP 402 with instructions to add a key in Gateway. JSON and SSE usage is metered asynchronously; provider-reported cost wins, then daily-cached models.dev prices, otherwise cost remains unknown. Usage is stored per person and UTC month.
-
-Person-scoped RPCs: `ai.keys`, `ai.setKey`, `ai.removeKey`, `ai.usage`. Usage queries take epoch-millisecond `from` (inclusive), `to` (exclusive), and `bucket` (`hour` or `day`); `AiUsageReport` returns token/cost totals, UTC buckets split by app and model, and breakdowns by app, model and provider. `unknownCostCalls` distinguishes unknown cost from zero cost.
+Use `AiGateway` from `@deslop/runtime/ai`: `yield* gateway.apiUrl(provider)` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. OpenRouter's scoped `withClientTransform` does not cover streaming chat completions.
 
 Common flags and service commands: [Deslop app runtime](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).

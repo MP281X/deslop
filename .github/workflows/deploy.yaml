@@ -57,7 +57,7 @@ jobs:
             if ! published=$(npm view "@deslop/$1" fingerprint 2> "$RUNNER_TEMP/view-$1"); then
               # Only a missing package is a first publish; any other failure, such as the registry being down, fails the app.
               grep -q E404 "$RUNNER_TEMP/view-$1" || { cat "$RUNNER_TEMP/view-$1" >&2; return 1; }
-              echo "::warning::@deslop/$1 needs its first publish and trusted-publisher setup; see RELEASING.md"
+              echo "::warning::@deslop/$1 needs its first publish and trusted-publisher setup; see .github/releasing.md"
               echo "- @deslop/$1 unpublished" > "$RUNNER_TEMP/summary-$1"
             elif [ "$published" != "$fingerprint" ]; then
               npm pkg set "version=0.1.${{ github.run_number }}" "fingerprint=$fingerprint"

@@ -1,7 +1,5 @@
 # Maintenance
 
-Setup, upkeep and rebuild of the machines.
-
 ## Machines
 
 `dev` and `desktop`: latest Debian stable, text mode, same setup, `mp281x` with passwordless sudo (`/etc/sudoers.d/99-mp281x-nopasswd`, mode 0440). Sign-ins and machine configuration are never copied between machines; only [T3 settings](#t3-settings) are shared.
@@ -11,7 +9,7 @@ Setup, upkeep and rebuild of the machines.
 | Hardware | VPS, 8 cores, 23 GB, 15 GB swap                                                         | Ryzen 9 9900X, 30 GB, 31 GB swap, 1 TB NVMe            |
 | Network  | Always on, public `77.237.236.132`; ufw allows 80, 443 and UDP 443                      | On demand, home LAN on `eno1`; ufw denies all incoming |
 | GitLab   | Through the VPN, signed in again after each reboot; advertises the route to the tailnet | Through dev's route (`--accept-routes`)                |
-| sshd     | The VPS provider's `/etc/ssh/sshd_config` (2025-12-29)                                  | Debian's                                               |
+| sshd     | The VPS provider's `/etc/ssh/sshd_config`                                               | Debian's                                               |
 | GPU      | None                                                                                    | NVIDIA GeForce RTX 5070, 12 GB; [setup](#desktop-gpu)  |
 
 - **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, btop (never htop), ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code in `~/.local/bin`. `~/.bashrc`'s first lines, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`. `swapon`, `sshd` and `ufw` live in `/usr/sbin`, off a non-login `PATH`.
@@ -20,28 +18,16 @@ Setup, upkeep and rebuild of the machines.
 - **Repositories.** `~/dual`: credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub: `gh auth setup-git`; [Git identity](#git-identity).
 - **Updates.** `unattended-upgrades` daily. desktop has only local IPv6: `/etc/apt/apt.conf.d/99force-ipv4` holds `Acquire::ForceIPv4 "true";`.
 - **Git defaults:** `rebase.updateRefs`, `rebase.autoSquash`, `rebase.autoStash`, `push.autoSetupRemote`, `fetch.prune`, `rerere.enabled`, `diff.algorithm histogram`, `merge.conflictStyle zdiff3`, `init.defaultBranch main`.
-- **Firewall.** Tailscale's `ts-input` accepts tailnet traffic before ufw; ufw allows dev's 80, 443 and UDP 443 for Deploy's Caddy, which runs as a user service. dev: `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off the console.
+- **Firewall.** Tailscale's `ts-input` accepts tailnet traffic before ufw; dev's allowed ports serve Deploy's Caddy user service. `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off dev's console.
 - **TCP on dev.** `/etc/sysctl.d/90-tcp.conf`: `fq`, `bbr`, `tcp_slow_start_after_idle = 0`, for lossy phones and idle keep-alive or WebSocket connections.
 - **Access.** One ED25519 pair as `~/.ssh/id_ed25519` everywhere; `authorized_keys` holds only its public key; no `~/.ssh/config`; `known_hosts` from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the other worked from another machine.
-- **sshd.** `UsePAM yes` gives an SSH login its systemd user session; OpenSSH's default is `no`, which leaves `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` unset, so `systemctl --user` fails with "Failed to connect to user scope bus" and `t3 service restart` with `BootServiceCommandError`. dev's provider file has no `UsePAM yes` and no `Include /etc/ssh/sshd_config.d/*.conf`, so no drop-in is read there; it ends with appended `UsePAM yes` and `KbdInteractiveAuthentication no` (keeps PAM from offering password prompts). A provider `sshd_config.d/50-cloud-init.conf` sets `PasswordAuthentication yes`. Trust `sudo sshd -T`, not a file.
+- **sshd.** `UsePAM yes` supplies `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`; without it, `systemctl --user` fails with "Failed to connect to user scope bus" and `t3 service restart` with `BootServiceCommandError`. dev's provider file lacks `Include /etc/ssh/sshd_config.d/*.conf`, so ignores drop-ins. Provider `sshd_config.d/50-cloud-init.conf` sets `PasswordAuthentication yes`. Trust `sudo sshd -T`.
 - **Hostname** T3 shows: `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
 
 ## Agent configuration
 
 - **Variables** for agents only: `.claude/settings.json` `env` and `.codex/global-config.toml` `shell_environment_policy.set`, never `~/.bashrc`.
-- **`.codex/global-config.toml`** avoids loading the global config again as project config.
-- **Links** into the main checkout `~/deslop`, so workers run `origin/main`; update it explicitly with `git -C ~/deslop pull --ff-only` between sessions. Running threads keep their configuration.
-- **Never** edit an installed path or switch `~/deslop` off `main`: both change every thread.
-
-| Installed path              | Links to                    |
-| --------------------------- | --------------------------- |
-| `~/.claude/settings.json`   | `.claude/settings.json`     |
-| `~/.claude/agents/pair.md`  | `.claude/agents/pair.md`    |
-| `~/.claude/skills/*`        | `.claude/skills/*`          |
-| `~/.codex/config.toml`      | `.codex/global-config.toml` |
-| `~/.codex/instructions.md`  | `.codex/instructions.md`    |
-| `~/.codex/rules/deny.rules` | `.codex/rules/deny.rules`   |
-| `~/.codex/skills/*`         | `~/.claude/skills/*`        |
+- **Links** into `~/deslop` on `main`; `git -C ~/deslop pull --ff-only` between sessions. Running threads keep their configuration; never switch that checkout off `main`. The global Codex config's distinct filename avoids reloading it as project config.
 
 Once per worker, and after a harness replaced a link with a file:
 
@@ -64,7 +50,7 @@ codex execpolicy check --rules ~/.codex/rules/deny.rules true
 
 ## T3 settings
 
-Shared by all workers. After the user changes one, run this on that worker with `target=mp281x@<other worker>`; it maps project keys by workspace root and keeps the target's `environmentIcon`. T3 reloads the file.
+After a settings change, run on that worker with `target=mp281x@<other worker>`; maps project keys by workspace root, preserves the target's `environmentIcon`. T3 reloads the file.
 
 ```bash
 q="SELECT project_id, workspace_root FROM projection_projects WHERE deleted_at IS NULL"
@@ -81,7 +67,7 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 ```
 
 - **Claude launch arguments.** `providerInstances.claudeAgent.config.launchArgs`: `--system-prompt-snapshot off --thinking-display omitted --autocompact 500k`; new Claude processes pick them up, so never restart T3 or stop threads for them.
-- **Project scripts** live in T3, not this document. Read and update current scripts through `t3_project_read` / `t3_project_update`; keep the project's `defaultProjectScripts` in settings equal for future worktrees, remapping project IDs by workspace root between workers. A checked-in `t3.json` and legacy `projectScriptOverrides` stay unset.
+- **Project scripts** live in T3, not this document. Read and update current scripts through `t3_project_read` and `t3_project_update`; keep the project's `defaultProjectScripts` in settings equal for future worktrees, remapping project IDs by workspace root between workers. A checked-in `t3.json` and legacy `projectScriptOverrides` stay unset.
 
 ## Upkeep
 
@@ -89,15 +75,15 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 
 ### Deep pass
 
-Cache pruning alone is not maintenance. Capture `df -B1` and `df -i` per disk-backed mount before and after; use `du -xhd1` to attribute the largest directories under the home, `/var/lib`, `/var/cache`, `/var/log` and `/tmp`. Docker's containerd snapshot store can exceed `/var/lib/docker`; measure both. Compare `du` with `df` and `sudo lsof +L1 -nP` for deleted-but-open disk files; Chromium memfd/shared-memory files are not disk leaks. A `.../deploy/tools/<old version>/caddy (deleted)` is a known Deploy gap: it installs `deslop-deploy-caddy` with `restart: false` and only runs `caddy reload` (`apps/deploy/src/services/exposures/service.ts`), so the old binary runs until the unit restarts or the machine reboots; report it.
+Capture `df -B1` and `df -i` per disk-backed mount before and after; `du -xhd1` under the home, `/var/lib`, `/var/cache`, `/var/log` and `/tmp`. Measure containerd's snapshot store as well as `/var/lib/docker`. Compare `du`, `df` and `sudo lsof +L1 -nP` for deleted-but-open disk files; Chromium memfd and shared-memory files are not disk leaks. Report a deleted Deploy Caddy binary: `caddy reload` leaves it running until unit restart or reboot.
 
 Over non-interactive `ssh`, `systemctl --user` and `journalctl --user` need `export XDG_RUNTIME_DIR=/run/user/$(id -u)`; call `/usr/sbin` tools by path.
 
-Build the ownership inventory from the local SQLite projection, not the first page of T3's thread list. Join every worktree's owners to `lineage.rootThreadId`, inspect user side chats separately, and cross-check `/proc/*/cwd` before removal. A settled parent does not authorize deleting an unsettled side chat's checkout. Re-read ownership immediately before destructive cleanup. Preserve unknown ownership, history, credentials, production data and running jobs; report them separately from verified garbage.
+Inventory ownership from the local SQLite projection, not T3's first thread page. Join owners to `lineage.rootThreadId`, inspect user side chats separately, cross-check `/proc/*/cwd`, and re-read ownership immediately before removal. Preserve and report unknown ownership, history, credentials, production data and running jobs separately from garbage.
 
-For each listener and Serve handler, identify its unit/container and backend. A bounded HTTP response, including a deliberate 401/404, proves a responding server, not application health; use the app's real health route when one exists: scope's `/health` returns `ready`. opm, stash and trips return 404 at `/` by design, since their releases ship only `dist/server.js` for the native apps; their health is the unit active plus a current `runStartedAt` in Scope `list_services`. Remove a mapping only after its backend and owner are both proven obsolete. For Alchemy previews, run that settled worktree's `preview:destroy` before removing it; an orphaned bind path plus matching stage/container/volume names can establish ownership after its checkout disappeared. Remove those exact resources, never all stopped containers or unattached volumes.
+For each listener and Serve handler, identify its unit or container and backend. A bounded HTTP response, including a deliberate 401 or 404, proves a responding server, not application health; use the app's real health route when one exists: scope's `/health` returns `ready`. opm, stash and trips return 404 at `/` by design; their health is the unit active plus a current `runStartedAt` in Scope `list_services`. Remove a mapping only after its backend and owner are both proven obsolete. For Alchemy previews, run that settled worktree's `preview:destroy` before removing it; an orphaned bind path plus matching stage, container and volume names can establish ownership after its checkout disappeared. Remove those exact resources, never all stopped containers or unattached volumes.
 
-Close with `dpkg --audit`, held/upgradable packages after refreshing apt, running versus installed kernel/driver, both failed-unit lists, boot kernel errors, firewall and Docker bind policy, service health, agent links, and clean/current main checkouts. Check caches only after builds/installs finish; protect executable versions still in `/proc/*/exe`, each Node major's newest patch, the active T3 service version and any staged update. Never erase T3/Codex/Claude conversation databases or sessions as cache. Report denied cleanup without retrying through another utility; do not call a machine pristine while a fault, unknown owner or deferred reboot/update remains. A dev reboot needs the user's Datapizza VPN sign-in (Check).
+Close with `dpkg --audit`, held and upgradable packages after refreshing apt, running versus installed kernel and driver, boot kernel errors, firewall and Docker bind policy, and service health. Run the checks below for failed units, agent links and main checkouts. Cache timing and protected versions: **Clean** below; never erase conversation databases or sessions from T3, Codex or Claude as cache. Report denied cleanup without another utility, and faults, unknown owners or deferred reboots or updates without calling the machine pristine. A dev reboot needs the user's Datapizza VPN sign-in (Check).
 
 ## Update
 
@@ -107,12 +93,10 @@ Close with `dpkg --audit`, held/upgradable packages after refreshing apt, runnin
 
 ## Clean
 
-Remove rebuildable data and settled work; keep what a working or unsettled thread uses.
-
 - **Owners** of a worktree: threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children judged by their root thread; a process whose `/proc/<pid>/cwd` is inside it.
 - **Keep** unattached volumes, the production `deslop-*` user services and their inactive `-update` oneshots, which run every 15 minutes.
 
-1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; containers exited for more than three days, a scratch run's leftovers, since a container that matters runs or restarts; processes with a deleted working directory; Serve mappings meeting the **Deep pass** ownership/obsolescence rule (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.
+1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; containers exited for more than three days; scratch leftovers; processes with a deleted working directory; Serve mappings meeting **Deep pass**'s ownership and obsolescence rule (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.
 2. **Settled worktrees.** All user threads sharing it (roots and side chats) settled, archived or deleted, and no running process: remove it, uncommitted changes included. Run its settle script, remove a remaining Compose project, `git worktree remove --force --force <path>`, `git worktree prune`. No owner: remove when its branch's PR merged, otherwise list it.
 3. **Branches.** In `~/deslop` and `~/dual`: delete unused local branches whose PR merged; list those without an open or merged PR.
 
@@ -133,13 +117,11 @@ Remove rebuildable data and settled work; keep what a working or unsettled threa
    done
    ```
 
-4. **Caches.** No build running: `docker image prune -a -f`, `docker builder prune -a -f` (tens of GB). No install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune.
-5. **Versions.** Keep the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`); Node runtimes under `~/.vite-plus/js_runtime/node` a running process uses, plus each major's newest patch; the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
+4. **Caches.** No build running: `docker image prune -a -f`, `docker builder prune -a -f`. No install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`. Never a blanket Docker system or volume prune.
+5. **Versions.** Keep executables in `/proc/*/exe`, the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`), each Node major's newest patch under `~/.vite-plus/js_runtime/node`, and the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
 6. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Delete every `~/.t3/runtime/versions/<version>` except its `activeVersion`, the one `ExecStart` names in `~/.config/systemd/user/t3code.service`, and a newer download.
 
 ## Check
-
-Fix what fails, then rerun:
 
 - `systemctl --failed` and `systemctl --user --failed` empty.
 - Agent configuration per its **Check**; no dangling link under `~/.claude/skills` and `~/.codex/skills` except one staged for an unmerged rename; `~/deslop` clean on `main`, current with `origin/main`.
@@ -147,7 +129,7 @@ Fix what fails, then rerun:
 - `git config --global --get-regexp '^(rebase|push|fetch|rerere|diff|merge|init)\.'` lists the git defaults.
 - **sshd.** `sudo sshd -T` shows `usepam yes`, `kbdinteractiveauthentication no`, `passwordauthentication no`, `permitrootlogin no`; a fresh `ssh -tt <worker> 'echo $XDG_RUNTIME_DIR; systemctl --user is-active t3code'` prints `/run/user/1000` and `active`. Fix in the file sshd reads first ([sshd](#machines)), then `sudo sshd -t && sudo systemctl reload ssh`; a password-only login still gets `Permission denied (publickey)`.
 - **T3 CLI.** `t3 --version` equals `activeVersion` in `~/.t3/runtime/service-state.json`; otherwise `vp install -g t3@nightly`.
-- **T3 doctor.** `t3 doctor --base-dir ~/.t3` marks nothing "(recommended)". Otherwise, with no run active, `t3 doctor --base-dir ~/.t3 --fix` (dev's `statev2.sqlite`: 8.18 → 3.29 GiB in about 2 minutes). It pauses the service: never on the worker hosting the current thread's run.
+- **T3 doctor.** `t3 doctor --base-dir ~/.t3` marks nothing "(recommended)". Otherwise, with no run active, `t3 doctor --base-dir ~/.t3 --fix`; it pauses the service, never run on the current thread's worker.
 - **T3 Connect.** `t3 connect status` ends with "✓ Other devices can reach this machine". An unlink, from the T3 app or `t3 connect unlink`, deletes the relay link and publishing state, and a reboot does not restore them: `t3 connect link --headless` (reuses the authorization when status shows "Authorization: stored credential"), `t3 service restart`, `t3 connect publish` (`--disable` turns it off). After a re-link, dev's provider resolvers and the home router (192.168.1.1, desktop's through MagicDNS) can cache NXDOMAIN for the same `prod-<id>.t3coderelay.com` for up to 30 minutes (Cloudflare SOA minimum 1800 s); `sudo resolvectl flush-caches` clears only the local cache. Test the tunnel with `curl --resolve <host>:443:<ip from dig @1.1.1.1> https://<host>/`.
 - **Datapizza VPN.** dev: `openvpn3 sessions-list` shows "Client connected"; both workers: `git -C ~/dual ls-remote -q origin HEAD` succeeds. Otherwise `openvpn3 session-start --config datapizza` prints a `https://vpn-gw.datapizza.tech/oauth2/start?...` web SSO URL only the user can approve: show it to the user.
 - desktop: the [GPU check](#desktop-gpu), also after kernel or driver updates.
@@ -192,14 +174,14 @@ sudo apt-get install -y --no-install-recommends linux-headers-amd64 "linux-heade
 - **Secure Boot** stays on. DKMS signs with `/var/lib/dkms/mok.key` and `/var/lib/dkms/mok.pub`; keep that pair across updates. Check `sudo mokutil --sb-state` and `sudo mokutil --test-key /var/lib/dkms/mok.pub`; skip enrollment if enrolled. [MOK enrollment](https://wiki.debian.org/SecureBoot) needs physical confirmation before Linux boots, never over SSH; desktop has no monitor or keyboard, so arrange one or a remote KVM and the restart with the user first.
 
 1. One-time password through `request_secret` with file delivery, fed twice on stdin to `sudo mokutil --import /var/lib/dkms/mok.pub` without exposing it; confirm with `sudo mokutil --list-new`.
-2. To connect a monitor, power off, not reboot. Boot; at “Press any key to perform MOK management”, press a key promptly, then **Enroll MOK → Continue → Yes → temporary password → Reboot**.
+2. To connect a monitor, power off, not reboot. Boot; at “Press any key to perform MOK management”, press a key promptly, then choose **Enroll MOK**, **Continue** and **Yes**. Enter the temporary password, then choose **Reboot**.
 3. Deferred: `sudo mokutil --revoke-import`, requeue before the agreed boot. Missed prompt: check `--list-new`, requeue if empty.
 
 - **Check** after the boot: `nvidia-smi` lists the RTX 5070; `lspci -nnk -d 10de:` shows `Kernel driver in use: nvidia`; `sudo dkms status` has the module for `uname -r`; the MOK test says enrolled; `systemctl --failed` empty; `sudo journalctl -k -b` free of NVIDIA init failures and Xid errors. An install or DKMS build alone is no active driver; `Key was rejected by service` means enrollment is missing. After updates, compare `sudo modinfo -F version nvidia` with `nvidia-smi` and coordinate a reboot when the loaded driver or kernel lags. `nvidia-smi`'s CUDA version is driver compatibility, not an installed toolkit.
 
 ## Mac
 
-T3's desktop app and the iOS Simulator; builds nothing, the Simulator app comes from CI.
+T3 desktop and iOS Simulator; builds from CI.
 
 - **MDM** by the user's organization: keep its policies.
 - **Reachability.** System sleep off, so reachable with the display off; a closed lid isn't. When `ssh matteopaludgnach@macbook-pro true` fails, ask the user to wake it.
@@ -214,7 +196,7 @@ T3's desktop app and the iOS Simulator; builds nothing, the Simulator app comes 
 
 ## MCP sign-in
 
-- **One server** per harness: the gateway (`apps/gateway/README.md`), whose upstreams are Auth, Scope, Stash, Dual and Mobbin.
+- **Endpoint.** Register the endpoint described in `apps/gateway/README.md`.
 - **Codex** reads `gateway` from the installed configuration; OAuth sign-ins live in the Secret Service keyring, which D-Bus must start through its unit: Debian's default activation starts a locked daemon whose headless unlock prompt hangs every Codex start.
 - **Claude** keeps local MCP servers in `~/.claude.json`: register the gateway per worker.
 
@@ -232,11 +214,11 @@ systemctl --user daemon-reload && systemctl --user enable --now secret-service.s
 claude mcp add --transport http --scope user gateway https://gateway.mp281x.xyz/mcp
 ```
 
-**Harness sign-in.** `claude mcp login --no-browser gateway` prints an authorization URL; approve its code at https://auth.mp281x.xyz. The sign-in is a Claude Code column in Sign-ins. Codex: `codex mcp login --no-browser gateway`.
+**Harness sign-in.** `claude mcp login --no-browser gateway` or `codex mcp login --no-browser gateway`; approve the printed code at https://auth.mp281x.xyz. Claude appears as a Claude Code column in Sign-ins.
 
-**Browser sign-in.** A profile without the user's GitHub, such as the Datapizza work profile: **Sign in with a code** at https://auth.mp281x.xyz, which the user approves (`apps/auth/README.md`). A provider whose account lives in that profile, such as Dual, connects from its row on the gateway's page there.
+**Browser sign-in.** A profile without the user's GitHub, such as the Datapizza work profile: **Sign in with a code** at https://auth.mp281x.xyz, which the user approves. A provider whose account lives in that profile, such as Dual, connects from its row on the gateway's page there.
 
-- **Connectors.** `.claude/settings.json` sets `disableClaudeAiConnectors`: no claude.ai connector, Mobbin included, only the gateway. Once any `serverUrl` entry exists, every remote server needs a URL rule, T3's `http://127.0.0.1:<port>/mcp` included.
+- **Connectors.** Use only the gateway, not a claude.ai connector, Mobbin included. Once any `serverUrl` entry exists, every remote server needs a URL rule, T3's `http://127.0.0.1:<port>/mcp` included.
 - **Check** with `codex mcp list` and `claude mcp list`, plus one real tool call. `features.mcp_2026_07_28` is global: verify the gateway's tool list when changing it. Mobbin: one `mobbin__search_screens` with `mode: "standard"`; the default, `deep`, spends AI credits.
 
 ## Git identity

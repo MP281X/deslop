@@ -7,11 +7,11 @@
 		"directory": "tools/coding-standards"
 	},
 	"bin": {
-		"deslop-coding-standards": "dist/main.cli.js"
+		"coding-standards": "dist/main.cli.js"
 	},
 	"files": [
 		"dist",
-		"src/css-properties.d.ts",
+		"src/lib/css-properties.d.ts",
 		"tsconfig.json"
 	],
 	"type": "module",
@@ -21,7 +21,7 @@
 	},
 	"exports": {
 		".": "./dist/lint.js",
-		"./css-properties": "./src/css-properties.d.ts",
+		"./css-properties": "./src/lib/css-properties.d.ts",
 		"./tsconfig.json": "./tsconfig.json"
 	},
 	"publishConfig": {

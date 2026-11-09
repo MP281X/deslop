@@ -1,6 +1,6 @@
 # Motion video
 
-A short motion piece the user wants to watch, of real journeys recorded after the last edit; a raw recording only for a single action.
+Real journeys after the last edit; raw recordings only for a single action.
 
 - **Storyboard first**: per chapter the claim, focal element, input and payoff; one chapter per claim, one dataset.
 - **Open** on the real subject, its value visible in the first frames; **end** on the verified outcome, held until it reads.
@@ -19,7 +19,7 @@ A short motion piece the user wants to watch, of real journeys recorded after th
   })()
   ```
 
-- **Compose** in a scratch HyperFrames project in the app's primary orientation, landscape for a desktop web app such as Dual and portrait for a phone app, with the recordings re-encoded below (a side that is not a multiple of 16 renders a black strip) and the app's font in `assets/`; `$hf docs <topic>` holds the composition contract. Every video keeps this look, in the app's font, primary and radius:
+- **Compose** in a scratch HyperFrames project in the app's primary orientation (desktop landscape, phone portrait), with the recordings re-encoded below (sides not divisible by 16 render a black strip) and the app's font in `assets/`; contract: `$hf docs <topic>`. Use the app's font, primary and radius:
   - **Layout.** On the app's foreground hue darkened to near black, top to bottom: the progress, the caption, then the recording in a frame with the app's radius; margins of 6 % and a caption of 5 % of the short side. Nothing covers the recording but the touch marker and the reveal: no scrim, no caption over it.
   - **Progress.** One 6 px segment per chapter, filling with the primary over its chapter.
   - **Captions.** Weight 650; words rise into focus one after another (blur 12 px to 0, 0.45 s, 0.035 s stagger) and leave before the next caption.
