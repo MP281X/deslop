@@ -202,7 +202,7 @@ it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its 
 				assert.equal(entry.app, APP)
 			}
 			const keys = yield* f.ai.keys('alice')
-			assert.deepEqual(keys, [{addedAt: keys[0]?.addedAt ?? 0, last4: 'cret', lastStatus: 201, provider: 'anthropic'}])
+			assert.deepEqual(keys, [{last4: 'cret', lastStatus: 201, provider: 'anthropic'}])
 			assert.equal(keys[0]?.lastStatus, 201)
 			const response = yield* f.request('/ai/anthropic/cost', {
 				body: '{"model":"test"}',

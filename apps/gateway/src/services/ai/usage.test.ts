@@ -13,8 +13,7 @@ const EMPTY: AiUsageEntry = {
 	costSource: 'unknown',
 	inputTokens: 0,
 	outputTokens: 0,
-	provider: 'opencode-zen',
-	status: 200
+	provider: 'opencode-zen'
 }
 
 it('counts cached tokens once whichever response shape a provider returns', () => {

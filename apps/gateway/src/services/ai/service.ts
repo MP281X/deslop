@@ -154,12 +154,7 @@ const make = Effect.gen(function* () {
 	return {
 		keys: (id: string) =>
 			Effect.map(loadKeys(id), entries =>
-				Array.map(entries, key => ({
-					addedAt: key.addedAt,
-					last4: key.last4,
-					lastStatus: key.lastStatus,
-					provider: key.provider
-				}))
+				Array.map(entries, key => ({last4: key.last4, lastStatus: key.lastStatus, provider: key.provider}))
 			),
 		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
 			const request = yield* HttpServerRequest.HttpServerRequest
@@ -243,8 +238,7 @@ const make = Effect.gen(function* () {
 				inputTokens: 0,
 				model: Option.getOrUndefined(outgoing.model),
 				outputTokens: 0,
-				provider,
-				status: response.status
+				provider
 			}
 			yield* pipe(
 				Effect.gen(function* () {
@@ -324,7 +318,7 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					yield* keys.set(`ai-keys/${id}`, [
 						...Array.filter(yield* loadKeys(id), key => key.provider !== provider),
-						{addedAt: yield* Clock.currentTimeMillis, last4: String.slice(-4)(Redacted.value(secret)), provider, secret}
+						{last4: String.slice(-4)(Redacted.value(secret)), provider, secret}
 					])
 				}),
 				Semaphore.withPermit(lock),

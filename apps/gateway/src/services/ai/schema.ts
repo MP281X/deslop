@@ -11,7 +11,6 @@ export const PROVIDER_NAMES = {
 } satisfies Record<AiProvider, string>
 export type AiKeyInfo = typeof AiKeyInfo.Type
 export const AiKeyInfo = Schema.Struct({
-	addedAt: Schema.Finite,
 	last4: Schema.String,
 	lastStatus: Schema.optional(Schema.Finite),
 	provider: AiProvider
@@ -31,8 +30,7 @@ export const AiUsageEntry = Schema.Struct({
 	inputTokens: Schema.Finite,
 	model: Schema.optional(Schema.String),
 	outputTokens: Schema.Finite,
-	provider: AiProvider,
-	status: Schema.Finite
+	provider: AiProvider
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
 export const AiUsageBreakdown = Schema.Struct({
