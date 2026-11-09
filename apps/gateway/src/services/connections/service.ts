@@ -106,7 +106,6 @@ export class Connections extends Context.Service<
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
 		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
-		readonly list: Effect.Effect<ConnectionInfo[]>
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
@@ -654,7 +653,6 @@ export class Connections extends Context.Service<
 			}, failed('Cannot finish the connection')),
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
 			get,
-			list,
 			remove: (id, user) =>
 				Effect.andThen(
 					manage(id, user, () => Option.none()),

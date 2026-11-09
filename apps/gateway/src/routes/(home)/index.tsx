@@ -46,11 +46,6 @@ import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-const PERIODS = [
-	{label: '24h', value: '24h'},
-	{label: '7d', value: '7d'},
-	{label: '30d', value: '30d'}
-] satisfies {label: string; value: Period}[]
 // Each app's identity hue; a server without one of these marks stays zinc grey.
 const IDENTITY_HUES: Record<string, string> = {
 	auth: 'var(--slate)',
@@ -62,6 +57,7 @@ const IDENTITY_HUES: Record<string, string> = {
 	stash: 'var(--amber)',
 	trips: 'var(--orange)'
 }
+const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 type Search = typeof Search.Type
 // The period is the page's only view state; the default is the last week.
