@@ -25,7 +25,6 @@ import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import type {Question} from '#lib/question.ts'
 
-// Every question under its file's name, as the judge asks it.
 const QUESTIONS = Record.fromEntries(
 	Array.flatMap(Record.toEntries(import.meta.glob<Record<string, Question>>('./judge/*.ts', {eager: true})), entry =>
 		Array.map(
@@ -78,7 +77,6 @@ function functionSource(name: string, suffix: string) {
 	]
 }
 
-// A stand-in Gateway that counts its calls, and a fresh home whose cache every checkout in the scenario shares.
 const fixture = Effect.fnUntraced(function* (misjudged: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -127,7 +125,6 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 		)
 		return directory
 	})
-	// Each run reports the judge's output lines, its exit code and the calls Gateway answered.
 	const judge = Effect.fnUntraced(function* (directory: string) {
 		yield* Ref.set(calls, 0)
 		const handle = yield* ChildProcess.make(
@@ -157,7 +154,6 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 		return {
 			calls: yield* Ref.get(calls),
 			exitCode: output[2],
-			// A finding as its place, question and score, without the message between them.
 			findings: pipe(
 				printed,
 				Array.filter(line => Option.isSome(String.match(/ \d+(?:\.\d+)?$/u)(line))),

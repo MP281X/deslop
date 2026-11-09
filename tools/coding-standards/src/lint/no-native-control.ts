@@ -10,7 +10,6 @@ const PRIMITIVES: Record<string, string> = {button: 'Button', input: 'Input', se
 const CONTROL_STYLE =
 	/(?:^|:)(?:hover|focus|focus-visible|active):|(?:^|:)(?:rounded|shadow|ring)(?:-|$)|(?:^|:)p[blrtxy]?-(?!0$)|(?:^|:)bg-(?!transparent$)|(?:^|:)border(?:-[blrtxy])?$|(?:^|:)border-(?!0$|[blrtxy]-0$)/u
 
-// Every string a className expression can produce: literals, template parts, and `cn(...)` or conditional arguments.
 function classStrings(node: ESTree.Node): string[] {
 	if (node.type === 'Literal') return Array.filter([node.value], Predicate.isString)
 	if (node.type === 'TemplateLiteral') return Array.map(node.quasis, quasi => quasi.value.raw)

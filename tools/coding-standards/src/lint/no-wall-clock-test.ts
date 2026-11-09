@@ -11,7 +11,6 @@ const MESSAGE =
 // The Effect compiler's globalDate diagnostic owns Date.now() and new Date().
 const WALL_CLOCKS = ['Date', 'performance.now', 'process.hrtime', 'process.hrtime.bigint']
 
-// The dotted path of a call on a global such as `process.hrtime.bigint`.
 function globalPath(context: Context, node: ESTree.Expression | ESTree.Super): Option.Option<string> {
 	if (node.type === 'Identifier') {
 		return Option.liftPredicate(

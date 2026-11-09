@@ -37,7 +37,6 @@ export function boundVariable(input: {name: string; scope: Scope | null}) {
 	)
 }
 
-// The reads of a binding by name, found in the scope of the node that introduces it.
 export function readsOf(input: {context: Context; name: string; node: ESTree.Node}) {
 	return pipe(
 		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.node)}),
@@ -199,7 +198,6 @@ export function typeWrapped(node: ESTree.Node) {
 	return Option.none()
 }
 
-// The outermost type assertion around a node, which is what its parent sees.
 export function outermost(node: ESTree.Node): ESTree.Node {
 	return pipe(
 		Option.fromNullishOr(node.parent),
@@ -250,14 +248,12 @@ export function resolveBinding(context: Context, node: ESTree.Node, seen: Variab
 	)
 }
 
-// The identifier a plain property chain such as `input.node.parent` starts from.
 export function rootName(node: ESTree.Node): Option.Option<string> {
 	if (node.type === 'Identifier') return Option.some(node.name)
 	if (node.type === 'MemberExpression' && !node.computed && !node.optional) return rootName(node.object)
 	return Option.none()
 }
 
-// The object a property chain starts from: `path` in `path.posix`.
 export function memberRoot(node: ESTree.Expression): ESTree.Expression {
 	if (node.type === 'MemberExpression') return memberRoot(node.object)
 	return node
@@ -273,7 +269,6 @@ export function memberName(node: ESTree.MemberExpression) {
 
 type Chain = {calls: ESTree.CallExpression[]; members: string[]; root: ESTree.IdentifierReference}
 
-// The root, member names and curried calls of a chain such as `it.effect.each(cases)` or `it.layer(Live)`.
 function chainOf(node: ESTree.Expression | ESTree.Super): Option.Option<Chain> {
 	if (node.type === 'Identifier') return Option.some({calls: [], members: [], root: node})
 	if (node.type === 'MemberExpression') {
@@ -343,7 +338,6 @@ function propertyKey(property: ESTree.ObjectExpression['properties'][number]) {
 	return Option.none<string>()
 }
 
-// The keys an inline options object such as `{timeout: 5_000}` sets.
 export function optionKeys(node: ESTree.Node) {
 	if (node.type !== 'ObjectExpression') return Array.empty<string>()
 	return Array.getSomes(Array.map(node.properties, propertyKey))
@@ -362,7 +356,6 @@ export function isTestClockCall(context: Context, node: ESTree.Node, propertyNam
 	return node.type === 'CallExpression' && isTestClockMember(context, node.callee, propertyName)
 }
 
-// `TestClock.withLive(effect)`, or a pipe whose steps include `TestClock.withLive`.
 function runsLive(context: Context, call: ESTree.CallExpression) {
 	return (
 		isTestClockMember(context, call.callee, 'withLive') ||
@@ -425,7 +418,6 @@ export function importedMember(input: {
 	)
 }
 
-// The method an `Effect.<method>(...)` call names, such as `map` in `Effect.map(...)`; none for any other call.
 export function effectMethod(input: {context: Context; node: ESTree.CallExpression}) {
 	if (
 		input.node.callee.type !== 'MemberExpression' ||
@@ -674,7 +666,6 @@ export function isTestFile(context: Context) {
 	return matches(/\.test\.[cm]?[jt]sx?$/u)(context.filename)
 }
 
-// A global timer such as setTimeout that no binding shadows.
 export function isTimerCall(context: Context, node: ESTree.Node) {
 	return (
 		node.type === 'CallExpression' &&
@@ -844,7 +835,6 @@ export function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpressi
 	return Option.none()
 }
 
-// The reads of the name a function is bound to, when it has one.
 export function boundReads(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
 	return pipe(
 		bindingName(input.node),

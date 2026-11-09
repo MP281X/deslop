@@ -16,7 +16,7 @@ import {
 	CommandShortcut
 } from '#components/ui/command.tsx'
 
-// The web tools the bar can jump to; the iOS apps have no browser screen to land on.
+// The iOS apps have no browser screen to land on.
 export const WEB_APPS = [
 	{name: 'deploy', url: 'https://deploy.mp281x.xyz'},
 	{name: 'scope', url: 'https://scope.mp281x.xyz'},
@@ -38,7 +38,6 @@ export type PaletteItem = {
 
 export type PaletteGroup = {items: readonly PaletteItem[]; label: string}
 
-// Another web tool's own mark; a tool whose icon doesn't load falls back to a window rather than a broken image.
 function AppIcon(props: {name: string; url: string}) {
 	const [failed, setFailed] = useState(false)
 	if (failed) return <AppWindowIcon className="text-muted-foreground size-4" />

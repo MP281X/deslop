@@ -65,7 +65,6 @@ function text(context: Context, node?: ESTree.Node | null) {
 	return context.sourceCode.getText(node)
 }
 
-// The parameter list as written, wrapped in parentheses when a lone arrow parameter had none.
 function parameters(context: Context, node: Bound) {
 	return Option.match(Option.all([Array.head(node.params), Array.last(node.params)]), {
 		onNone: () => '()',
@@ -88,7 +87,6 @@ function when(condition: boolean, value: string) {
 	return ''
 }
 
-// `const read = (path: string) => load(path)` becomes `function read(path: string) { return load(path) }`.
 function fix(input: {
 	context: Context
 	declaration: ESTree.VariableDeclaration

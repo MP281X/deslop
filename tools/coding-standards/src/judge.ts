@@ -71,7 +71,6 @@ const THRESHOLD = 0.8
 const EXAMPLE_FILES = {code: 'src/example.ts', component: 'src/example.tsx', test: 'src/example.test.ts'}
 // A component is code too, so it answers the code questions beside its own.
 const ASKED = {code: ['code'], component: ['code', 'component'], test: ['test']}
-// Printed after the findings, for the agent fixing them.
 const TACTICS =
 	'Each finding is Jev reading that one unit alone. Fix what it names; when the unit cannot show the context that makes it right, put `// judge-ignore <question> -- <reason>` in the comment above it.'
 
@@ -112,7 +111,6 @@ const QUESTIONS = {
 	'no-view-state-in-memory': noViewStateInMemory
 }
 
-// The probability that the code breaks each question, by the question's name.
 type Verdicts = typeof Verdicts.Type
 const Verdicts = Schema.Record(Schema.String, Schema.Finite)
 
@@ -129,7 +127,6 @@ class Failed extends Schema.TaggedError<Failed>()('Failed', {}) {
 	override readonly [Runtime.errorReported] = false
 }
 
-// One call to Jev: a piece of code and the questions asked of it.
 type Asked = {code: string; file: string; imports: string; kind: Question['kind']; questions: [string, Question][]}
 
 // One cache per user, shared by every worktree and repository, so code judged in one is never asked again in another.
@@ -162,7 +159,7 @@ const withKey = Effect.fnUntraced(function* (asked: Asked) {
 	return {...asked, key: yield* digest.digestHex(Digest.sha256, new TextEncoder().encode(Array.join(parts, '\u0000')))}
 })
 
-// Jev's probability for every asked question; a call missing one answer leaves the code unjudged.
+// A call missing one answer leaves the code unjudged.
 const decide = Effect.fnUntraced(function* (
 	urls: Urls,
 	token: SynchronizedRef.SynchronizedRef<Redacted.Redacted>,
@@ -237,7 +234,6 @@ const trackedFiles = Effect.fnUntraced(function* (ignore: readonly string[]) {
 	return Array.filter(String.split('\n')(yield* Stream.mkString(Stream.decodeText(handle.stdout))), String.isNonEmpty)
 }, Effect.scoped)
 
-// What the answers say: each unit breaking a question or keeping a stale ignore, each example its question misjudges, and how much code stayed unjudged.
 function verdictOf(
 	judged: {asked: Asked & {key: string}; unit: Unit}[],
 	examples: {asked: Asked & {key: string}; question: [string, Question]; side: 'no' | 'yes'; yes: boolean}[],
@@ -277,7 +273,6 @@ function verdictOf(
 	}
 }
 
-// Asks every function, component and test case of the repository, and each question about its own examples, what no cached answer covers yet, then reports what breaks a question.
 export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly string[]) {
 	const fs = yield* FileSystem.FileSystem
 	const started = yield* Clock.currentTimeMillis

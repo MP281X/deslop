@@ -1,7 +1,7 @@
 import {Alert, Button} from '@expo/ui/swift-ui'
 import type {ReactNode} from 'react'
 
-// A yes-or-no question about what the clipboard holds, as iOS asks one: a system alert over the screen it wraps, its title the whole question and its button one verb. A confirmation dialog would point a popover at that screen.
+// A system alert asks the question over the wrapped screen; a confirmation popover would point away from it.
 export function ClipboardDialog(props: {
 	children: ReactNode
 	confirm: string

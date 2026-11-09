@@ -1,6 +1,5 @@
 name: Simulator builds
 
-# Discovery ignores web-only changes; a mobile app's native fingerprint decides whether the Mac builds it.
 on:
   push:
     branches-ignore: [main]

@@ -52,7 +52,6 @@ function freshRegExpFlags(input: {context: Context; node: ESTree.Expression}) {
 	return Option.some(Option.some(flags.value))
 }
 
-// The identifier a receiver chain starts from, through calls: `z` in `z.string().trim`.
 function chainRoot(node: ESTree.Expression): ESTree.Expression {
 	if (node.type === 'MemberExpression') return chainRoot(node.object)
 	if (node.type === 'CallExpression' && node.callee.type !== 'Super') return chainRoot(node.callee)
@@ -74,7 +73,6 @@ function isYieldedService(node?: ESTree.Node | null) {
 const effectPackage = matches(/^(?:effect(?:\/|$)|@effect\/)/u)
 const localPath = matches(/^[.#~/]|^@\//u)
 
-// A receiver that is not a native value: a package's own API, a global class's static method, or an Effect service.
 function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
 	const root = chainRoot(input.receiver)
 	const throughCall = root !== memberRoot(input.receiver)

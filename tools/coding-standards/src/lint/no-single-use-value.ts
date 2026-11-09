@@ -134,7 +134,6 @@ function executes(context: Context, node: ESTree.Node): boolean {
 	return Array.some(childNodes(context, node), child => executes(context, child))
 }
 
-// The read is the object a method is called on, as `client` in `client.trace(id)`.
 function receiver(read: ESTree.Node) {
 	return (
 		read.parent?.type === 'MemberExpression' &&

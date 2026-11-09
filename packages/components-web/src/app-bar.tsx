@@ -26,7 +26,7 @@ import {Kbd} from '#components/ui/kbd.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
-// The signed-in account every Deslop server answers at /auth/user; without an issuer it is the developer, who cannot sign out.
+// Without an issuer the account is the developer, who cannot sign out.
 const Account = Schema.Struct({id: Schema.String, name: Schema.String, signOut: Schema.Boolean})
 
 const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
@@ -37,7 +37,7 @@ const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 	)
 )
 
-// GitHub's avatar for the account; signing out goes through Auth, which ends the session every app shares.
+// Signing out goes through Auth, which ends the session every app shares.
 function AccountMenu() {
 	const account = useAtomValue(accountAtom)
 	if (!AsyncResult.isSuccess(account)) return null

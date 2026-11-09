@@ -264,7 +264,6 @@ export const lint: OxlintConfig = {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
 		...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'off' as const]),
 
-		// Effect correctness
 		'effecttsgo/any-unknown-in-error-context': 'error',
 		'effecttsgo/class-self-mismatch': 'error',
 		'effecttsgo/duplicate-package': 'error',
@@ -286,7 +285,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/schema-literal-non-finite': 'error',
 		'effecttsgo/unsafe-effect-type-assertion': 'error',
 
-		// Effect anti-patterns
 		'effecttsgo/catch-unfailable-effect': 'error',
 		'effecttsgo/effect-fn-iife': 'error',
 		'effecttsgo/effect-gen-uses-adapter': 'error',
@@ -305,7 +303,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/strict-effect-provide': 'error',
 		'effecttsgo/try-catch-in-effect-gen': 'error',
 
-		// Effect-native
 		'effecttsgo/async-function': 'error',
 		'effecttsgo/global-console': 'error',
 		'effecttsgo/global-console-in-effect': 'error',
@@ -327,7 +324,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/process-env': 'error',
 		'effecttsgo/process-env-in-effect': 'error',
 
-		// Effect style
 		'effecttsgo/acquire-release-disposable': 'error',
 		'effecttsgo/all-of-map-to-for-each': 'error',
 		'effecttsgo/catch-all-tag-dispatch-to-catch-tag': 'error',
@@ -389,7 +385,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/unnecessary-pipe-chain': 'error',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
-		// JavaScript
 		'eslint/arrow-body-style': ['error', 'as-needed'],
 		'eslint/constructor-super': 'error',
 		'eslint/curly': ['error', 'multi-line', 'consistent'],
@@ -562,7 +557,6 @@ export const lint: OxlintConfig = {
 		'eslint/valid-typeof': 'error',
 		'eslint/yoda': 'error',
 
-		// Imports
 		'import/first': 'error',
 		'import/newline-after-import': 'error',
 		'import/no-absolute-path': 'error',
@@ -576,7 +570,6 @@ export const lint: OxlintConfig = {
 		'import/no-self-import': 'error',
 		'import/no-unassigned-import': ['error', {allow: ['**/*.css']}],
 
-		// Accessibility
 		'jsx-a11y/alt-text': 'error',
 		'jsx-a11y/anchor-ambiguous-text': 'error',
 		'jsx-a11y/anchor-has-content': 'error',
@@ -613,10 +606,8 @@ export const lint: OxlintConfig = {
 		'jsx-a11y/scope': 'error',
 		'jsx-a11y/tabindex-no-positive': 'error',
 
-		// Effect Machine
 		...recommended,
 
-		// Oxc
 		'oxc/approx-constant': 'error',
 		'oxc/bad-array-method-on-arguments': 'error',
 		'oxc/bad-char-at-comparison': 'error',
@@ -633,7 +624,6 @@ export const lint: OxlintConfig = {
 		'oxc/only-used-in-recursion': 'error',
 		'oxc/uninvoked-array-callback': 'error',
 
-		// React and React Compiler
 		'react/button-has-type': 'error',
 		'react/capitalized-calls': 'error',
 		'react/checked-requires-onchange-or-readonly': 'error',
@@ -679,7 +669,6 @@ export const lint: OxlintConfig = {
 		'react/unsupported-syntax': 'error',
 		'react/void-dom-elements-no-children': 'error',
 
-		// React Doctor
 		'react-doctor/design-no-redundant-padding-axes': 'error',
 		'react-doctor/design-no-redundant-size-axes': 'error',
 		'react-doctor/effect-listener-cleanup-mismatch': 'error',
@@ -734,7 +723,6 @@ export const lint: OxlintConfig = {
 		'react-doctor/shadcn-dialog-content-requires-title': 'error',
 		'react-doctor/shadcn-icon-button-requires-label': 'error',
 
-		// shadcn
 		'shadcn/no-arbitrary-values': 'error',
 		'shadcn/no-inline-styles': 'error',
 		'shadcn/no-raw-colors': 'error',
@@ -752,7 +740,6 @@ export const lint: OxlintConfig = {
 		'shadcn/no-unknown-classes': 'error',
 		'shadcn/require-static-classes': 'error',
 
-		// TypeScript syntax
 		'typescript/ban-ts-comment': ['error', {'ts-nocheck': true}],
 		'typescript/consistent-generic-constructors': 'error',
 		'typescript/consistent-indexed-object-style': 'error',
@@ -801,7 +788,6 @@ export const lint: OxlintConfig = {
 		'typescript/triple-slash-reference': 'error',
 		'typescript/unified-signatures': 'error',
 
-		// TypeScript type-aware
 		'typescript/await-thenable': 'error',
 		'typescript/consistent-type-exports': 'error',
 		'typescript/dot-notation': 'error',
@@ -844,7 +830,6 @@ export const lint: OxlintConfig = {
 		'typescript/strict-void-return': 'error',
 		'typescript/unbound-method': 'error',
 
-		// Unicorn
 		'unicorn/consistent-function-scoping': 'error',
 		'unicorn/filename-case': 'error',
 		'unicorn/no-abusive-eslint-disable': 'error',
@@ -870,7 +855,6 @@ export const lint: OxlintConfig = {
 		'unicorn/require-module-specifiers': 'error',
 		'unicorn/require-post-message-target-origin': 'error',
 
-		// Tests
 		'vitest/expect-expect': 'error',
 		'vitest/no-commented-out-tests': 'error',
 		'vitest/no-conditional-tests': 'error',
@@ -882,7 +866,6 @@ export const lint: OxlintConfig = {
 		'vitest/valid-title': 'error',
 		'vitest/warn-todo': 'error',
 
-		// Vite+
 		'vite-plus/prefer-vite-plus-imports': 'error'
 	},
 	settings: {

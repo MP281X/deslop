@@ -4,7 +4,7 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
-/* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
+/* theme.test.ts fails when theme.ts drifts from these values; an app points --primary at its hue in its own styles.css. */
 :root {
 	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
 	--red: oklch(from #c92b38 l c h);
@@ -148,7 +148,7 @@
 	--radius-2xl: var(--radius);
 	--radius-3xl: var(--radius);
 	--radius-4xl: var(--radius);
-	/* The installed app's insets. The bottom is the home indicator's own inset, with nothing added. */
+	/* The bottom is the home indicator's own inset, with nothing added. */
 	--spacing-safe-top: env(safe-area-inset-top);
 	--spacing-safe-right: env(safe-area-inset-right);
 	--spacing-safe-bottom: env(safe-area-inset-bottom);
@@ -253,7 +253,7 @@
 	}
 }
 
-/* iOS focuses small form controls by zooming the page. Keep mobile input text at its non-zooming size. */
+/* Keep mobile input text at 1rem so iOS does not zoom the page when focusing it. */
 @media (pointer: coarse) {
 	input,
 	textarea,

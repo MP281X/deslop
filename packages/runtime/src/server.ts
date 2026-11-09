@@ -156,7 +156,7 @@ export class ToolPath extends Context.Service<ToolPath, typeof tool>()('@deslop/
 	static readonly layer = Layer.succeed(this, tool)
 }
 
-// One cross-site check for every app. A browser's Origin must name the host it reached, except for the OTLP receiver any page may export to. Without an issuer, where every request is the developer, only loopback, IP and the canonical host names are served, so a rebound DNS name cannot reach the app.
+// One cross-site check per app: a foreign Origin is refused except for OTLP, and without an issuer only loopback, IP and canonical hosts are served.
 export const guard = HttpMiddleware.make(app =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest
@@ -230,7 +230,6 @@ export function layerKeyValueStore(directory: string) {
 
 export const layerDataStore = Layer.unwrap(Effect.map(dataDirectory, layerKeyValueStore))
 
-// A live list as the events its clients apply: the whole list once, then the items each update added or replaced by identity and the ids it removed.
 export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<readonly A[], E, R>) {
 	return Stream.mapAccum(
 		lists,
@@ -321,7 +320,6 @@ export const layerRoutes = HttpRouter.use(router =>
 	})
 )
 
-// A sign-in on its way through Auth: where it returns, and what binds Auth's answer to this browser.
 type SignInState = typeof SignInState.Type
 const SignInState = Schema.fromJsonString(
 	Schema.Struct({next: Schema.String, state: Schema.String, verifier: Schema.String})
@@ -450,7 +448,6 @@ function layerSignIn(issuer: string) {
 					)
 				})
 			)
-			// An iOS app signs in through Auth itself and hands this server the code to keep as a session.
 			yield* router.add(
 				'POST',
 				'/auth/session',
@@ -543,7 +540,6 @@ export const layerAnnounce = Layer.effectDiscard(
 	})
 )
 
-// The app's transparent icon at a stable URL for Auth's app list and MCP clients, and at /favicon.ico for clients that guess; the pack loader passes its SVG markup.
 export function layerIcon(icon: string) {
 	const response = Effect.succeed(
 		HttpServerResponse.text(icon, {contentType: 'image/svg+xml', headers: {'cache-control': 'public, max-age=86400'}})
@@ -551,7 +547,6 @@ export function layerIcon(icon: string) {
 	return Layer.mergeAll(HttpRouter.add('GET', '/icon', response), HttpRouter.add('GET', '/favicon.ico', response))
 }
 
-// A web app's pages, with assets kept until a deploy changes index.html, and its manifest, so a phone installs it as its own app.
 export const layerWeb = Layer.unwrap(
 	Effect.gen(function* () {
 		const client = fileURLToPath(new URL('./client', import.meta.url))
@@ -591,7 +586,6 @@ export const layerWeb = Layer.unwrap(
 	})
 )
 
-// An app's RPC socket: one path and protocol, which its web, iOS and peer-worker clients also open.
 export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 	disableTracing?: boolean
 	group: RpcGroup.RpcGroup<Rpcs>

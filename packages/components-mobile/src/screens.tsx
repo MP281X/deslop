@@ -45,7 +45,6 @@ function deniedBy(cause: Cause.Cause<unknown>) {
 	return Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
 }
 
-// What a reader shows: its value, kept through an ordinary outage, or the failure that blocks it when nothing has loaded or access was refused.
 export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Success<A, E>) {
 	if (AsyncResult.isSuccess(result)) return Result.succeed(result.value)
 	if (deniedBy(result.cause)) return Result.fail(result.cause)

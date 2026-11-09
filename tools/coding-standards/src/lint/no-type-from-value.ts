@@ -11,7 +11,6 @@ function schemaMember(name: ESTree.TSTypeName) {
 	)
 }
 
-// `typeof table` and `typeof owner.table` read a value written for something else.
 function valueQuery(node: ESTree.TSType): boolean {
 	if (node.type === 'TSParenthesizedType') return valueQuery(node.typeAnnotation)
 	if (node.type === 'TSIndexedAccessType') return valueQuery(node.objectType)

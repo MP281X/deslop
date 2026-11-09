@@ -23,9 +23,8 @@ const unavailable = HttpServerResponse.text('The authorization service is tempor
 export class Auth extends Context.Service<
 	Auth,
 	{
-		// A verified bearer also names its client; an app session or Auth's own sign-in names only the person.
+		// Only a verified bearer names its client; an app session names just the person.
 		readonly user: (headers: Headers.Headers) => Effect.Effect<User & {client?: string}, AuthError>
-		// The access token the request acts with: the bearer JWT as sent, or the session's current one, refreshed when needed.
 		readonly token: (headers: Headers.Headers) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/runtime/auth/service/Auth') {
@@ -59,7 +58,6 @@ export class Auth extends Context.Service<
 			)
 		)
 
-	// A bearer access token is checked against Auth's public keys; anything else is this app's own session.
 	static readonly layer = Layer.unwrap(
 		Effect.gen(function* () {
 			if (yield* localAuth) {

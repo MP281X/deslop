@@ -68,7 +68,6 @@ it.layer(NodeServices.layer)('Service update', test => {
 				)
 			}
 			yield* attempt()
-			// The service now runs the latest release, whichever older executable asks again.
 			assert.include(yield* attempt(), 'is current')
 			const [installed, restarted, ...rest] = yield* Ref.get(commands)
 			assert.include(installed, '--ignore-scripts')

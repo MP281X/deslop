@@ -51,7 +51,6 @@ import {activate, update} from '#cli/update.ts'
 
 const DEFAULT_HOST = '127.0.0.1'
 
-// A setting is a flag, or else the environment variable it names; app code reads either through `Config`.
 export type Setting = {
 	readonly description: string
 	readonly flag: string
@@ -88,8 +87,7 @@ function flagsOf(settings: Record<string, Setting>) {
 	)
 }
 
-// The settings given, as the provider app code reads, with the listen address and canonical origin filled in.
-const provider = Effect.fnUntraced(function* (given: Record<string, string>, defaultPort: number) {
+const configProvider = Effect.fnUntraced(function* (given: Record<string, string>, defaultPort: number) {
 	const port = given['PORT'] ?? `${defaultPort}`
 	const url = given['APP_URL'] ?? `http://localhost:${port}`
 	if (given['AUTH_URL'] !== undefined && new URL(url).protocol !== 'https:') {
@@ -103,7 +101,6 @@ const provider = Effect.fnUntraced(function* (given: Record<string, string>, def
 
 const layerPlatform = Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypto.layer)
 
-// What every app's routes may use without providing it.
 export type Provided =
 	| Layer.Success<typeof layerPlatform>
 	| HttpRouter.HttpRouter
@@ -112,7 +109,6 @@ export type Provided =
 	| RpcAuth
 	| Layer.Success<typeof layerProtocol>
 
-// Route handlers may fail with any error, which the server answers, and use the services the runtime provides.
 export type Routes<A, E> = Layer.Layer<
 	A,
 	E,
@@ -122,12 +118,9 @@ export type Routes<A, E> = Layer.Layer<
 >
 
 export type App<A, E> = {
-	// For the app that issues sign-ins, Auth: who sent each request, in place of the runtime's sessions and their routes.
 	readonly auth?: Layer.Layer<Auth | RpcAuth, E, Layer.Success<typeof layerPlatform>>
 	readonly icon: string
-	// The app's RPC, HTTP routes and `ServerRuntime.layerMcp` tools, with its own services provided.
 	readonly routes: Routes<A, E>
-	// Runs around matched routes before the response is sent, so headers and bodies can be changed.
 	readonly middleware?: <A, R>(
 		app: Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
 	) => Effect.Effect<HttpServerResponse.HttpServerResponse, A, R>
@@ -175,7 +168,6 @@ function output(text: string) {
 	return Effect.flatMap(Stdio.Stdio, stdio => Stream.run(Stream.make(text), stdio.stdout()))
 }
 
-// The app's executable: the server in the foreground, or `service` to run it under systemd and keep it on npm's latest release.
 export function runApp<A, E>(app: App<A, E>) {
 	const program = Effect.gen(function* () {
 		const metadata = yield* packageMetadata
@@ -190,7 +182,7 @@ export function runApp<A, E>(app: App<A, E>) {
 		return yield* pipe(
 			root,
 			Command.withHandler(input =>
-				Effect.flatMap(provider(Record.getSomes(input), metadata.config.port), values =>
+				Effect.flatMap(configProvider(Record.getSomes(input), metadata.config.port), values =>
 					Effect.provideService(server(app), ConfigProvider.ConfigProvider, values)
 				)
 			),
@@ -205,7 +197,7 @@ export function runApp<A, E>(app: App<A, E>) {
 								const fs = yield* FileSystem.FileSystem
 								const path = yield* Path.Path
 								const flags = yield* given
-								yield* provider(flags, metadata.config.port)
+								yield* configProvider(flags, metadata.config.port)
 								// The unit runs whatever `current` links to: this package now, the updater's releases later.
 								const entry = path.join(yield* activate(name, yield* fs.realPath(packageRoot)), 'dist', 'server.js')
 								const args = Array.flatten(

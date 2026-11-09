@@ -23,7 +23,6 @@ function sameRoot(input: {context: Context; declarator: ESTree.Node; name: strin
 	)
 }
 
-// `note` in `note.image.length` reads the path `note.image.length`.
 function pathTop(node: ESTree.Node): ESTree.Node {
 	if (node.parent?.type === 'MemberExpression' && node.parent.object === node && !node.parent.computed) {
 		return pathTop(node.parent)
@@ -31,7 +30,6 @@ function pathTop(node: ESTree.Node): ESTree.Node {
 	return node
 }
 
-// `isText`, `Predicate.isString`, `Option.isSome` and the curried `Schema.is(Schema.String)` read as predicates.
 function predicate(callee: ESTree.Node): boolean {
 	if (callee.type === 'CallExpression') return predicate(callee.callee)
 	if (callee.type === 'Identifier') return matches(/^(?:has|is)(?:[A-Z]|$)/u)(callee.name)
@@ -117,7 +115,6 @@ function between(input: {declaration: ESTree.Node; node: ESTree.Node; read: ESTr
 	return input.node.range[0] >= input.declaration.range[1] && input.node.range[1] <= input.read.range[0]
 }
 
-// `box[key] = 2` also writes to `box`.
 function objectRoot(node: ESTree.Node): Option.Option<string> {
 	if (node.type === 'Identifier') return Option.some(node.name)
 	if (node.type === 'MemberExpression') return objectRoot(node.object)

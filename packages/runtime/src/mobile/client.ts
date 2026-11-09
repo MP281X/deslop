@@ -18,7 +18,7 @@ import type {AuthError} from '#auth/schema.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
 
-// Telemetry starts once; the socket is built per server. JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
+// Telemetry starts once and the socket is built per server; JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
 export function layer(applicationName: string) {
 	// Scope's public receiver takes traces and logs from anywhere; the version is the release running, a build's or an over-the-air update's.
 	Atom.runtime.addGlobalLayer(
@@ -34,7 +34,6 @@ export function layer(applicationName: string) {
 		)
 }
 
-// A signed-in app's socket: the account's bearer on every request, read again for each one.
 export function layerSignedIn<R>(applicationName: string, token: Effect.Effect<string, AuthError, R>) {
 	return (server: string) =>
 		pipe(

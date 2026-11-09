@@ -1,7 +1,7 @@
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
-// Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
+// Expo's native color boundary accepts sRGB, not OKLCH; these match theme.css in both appearances.
 export const colors = {
 	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
 	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
@@ -14,7 +14,6 @@ export const colors = {
 	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
 }
 
-// Each app's primary tints its controls, live states and icon.
 export const hues = {
 	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
 	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),

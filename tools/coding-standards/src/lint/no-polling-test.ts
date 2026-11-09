@@ -81,7 +81,6 @@ function isPipe(node: ESTree.CallExpression) {
 	)
 }
 
-// A data-last step such as `pipe(check, Effect.repeat({until}))` repeats what the pipe passes it.
 function pipedFrom(node: ESTree.CallExpression) {
 	if (
 		node.parent.type === 'CallExpression' &&

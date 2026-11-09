@@ -14,7 +14,6 @@ import {
 	variableFromScope
 } from '#lib/ast.ts'
 
-// The fields of `X.make({...})` or `new X({...})`, the shapes a mapped error is built with.
 function constructedFields(node?: ESTree.Expression | null) {
 	if (node?.type !== 'CallExpression' && node?.type !== 'NewExpression') return Option.none()
 	const constructs =
@@ -113,7 +112,6 @@ function causeField(parameter?: ESTree.ParamPattern) {
 	return 'cause'
 }
 
-// The new field in its sorted place among the constructed fields.
 function insertField(input: {field: string; fields: ESTree.ObjectExpression; fixer: Fixer}) {
 	return Option.match(
 		Array.findFirst(input.fields.properties, property =>
@@ -179,7 +177,6 @@ function declaresCause(context: Context, node?: ESTree.Node | null) {
 	)
 }
 
-// `failure => X.make({message})` becomes `failure => X.make({cause: failure, message})`, `() => …` takes the failure as `cause`.
 function fix(input: {context: Context; fixer: Fixer; node: ESTree.Node}) {
 	if (input.node.type !== 'ArrowFunctionExpression' || input.node.async) return []
 	const node = input.node
@@ -224,7 +221,6 @@ function report(context: Context, node: ESTree.Node) {
 	})
 }
 
-// The failure mapper of an options object, such as `catch` of Effect.tryPromise or `onFailure` of Effect.mapBoth.
 function reportOption(context: Context, key: string, bare: boolean, options?: ESTree.Node) {
 	if (options?.type !== 'ObjectExpression') return
 	for (const property of options.properties) {

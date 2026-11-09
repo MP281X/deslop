@@ -38,7 +38,6 @@ function report(context: Context, node: ESTree.Node, message: string) {
 	context.report({message, node})
 }
 
-// shadcn's token rules for @expo/ui: spacing, type and colours come from the theme, never literals.
 export const swiftuiThemeValues = defineRule({
 	create: context => {
 		const file = {swiftui: false}

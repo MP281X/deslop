@@ -4,7 +4,6 @@ import {Array, String} from 'effect'
 
 import {units} from '#lib/units.ts'
 
-// Each unit the judge would ask about, as its kind and first line.
 function judgedUnits(filename: string, lines: string[]) {
 	return Array.map(units(filename, Array.join(lines, '\n')), unit => `${unit.kind}:${unit.line}`)
 }

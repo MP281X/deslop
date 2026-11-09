@@ -31,7 +31,7 @@ const unitDirectory = Effect.gen(function* () {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.config', 'systemd', 'user')
 })
 
-// A user unit that runs `command` with the app's secrets from ~/.deslop/<name>.env, whose path systemd takes unquoted, and restarts it after a crash. `restart: false` leaves a running process alone, for one that reloads its own configuration.
+// `restart: false` leaves a running process alone, for one that reloads its own configuration.
 export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path

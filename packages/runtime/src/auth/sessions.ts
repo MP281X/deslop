@@ -25,7 +25,6 @@ import {REVOKE_PATH, SESSION_COOKIE, TOKEN_PATH, bearerOf, isJwt, matchingSessio
 import type {CodeGrant} from '#auth/schema.ts'
 import {AccessClaims, AuthError, TokenResponse, User} from '#auth/schema.ts'
 
-// What this server keeps for one signed-in browser or phone; only Auth can turn its refresh token into access tokens.
 type Stored = typeof Stored.Type
 const Stored = Schema.Struct({
 	access: Schema.NonEmptyString,
@@ -41,10 +40,8 @@ const Stored = Schema.Struct({
 type Refusal = typeof Refusal.Type
 const Refusal = Schema.Struct({error: Schema.String, error_description: Schema.optionalKey(Schema.String)})
 
-// Auth turned a code or refresh token down, as opposed to not answering.
 class Refused extends Schema.TaggedError<Refused>()('Refused', {message: Schema.String}) {}
 
-// A phone sends its session id as the bearer; a browser holds it in the session cookie.
 export function sessionIdOf(headers: Headers.Headers) {
 	return Option.orElse(
 		Option.filter(bearerOf(headers), token => !isJwt(token)),
@@ -52,13 +49,10 @@ export function sessionIdOf(headers: Headers.Headers) {
 	)
 }
 
-// The sessions this app's server keeps for its own sign-in, each holding the refresh token Auth issued it.
 export class Sessions extends Context.Service<
 	Sessions,
 	{
-		// Exchanges a sign-in's code at Auth and keeps the tokens as a new session, answering its id.
 		readonly start: (grant: CodeGrant) => Effect.Effect<string, AuthError>
-		// Who the session belongs to and an access token with at least a minute left, refreshed at Auth when needed.
 		readonly current: (id: string) => Effect.Effect<{token: string; user: User}, AuthError>
 		// Ends the sign-in at Auth too; a failed revocation still forgets the session.
 		readonly end: (id: string) => Effect.Effect<void, AuthError>

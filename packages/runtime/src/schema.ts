@@ -54,7 +54,6 @@ export const Port = Schema.String.check(
 export type AppVersion = typeof AppVersion.Type
 export const AppVersion = Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))
 
-// The path every app answers about itself at, which its clients and Auth read.
 export const RUNTIME_PATH = '/api/runtime'
 
 export type RuntimeConfig = typeof RuntimeConfig.Type
@@ -65,10 +64,8 @@ export const RuntimeConfig = Schema.Struct({
 	version: AppVersion
 })
 
-// The socket every app serves its contracts on and every client opens: web, iOS and a peer worker.
 export const RPC_PATH = '/api/rpc'
 
-// The MCP endpoint every app serves, which agents and Gateway open.
 export const MCP_PATH = '/mcp'
 
 // The protected-resource metadata that tells an MCP client which issuer its bearer must come from.
@@ -77,7 +74,7 @@ export const MCP_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp'
 // The manifest a web app serves, which Auth probes to tell a browser app from an iOS one.
 export const MANIFEST_PATH = '/manifest.webmanifest'
 
-// Who the app bar's account menu shows; `signOut` is false without an issuer, where everyone is the developer.
+// `signOut` is false without an issuer, where everyone is the developer.
 export type Account = typeof Account.Type
 export const Account = Schema.Struct({...User.fields, signOut: Schema.Boolean})
 
@@ -88,14 +85,12 @@ export const PackageMetadata = Schema.Struct({
 	version: AppVersion
 })
 
-// One update to a list a client keeps: the whole list once, then the items it added or replaced and the ids it removed.
 export type ListEvent<A extends {id: string}> = {
 	readonly removed: readonly A['id'][]
 	readonly reset: boolean
 	readonly upserted: readonly A[]
 }
 
-// The list `ServerRuntime.listEvents` builds on a client, in `order`: a reset replaces it whole, and each update swaps the items it names.
 export function listReducer<A extends {id: string}>(order: Order.Order<A>) {
 	return (items: readonly A[], event: ListEvent<A>) => {
 		if (event.reset) return Array.sort(event.upserted, order)

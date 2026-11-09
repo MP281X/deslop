@@ -20,7 +20,6 @@ const SCHEMA_CLASSES = ['Class', 'TaggedClass', 'TaggedError', 'TaggedRequest']
 const DERIVED = matches(/^(?:is|to)[A-Z]/u)
 const FILTER = matches(/^makeFilter(?:Group)?$/u)
 
-// The Schema member a chain grows from: `Schema.Struct({}).check(...)` still defines Schema.Struct.
 function schemaMember(input: {context: Context; node: ESTree.Expression}): Option.Option<ESTree.MemberExpression> {
 	if (input.node.type === 'CallExpression' && input.node.callee.type !== 'Super') {
 		return schemaMember({context: input.context, node: input.node.callee})
@@ -64,7 +63,6 @@ function definesSchema(input: {context: Context; node: ESTree.Expression}): bool
 	)
 }
 
-// `Schema.Class<Foo>()('Foo', {...})`, `Schema.TaggedError<Foo>()(...)` and any other call form start at the Schema member.
 function schemaClass(input: {context: Context; node: ESTree.Expression}): boolean {
 	if (input.node.type === 'CallExpression' && input.node.callee.type !== 'Super') {
 		return schemaClass({context: input.context, node: input.node.callee})
@@ -99,7 +97,6 @@ function exported(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
 	return statementDeclaration(statement)
 }
 
-// The schema definitions one top-level declaration holds: a const's schema or schema class, or a schema class itself.
 function definitions(context: Context, declaration: ReturnType<typeof exported>) {
 	if (declaration?.type === 'VariableDeclaration' && declaration.kind === 'const') {
 		return Array.flatMap(declaration.declarations, variable => {

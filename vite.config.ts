@@ -145,7 +145,6 @@ export default defineConfig({
 					"node tools/coding-standards/src/main.cli.ts --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
 			},
 			test: 'vp run -r --parallel test',
-			// The gate before every commit; it only reports, and `fix` writes what it can.
 			verify: {cache: false, command: ['vp run check', 'vp run test']}
 		}
 	},

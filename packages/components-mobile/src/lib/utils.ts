@@ -52,7 +52,7 @@ const cacheOwners = MutableHashMap.empty<
 	{generation: MutableRef.MutableRef<number>; readers: MutableRef.MutableRef<number>}
 >()
 
-// A list kept on the iPhone: a cold start shows the copy at once, and each live list is written back once the list settles, off the path that shows it.
+// A cold start hydrates from disk, and writes stay off the path that shows the list.
 export function cachedList<S extends Schema.Top, E, R>(
 	get: Atom.AtomContext,
 	file: File,

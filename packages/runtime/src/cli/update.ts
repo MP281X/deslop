@@ -24,7 +24,7 @@ export const activate = Effect.fnUntraced(function* (name: string, target: strin
 	return current
 })
 
-// npm's latest release beside the one the service runs, whichever executable asks, then the `current` link, one restart and the releases before the previous one gone. Never two processes: systemd stops the old one before starting the new.
+// Never two processes: systemd stops the old one before starting the new.
 export const update = Effect.fnUntraced(function* (name: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path

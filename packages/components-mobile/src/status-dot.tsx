@@ -6,7 +6,6 @@ import type {ColorValue} from 'react-native'
 
 import {colors} from '#components/theme.ts'
 
-// Mirrors the web's StatusDot.
 export function StatusDot(props: {status: 'error' | 'live' | 'off' | 'quiet' | 'warning'; tint: ColorValue}) {
 	return (
 		<Circle

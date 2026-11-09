@@ -9,7 +9,6 @@ const WIDTHS = {full: 'max-w-none', reading: 'max-w-3xl', standard: 'max-w-6xl',
 
 export type Width = 'full' | 'reading' | 'standard' | 'wide'
 
-// Full-height tools use the available screen; editorial documents own their separate paper layout.
 export function Page(props: {children: ReactNode; className?: string; width?: Width}) {
 	return (
 		// Positioned, so a row's screen-reader text stays beside it in this scroller.
