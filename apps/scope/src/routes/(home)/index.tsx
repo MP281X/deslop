@@ -1,24 +1,25 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Match, Number, Option, Order, Predicate, Record, String, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Match, Number, Option, Record, String, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListHeading} from '@deslop/components-web/item-list'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {StaleProblem} from '@deslop/components-web/problem'
+import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
-import {isDenied, needsSignIn} from '@deslop/runtime/auth/utils'
+import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {
@@ -463,66 +464,14 @@ function SpansList(props: {
 	)
 }
 
-// A failed refresh keeps its last data; an authorization failure never does.
-function retained(result: AsyncResult.AsyncResult<unknown, unknown>) {
-	return (
-		AsyncResult.isFailure(result) &&
-		Option.isSome(AsyncResult.value(result)) &&
-		!Option.exists(AsyncResult.error(result), error => isDenied(error) || needsSignIn(error))
-	)
-}
+const OVERVIEW_READERS: StaleReaders = [overviewAtom]
+const traceReaders = Atom.family((id: string): StaleReaders => [overviewAtom, traceAtom(id)])
 
-// The operations reader alone, before a trace is open.
-function OverviewStale() {
-	const result = useAtomValue(overviewAtom)
-	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
-	const refresh = useAtomRefresh(overviewAtom)
-	if (!retained(result)) return null
-	return <Problem label="Out of date" warning reset={refresh} since={since} />
-}
-
-// The page's readers as one mark: the oldest age among those still showing retained data, and one retry for both.
-function TraceStale(props: {trace: OperationTrace}) {
-	const overview = useAtomValue(overviewAtom)
-	const traceResult = useAtomValue(traceAtom(props.trace.id))
-	const overviewSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
-	const traceSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(traceAtom(props.trace.id))))
-	const refreshOverview = useAtomRefresh(overviewAtom)
-	const refreshTrace = useAtomRefresh(traceAtom(props.trace.id))
-	const overviewStale = retained(overview)
-	const traceStale = retained(traceResult)
-	if (!overviewStale && !traceStale) return null
-	const since = Option.getOrUndefined(
-		Array.head(
-			Array.sort(
-				Array.filter(
-					[
-						Boolean.match(overviewStale, {onFalse: () => undefined, onTrue: () => overviewSince}),
-						Boolean.match(traceStale, {onFalse: () => undefined, onTrue: () => traceSince})
-					],
-					Predicate.isNumber
-				),
-				Order.Number
-			)
-		)
-	)
-	return (
-		<Problem
-			label="Out of date"
-			warning
-			reset={() => {
-				refreshOverview()
-				refreshTrace()
-			}}
-			since={since}
-		/>
-	)
-}
-
+// The page's readers as one mark: the oldest age among those still showing content, and one retry for them all.
 function StaleMark(props: {trace?: OperationTrace}) {
 	return Option.match(Option.fromUndefinedOr(props.trace), {
-		onNone: () => <OverviewStale />,
-		onSome: trace => <TraceStale trace={trace} />
+		onNone: () => <StaleProblem label="Out of date" readers={OVERVIEW_READERS} />,
+		onSome: trace => <StaleProblem label="Out of date" readers={traceReaders(trace.id)} />
 	})
 }
 

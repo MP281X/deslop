@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Option, Order, Record, Schema, String} from 'effect'
+import {Array, Boolean, Cause, Option, Record, Schema, String} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -10,7 +10,8 @@ import type {ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {StaleProblem} from '@deslop/components-web/problem'
+import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
@@ -174,29 +175,17 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 	)
 }
 
-// Retained inventory or history that has gone stale: one mark in the bar, aged from the older reader, retried together.
+// The inventory and history readers for each range, which the page's one stale mark ages from the older and retries together.
+const READERS: Record<HistoryQuery['minutes'], StaleReaders> = {
+	1: [inventoryAtom, metricsAtom(1)],
+	10: [inventoryAtom, metricsAtom(10)],
+	60: [inventoryAtom, metricsAtom(60)],
+	1440: [inventoryAtom, metricsAtom(1440)],
+	10_080: [inventoryAtom, metricsAtom(10_080)]
+}
+
 function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
-	const inventory = useAtomValue(inventoryAtom)
-	const metrics = useAtomValue(metricsAtom(props.minutes))
-	const inventorySince = useAtomValue(problemSinceAtom(inventoryAtom))
-	const metricsSince = useAtomValue(problemSinceAtom(metricsAtom(props.minutes)))
-	const refreshInventory = useAtomRefresh(inventoryAtom)
-	const refreshMetrics = useAtomRefresh(metricsAtom(props.minutes))
-	const denied =
-		Option.isSome(Option.filter(AsyncResult.error(inventory), isDenied)) ||
-		Option.isSome(Option.filter(AsyncResult.error(metrics), isDenied))
-	const stale =
-		(AsyncResult.isFailure(inventory) && Option.isSome(AsyncResult.value(inventory))) ||
-		(AsyncResult.isFailure(metrics) && Option.isSome(AsyncResult.value(metrics)))
-	const oldest = Option.getOrUndefined(
-		Array.head(Array.sort(Array.getSomes([inventorySince, metricsSince]), Order.Number))
-	)
-	function retry() {
-		refreshInventory()
-		refreshMetrics()
-	}
-	if (denied || !stale) return null
-	return <Problem label="Data out of date" warning reset={retry} since={oldest} />
+	return <StaleProblem label="Data out of date" readers={READERS[props.minutes]} />
 }
 
 // The selected app's processes, or one job's, with what the row cannot show: its failure.

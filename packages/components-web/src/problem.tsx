@@ -1,6 +1,6 @@
-import {useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Clock, DateTime, Effect, Number, Option, Predicate, Stream} from 'effect'
+import {Array, Boolean, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -20,6 +20,26 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 			Option.some(DateTime.toEpochMillis(DateTime.nowUnsafe()))
 		)
 	})
+)
+
+export type StaleReaders = readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]
+
+// The oldest reader whose failure still shows its previous value; refreshing it refreshes every reader.
+export const staleSinceAtom = Atom.family((readers: StaleReaders) =>
+	Atom.readable(
+		get =>
+			Array.head(
+				Array.sort(
+					Array.flatMap(readers, reader => {
+						const result = get(reader)
+						if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return []
+						return Option.toArray(get(problemSinceAtom(reader)))
+					}),
+					Order.Number
+				)
+			),
+		refresh => Array.forEach(readers, reader => refresh(reader))
+	)
 )
 
 const ageAtom = Atom.family((identity: number | string) =>
@@ -120,4 +140,14 @@ export function Problem(props: {
 			</PopoverContent>
 		</Popover>
 	)
+}
+
+// One stale mark per page: the oldest reader still showing content, and its retry refreshes them all.
+export function StaleProblem(props: {label: string; readers: StaleReaders}) {
+	const since = useAtomValue(staleSinceAtom(props.readers))
+	const retry = useAtomRefresh(staleSinceAtom(props.readers))
+	return Option.match(since, {
+		onNone: () => null,
+		onSome: value => <Problem label={props.label} reset={retry} since={value} warning />
+	})
 }

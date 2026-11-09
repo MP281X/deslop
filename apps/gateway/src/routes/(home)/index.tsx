@@ -12,7 +12,8 @@ import {Suspense, useState} from 'react'
 import {AppBar} from '@deslop/components-web/app-bar'
 import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {StaleProblem} from '@deslop/components-web/problem'
+import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
@@ -465,40 +466,15 @@ function CopyEndpoint() {
 	)
 }
 
-// Staleness shows once, as the oldest stale reader; one retry refreshes them all.
+// The four readers of each period, which the page's one stale mark ages from the oldest and retries together.
+const READERS: Record<Period, StaleReaders> = {
+	'24h': [serversAtom, mcpUsageAtom('24h'), aiKeysAtom, aiUsageAtom('24h')],
+	'7d': [serversAtom, mcpUsageAtom('7d'), aiKeysAtom, aiUsageAtom('7d')],
+	'30d': [serversAtom, mcpUsageAtom('30d'), aiKeysAtom, aiUsageAtom('30d')]
+}
+
 function GatewayProblem(props: {period: Period}) {
-	const serversSince = useAtomValue(problemSinceAtom(serversAtom))
-	const usageSince = useAtomValue(problemSinceAtom(mcpUsageAtom(props.period)))
-	const keysSince = useAtomValue(problemSinceAtom(aiKeysAtom))
-	const aiSince = useAtomValue(problemSinceAtom(aiUsageAtom(props.period)))
-	const refreshServers = useAtomRefresh(serversAtom)
-	const refreshUsage = useAtomRefresh(mcpUsageAtom(props.period))
-	const refreshKeys = useAtomRefresh(aiKeysAtom)
-	const refreshAi = useAtomRefresh(aiUsageAtom(props.period))
-	return Option.match(
-		Array.reduce(
-			Array.flatMap([serversSince, usageSince, keysSince, aiSince], Option.toArray),
-			Option.none<number>(),
-			(oldest, value) =>
-				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
-		),
-		{
-			onNone: () => null,
-			onSome: value => (
-				<Problem
-					label="Out of date"
-					warning
-					since={value}
-					reset={() => {
-						refreshServers()
-						refreshUsage()
-						refreshKeys()
-						refreshAi()
-					}}
-				/>
-			)
-		}
-	)
+	return <StaleProblem label="Out of date" readers={READERS[props.period]} />
 }
 
 function Home() {
