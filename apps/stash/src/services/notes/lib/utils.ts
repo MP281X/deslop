@@ -111,6 +111,10 @@ export function captureUrl(text: string) {
 	)
 }
 
+export function canonical(url: URL) {
+	return captureUrl(url.href) ?? url.href
+}
+
 export function isYouTube(url: string) {
 	return Option.isSome(String.match(/(?:^|\.)(?:youtube\.com|youtu\.be)$/u)(new URL(url).hostname))
 }
@@ -205,7 +209,7 @@ export function tikTokExtraction(
 			Array.join('\n')
 		),
 		title: `${item.author.nickname} on TikTok`,
-		url: captureUrl(url.href) ?? url.href
+		url: canonical(url)
 	})
 }
 
@@ -404,7 +408,7 @@ export function conversationExtraction(
 			Array.join('\n\n')
 		),
 		title: `${plan.status.author.name} on X`,
-		url: captureUrl(url.href) ?? url.href,
+		url: canonical(url),
 		...pipe(
 			// A clip with speech says more than a looping GIF beside it.
 			Array.findFirst(media, item => item.type === 'video'),

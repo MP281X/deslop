@@ -40,10 +40,9 @@ import {
 } from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
 import {CreatorCaptions, MediaError, Metadata, Probe} from '#services/media/schema.ts'
+import {isYouTube} from '#services/notes/lib/utils.ts'
 
 const MAX_WHISPER_SECONDS = 2 * 60 * 60
-
-const YOUTUBE = /^https?:\/\/(?:[\w-]+\.)?(?:youtube\.com|youtu\.be)\//u
 
 export class Media extends Context.Service<
 	Media,
@@ -464,7 +463,7 @@ export class Media extends Context.Service<
 								'--write-auto-subs',
 								'--simulate',
 								// The top comments hold corrections, answers and pushback; only YouTube can cap how many load.
-								...Boolean.match(Option.isSome(String.match(YOUTUBE)(link)), {
+								...Boolean.match(isYouTube(link), {
 									onFalse: () => [],
 									onTrue: () => [
 										'--write-comments',

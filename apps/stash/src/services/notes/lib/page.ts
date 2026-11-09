@@ -3,7 +3,7 @@ import {Array, Boolean, Match, Number, Option, Order, Predicate, Result, String,
 import * as cheerio from 'cheerio'
 import type {AnyNode} from 'domhandler'
 
-import {captureUrl, plainText} from '#services/notes/lib/utils.ts'
+import {canonical, plainText} from '#services/notes/lib/utils.ts'
 import {Extraction} from '#services/notes/schema.ts'
 
 const BLOCK_TAGS = [
@@ -180,6 +180,6 @@ export function pageText(html: string, url: URL) {
 			Array.join('\n\n')
 		),
 		title: plainText($('meta[property="og:title"]').attr('content') ?? $('title').first().text()),
-		url: captureUrl(url.href) ?? url.href
+		url: canonical(url)
 	})
 }
