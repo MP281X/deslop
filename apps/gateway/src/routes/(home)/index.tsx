@@ -36,7 +36,6 @@ import {
 	serversAtom,
 	setKeyAtom
 } from '#lib/utils.ts'
-import {FailureContent} from '#routes/(home)/-failure.tsx'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
@@ -230,7 +229,7 @@ function ServerUsage(props: {period: Period; servers: readonly ConnectionInfo[]}
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
@@ -249,7 +248,7 @@ function ServerRows(props: {period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	const servers = Option.getOrElse(AsyncResult.value(result), () => [])
 	if (Array.isReadonlyArrayEmpty(servers)) return null
@@ -298,7 +297,7 @@ function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
@@ -332,7 +331,7 @@ function KeyRows(props: {period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	const keys = Array.filter(
 		Option.getOrElse(AsyncResult.value(result), () => []),
@@ -352,13 +351,13 @@ function List(props: {period: Period}) {
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
 				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={WebRuntime.Failure}>
 					<Suspense fallback={<RowsSkeleton label="MCP servers" rows={3} tool />}>
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
 				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'keys'} errorComponent={FailureContent}>
+				<CatchBoundary getResetKey={() => 'keys'} errorComponent={WebRuntime.Failure}>
 					<Suspense fallback={<RowsSkeleton label="AI keys" rows={4} />}>
 						<KeyRows period={props.period} />
 					</Suspense>

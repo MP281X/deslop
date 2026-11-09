@@ -25,12 +25,12 @@ import {Socket} from 'effect/socket'
 import {StrictMode} from 'react'
 import {createRoot} from 'react-dom/client'
 
-import {Error, NotFound} from '@deslop/components-web/fallbacks'
+import {Denied, Error, NotFound, SignIn} from '@deslop/components-web/fallbacks'
 
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
 
-import {withoutDeniedData} from '#auth/lib/utils.ts'
+import {isDenied, needsSignIn, signInUrl, withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
@@ -62,12 +62,19 @@ const errorAtom = Atom.fn(
 	}
 )
 
+// Every failed read: sign in without a session, a lock on a refusal, otherwise the one destructive retry.
+export function Failure(props: {error: unknown; reset: () => void}) {
+	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
+	if (isDenied(props.error)) return <Denied />
+	return <Error error={props.error} reset={props.reset} />
+}
+
 export function mount<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(routeTree: TRouteTree) {
 	const root = document.querySelector('#root')
 	if (Predicate.isNull(root)) throw new TypeError('Missing application mount element with id "root"')
 	const router = createRouter({
 		context: {},
-		defaultErrorComponent: Error,
+		defaultErrorComponent: Failure,
 		defaultNotFoundComponent: NotFound,
 		defaultPreload: 'intent',
 		routeTree,

@@ -23,7 +23,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
-import {FailureContent, InventoryContent, ListPane, RunFailure} from '#routes/(home)/-list.tsx'
+import {InventoryContent, ListPane, RunFailure} from '#routes/(home)/-list.tsx'
 import {processTree} from '#routes/(home)/-process-tree.ts'
 import {Processes} from '#routes/(home)/-processes.tsx'
 import {type Row, failedFor, order, owner, rangeSet, ranged} from '#routes/(home)/-rows.ts'
@@ -165,10 +165,10 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 	const result = useAtomSuspense(metricsAtom(props.minutes), {includeFailure: true})
 	const refresh = useAtomRefresh(metricsAtom(props.minutes))
 	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
-		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={FailureContent}>
+		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={WebRuntime.Failure}>
 			{props.children}
 		</CatchBoundary>
 	)
@@ -418,7 +418,7 @@ function Workspace(props: {
 				</div>
 			</div>
 		),
-		onSome: error => <FailureContent error={error} reset={props.retryFailed} />
+		onSome: error => <WebRuntime.Failure error={error} reset={props.retryFailed} />
 	})
 }
 

@@ -8,7 +8,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
-import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListHeading} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -18,7 +18,7 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
-import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {Failure} from '@deslop/runtime/web'
 
 import {inventoryAtom, runAtom} from '#lib/utils.ts'
 import {useExpose} from '#routes/(home)/-expose.tsx'
@@ -39,20 +39,14 @@ import {
 import {workloadName} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 
-export function FailureContent(props: {error: unknown; reset: () => void}) {
-	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	if (isDenied(props.error)) return <Denied />
-	return <Error error={props.error} reset={props.reset} />
-}
-
 export function InventoryContent(props: {children: ReactNode}) {
 	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(inventoryAtom)
 	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
-		<CatchBoundary getResetKey={() => 'inventory'} errorComponent={FailureContent}>
+		<CatchBoundary getResetKey={() => 'inventory'} errorComponent={Failure}>
 			{props.children}
 		</CatchBoundary>
 	)

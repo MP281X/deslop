@@ -9,7 +9,7 @@ import {Suspense, useEffect} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -18,7 +18,7 @@ import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/comp
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
-import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {isDenied, needsSignIn} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {
@@ -126,12 +126,6 @@ function TracesSkeleton(props: {label: string}) {
 			))}
 		</div>
 	)
-}
-
-function FailureContent(props: {error: unknown; reset: () => void}) {
-	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	if (isDenied(props.error)) return <Denied />
-	return <Error error={props.error} reset={props.reset} />
 }
 
 // An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
@@ -544,7 +538,7 @@ function Spans(props: {
 	const refresh = useAtomRefresh(atom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.match(value, {
 		onNone: () => null,
@@ -835,9 +829,9 @@ function Home() {
 				onNone: () =>
 					Option.match(blockingFailure, {
 						onNone: () => renderPage(workspace),
-						onSome: cause => renderPage(<FailureContent error={Cause.squash(cause)} reset={refresh} />)
+						onSome: cause => renderPage(<WebRuntime.Failure error={Cause.squash(cause)} reset={refresh} />)
 					}),
-				onSome: error => renderPage(<FailureContent error={error} reset={refresh} />)
+				onSome: error => renderPage(<WebRuntime.Failure error={error} reset={refresh} />)
 			})}
 		</div>
 	)
