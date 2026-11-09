@@ -1,23 +1,28 @@
-import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Match, Number, Option, String, pipe, type Record} from 'effect'
 
+import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
 import type {PointerEvent} from 'react'
 
+import {EmptyState} from '@deslop/components-web/fallbacks'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
-import {runs} from '#routes/(home)/-usage.ts'
+import {bandName, bytes, rate} from '#routes/(home)/-rows.ts'
+import {appHue, bands, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
-import {chartWindow} from '#services/metrics/lib/utils.ts'
-import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+import {chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
+import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const HEIGHT = 64
+const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 const time = new Intl.DateTimeFormat(undefined, {hour: '2-digit', hourCycle: 'h23', minute: '2-digit'})
 const date = new Intl.DateTimeFormat(undefined, {day: 'numeric', month: 'short'})
 
 // One stacked band: its share at each sample, and the number its tooltip names, in bytes or per cent.
-export type ChartLayer = {
+type ChartLayer = {
 	kind: Band['kind'] | 'disk'
 	id: string
 	opacity: number
@@ -65,7 +70,7 @@ function fillOf(
 }
 
 // The machine's share each band holds over time, stacked on the whole machine's 0–100%, with a tooltip and cursor on the hovered band.
-export function UsageChart(props: {
+function UsageChart(props: {
 	className?: string
 	cover?: boolean
 	format: (value: number) => string
@@ -229,7 +234,7 @@ export function UsageChart(props: {
 }
 
 // HTML time labels under a chart, so they keep their shape whatever the chart's scale; clock-aligned ticks match the grid.
-export function TimeAxis(props: {className?: string; minutes: number; now: number}) {
+function TimeAxis(props: {className?: string; minutes: number; now: number}) {
 	return (
 		<div
 			aria-hidden="true"
@@ -265,6 +270,188 @@ export function TimeAxis(props: {className?: string; minutes: number; now: numbe
 					</span>
 				)
 			)}
+		</div>
+	)
+}
+
+// One loading chart title: its static name, with only the server's figure left to load.
+function ChartTitleSkeleton(props: {label: string}) {
+	return (
+		<div className="flex w-full items-center justify-between gap-2 text-xs">
+			<span>{props.label}</span>
+			<Skeleton className="h-4 w-10" />
+		</div>
+	)
+}
+
+export function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes']}) {
+	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
+	return (
+		<div aria-busy="true" aria-label="Usage history" role="status" className="flex shrink-0 flex-col border-b">
+			{Boolean.match(props.isPhone, {
+				onFalse: () => (
+					<div className="grid h-8 grid-cols-3 items-center gap-6 border-b px-4">
+						{Array.map(CHART_LABELS, label => (
+							<ChartTitleSkeleton key={label} label={label} />
+						))}
+					</div>
+				),
+				onTrue: () => null
+			})}
+			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
+				{Array.map(CHART_LABELS, (label, index) => (
+					<div key={label} className="flex min-w-0 flex-col gap-1">
+						{Boolean.match(props.isPhone, {
+							onFalse: () => null,
+							onTrue: () => (
+								<div className="flex h-8 items-center border-b">
+									<ChartTitleSkeleton label={label} />
+								</div>
+							)
+						})}
+						<Skeleton className="h-16 w-full sm:h-32" />
+						{Boolean.match(props.isPhone, {
+							onFalse: () => <TimeAxis minutes={props.minutes} now={now} />,
+							onTrue: () =>
+								Boolean.match(index === 2, {
+									onFalse: () => null,
+									onTrue: () => <TimeAxis minutes={props.minutes} now={now} />
+								})
+						})}
+					</div>
+				))}
+			</div>
+		</div>
+	)
+}
+
+function ChartTitle(props: {figure: string; label: string}) {
+	return (
+		<div className="flex w-full items-baseline justify-between gap-2 text-xs">
+			<span>{props.label}</span>
+			<span className="tabular-nums">{props.figure}</span>
+		</div>
+	)
+}
+
+// The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
+export function ChartBlock(props: {
+	history: MachineHistory
+	isPhone: boolean
+	labels: Record<string, string>
+	minutes: HistoryQuery['minutes']
+}) {
+	const all = bands(props.history)
+	const latest = Option.getOrUndefined(Array.last(props.history.samples))
+	const total = Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total)
+	const disk = Array.map(props.history.samples, sample =>
+		Boolean.match(total > 0, {
+			onFalse: () => 0,
+			onTrue: () => Number.clamp((usedStorage(sample) / total) * 100, {maximum: 100, minimum: 0})
+		})
+	)
+	const charts: readonly {
+		cover: boolean
+		figure: string
+		format: (value: number) => string
+		label: string
+		layers: readonly ChartLayer[]
+		recorded: (sample: Sample) => boolean
+	}[] = [
+		{
+			cover: false,
+			figure: Boolean.match(latest === undefined, {onFalse: () => bytes(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
+			format: bytes,
+			label: 'Memory',
+			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
+			recorded: () => true
+		},
+		{
+			cover: false,
+			figure: Boolean.match(latest?.cpu === undefined, {onFalse: () => rate(latest?.cpu ?? 0), onTrue: () => '—'}),
+			format: rate,
+			label: 'CPU',
+			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
+			recorded: sample => sample.cpu !== undefined
+		},
+		{
+			cover: true,
+			figure: Option.match(Option.fromUndefinedOr(latest), {
+				onNone: () => '—',
+				onSome: sample =>
+					Boolean.match(total > 0, {
+						onFalse: () => '—',
+						onTrue: () => `${Number.round((usedStorage(sample) / total) * 100, 0)}%`
+					})
+			}),
+			format: rate,
+			label: 'Disk',
+			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
+			recorded: sample => sample.storageUsed !== undefined || Array.isReadonlyArrayNonEmpty(sample.disks)
+		}
+	]
+	return (
+		<div className="flex shrink-0 flex-col border-b">
+			{Boolean.match(props.isPhone, {
+				onFalse: () => (
+					<div className="grid h-8 shrink-0 grid-cols-3 items-center gap-6 border-b px-4">
+						{Array.map(charts, chart => (
+							<ChartTitle key={chart.label} figure={chart.figure} label={chart.label} />
+						))}
+					</div>
+				),
+				onTrue: () => null
+			})}
+			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
+				{Array.map(charts, (chart, index) => (
+					<div key={chart.label} className="flex min-w-0 flex-col gap-1">
+						{Boolean.match(props.isPhone, {
+							onFalse: () => null,
+							onTrue: () => (
+								<div className="flex h-8 items-center border-b">
+									<ChartTitle figure={chart.figure} label={chart.label} />
+								</div>
+							)
+						})}
+						<UsageChart
+							className="h-16 sm:h-32"
+							cover={chart.cover}
+							format={chart.format}
+							history={props.history}
+							hue={appHue}
+							label={chart.label}
+							layers={chart.layers}
+							minutes={props.minutes}
+							names={id =>
+								Boolean.match(chart.label === 'Disk', {onFalse: () => bandName(id, props.labels), onTrue: () => 'Disk'})
+							}
+							recorded={chart.recorded}
+						/>
+						{Boolean.match(props.isPhone, {
+							onFalse: () => <TimeAxis minutes={props.minutes} now={props.history.time} />,
+							onTrue: () =>
+								Boolean.match(index === charts.length - 1, {
+									onFalse: () => null,
+									onTrue: () => <TimeAxis minutes={props.minutes} now={props.history.time} />
+								})
+						})}
+					</div>
+				))}
+			</div>
+		</div>
+	)
+}
+
+export function EmptyChart(props: {worker?: string}) {
+	return (
+		<div className="flex h-44 shrink-0 items-center justify-center sm:h-64">
+			<EmptyState
+				icon={<ChartLineIcon weight="light" />}
+				label={Boolean.match(props.worker === undefined, {
+					onFalse: () => 'No readings in this range',
+					onTrue: () => 'No machine'
+				})}
+			/>
 		</div>
 	)
 }
