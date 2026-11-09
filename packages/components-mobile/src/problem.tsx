@@ -35,7 +35,7 @@ export function Problem(props: {label: string; onRetry: () => void; saved?: bool
 			label={
 				<HStack spacing={space[1]} modifiers={[frame({minHeight: 44, minWidth: 44}), accessibilityLabel(props.label)]}>
 					{Boolean.match(props.saved === true, {
-						onFalse: () => <StatusDot status="error" tint={colors.destructive} />,
+						onFalse: () => <StatusDot status="error" />,
 						onTrue: () => (
 							<Image systemName="externaldrive.badge.checkmark" modifiers={[foregroundStyle(colors.mutedForeground)]} />
 						)
