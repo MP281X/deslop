@@ -4,7 +4,7 @@ export const noControlForWrongJob = question(
 	'component',
 	'Does `code` use a tab to run an action instead of to switch the view?',
 	{
-		message: 'Tabs switch views; run an action from a button or the command palette.',
+		message: 'Tabs switch views; run an action from a button.',
 		no: {
 			cases: [
 				'Tabs that select which view or content is shown',
