@@ -39,6 +39,7 @@ export const Sample = Schema.Struct({
 	networkReceive: Schema.optionalKey(Schema.Finite),
 	networkSend: Schema.optionalKey(Schema.Finite),
 	since: Schema.optionalKey(Schema.Finite),
+	// The machine's used space in bytes, summed over its mounted disks.
 	storageUsed: Schema.optionalKey(Schema.Finite),
 	swapTotal: Schema.Finite,
 	swapUsed: Schema.Finite,

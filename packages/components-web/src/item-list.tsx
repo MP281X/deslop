@@ -1,7 +1,22 @@
 import {Array} from 'effect'
 
+import type {ReactNode} from 'react'
+
 import {Item, ItemContent, ItemMedia} from '#components/ui/item.tsx'
 import {Skeleton} from '#components/ui/skeleton.tsx'
+
+// A quiet heading over a group of rows, such as the processes or the scheduled jobs: a row's height, with its 16px icon in the marks' column so its text lines up with the names.
+export function ItemListHeading(props: {children: ReactNode; icon: ReactNode}) {
+	return (
+		<div
+			role="presentation"
+			className="list-row text-muted-foreground flex h-8 items-center gap-3 px-4 text-xs max-sm:h-11 [&_svg]:size-4 [&_svg]:shrink-0"
+		>
+			{props.icon}
+			{props.children}
+		</div>
+	)
+}
 
 // The rows a list will hold while its data loads, on the same row as the real ones: a mark when the real rows lead with one.
 export function ItemListSkeleton(props: {label: string; media?: boolean; rows: number}) {

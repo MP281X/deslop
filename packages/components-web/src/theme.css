@@ -175,6 +175,24 @@
 	}
 }
 
+/* A tree: each level indents 12px, and a parent's row pins above the rows under it on the pane's background. */
+@utility tree-sticky {
+	position: sticky;
+	top: calc(var(--tree-depth) * 2rem);
+	z-index: calc(100 - var(--tree-depth));
+	@media (width < 40rem) {
+		top: calc(var(--tree-depth) * 2.75rem);
+	}
+}
+
+@utility tree-sticky-bg {
+	background-color: var(--background);
+}
+
+@utility tree-sticky-hover {
+	background-color: color-mix(in oklab, var(--muted) 30%, var(--background));
+}
+
 @layer base {
 	* {
 		@apply border-border outline-ring/50;

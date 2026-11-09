@@ -7,11 +7,19 @@ export class DeployError extends Schema.TaggedError<DeployError>()('DeployError'
 	message: Schema.String
 }) {}
 
+export type ProcessLabel = typeof ProcessLabel.Type
+export const ProcessLabel = Schema.Struct({
+	// What the process is, readable: its program or app name and the few arguments that say which one.
+	detail: Schema.String,
+	name: Schema.String
+})
+
 export type Process = typeof Process.Type
 export const Process = Schema.Struct({
 	// Its arguments, the executable first, with anything that looks like a secret masked.
 	command: Schema.optionalKey(Schema.Array(Schema.String)),
 	cpu: Schema.optionalKey(Schema.Finite),
+	label: ProcessLabel,
 	memory: Schema.Finite,
 	name: Schema.String,
 	parent: Schema.Int,

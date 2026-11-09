@@ -1,7 +1,19 @@
-import {Array, Boolean, Number, Order, Record} from 'effect'
+import {Array, Boolean, Number, Option, Order, Record, String} from 'effect'
 
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+
+// Each Deslop app's icon hue, as the theme names it; a service without one stays zinc grey.
+const APP_HUES: Record<string, string> = {
+	auth: 'var(--slate)',
+	deploy: 'var(--blue)',
+	gateway: 'var(--pink)',
+	opm: 'var(--ivory)',
+	portfolio: 'var(--coral)',
+	scope: 'var(--cyan)',
+	stash: 'var(--amber)',
+	trips: 'var(--orange)'
+}
 
 // One stacked band, in % of the whole machine at each sample: an app, the small apps together, or what the machine holds beyond the apps.
 export type Band = {
@@ -10,14 +22,27 @@ export type Band = {
 	kind: 'app' | 'other' | 'system'
 	members: readonly string[]
 	memory: number[]
+	memoryBytes: number[]
 	opacity: number
+}
+
+// A band's app from its label: the first word naming a Deslop app also tints its previews and containers.
+export function appHue(name: string) {
+	return Option.flatMap(
+		Array.findFirst(String.split(String.toLowerCase(name), /[^a-z0-9]+/u), word => Record.has(APP_HUES, word)),
+		word => Record.get(APP_HUES, word)
+	)
 }
 
 function peak(values: readonly number[]) {
 	return Array.reduce(values, 0, Number.max)
 }
 
-function total(group: readonly {cpu: number[]; memory: number[]}[], index: number, key: 'cpu' | 'memory') {
+function total(
+	group: readonly {cpu: number[]; memory: number[]; memoryBytes: number[]}[],
+	index: number,
+	key: 'cpu' | 'memory' | 'memoryBytes'
+) {
 	return Number.sumAll(Array.map(group, app => app[key][index] ?? 0))
 }
 
@@ -42,7 +67,8 @@ export function bands(history: MachineHistory) {
 			(entries, index) =>
 				(((entries[id]?.memory ?? 0) * (fit[index] ?? 1)) / Number.max(1, history.samples[index]?.memoryTotal ?? 1)) *
 				100
-		)
+		),
+		memoryBytes: Array.map(indexed, entries => entries[id]?.memory ?? 0)
 	}))
 	// Never above 5% of the machine's memory or CPU an app is barely visible at the chart's height, so it joins the one band of small apps.
 	const small = Array.filter(apps, app => peak(app.memory) < 5 && peak(app.cpu) < 5)
@@ -69,6 +95,7 @@ export function bands(history: MachineHistory) {
 				kind: 'other' as const,
 				members: Array.map(group, app => app.id),
 				memory: Array.map(history.samples, (_, index) => total(group, index, 'memory')),
+				memoryBytes: Array.map(history.samples, (_, index) => total(group, index, 'memoryBytes')),
 				opacity: 0.35
 			}
 		]
@@ -83,6 +110,9 @@ export function bands(history: MachineHistory) {
 			members: [],
 			memory: Array.map(history.samples, (sample, index) =>
 				Number.max(0, (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100 - total(apps, index, 'memory'))
+			),
+			memoryBytes: Array.map(history.samples, (sample, index) =>
+				Number.max(0, sample.memoryUsed - total(apps, index, 'memoryBytes'))
 			),
 			opacity: 0.18
 		}

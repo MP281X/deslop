@@ -47,12 +47,19 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 	function mark() {
 		if (own !== undefined) return <img src={own} alt="" className="pixelated size-full object-contain" />
 		if (brand !== undefined) {
-			if (brand.light === brand.dark) return <brand.light className="size-full" />
+			// A brand's artwork fills its viewBox, so a 16px box would read heavier than the pixel marks' inset artwork.
 			return (
-				<>
-					<brand.light className="size-full dark:hidden" />
-					<brand.dark className="hidden size-full dark:block" />
-				</>
+				<span className="flex size-3 items-center justify-center">
+					{Boolean.match(brand.light === brand.dark, {
+						onFalse: () => (
+							<>
+								<brand.light className="size-full dark:hidden" />
+								<brand.dark className="hidden size-full dark:block" />
+							</>
+						),
+						onTrue: () => <brand.light className="size-full" />
+					})}
+				</span>
 			)
 		}
 		const weight = Boolean.match(props.small === true, {
@@ -63,10 +70,7 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 		return <TerminalWindowIcon className="size-full" weight={weight} />
 	}
 	return (
-		<span
-			className={`text-muted-foreground inline-flex shrink-0 items-center justify-center ${Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})}`}
-			aria-hidden="true"
-		>
+		<span className="text-muted-foreground inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
 			{mark()}
 		</span>
 	)

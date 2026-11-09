@@ -1,103 +1,87 @@
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Number, Option} from 'effect'
 
-import {CaretRightIcon} from '@phosphor-icons/react'
-
-import {Button} from '@deslop/components-web/ui/button'
-import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
-import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
+import {Tree} from '@deslop/components-web/tree'
+import type {TreeRow} from '@deslop/components-web/tree'
 import {cn} from '@deslop/components-web/utils'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
+const percent = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
 
-function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
+// One 48×6px meter; its exact figure is what hovering reads and what the row announces.
+function Meter(props: {color: string; label: string; share: number}) {
 	return (
-		<div
-			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
-			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
+		<span
+			role="img"
+			aria-label={props.label}
+			title={props.label}
+			className="bg-input h-1.5 w-12 shrink-0 overflow-hidden"
 		>
-			<Item
-				size="xs"
-				className="h-full min-w-0"
-				title={`Memory includes child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
-			>
-				<ItemMedia variant="icon" className="ml-(--indent)">
-					<ApplicationIcon name={props.node.name} small />
-				</ItemMedia>
-				<ItemContent className="min-w-0">
-					<div
-						className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}
-					>
-						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case max-sm:max-w-3/5">
-							{props.node.name}
-						</span>
-						<span
-							className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case"
-							title={Array.join(props.node.command ?? [], ' ')}
-						>
-							{/* The arguments that tell a process apart: no executable, no variable assignments, and paths cut to their last part; hovering shows them whole. */}
-							{Array.join(
-								Array.map(
-									Array.filter(Array.drop(props.node.command ?? [], 1), arg =>
-										Option.isNone(String.match(/^[A-Z_][A-Z0-9_]*=/u)(arg))
-									),
-									String.replaceAll(/(^|=)(?:\/[^/\s=]+)+\/([^/\s]+)/gu, '$1$2')
-								),
-								' '
-							)}
-						</span>
-					</div>
-				</ItemContent>
-				<ItemActions className="shrink-0">
-					{Array.isArrayNonEmpty(props.node.children) && (
-						<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case max-sm:hidden">
-							+{props.node.children.length}
-						</span>
-					)}
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tracking-normal normal-case tabular-nums">
-						{mib.format(props.node.memory / 1024 ** 2)} MiB
-					</span>
-					{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
-						onFalse: () => <span className="size-3.5 shrink-0" />,
-						onTrue: () => (
-							<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 group-aria-expanded/button:rotate-90" />
-						)
-					})}
-				</ItemActions>
-			</Item>
-		</div>
+			<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" className="size-full">
+				<rect width={Number.clamp(props.share, {maximum: 100, minimum: 0})} height="100" fill={props.color} />
+			</svg>
+		</span>
 	)
 }
 
-function Node(props: {depth: number; node: ProcessNode}) {
-	if (Array.isArrayEmpty(props.node.children)) {
-		return <Line depth={props.depth} node={props.node} padded />
+// A process ends with its memory share of the app in the app's band hue, then its CPU share of the machine in cyan.
+function Meters(props: {appMemory: number; hue: string; node: ProcessNode}) {
+	const memory = mib.format(props.node.memory / 1024 ** 2)
+	const cpu = Option.fromUndefinedOr(props.node.cpu)
+	return (
+		<span className="flex shrink-0 items-center gap-1.5">
+			<Meter
+				color={props.hue}
+				label={`${memory} MiB`}
+				share={(props.node.memory / Number.max(1, props.appMemory)) * 100}
+			/>
+			<Meter
+				color="var(--cyan)"
+				label={Option.match(cpu, {onNone: () => 'CPU not recorded', onSome: value => `${percent.format(value)}% CPU`})}
+				share={Option.getOrElse(cpu, () => 0)}
+			/>
+		</span>
+	)
+}
+
+// One process row: its mark, the command label and its two meters; small ones read muted.
+function rowOf(props: {appMemory: number; hue: string; node: ProcessNode}): TreeRow {
+	const row: TreeRow = {
+		actions: <Meters appMemory={props.appMemory} hue={props.hue} node={props.node} />,
+		content: (
+			<div
+				className={cn(
+					'flex min-w-0 flex-1 items-baseline gap-2 text-left',
+					props.node.small && 'text-muted-foreground'
+				)}
+			>
+				<span className="max-w-full min-w-0 shrink truncate font-mono text-xs tracking-normal normal-case">
+					{props.node.label.name}
+				</span>
+				<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case">
+					{props.node.label.detail}
+				</span>
+			</div>
+		),
+		id: `${props.node.pid}`,
+		media: <ApplicationIcon name={props.node.label.name} small />,
+		title: Array.join(props.node.command ?? [], ' ')
 	}
-	return (
-		<Collapsible defaultOpen={props.depth === 0 && !props.node.small}>
-			<CollapsibleTrigger
-				render={<Button variant="ghost" size="sm" className="h-full w-full" />}
-				aria-label={`${props.node.name} processes`}
-			>
-				<Line depth={props.depth} node={props.node} />
-			</CollapsibleTrigger>
-			<CollapsibleContent>
-				{Array.map(props.node.children, child => (
-					<Node key={`${child.pid}:${child.name}`} depth={props.depth + 1} node={child} />
-				))}
-			</CollapsibleContent>
-		</Collapsible>
-	)
+	return Array.match(props.node.children, {
+		onEmpty: () => row,
+		onNonEmpty: children => ({...row, children: Array.map(children, child => rowOf({...props, node: child}))})
+	})
 }
 
-export function Processes(props: {tree: readonly ProcessNode[]}) {
+// Every process is shown; nesting indents plainly, and a parent's row stays pinned under its ancestors.
+export function Processes(props: {hue: string; tree: readonly ProcessNode[]}) {
+	const appMemory = Number.sumAll(Array.map(props.tree, node => node.memory))
 	return (
-		<div className="min-w-0 px-2 pb-2">
-			{Array.map(props.tree, node => (
-				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
-			))}
+		// Its own stacking context keeps the pinned parents under the pane's scrollbar.
+		<div className="isolate min-w-0">
+			<Tree rows={Array.map(props.tree, node => rowOf({appMemory, hue: props.hue, node}))} stickyParents />
 		</div>
 	)
 }

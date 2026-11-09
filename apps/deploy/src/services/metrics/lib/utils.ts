@@ -116,6 +116,22 @@ export function sample(current: Counters, memory: string, disk: string, previous
 			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
 		})
 	)
+	const disks = pipe(
+		disk,
+		String.trim,
+		String.split('\n'),
+		Array.drop(1),
+		Array.filter(String.isNonEmpty),
+		Array.map(line => {
+			const fields = String.split(String.trim(line), /\s+/u)
+			return {
+				mount: fields[0],
+				total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
+				used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
+			}
+		})
+	)
+	const used = Array.reduce(disks, 0, (sum, entry) => sum + entry.used)
 	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
 	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
 	const old = Option.getOrUndefined(baseline)
@@ -132,21 +148,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 			networkReceive: rate(current.networkReceive, seconds, old?.networkReceive),
 			networkSend: rate(current.networkSend, seconds, old?.networkSend)
 		}),
-		disks: pipe(
-			disk,
-			String.trim,
-			String.split('\n'),
-			Array.drop(1),
-			Array.filter(String.isNonEmpty),
-			Array.map(line => {
-				const fields = String.split(String.trim(line), /\s+/u)
-				return {
-					mount: fields[0],
-					total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
-					used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
-				}
-			})
-		),
+		disks,
 		load: Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
 			Array.take(Array.filter(String.split(String.trim(load ?? ''), /\s+/u), String.isNonEmpty), 3)
 		),
@@ -160,7 +162,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 		time: current.time,
 		uptime: current.uptime
 	}
-	return reading
+	return Array.match(disks, {onEmpty: () => reading, onNonEmpty: () => ({...reading, storageUsed: used})})
 }
 
 // A range's slot width: every range draws 60 slots.
@@ -245,6 +247,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 			mean(bucket, point => point.memoryUsed),
 			() => last.memoryUsed
 		),
+		...Record.getSomes({storageUsed: mean(bucket, point => point.storageUsed)}),
 		since: bucket[0].since ?? bucket[0].time
 	}
 	return merged

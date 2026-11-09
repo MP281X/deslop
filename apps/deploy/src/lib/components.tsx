@@ -9,14 +9,11 @@ export function machineName(worker: string) {
 export function MachineIcon(props: {worker: string}) {
 	return (
 		<span
-			title={props.worker}
-			aria-label={props.worker}
-			role="img"
+			aria-hidden="true"
 			className={`inline-flex shrink-0 items-center justify-center ${Boolean.match(
 				machineName(props.worker) === 'desktop',
 				{onFalse: () => 'text-machine-dev', onTrue: () => 'text-machine-desktop'}
 			)}`}
-			data-machine={machineName(props.worker)}
 		>
 			{Boolean.match(machineName(props.worker) === 'desktop', {
 				onFalse: () => <HardDrivesIcon className="size-4" />,

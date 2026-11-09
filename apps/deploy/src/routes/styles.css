@@ -1,13 +1,7 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
-@theme {
-	/* Under a wide screen's split, apps and charts share the top and processes take the lower band. */
-	--grid-template-rows-split: 3fr 2fr;
-	/* A port chip's least width, so single ports line up while a hostname keeps its full name. */
-	--spacing-port: 7ch;
-}
-
+/* Each machine's identity, used by its icon in the bar. */
 @theme inline {
 	--color-machine-dev: var(--machine-dev);
 	--color-machine-desktop: var(--machine-desktop);
@@ -15,18 +9,4 @@
 
 :root {
 	--primary: var(--blue);
-}
-
-/* Each machine's charts and swatches draw in its own hue; the app's primary stays Deploy's blue. */
-@utility machine {
-	--machine: var(--machine-dev);
-
-	&[data-machine='desktop'] {
-		--machine: var(--machine-desktop);
-	}
-}
-
-/* A machine metric that uses a shadcn component's primary token: only that component takes the machine hue. */
-@utility machine-metric {
-	--primary: var(--machine);
 }

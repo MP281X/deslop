@@ -1,17 +1,15 @@
-import {Array, Boolean, Function, MutableHashSet, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, Function, MutableHashSet, Number, Option, Order, pipe} from 'effect'
 
-import type {Process} from '#services/inventory/schema.ts'
-
-const processName = String.replace(/-MainThread$|\.native$/u, '')
+import type {Process, ProcessLabel} from '#services/inventory/schema.ts'
 
 // A process with everything below it: `memory`, `cpu` and `count` cover the subtree; `cpu` stays unknown while no member reports one.
 export type ProcessNode = {
-	children: ProcessNode[]
+	children: readonly ProcessNode[]
 	command?: readonly string[]
 	count: number
 	cpu?: number
+	label: ProcessLabel
 	memory: number
-	name: string
 	pid: number
 	small: boolean
 }
@@ -41,7 +39,28 @@ function settle(children: readonly ProcessNode[], appMemory: number) {
 	}))
 }
 
-// The app's processes as a tree: a parent that only wraps one parent shows as `parent › child`, and each process appears once.
+function sameLabel(first: ProcessLabel, second: ProcessLabel) {
+	return first.name === second.name && first.detail === second.detail
+}
+
+// A child that says the same thing as its parent is the same row: hide it, keep its descendants, and leave its usage in the parent's total.
+function absorb(label: ProcessLabel, children: readonly ProcessNode[]): readonly ProcessNode[] {
+	const matching = Array.filter(children, child => sameLabel(child.label, label))
+	if (Array.isArrayEmpty(matching)) return children
+	return [
+		...Array.filter(children, child => !sameLabel(child.label, label)),
+		...absorb(
+			label,
+			Array.flatMap(matching, child => child.children)
+		)
+	]
+}
+
+function fold(node: ProcessNode): ProcessNode {
+	return {...node, children: absorb(node.label, Array.map(node.children, fold))}
+}
+
+// The app's processes as a tree: a child with its parent's label folds into it, and each process appears once.
 export function processTree(rows: readonly Process[]) {
 	const pids = MutableHashSet.fromIterable(Array.map(rows, row => row.pid))
 	const children = Array.groupBy(rows, row => `${row.parent}`)
@@ -57,23 +76,18 @@ export function processTree(rows: readonly Process[]) {
 			count: 1,
 			...Option.match(Option.fromUndefinedOr(row.command), {onNone: () => ({}), onSome: command => ({command})}),
 			...Option.match(Option.fromUndefinedOr(row.cpu), {onNone: () => ({}), onSome: cpu => ({cpu})}),
+			label: row.label,
 			memory: row.memory,
-			name: processName(row.name),
 			pid: row.pid,
 			small: false
 		}
-		const total = usage([self, ...below])
-		const only = below[0]
-		if (below.length === 1 && only !== undefined && Array.isArrayNonEmpty(only.children)) {
-			return {...only, ...total, name: `${self.name} › ${only.name}`}
-		}
-		return {...self, ...total, children: below}
+		return {...self, ...usage([self, ...below]), children: below}
 	}
 	const roots = pipe(
 		Array.filter(rows, row => !MutableHashSet.has(pids, row.parent)),
 		// A malformed source whose parents form a cycle has no root, so its first process starts the tree.
 		Array.match({onEmpty: () => Array.take(rows, 1), onNonEmpty: Function.identity}),
-		Array.map(build)
+		Array.map(node => fold(build(node)))
 	)
 	const appMemory = usage(roots).memory
 	function place(node: ProcessNode): ProcessNode {
