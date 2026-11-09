@@ -1,13 +1,48 @@
 @import '@deslop/components-web/theme.css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 @import '@fontsource-variable/ibm-plex-sans';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
+/* The public CV keeps Geist and its paper tones while the Deslop apps run Lyra. */
 :root {
 	--primary: var(--coral);
+
+	--background: #ffffff;
+	--foreground: #0a0a0a;
+	--muted: #f5f4f1;
+	--muted-foreground: #64625d;
+	--border: #e6e4de;
+	--input: #d8d6cf;
+	--popover: #ffffff;
+	--primary-foreground: #ffffff;
+	--coral: oklch(from #bd4630 l c h);
+	--selection: #e8e6df;
+	--selection-foreground: #0a0a0a;
+	--radius: 0px;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+	:root {
+		--background: #0d0c0c;
+		--foreground: #e3e1db;
+		--muted: #242323;
+		--muted-foreground: #a19e96;
+		--border: #262523;
+		--input: #2c2a27;
+		--popover: #141313;
+		--primary-foreground: #0d0c0c;
+		--coral: oklch(from #fd7357 l c h);
+		--selection: #3a3833;
+		--selection-foreground: #f5f3ec;
+	}
 }
 
 /* The CV reads in a proportional face; the app's monospace stays for its labels, dates and header. */
 @theme {
+	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
 	--font-document: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
 	--text-document: 0.75rem;
 	--text-document--line-height: 1.45;
@@ -25,6 +60,38 @@
 @supports (font: -apple-system-body) {
 	:root {
 		--spacing-printed-page: 256mm;
+	}
+}
+
+/* The reading column is colour haze: two-thirds paper over the grid, frosted hard so the trails behind it turn into soft light. */
+.panel-frosted {
+	background-color: color-mix(in srgb, var(--background) 66%, transparent);
+	-webkit-backdrop-filter: blur(28px) saturate(2.2);
+	backdrop-filter: blur(28px) saturate(2.2);
+}
+
+/* A project's arrow keeps a 44px phone target without making its line taller than the title. */
+@media (max-width: 639px) {
+	.project-link {
+		position: relative;
+		display: inline-flex;
+		width: 20px;
+		height: 20px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.project-link::after {
+		content: '';
+		position: absolute;
+		inset: -12px;
+	}
+}
+
+/* Over links the browser's own pointer would return beside the drawn cursor. */
+@media (hover: hover) and (pointer: fine) {
+	.portfolio-page :is(a, button, [role='button']) {
+		cursor: none;
 	}
 }
 
@@ -63,5 +130,11 @@
 @media print {
 	:root {
 		color-scheme: light;
+	}
+
+	.panel-frosted {
+		background-color: var(--background);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
 	}
 }

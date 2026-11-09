@@ -1,8 +1,7 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
+import {Effect, Option, Schema, String, pipe} from 'effect'
 
-import {useRender} from '@base-ui/react/use-render'
 import {CaretLeftIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -22,8 +21,9 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
+import {InputGroup, InputGroupAddon, InputGroupInput} from '#components/ui/input-group.tsx'
 import {Kbd} from '#components/ui/kbd.tsx'
-import {cn} from '#lib/utils.ts'
+import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
 
 type Account = typeof Account.Type
 // Without an issuer the account is the developer, who cannot sign out.
@@ -73,38 +73,46 @@ function AccountMenu() {
 	)
 }
 
-export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
-	return useRender({
-		props: {
-			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
-			children: props.children,
-			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
-				Boolean.match(props.active, {
-					onFalse: () => 'text-muted-foreground hover:text-foreground',
-					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
-				})
-			)
-		},
-		render: props.render
-	})
+// The app's sections as one segmented control in the masthead; `value` names the current one.
+export function AppBarTabs(props: {children: ReactNode; value: string}) {
+	return (
+		<Tabs value={props.value}>
+			<TabsList>{props.children}</TabsList>
+		</Tabs>
+	)
 }
 
-// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
+// A section the current URL can name: the tab navigates through `render`, a router link.
+export function AppBarTab(props: {children: ReactNode; render: ReactElement; value: string}) {
+	return (
+		<TabsTrigger value={props.value} nativeButton={false} render={props.render}>
+			{props.children}
+		</TabsTrigger>
+	)
+}
+
+// The page-wide search is a field-shaped button that opens the palette; a phone gets its icon alone.
 function SearchTrigger(props: {label: string; onClick: () => void}) {
 	return (
 		<>
-			<Button
-				variant="search"
-				size="search"
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
-			>
-				<MagnifyingGlassIcon className="size-4 shrink-0" />
-				<span className="flex-1">Search or jump to…</span>
-				<Kbd>⌘K</Kbd>
-			</Button>
+			<InputGroup className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex">
+				<InputGroupInput
+					readOnly
+					aria-label={props.label}
+					aria-haspopup="dialog"
+					placeholder="Search or jump to…"
+					onClick={props.onClick}
+					onKeyDown={event => {
+						if (event.key === 'Enter' || event.key === ' ') props.onClick()
+					}}
+				/>
+				<InputGroupAddon>
+					<MagnifyingGlassIcon />
+				</InputGroupAddon>
+				<InputGroupAddon align="inline-end">
+					<Kbd>⌘K</Kbd>
+				</InputGroupAddon>
+			</InputGroup>
 			<Button
 				variant="ghost"
 				size="icon-sm"
@@ -141,17 +149,17 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
+			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-12 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
 						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
+							<img src={props.icon} alt="" className="pixelated size-6" />
+							<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
 						</a>
 					),
-					// The leading slot keeps its width on every pane, so the title and the right controls never move.
+					// The back caret sits on the rows' 16px mark column and the title on their name column, at 44px.
 					onSome: title => (
-						<div className="flex min-w-0 shrink items-center gap-1.5">
+						<div className="flex min-w-0 shrink items-center gap-1">
 							{Option.match(Option.fromUndefinedOr(props.back), {
 								onNone: () => (
 									<a
@@ -159,14 +167,14 @@ export function AppBar(props: {
 										aria-label={props.name}
 										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
 									>
-										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
+										<img src={props.icon} alt="" className="pixelated size-6" />
 									</a>
 								),
 								onSome: back => (
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										className="max-sm:size-11"
+										className="-ml-2 max-sm:-mr-1.5 max-sm:-ml-3.5 max-sm:size-11"
 										aria-label={back.label}
 										onClick={back.onClick}
 									>
@@ -174,14 +182,12 @@ export function AppBar(props: {
 									</Button>
 								)
 							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
-								{title}
-							</span>
+							<span className="font-heading max-w-48 min-w-0 truncate text-sm font-semibold">{title}</span>
 						</div>
 					)
 				})}
 				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
+					<nav aria-label="Sections" className="flex shrink-0 items-center">
 						{props.tabs}
 					</nav>
 				)}

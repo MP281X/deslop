@@ -19,30 +19,35 @@ import {
 	pipe
 } from 'effect'
 
-import {ArrowUpRightIcon, CursorIcon} from '@phosphor-icons/react'
+import {
+	ArrowUpRightIcon,
+	CursorIcon,
+	EnvelopeIcon,
+	FileTextIcon,
+	GithubLogoIcon,
+	PhoneIcon,
+	SealCheckIcon
+} from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
 import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
 
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {RpcClient} from '#lib/utils.ts'
-import icon from '#routes/icon.svg'
 import {PortfolioColor} from '#services/presence/schema.ts'
-import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
+import type {PortfolioScene, PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
-const SECTION_NAMES = ['profile', 'expertise', 'experience', 'projects', 'education', 'contact'] as const
-// A cursor not yet on screen: its empty viewport makes the first sync place it at its target instead of gliding there.
-const UNPLACED_MOTION = {lastFrameAt: 0, targetX: 0, targetY: 0, viewportHeight: 0, viewportWidth: 0, x: 0, y: 0}
+const SECTION_NAMES = ['profile', 'skills', 'experience', 'projects', 'education', 'contact'] as const
 
-type Scene = {trails: PortfolioVisitors; visitors: PortfolioVisitors}
+type Scene = {bots: PortfolioVisitors; trails: PortfolioVisitors; visitors: PortfolioVisitors}
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
@@ -91,25 +96,29 @@ const portfolioAtom = Atom.keepAlive(
 			Stream.unwrap,
 			// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
 			Stream.retry(Schedule.spaced('2 seconds')),
-			Stream.mapAccum<Scene, PortfolioVisitors, Scene>(
-				() => ({trails: [], visitors: []}),
-				(scene, visitors) => {
+			Stream.mapAccum<Scene, PortfolioScene, Scene>(
+				() => ({bots: [], trails: [], visitors: []}),
+				(scene, update) => {
+					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						Array.map(scene.visitors, visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+						Array.map(Array.appendAll(scene.visitors, scene.bots), visitor =>
+							Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y)
+						)
 					)
-					// The latest 180 positions in the order visitors reached them; a recolour starts a new stretch where the cursor is.
+					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
+						bots: update.bots,
 						trails: Array.takeRight(
 							Array.appendAll(
 								scene.trails,
 								Array.filter(
-									visitors,
+									cursors,
 									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 								)
 							),
 							180
 						),
-						visitors
+						visitors: update.visitors
 					}
 					return Tuple.make(next, [next])
 				}
@@ -120,66 +129,6 @@ const portfolioAtom = Atom.keepAlive(
 
 function setCursorTransform(node: HTMLDivElement, x: number, y: number) {
 	node.style.setProperty('--cursor-transform', `translate3d(${x}px, ${y}px, 0)`)
-}
-
-function createCursorMotion(target: {x: number; y: number}, viewport: {width: number; height: number}) {
-	return {
-		lastFrameAt: 0,
-		targetX: target.x,
-		targetY: target.y,
-		viewportHeight: viewport.height,
-		viewportWidth: viewport.width,
-		x: target.x,
-		y: target.y
-	}
-}
-
-function approach(input: {catchUp: number; maximum: number; position: number; target: number}) {
-	if (Math.abs(input.target - input.position) < 0.3) return input.target
-	return Number.clamp({maximum: input.maximum, minimum: 0})(
-		input.position + (input.target - input.position) * input.catchUp
-	)
-}
-
-function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: number) {
-	const frameDelta = Boolean.match(motion.lastFrameAt > 0, {
-		onFalse: () => 16,
-		onTrue: () => Number.clamp({maximum: 64, minimum: 8})(now - motion.lastFrameAt)
-	})
-	const deltaX = motion.targetX - motion.x
-	const deltaY = motion.targetY - motion.y
-	const catchUp = Number.min(1, (1 - Math.exp(-frameDelta / 130)) * (1 + Math.hypot(deltaX, deltaY) / 220))
-	// Reduced motion keeps the colour and drops the glide, as every other transition on the page does.
-	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-	return {
-		...motion,
-		lastFrameAt: now,
-		x: Boolean.match(reduced, {
-			onFalse: () => approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
-			onTrue: () => motion.targetX
-		}),
-		y: Boolean.match(reduced, {
-			onFalse: () => approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY}),
-			onTrue: () => motion.targetY
-		})
-	}
-}
-
-function syncCursorMotion(
-	motion: ReturnType<typeof createCursorMotion>,
-	cursor: PortfolioVisitor,
-	viewport: {width: number; height: number}
-) {
-	const target = {x: cursor.x * viewport.width, y: cursor.y * viewport.height}
-
-	if (motion.viewportWidth !== viewport.width || motion.viewportHeight !== viewport.height) {
-		return createCursorMotion(target, viewport)
-	}
-
-	if (motion.targetX === target.x && motion.targetY === target.y) return motion
-
-	return {...motion, targetX: target.x, targetY: target.y}
 }
 
 // React Compiler skips a component whose function schedules itself, so the frame loop lives outside it.
@@ -199,43 +148,31 @@ function subscribeToResize(onStoreChange: () => void) {
 	}
 }
 
-function SectionLabel(input: {id: string; label: string; meta?: React.ReactNode; number: string}) {
+// The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
+function Panel(input: {className?: string; children: React.ReactNode}) {
+	return <div className={cn('panel-frosted border-border border select-text', input.className)}>{input.children}</div>
+}
+
+function Section(input: {className?: string; children: React.ReactNode}) {
 	return (
-		<div className="border-border flex items-center justify-between gap-4 border-t pt-3 pb-5">
-			<div className="flex items-baseline gap-3">
-				<span aria-hidden className="text-muted-foreground font-mono text-xs tabular-nums">
-					{input.number}
-				</span>
-				<h2 id={input.id} className="tracking-label text-xs font-semibold uppercase">
-					{input.label}
-				</h2>
-			</div>
-			{Predicate.isNotUndefined(input.meta) && (
-				<span className="text-muted-foreground text-right font-mono text-xs tabular-nums">{input.meta}</span>
+		<section
+			className={cn(
+				'relative z-10 flex flex-col items-center overflow-hidden px-3 py-4 sm:px-6 sm:py-6',
+				input.className
 			)}
-		</div>
+		>
+			{input.children}
+		</section>
 	)
 }
 
-// One opaque reading column over the live grid: every section carries the paper, so trails never run under a line.
-function RuledSection(input: {
-	children: React.ReactNode
-	className?: string
-	id: string
-	label: string
-	meta?: string
-	number: string
-}) {
+// A section of the column; its name stays for assistive technology, not on the card.
+function SectionBody(input: {children: React.ReactNode; title: string}) {
 	return (
-		<section
-			aria-labelledby={input.id}
-			className={cn('relative z-10 mx-auto w-full max-w-3xl px-6 select-text sm:px-8', input.className)}
-		>
-			<div className="bg-background">
-				<SectionLabel id={input.id} label={input.label} meta={input.meta} number={input.number} />
-				{input.children}
-			</div>
-		</section>
+		<Panel className="flex w-full max-w-3xl flex-col p-4 sm:p-6">
+			<h2 className="sr-only">{input.title}</h2>
+			{input.children}
+		</Panel>
 	)
 }
 
@@ -318,29 +255,14 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 	return at <= right || at - width < right
 }
 
+// Another visitor's cursor sits at each position the server reports.
 function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
 	const nodeRef = useRef<HTMLDivElement>(null)
-	const motionRef = useRef(UNPLACED_MOTION)
-	const animationFrameRef = useRef(0)
 
 	// Before paint, so the cursor's first frame is already where the server put it.
 	useLayoutEffect(() => {
-		motionRef.current = syncCursorMotion(motionRef.current, input.cursor, input.viewport)
-		if (nodeRef.current !== null) setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
-
-		function tick(now: number) {
-			if (nodeRef.current === null) return
-
-			motionRef.current = stepCursorMotion(motionRef.current, now)
-			setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
-			if (motionRef.current.x !== motionRef.current.targetX || motionRef.current.y !== motionRef.current.targetY) {
-				animationFrameRef.current = requestAnimationFrame(tick)
-			}
-		}
-		animationFrameRef.current = requestAnimationFrame(tick)
-
-		return () => {
-			cancelAnimationFrame(animationFrameRef.current)
+		if (nodeRef.current !== null) {
+			setCursorTransform(nodeRef.current, input.cursor.x * input.viewport.width, input.cursor.y * input.viewport.height)
 		}
 	}, [input.cursor, input.viewport])
 
@@ -348,7 +270,7 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 		<div
 			ref={nodeRef}
 			aria-hidden
-			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform) will-change-transform"
+			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform)"
 			style={{'--cursor-color': input.cursor.color}}
 		>
 			<CursorLabel
@@ -380,258 +302,179 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 	)
 }
 
-function HeaderLink(input: {children: React.ReactNode; external?: boolean; href: string}) {
-	const external = input.external === true
-	return (
-		<a
-			href={input.href}
-			target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
-			rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
-			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 min-w-11 items-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:pb-0.5"
-		>
-			{input.children}
-			{external && <ArrowUpRightIcon className="size-3.5" />}
-		</a>
-	)
-}
-
+// The masthead is the first panel: role and place set the stage, the name is the one display statement.
 function ProfileSection() {
 	return (
-		<section
-			aria-labelledby="profile-title"
-			className="relative z-10 mx-auto w-full max-w-3xl px-6 pt-10 pb-12 select-text sm:px-8 sm:pt-16 sm:pb-16"
-		>
-			<div className="bg-background">
-				<div className="border-border flex items-center justify-between gap-4 border-t pt-3 pb-10 sm:pb-14">
-					<div className="flex items-baseline gap-3">
-						<span aria-hidden className="text-muted-foreground font-mono text-xs tabular-nums">
-							01
-						</span>
-						<p className="tracking-label text-xs font-semibold uppercase">Profile</p>
-					</div>
-					<img alt="" className="pixelated size-6 shrink-0 opacity-90 sm:size-7" src={icon} />
-				</div>
-
-				<div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-					<p className="text-sm font-medium">{profile.title}</p>
-					<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
-				</div>
-
-				<h1
-					id="profile-title"
-					className="font-heading mt-4 text-5xl leading-none tracking-tight text-balance sm:text-7xl"
-				>
+		<Section>
+			<Panel className="mt-6 flex w-full max-w-3xl flex-col gap-3 px-4 py-6 sm:mt-14 sm:px-6">
+				<h1 className="text-foreground text-4xl font-semibold tracking-tight sm:text-5xl">
 					{profile.firstName} {profile.lastName}
 				</h1>
-
-				<p className="text-muted-foreground mt-6 max-w-xl text-base leading-relaxed text-pretty sm:text-lg">
-					{summary}
-				</p>
-
-				<div className="mt-8 flex flex-col items-start sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-7">
-					<HeaderLink href="#section-projects">Selected work</HeaderLink>
-					<HeaderLink href={contacts.email.href}>{contacts.email.value}</HeaderLink>
-					<HeaderLink external href={contacts.github.href}>
-						{contacts.github.value}
-					</HeaderLink>
-					<HeaderLink href="/cv">CV</HeaderLink>
-				</div>
-			</div>
-		</section>
+				<p className="text-primary font-mono text-sm">{profile.title}</p>
+				<p className="text-foreground/90 text-base">{summary}</p>
+				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
+			</Panel>
+		</Section>
 	)
 }
 
 function SkillsSection() {
 	return (
-		<RuledSection
-			className="pb-12 sm:pb-14"
-			id="section-skills"
-			label="Expertise"
-			meta={`${Array.length(skills)} disciplines`}
-			number="04"
-		>
-			<dl className="divide-border flex flex-col divide-y">
+		<Section>
+			<SectionBody title="skills">
 				{Array.map(skills, skill => (
-					<div key={skill.area} className="flex flex-col gap-1 py-3.5 sm:flex-row sm:gap-8">
-						<dt className="tracking-label text-muted-foreground w-36 shrink-0 text-xs font-semibold uppercase">
+					<div key={skill.area} className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-6">
+						<h3 className="flex w-40 shrink-0 items-center gap-2 text-sm font-medium sm:self-start">
+							<skill.icon className="text-primary size-4" />
 							{skill.area}
-						</dt>
-						<dd className="text-foreground/90 text-sm leading-relaxed">{skill.items}</dd>
+						</h3>
+						<p className="text-muted-foreground text-sm">{skill.items}</p>
 					</div>
 				))}
-				<div className="flex flex-col gap-1 py-3.5 sm:flex-row sm:gap-8">
-					<dt className="tracking-label text-muted-foreground w-36 shrink-0 text-xs font-semibold uppercase">
-						Languages
-					</dt>
-					<dd className="text-foreground/90 text-sm leading-relaxed">
-						{pipe(
-							languages,
-							Array.map(entry => `${entry.language} (${entry.level})`),
-							Array.join(' · ')
-						)}
-					</dd>
-				</div>
-			</dl>
-		</RuledSection>
+			</SectionBody>
+		</Section>
+	)
+}
+
+function ProjectRow(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
+	return (
+		<div className="flex flex-col gap-1 py-3">
+			<div className="flex items-center justify-between gap-3">
+				<h3 className="text-sm font-medium">
+					{input.project.name}
+					<span className="text-muted-foreground ml-2 font-normal">{input.project.role}</span>
+				</h3>
+				<a
+					href={input.project.href}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label={`View ${input.project.name} on GitHub`}
+					className="project-link text-primary hover:text-primary/80"
+				>
+					<ArrowUpRightIcon className="size-4" />
+				</a>
+			</div>
+			<p className="text-foreground/90 text-sm">{input.project.description}</p>
+			<p className="text-muted-foreground font-mono text-xs">{input.project.stack}</p>
+		</div>
 	)
 }
 
 function ProjectsSection() {
 	return (
-		<RuledSection
-			className="pb-12 sm:pb-14"
-			id="section-projects"
-			label="Selected work"
-			meta={`${Array.length(projects)} selected`}
-			number="02"
-		>
-			<ol className="divide-border flex flex-col divide-y">
+		<Section>
+			<SectionBody title="projects">
 				{Array.map(projects, project => (
-					<li key={project.name} className="py-5">
-						<div className="flex items-baseline justify-between gap-4">
-							<h3 className="text-base font-semibold tracking-tight">{project.name}</h3>
-							<a
-								href={project.href}
-								target="_blank"
-								rel="noopener noreferrer"
-								aria-label={`View ${project.name} on GitHub`}
-								className="text-muted-foreground hover:text-primary tracking-label -mr-2 inline-flex h-11 items-center gap-1 px-2 text-xs font-semibold uppercase transition-colors sm:h-auto sm:py-0"
-							>
-								GitHub
-								<ArrowUpRightIcon className="size-3.5" />
-							</a>
-						</div>
-						<p className="text-muted-foreground mt-0.5 text-sm">{project.role}</p>
-						<p className="text-foreground/90 mt-2 text-sm leading-relaxed">{project.description}</p>
-						<p className="text-muted-foreground mt-2 font-mono text-xs">{project.stack}</p>
-					</li>
+					<ProjectRow key={project.name} project={project} />
 				))}
-			</ol>
-		</RuledSection>
+			</SectionBody>
+		</Section>
 	)
 }
 
 function ExperienceSection() {
 	return (
-		<RuledSection
-			className="pb-12 sm:pb-14"
-			id="section-experience"
-			label="Experience"
-			meta={`${Array.length(experience)} roles`}
-			number="03"
-		>
-			<ol className="divide-border flex flex-col divide-y">
+		<Section>
+			<SectionBody title="experience">
 				{Array.map(experience, job => (
-					<li key={job.company} className="flex flex-col gap-2 py-5 sm:flex-row sm:gap-8">
-						<div className="text-muted-foreground flex flex-row flex-wrap items-baseline gap-x-2 font-mono text-xs sm:w-40 sm:shrink-0 sm:flex-col sm:items-start sm:gap-1">
-							<p className="whitespace-nowrap tabular-nums">{job.period}</p>
-							{Predicate.isNotUndefined(job.location) && (
-								<>
-									<span aria-hidden className="sm:hidden">
-										·
-									</span>
-									<p className="whitespace-nowrap">{job.location}</p>
-								</>
-							)}
-						</div>
-						<div className="flex min-w-0 flex-1 flex-col gap-2">
-							<div>
-								<h3 className="text-sm font-semibold tracking-tight">{job.company}</h3>
-								<p className="text-muted-foreground text-sm">
+					<div key={job.company} className="flex flex-col gap-2 py-3">
+						<div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
+							<h3 className="text-sm font-medium">
+								{job.company}
+								<span className="text-muted-foreground ml-2 font-normal">
 									{job.role}
-									{Predicate.isNotUndefined(job.note) && <span className="italic"> · {job.note}</span>}
-								</p>
-							</div>
-							<ul className="flex flex-col gap-1.5">
-								{Array.map(job.highlights, highlight => (
-									<li key={highlight} className="text-foreground/90 flex gap-3 text-sm leading-relaxed">
-										<span aria-hidden className="bg-muted-foreground/60 mt-2.5 h-px w-3 shrink-0" />
-										<span>{highlight}</span>
-									</li>
-								))}
-							</ul>
+									{Predicate.isNotUndefined(job.note) && ` · ${job.note}`}
+								</span>
+							</h3>
+							<p className="text-muted-foreground font-mono text-xs sm:text-right">
+								{pipe([job.period, job.location], Array.filter(Predicate.isNotUndefined), Array.join(' · '))}
+							</p>
 						</div>
-					</li>
+						<ul className="flex flex-col gap-1">
+							{Array.map(job.highlights, highlight => (
+								<li key={highlight} className="text-foreground/90 flex items-start gap-2 text-sm">
+									<span className="bg-muted-foreground mt-2 size-1 shrink-0 rounded-full" aria-hidden="true" />
+									<span>{highlight}</span>
+								</li>
+							))}
+						</ul>
+					</div>
 				))}
-			</ol>
-		</RuledSection>
+			</SectionBody>
+		</Section>
 	)
 }
 
 function EducationSection() {
 	return (
-		<RuledSection className="pb-12 sm:pb-14" id="section-education" label="Education" number="05">
-			<ol className="divide-border flex flex-col divide-y">
+		<Section>
+			<SectionBody title="education and languages">
 				{Array.map(education, entry => (
-					<li key={entry.school} className="flex flex-col gap-1.5 py-5 sm:flex-row sm:gap-8">
-						<p className="text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums sm:w-40 sm:shrink-0">
-							{entry.period}
-						</p>
-						<div>
-							<h3 className="text-sm font-semibold tracking-tight">{entry.degree}</h3>
-							<p className="text-muted-foreground mt-0.5 text-sm">
-								{entry.school}
-								{Predicate.isNotUndefined(entry.grade) && (
-									<>
-										{' · '}
-										<span className="font-mono text-xs tabular-nums">{entry.grade}</span>
-									</>
-								)}
-							</p>
-						</div>
-					</li>
+					<div key={entry.school} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3">
+						<h3 className="text-sm font-medium">
+							{entry.school}
+							<span className="text-muted-foreground ml-2 font-normal">
+								{entry.degree}
+								{Predicate.isNotUndefined(entry.grade) && ` (${entry.grade})`}
+							</span>
+						</h3>
+						<span className="text-muted-foreground font-mono text-xs">{entry.period}</span>
+					</div>
 				))}
-			</ol>
-		</RuledSection>
+				<div className="flex flex-wrap gap-x-6 gap-y-1 py-3">
+					{Array.map(languages, lang => (
+						<span key={lang.language} className="text-sm">
+							<span className="font-medium">{lang.language}</span>
+							<span className="text-muted-foreground ml-2 font-mono text-xs">{lang.level}</span>
+						</span>
+					))}
+				</div>
+			</SectionBody>
+		</Section>
 	)
 }
 
 function ContactSection() {
-	const links = [
-		contacts.email,
-		contacts.pec,
-		contacts.phone,
-		contacts.github,
-		{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
-	]
 	return (
-		<RuledSection
-			className="pb-24 sm:pb-28"
-			id="section-contact"
-			label="Contact"
-			meta={`${Array.length(links)} ways`}
-			number="06"
-		>
-			<div className="flex flex-col">
-				{Array.map(links, item => {
-					const external = String.startsWith('http')(item.href)
-					return (
-						<a
-							key={item.label}
-							href={item.href}
-							className="group border-border hover:text-primary flex min-h-11 items-center justify-between gap-6 border-b py-2.5 text-sm transition-colors last:border-b-0"
-							target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
-							rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
-						>
-							<span className="tracking-label text-muted-foreground group-hover:text-primary text-xs font-semibold uppercase">
-								{item.label}
-							</span>
-							<span className="group-hover:text-primary text-right font-mono text-xs break-all">{item.value}</span>
-						</a>
-					)
-				})}
-			</div>
-			<p className="text-muted-foreground mt-10 font-mono text-xs">
-				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
-			</p>
-		</RuledSection>
+		<Section className="pb-20">
+			<SectionBody title="contact">
+				{Array.map(
+					[
+						{...contacts.email, icon: EnvelopeIcon},
+						{...contacts.pec, icon: SealCheckIcon},
+						{...contacts.phone, icon: PhoneIcon},
+						{...contacts.github, icon: GithubLogoIcon},
+						{href: '/cv', icon: FileTextIcon, label: 'CV', value: `${profile.portfolio}/cv`}
+					],
+					item => {
+						const internal = String.startsWith('/')(item.href)
+						return (
+							<a
+								key={item.label}
+								href={item.href}
+								className="hover:text-primary flex h-7 items-center gap-2 text-sm"
+								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
+								rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
+							>
+								<item.icon aria-hidden="true" className="text-primary size-4 shrink-0" />
+								<span className="text-muted-foreground">{item.label}</span>
+								<span className="ml-auto text-right font-mono text-xs break-all">{item.value}</span>
+							</a>
+						)
+					}
+				)}
+			</SectionBody>
+		</Section>
 	)
 }
 
-function ShortcutRow(input: {keys: React.ReactNode; label: React.ReactNode}) {
+// The shortcut legend is the page's panel in miniature: one row per action.
+function ShortcutRow(input: {keys: React.ReactNode; label: string; title?: string}) {
 	return (
-		<div className="flex items-center justify-between gap-6 py-3">
-			<span className="text-sm">{input.label}</span>
+		<div className="flex min-h-9 items-center justify-between gap-6 py-2">
+			<span className="text-sm" title={input.title}>
+				{input.label}
+			</span>
 			{input.keys}
 		</div>
 	)
@@ -642,36 +485,20 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 		<Dialog open={input.open} onOpenChange={input.onOpenChange}>
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Keyboard</DialogTitle>
-					<DialogDescription>The page moves without a mouse.</DialogDescription>
+					<DialogTitle>Shortcuts</DialogTitle>
 				</DialogHeader>
-				<div className="divide-border flex flex-col divide-y">
-					<ShortcutRow
-						keys={
-							<KbdGroup>
-								<Kbd>j</Kbd>
-								<Kbd>k</Kbd>
-							</KbdGroup>
-						}
-						label="Next / previous section"
-					/>
+				<div className="flex flex-col">
 					<ShortcutRow
 						keys={
 							<KbdGroup>
 								<Kbd>1</Kbd>–<Kbd>6</Kbd>
 							</KbdGroup>
 						}
-						label={
-							<span className="flex flex-col gap-1">
-								Jump to a section
-								<span className="text-muted-foreground font-mono text-xs">
-									{pipe(
-										Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
-										Array.join(' · ')
-									)}
-								</span>
-							</span>
-						}
+						label="Jump to a section"
+						title={pipe(
+							Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
+							Array.join(' · ')
+						)}
 					/>
 					<ShortcutRow keys={<Kbd>r</Kbd>} label="Change cursor color" />
 					<ShortcutRow keys={<Kbd>?</Kbd>} label="Toggle this panel" />
@@ -702,31 +529,64 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 	)
 }
 
-function PresenceHud(input: {state: 'connecting' | 'live' | 'offline'; visitors?: PortfolioVisitors}) {
+// Italian law asks a VAT holder's website to show the number on its home page.
+const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${profile.vat}`
+const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
+
+function PresenceHud(input: {
+	state: 'connecting' | 'live' | 'offline'
+	visitors?: PortfolioVisitors
+	onToggleShortcuts?: () => void
+	shortcutsOpen?: boolean
+}) {
 	return (
-		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 flex min-h-10 items-center justify-between border-t px-3 font-mono text-xs backdrop-blur sm:px-4 print:hidden">
-			<span className="flex items-center gap-2">
-				{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
-					onFalse: () => (
-						<>
-							<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
-							<span className="text-muted-foreground">
-								{Boolean.match(input.state === 'offline', {
-									onFalse: () => 'presence connecting',
-									onTrue: () => 'presence unavailable'
-								})}
-							</span>
-						</>
-					),
-					onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
-				})}
-			</span>
-			<span className="text-muted-foreground max-sm:hidden">j/k · ?</span>
+		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 border-t font-mono text-xs backdrop-blur print:hidden">
+			<div className="relative flex min-h-10 items-center justify-between px-3 sm:px-4">
+				<span className="flex min-w-0 items-center gap-2">
+					{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
+						onFalse: () => (
+							<>
+								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
+								<span className="text-muted-foreground truncate">
+									{Boolean.match(input.state === 'offline', {
+										onFalse: () => 'presence connecting',
+										onTrue: () => 'presence unavailable'
+									})}
+								</span>
+							</>
+						),
+						onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
+					})}
+				</span>
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap sm:inline">
+					{LEGAL_LINE}
+				</span>
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap sm:hidden">
+					{LEGAL_LINE_NARROW}
+				</span>
+				{Predicate.isNotUndefined(input.onToggleShortcuts) && (
+					<Button
+						variant="ghost"
+						size="xs"
+						aria-expanded={input.shortcutsOpen === true}
+						aria-haspopup="dialog"
+						aria-label="Toggle keyboard shortcuts"
+						onClick={input.onToggleShortcuts}
+						className="pointer-events-auto -mr-1 pointer-coarse:hidden"
+					>
+						?
+					</Button>
+				)}
+			</div>
 		</div>
 	)
 }
 
-function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
+function RealtimeLayer(input: {
+	viewport: {width: number; height: number}
+	onToggleShortcuts: () => void
+	shortcutsOpen: boolean
+}) {
 	const portfolio = useAtomSuspense(portfolioAtom)
 
 	return (
@@ -745,7 +605,7 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 			</div>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-					{Array.map(portfolio.value.visitors, cursor =>
+					{Array.map(Array.appendAll(portfolio.value.visitors, portfolio.value.bots), cursor =>
 						Boolean.match(cursor.id === identity.id, {
 							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
 							onTrue: () => null
@@ -754,7 +614,12 @@ function RealtimeLayer(input: {viewport: {width: number; height: number}}) {
 				</div>
 			</div>
 
-			<PresenceHud state="live" visitors={portfolio.value.visitors} />
+			<PresenceHud
+				state="live"
+				visitors={portfolio.value.visitors}
+				onToggleShortcuts={input.onToggleShortcuts}
+				shortcutsOpen={input.shortcutsOpen}
+			/>
 		</>
 	)
 }
@@ -786,6 +651,10 @@ function PortfolioRoute() {
 	// The colour this page last sent; the server's echo can lag behind a recolour.
 	const colorRef = useRef(identity.color)
 	const [showShortcuts, setShowShortcuts] = useState(false)
+
+	function toggleShortcuts() {
+		setShowShortcuts(show => !show)
+	}
 
 	useEffect(
 		() => () => {
@@ -846,18 +715,6 @@ function PortfolioRoute() {
 	}
 
 	useHotkeys([
-		{
-			callback: () => {
-				scrollTo(Number.min(currentSectionRef.current + 1, SECTION_KEYS.length - 1))
-			},
-			hotkey: 'J'
-		},
-		{
-			callback: () => {
-				scrollTo(Number.max(currentSectionRef.current - 1, 0))
-			},
-			hotkey: 'K'
-		},
 		...Array.map(SECTION_KEYS, (hotkey, index) => ({
 			callback: () => {
 				scrollTo(index)
@@ -865,12 +722,7 @@ function PortfolioRoute() {
 			hotkey
 		})),
 		{callback: updateColor, hotkey: 'R'},
-		{
-			callback: () => {
-				setShowShortcuts(show => !show)
-			},
-			hotkey: {key: '?', shift: true}
-		}
+		{callback: toggleShortcuts, hotkey: {key: '?', shift: true}}
 	])
 
 	return (
@@ -878,7 +730,7 @@ function PortfolioRoute() {
 			ref={containerRef}
 			aria-label="Portfolio"
 			role="region"
-			className="focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			className="portfolio-page focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
 			onKeyDown={event => {
 				if (event.target !== event.currentTarget) return
 				const page = event.currentTarget.clientHeight * 0.9
@@ -917,12 +769,10 @@ function PortfolioRoute() {
 			}}
 			tabIndex={0}
 		>
-			<div className="pt-safe-top">
-				<ProfileSection />
-			</div>
-			<ProjectsSection />
-			<ExperienceSection />
+			<ProfileSection />
 			<SkillsSection />
+			<ExperienceSection />
+			<ProjectsSection />
 			<EducationSection />
 			<ContactSection />
 
@@ -936,27 +786,13 @@ function PortfolioRoute() {
 									viewport={viewport}
 								/>
 							</div>
-							<PresenceHud state="connecting" />
+							<PresenceHud state="connecting" onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
 						</>
 					}
 				>
-					<RealtimeLayer viewport={viewport} />
+					<RealtimeLayer viewport={viewport} onToggleShortcuts={toggleShortcuts} shortcutsOpen={showShortcuts} />
 				</Suspense>
 			</CatchBoundary>
-
-			<Button
-				variant="outline"
-				size="icon"
-				aria-expanded={showShortcuts}
-				aria-haspopup="dialog"
-				aria-label="Toggle keyboard shortcuts"
-				onClick={() => {
-					setShowShortcuts(show => !show)
-				}}
-				className="mb-safe-bottom mr-safe-right fixed right-3 bottom-14 z-50 max-sm:hidden sm:right-4 print:hidden"
-			>
-				?
-			</Button>
 
 			<ShortcutsOverlay open={showShortcuts} onOpenChange={setShowShortcuts} />
 		</div>

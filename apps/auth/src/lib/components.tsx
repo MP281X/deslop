@@ -314,13 +314,7 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 		>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(clients, {
-				onEmpty: () => (
-					<EmptyState
-						label="No sign-ins"
-						description="A browser, app or command appears here once it signs in."
-						icon={<HardDrivesIcon className="size-5" weight="light" />}
-					/>
-				),
+				onEmpty: () => <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />,
 				onNonEmpty: rows => (
 					<div role="list" aria-label="Signed-in clients">
 						{Array.map(rows, client => (

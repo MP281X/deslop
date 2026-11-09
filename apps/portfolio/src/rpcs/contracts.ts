@@ -2,7 +2,7 @@ import {Schema, Struct, pipe} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
+import {PortfolioScene, PortfolioVisitor} from '#services/presence/schema.ts'
 
 type Guest = typeof Guest.Type
 const Guest = PortfolioVisitor.mapFields(fields => ({
@@ -15,7 +15,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('portfolio.join', {
 		payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'name']))),
 		stream: true,
-		success: PortfolioVisitors
+		success: PortfolioScene
 	}),
 	Rpc.make('portfolio.move', {payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'x', 'y'])))})
 ) {}

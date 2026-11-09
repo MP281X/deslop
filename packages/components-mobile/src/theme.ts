@@ -3,14 +3,14 @@ import {DynamicColorIOS} from 'react-native'
 
 // Expo's native color boundary accepts sRGB, not OKLCH; these match theme.css in both appearances.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
-	card: DynamicColorIOS({dark: '#141313', light: '#f8f7f4'}),
+	background: DynamicColorIOS({dark: '#09090b', light: '#ffffff'}),
+	border: DynamicColorIOS({dark: '#27272a', light: '#e4e4e7'}),
+	card: DynamicColorIOS({dark: '#18181b', light: '#ffffff'}),
 	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
-	foreground: DynamicColorIOS({dark: '#e3e1db', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#a19e96', light: '#64625d'}),
-	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	surface: DynamicColorIOS({dark: '#191817', light: '#f2f1ed'}),
+	foreground: DynamicColorIOS({dark: '#fafafa', light: '#09090b'}),
+	mutedForeground: DynamicColorIOS({dark: '#9f9fa9', light: '#71717b'}),
+	primaryForeground: DynamicColorIOS({dark: '#09090b', light: '#ffffff'}),
+	surface: DynamicColorIOS({dark: '#18181b', light: '#fafafa'}),
 	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
 }
 

@@ -123,7 +123,6 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.fail(TelemetryError.make({message: 'No trace remains'})))
 		assert.include(html, 'Can’t load this view')
-		assert.include(html, 'Retry')
 		assert.notInclude(html, 'No trace remains')
 		assert.notInclude(html, 'Private retained span')
 	})
@@ -200,7 +199,6 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.failure(Cause.die('Overview decode failed')))
 		assert.include(html, 'Can’t load this view')
-		assert.include(html, 'Retry')
 		assert.notInclude(html, 'Overview decode failed')
 		assert.notInclude(html, 'aria-busy="true"')
 	})

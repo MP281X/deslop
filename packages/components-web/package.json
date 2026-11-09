@@ -27,8 +27,7 @@
 	"dependencies": {
 		"@base-ui/react": "latest",
 		"@effect/atom-react": "latest",
-		"@fontsource-variable/geist": "latest",
-		"@fontsource-variable/geist-mono": "latest",
+		"@fontsource-variable/jetbrains-mono": "latest",
 		"@phosphor-icons/react": "latest",
 		"@shadcn/react": "latest",
 		"class-variance-authority": "latest",
@@ -44,8 +43,7 @@
 		"shadcn": "latest",
 		"shiki": "latest",
 		"tailwind-merge": "latest",
-		"tailwindcss": "latest",
-		"tw-animate-css": "latest"
+		"tailwindcss": "latest"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "latest"

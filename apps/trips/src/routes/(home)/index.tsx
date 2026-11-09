@@ -29,7 +29,6 @@ import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
 import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {Spinner} from '@deslop/components-mobile/ui/spinner'
 
 import {
 	clipboardAtom,
@@ -155,6 +154,10 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	const refresh = useAtomRefresh(bookingsAtom)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	const adding = Option.exists(
+		pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Answering')), AsyncResult.getOrElse(Option.none)),
+		current => current.save
+	)
 	const shown = shownOf(loaded)
 	if (Result.isFailure(shown)) {
 		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
@@ -178,7 +181,10 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 					<Problem label="Bookings not updating" onRetry={refresh} />
 				</HStack>
 			)}
-			{Array.isReadonlyArrayEmpty(shown.success) && (
+			{adding && (
+				<ItemGroupSkeleton rows={1} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+			)}
+			{Array.isReadonlyArrayEmpty(shown.success) && !adding && (
 				<Empty>
 					<EmptyHeader>
 						<EmptyMedia systemImage="ticket" />
@@ -270,15 +276,6 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
 				</ToolbarItem>
-				<MachineState machine={clipboardAtom} path="Answering">
-					{answering =>
-						answering.value.save && (
-							<ToolbarItem placement="bottomBar">
-								<Spinner label="Reading booking…" />
-							</ToolbarItem>
-						)
-					}
-				</MachineState>
 				<MachineState machine={undoAtom} path="Offered">
 					{offered => (
 						<ToolbarItem placement="bottomBar">

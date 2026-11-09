@@ -1,7 +1,7 @@
 {
 	"$schema": "https://ui.shadcn.com/schema.json",
 	"registries": {"@svgl": "https://svgl.app/r/{name}.json"},
-	"style": "base-sera",
+	"style": "base-lyra",
 	"menuColor": "default",
 	"menuAccent": "subtle",
 	"iconLibrary": "phosphor",

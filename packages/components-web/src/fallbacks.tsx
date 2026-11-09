@@ -1,29 +1,19 @@
-import {HouseIcon, QuestionIcon, WarningCircleIcon} from '@phosphor-icons/react'
+import {ArrowClockwiseIcon, HouseIcon, LockIcon} from '@phosphor-icons/react'
 import {useEffect} from 'react'
 import type {ReactNode} from 'react'
 
-import {Alert, AlertAction, AlertDescription, AlertTitle} from '#components/ui/alert.tsx'
 import {Button} from '#components/ui/button.tsx'
-import {Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia} from '#components/ui/empty.tsx'
+import {Empty, EmptyMedia} from '#components/ui/empty.tsx'
 
-export function EmptyState(props: {action?: ReactNode; description?: string; icon: ReactNode; label: string}) {
-	if (props.action === undefined && props.description === undefined) {
-		return (
-			<Empty role="status" aria-label={props.label}>
-				<EmptyMedia variant="icon">{props.icon}</EmptyMedia>
-			</Empty>
-		)
-	}
+// Every state is one centred thing: the symbol alone, or the one action that fills the space. The label is for assistive technology.
+export function EmptyState(props: {action?: ReactNode; icon: ReactNode; label: string}) {
 	return (
 		<Empty role="status" aria-label={props.label}>
-			<EmptyHeader>
-				<EmptyMedia variant="icon" className="mb-3">
+			{props.action ?? (
+				<EmptyMedia aria-hidden variant="symbol">
 					{props.icon}
 				</EmptyMedia>
-				<h2 className="font-heading text-2xl leading-none tracking-tight">{props.label}</h2>
-				{props.description !== undefined && <EmptyDescription>{props.description}</EmptyDescription>}
-			</EmptyHeader>
-			{props.action !== undefined && <EmptyContent>{props.action}</EmptyContent>}
+			)}
 		</Empty>
 	)
 }
@@ -31,19 +21,10 @@ export function EmptyState(props: {action?: ReactNode; description?: string; ico
 export function NotFound() {
 	return (
 		<Empty aria-label="Page not found">
-			<EmptyHeader>
-				<EmptyMedia variant="icon">
-					<QuestionIcon className="size-5" weight="light" />
-				</EmptyMedia>
-				<h2 className="font-heading text-2xl leading-none tracking-tight">Page not found</h2>
-				<EmptyDescription>The link is old, or it never existed.</EmptyDescription>
-			</EmptyHeader>
-			<EmptyContent>
-				<Button variant="outline" render={<a href="/" aria-label="Go home" />}>
-					<HouseIcon />
-					Go home
-				</Button>
-			</EmptyContent>
+			<Button variant="outline" size="sm" render={<a href="/" aria-label="Home" />} nativeButton={false}>
+				<HouseIcon />
+				Home
+			</Button>
 		</Empty>
 	)
 }
@@ -56,19 +37,19 @@ export function SignIn(props: {href: string}) {
 	return null
 }
 
+// A denial keeps nothing on screen: the lock says it, and there is nothing to retry.
+export function Denied() {
+	return <EmptyState label="Access denied" icon={<LockIcon weight="light" />} />
+}
+
+// A failure names itself on the one button that retries it.
 export function Error(props: {error: unknown; label?: string; reset: () => void}) {
 	return (
-		<div className="flex min-h-0 flex-1 items-center justify-center p-6">
-			<Alert variant="destructive" role="alert" aria-label={props.label ?? 'Unavailable'} className="max-w-md">
-				<WarningCircleIcon />
-				<AlertTitle>{props.label ?? 'Can’t load this view'}</AlertTitle>
-				<AlertDescription>The server did not answer. Nothing was lost; try the same view again.</AlertDescription>
-				<AlertAction>
-					<Button variant="destructive" size="sm" className="max-sm:h-11" onClick={props.reset}>
-						Retry
-					</Button>
-				</AlertAction>
-			</Alert>
-		</div>
+		<Empty role="alert">
+			<Button variant="destructive" size="sm" onClick={props.reset}>
+				<ArrowClockwiseIcon />
+				{props.label ?? 'Can’t load this view'}
+			</Button>
+		</Empty>
 	)
 }

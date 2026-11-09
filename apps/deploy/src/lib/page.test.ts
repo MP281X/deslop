@@ -121,7 +121,6 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.failure(Cause.die('Inventory decode failed')), AsyncResult.success(readings))
 		assert.include(html, 'Can’t load this view')
-		assert.include(html, 'Retry')
 		assert.notInclude(html, 'Inventory decode failed')
 		assert.include(html, 'Memory')
 		assert.include(html, 'CPU')
@@ -137,7 +136,7 @@ it.effect(
 			AsyncResult.fail(DeployError.make({message: 'History unavailable'}))
 		)
 		assert.include(html, 'Open private')
-		assert.include(html, 'aria-label="Unavailable"')
+		assert.include(html, 'Can’t load this view')
 		assert.notInclude(html, 'History unavailable')
 		assert.notInclude(html, 'aria-busy="true"')
 	})

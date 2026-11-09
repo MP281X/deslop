@@ -87,7 +87,7 @@ function CvRoute() {
 		<div className="pb-safe-bottom min-h-0 flex-1 overflow-y-auto px-6 pt-20 select-text sm:pt-16 print:overflow-visible print:p-0">
 			<a
 				href="/"
-				className="text-muted-foreground hover:text-foreground mt-safe-top ml-safe-left fixed top-3 left-3 z-20 inline-flex h-11 items-center gap-1.5 font-mono text-xs transition-colors sm:h-9 print:hidden"
+				className="text-muted-foreground hover:text-foreground mt-safe-top ml-safe-left fixed top-3 left-3 z-20 inline-flex h-11 items-center gap-1.5 font-mono text-xs sm:h-9 print:hidden"
 			>
 				<span aria-hidden>←</span>
 				Portfolio

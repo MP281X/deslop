@@ -259,7 +259,8 @@ it.layer(NodeServices.layer)(test => {
 		'owns a failure without previous servers and offers a local retry',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.failure(Cause.die('Cannot decode server data')))
-			assert.include(html, 'aria-label="Unavailable"')
+			assert.include(html, 'role="alert"')
+			assert.include(html, 'Can’t load this view')
 			assert.notInclude(html, 'Cannot decode server data')
 			assert.notInclude(html, 'aria-busy="true"')
 		})

@@ -40,17 +40,7 @@ import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {
-	addAtom,
-	connectUrl,
-	copyAtom,
-	ENDPOINT,
-	lastCallAtom,
-	Period,
-	removeAtom,
-	serversAtom,
-	setKeyAtom
-} from '#lib/utils.ts'
+import {addAtom, connectUrl, copyAtom, ENDPOINT, Period, removeAtom, serversAtom, setKeyAtom} from '#lib/utils.ts'
 import {AddKeyDialog, AiControls, AiPane, PROVIDERS} from '#routes/(home)/-ai.tsx'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import icon from '#routes/icon.svg'
@@ -82,12 +72,10 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 	)
 )
 
+// Live in the primary, expired red, not connected hollow.
 function Status(props: {server: ConnectionInfo}) {
-	const call = useAtomValue(lastCallAtom(props.server.id))
 	return (
 		<StatusDot
-			key={call}
-			className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'animate-port-blink'})}
 			status={pipe(
 				Match.value(props.server.status),
 				Match.when('Connected', () => 'live' as const),
@@ -255,7 +243,6 @@ function ServersContent(props: {onAdd: () => void}) {
 						onEmpty: () => (
 							<EmptyState
 								label="No servers yet"
-								description="Add an MCP server and its tools appear in the gateway palette."
 								icon={<HardDrivesIcon className="size-5" weight="light" />}
 								action={
 									<Button onClick={props.onAdd}>
@@ -528,7 +515,7 @@ function Home() {
 					/>
 				</div>
 			)}
-			<Page width="reading">
+			<Page width="column">
 				<h1 className="sr-only">Gateway</h1>
 				{Boolean.match(view === 'ai', {
 					onFalse: () => <ServersPane onAdd={() => send({_tag: 'Open'})} servers={sorted} />,
