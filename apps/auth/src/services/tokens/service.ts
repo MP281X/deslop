@@ -85,6 +85,18 @@ function end(grants: Grants, family: string) {
 	return Record.filter(grants, (grant, key) => key !== family && grant.parent !== family)
 }
 
+// Touch a grant at most once a minute, and not at all once it is gone or already touched since the read.
+function touch(current: Grants, family: string, now: number) {
+	return Option.match(Record.get(current, family), {
+		onNone: () => current,
+		onSome: grant =>
+			Boolean.match(now - grant.lastActive > 60_000, {
+				onFalse: () => current,
+				onTrue: () => ({...current, [family]: {...grant, lastActive: now}})
+			})
+	})
+}
+
 // Signed-in apps and browsers live under ~/.deslop/auth; codes and sign-ins in progress stay in memory.
 export class Tokens extends Context.Service<
 	Tokens,
@@ -217,19 +229,7 @@ export class Tokens extends Context.Service<
 				// Touch the grant at most once a minute, so a token's last use shows without a write per tool call.
 				if (found.now - found.grant.lastActive > 60_000) {
 					yield* pipe(
-						change(current =>
-							Effect.succeed([
-								undefined,
-								Option.match(Record.get(current, found.family), {
-									onNone: () => current,
-									onSome: grant =>
-										Boolean.match(found.now - grant.lastActive > 60_000, {
-											onFalse: () => current,
-											onTrue: () => ({...current, [found.family]: {...grant, lastActive: found.now}})
-										})
-								})
-							] as const)
-						),
+						change(current => Effect.succeed([undefined, touch(current, found.family, found.now)] as const)),
 						Effect.ignore({log: 'Warn', message: 'The token’s last use could not be saved'})
 					)
 				}
