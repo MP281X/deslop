@@ -238,9 +238,9 @@ export function workloads(items: readonly InventoryItem[]) {
 	)
 }
 
-export function availablePorts(items: readonly InventoryItem[]) {
+export function availablePorts(rows: ReturnType<typeof workloads>) {
 	return ports(
-		Array.flatMap(workloads(items), row =>
+		Array.flatMap(rows, row =>
 			Array.map(
 				Array.filter(
 					row.listeners,

@@ -62,7 +62,7 @@ it('uses concise display names without changing service/container identifiers', 
 })
 
 it('keeps application listeners but excludes non-loopback, UDP, stale and privileged targets from publishing', () => {
-	assert.lengthOf(availablePorts([listener]), 1)
+	assert.lengthOf(availablePorts(workloads([listener])), 1)
 	for (const change of [
 		{protocol: 'udp' as const},
 		{address: '100.68.201.107:5173'},
@@ -70,9 +70,9 @@ it('keeps application listeners but excludes non-loopback, UDP, stale and privil
 		{state: 'stale · LISTEN'},
 		{port: 443}
 	]) {
-		assert.isEmpty(availablePorts([{...listener, ...change}]))
+		assert.isEmpty(availablePorts(workloads([{...listener, ...change}])))
 	}
-	assert.lengthOf(availablePorts([{...listener, address: '0.0.0.0:5173'}]), 1)
+	assert.lengthOf(availablePorts(workloads([{...listener, address: '0.0.0.0:5173'}])), 1)
 })
 
 it('keeps app activity and failures without nameless listeners or ordinary system daemons', () => {
@@ -109,11 +109,13 @@ it('keeps app activity and failures without nameless listeners or ordinary syste
 
 it('deduplicates listening ports per worker without losing identical port numbers on other workers', () => {
 	assert.strictEqual(
-		availablePorts([
-			listener,
-			{...listener, address: '0.0.0.0:5173', id: 'duplicate'},
-			{...listener, id: 'remote', worker: 'desktop'}
-		]).length,
+		availablePorts(
+			workloads([
+				listener,
+				{...listener, address: '0.0.0.0:5173', id: 'duplicate'},
+				{...listener, id: 'remote', worker: 'desktop'}
+			])
+		).length,
 		2
 	)
 })
@@ -129,7 +131,7 @@ it('offers only unexposed frontends, across both owned and observed routes and w
 	}
 	const endpoint = {...listener, ui: true, unit: service.name}
 	const remote = {...endpoint, id: 'remote', worker: 'desktop'}
-	assert.lengthOf(availablePorts([service, endpoint, remote]), 2)
+	assert.lengthOf(availablePorts(workloads([service, endpoint, remote])), 2)
 	for (const owned of [false, true]) {
 		const exposed = {
 			...listener,
@@ -139,12 +141,12 @@ it('offers only unexposed frontends, across both owned and observed routes and w
 			url: 'https://dev.tailnet.ts.net:5173/'
 		}
 		assert.deepStrictEqual(
-			Array.map(availablePorts([service, endpoint, remote, exposed]), item => item.worker),
+			Array.map(availablePorts(workloads([service, endpoint, remote, exposed])), item => item.worker),
 			['desktop']
 		)
 	}
-	assert.isEmpty(availablePorts([{...service, links: ['https://fixture.example.com']}, endpoint]))
-	assert.isEmpty(availablePorts([service, {...endpoint, http: false}]))
+	assert.isEmpty(availablePorts(workloads([{...service, links: ['https://fixture.example.com']}, endpoint])))
+	assert.isEmpty(availablePorts(workloads([service, {...endpoint, http: false}])))
 })
 
 it('puts service listeners and their tailnet URLs on one workload without mixing machines', () => {

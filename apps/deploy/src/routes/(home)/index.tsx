@@ -2,7 +2,16 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, DateTime, HashSet, Number, Option, Order, Record, Schema, Stream, String} from 'effect'
 
-import {AppWindowIcon, ChartLineIcon, ClockIcon, PlayIcon, StackIcon, TerminalWindowIcon} from '@phosphor-icons/react'
+import {
+	AppWindowIcon,
+	ChartLineIcon,
+	ClockIcon,
+	HardDrivesIcon,
+	MonitorIcon,
+	PlayIcon,
+	StackIcon,
+	TerminalWindowIcon
+} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useDeferredValue, useState} from 'react'
@@ -25,7 +34,6 @@ import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {MachineIcon, machineName} from '#lib/components.tsx'
 import {inventoryAtom, metricsAtom, runAtom} from '#lib/utils.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {TimeAxis, UsageChart} from '#routes/(home)/-charts.tsx'
@@ -46,7 +54,7 @@ const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 
 // A phone shows the list with the machine's chart above it, or one app's processes full-screen.
 type Pane = typeof Pane.Type
-const Pane = Schema.Literals(['apps', 'machine', 'process'])
+const Pane = Schema.Literals(['apps', 'process'])
 
 type Search = typeof Search.Type
 const Search = Schema.Struct({
@@ -201,7 +209,7 @@ function bandName(id: string, labels: Record<string, string>) {
 function RangeTabs(props: {
 	minutes: HistoryQuery['minutes']
 	onChange: (minutes: HistoryQuery['minutes']) => void
-	ranges: readonly {label: string; minutes: HistoryQuery['minutes']; name: string}[]
+	ranges: readonly {label: string; minutes: HistoryQuery['minutes']}[]
 }) {
 	return (
 		<Tabs
@@ -225,6 +233,27 @@ function RangeTabs(props: {
 }
 
 // The machines as the bar's section control: its icon in the machine's colour and its name; an unreachable one keeps a dot. One machine needs no control.
+function machineName(worker: string) {
+	return String.split(worker, '.')[0]
+}
+
+function MachineIcon(props: {worker: string}) {
+	return (
+		<span
+			aria-hidden="true"
+			className={`inline-flex shrink-0 items-center justify-center ${Boolean.match(
+				machineName(props.worker) === 'desktop',
+				{onFalse: () => 'text-machine-dev', onTrue: () => 'text-machine-desktop'}
+			)}`}
+		>
+			{Boolean.match(machineName(props.worker) === 'desktop', {
+				onFalse: () => <HardDrivesIcon className="size-4" />,
+				onTrue: () => <MonitorIcon className="size-4" />
+			})}
+		</span>
+	)
+}
+
 function MachineTabs(props: {
 	active?: string
 	histories: readonly MachineHistory[]
@@ -1027,7 +1056,6 @@ function Workspace(props: {
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedApp?: string
 	selectedRow?: ReturnType<typeof workloads>[number]
-	workers: readonly string[]
 }) {
 	return Option.match(props.authFailure, {
 		onNone: () => (
@@ -1123,7 +1151,7 @@ function phoneBack(pushed: boolean, onBack: () => void) {
 function RangeControls(props: {
 	minutes: HistoryQuery['minutes']
 	onChange: (minutes: HistoryQuery['minutes']) => void
-	ranges: readonly {label: string; minutes: HistoryQuery['minutes']; name: string}[]
+	ranges: readonly {label: string; minutes: HistoryQuery['minutes']}[]
 }) {
 	return (
 		<div className="flex items-center gap-1">
@@ -1178,10 +1206,7 @@ function Home() {
 		Option.map(snapshot, value => workloads(value.items)),
 		() => []
 	)
-	const free = Option.getOrElse(
-		Option.map(snapshot, value => availablePorts(value.items)),
-		() => []
-	)
+	const free = availablePorts(rows)
 	const sources = Option.getOrElse(
 		Option.map(snapshot, value => value.sources),
 		() => []
@@ -1199,11 +1224,10 @@ function Home() {
 			Option.match(owner(row), {onNone: () => [], onSome: id => [[id, workloadName(row.item)] as const]})
 		)
 	) satisfies Record<string, string>
-	const searchable = Array.sort(activeRows, order)
 	const sorted = Array.sort(ranged(activeRows, shownMinutes, Option.getOrUndefined(history)), order)
 	const selectedRow = Option.getOrUndefined(
 		Option.flatMap(Option.fromUndefinedOr(search.app), current =>
-			Array.findFirst(searchable, row => row.item.id === current)
+			Array.findFirst(activeRows, row => row.item.id === current)
 		)
 	)
 	const ranges = rangeSet(isPhone, minutes)
@@ -1251,7 +1275,6 @@ function Home() {
 				rows={sorted}
 				selectedApp={search.app}
 				selectedRow={selectedRow}
-				workers={workers}
 			/>
 		</div>
 	)
