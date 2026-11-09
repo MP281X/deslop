@@ -190,6 +190,58 @@ function KeysSheet(props: {name: string; onOpenChange: (open: boolean) => void; 
 	)
 }
 
+// ⌘K and / open the palette only when the app has one; both keys stay inert otherwise.
+function openPalette(event: KeyboardEvent, palette: boolean, open: () => void) {
+	if (!palette) return
+	event.preventDefault()
+	open()
+}
+
+// j, k and Enter move through the first visible row set, or open the focused row with a click and the rest through its context menu.
+function navigateRows(event: KeyboardEvent) {
+	const rows = Array.filter(
+		Array.fromIterable(document.querySelectorAll<HTMLElement>('[data-row]')),
+		row => row.getClientRects().item(0) !== null
+	)
+	if (Array.isArrayEmpty(rows)) return
+	const index = Option.getOrElse(
+		Array.findFirstIndex(rows, row => row === document.activeElement),
+		() => -1
+	)
+	if (event.key === 'Enter') {
+		if (index < 0) return
+		event.preventDefault()
+		const row = rows[index]
+		if (row === undefined) return
+		if (row.matches('[data-slot="context-menu-trigger"]')) {
+			const rect = row.getBoundingClientRect()
+			row.dispatchEvent(
+				new MouseEvent('contextmenu', {
+					bubbles: true,
+					cancelable: true,
+					clientX: rect.left + rect.width / 2,
+					clientY: rect.top + rect.height / 2
+				})
+			)
+		} else {
+			row.click()
+		}
+		return
+	}
+	event.preventDefault()
+	const targetIndex = Boolean.match(index < 0, {
+		onFalse: () =>
+			Boolean.match(event.key === 'j', {
+				onFalse: () => Number.max(0, index - 1),
+				onTrue: () => Number.min(rows.length - 1, index + 1)
+			}),
+		onTrue: () => 0
+	})
+	const target = rows[targetIndex]
+	target?.focus()
+	target?.scrollIntoView({block: 'nearest'})
+}
+
 // The masthead: a 40px command strip with the app's path, bracketed sections, ⌘K and the account, then a thin key rail.
 export function AppBar(props: {
 	account?: ReactNode
@@ -213,18 +265,13 @@ export function AppBar(props: {
 		function open(event: KeyboardEvent) {
 			if (event.defaultPrevented) return
 			if ((event.metaKey || event.ctrlKey) && String.toLowerCase(event.key) === 'k') {
-				if (!palette) return
-				event.preventDefault()
-				setPaletteOpen(true)
+				openPalette(event, palette, () => setPaletteOpen(true))
 				return
 			}
 			if (event.metaKey || event.ctrlKey || event.altKey) return
-			if (document.querySelector('[data-slot="dialog-content"][data-open]') !== null) return
-			if (isTyping(event.target)) return
+			if (document.querySelector('[data-slot="dialog-content"][data-open]') !== null || isTyping(event.target)) return
 			if (event.key === '/') {
-				if (!palette) return
-				event.preventDefault()
-				setPaletteOpen(true)
+				openPalette(event, palette, () => setPaletteOpen(true))
 				return
 			}
 			if (event.key === '?') {
@@ -233,47 +280,7 @@ export function AppBar(props: {
 				return
 			}
 			if (event.key !== 'j' && event.key !== 'k' && event.key !== 'Enter') return
-			const rows = Array.filter(
-				Array.fromIterable(document.querySelectorAll<HTMLElement>('[data-row]')),
-				row => row.getClientRects().item(0) !== null
-			)
-			if (Array.isArrayEmpty(rows)) return
-			const index = Option.getOrElse(
-				Array.findFirstIndex(rows, row => row === document.activeElement),
-				() => -1
-			)
-			if (event.key === 'Enter') {
-				if (index < 0) return
-				event.preventDefault()
-				const row = rows[index]
-				if (row === undefined) return
-				if (row.matches('[data-slot="context-menu-trigger"]')) {
-					const rect = row.getBoundingClientRect()
-					row.dispatchEvent(
-						new MouseEvent('contextmenu', {
-							bubbles: true,
-							cancelable: true,
-							clientX: rect.left + rect.width / 2,
-							clientY: rect.top + rect.height / 2
-						})
-					)
-				} else {
-					row.click()
-				}
-				return
-			}
-			event.preventDefault()
-			const targetIndex = Boolean.match(index < 0, {
-				onFalse: () =>
-					Boolean.match(event.key === 'j', {
-						onFalse: () => Number.max(0, index - 1),
-						onTrue: () => Number.min(rows.length - 1, index + 1)
-					}),
-				onTrue: () => 0
-			})
-			const target = rows[targetIndex]
-			target?.focus()
-			target?.scrollIntoView({block: 'nearest'})
+			navigateRows(event)
 		}
 		addEventListener('keydown', open)
 		return () => removeEventListener('keydown', open)

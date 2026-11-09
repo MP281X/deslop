@@ -2,8 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Order} from 'effect'
 
-import {appUsage, processTree} from '#routes/(home)/-process-tree.ts'
-import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
+import {appUsage, processTree} from '#routes/(home)/-processes.tsx'
+import type {ProcessNode} from '#routes/(home)/-processes.tsx'
 import type {Process} from '#services/inventory/schema.ts'
 
 function pids(nodes: readonly ProcessNode[]): number[] {
