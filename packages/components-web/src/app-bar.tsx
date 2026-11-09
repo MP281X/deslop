@@ -149,7 +149,7 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md">
+			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-12 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
 						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
