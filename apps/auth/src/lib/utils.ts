@@ -1,18 +1,4 @@
-import {
-	Array,
-	Clock,
-	DateTime,
-	Duration,
-	Effect,
-	Match,
-	Number,
-	Option,
-	Predicate,
-	Schema,
-	Stream,
-	String,
-	pipe
-} from 'effect'
+import {Clock, Effect, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
 
 import {startAuthentication, startRegistration} from '@simplewebauthn/browser'
 import {Machine} from '@typeonce/effect-machine'
@@ -31,7 +17,6 @@ import type {SignedAccount} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {returnable} from '#services/tokens/lib/utils.ts'
-import type {SignedInApp} from '#services/tokens/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
@@ -236,12 +221,6 @@ export const secondAtom = Atom.make(
 	)
 )
 
-// What is left until `until`, as m:ss.
-export function leftLabel(until: number, now: number) {
-	const seconds = Number.max(0, Math.ceil((until - now) / 1000))
-	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
-}
-
 // Copies the code; the result waits a moment after, while the code shows it was copied.
 export const copyCodeAtom = Atom.fn((code: string) =>
 	pipe(
@@ -253,33 +232,9 @@ export const copyCodeAtom = Atom.fn((code: string) =>
 	)
 )
 
-export function minutesSince(time: number, now: number) {
-	return Math.floor(Duration.toMinutes(DateTime.distance(DateTime.makeUnsafe(time), DateTime.makeUnsafe(now))))
-}
-
-export function ageLabel(minutes: number) {
-	if (minutes < 1) return 'now'
-	if (minutes < 60) return `${minutes}m`
-	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
-	return `${Math.floor(minutes / 1440)}d`
-}
-
 // A sign-in as the lists name it: the app or browser, then where it runs.
 export function signInLabel(client: string, device: string) {
 	return `${client} · ${device}`
-}
-
-export function newest(apps: readonly SignedInApp[]) {
-	return Array.reduce(apps, 0, (latest, app) => Number.max(latest, app.lastActive))
-}
-
-export function dayLabel(time: number) {
-	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({month: 'short', year: 'numeric'}))
-}
-
-// Accounts are keyed "provider:id"; GitHub serves every account's picture by its numeric id.
-export function avatarUrl(id: string) {
-	return `https://avatars.githubusercontent.com/u/${String.replace('github:', '')(id)}?s=96`
 }
 
 export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>

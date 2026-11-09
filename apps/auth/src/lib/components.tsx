@@ -1,11 +1,10 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
-import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
@@ -24,46 +23,20 @@ import codex from '#lib/brands/codex.svg'
 import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
-import {
-	ageLabel,
-	appsAtom,
-	avatarUrl,
-	catalogAtom,
-	consentAtom,
-	minuteAtom,
-	minutesSince,
-	newest,
-	requestCode,
-	selectedRowAtom,
-	signInLabel
-} from '#lib/utils.ts'
+import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, selectedRowAtom, signInLabel} from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
-// The link as a QR code, one square per dark module, inside the quiet zone scanners need.
-export function QrCode(props: {className?: string; text: string}) {
-	const modules = Array.fromIterable(toQR(props.text))
-	const size = Math.sqrt(modules.length)
-	return (
-		<svg
-			viewBox={`-2 -2 ${size + 4} ${size + 4}`}
-			shapeRendering="crispEdges"
-			fill="currentColor"
-			className={props.className}
-			aria-hidden="true"
-		>
-			<path
-				d={pipe(
-					modules,
-					Array.map((dark, index) => ({dark, x: index % size, y: Math.floor(index / size)})),
-					Array.filter(module => module.dark === 1),
-					Array.map(module => `M${module.x} ${module.y}h1v1h-1z`),
-					Array.join('')
-				)}
-			/>
-		</svg>
-	)
+function ageLabel(minutes: number) {
+	if (minutes < 1) return 'now'
+	if (minutes < 60) return `${minutes}m`
+	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
+	return `${Math.floor(minutes / 1440)}d`
+}
+
+function newest(apps: readonly SignedInApp[]) {
+	return Array.reduce(apps, 0, (latest, app) => Number.max(latest, app.lastActive))
 }
 
 // A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
@@ -73,7 +46,10 @@ export function AccountAvatar(props: {id: string; name: string; small?: boolean}
 			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
 			className={cn(props.small === true && 'size-4')}
 		>
-			<AvatarImage src={avatarUrl(props.id)} alt={props.name} />
+			<AvatarImage
+				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.id)}?s=96`}
+				alt={props.name}
+			/>
 			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
 		</Avatar>
 	)
@@ -214,7 +190,13 @@ function ClientIcon(props: {client: Client}) {
 type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: number}
 
 function ClientRow(props: {client: SignedInClient; now: number; onSelect: () => void; selected: boolean}) {
-	const active = ageLabel(minutesSince(props.client.lastActive, props.now))
+	const active = ageLabel(
+		Math.floor(
+			Duration.toMinutes(
+				DateTime.distance(DateTime.makeUnsafe(props.client.lastActive), DateTime.makeUnsafe(props.now))
+			)
+		)
+	)
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<div role="listitem">
