@@ -55,7 +55,7 @@ function PersonRow(props: {
 					}
 				>
 					<ItemMedia>
-						<AccountAvatar id={props.person.id} name={props.person.name} />
+						<AccountAvatar id={props.person.id} name={props.person.name} small />
 					</ItemMedia>
 					<ItemContent>
 						<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
@@ -87,10 +87,10 @@ function AskingRow(props: {onSelect: () => void; person: Person; selected: boole
 			footer={<ResultError result={admit} className="mb-2 ml-9" />}
 		>
 			<ItemActions>
-				<Button variant="outline" size="sm" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(false)}>
+				<Button variant="outline" size="xs" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(false)}>
 					Decline
 				</Button>
-				<Button size="sm" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(true)}>
+				<Button size="xs" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(true)}>
 					Allow
 				</Button>
 			</ItemActions>

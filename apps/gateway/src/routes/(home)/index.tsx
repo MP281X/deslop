@@ -117,7 +117,7 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
-// One row per server: its icon, name over host, then its tool count or the button that reconnects it; its context menu removes it.
+// One row per server: its icon, name and host on one line, then its tool count or the button that reconnects it; its context menu removes it.
 function ServerRow(props: {
 	failure: Option.Option<string>
 	onRemove: () => void
@@ -194,7 +194,7 @@ function ServerRow(props: {
 				</ContextMenuContent>
 			</ContextMenu>
 			{needsUser && !props.removed && (
-				<Button size="sm" className="absolute top-1/2 right-4 -translate-y-1/2" onClick={connect}>
+				<Button size="xs" className="absolute top-1/2 right-4 -translate-y-1/2" onClick={connect}>
 					{Boolean.match(connected, {onFalse: () => 'Connect', onTrue: () => 'Reconnect'})}
 				</Button>
 			)}

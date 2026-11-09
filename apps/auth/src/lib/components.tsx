@@ -72,9 +72,10 @@ export function QrCode(props: {className?: string; text: string}) {
 	)
 }
 
-export function AccountAvatar(props: {id: string; name: string}) {
+// A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
+export function AccountAvatar(props: {id: string; name: string; small?: boolean}) {
 	return (
-		<Avatar size="sm">
+		<Avatar size="sm" className={cn(props.small === true && 'size-4')}>
 			<AvatarImage src={avatarUrl(props.id)} alt={props.name} />
 			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
 		</Avatar>
@@ -251,7 +252,7 @@ function PendingRow(props: {
 				<ItemActions>
 					<Button
 						variant="outline"
-						size="sm"
+						size="xs"
 						disabled={waiting}
 						aria-label={`Deny ${label}`}
 						onClick={() => respond({accept: false, request: props.request})}
@@ -259,7 +260,7 @@ function PendingRow(props: {
 						Deny
 					</Button>
 					<Button
-						size="sm"
+						size="xs"
 						disabled={waiting}
 						aria-label={`Approve ${label}`}
 						onClick={() => respond({accept: true, request: props.request})}

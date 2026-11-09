@@ -2,7 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, HashMap, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
 
-import {KeyIcon, PlusIcon, SparkleIcon, XIcon} from '@phosphor-icons/react'
+import {CubeIcon, KeyIcon, PlusIcon, SparkleIcon, SquaresFourIcon, XIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
@@ -485,7 +485,7 @@ function UsageReport(props: {
 				</div>
 				<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
 				<div className="mt-3 border-t">
-					<ItemListHeading>Apps</ItemListHeading>
+					<ItemListHeading icon={<SquaresFourIcon />}>Apps</ItemListHeading>
 					<div role="list" aria-label="By app">
 						{Array.map(appSums, sum => (
 							<ShareRow
@@ -501,7 +501,7 @@ function UsageReport(props: {
 					</div>
 					{Array.isReadonlyArrayNonEmpty(modelSums) && (
 						<>
-							<ItemListHeading>Models</ItemListHeading>
+							<ItemListHeading icon={<CubeIcon />}>Models</ItemListHeading>
 							<div role="list" aria-label="By model">
 								{Array.map(modelSums, sum => (
 									<ShareRow
@@ -568,7 +568,7 @@ function KeyRow(props: {
 				onNone: () => (
 					<Button
 						variant="secondary"
-						size="sm"
+						size="xs"
 						aria-label={`Add ${PROVIDER_NAMES[props.provider]} key`}
 						onClick={event => {
 							event.stopPropagation()
