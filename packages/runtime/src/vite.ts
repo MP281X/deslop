@@ -29,8 +29,7 @@ export const config = {
 				codeSplitting: {
 					groups: [
 						{name: 'effect', test: /node_modules[\\/]effect[\\/]/u},
-						{name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/u},
-						{name: 'three', test: /node_modules[\\/]three[\\/]/u}
+						{name: 'react', test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/u}
 					]
 				}
 			}
