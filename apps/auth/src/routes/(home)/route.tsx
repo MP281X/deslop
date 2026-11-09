@@ -347,17 +347,21 @@ function AccountMenu(props: {account: SignedAccount}) {
 	)
 }
 
-// The suite's marks, as its apps announced themselves to Auth.
+// The suite's apps, as they announced themselves to Auth; each opens its app.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<nav aria-label="Apps" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
 			{Array.map(props.apps, app => (
-				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
+				<a
+					key={app.origin}
+					href={app.origin}
+					className="text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-2.5 max-sm:h-11"
+				>
 					<AppIcon origin={app.origin} small />
-					<span className="truncate text-sm">{app.name}</span>
-				</span>
+					<span className="truncate">{app.name}</span>
+				</a>
 			))}
-		</div>
+		</nav>
 	)
 }
 
@@ -368,43 +372,39 @@ function SignIn() {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="flex w-full flex-col gap-4" aria-label="Sign in">
+		<section className="flex w-full flex-col gap-6" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<Card>
-				<div className="flex flex-col gap-5 px-4">
-					<div className="flex flex-col gap-2">
-						<Button
-							size="lg"
-							className="w-full max-sm:h-11"
-							disabled={AsyncResult.isWaiting(signIn)}
-							onClick={() => startSignIn()}
-						>
-							{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-							Continue with GitHub
-						</Button>
-						<Button
-							size="lg"
-							variant="outline"
-							className="w-full max-sm:h-11"
-							disabled={AsyncResult.isWaiting(passkey)}
-							onClick={() => startPasskey(next)}
-						>
-							{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
-							Continue with a passkey
-						</Button>
-						<Button
-							size="lg"
-							variant="ghost"
-							className="w-full max-sm:h-11"
-							disabled={AsyncResult.isWaiting(codeSignIn)}
-							onClick={() => startCodeSignIn(next)}
-						>
-							Use a sign-in code
-						</Button>
-						<Failures />
-					</div>
-				</div>
-			</Card>
+			<div className="flex flex-col gap-2">
+				<Button
+					size="lg"
+					className="w-full max-sm:h-11"
+					disabled={AsyncResult.isWaiting(signIn)}
+					onClick={() => startSignIn()}
+				>
+					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+					Continue with GitHub
+				</Button>
+				<Button
+					size="lg"
+					variant="outline"
+					className="w-full max-sm:h-11"
+					disabled={AsyncResult.isWaiting(passkey)}
+					onClick={() => startPasskey(next)}
+				>
+					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
+					Continue with a passkey
+				</Button>
+				<Button
+					size="lg"
+					variant="ghost"
+					className="w-full max-sm:h-11"
+					disabled={AsyncResult.isWaiting(codeSignIn)}
+					onClick={() => startCodeSignIn(next)}
+				>
+					Use a sign-in code
+				</Button>
+				<Failures />
+			</div>
 			{Array.isReadonlyArrayNonEmpty(apps) && <Suite apps={apps} />}
 		</section>
 	)
