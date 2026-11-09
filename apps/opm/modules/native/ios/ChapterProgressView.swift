@@ -24,7 +24,6 @@ public struct ChapterProgressView: ExpoSwiftUI.View {
         Wedge(fraction: fraction).fill(props.accent)
       }
     }
-    .animation(.easeOut(duration: 0.25), value: fraction)
     .accessibilityElement()
     .accessibilityLabel(fraction >= 1 ? "Read" : fraction > 0 ? "\(Int(fraction * 100))% read" : "Unread")
   }
@@ -32,11 +31,6 @@ public struct ChapterProgressView: ExpoSwiftUI.View {
 
 struct Wedge: Shape {
   var fraction: Double
-
-  var animatableData: Double {
-    get { fraction }
-    set { fraction = newValue }
-  }
 
   func path(in rect: CGRect) -> Path {
     let center = CGPoint(x: rect.midX, y: rect.midY)

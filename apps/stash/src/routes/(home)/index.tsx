@@ -100,7 +100,7 @@ function Lines(props: {note: NoteItem}) {
 						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
 					>
 						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>Reading the source</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>Reading this link</Text>
 					</HStack>
 				)),
 				Match.when('failed', () => (
