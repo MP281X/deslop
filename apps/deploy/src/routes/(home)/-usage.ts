@@ -1,7 +1,19 @@
-import {Array, Boolean, Number, Order, Record} from 'effect'
+import {Array, Boolean, Number, Option, Order, Record, String} from 'effect'
 
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+
+// Each Deslop app's icon hue, as the theme names it; a service without one stays zinc grey.
+const APP_HUES: Record<string, string> = {
+	auth: 'var(--slate)',
+	deploy: 'var(--blue)',
+	gateway: 'var(--pink)',
+	opm: 'var(--ivory)',
+	portfolio: 'var(--coral)',
+	scope: 'var(--cyan)',
+	stash: 'var(--amber)',
+	trips: 'var(--orange)'
+}
 
 // One stacked band, in % of the whole machine at each sample: an app, the small apps together, or what the machine holds beyond the apps.
 export type Band = {
@@ -11,6 +23,14 @@ export type Band = {
 	members: readonly string[]
 	memory: number[]
 	opacity: number
+}
+
+// A band's app from its label: the first word naming a Deslop app also tints its previews and containers.
+export function appHue(name: string) {
+	return Option.flatMap(
+		Array.findFirst(String.split(String.toLowerCase(name), /[^a-z0-9]+/u), word => Record.has(APP_HUES, word)),
+		word => Record.get(APP_HUES, word)
+	)
 }
 
 function peak(values: readonly number[]) {

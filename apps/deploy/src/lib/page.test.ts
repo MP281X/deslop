@@ -84,14 +84,16 @@ function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<R
 }
 
 it.effect(
-	'keeps real pane headings outside initial suspension',
+	'keeps the bar, tabs and axis real outside initial suspension',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.initial())
-		for (const heading of ['Apps', 'Processes', 'Machine']) assert.include(html, `>${heading}<`)
+		assert.include(html, 'aria-label="History range"')
+		assert.include(html, 'aria-label="Metric"')
 		assert.include(html, 'aria-label="Usage history"')
+		assert.include(html, 'aria-label="Apps loading"')
+		assert.include(html, 'aria-label="Select an app"')
 		assert.include(html, 'aria-busy="true"')
 		assert.notInclude(html, 'No apps in this range')
-		assert.notInclude(html, 'No machine')
 	})
 )
 
@@ -106,24 +108,23 @@ it.effect(
 )
 
 it.effect(
-	'shows usable charts while the independent inventory reader is still pending',
+	'shows the chart while the independent inventory reader is still pending',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.success(readings))
-		assert.include(html, 'Memory')
-		assert.include(html, 'CPU')
-		assert.include(html, 'aria-label="Apps"')
+		assert.include(html, 'Memory over time')
+		assert.include(html, 'aria-label="Apps loading"')
+		assert.include(html, 'aria-label="Metric"')
 		assert.notInclude(html, 'aria-label="Usage history"')
 	})
 )
 
 it.effect(
-	'owns an initial inventory defect without hiding the machine charts',
+	'owns an initial inventory defect without hiding the machine chart',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.failure(Cause.die('Inventory decode failed')), AsyncResult.success(readings))
 		assert.include(html, 'Can’t load this view')
 		assert.notInclude(html, 'Inventory decode failed')
-		assert.include(html, 'Memory')
-		assert.include(html, 'CPU')
+		assert.include(html, 'Memory over time')
 		assert.notInclude(html, 'aria-busy="true"')
 	})
 )
@@ -154,7 +155,7 @@ it.effect(
 			})
 		)
 		assert.include(html, 'Open private')
-		assert.include(html, 'Memory')
+		assert.include(html, 'Memory over time')
 		assert.include(html, 'aria-label="Inventory out of date"')
 		assert.include(html, 'aria-label="History out of date"')
 		assert.notInclude(html, 'Inventory decode failed')
@@ -174,6 +175,6 @@ it.effect(
 		)
 		assert.include(html, 'Access denied')
 		assert.notInclude(html, 'Open private')
-		assert.notInclude(html, '>Memory<')
+		assert.notInclude(html, 'aria-label="Metric"')
 	})
 )

@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Function, Option} from 'effect'
 
-import {bands, runs} from '#routes/(home)/-usage.ts'
+import {appHue, bands, runs} from '#routes/(home)/-usage.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
@@ -59,6 +59,14 @@ it('stacks every recorded app heaviest first, stopped ones too, then the small o
 	assert.closeTo(result[4]?.memory[0] ?? 0, 0, 0.01)
 	assert.closeTo(result[4]?.memory[1] ?? 0, 10, 0.01)
 	assert.strictEqual(result[4]?.cpu[0], 5)
+})
+
+it('tints a Deslop app with its icon hue and leaves a service without one grey', () => {
+	assert.deepStrictEqual(appHue('deploy preview'), Option.some('var(--blue)'))
+	assert.deepStrictEqual(appHue('stash'), Option.some('var(--amber)'))
+	assert.deepStrictEqual(appHue('preview gateway'), Option.some('var(--pink)'))
+	assert.isTrue(Option.isNone(appHue('t3code')))
+	assert.isTrue(Option.isNone(appHue('postgres')))
 })
 
 it('breaks the time axis where the recording misses a slot or a sample lacks the reading', () => {
