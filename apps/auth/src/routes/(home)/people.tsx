@@ -83,7 +83,19 @@ function AskingRow(props: {onSelect: () => void; person: Person; selected: boole
 	)
 }
 
-// An admin is marked with a shield; a member shows since when, and a trash removes them unless the row is yours.
+// Every person row ends with the same since-date column and one 24px slot, so a shield and a trash share their centre.
+function PersonEnd(props: {children?: ReactNode; since: number}) {
+	return (
+		<ItemActions>
+			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs tabular-nums">
+				{dayLabel(props.since)}
+			</span>
+			<span className="flex size-6 shrink-0 items-center justify-center max-sm:size-11">{props.children}</span>
+		</ItemActions>
+	)
+}
+
+// An admin is marked with a shield in the end slot; a member's trash removes them unless the row is yours.
 function MemberRow(props: {
 	failure: Option.Option<string>
 	onRemove: () => void
@@ -104,9 +116,9 @@ function MemberRow(props: {
 				removed={false}
 				failure={Option.none()}
 			>
-				<ItemActions>
+				<PersonEnd since={props.person.since}>
 					<ShieldIcon className="text-primary size-4 shrink-0" />
-				</ItemActions>
+				</PersonEnd>
 			</PersonRow>
 		)
 	}
@@ -118,28 +130,29 @@ function MemberRow(props: {
 			removed={props.removed}
 			failure={props.failure}
 		>
-			<ItemActions>
-				{Boolean.match(props.removed, {
-					onFalse: () => (
-						<>
-							<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
-							{props.removable && (
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									className="max-sm:size-11"
-									aria-label={`Remove ${name}`}
-									title="Remove"
-									onClick={props.onRemove}
-								>
-									<TrashIcon />
-								</Button>
-							)}
-						</>
-					),
-					onTrue: () => <UndoButton onClick={props.undo} />
-				})}
-			</ItemActions>
+			{Boolean.match(props.removed, {
+				onFalse: () => (
+					<PersonEnd since={props.person.since}>
+						{props.removable && (
+							<Button
+								variant="ghost"
+								size="icon-xs"
+								className="max-sm:size-11"
+								aria-label={`Remove ${name}`}
+								title="Remove"
+								onClick={props.onRemove}
+							>
+								<TrashIcon className="size-4" />
+							</Button>
+						)}
+					</PersonEnd>
+				),
+				onTrue: () => (
+					<ItemActions>
+						<UndoButton onClick={props.undo} />
+					</ItemActions>
+				)
+			})}
 		</PersonRow>
 	)
 }

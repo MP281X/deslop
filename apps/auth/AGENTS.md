@@ -6,8 +6,8 @@
 - Rejected: apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
 - The bar switches between Sign-ins and People; signing out of every app stays in the account menu. Rows carry their own actions at their end, never a context menu: one action is an icon button, several sit behind one … menu. A client's trash signs it out, a member's removes them. The client list itself is never narrowed.
 - A browser's child app sign-ins contribute to its row's latest activity, never rows of their own; signing the browser out ends them all.
-- Loading is skeleton rows at the loaded geometry, never a spinner; a sign-in button that waits keeps its own icon and disabled label.
-- People are one Card of 32px rows (44 on phones): a 16px square picture, name with the GitHub handle muted inline; whoever asks for access leads with Decline and Allow, an admin carries a shield in the app's hue, a member shows since when and a trash removes them after eight seconds with Undo; your own row and an admin's show no trash, and a failed removal keeps the row and its reason.
+- Loading is skeleton rows at the loaded geometry, never a spinner; a sign-in button that waits keeps its own icon and disabled label. Only the bar shows until the account is known, then the page that will render gets its own skeleton: the signed-in list at the top, the sign-in page centred.
+- People are one Card of 32px rows (44 on phones): a 16px square picture, name with the GitHub handle muted inline; whoever asks for access leads with Decline and Allow. Every admin or member row ends with the same since-date column and one 24px slot (44 on phones), the admin's shield in the app's hue or a removable member's trash centred in it; your own row and an admin's show no trash, a member's removal waits eight seconds with Undo, and a failed removal keeps the row and its reason.
 
 ## Journeys
 

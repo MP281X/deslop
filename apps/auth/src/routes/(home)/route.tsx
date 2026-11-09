@@ -347,7 +347,7 @@ function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	)
 }
 
-// The page's shape while the account loads: the centred sign-in block, never a skeleton for the bar, tabs, a heading or the code field.
+// The signed-out page's centred shape while its app list loads, never a skeleton for the bar, tabs, a heading or the code field.
 function SignInSkeleton() {
 	return (
 		<section
@@ -374,12 +374,11 @@ function SignInSkeleton() {
 }
 
 // Without an account: GitHub, or a code approved from another browser, a phone or an agent.
-function SignIn() {
+function SignIn(props: {apps: readonly {name: string; origin: string}[]}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
-	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
 		<section
 			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
@@ -417,11 +416,19 @@ function SignIn() {
 				</Button>
 				<Failures />
 			</div>
-			{Array.isReadonlyArrayNonEmpty(apps) && <Suite apps={apps} />}
+			{Array.isReadonlyArrayNonEmpty(props.apps) && <Suite apps={props.apps} />}
 		</section>
 	)
 }
 
+// A known signed-out account sees the sign-in page; until its app list arrives, the page's centred shape stands in.
+function SignedOut() {
+	const catalog = useAtomValue(catalogAtom)
+	if (AsyncResult.isInitial(catalog)) return <SignInSkeleton />
+	return <SignIn apps={AsyncResult.getOrElse(catalog, () => [])} />
+}
+
+// Arriving from another app's Sign out ends the session every app shares, then returns there.
 function SigningOut() {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(signOutAtom)
@@ -465,54 +472,67 @@ function PageProblem() {
 	)
 }
 
-// A signed-in account switches between its sign-ins and people from the bar; admins also see those waiting.
-function Shell() {
+// The account menu joins the mounted bar once the account is known.
+function AccountControl() {
+	return Option.match(useAtomSuspense(accountAtom).value, {
+		onNone: () => false,
+		onSome: signed => <AccountMenu account={signed} />
+	})
+}
+
+// The section tabs join the mounted bar once the account is known; admins also see people.
+function TabsControl() {
+	const account = useAtomSuspense(accountAtom).value
+	const admin = Option.exists(account, signed => signed.role === 'Admin')
+	return Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} />
+}
+
+// A signed-in account switches between its sign-ins and people; the page waits for the account under the mounted bar.
+function ShellPage() {
 	const search = route.useSearch()
 	const requestId = Option.fromUndefinedOr(search.request)
 	const signingOut = search['sign-out'] !== undefined
 	const account = useAtomSuspense(accountAtom).value
-	const admin = Option.exists(account, signed => signed.role === 'Admin')
+	return (
+		<Page width="column">
+			{signingOut && <SigningOut />}
+			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
+			{Option.match(account, {
+				onNone: () => Option.isNone(requestId) && !signingOut && <SignedOut />,
+				onSome: signed =>
+					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
+						onFalse: () => <Signed account={signed} />,
+						onTrue: () => null
+					})
+			})}
+		</Page>
+	)
+}
+
+// The bar mounts once and stays; its account and tabs join it when known, and no page skeleton shows before the account is known.
+function Shell() {
 	return (
 		<>
 			<AppBar
 				icon={icon}
 				name="auth"
-				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
+				account={
+					<Suspense fallback={false}>
+						<AccountControl />
+					</Suspense>
+				}
 				controls={<PageProblem />}
-				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} />}
+				tabs={
+					<Suspense fallback={null}>
+						<TabsControl />
+					</Suspense>
+				}
 			/>
-			<Page width="column">
-				{signingOut && <SigningOut />}
-				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
-				{Option.match(account, {
-					onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
-					onSome: signed =>
-						Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
-							onFalse: () => <Signed account={signed} />,
-							onTrue: () => null
-						})
-				})}
-			</Page>
+			<Suspense fallback={null}>
+				<ShellPage />
+			</Suspense>
 		</>
 	)
 }
 
-// Until the account is known: the app bar and the sign-in page's exact shape, never a skeleton for the bar, tabs, a heading or the code field.
-function HomeLayout() {
-	return (
-		<Suspense
-			fallback={
-				<>
-					<AppBar icon={icon} name="auth" account={false} />
-					<Page width="column">
-						<SignInSkeleton />
-					</Page>
-				</>
-			}
-		>
-			<Shell />
-		</Suspense>
-	)
-}
-
-export const Route = createFileRoute('/(home)')({component: HomeLayout, validateSearch: WebRuntime.searchOf(Search)})
+export const Route = createFileRoute('/(home)')({component: Shell, validateSearch: WebRuntime.searchOf(Search)})

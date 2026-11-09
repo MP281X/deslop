@@ -176,7 +176,7 @@ export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
 							</ItemContent>
 							<ItemActions>
 								<Skeleton className="h-3 w-14 shrink-0" />
-								<Skeleton className="size-7 shrink-0 max-sm:size-11" />
+								<Skeleton className="size-6 shrink-0 max-sm:size-11" />
 							</ItemActions>
 						</Item>
 					))}
