@@ -36,16 +36,12 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/Rpc
 
 // Live, so an account waiting for an admin moves on once allowed; a declined or removed account is signed out and reads None.
 export const accountAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
+	RpcClient.runtime.atom(
 		pipe(
-			WebRuntime.live(
-				get,
-				pipe(
-					RpcClient,
-					Effect.map(client => client('auth.account', undefined)),
-					Stream.unwrap
-				)
-			),
+			RpcClient,
+			Effect.map(client => client('auth.account', undefined)),
+			Stream.unwrap,
+			WebRuntime.reconnecting,
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
 		)
@@ -172,16 +168,12 @@ export const admitAtom = Atom.family((id: string) =>
 export const selectedRowAtom = Atom.make(Option.none<string>())
 
 export const requestAtom = Atom.family((request: string) =>
-	RpcClient.runtime.atom(get =>
+	RpcClient.runtime.atom(
 		pipe(
-			WebRuntime.live(
-				get,
-				pipe(
-					RpcClient,
-					Effect.map(client => client('auth.wait', {request})),
-					Stream.unwrap
-				)
-			),
+			RpcClient,
+			Effect.map(client => client('auth.wait', {request})),
+			Stream.unwrap,
+			WebRuntime.reconnecting,
 			Stream.tap(status =>
 				pipe(
 					Match.value(status),

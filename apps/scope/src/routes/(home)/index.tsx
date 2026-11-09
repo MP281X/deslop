@@ -4,7 +4,7 @@ import {Array, Boolean, Cause, DateTime, Match, Number, Option, Record, String, 
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
@@ -13,7 +13,6 @@ import {appMarks} from '@deslop/components-web/apps'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
-import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
@@ -457,14 +456,11 @@ function SpansList(props: {
 	)
 }
 
-const OVERVIEW_READERS: StaleReaders = [overviewAtom]
-const traceReaders = Atom.family((id: string) => [overviewAtom, traceAtom(id)] as const)
-
 // The page's readers as one mark: the oldest age among those still showing content, and one retry for them all.
 function StaleMark(props: {trace?: OperationTrace}) {
 	return Option.match(Option.fromUndefinedOr(props.trace), {
-		onNone: () => <StaleProblem label="Out of date" readers={OVERVIEW_READERS} />,
-		onSome: trace => <StaleProblem label="Out of date" readers={traceReaders(trace.id)} />
+		onNone: () => <StaleProblem label="Out of date" readers={[overviewAtom]} />,
+		onSome: trace => <StaleProblem label="Out of date" readers={[overviewAtom, traceAtom(trace.id)]} />
 	})
 }
 

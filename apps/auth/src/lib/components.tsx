@@ -1,6 +1,6 @@
-import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -14,6 +14,7 @@ import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import android from '#lib/brands/android.svg'
 import apple from '#lib/brands/apple.svg'
@@ -329,46 +330,56 @@ const signInListAtom = Atom.make(get =>
 )
 
 export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {
-	const data = useAtomSuspense(signInListAtom).value
-	const clients = clientsOf(data.signIns, data.catalog)
-	const checking = props.checking === true && Option.isNone(props.pending)
+	const result = useAtomSuspense(signInListAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(signInListAtom)
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
-	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
-		return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
+	const value = AsyncResult.value(result)
+	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
-	return (
-		<Card size="list">
-			<div role="list" aria-label="Signed-in clients">
-				{Boolean.match(checking, {
-					onFalse: () =>
-						Option.match(props.pending, {
-							onNone: () => null,
-							onSome: request => (
-								<PendingRow
-									catalog={data.catalog}
-									request={request}
-									selected={Option.contains(selected, 'pending-sign-in')}
-									onSelect={() => setSelected(Option.some('pending-sign-in'))}
-								/>
+	return Option.match(value, {
+		onNone: () => null,
+		onSome: data => {
+			const clients = clientsOf(data.signIns, data.catalog)
+			const checking = props.checking === true && Option.isNone(props.pending)
+			if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
+				return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
+			}
+			return (
+				<Card size="list">
+					<div role="list" aria-label="Signed-in clients">
+						{Boolean.match(checking, {
+							onFalse: () =>
+								Option.match(props.pending, {
+									onNone: () => null,
+									onSome: request => (
+										<PendingRow
+											catalog={data.catalog}
+											request={request}
+											selected={Option.contains(selected, 'pending-sign-in')}
+											onSelect={() => setSelected(Option.some('pending-sign-in'))}
+										/>
+									)
+								}),
+							onTrue: () => (
+								<div role="status" aria-label="Checking the code">
+									<PendingRowSkeleton />
+								</div>
 							)
-						}),
-					onTrue: () => (
-						<div role="status" aria-label="Checking the code">
-							<PendingRowSkeleton />
-						</div>
-					)
-				})}
-				{Array.map(clients, client => (
-					<ClientRow
-						key={client.label}
-						client={client}
-						now={data.now}
-						selected={Option.contains(selected, `client-${client.label}`)}
-						onSelect={() => setSelected(Option.some(`client-${client.label}`))}
-					/>
-				))}
-			</div>
-		</Card>
-	)
+						})}
+						{Array.map(clients, client => (
+							<ClientRow
+								key={client.label}
+								client={client}
+								now={data.now}
+								selected={Option.contains(selected, `client-${client.label}`)}
+								onSelect={() => setSelected(Option.some(`client-${client.label}`))}
+							/>
+						))}
+					</div>
+				</Card>
+			)
+		}
+	})
 }

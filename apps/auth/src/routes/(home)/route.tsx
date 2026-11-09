@@ -11,7 +11,6 @@ import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState, Error} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
-import type {StaleReaders} from '@deslop/components-web/problem'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signOutAtom} from '#lib/utils.ts'
@@ -63,17 +62,13 @@ function SigningOut() {
 	})
 }
 
-// The readers of each page, which the bar's one stale mark ages from the oldest and retries together.
-const SIGN_IN_READERS: StaleReaders = [appsAtom, catalogAtom]
-const PEOPLE_READERS: StaleReaders = [appsAtom, catalogAtom, peopleAtom]
-
 function PageProblem() {
 	return (
 		<StaleProblem
 			label="Out of date"
 			readers={Boolean.match(useMatchRoute()({to: '/people'}) !== false, {
-				onFalse: () => SIGN_IN_READERS,
-				onTrue: () => PEOPLE_READERS
+				onFalse: () => [appsAtom, catalogAtom],
+				onTrue: () => [appsAtom, catalogAtom, peopleAtom]
 			})}
 		/>
 	)

@@ -12,7 +12,6 @@ import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-we
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
-import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
@@ -165,17 +164,8 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 	)
 }
 
-// The inventory and history readers for each range, which the page's one stale mark ages from the older and retries together.
-const READERS: Record<HistoryQuery['minutes'], StaleReaders> = {
-	1: [inventoryAtom, metricsAtom(1)],
-	10: [inventoryAtom, metricsAtom(10)],
-	60: [inventoryAtom, metricsAtom(60)],
-	1440: [inventoryAtom, metricsAtom(1440)],
-	10_080: [inventoryAtom, metricsAtom(10_080)]
-}
-
 function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
-	return <StaleProblem label="Data out of date" readers={READERS[props.minutes]} />
+	return <StaleProblem label="Data out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
 }
 
 // The selected app's processes, or one job's, with what the row cannot show: its failure.

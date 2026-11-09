@@ -22,10 +22,8 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 	})
 )
 
-export type StaleReaders = readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]
-
 // fallow-ignore-next-line unused-export -- the oldest reader still showing content, whose tests drive the age and retry protocol directly.
-export const staleSinceAtom = Atom.family((readers: StaleReaders) =>
+export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
 	Atom.readable(
 		get =>
 			Array.head(
@@ -137,7 +135,10 @@ function Problem(props: {label: string; reset?: () => void; since?: number}) {
 }
 
 // One stale mark per page: the oldest reader still showing content, and its retry refreshes them all.
-export function StaleProblem(props: {label: string; readers: StaleReaders}) {
+export function StaleProblem(props: {
+	label: string
+	readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]
+}) {
 	const since = useAtomValue(staleSinceAtom(props.readers))
 	const retry = useAtomRefresh(staleSinceAtom(props.readers))
 	return Option.match(since, {

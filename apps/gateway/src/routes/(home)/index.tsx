@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Number, Option, Order, Schema, String, type Record} from 'effect'
+import {Array, Boolean, Cause, Number, Option, Order, Schema, String} from 'effect'
 
 import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -14,7 +14,6 @@ import {APP_HUES, appMarks} from '@deslop/components-web/apps'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
-import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
@@ -456,15 +455,13 @@ function CopyEndpoint() {
 	)
 }
 
-// The four readers of each period, which the page's one stale mark ages from the oldest and retries together.
-const READERS: Record<Period, StaleReaders> = {
-	'7d': [serversAtom, mcpUsageAtom('7d'), aiKeysAtom, aiUsageAtom('7d')],
-	'24h': [serversAtom, mcpUsageAtom('24h'), aiKeysAtom, aiUsageAtom('24h')],
-	'30d': [serversAtom, mcpUsageAtom('30d'), aiKeysAtom, aiUsageAtom('30d')]
-}
-
 function GatewayProblem(props: {period: Period}) {
-	return <StaleProblem label="Out of date" readers={READERS[props.period]} />
+	return (
+		<StaleProblem
+			label="Out of date"
+			readers={[serversAtom, mcpUsageAtom(props.period), aiKeysAtom, aiUsageAtom(props.period)]}
+		/>
+	)
 }
 
 function Home() {
