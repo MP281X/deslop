@@ -73,17 +73,17 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
+// A section of the app as a numbered tab in the masthead; the current one carries a 2px signal rule.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
 			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				'app-bar-tab tracking-label relative flex h-16 shrink-0 items-center font-mono text-xs uppercase transition-colors duration-150 max-sm:h-14',
 				Boolean.match(props.active, {
 					onFalse: () => 'text-muted-foreground hover:text-foreground',
-					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
+					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary'
 				})
 			)
 		},
@@ -91,7 +91,7 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
+// A ruled search field, part of the masthead until it is used; a phone keeps the icon alone.
 function SearchTrigger(props: {label: string; onClick: () => void}) {
 	return (
 		<>
@@ -100,7 +100,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				size="search"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
+				className="hidden w-64 xl:flex"
 			>
 				<MagnifyingGlassIcon className="size-4 shrink-0" />
 				<span className="flex-1">Search or jump to…</span>
@@ -119,7 +119,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 	)
 }
 
-// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
+// The masthead is a 64px three-column grid: the signal square and name, numbered sections, then search and account.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}
@@ -143,59 +143,66 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
+			<header className="bg-background grid-masthead relative sticky top-0 z-30 grid h-16 shrink-0 items-center gap-6 border-b px-6 max-sm:h-14 max-sm:gap-3 max-sm:px-4 sm:px-8">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
+						<a href="/" aria-label={props.name} className="flex min-w-0 items-center gap-3 max-sm:h-11">
+							<span aria-hidden="true" className="bg-primary size-2 shrink-0" />
+							<span className="font-heading tracking-strong truncate text-lg leading-none capitalize">
+								{props.name}
+							</span>
 						</a>
 					),
 					// The leading slot keeps its width on every pane, so the title and the right controls never move.
 					onSome: title => (
-						<div className="flex min-w-0 shrink items-center gap-1.5">
+						<div className="flex min-w-0 items-center gap-1.5">
 							{Option.match(Option.fromUndefinedOr(props.back), {
 								onNone: () => (
-									<a
-										href="/"
-										aria-label={props.name}
-										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
-									>
-										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
+									<a href="/" aria-label={props.name} className="flex min-w-0 items-center gap-2.5">
+										<span aria-hidden="true" className="bg-primary size-2 shrink-0" />
+										<span className="font-heading tracking-strong max-w-48 min-w-0 truncate text-lg leading-none">
+											{title}
+										</span>
 									</a>
 								),
 								onSome: back => (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										className="max-sm:size-11"
-										aria-label={back.label}
-										onClick={back.onClick}
-									>
-										<CaretLeftIcon className="size-4" />
-									</Button>
+									<>
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											className="max-sm:size-11"
+											aria-label={back.label}
+											onClick={back.onClick}
+										>
+											<CaretLeftIcon className="size-4" />
+										</Button>
+										<span aria-hidden="true" className="bg-primary size-2 shrink-0" />
+										<span className="font-heading tracking-strong max-w-48 min-w-0 truncate text-lg leading-none">
+											{title}
+										</span>
+									</>
 								)
 							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
-								{title}
-							</span>
 						</div>
 					)
 				})}
 				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
+					<nav
+						aria-label="Sections"
+						className="app-bar-tabs flex h-16 items-center gap-6 justify-self-center max-sm:h-14 max-sm:gap-4"
+					>
 						{props.tabs}
 					</nav>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
+				<div className="col-start-3 flex min-w-0 items-center justify-end gap-3 justify-self-end">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
 						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
 					})}
-				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					{props.controls}
-					{props.account ?? <AccountMenu />}
+					<div className="flex shrink-0 items-center gap-2">
+						{props.controls}
+						{props.account ?? <AccountMenu />}
+					</div>
 				</div>
 			</header>
 			{Option.match(Option.fromUndefinedOr(props.palette), {

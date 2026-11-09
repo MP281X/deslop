@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--cyan);
+	--primary: var(--red);
 }
 
 /* Where a span ran, in its operation's device icon and its bar: server blue, browser pink, iOS amber, CI violet. */
@@ -25,4 +25,21 @@
 @theme {
 	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
 	--grid-template-columns-attributes: repeat(auto-fill, minmax(14rem, 1fr));
+}
+
+/* The workspace fills the page, the operations table aligns its columns, and traces line up age, id, state and time. */
+@utility grid-page {
+	grid-template-rows: minmax(0, 1fr);
+}
+
+@utility grid-operations {
+	grid-template-columns: 1.25rem minmax(0, 1fr) 2.5rem 2.5rem 3.5rem;
+
+	@media (width < 40rem) {
+		grid-template-columns: 1.25rem minmax(0, 1fr) 2rem 3rem;
+	}
+}
+
+@utility grid-traces {
+	grid-template-columns: 2.5rem minmax(0, 1fr) 1rem 3.5rem 1rem;
 }

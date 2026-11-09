@@ -15,7 +15,7 @@ import {
 } from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Fragment, Suspense, useDeferredValue, useState} from 'react'
+import {Fragment, Suspense, useDeferredValue, useEffect, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -41,6 +41,7 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 import {Item, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
+import {Kbd} from '@deslop/components-web/ui/kbd'
 import {Progress, ProgressLabel} from '@deslop/components-web/ui/progress'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
@@ -340,7 +341,7 @@ function Endpoint(props: {item: InventoryItem}) {
 				/>
 			}
 		>
-			<span className="block max-w-48 truncate">
+			<span className="block max-w-48 truncate font-mono tracking-normal normal-case tabular-nums">
 				{Boolean.match(props.item.publicAccess === true, {
 					onFalse: () => `:${props.item.port}`,
 					onTrue: () => String.replace(/^https:\/\//u, '')(props.item.url)
@@ -369,7 +370,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
 							<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
-								:{listener.port}
+								<span className="font-mono tracking-normal normal-case tabular-nums">:{listener.port}</span>
 							</Button>
 						),
 						onSome: port => (
@@ -381,7 +382,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
 								onClick={() => expose(port)}
 							>
-								:{listener.port}
+								<span className="font-mono tracking-normal normal-case tabular-nums">:{listener.port}</span>
 							</Button>
 						)
 					})
@@ -506,7 +507,11 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn(
+								'list-row relative flex h-12 items-center gap-2 pr-3 pl-6',
+								highlighted && 'bg-accent',
+								props.selected && 'border-l-primary border-l-2'
+							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -698,7 +703,7 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 				<div
 					key={row}
 					aria-hidden
-					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
+					className={cn('list-row flex h-12 items-center gap-3 px-6', props.indent === true && 'pl-10')}
 				>
 					<Skeleton className="size-5 shrink-0" />
 					<Skeleton className="h-3.5 w-1/3 max-w-40" />
@@ -715,7 +720,7 @@ function ChartSkeleton() {
 			aria-busy="true"
 			aria-label="Usage history"
 			role="status"
-			className="flex min-h-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+			className="flex min-h-0 flex-1 flex-col gap-4 px-6 pt-3 pb-4"
 		>
 			<div className="flex flex-wrap gap-3">
 				<Skeleton className="h-3 w-16" />
@@ -756,7 +761,7 @@ function AppsPane(props: {
 		<Section
 			title="Apps"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
-			headerClassName="px-4"
+			headerClassName="px-6"
 			actions={
 				<div className="flex items-center gap-2">
 					{Boolean.match(pending, {
@@ -791,8 +796,8 @@ function AppsPane(props: {
 									{Array.map(props.rows, (row, index) => (
 										<Fragment key={row.item.id}>
 											{index === firstScheduled && (
-												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
-													<span className="tracking-label font-semibold uppercase">Scheduled</span>
+												<div className="bg-background text-muted-foreground text-label tracking-label sticky top-0 z-20 flex h-9 shrink-0 items-center gap-2 border-b px-6 font-mono uppercase">
+													<span className="font-medium">Scheduled</span>
 													<Badge variant="secondary">{scheduled.length}</Badge>
 												</div>
 											)}
@@ -842,7 +847,7 @@ function ProcessPane(props: {
 		<Section
 			title="Processes"
 			className={cn('min-h-0 min-w-0 flex-1 gap-0', props.className)}
-			headerClassName="px-4"
+			headerClassName="px-6"
 			actions={
 				<div className="flex min-w-0 items-center gap-2">
 					{Option.match(Option.fromUndefinedOr(props.row), {
@@ -905,7 +910,7 @@ function ProcessPane(props: {
 								{Boolean.match(current.item.scheduled === true, {
 									onFalse: () => null,
 									onTrue: () => (
-										<div className="px-4 pt-2">
+										<div className="px-6 pt-2">
 											<RunFailure item={current.item} />
 										</div>
 									)
@@ -982,15 +987,15 @@ function MachineContent(props: {
 	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="flex flex-col gap-4 px-4 pt-3 pb-4">
-				<div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+			<div className="flex flex-col gap-4 px-6 pt-3 pb-4">
+				<div className="grid-legend text-label tracking-label grid gap-x-4 gap-y-1 border-t pt-2 pb-2 font-mono uppercase">
 					{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
 						<span key={band.id} className="flex min-w-0 items-center gap-1.5">
 							<span
 								className="size-2 shrink-0 bg-(--machine) opacity-(--swatch-opacity)"
 								style={{'--swatch-opacity': band.opacity}}
 							/>
-							<span className="text-muted-foreground max-w-40 truncate" title={bandName(band.id)}>
+							<span className="text-muted-foreground min-w-0 truncate" title={bandName(band.id)}>
 								{bandName(band.id)}
 							</span>
 						</span>
@@ -1054,7 +1059,7 @@ function MachinePane(props: {
 		<Section
 			title="Machine"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
-			headerClassName="px-4"
+			headerClassName="px-6"
 			actions={
 				<div className="flex items-center gap-2">
 					<MetricsProblem minutes={props.minutes} />
@@ -1123,17 +1128,26 @@ function MachineTabs(props: {
 			}),
 		onNonEmpty: workers => (
 			<Tabs
-				className="shrink-0"
+				className="row-start-1 shrink-0"
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				<TabsList variant="line" aria-label="Machines" className="w-full max-sm:group-data-horizontal/tabs:h-auto">
-					{Array.map(workers, worker => {
+				<TabsList variant="line" aria-label="Machines" className="h-12 w-full max-sm:group-data-horizontal/tabs:h-auto">
+					{Array.map(workers, (worker, index) => {
 						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
 						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-12">
+							<TabsTrigger
+								key={worker}
+								value={worker}
+								className="min-w-0 max-sm:h-12"
+								aria-keyshortcuts={`${index + 1}`}
+								title={`${machineName(worker)} · press ${index + 1}`}
+							>
+								<span className="text-muted-foreground text-label tracking-label font-mono">
+									{String.padStart(2, '0')(`${index + 1}`)}
+								</span>
 								<MachineIcon worker={worker} />
 								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
 									<span className="flex min-w-0 items-center gap-1.5">
@@ -1165,6 +1179,7 @@ function MachineTabs(props: {
 										)}
 									</span>
 								</span>
+								<Kbd className="ml-auto max-lg:hidden">{index + 1}</Kbd>
 							</TabsTrigger>
 						)
 					})}
@@ -1185,7 +1200,7 @@ function SourceProblems(props: {
 		{
 			onEmpty: () => null,
 			onNonEmpty: sources => (
-				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
+				<div className="row-start-2 flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
 					{Array.map(sources, source => (
 						<div key={source.name} className="flex items-center gap-1.5">
 							<MachineIcon worker={source.name} />
@@ -1241,6 +1256,40 @@ function Home() {
 	const active = Option.getOrElse(Option.fromUndefinedOr(search.machine), () =>
 		Option.getOrUndefined(Array.head(workers))
 	)
+	// Numbers pick a machine, the visible hint on its column; typing in a field keeps its digits.
+	useEffect(() => {
+		function select(event: KeyboardEvent) {
+			if (event.metaKey || event.ctrlKey || event.altKey) return
+			if (
+				event.target instanceof HTMLElement &&
+				event.target.closest('input, textarea, select, [contenteditable="true"]') !== null
+			) {
+				return
+			}
+			const worker = Option.getOrUndefined(
+				Option.map(
+					Array.findFirst(
+						Array.map(workers, (name, index) => ({key: `${index + 1}`, name})),
+						entry => entry.key === event.key
+					),
+					entry => entry.name
+				)
+			)
+			if (worker === undefined) return
+			event.preventDefault()
+			setHovered(undefined)
+			navigate({
+				search: previous => ({
+					...previous,
+					app: undefined,
+					machine: worker,
+					pane: Boolean.match(pane === 'machine', {onFalse: () => 'apps' as const, onTrue: () => 'machine' as const})
+				})
+			})
+		}
+		addEventListener('keydown', select)
+		return () => removeEventListener('keydown', select)
+	}, [navigate, pane, workers])
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
@@ -1416,7 +1465,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="grid-page h-full min-h-0 gap-y-4">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}
@@ -1440,7 +1489,7 @@ function Home() {
 						<SourceProblems onRetry={refreshInventory} sources={sources} workers={workers} />
 						<div
 							className={cn(
-								'machine flex min-h-0 flex-1 flex-col gap-4',
+								'machine row-start-3 flex min-h-0 flex-1 flex-col gap-4',
 								refreshing && 'opacity-60 transition-opacity'
 							)}
 							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}

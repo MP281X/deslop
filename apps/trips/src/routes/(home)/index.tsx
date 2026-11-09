@@ -23,7 +23,7 @@ import type {ReactNode} from 'react'
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, shownOf, TopRule} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
@@ -78,7 +78,10 @@ type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
-		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 34})]}>
+		<VStack
+			spacing={0}
+			modifiers={[fixedSize({horizontal: true, vertical: false}), frame({alignment: 'leading', minWidth: 40})]}
+		>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
 			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
@@ -87,7 +90,7 @@ function Gutter(props: {countdown: Countdown}) {
 				<>
 					<Text
 						modifiers={[
-							font({design: 'monospaced', textStyle: 'title3', weight: 'medium'}),
+							font({design: 'monospaced', textStyle: 'title2', weight: 'semibold'}),
 							foregroundStyle(colors.foreground)
 						]}
 					>
@@ -177,6 +180,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
 		<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+			<TopRule />
 			{/* The bookings on screen stay through an outage; a dot above them marks that they stopped updating. */}
 			{AsyncResult.isFailure(loaded) && (
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>

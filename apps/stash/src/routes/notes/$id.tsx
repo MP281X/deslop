@@ -241,7 +241,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 									onPress={props.onRetry}
 									modifiers={[
 										buttonStyle('glassProminent'),
-										buttonBorderShape('capsule'),
+										buttonBorderShape('roundedRectangle', 0),
 										controlSize('large'),
 										tint(primary)
 									]}

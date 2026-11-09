@@ -2,14 +2,14 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
+import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense, useEffect, useState} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState} from '@deslop/components-web/fallbacks'
@@ -35,7 +35,7 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Kbd} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -186,7 +186,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="grid-servers relative grid h-12 min-w-0 items-center gap-3">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -198,22 +198,23 @@ function ServerRow(props: {server: ConnectionInfo}) {
 							/>
 						}
 					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
+					<span className="pointer-events-none relative flex items-center justify-center">
 						<ServerIcon server={props.server} />
-						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-							{new URL(props.server.url).hostname}
-						</span>{' '}
-						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
-								title="Tools"
-							>
-								{props.server.tools.length}
-							</span>
-						)}
-					</div>
-					<div className="relative flex w-16 shrink-0 justify-end">
+					</span>
+					<span className="pointer-events-none relative min-w-0 truncate text-sm font-medium">{props.server.name}</span>
+					<span className="text-muted-foreground pointer-events-none relative min-w-0 truncate font-mono text-xs max-sm:hidden">
+						{new URL(props.server.url).hostname}
+					</span>
+					<span
+						className="text-muted-foreground pointer-events-none relative shrink-0 text-right font-mono text-xs tabular-nums max-sm:hidden"
+						title="Tools"
+					>
+						{Boolean.match(Array.isReadonlyArrayNonEmpty(props.server.tools), {
+							onFalse: () => '',
+							onTrue: () => props.server.tools.length
+						})}
+					</span>
+					<div className="pointer-events-auto relative flex shrink-0 justify-end">
 						{connected && props.server.error === undefined && (
 							<span
 								role="img"
@@ -273,6 +274,16 @@ function ServersContent(props: {onAdd: () => void}) {
 						),
 						onNonEmpty: servers => (
 							<Section title="Servers" meta={`${servers.length} configured`}>
+								<div
+									aria-hidden="true"
+									className="bg-background text-muted-foreground grid-servers text-label tracking-label sticky top-0 z-10 grid h-8 items-center gap-3 border-b font-mono uppercase"
+								>
+									<span />
+									<span>Server</span>
+									<span className="max-sm:hidden">Host</span>
+									<span className="text-right max-sm:hidden">Tools</span>
+									<span className="text-right">State</span>
+								</div>
 								<div role="list" aria-label="MCP servers">
 									{Array.map(servers, server => (
 										<ServerRow key={server.id} server={server} />
@@ -295,7 +306,7 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+			<div className="grid grid-cols-3 gap-6 border-b pb-4">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"
@@ -315,30 +326,27 @@ function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo
 	)
 }
 
-// Two views of one page, in the bar's section slot: the servers, then what AI calls through the gateway cost.
+// Two numbered views in the masthead's section slot: the servers, then what AI calls through the gateway cost.
 function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 	return (
-		<ToggleGroup
-			aria-label="View"
-			size="sm"
-			spacing={1}
-			variant="outline"
-			value={[props.view]}
-			onValueChange={values =>
-				Option.map(Array.head(values), value =>
-					props.onView(Boolean.match(value === 'ai', {onFalse: () => 'servers', onTrue: () => 'ai'}))
-				)
-			}
-		>
-			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
-				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
-			</ToggleGroupItem>
-			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
-				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
-			</ToggleGroupItem>
-		</ToggleGroup>
+		<>
+			<AppBarTab
+				active={props.view === 'servers'}
+				render={
+					<button type="button" aria-label="Servers" aria-keyshortcuts="1" onClick={() => props.onView('servers')} />
+				}
+			>
+				Servers
+				<Kbd className="ml-1 max-sm:hidden">1</Kbd>
+			</AppBarTab>
+			<AppBarTab
+				active={props.view === 'ai'}
+				render={<button type="button" aria-label="AI" aria-keyshortcuts="2" onClick={() => props.onView('ai')} />}
+			>
+				AI
+				<Kbd className="ml-1 max-sm:hidden">2</Kbd>
+			</AppBarTab>
+		</>
 	)
 }
 
@@ -411,6 +419,31 @@ function Home() {
 		navigate({search: previous => ({...previous, ...next})})
 	}
 	const view = search.view ?? 'servers'
+	// Numbers pick the view, matching the hint beside each numbered tab.
+	useEffect(() => {
+		function pick(event: KeyboardEvent) {
+			if (event.metaKey || event.ctrlKey || event.altKey) return
+			if (
+				event.target instanceof HTMLElement &&
+				event.target.closest('input, textarea, select, [contenteditable="true"]') !== null
+			) {
+				return
+			}
+			if (event.key !== '1' && event.key !== '2') return
+			event.preventDefault()
+			navigate({
+				search: previous => ({
+					...previous,
+					app: undefined,
+					bucket: undefined,
+					model: undefined,
+					view: Boolean.match(event.key === '2', {onFalse: () => undefined, onTrue: () => 'ai' as const})
+				})
+			})
+		}
+		addEventListener('keydown', pick)
+		return () => removeEventListener('keydown', pick)
+	}, [navigate])
 	const period = search.period ?? '7d'
 	const metric = search.metric ?? 'cost'
 	// Open, which opening it is (so each starts with an empty secret), and the provider it adds.

@@ -60,7 +60,7 @@ import {AccountMenu} from '@deslop/components-mobile/account'
 import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, shownOf, TopRule} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
@@ -182,6 +182,7 @@ function DeleteButton(props: {onPress: () => void}) {
 }
 
 function NoteRow(props: {
+	index: number
 	note: NoteItem
 	onAppear: () => void
 	onOpen: (id: Note['id']) => void
@@ -200,6 +201,15 @@ function NoteRow(props: {
 							onAppear(props.onAppear)
 						]}
 					>
+						<Text
+							modifiers={[
+								text.data,
+								foregroundStyle(colors.mutedForeground),
+								frame({alignment: 'leading', minWidth: 22})
+							]}
+						>
+							{String.padStart(2, '0')(`${props.index}`)}
+						</Text>
 						<ItemMedia>
 							<NoteMedia note={props.note} />
 						</ItemMedia>
@@ -377,7 +387,7 @@ export function HomeRoute(props: {
 											onPress={props.onCompose}
 											modifiers={[
 												buttonStyle('glassProminent'),
-												buttonBorderShape('capsule'),
+												buttonBorderShape('roundedRectangle', 0),
 												controlSize('large'),
 												tint(primary)
 											]}
@@ -388,45 +398,49 @@ export function HomeRoute(props: {
 							onNonEmpty: () => (
 								// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
 								<Overlay>
-									<ItemGroup>
-										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
-										<ToggleGroup
-											value={props.tag ?? 'all'}
-											onValueChange={value =>
-												Boolean.match(value === 'all' || value === props.tag, {
-													onFalse: () => props.onTag(value),
-													onTrue: () => props.onTag()
-												})
-											}
-											tint={primary}
-											modifiers={[
-												listRowSeparator('hidden'),
-												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
-											]}
-										>
-											<ToggleGroupItem value="all" systemImage="tray">
-												all
-											</ToggleGroupItem>
-											{Array.map(tags, name => (
-												<ToggleGroupItem key={name} value={name}>
-													{name}
+									<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+										<TopRule />
+										<ItemGroup>
+											{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+											<ToggleGroup
+												value={props.tag ?? 'all'}
+												onValueChange={value =>
+													Boolean.match(value === 'all' || value === props.tag, {
+														onFalse: () => props.onTag(value),
+														onTrue: () => props.onTag()
+													})
+												}
+												tint={primary}
+												modifiers={[
+													listRowSeparator('hidden'),
+													listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
+												]}
+											>
+												<ToggleGroupItem value="all" systemImage="tray">
+													all
 												</ToggleGroupItem>
+												{Array.map(tags, name => (
+													<ToggleGroupItem key={name} value={name}>
+														{name}
+													</ToggleGroupItem>
+												))}
+											</ToggleGroup>
+											{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+											{Array.map(Array.take(notes, limit), (note, position) => (
+												<NoteRow
+													key={note.id}
+													index={position + 1}
+													note={note}
+													onAppear={() => {
+														if (position === limit - 1) setLimit(limit + 80)
+													}}
+													onOpen={props.onOpen}
+													onRegenerate={id => regenerate(id)}
+													onRemove={id => remove(id)}
+												/>
 											))}
-										</ToggleGroup>
-										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{Array.map(Array.take(notes, limit), (note, position) => (
-											<NoteRow
-												key={note.id}
-												note={note}
-												onAppear={() => {
-													if (position === limit - 1) setLimit(limit + 80)
-												}}
-												onOpen={props.onOpen}
-												onRegenerate={id => regenerate(id)}
-												onRemove={id => remove(id)}
-											/>
-										))}
-									</ItemGroup>
+										</ItemGroup>
+									</VStack>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>
 											<Empty>

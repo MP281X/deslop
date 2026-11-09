@@ -58,7 +58,7 @@ export function ToggleGroupItem(props: {
 				buttonStyle(
 					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
 				),
-				buttonBorderShape('capsule'),
+				buttonBorderShape('roundedRectangle', 0),
 				controlSize('large'),
 				...Boolean.match(selected, {onFalse: () => [], onTrue: () => [tint(group.tint)]}),
 				labelStyle('titleAndIcon'),

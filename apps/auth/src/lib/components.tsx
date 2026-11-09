@@ -154,7 +154,7 @@ type SignedInClient = {
 	lastActive: number
 }
 
-function ClientRow(props: {client: SignedInClient; now: number}) {
+function ClientRow(props: {client: SignedInClient; index: number; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
 	const minutes = minutesSince(props.client.lastActive, props.now)
 	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
@@ -169,21 +169,26 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-accent flex h-12 min-w-0 items-center gap-3 px-0 text-sm max-sm:h-12"
 						/>
 					}
 				>
+					<span className="text-muted-foreground text-label tracking-label w-6 shrink-0 text-right font-mono tabular-nums">
+						{String.padStart(2, '0')(`${props.index}`)}
+					</span>
 					<ClientIcon client={props.client.client} />
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
 					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
 					{Option.match(address, {
 						onNone: () => null,
 						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
+							<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums max-sm:hidden">
+								{value}
+							</span>
 						)
 					})}
 				</ContextMenuTrigger>
-				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
+				<ResultError result={disconnection} className="mr-1 mb-2 ml-14 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
@@ -316,7 +321,14 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 	return (
 		<Section
 			title="Signed in"
-			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
+			figure={
+				<span
+					className="text-figure font-mono leading-none tabular-nums"
+					aria-label={`${clients.length} signed-in ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
+				>
+					{String.padStart(2, '0')(`${clients.length}`)}
+				</span>
+			}
 			className="gap-0"
 		>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
@@ -330,8 +342,8 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 				),
 				onNonEmpty: rows => (
 					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
+						{Array.map(rows, (client, index) => (
+							<ClientRow key={client.label} client={client} index={index + 1} now={data.now} />
 						))}
 					</div>
 				)

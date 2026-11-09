@@ -13,7 +13,8 @@ import {
 	Text,
 	Toolbar,
 	ToolbarItem,
-	useNativeState
+	useNativeState,
+	VStack
 } from '@expo/ui/swift-ui'
 import {
 	accessibilityHidden,
@@ -37,7 +38,7 @@ import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, shownOf, TopRule} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
@@ -143,6 +144,15 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	return (
 		<SwipeActions modifiers={itemRow}>
 			<Item onPress={() => props.onOpen(props.chapter.number)}>
+				<Text
+					modifiers={[
+						font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'}),
+						foregroundStyle(colors.foreground),
+						frame({alignment: 'leading', minWidth: 28})
+					]}
+				>
+					{String.padStart(2, '0')(`${props.chapter.number}`)}
+				</Text>
 				<ItemMedia>
 					<Cover
 						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
@@ -158,7 +168,12 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 				<ItemContent modifiers={[opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.6}))]}>
 					<HStack spacing={space[2]}>
 						{props.fresh && <StatusDot status="live" tint={primary} />}
-						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
+						<ItemTitle>
+							{Boolean.match(props.chapter.title === '', {
+								onFalse: () => props.chapter.title,
+								onTrue: () => `Chapter ${props.chapter.number}`
+							})}
+						</ItemTitle>
 					</HStack>
 					<ItemDescription>
 						{Array.join(
@@ -258,31 +273,34 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 					)
 				}),
 			onNonEmpty: matches => (
-				<ItemGroup>
-					{/* A search is about the query, so the resume row waits until the full list is back. */}
-					{Boolean.match(String.isEmpty(needle), {
-						onFalse: () => undefined,
-						onTrue: () =>
-							Option.match(resume, {
-								onNone: () => undefined,
-								onSome: found => (
-									<Section>
-										<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
-									</Section>
-								)
-							})
-					})}
-					<Section>
-						{Array.map(matches, chapter => (
-							<ChapterRow
-								key={chapter.number}
-								chapter={chapter}
-								fresh={Option.exists(reached, number => chapter.number > number)}
-								onOpen={props.onOpen}
-							/>
-						))}
-					</Section>
-				</ItemGroup>
+				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+					<TopRule />
+					<ItemGroup>
+						{/* A search is about the query, so the resume row waits until the full list is back. */}
+						{Boolean.match(String.isEmpty(needle), {
+							onFalse: () => undefined,
+							onTrue: () =>
+								Option.match(resume, {
+									onNone: () => undefined,
+									onSome: found => (
+										<Section>
+											<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
+										</Section>
+									)
+								})
+						})}
+						<Section>
+							{Array.map(matches, chapter => (
+								<ChapterRow
+									key={chapter.number}
+									chapter={chapter}
+									fresh={Option.exists(reached, number => chapter.number > number)}
+									onOpen={props.onOpen}
+								/>
+							))}
+						</Section>
+					</ItemGroup>
+				</VStack>
 			)
 		}
 	)

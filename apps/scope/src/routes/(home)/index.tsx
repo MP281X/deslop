@@ -30,7 +30,6 @@ import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
@@ -341,7 +340,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 	return (
 		<>
 			<span
-				className="flex w-40 min-w-0 shrink-0 items-center gap-1.5 pl-(--indent) text-left xl:w-80"
+				className="border-border flex w-44 min-w-0 shrink-0 items-center gap-1.5 border-r pr-3 pl-(--indent) text-left xl:w-72"
 				style={{'--indent': `calc(var(--spacing) * 3 + ${Number.min(props.span.depth, 6) * 12}px)`}}
 			>
 				{Option.match(props.mark, {
@@ -352,11 +351,11 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="bg-border/40 relative mx-3 h-2 flex-1">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+						'absolute top-0 left-(--offset) h-2 w-(--length) min-w-0.5',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -422,7 +421,7 @@ function SpanRow(props: {
 		)
 	}
 	return (
-		<div data-selected={open} className="list-row">
+		<div data-selected={open} className={cn('list-row', open && 'border-l-primary border-l-2')}>
 			<Button
 				size="xs"
 				variant={Boolean.match(open, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -624,7 +623,7 @@ function OperationsSkeleton() {
 				<Skeleton className="h-3 w-24" />
 			</div>
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-12 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
 					<Skeleton className="size-3.5 shrink-0" />
 					<Skeleton className="h-3.5 min-w-0 flex-1" />
 					<Skeleton className="h-3 w-6 shrink-0" />
@@ -641,7 +640,7 @@ function TracesSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Traces" className="flex flex-col">
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-12 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
 					<Skeleton className="h-3 w-8 shrink-0" />
 					<Skeleton className="h-3 min-w-0 flex-1" />
 					<Skeleton className="size-1.5 shrink-0" />
@@ -673,55 +672,63 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 	})
 }
 
-// An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
+// An app's mark and name at the top of its operations, sticky below the column head so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
+		<div className="bg-background sticky top-8 z-10 flex h-8 shrink-0 items-center gap-2 border-b px-3">
 			<AppMark app={props.app} />
-			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
+			<span className="text-muted-foreground text-label tracking-label min-w-0 truncate font-mono font-medium uppercase">
 				{props.app.name}
 			</span>
 		</div>
 	)
 }
 
-// One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
+// One operation in the table: device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
+	const failing = props.operation.failures > 0
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div
+			role="listitem"
+			className={cn('list-row', props.active && 'border-l-primary border-l-2')}
+			data-selected={props.active}
+		>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-12 w-full"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
-					{DEVICES[props.operation.runtime]}
-					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
-					{props.operation.failures > 0 && (
-						<span className="flex w-10 shrink-0 justify-end max-sm:w-8">
-							<Badge variant="destructive" className="shrink-0" title={`${props.operation.failures} failed`}>
-								<StatusDot status="error" />
-								{props.operation.failures}
-								<span className="sr-only"> failed</span>
-							</Badge>
-						</span>
-					)}
+				<span className="grid-operations grid w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
+					<span className="flex justify-center">{DEVICES[props.operation.runtime]}</span>
+					<span className="min-w-0 truncate text-left font-mono text-sm">{props.operation.name}</span>
 					<span
-						className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-lg:hidden"
+						className={cn(
+							'shrink-0 text-right font-mono text-xs tabular-nums',
+							Boolean.match(failing, {
+								onFalse: () => 'text-muted-foreground',
+								onTrue: () => 'text-destructive font-medium'
+							})
+						)}
+						title={`${props.operation.failures} failed`}
+					>
+						{Boolean.match(failing, {onFalse: () => '—', onTrue: () => count.format(props.operation.failures)})}
+						<span className="sr-only"> failed</span>
+					</span>
+					<span
+						className="text-muted-foreground shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden"
 						title="Runs"
 					>
 						{count.format(props.operation.count)}×<span className="sr-only"> runs</span>
 					</span>
 					<span
-						className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:w-12"
+						className="text-muted-foreground shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums"
 						title="Typical"
 					>
 						<span className="sr-only">typical </span>
 						{durationOf(props.operation.p50Ms)}
 					</span>
-					<CaretRightIcon className="text-muted-foreground hidden size-3.5 shrink-0 sm:max-lg:block" />
 				</span>
 			</Button>
 		</div>
@@ -740,7 +747,7 @@ function OperationsPane(props: {
 	return (
 		<Section
 			title="By app"
-			headerClassName="px-3"
+			headerClassName="px-6"
 			meta={Option.match(AsyncResult.value(current), {
 				onNone: () => undefined,
 				onSome: overview => {
@@ -770,6 +777,16 @@ function OperationsPane(props: {
 							onNonEmpty: apps => (
 								<ScrollArea className="min-h-0 flex-1">
 									<div className="flex flex-col">
+										<div
+											aria-hidden="true"
+											className="bg-background text-muted-foreground grid-operations text-label tracking-label sticky top-0 z-20 grid h-8 shrink-0 items-center gap-2 border-b px-3 font-mono uppercase"
+										>
+											<span />
+											<span>Operation</span>
+											<span className="text-right">Fail</span>
+											<span className="text-right max-sm:hidden">Runs</span>
+											<span className="text-right">Typ.</span>
+										</div>
 										{Array.map(apps, app => (
 											<section key={app.name} aria-label={app.name}>
 												<AppHeading app={app} />
@@ -804,17 +821,21 @@ function OperationsPane(props: {
 // One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div
+			role="listitem"
+			className={cn('list-row', props.active && 'border-l-primary border-l-2')}
+			data-selected={props.active}
+		>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-12 w-full"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="flex w-full min-w-0 items-center gap-3 font-normal tracking-normal normal-case">
+				<span className="grid-traces grid w-full min-w-0 items-center gap-3 font-normal tracking-normal normal-case">
 					<span
-						className="text-muted-foreground w-10 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums"
+						className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap tabular-nums"
 						title={Option.match(Number.parse(String.slice(0, -6)(props.trace.time)), {
 							onNone: () => '—',
 							onSome: timestamp => clock.format(timestamp)
@@ -822,10 +843,10 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 					>
 						{ageOf(props.trace.time, props.now)}
 					</span>
-					<span className="text-muted-foreground min-w-0 flex-1 truncate text-left font-mono text-xs">
+					<span className="text-muted-foreground min-w-0 truncate text-left font-mono text-xs">
 						{String.slice(0, 8)(props.trace.id)}
 					</span>
-					<span className="flex w-4 shrink-0 justify-end">
+					<span className="flex shrink-0 justify-end">
 						{props.trace.failure !== undefined && (
 							<span
 								role="img"
@@ -837,7 +858,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 							</span>
 						)}
 					</span>
-					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+					<span className="shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
 					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 lg:hidden" />
@@ -858,7 +879,7 @@ function TracesPane(props: {
 	return (
 		<Section
 			title="Traces"
-			headerClassName="px-3"
+			headerClassName="px-6"
 			meta={Option.match(active, {
 				onNone: () => undefined,
 				onSome: current =>
@@ -1121,7 +1142,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function renderPage(children: ReactNode) {
 	return (
-		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+		<Page width="full" className="grid-page h-full min-h-0 gap-0">
 			<h1 className="sr-only">Scope</h1>
 			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
 		</Page>

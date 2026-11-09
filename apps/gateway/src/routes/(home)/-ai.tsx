@@ -233,16 +233,22 @@ export function AiControls(props: {
 // A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
 	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
+		<h2 className="text-muted-foreground text-label tracking-label border-b pb-1 font-mono font-medium uppercase">
+			{props.children}
+		</h2>
 	)
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
 function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div
+			role="listitem"
+			className={cn('list-row', props.selected === true && 'border-l-primary border-l-2')}
+			data-selected={props.selected}
+		>
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-12 min-w-0 items-center gap-3 px-0">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -367,67 +373,71 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
-			<BarChart
-				accessibilityLayer
-				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
-				className="[&_[tabindex]]:outline-hidden"
-				data={rows}
-				margin={{bottom: 0, left: 0, right: 0, top: 4}}
-				onClick={state =>
-					Option.map(
-						Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
-						props.onBucket
-					)
-				}
-			>
-				<XAxis
-					dataKey="bucket"
-					ticks={Array.filter(
-						Array.map(rows, row => row.bucket),
-						(_, index) => (props.range.count - 1 - index) % step === 0
-					)}
-					interval={0}
-					tickLine={false}
-					axisLine={false}
-					tickMargin={8}
-					tickFormatter={tickLabel(props.range)}
-				/>
-				<ChartTooltip
-					content={
-						<ChartTooltipContent
-							labelFormatter={label =>
-								Option.getOrElse(
-									Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
-										bucketLabel(props.range.bucket, at)
-									),
-									() => ''
-								)
-							}
-							formatter={(shown, name, item) => (
-								<>
-									<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
-									<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
-									<span className="text-foreground font-mono font-medium tabular-nums">
-										{amount(props.metric, shown)}
-									</span>
-								</>
-							)}
-						/>
+		<div className="border-y">
+			<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
+				<BarChart
+					accessibilityLayer
+					barCategoryGap={2}
+					barGap={0}
+					// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
+					className="[&_[tabindex]]:outline-hidden"
+					data={rows}
+					margin={{bottom: 0, left: 0, right: 0, top: 4}}
+					onClick={state =>
+						Option.map(
+							Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
+							props.onBucket
+						)
 					}
-				/>
-				{Array.map(props.apps, app => (
-					<Bar
-						key={app.key}
-						dataKey={app.key}
-						stackId="usage"
-						fill={`var(--color-${app.key})`}
-						isAnimationActive={false}
+				>
+					<XAxis
+						dataKey="bucket"
+						ticks={Array.filter(
+							Array.map(rows, row => row.bucket),
+							(_, index) => (props.range.count - 1 - index) % step === 0
+						)}
+						interval={0}
+						tickLine={false}
+						axisLine={false}
+						tickMargin={8}
+						tickFormatter={tickLabel(props.range)}
 					/>
-				))}
-				<ChartLegend content={<ChartLegendContent />} />
-			</BarChart>
-		</ChartContainer>
+					<ChartTooltip
+						content={
+							<ChartTooltipContent
+								labelFormatter={label =>
+									Option.getOrElse(
+										Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
+											bucketLabel(props.range.bucket, at)
+										),
+										() => ''
+									)
+								}
+								formatter={(shown, name, item) => (
+									<>
+										<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
+										<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
+										<span className="text-foreground font-mono font-medium tabular-nums">
+											{amount(props.metric, shown)}
+										</span>
+									</>
+								)}
+							/>
+						}
+					/>
+					{Array.map(props.apps, app => (
+						<Bar
+							key={app.key}
+							dataKey={app.key}
+							stackId="usage"
+							fill={`var(--color-${app.key})`}
+							isAnimationActive={false}
+						/>
+					))}
+					<ChartLegend content={<ChartLegendContent />} />
+				</BarChart>
+			</ChartContainer>
+		</div>
 	)
 }
 
@@ -452,21 +462,21 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance; a desktop adds the daily average.
+// The period at a glance: three large figures across the grid, with the daily average as their one caption.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
-			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
-			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
-			<span className="max-sm:hidden">
-				<Stat
-					label="Per day"
-					value={cost(
-						props.report.totals.costUsd /
-							Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
-					)}
-				/>
+		<div className="flex flex-col gap-3 border-y py-4">
+			<div className="grid grid-cols-3 gap-6">
+				<Stat large label="Spent" value={cost(props.report.totals.costUsd)} />
+				<Stat large label="Tokens" value={compact.format(props.report.totals.tokens)} />
+				<Stat large label="Calls" value={count.format(props.report.totals.calls)} />
+			</div>
+			<span className="text-muted-foreground text-label tracking-label font-mono uppercase max-sm:hidden">
+				Per day{' '}
+				{cost(
+					props.report.totals.costUsd /
+						Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
+				)}
 			</span>
 		</div>
 	)

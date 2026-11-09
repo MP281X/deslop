@@ -4,6 +4,7 @@ import {Array, Boolean, Cause, Result} from 'effect'
 
 import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
+	accessibilityHidden,
 	buttonBorderShape,
 	buttonStyle,
 	clipShape,
@@ -31,6 +32,11 @@ import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
 const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
+
+// The signal rule under the navigation bar, the one constant mark on every home screen.
+export function TopRule() {
+	return <Rectangle modifiers={[frame({height: 2}), foregroundStyle(colors.primary), accessibilityHidden(true)]} />
+}
 
 // Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
 export function BlankScreen() {
@@ -80,7 +86,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					onPress={props.onRetry}
 					modifiers={[
 						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonBorderShape('roundedRectangle', 0),
 						controlSize('regular'),
 						tint(colors.destructive)
 					]}
@@ -108,7 +114,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 					onPress={() => props.onSignIn()}
 					modifiers={[
 						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonBorderShape('roundedRectangle', 0),
 						controlSize('large'),
 						tint(props.tint),
 						disabled(props.waiting)

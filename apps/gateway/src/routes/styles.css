@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--pink);
+	--primary: var(--red);
 }
 
 /* A tool call passing through: the dot dims and comes straight back, an opacity change even under reduced motion. */
@@ -14,5 +14,14 @@
 		from {
 			opacity: 0.25;
 		}
+	}
+}
+
+/* The server table: mark, server, host, tools, state; a phone keeps mark, server and state. */
+@utility grid-servers {
+	grid-template-columns: 1.25rem minmax(7rem, 14rem) minmax(0, 1fr) 2.5rem 5rem;
+
+	@media (width < 40rem) {
+		grid-template-columns: 1.25rem minmax(0, 1fr) 5rem;
 	}
 }

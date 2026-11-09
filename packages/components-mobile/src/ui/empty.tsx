@@ -51,7 +51,7 @@ export function EmptyMedia(props: {systemImage: ImageProps['systemName']}) {
 
 export function EmptyTitle(props: {children: string}) {
 	return (
-		<Text modifiers={[font({textStyle: 'title2', weight: 'semibold'}), foregroundStyle(colors.foreground)]}>
+		<Text modifiers={[font({textStyle: 'title', weight: 'semibold'}), foregroundStyle(colors.foreground)]}>
 			{props.children}
 		</Text>
 	)

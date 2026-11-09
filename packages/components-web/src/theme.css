@@ -4,40 +4,41 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
-/* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
+/* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its signal in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
-	--red: oklch(from #c92b38 l c h);
-	--orange: oklch(from #b64b11 l c h);
-	--amber: oklch(from #91601d l c h);
-	--ivory: oklch(from #686868 l c h);
-	--cyan: oklch(from #25777a l c h);
-	--blue: oklch(from #345dad l c h);
-	--purple: oklch(from #74519b l c h);
-	--pink: oklch(from #a63c69 l c h);
-	--slate: oklch(from #526887 l c h);
-	--coral: oklch(from #bd4630 l c h);
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
+	/* Swiss Signal: black, white and signal red, with status colours allowed their one meaning. */
+	--red: #d92f26;
+	--orange: #d92f26;
+	--amber: #8a5a00;
+	--ivory: #4a4a46;
+	--cyan: #2f6b4f;
+	--blue: #0e0e0e;
+	--purple: #55554f;
+	--pink: #d92f26;
+	--slate: #6f6f6a;
+	--coral: #d92f26;
+	--machine-dev: #0e0e0e;
+	--machine-desktop: #6f6f6a;
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
+	--background: #f7f7f4;
+	--foreground: #0e0e0e;
+	--card: #ffffff;
 	--popover: #ffffff;
 	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--secondary: #ecece7;
+	--muted: #ecece7;
+	--muted-foreground: #6f6f6a;
+	--accent: #e4e4de;
+	--border: #d9d9d4;
+	--input: #c6c6c0;
+	--surface: #f0f0eb;
+	--selection: #f2d9d6;
+	--selection-foreground: #0e0e0e;
 
-	--primary: var(--slate);
+	--primary: var(--red);
 	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
+	--warning: #8a5a00;
+	--success: #2f6b4f;
 	--ring: var(--primary);
 
 	--card-foreground: var(--foreground);
@@ -47,11 +48,12 @@
 	--surface-foreground: var(--foreground);
 
 	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
-	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	--chart-1: var(--red);
+	--chart-2: var(--foreground);
+	--chart-3: var(--muted-foreground);
+	--chart-4: var(--warning);
+	--chart-5: var(--success);
+	--chart-6: var(--ivory);
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -67,35 +69,35 @@
 /* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
-		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
-		--amber: oklch(from #e6c384 l c h);
-		--ivory: oklch(from #dcd7ba l c h);
-		--cyan: oklch(from #a3d4d5 l c h);
-		--blue: oklch(from #7e9cd8 l c h);
-		--purple: oklch(from #957fb8 l c h);
-		--pink: oklch(from #d27e99 l c h);
-		--slate: oklch(from #9cabca l c h);
-		--coral: oklch(from #fd7357 l c h);
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		--red: #ff3b30;
+		--orange: #ff3b30;
+		--amber: #f0b429;
+		--ivory: #fafaf7;
+		--cyan: #8fbf9f;
+		--blue: #fafaf7;
+		--purple: #6e6e6a;
+		--pink: #ff3b30;
+		--slate: #a4a4a0;
+		--coral: #ff3b30;
+		--machine-dev: #fafaf7;
+		--machine-desktop: #a4a4a0;
+		--warning: #f0b429;
+		--success: #8fbf9f;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #0e0e0e;
+		--foreground: #fafaf7;
+		--card: #171717;
+		--popover: #1c1c1c;
+		--primary-foreground: #ffffff;
+		--secondary: #1f1f1f;
+		--muted: #1f1f1f;
+		--muted-foreground: #a4a4a0;
+		--accent: #262626;
+		--border: #2e2e2e;
+		--input: #383838;
+		--surface: #141414;
+		--selection: #3a1f1d;
+		--selection-foreground: #fafaf7;
 	}
 }
 
@@ -103,12 +105,18 @@
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--tracking-label: 0.1em;
+	--tracking-strong: -0.03em;
+	--tracking-display: -0.04em;
+	--text-label: 0.625rem;
+	--text-figure-sm: 1.75rem;
+	--text-figure: 2.5rem;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -132,6 +140,7 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -160,14 +169,31 @@
 	image-rendering: pixelated;
 }
 
-/* Sera's display face, for the one heading that names a view. */
-/* A ruled row: the fill may meet the pane edge, the divider never does. */
+/* The masthead's three columns, the page section header's index-title-meta, and a label over its value. */
+@utility grid-masthead {
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+@utility grid-section {
+	grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+}
+
+@utility grid-label-value {
+	grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* A compact chart legend names each series once, in as many columns as fit. */
+@utility grid-legend {
+	grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+}
+
+/* A ruled row: one 1px rule across the table, the way a Swiss ledger separates lines. */
 @utility list-row {
 	position: relative;
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 4);
+		inset-inline: 0;
 		bottom: 0;
 		height: 1px;
 		background: var(--border);
@@ -175,10 +201,57 @@
 	}
 	&:hover::after,
 	&:focus-within::after,
-	&[data-selected='true']::after,
-	&:has(+ :hover)::after,
-	&:has(+ [data-selected='true'])::after {
+	&[data-selected='true']::after {
 		opacity: 0;
+	}
+}
+
+@layer components {
+	/* The page is a strict twelve-column grid; a child spans it unless the app sets its own columns. */
+	.page-columns {
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		counter-reset: section;
+	}
+	.page-columns > * {
+		grid-column: 1 / -1;
+		min-width: 0;
+	}
+
+	/* Section numbers count in reading order, in the signal red. */
+	.section-number::before {
+		counter-increment: section;
+		content: counter(section, decimal-leading-zero);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		line-height: 1.2;
+		letter-spacing: 0.1em;
+		color: var(--primary);
+	}
+
+	/* Tabs are numbered in mono; a phone drops the number so the label keeps its room. */
+	.app-bar-tabs {
+		counter-reset: tab;
+	}
+	.app-bar-tab::before {
+		counter-increment: tab;
+		content: counter(tab, decimal-leading-zero) ' /';
+		margin-right: 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 500;
+		letter-spacing: 0.1em;
+		color: var(--muted-foreground);
+	}
+	.app-bar-tab[aria-current='page']::before {
+		color: var(--primary);
+	}
+	@media (width < 40rem) {
+		.app-bar-tab::before {
+			content: none;
+			margin-right: 0;
+		}
 	}
 }
 
@@ -189,6 +262,8 @@
 
 	body {
 		@apply bg-background text-foreground;
+		font-size: 0.875rem;
+		line-height: 1.45;
 	}
 
 	/* Every app is a full-height shell whose own panes scroll, so the document never does. */
@@ -263,10 +338,14 @@
 	}
 }
 
+/* Reduced motion removes fades and movement; state feedback stays. */
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
 	*::after {
 		scroll-behavior: auto !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
 	}
 }

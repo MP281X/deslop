@@ -3,34 +3,35 @@ import {DynamicColorIOS} from 'react-native'
 
 // Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
-	card: DynamicColorIOS({dark: '#141313', light: '#f8f7f4'}),
-	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
-	foreground: DynamicColorIOS({dark: '#e3e1db', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#a19e96', light: '#64625d'}),
-	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	surface: DynamicColorIOS({dark: '#191817', light: '#f2f1ed'}),
-	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
+	background: DynamicColorIOS({dark: '#0e0e0e', light: '#f7f7f4'}),
+	border: DynamicColorIOS({dark: '#2e2e2e', light: '#d9d9d4'}),
+	card: DynamicColorIOS({dark: '#171717', light: '#ffffff'}),
+	destructive: DynamicColorIOS({dark: '#ff3b30', light: '#d92f26'}),
+	foreground: DynamicColorIOS({dark: '#fafaf7', light: '#0e0e0e'}),
+	mutedForeground: DynamicColorIOS({dark: '#a4a4a0', light: '#6f6f6a'}),
+	primary: DynamicColorIOS({dark: '#ff3b30', light: '#d92f26'}),
+	primaryForeground: DynamicColorIOS({dark: '#ffffff', light: '#ffffff'}),
+	surface: DynamicColorIOS({dark: '#141414', light: '#f0f0eb'}),
+	warning: DynamicColorIOS({dark: '#f0b429', light: '#8a5a00'})
 }
 
-// Each app's primary tints its controls, live states and icon.
+// Each app's identity tint: black, white and the signal, never a rainbow.
 export const hues = {
-	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
-	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),
-	cyan: DynamicColorIOS({dark: '#a3d4d5', light: '#25777a'}),
-	ivory: DynamicColorIOS({dark: '#dcd7ba', light: '#686868'}),
-	orange: DynamicColorIOS({dark: '#ffa066', light: '#b64b11'}),
-	pink: DynamicColorIOS({dark: '#d27e99', light: '#a63c69'}),
-	purple: DynamicColorIOS({dark: '#957fb8', light: '#74519b'}),
-	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
+	amber: DynamicColorIOS({dark: '#f0b429', light: '#8a5a00'}),
+	blue: DynamicColorIOS({dark: '#fafaf7', light: '#0e0e0e'}),
+	cyan: DynamicColorIOS({dark: '#8fbf9f', light: '#2f6b4f'}),
+	ivory: DynamicColorIOS({dark: '#fafaf7', light: '#4a4a46'}),
+	orange: DynamicColorIOS({dark: '#ff3b30', light: '#d92f26'}),
+	pink: DynamicColorIOS({dark: '#ff3b30', light: '#d92f26'}),
+	purple: DynamicColorIOS({dark: '#6e6e6a', light: '#55554f'}),
+	slate: DynamicColorIOS({dark: '#a4a4a0', light: '#6f6f6a'})
 }
 
 // The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
 export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
 
-// Concentric with the system's list rows, sheets and icon tiles.
-export const radius = 12
+// Swiss Signal is square: the system's list rows, sheets and icon tiles take no radius.
+export const radius = 0
 
 // System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
 export const text = {
@@ -41,5 +42,5 @@ export const text = {
 	display: font({textStyle: 'largeTitle', weight: 'bold'}),
 	label: font({textStyle: 'caption2', weight: 'semibold'}),
 	row: font({textStyle: 'body', weight: 'semibold'}),
-	title: font({textStyle: 'headline'})
+	title: font({textStyle: 'headline', weight: 'semibold'})
 }

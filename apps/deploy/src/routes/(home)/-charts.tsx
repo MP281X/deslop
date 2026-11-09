@@ -65,9 +65,9 @@ export function UsageChart(props: {
 	)
 	return (
 		<figure className={cn('flex min-h-0 flex-col', props.className)} aria-label={props.label}>
-			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2 text-xs">
-				<span className="tracking-label font-semibold uppercase">{props.label}</span>
-				<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tabular-nums" title={valueText}>
+			<figcaption className="grid-label-value text-label tracking-label mb-2 grid items-baseline gap-2 border-b pb-1.5 font-mono uppercase">
+				<span className="font-medium">{props.label}</span>
+				<span className="text-muted-foreground min-w-0 truncate text-right tabular-nums" title={valueText}>
 					{valueText}
 				</span>
 			</figcaption>
@@ -170,13 +170,23 @@ export function UsageChart(props: {
 										x2={x}
 										y1="0"
 										y2={HEIGHT}
-										stroke="var(--foreground)"
-										strokeOpacity="0.35"
+										stroke="var(--primary)"
+										strokeWidth="1"
 										vectorEffect="non-scaling-stroke"
 									/>
 								)
 							}
 						})}
+						{/* The right edge is the live moment: one signal-red rule closes the recorded history. */}
+						<line
+							x1="100"
+							x2="100"
+							y1="0"
+							y2={HEIGHT}
+							stroke="var(--primary)"
+							strokeWidth="1.5"
+							vectorEffect="non-scaling-stroke"
+						/>
 						<line x1="0" x2="100" y1={HEIGHT} y2={HEIGHT} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
 					</svg>
 				</div>
@@ -190,7 +200,7 @@ export function Cores(props: {history: MachineHistory}) {
 	const samples = Array.map(props.history.samples, sample => Array.groupBy(sample.cores ?? [], core => core.id))
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
-			<figcaption className="tracking-label text-muted-foreground mb-1.5 text-xs font-semibold uppercase">
+			<figcaption className="text-muted-foreground text-label tracking-label mb-2 border-b pb-1.5 font-mono font-medium uppercase">
 				Cores
 			</figcaption>
 			{Array.match(Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? [], {
@@ -243,7 +253,11 @@ export function Cores(props: {history: MachineHistory}) {
 export function TimeAxis(props: {history: MachineHistory; minutes: number}) {
 	return (
 		<div aria-hidden="true">
-			<svg width="100%" height="16" className="text-muted-foreground overflow-visible font-mono text-xs tabular-nums">
+			<svg
+				width="100%"
+				height="16"
+				className="text-muted-foreground text-label overflow-visible font-mono tabular-nums"
+			>
 				{Array.map(
 					Array.filter(chartTicks(props.minutes, props.history.time), tick => tick.label),
 					tick => (

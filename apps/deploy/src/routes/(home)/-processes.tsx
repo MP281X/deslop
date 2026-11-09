@@ -16,7 +16,7 @@ const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
 		<div
-			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
+			className={cn('list-row h-12 w-full min-w-0', props.padded === true && 'px-6')}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
 		>
 			<Item

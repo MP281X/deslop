@@ -22,8 +22,8 @@ import {colors, space, text} from '#components/theme.ts'
 
 // Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
 export const itemRow = [
-	frame({minHeight: 56}),
-	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
+	frame({minHeight: 40}),
+	listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
@@ -78,7 +78,7 @@ export function ItemContent(props: {children: ReactNode; modifiers?: ViewModifie
 
 export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
-		<Text modifiers={[...(props.modifiers ?? []), text.row, foregroundStyle(colors.foreground), lineLimit(2)]}>
+		<Text modifiers={[...(props.modifiers ?? []), text.title, foregroundStyle(colors.foreground), lineLimit(2)]}>
 			{props.children}
 		</Text>
 	)
@@ -86,7 +86,7 @@ export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]})
 
 export function ItemDescription(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
-		<Text modifiers={[...(props.modifiers ?? []), text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+		<Text modifiers={[...(props.modifiers ?? []), text.data, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 			{props.children}
 		</Text>
 	)
