@@ -6,8 +6,9 @@ import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
 export type ActivityPropsJson = typeof ActivityPropsJson.Type
 export const ActivityPropsJson = Schema.fromJsonString(ActivityProps)
 
-export type JwtPart = typeof JwtPart.Type
-export const JwtPart = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Finite])))
+// The provider token's claims as JSON; APNs takes at most an hour.
+export type JwtClaims = typeof JwtClaims.Type
+export const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: Schema.Finite, iss: Schema.String}))
 
 export class PushError extends Schema.TaggedError<PushError>()('PushError', {
 	cause: Schema.optional(Schema.Defect()),

@@ -25,9 +25,9 @@ import {
 	pipe
 } from 'effect'
 
-import {KeyFormat, Signature} from 'effect/crypto'
-import {Base64, Base64Url} from 'effect/encoding'
+import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {Jwk, Jws} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
 import {ACTIVITY_NAME, activeWindow, activityProps, HOUR, MINUTE, urgencyOf} from '#services/bookings/lib/utils.ts'
@@ -45,7 +45,7 @@ import {
 } from '#services/push/lib/utils.ts'
 import type {Alert} from '#services/push/lib/utils.ts'
 import type {ActivityClaim, ActivityRecord, ActivityToken, Bundle, Device} from '#services/push/schema.ts'
-import {ActivityPropsJson, ApnsReason, JwtPart, PushError, PushState} from '#services/push/schema.ts'
+import {ActivityPropsJson, ApnsReason, JwtClaims, PushError, PushState} from '#services/push/schema.ts'
 
 // The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
 const BUNDLES = {
@@ -170,17 +170,21 @@ export class Push extends Context.Service<
 					const der = yield* Effect.fromResult(
 						Base64.decode(String.replaceAll(/-----[^-]+-----|\\n|\s/gu, '')(Redacted.value(found.privateKey)))
 					)
-					return yield* KeyFormat.decodePrivate(KeyFormat.pkcs8, Signature.ecdsaP256, der)
+					return yield* Jwk.importPkcs8(Redacted.make(der), 'ES256', {kid: found.keyId})
 				})
 			)
-			const signature = yield* Signature.Signature
 			const bearer = yield* Ref.make(Option.none<{at: number; token: string}>())
 			const retrying = yield* Ref.make(HashMap.empty<string, {answer: Answer; until: number}>())
 
 			const sign = Effect.fnUntraced(function* (now: number) {
 				const found = yield* Effect.fromOption(signer)
-				const input = `${Base64Url.encode(yield* Schema.encodeEffect(JwtPart)({alg: 'ES256', kid: found.keyId}))}.${Base64Url.encode(yield* Schema.encodeEffect(JwtPart)({iat: seconds(now), iss: found.teamId}))}`
-				const token = `${input}.${Base64Url.encode(yield* signature.sign(yield* signingKey, new TextEncoder().encode(input)))}`
+				const token = Redacted.value(
+					yield* Jws.sign(
+						new TextEncoder().encode(yield* Schema.encodeEffect(JwtClaims)({iat: seconds(now), iss: found.teamId})),
+						yield* signingKey,
+						{kid: found.keyId}
+					)
+				)
 				yield* Ref.set(bearer, Option.some({at: now, token}))
 				return token
 			})

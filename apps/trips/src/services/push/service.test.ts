@@ -13,6 +13,7 @@ import {
 	Option,
 	Queue,
 	Ref,
+	Schema,
 	Stream,
 	String,
 	pipe
@@ -22,6 +23,7 @@ import {KeyFormat, Signature} from 'effect/crypto'
 import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import type {HttpClientRequest} from 'effect/http'
+import {Jwk, Jws} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
@@ -29,7 +31,7 @@ import {HOUR} from '#services/bookings/lib/utils.ts'
 import {Flight} from '#services/bookings/schema.ts'
 import type {BookingList} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {PushState} from '#services/push/schema.ts'
+import {JwtClaims, PushState} from '#services/push/schema.ts'
 import type {ActivityRecord} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
@@ -126,11 +128,30 @@ function open(
 			),
 			Push
 		)
-		return {calls, commits, now, push, responses, snapshot: Effect.flatMap(saved.get('push'), Effect.fromOption)}
+		return {calls, commits, key, now, push, responses, snapshot: Effect.flatMap(saved.get('push'), Effect.fromOption)}
 	})
 }
 
 it.layer(NodeCrypto.layer)(test => {
+	test.effect(
+		'signs the APNs bearer as an ES256 compact JWS the key verifies',
+		Effect.fnUntraced(function* () {
+			const fixture = yield* open(Effect.succeed(200), {...RECORD, token: TOKEN_A})
+			const request = yield* Queue.take(fixture.calls)
+			const verified = yield* Jws.verify(
+				String.slice('bearer '.length)(request.headers['authorization'] ?? ''),
+				yield* Jwk.importSpki(yield* KeyFormat.encode(KeyFormat.spki, fixture.key.publicKey), 'ES256')
+			)
+			const claims = yield* Effect.fromOption(
+				Schema.decodeOption(JwtClaims)(new TextDecoder().decode(verified.payload))
+			)
+			assert.deepStrictEqual(
+				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, claims.iat],
+				['ES256', 'fixture', 'fixture', Math.floor(fixture.now / 1000)]
+			)
+		})
+	)
+
 	test.effect(
 		'retries a refused start without blocking another trip or churning its broadcast channels',
 		Effect.fnUntraced(function* () {
