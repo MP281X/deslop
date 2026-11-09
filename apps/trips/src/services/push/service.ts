@@ -30,20 +30,20 @@ import {Base64, Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {
-	ACTIVITY_NAME,
-	activeWindow,
-	activityProps,
-	alertsFor,
-	HOUR,
-	MINUTE,
-	startAlert,
-	urgencyOf
-} from '#services/bookings/lib/utils.ts'
-import type {Alert} from '#services/bookings/lib/utils.ts'
+import {ACTIVITY_NAME, activeWindow, activityProps, HOUR, MINUTE, urgencyOf} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {alertKey, announced, holds, showPlan, expiredActivities, retainPushState} from '#services/push/lib/utils.ts'
+import {
+	alertKey,
+	alertsFor,
+	announced,
+	holds,
+	showPlan,
+	expiredActivities,
+	retainPushState,
+	startAlert
+} from '#services/push/lib/utils.ts'
+import type {Alert} from '#services/push/lib/utils.ts'
 import type {ActivityClaim, ActivityRecord, ActivityToken, Bundle, Device} from '#services/push/schema.ts'
 import {ActivityPropsJson, ApnsReason, JwtPart, PushError, PushState} from '#services/push/schema.ts'
 

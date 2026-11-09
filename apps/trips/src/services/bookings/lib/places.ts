@@ -1,4 +1,5 @@
 import {
+	Array,
 	Cache,
 	Clock,
 	Context,
@@ -9,6 +10,7 @@ import {
 	Number,
 	Option,
 	Record,
+	Result,
 	Schedule,
 	Schema,
 	String,
@@ -18,9 +20,72 @@ import {
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {airportIndex, stationMatch, DAY} from '#services/bookings/lib/utils.ts'
+import {DAY} from '#services/bookings/lib/utils.ts'
 import type {Place} from '#services/bookings/schema.ts'
-import {AirportIndex, BookingsError, StopMatches} from '#services/bookings/schema.ts'
+import {Airport, AirportIndex, BookingsError, StopMatches} from '#services/bookings/schema.ts'
+
+const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
+const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
+
+function airportIndex(all: Record<string, unknown>, fetchedAt: number) {
+	return {
+		airports: Record.fromEntries(
+			Array.filterMap(Record.values(all), entry =>
+				pipe(
+					Schema.decodeUnknownOption(Airport)(entry),
+					Option.filter(airport => String.isNonEmpty(airport.iata) && String.isNonEmpty(airport.tz)),
+					Option.map(airport => [airport.iata, airport] as const),
+					Option.match({onNone: () => Result.failVoid, onSome: Result.succeed})
+				)
+			)
+		),
+		fetchedAt
+	}
+}
+
+function words(text: string) {
+	return pipe(
+		text,
+		String.normalize('NFD'),
+		String.replaceAll(/[̀-ͯ]/gu, ''),
+		String.toLowerCase,
+		String.split(/[^a-z0-9]+/u)
+	)
+}
+
+function stationMatch(name: string, matches: StopMatches) {
+	const named = Array.filter(matches, match => {
+		const own = words(
+			`${match.name} ${Array.join(
+				Array.map(match.areas ?? [], area => area.name),
+				' '
+			)}`
+		)
+		return Option.exists(
+			Array.findFirst(words(name), word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
+			word => Array.contains(own, word)
+		)
+	})
+	return Option.map(
+		Option.orElse(
+			Array.findFirst(named, match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
+			() => Array.head(named)
+		),
+		match =>
+			({
+				...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
+				code: match.id,
+				latitude: match.lat,
+				longitude: match.lon,
+				name: pipe(
+					String.toLowerCase(match.name),
+					String.split(' '),
+					Array.map(word => `${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}`),
+					Array.join(' ')
+				)
+			}) satisfies Place
+	)
+}
 
 // Airports come from an open dataset with their zone and coordinates; stations from Transitous, which also names the Trenitalia station code.
 export class Places extends Context.Service<

@@ -49,7 +49,6 @@ import {
 	departureOf,
 	endOf,
 	HOUR,
-	isStale,
 	labelled,
 	MINUTE,
 	stayAfter,
@@ -67,6 +66,7 @@ import type {
 } from '#services/bookings/schema.ts'
 import {Booking, BookingsError, IMAGE_BYTES, Leg} from '#services/bookings/schema.ts'
 import {Bundle} from '#services/push/schema.ts'
+import {isStale} from '#services/tracking/lib/utils.ts'
 
 const SERVER = 'https://trips.mp281x.xyz'
 const CALENDAR = 'Trips'

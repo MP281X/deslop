@@ -1,6 +1,6 @@
-import {Array, Boolean, DateTime, Number, Option, Order, Record, Result, Schema, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
 
-import {ActivityProps, Airport} from '#services/bookings/schema.ts'
+import {ActivityProps} from '#services/bookings/schema.ts'
 import type {
 	Booking,
 	BookingId,
@@ -11,15 +11,10 @@ import type {
 	Leg,
 	LocalTime,
 	Stay,
-	Place,
-	StopMatches,
 	Tone,
 	Train,
 	TrainPhase
 } from '#services/bookings/schema.ts'
-
-const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
-const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
 
 const TRAIN_BRANDS: Record.ReadonlyRecord<string, string> = {
 	frecciabianca: 'FB',
@@ -36,73 +31,13 @@ export const MINUTE = 60_000
 export const HOUR = 60 * MINUTE
 export const DAY = 24 * HOUR
 
-const AIRPORT_LEAD = 2 * HOUR
+export const AIRPORT_LEAD = 2 * HOUR
 const STATION_LEAD = 15 * MINUTE
 
 // ActivityKit ends a Live Activity after eight hours; half an hour stays in reserve for delays.
 export const ACTIVITY_LIFETIME = 7.5 * HOUR
 
 export const ACTIVITY_NAME = 'JourneyActivity'
-
-export function airportIndex(all: Record<string, unknown>, fetchedAt: number) {
-	return {
-		airports: Record.fromEntries(
-			Array.filterMap(Record.values(all), entry =>
-				pipe(
-					Schema.decodeUnknownOption(Airport)(entry),
-					Option.filter(airport => String.isNonEmpty(airport.iata) && String.isNonEmpty(airport.tz)),
-					Option.map(airport => [airport.iata, airport] as const),
-					Option.match({onNone: () => Result.failVoid, onSome: Result.succeed})
-				)
-			)
-		),
-		fetchedAt
-	}
-}
-
-function words(text: string) {
-	return pipe(
-		text,
-		String.normalize('NFD'),
-		String.replaceAll(/[̀-ͯ]/gu, ''),
-		String.toLowerCase,
-		String.split(/[^a-z0-9]+/u)
-	)
-}
-
-export function stationMatch(name: string, matches: StopMatches) {
-	const named = Array.filter(matches, match => {
-		const own = words(
-			`${match.name} ${Array.join(
-				Array.map(match.areas ?? [], area => area.name),
-				' '
-			)}`
-		)
-		return Option.exists(
-			Array.findFirst(words(name), word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
-			word => Array.contains(own, word)
-		)
-	})
-	return Option.map(
-		Option.orElse(
-			Array.findFirst(named, match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
-			() => Array.head(named)
-		),
-		match =>
-			({
-				...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
-				code: match.id,
-				latitude: match.lat,
-				longitude: match.lon,
-				name: pipe(
-					String.toLowerCase(match.name),
-					String.split(' '),
-					Array.map(word => `${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}`),
-					Array.join(' ')
-				)
-			}) satisfies Place
-	)
-}
 
 // A time with an offset or Z stands for itself.
 export function instantOf(time: LocalTime, timeZone: string) {
@@ -113,7 +48,7 @@ export function instantOf(time: LocalTime, timeZone: string) {
 	return pipe(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), Option.map(DateTime.toEpochMillis))
 }
 
-function clockAt(time: number, timeZone?: string) {
+export function clockAt(time: number, timeZone?: string) {
 	return DateTime.format(DateTime.makeUnsafe(time), {
 		hour: '2-digit',
 		hourCycle: 'h23',
@@ -132,7 +67,7 @@ export function labelled(label: string, value?: string) {
 	return Option.map(Option.fromUndefinedOr(value), found => `${label} ${found}`)
 }
 
-function line(parts: Option.Option<string>[]) {
+export function line(parts: Option.Option<string>[]) {
 	return Array.join(Array.getSomes(parts), ' · ')
 }
 
@@ -275,57 +210,6 @@ export function upsert(current: BookingList, incoming: BookingList) {
 			}
 		)
 	)
-}
-
-function flightInterval(flight: Flight, now: number) {
-	const departure = departureOf(flight)
-	const arrival = arrivalOf(flight)
-	const state = flight.live?.state
-	if (flight.status === 'cancelled' || state === 'cancelled' || state === 'diverted') return Option.none<number>()
-	// FlightAware answers at most two days ahead.
-	if (now < flight.departs - 47 * HOUR || now > arrival + 2 * HOUR) return Option.none<number>()
-	if (state === 'arrived') {
-		if (flight.live?.belt === undefined && now < arrival + 45 * MINUTE) return Option.some(5 * MINUTE)
-		return Option.none<number>()
-	}
-	if (state === 'landed') return Option.some(5 * MINUTE)
-	if (state === 'departed' || state === 'airborne') {
-		if (now > arrival - 45 * MINUTE) return Option.some(5 * MINUTE)
-		return Option.some(15 * MINUTE)
-	}
-	if (now < departure - 6 * HOUR) return Option.some(3 * HOUR)
-	if (now < departure - AIRPORT_LEAD) return Option.some(20 * MINUTE)
-	return Option.some(5 * MINUTE)
-}
-
-// ViaggiaTreno lists only the day's runs and assigns platforms in the last hour.
-function trainInterval(train: Train, now: number) {
-	if (train.status === 'cancelled' || train.operator !== 'trenitalia' || train.live?.state === 'arrived') {
-		return Option.none<number>()
-	}
-	if (now < train.departs - 6 * HOUR || now > arrivalOf(train) + 30 * MINUTE) return Option.none<number>()
-	if (now < train.departs - 90 * MINUTE) return Option.some(30 * MINUTE)
-	return Option.some(MINUTE)
-}
-
-export function checkEvery(booking: Booking, now: number) {
-	if (booking._tag === 'stay') return Option.none<number>()
-	if (booking._tag === 'flight') return flightInterval(booking, now)
-	return trainInterval(booking, now)
-}
-
-// The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
-export function isDue(booking: Booking, now: number, attemptedAt: number) {
-	if (booking._tag === 'stay') return false
-	const checkedAt = booking.live?.checkedAt ?? 0
-	return Option.exists(checkEvery(booking, now), every => now - Number.max(checkedAt, attemptedAt) >= every)
-}
-
-// Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final.
-export function isStale(booking: Booking, now: number) {
-	if (booking._tag === 'stay' || booking.live === undefined || booking.live.state === 'arrived') return false
-	const checkedAt = booking.live.checkedAt
-	return Option.exists(checkEvery(booking, checkedAt), every => now - checkedAt > 2 * every + 2 * MINUTE)
 }
 
 type ActivityWindow = {end: number; leg: Leg; start: number}
@@ -589,132 +473,4 @@ export function activityProps(journey: Flight | Train, bookings: BookingList, no
 
 export function urgencyOf(props: ActivityProps) {
 	return `${props.phase}|${props.chip?.text ?? ''}|${Number.round(props.delay / 5, 0)}`
-}
-
-// The notification that comes with an activity the server starts; iOS shows none without one.
-export function startAlert(journey: Flight | Train) {
-	if (journey._tag === 'flight') {
-		return {
-			body: line([Option.some(routeOf(journey)), labelled('Gate', journey.live?.departureGate)]),
-			title: titleOf(journey)
-		}
-	}
-	return {
-		body: line([Option.some(routeOf(journey)), labelled('Platform', journey.live?.departurePlatform)]),
-		title: titleOf(journey)
-	}
-}
-
-export type Alert = {
-	body: string
-	title: string
-	category: 'cancelled' | 'diverted' | 'boarding' | 'gate' | 'platform' | 'delay' | 'belt'
-	value?: string
-}
-
-function trainAlerts(train: Train) {
-	const title = titleOf(train)
-	const departure = clockAt(departureOf(train), train.from.timeZone ?? 'Europe/Rome')
-	return Array.getSomes([
-		Option.filter(
-			Option.some<Alert>({
-				body: `${routeOf(train)} at ${clockAt(train.departs, train.from.timeZone ?? 'Europe/Rome')}`,
-				category: 'cancelled',
-				title: `${title} is cancelled`
-			}),
-			() => train.status === 'cancelled'
-		),
-		Option.map(
-			// Worth a notification only while the train is still to board.
-			Option.filter(Option.fromUndefinedOr(train.live?.departurePlatform), () => train.live?.state === 'scheduled'),
-			platform =>
-				({
-					body: line([Option.some(`${train.from.name} at ${departure}`), labelled('coach', train.coach)]),
-					category: 'platform',
-					title: `${title} · Platform ${platform}`,
-					value: platform
-				}) satisfies Alert
-		),
-		Option.map(
-			Option.filter(Option.fromUndefinedOr(train.live?.delayMinutes), delay => delay >= 10),
-			delay =>
-				({
-					body: `Now leaves ${train.from.name} at ${departure}`,
-					category: 'delay',
-					title: `${title} is ${delay} min late`,
-					value: `${Number.round(delay / 10, 0) * 10}`
-				}) satisfies Alert
-		)
-	])
-}
-
-function flightAlerts(flight: Flight, now: number) {
-	const title = titleOf(flight)
-	const departure = clockAt(departureOf(flight), flight.from.timeZone)
-	const delay = Number.round((departureOf(flight) - flight.departs) / MINUTE, 0)
-	const cancelled = flight.status === 'cancelled' || flight.live?.state === 'cancelled'
-	return Array.getSomes([
-		Option.filter(
-			Option.some<Alert>({
-				body: `${routeOf(flight)} at ${clockAt(flight.departs, flight.from.timeZone)}`,
-				category: 'cancelled',
-				title: `${title} is cancelled`
-			}),
-			() => cancelled
-		),
-		Option.filter(
-			Option.some<Alert>({body: routeOf(flight), category: 'diverted', title: `${title} is diverted`}),
-			() => flight.live?.state === 'diverted'
-		),
-		Option.map(
-			Option.fromUndefinedOr(flight.live?.departureGate),
-			gate =>
-				({
-					body: Option.getOrElse(labelled('Changed from', flight.live?.previousGate), () =>
-						line([Option.some(`Departs ${departure}`), labelled('Terminal', flight.live?.departureTerminal)])
-					),
-					category: 'gate',
-					title: `${title} · Gate ${gate}`,
-					value: gate
-				}) satisfies Alert
-		),
-		Option.filter(
-			Option.some<Alert>({
-				body: `Now departs ${departure}`,
-				category: 'delay',
-				title: `${title} is ${delay} min late`,
-				value: `${Number.round(delay / 15, 0) * 15}`
-			}),
-			() => delay >= 15 && !cancelled
-		),
-		Option.map<number, Alert>(
-			Option.filter(
-				Option.fromUndefinedOr(flight.boardingAt),
-				at => now >= at - 10 * MINUTE && now < departureOf(flight)
-			),
-			at =>
-				({
-					body: line([
-						Option.orElseSome(labelled('Gate', flight.live?.departureGate), () => 'Check the gate'),
-						labelled('group', flight.boardingGroup)
-					]),
-					category: 'boarding',
-					title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
-				}) satisfies Alert
-		),
-		Option.map(
-			Option.fromUndefinedOr(flight.live?.belt),
-			belt =>
-				({body: flight.to.name, category: 'belt', title: `${title} bags on belt ${belt}`, value: belt}) satisfies Alert
-		)
-	])
-}
-
-// The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet.
-export function alertsFor(booking: Booking, now: number) {
-	if (booking._tag === 'stay' || now > arrivalOf(booking) + HOUR || now < booking.departs - 30 * HOUR) {
-		return Array.empty<Alert>()
-	}
-	if (booking._tag === 'train') return trainAlerts(booking)
-	return flightAlerts(booking, now)
 }

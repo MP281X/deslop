@@ -2,17 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, DateTime, Option, Schema} from 'effect'
 
-import {
-	activeWindow,
-	activityProps,
-	alertsFor,
-	checkEvery,
-	HOUR,
-	instantOf,
-	isStale,
-	MINUTE,
-	upsert
-} from '#services/bookings/lib/utils.ts'
+import {activeWindow, activityProps, HOUR, instantOf, MINUTE, upsert} from '#services/bookings/lib/utils.ts'
 import {ExtractedItem, Flight, Train} from '#services/bookings/schema.ts'
 
 function at(iso: string) {
@@ -229,71 +219,10 @@ it('keeps the timetable for a train running early before it leaves', () => {
 	assert.deepStrictEqual([early.departs, early.departureTime], [DEPARTS, '16:40'])
 })
 
-it('checks a train each minute near departure and calls live data stale after two missed checks', () => {
-	const now = DEPARTS - 30 * MINUTE
-	function live(checkedAt: number) {
-		return Train.make({...train, live: {checkedAt, delayMinutes: 0, state: 'scheduled'}})
-	}
-	assert.deepStrictEqual(
-		[checkEvery(train, now), checkEvery(train, DEPARTS - 3 * HOUR), checkEvery(flight, DEPARTS - 3 * HOUR)],
-		[Option.some(MINUTE), Option.some(30 * MINUTE), Option.some(20 * MINUTE)]
-	)
-	assert.deepStrictEqual([isStale(live(now - 2 * MINUTE), now), isStale(live(now - 5 * MINUTE), now)], [false, true])
-	// Tracking stops after arrival, and data it never replaced stays stale; an arrival is final.
-	assert.deepStrictEqual(
-		[
-			isStale(live(now), train.arrives + HOUR),
-			isStale(Train.make({...train, live: {checkedAt: now, delayMinutes: 0, state: 'arrived'}}), train.arrives + HOUR)
-		],
-		[true, false]
-	)
-	// A timetable-only train is never checked, so its last answer is not stale.
-	assert.deepStrictEqual(
-		[
-			checkEvery(Train.make({...train, operator: 'other'}), now),
-			isStale(Train.make({...live(0), operator: 'other'}), now)
-		],
-		[Option.none(), false]
-	)
-})
-
-it('shows a cancelled train without a countdown and announces it', () => {
-	const cancelled = Train.make({...train, status: 'cancelled'})
-	const props = activityProps(cancelled, [], DEPARTS - 30 * MINUTE)
+it('shows a cancelled train without a countdown', () => {
+	const props = activityProps(Train.make({...train, status: 'cancelled'}), [], DEPARTS - 30 * MINUTE)
 	assert.deepStrictEqual(
 		[props.phase, props.headline, props.countdown, props.symbol, props.tone],
 		['cancelled', 'Cancelled', undefined, 'exclamationmark.triangle.fill', 'bad']
 	)
-	assert.deepStrictEqual(
-		Array.map(alertsFor(cancelled, DEPARTS - HOUR), alert => alert.category),
-		['cancelled']
-	)
-})
-
-it('announces gate changes, delays in steps and cancellations once each', () => {
-	const late = {
-		...flight,
-		live: {
-			checkedAt: 1,
-			departureEstimated: DEPARTS + 20 * MINUTE,
-			departureGate: 'B12',
-			previousGate: 'A3',
-			state: 'scheduled' as const
-		}
-	}
-	assert.deepStrictEqual(
-		Array.map(alertsFor(late, DEPARTS - HOUR), alert => [alert.category, alert.value, alert.body]),
-		[
-			['gate', 'B12', 'Changed from A3'],
-			['delay', '15', 'Now departs 17:00']
-		]
-	)
-	assert.deepStrictEqual(
-		Array.map(alertsFor({...late, status: 'cancelled'}, DEPARTS - HOUR), alert => [alert.category, alert.value]),
-		[
-			['cancelled', undefined],
-			['gate', 'B12']
-		]
-	)
-	assert.deepStrictEqual(alertsFor(flight, DEPARTS - 40 * HOUR), [])
 })

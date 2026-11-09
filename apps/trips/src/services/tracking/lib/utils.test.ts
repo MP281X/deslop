@@ -2,9 +2,9 @@ import {assert, it} from '@effect/vitest'
 
 import {DateTime, Option, Schema} from 'effect'
 
-import {HOUR} from '#services/bookings/lib/utils.ts'
-import {Train} from '#services/bookings/schema.ts'
-import {flightTracking, trainTracking} from '#services/tracking/lib/utils.ts'
+import {HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
+import {Flight, Train} from '#services/bookings/schema.ts'
+import {checkEvery, flightTracking, isStale, trainTracking} from '#services/tracking/lib/utils.ts'
 import type {FaFlight} from '#services/tracking/schema.ts'
 import {VtRun} from '#services/tracking/schema.ts'
 
@@ -128,6 +128,61 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 	assert.deepStrictEqual(
 		Option.map(left, found => [found.state, found.departureDelay ?? 0, found.delayMinutes]),
 		Option.some(['departed', 3, 8])
+	)
+})
+
+it('checks a train each minute near departure and calls live data stale after two missed checks', () => {
+	const departs = DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T15:40:00Z'))
+	const train = Train.make({
+		arrives: departs + 3 * HOUR,
+		createdAt: 0,
+		departs,
+		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
+		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+		number: '9541',
+		operator: 'trenitalia',
+		operatorName: 'Frecciarossa',
+		sources: [],
+		status: 'confirmed',
+		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
+	})
+	const flight = Flight.make({
+		airline: 'British Airways',
+		airlineCode: 'BA',
+		arrives: departs + 2.5 * HOUR,
+		createdAt: 0,
+		departs,
+		from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
+		id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
+		number: '553',
+		sources: [],
+		status: 'confirmed',
+		to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
+	})
+	const now = departs - 30 * MINUTE
+	function live(checkedAt: number) {
+		return Train.make({...train, live: {checkedAt, delayMinutes: 0, state: 'scheduled'}})
+	}
+	assert.deepStrictEqual(
+		[checkEvery(train, now), checkEvery(train, departs - 3 * HOUR), checkEvery(flight, departs - 3 * HOUR)],
+		[Option.some(MINUTE), Option.some(30 * MINUTE), Option.some(20 * MINUTE)]
+	)
+	assert.deepStrictEqual([isStale(live(now - 2 * MINUTE), now), isStale(live(now - 5 * MINUTE), now)], [false, true])
+	// Tracking stops after arrival, and data it never replaced stays stale; an arrival is final.
+	assert.deepStrictEqual(
+		[
+			isStale(live(now), train.arrives + HOUR),
+			isStale(Train.make({...train, live: {checkedAt: now, delayMinutes: 0, state: 'arrived'}}), train.arrives + HOUR)
+		],
+		[true, false]
+	)
+	// A timetable-only train is never checked, so its last answer is not stale.
+	assert.deepStrictEqual(
+		[
+			checkEvery(Train.make({...train, operator: 'other'}), now),
+			isStale(Train.make({...live(0), operator: 'other'}), now)
+		],
+		[Option.none(), false]
 	)
 })
 
