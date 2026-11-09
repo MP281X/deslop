@@ -19,15 +19,9 @@ import {OpenrouterDark} from '@deslop/components-web/ui/svgs/openrouterDark'
 import {OpenrouterLight} from '@deslop/components-web/ui/svgs/openrouterLight'
 
 import {setKeyAtom} from '#lib/utils.ts'
-import {AiProvider} from '#services/ai/schema.ts'
+import {AiProvider, PROVIDER_NAMES} from '#services/ai/schema.ts'
 
 export const PROVIDERS = AiProvider.literals
-export const PROVIDER_NAMES = {
-	anthropic: 'Anthropic',
-	'opencode-go': 'OpenCode Go',
-	'opencode-zen': 'OpenCode Zen',
-	openrouter: 'OpenRouter'
-} satisfies Record<AiProvider, string>
 
 // Each SVGL mark ships light and dark artwork; only the one the appearance calls for is drawn.
 function AnthropicMark() {

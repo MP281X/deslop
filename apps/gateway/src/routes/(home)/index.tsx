@@ -37,9 +37,10 @@ import {
 	setKeyAtom
 } from '#lib/utils.ts'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
-import {AddKeyDialog, PROVIDER_NAMES, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
+import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverCalls, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
+import {PROVIDER_NAMES} from '#services/ai/schema.ts'
 import type {AiKeyInfo, AiProvider, AiUsageReport} from '#services/ai/schema.ts'
 import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'

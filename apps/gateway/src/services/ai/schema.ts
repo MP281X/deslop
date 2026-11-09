@@ -3,6 +3,12 @@ import {Schema} from 'effect'
 import {AiProvider} from '@deslop/runtime/ai/schema'
 
 export {AiProvider}
+export const PROVIDER_NAMES = {
+	anthropic: 'Anthropic',
+	'opencode-go': 'OpenCode Go',
+	'opencode-zen': 'OpenCode Zen',
+	openrouter: 'OpenRouter'
+} satisfies Record<AiProvider, string>
 export type AiKeyInfo = typeof AiKeyInfo.Type
 export const AiKeyInfo = Schema.Struct({
 	addedAt: Schema.Finite,

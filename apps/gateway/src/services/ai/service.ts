@@ -36,7 +36,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {bearerOf, failureOptions, isJwt, localAuth} from '@deslop/runtime/auth/utils'
 
 import type {AiProvider} from '#services/ai/schema.ts'
-import {AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
+import {AiStoredKey, AiUsageEntry, ModelsCatalog, PROVIDER_NAMES} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
 import type {Period, UsageRange} from '#services/usage/schema.ts'
 import {usageWindow} from '#services/usage/utils.ts'
@@ -46,12 +46,6 @@ const UPSTREAMS = {
 	'opencode-go': 'https://opencode.ai/inference/go',
 	'opencode-zen': 'https://opencode.ai/inference',
 	openrouter: 'https://openrouter.ai/api'
-}
-const NAMES = {
-	anthropic: 'Anthropic',
-	'opencode-go': 'OpenCode Go',
-	'opencode-zen': 'OpenCode Zen',
-	openrouter: 'OpenRouter'
 }
 const HOP_BY_HOP = [
 	'connection',
@@ -185,7 +179,7 @@ const make = Effect.gen(function* () {
 			const key = Option.getOrUndefined(Array.findFirst(yield* loadKeys(id), value => value.provider === provider))
 			if (key === undefined) {
 				return HttpServerResponse.jsonUnsafe(
-					{error: {message: `Add your ${NAMES[provider]} key in Gateway`}},
+					{error: {message: `Add your ${PROVIDER_NAMES[provider]} key in Gateway`}},
 					{status: 402}
 				)
 			}
