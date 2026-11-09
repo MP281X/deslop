@@ -1,8 +1,18 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Result, String, pipe} from 'effect'
 
-import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
+import {
+	Button,
+	HStack,
+	Section,
+	SwipeActions,
+	Text,
+	Toolbar,
+	ToolbarItem,
+	useNativeState,
+	VStack
+} from '@expo/ui/swift-ui'
 import {
 	fixedSize,
 	font,
@@ -12,6 +22,7 @@ import {
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
+	searchable,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
@@ -26,18 +37,28 @@ import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
-import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
+import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
+import {Spinner} from '@deslop/components-mobile/ui/spinner'
+import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {
 	clipboardAtom,
 	clipboardReturnsAtom,
 	bookingsAtom,
 	daysUntil,
-	dots,
 	nowAtom,
 	primary,
+	problemOf,
 	removeAtom,
 	restoreAtom,
 	session,
@@ -70,6 +91,13 @@ function scheduleOf(booking: Booking) {
 	return `${titleOf(booking)} · ${booking.from.code ?? booking.from.name} ${departs} → ${booking.to.code ?? booking.to.name} ${arrives}`
 }
 
+// The schedule and the gate or platform it leaves from, each shown once.
+function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
+	const where = Option.match(status.where, {onNone: () => '', onSome: found => found.text})
+	return Array.join(Array.filter([scheduleOf(booking), where], String.isNonEmpty), ' · ')
+}
+
+// How far away a row is: now, today, or days until its day on its first row; blank for the rest of that day.
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
 
 function Gutter(props: {countdown: Countdown}) {
@@ -109,16 +137,19 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{headingOf(props.booking)}</ItemTitle>
-					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{scheduleOf(props.booking)}</Text>
-					<HStack spacing={space[2]}>
-						<StatusDot status={dots[status.tone]} tint={primary} />
-						<Text modifiers={[text.detail, foregroundStyle(colors.foreground)]}>{status.label}</Text>
-						{Option.match(status.where, {
-							onNone: () => undefined,
-							onSome: where => <Text modifiers={[text.detail, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
-						})}
-					</HStack>
+					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{lineOf(props.booking, status)}</Text>
 				</ItemContent>
+				{Option.match(problemOf(props.booking, status, props.now), {
+					onNone: () => undefined,
+					onSome: problem => (
+						<ItemActions>
+							<HStack spacing={space[2]}>
+								<StatusDot status={problem.status} />
+								<Text modifiers={[text.detail, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
+							</HStack>
+						</ItemActions>
+					)
+				})}
 			</Item>
 			<SwipeActions.Actions edge="trailing">
 				<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking)} />
@@ -149,9 +180,11 @@ function PasteSheet(props: {children: ReactNode}) {
 	)
 }
 
-function Bookings(props: {onOpen: (id: string) => void}) {
+// What runs now, then the days ahead counted down in the gutter, then the last month folded away.
+function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
+	const paste = useAtomSet(clipboardAtom.send)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const adding = Option.exists(
@@ -162,13 +195,17 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	if (Result.isFailure(shown)) {
 		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
 	}
-	const current = Array.filter(
+	const needle = String.toLowerCase(String.trim(props.searched))
+	const matches = Array.filter(
 		shown.success,
-		booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now
+		booking =>
+			String.isEmpty(needle) ||
+			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
 	)
-	const ahead = Array.filter(shown.success, booking => startOf(booking) - 6 * HOUR > now)
+	const current = Array.filter(matches, booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now)
+	const ahead = Array.filter(matches, booking => startOf(booking) - 6 * HOUR > now)
 	const past = Array.reverse(
-		Array.filter(shown.success, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
+		Array.filter(matches, booking => endOf(booking) + HOUR < now && endOf(booking) > now - 30 * DAY)
 	)
 	function daysOf(booking: Booking) {
 		return daysUntil(startOf(booking), now, zoneOf(booking))
@@ -181,19 +218,20 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 					<Problem label="Bookings not updating" onRetry={refresh} />
 				</HStack>
 			)}
-			{adding && (
-				<ItemGroupSkeleton rows={1} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
-			)}
-			{Array.isReadonlyArrayEmpty(shown.success) && !adding && (
+			{Array.isReadonlyArrayEmpty(shown.success) && (
 				<Empty>
-					<EmptyHeader>
-						<EmptyMedia systemImage="ticket" />
-						<EmptyTitle>No trips yet</EmptyTitle>
-						<EmptyDescription>Paste a booking confirmation here and it will appear.</EmptyDescription>
-					</EmptyHeader>
+					<EmptyAction
+						label="Paste Booking"
+						systemImage="doc.text"
+						onPress={() => paste({_tag: 'Returned'})}
+						tint={primary}
+					/>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(shown.success) && (
+			{Array.isReadonlyArrayNonEmpty(shown.success) && Array.isReadonlyArrayEmpty(matches) && (
+				<Empty systemImage="magnifyingglass" label="No bookings match" />
+			)}
+			{Array.isReadonlyArrayNonEmpty(matches) && (
 				<ItemGroup modifiers={[tint(primary)]}>
 					{Array.isReadonlyArrayNonEmpty(current) && (
 						<Section title="Now">
@@ -230,13 +268,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 					)}
 					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
 						<Section>
-							<Empty>
-								<EmptyHeader>
-									<EmptyMedia systemImage="ticket" />
-									<EmptyTitle>Nothing coming up</EmptyTitle>
-									<EmptyDescription>Paste a new booking to add it.</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
+							<Empty systemImage="ticket" label="Nothing coming up" />
 						</Section>
 					)}
 					{Array.isReadonlyArrayNonEmpty(past) && (
@@ -261,21 +293,39 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 // Native navigation and clipboard/account controls do not wait for the bookings stream.
 export function HomeRoute(props: {onOpen: (id: string) => void}) {
 	const restore = useAtomSet(restoreAtom)
+	const query = useNativeState('')
+	const [searched, setSearched] = useState('')
 	return (
-		<Toolbar modifiers={[navigationTitle('Trips'), navigationBarTitleDisplayMode('large')]}>
+		<Toolbar
+			modifiers={[
+				navigationTitle('Trips'),
+				navigationBarTitleDisplayMode('large'),
+				searchable(query, {onChange: setSearched, prompt: 'Search'}),
+				bottomBarSearch
+			]}
+		>
 			<PasteSheet>
 				<Suspense
 					fallback={
 						<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
 					}
 				>
-					<Bookings onOpen={props.onOpen} />
+					<Bookings onOpen={props.onOpen} searched={searched} />
 				</Suspense>
 			</PasteSheet>
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
 				</ToolbarItem>
+				<MachineState machine={clipboardAtom} path="Answering">
+					{answering =>
+						answering.value.save && (
+							<ToolbarItem placement="bottomBar">
+								<Spinner label="Reading booking…" />
+							</ToolbarItem>
+						)
+					}
+				</MachineState>
 				<MachineState machine={undoAtom} path="Offered">
 					{offered => (
 						<ToolbarItem placement="bottomBar">

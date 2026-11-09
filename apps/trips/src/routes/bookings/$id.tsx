@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Hash, Option} from 'effect'
+import {Array, DateTime, Hash, Option} from 'effect'
 
 import {
 	Button,
@@ -34,15 +34,15 @@ import {AsyncResult} from 'effect/reactivity'
 
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Empty} from '@deslop/components-mobile/ui/empty'
 
 import {
 	dayAt,
-	dots,
 	mapsAtom,
 	nowAtom,
 	placeLine,
 	primary,
+	problemOf,
 	refreshAtom,
 	removeAtom,
 	ridesFor,
@@ -51,7 +51,7 @@ import {
 	tones,
 	uberAtom
 } from '#lib/utils.ts'
-import {arrivalOf, departureOf, isStale, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {arrivalOf, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, FlightTracking, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
@@ -99,17 +99,7 @@ function FlightFields(props: {flight: Flight}) {
 		<>
 			<Section title={`Departure · ${props.flight.from.name}`}>
 				<Field label="Date" value={dayAt(props.flight.departs, props.flight.from.timeZone)} />
-				<Field
-					label="Departs"
-					tone={toneIf(departureOf(props.flight) - props.flight.departs >= 15 * MINUTE, 'warn')}
-					value={moved(props.flight.departs, departureOf(props.flight), props.flight.from.timeZone)}
-				/>
 				<Field label="Terminal" value={props.flight.live?.departureTerminal} />
-				<Field
-					label="Gate"
-					tone={toneIf(props.flight.live?.previousGate !== undefined, 'warn')}
-					value={gateOf(props.flight.live)}
-				/>
 				<Field
 					label="Boarding"
 					value={Option.getOrUndefined(
@@ -125,7 +115,6 @@ function FlightFields(props: {flight: Flight}) {
 			</Section>
 			<Section title="Booking">
 				<Field label="Airline" value={props.flight.airline} />
-				<Field label="Seat" value={props.flight.seat} />
 				<Field label="Group" value={props.flight.boardingGroup} />
 				<Field label="Aircraft" value={props.flight.live?.aircraft} />
 				<Field label="Confirmation" value={props.flight.confirmation} />
@@ -140,20 +129,6 @@ function TrainFields(props: {train: Train}) {
 			<Section title={`Departure · ${props.train.from.name}`}>
 				<Field label="Date" value={dayAt(props.train.departs, props.train.from.timeZone)} />
 				<Field
-					label="Departs"
-					tone={toneIf((props.train.live?.delayMinutes ?? 0) >= 5, 'warn')}
-					value={moved(props.train.departs, departureOf(props.train), props.train.from.timeZone)}
-				/>
-				<Field
-					label="Platform"
-					tone={toneIf(
-						props.train.live?.departurePlatformPlanned !== undefined &&
-							props.train.live.departurePlatform !== props.train.live.departurePlatformPlanned,
-						'warn'
-					)}
-					value={props.train.live?.departurePlatform}
-				/>
-				<Field
 					label="Last seen"
 					value={Option.getOrUndefined(
 						Option.map(
@@ -167,19 +142,9 @@ function TrainFields(props: {train: Train}) {
 				<Field label="Arrives" value={moved(props.train.arrives, arrivalOf(props.train), props.train.to.timeZone)} />
 				<Field label="Platform" value={props.train.live?.arrivalPlatform} />
 			</Section>
-			<Section
-				title="Booking"
-				footer={
-					props.train.operator !== 'trenitalia' && (
-						<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
-							Live delays and platforms come from Trenitalia; this train shows its timetable.
-						</Text>
-					)
-				}
-			>
+			<Section title="Booking">
 				<Field label="Train" value={props.train.operatorName} />
 				<Field label="Coach" value={props.train.coach} />
-				<Field label="Seat" value={props.train.seat} />
 				<Field label="Confirmation" value={props.train.confirmation} />
 			</Section>
 		</>
@@ -189,14 +154,6 @@ function TrainFields(props: {train: Train}) {
 function StayFields(props: {stay: Stay}) {
 	return (
 		<Section title="Stay">
-			<Field
-				label="Check-in"
-				value={`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${timeAt(props.stay.checkIn, props.stay.place.timeZone)}`}
-			/>
-			<Field
-				label="Check-out"
-				value={`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${timeAt(props.stay.checkOut, props.stay.place.timeZone)}`}
-			/>
 			<Field label="Address" value={props.stay.place.address} />
 			<Field label="Confirmation" value={props.stay.confirmation} />
 		</Section>
@@ -241,7 +198,7 @@ function FlightEssentials(props: {flight: Flight}) {
 			<Essential
 				label="Gate"
 				tone={toneIf(props.flight.live?.previousGate !== undefined, 'warn')}
-				value={props.flight.live?.departureGate}
+				value={gateOf(props.flight.live)}
 			/>
 			<Essential label="Seat" value={props.flight.seat} />
 		</HStack>
@@ -279,19 +236,16 @@ function TrainEssentials(props: {train: Train}) {
 function StayEssentials(props: {stay: Stay}) {
 	return (
 		<HStack alignment="top" spacing={space[3]}>
-			<Essential label="Check-in" value={timeAt(props.stay.checkIn, props.stay.place.timeZone)} />
-			<Essential label="Check-out" value={timeAt(props.stay.checkOut, props.stay.place.timeZone)} />
+			<Essential
+				label="Check-in"
+				value={`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${timeAt(props.stay.checkIn, props.stay.place.timeZone)}`}
+			/>
+			<Essential
+				label="Check-out"
+				value={`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${timeAt(props.stay.checkOut, props.stay.place.timeZone)}`}
+			/>
 		</HStack>
 	)
-}
-
-// When the provider last answered, so cached data never passes for live.
-function updatedOf(booking: Booking, now: number) {
-	if (booking._tag === 'stay' || booking.live === undefined) return Option.none<{stale: boolean; text: string}>()
-	return Option.some({
-		stale: isStale(booking, now),
-		text: `Updated ${timeAt(booking.live.checkedAt, booking.from.timeZone)}`
-	})
 }
 
 function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
@@ -318,13 +272,11 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 		Array.findFirst(props.bookings, booking => booking.id === props.id),
 		{
 			onNone: () => (
-				<Empty modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}>
-					<EmptyHeader>
-						<EmptyMedia systemImage="trash" />
-						<EmptyTitle>Booking Deleted</EmptyTitle>
-						<EmptyDescription>This booking is no longer in your trips.</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
+				<Empty
+					systemImage="trash"
+					label="Booking Deleted"
+					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}
+				/>
 			),
 			onSome: booking => {
 				const status = statusOf(booking, now)
@@ -349,33 +301,20 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 										<Text modifiers={[font({textStyle: 'title2', weight: 'bold'}), foregroundStyle(colors.foreground)]}>
 											{routeOf(booking)}
 										</Text>
-										<HStack spacing={space[2]}>
-											<StatusDot status={dots[status.tone]} tint={primary} />
-											<Text modifiers={[text.title, foregroundStyle(tones[status.tone])]}>{status.label}</Text>
-										</HStack>
+										{Option.match(problemOf(booking, status, now), {
+											onNone: () => undefined,
+											onSome: problem => (
+												<HStack spacing={space[2]}>
+													<StatusDot status={problem.status} />
+													<Text modifiers={[text.title, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
+												</HStack>
+											)
+										})}
 									</VStack>
 									<Divider />
 									{booking._tag === 'flight' && <FlightEssentials flight={booking} />}
 									{booking._tag === 'train' && <TrainEssentials train={booking} />}
 									{booking._tag === 'stay' && <StayEssentials stay={booking} />}
-									{Option.match(updatedOf(booking, now), {
-										onNone: () => undefined,
-										onSome: updated => (
-											<Text
-												modifiers={[
-													text.caption,
-													foregroundStyle(
-														Boolean.match(updated.stale, {
-															onFalse: () => colors.mutedForeground,
-															onTrue: () => tones.warn
-														})
-													)
-												]}
-											>
-												{updated.text}
-											</Text>
-										)
-									})}
 								</VStack>
 							</Section>
 							{booking._tag === 'flight' && <FlightFields flight={booking} />}
