@@ -18,11 +18,27 @@ jobs:
     name: Verify
     uses: ./.github/workflows/verify.yaml
 
+  discover:
+    name: Discover
+    runs-on: ubuntu-26.04
+    outputs:
+      mobile: ${{ steps.apps.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Discover mobile apps
+        id: apps
+        run: |
+          shopt -s nullglob
+          apps=(apps/*/app.config.ts)
+          apps=("${apps[@]%/app.config.ts}")
+          apps=("${apps[@]#apps/}")
+          echo "mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+
   publish:
     name: Packages
-    needs: verify
     runs-on: ubuntu-26.04
     permissions:
+      actions: read
       contents: read
       id-token: write
     steps:
@@ -34,6 +50,9 @@ jobs:
       - name: Build every package
         run: |
           vp run build
+
+      # The install and build overlap Verify; nothing publishes until it passes.
+      - uses: ./.github/actions/await-verify
 
       # pnpm applies publishConfig while packing; npm uploads the README metadata that pnpm omits.
       - name: Publish @deslop/coding-standards
@@ -77,16 +96,16 @@ jobs:
 
   app:
     name: App
-    needs: verify
-    if: needs.verify.outputs.mobile != '[]'
+    needs: discover
+    if: needs.discover.outputs.mobile != '[]'
     permissions:
       contents: read
       actions: read
-    # One app's failed release leaves the others to ship.
+    # The fingerprint and Mac build start before Verify; the submit waits for it. One app's failed release leaves the others to ship.
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.verify.outputs.mobile) }}
+        app: ${{ fromJSON(needs.discover.outputs.mobile) }}
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}
