@@ -63,11 +63,29 @@
 	}
 }
 
-/* The reading column floats a little over the grid: its paper stays 88% opaque and frosts what shows through. */
+/* The reading column is colour haze: two-thirds paper over the grid, frosted hard so the trails behind it turn into soft light. */
 .panel-frosted {
-	background-color: color-mix(in srgb, var(--background) 88%, transparent);
-	-webkit-backdrop-filter: blur(6px) saturate(1.1);
-	backdrop-filter: blur(6px) saturate(1.1);
+	background-color: color-mix(in srgb, var(--background) 66%, transparent);
+	-webkit-backdrop-filter: blur(28px) saturate(2.2);
+	backdrop-filter: blur(28px) saturate(2.2);
+}
+
+/* A project's arrow keeps a 44px phone target without making its line taller than the title. */
+@media (max-width: 639px) {
+	.project-link {
+		position: relative;
+		display: inline-flex;
+		width: 20px;
+		height: 20px;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.project-link::after {
+		content: '';
+		position: absolute;
+		inset: -12px;
+	}
 }
 
 /* Over links the browser's own pointer would return beside the drawn cursor. */

@@ -101,7 +101,9 @@ const portfolioAtom = Atom.keepAlive(
 				(scene, update) => {
 					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						Array.map(cursors, visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+						Array.map(Array.appendAll(scene.visitors, scene.bots), visitor =>
+							Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y)
+						)
 					)
 					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
@@ -322,7 +324,7 @@ function SkillsSection() {
 			<SectionBody title="skills">
 				{Array.map(skills, skill => (
 					<div key={skill.area} className="flex flex-col gap-1 py-3 sm:flex-row sm:gap-6">
-						<h3 className="flex w-40 shrink-0 items-center gap-2 text-sm font-medium">
+						<h3 className="flex w-40 shrink-0 items-center gap-2 text-sm font-medium sm:self-start">
 							<skill.icon className="text-primary size-4" />
 							{skill.area}
 						</h3>
@@ -337,7 +339,7 @@ function SkillsSection() {
 function ProjectRow(input: {project: {description: string; href: string; name: string; role: string; stack: string}}) {
 	return (
 		<div className="flex flex-col gap-1 py-3">
-			<div className="flex items-baseline justify-between gap-3">
+			<div className="flex items-center justify-between gap-3">
 				<h3 className="text-sm font-medium">
 					{input.project.name}
 					<span className="text-muted-foreground ml-2 font-normal">{input.project.role}</span>
@@ -347,7 +349,7 @@ function ProjectRow(input: {project: {description: string; href: string; name: s
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label={`View ${input.project.name} on GitHub`}
-					className="text-primary hover:text-primary/80 max-sm:inline-flex max-sm:size-11 max-sm:items-center max-sm:justify-center"
+					className="project-link text-primary hover:text-primary/80"
 				>
 					<ArrowUpRightIcon className="size-4" />
 				</a>
