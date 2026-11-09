@@ -664,7 +664,7 @@ function usedStorage(sample: Sample) {
 
 function ChartTitle(props: {figure: string; label: string}) {
 	return (
-		<div className="flex items-baseline justify-between gap-2 text-xs">
+		<div className="flex w-full items-baseline justify-between gap-2 text-xs">
 			<span>{props.label}</span>
 			<span className="tabular-nums">{props.figure}</span>
 		</div>
@@ -1025,7 +1025,7 @@ function DetailPane(props: {
 	)
 }
 
-// A phone's list view: the short range under the bar, the three short charts, then the rows edge to edge.
+// A phone's list view: the three short charts, then the rows edge to edge.
 function PhoneList(props: {
 	bandOf: Record<string, string>
 	free: readonly InventoryItem[]
@@ -1035,17 +1035,12 @@ function PhoneList(props: {
 	minutes: HistoryQuery['minutes']
 	now: number
 	onHover: (id?: string) => void
-	onRange: (minutes: HistoryQuery['minutes']) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	rows: readonly ReturnType<typeof workloads>[number][]
-	ranges: readonly {label: string; minutes: HistoryQuery['minutes']; name: string}[]
 	selectedId?: string
 }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
-			<div className="flex h-12 shrink-0 items-center justify-end border-b px-4">
-				<RangeTabs minutes={props.minutes} onChange={props.onRange} ranges={props.ranges} />
-			</div>
 			<Suspense fallback={<ChartSkeleton isPhone minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
 					{Option.match(
@@ -1097,14 +1092,12 @@ function Workspace(props: {
 	minutes: HistoryQuery['minutes']
 	now: number
 	onHover: (id?: string) => void
-	onRange: (minutes: HistoryQuery['minutes']) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	pending: boolean
 	pushed: boolean
 	refreshing: boolean
 	retryFailed: () => void
 	rows: readonly ReturnType<typeof workloads>[number][]
-	ranges: readonly {label: string; minutes: HistoryQuery['minutes']; name: string}[]
 	selectedApp?: string
 	selectedRow?: ReturnType<typeof workloads>[number]
 	workers: readonly string[]
@@ -1167,10 +1160,8 @@ function Workspace(props: {
 										minutes={props.minutes}
 										now={props.now}
 										onHover={props.onHover}
-										onRange={props.onRange}
 										onSelect={props.onSelect}
 										rows={props.rows}
-										ranges={props.ranges}
 										selectedId={props.selectedRow?.item.id}
 									/>
 								),
@@ -1212,19 +1203,16 @@ function phoneBack(pushed: boolean, onBack: () => void) {
 	return {label: 'Back', onClick: onBack}
 }
 
-// The bar's one staleness mark before the range; a phone keeps the mark and puts the short range under the bar.
+// The bar's one staleness mark before the range; the phone uses its shorter range in the same place.
 function RangeControls(props: {
-	isPhone: boolean
 	minutes: HistoryQuery['minutes']
 	onChange: (minutes: HistoryQuery['minutes']) => void
+	ranges: readonly {label: string; minutes: HistoryQuery['minutes']; name: string}[]
 }) {
 	return (
 		<div className="flex items-center gap-1">
 			<DataProblem minutes={props.minutes} />
-			{Boolean.match(props.isPhone, {
-				onFalse: () => <RangeTabs minutes={props.minutes} onChange={props.onChange} ranges={RANGES} />,
-				onTrue: () => null
-			})}
+			<RangeTabs minutes={props.minutes} onChange={props.onChange} ranges={props.ranges} />
 		</div>
 	)
 }
@@ -1339,7 +1327,7 @@ function Home() {
 				icon={icon}
 				name="deploy"
 				title={mobileTitle}
-				controls={<RangeControls isPhone={isPhone} minutes={minutes} onChange={range => view({range})} />}
+				controls={<RangeControls minutes={minutes} onChange={range => view({range})} ranges={ranges} />}
 				tabs={
 					<MachineTabs
 						active={active}
@@ -1363,14 +1351,12 @@ function Home() {
 				minutes={shownMinutes}
 				now={now}
 				onHover={setHovered}
-				onRange={range => view({range})}
 				onSelect={selectRow}
 				pending={inventoryPending}
 				pushed={pushed}
 				refreshing={refreshing}
 				retryFailed={retryFailed}
 				rows={sorted}
-				ranges={ranges}
 				selectedApp={search.app}
 				selectedRow={selectedRow}
 				workers={workers}
