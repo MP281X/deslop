@@ -11,7 +11,7 @@ import type {ReactElement, ReactNode} from 'react'
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {appMarks} from '@deslop/components-web/apps'
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {ItemListHeading} from '@deslop/components-web/item-list'
+import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
 import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -88,45 +88,37 @@ function EmptyIcon() {
 // The operations rows' geometry while the overview loads: the name at the gutter, then the same figure columns.
 function OperationsSkeleton(props: {label: string}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 8), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemContent>
-						<Skeleton className="h-3 w-2/5" />
-					</ItemContent>
-					<ItemActions>
-						<span className="grid-cols-operation grid items-center gap-x-3">
-							<Skeleton className="h-3 w-full" />
-							<Skeleton className="h-3 w-full" />
-							<Skeleton className="h-3 w-full" />
-						</span>
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={8}>
+			<ItemContent>
+				<Skeleton className="h-3 w-2/5" />
+			</ItemContent>
+			<ItemActions>
+				<span className="grid-cols-operation grid items-center gap-x-3">
+					<Skeleton className="h-3 w-full" />
+					<Skeleton className="h-3 w-full" />
+					<Skeleton className="h-3 w-full" />
+				</span>
+			</ItemActions>
+		</RowsSkeleton>
 	)
 }
 
 // The trace rows' geometry while the overview loads: the age slot, the short id where names sit, and the duration column.
 function TracesSkeleton(props: {label: string}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 8), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia className="w-8">
-						<Skeleton className="h-3 w-6" />
-					</ItemMedia>
-					<ItemContent>
-						<Skeleton className="h-3 w-14" />
-					</ItemContent>
-					<ItemActions>
-						<span className="flex w-12 justify-end">
-							<Skeleton className="h-3 w-10" />
-						</span>
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={8}>
+			<ItemMedia className="w-8">
+				<Skeleton className="h-3 w-6" />
+			</ItemMedia>
+			<ItemContent>
+				<Skeleton className="h-3 w-14" />
+			</ItemContent>
+			<ItemActions>
+				<span className="flex w-12 justify-end">
+					<Skeleton className="h-3 w-10" />
+				</span>
+			</ItemActions>
+		</RowsSkeleton>
 	)
 }
 

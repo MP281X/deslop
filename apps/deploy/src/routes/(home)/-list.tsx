@@ -9,7 +9,7 @@ import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {ItemListHeading} from '@deslop/components-web/item-list'
+import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -55,21 +55,17 @@ export function InventoryContent(props: {children: ReactNode}) {
 // The list's loading rows: the real row's 16px mark at the 16px gutter, a name bar where names sit and a chip-sized box where its ports end.
 function AppRowsSkeleton(props: {label: string; rows: number}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, props.rows), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia>
-						<Skeleton className="size-4" />
-					</ItemMedia>
-					<ItemContent>
-						<Skeleton className="h-3 w-2/5" />
-					</ItemContent>
-					<ItemActions>
-						<Skeleton className="h-5 w-12" />
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={props.rows}>
+			<ItemMedia>
+				<Skeleton className="size-4" />
+			</ItemMedia>
+			<ItemContent>
+				<Skeleton className="h-3 w-2/5" />
+			</ItemContent>
+			<ItemActions>
+				<Skeleton className="h-5 w-12" />
+			</ItemActions>
+		</RowsSkeleton>
 	)
 }
 

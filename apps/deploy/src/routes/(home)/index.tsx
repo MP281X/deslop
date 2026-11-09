@@ -10,10 +10,11 @@ import type {ReactNode} from 'react'
 
 import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState} from '@deslop/components-web/fallbacks'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
 import type {StaleReaders} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
+import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
@@ -131,27 +132,23 @@ function MachineTabs(props: {
 // The processes' loading rows: the real mark and name and detail bars, and its two meters right-aligned at the row's end.
 function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, props.rows), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia>
-						<Skeleton className="size-4" />
-					</ItemMedia>
-					<ItemContent>
-						<div className="flex min-w-0 flex-1 items-baseline gap-2">
-							<Skeleton className="h-3 w-24" />
-							<Skeleton className="h-3 w-2/5" />
-						</div>
-					</ItemContent>
-					<ItemActions>
-						<div className="flex items-center gap-1.5">
-							<Skeleton className="h-1.5 w-12" />
-							<Skeleton className="h-1.5 w-12" />
-						</div>
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={props.rows}>
+			<ItemMedia>
+				<Skeleton className="size-4" />
+			</ItemMedia>
+			<ItemContent>
+				<div className="flex min-w-0 flex-1 items-baseline gap-2">
+					<Skeleton className="h-3 w-24" />
+					<Skeleton className="h-3 w-2/5" />
+				</div>
+			</ItemContent>
+			<ItemActions>
+				<div className="flex items-center gap-1.5">
+					<Skeleton className="h-1.5 w-12" />
+					<Skeleton className="h-1.5 w-12" />
+				</div>
+			</ItemActions>
+		</RowsSkeleton>
 	)
 }
 

@@ -11,7 +11,7 @@ import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
-import {ItemListHeading} from '@deslop/components-web/item-list'
+import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
 import type {StaleReaders} from '@deslop/components-web/problem'
@@ -21,7 +21,7 @@ import {Card} from '@deslop/components-web/ui/card'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {cn} from '@deslop/components-web/utils'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -87,32 +87,23 @@ function Sparkline(props: {color: string; values: readonly number[]}) {
 	)
 }
 
-// A loading row's block, without the app's shared skeleton's pulse: Gateway animates nothing.
-function Bone(props: {className: string}) {
-	return <div aria-hidden className={cn('bg-muted', props.className)} />
-}
-
-// The rows a group will hold, at their own row and column geometry; only a server row has a tool count.
-function RowsSkeleton(props: {label: string; rows: number; tool?: boolean}) {
+// A loading row's blocks at its own row and column geometry; only a server row has a tool count.
+function RowBones(props: {tool?: boolean}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, props.rows), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia>
-						<Bone className="size-5" />
-					</ItemMedia>
-					<ItemContent>
-						<Bone className="h-3 w-24" />
-						<Bone className="h-3 w-16" />
-					</ItemContent>
-					<ItemActions>
-						{props.tool === true && <Bone className="h-3.5 w-7" />}
-						<Bone className="h-3.5 w-16 max-sm:hidden" />
-						<Bone className="h-3 w-12" />
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<>
+			<ItemMedia>
+				<Skeleton className="size-5" />
+			</ItemMedia>
+			<ItemContent>
+				<Skeleton className="h-3 w-24" />
+				<Skeleton className="h-3 w-16" />
+			</ItemContent>
+			<ItemActions>
+				{props.tool === true && <Skeleton className="h-3.5 w-7" />}
+				<Skeleton className="h-3.5 w-16 max-sm:hidden" />
+				<Skeleton className="h-3 w-12" />
+			</ItemActions>
+		</>
 	)
 }
 
@@ -236,7 +227,13 @@ function ServerRows(props: {period: Period}) {
 	if (Array.isReadonlyArrayEmpty(servers)) return null
 	const ordered = Array.sort(servers, byUrgency)
 	return (
-		<Suspense fallback={<RowsSkeleton label="MCP servers" rows={ordered.length} tool />}>
+		<Suspense
+			fallback={
+				<RowsSkeleton label="MCP servers" rows={ordered.length}>
+					<RowBones tool />
+				</RowsSkeleton>
+			}
+		>
 			<ServerUsage period={props.period} servers={ordered} />
 		</Suspense>
 	)
@@ -321,7 +318,13 @@ function KeyRows(props: {period: Period}) {
 	)
 	if (Array.isReadonlyArrayEmpty(keys)) return null
 	return (
-		<Suspense fallback={<RowsSkeleton label="AI keys" rows={keys.length} />}>
+		<Suspense
+			fallback={
+				<RowsSkeleton label="AI keys" rows={keys.length}>
+					<RowBones />
+				</RowsSkeleton>
+			}
+		>
 			<KeyUsage keys={keys} period={props.period} />
 		</Suspense>
 	)
@@ -334,13 +337,25 @@ function List(props: {period: Period}) {
 			<div role="list" aria-label="MCP servers and AI keys">
 				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
 				<CatchBoundary getResetKey={() => 'servers'} errorComponent={WebRuntime.Failure}>
-					<Suspense fallback={<RowsSkeleton label="MCP servers" rows={3} tool />}>
+					<Suspense
+						fallback={
+							<RowsSkeleton label="MCP servers" rows={3}>
+								<RowBones tool />
+							</RowsSkeleton>
+						}
+					>
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
 				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
 				<CatchBoundary getResetKey={() => 'keys'} errorComponent={WebRuntime.Failure}>
-					<Suspense fallback={<RowsSkeleton label="AI keys" rows={4} />}>
+					<Suspense
+						fallback={
+							<RowsSkeleton label="AI keys" rows={4}>
+								<RowBones />
+							</RowsSkeleton>
+						}
+					>
 						<KeyRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
