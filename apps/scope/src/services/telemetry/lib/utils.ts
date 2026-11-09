@@ -492,10 +492,8 @@ function traced(records: readonly Entry[], now: number) {
 	)
 }
 
-// Failures lead, then the busiest.
 function operationsOf(group: readonly Traced[], keep: number) {
-	return Array.sort(
-		Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
+	return Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
 			const times = Array.sort(
 				Array.map(entry[1], item => item.trace.durationMs),
 				Order.Number
@@ -533,12 +531,7 @@ function operationsOf(group: readonly Traced[], keep: number) {
 					item => item.trace
 				)
 			} satisfies Operation
-		}),
-		Order.combine(
-			Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.failures),
-			Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.count)
-		)
-	)
+		})
 }
 
 // Apps with failures lead, then the busiest.
