@@ -1056,7 +1056,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					pipe(
 						result.stdout.diagnostics,
 						Array.filter(diagnostic => diagnostic.code === 'shadcn(no-restyle)'),
-						Array.map(diagnostic => diagnostic.labels[0]?.span.line),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
 						Array.dedupe,
 						Array.sort(Order.Number)
 					),
