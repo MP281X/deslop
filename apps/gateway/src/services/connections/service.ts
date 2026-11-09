@@ -291,19 +291,16 @@ export class Connections extends Context.Service<
 				Effect.timeout('20 seconds')
 			)
 			const now = yield* Clock.currentTimeMillis
-			// A refresh answer may leave the refresh token out, which keeps the one sent.
-			const next = {
-				...token,
-				...Option.match(
-					Option.orElse(Option.fromUndefinedOr(token.refresh_token), () =>
-						Option.filter(
-							Option.fromUndefinedOr(params['refresh_token']),
-							() => params['grant_type'] === 'refresh_token'
-						)
-					),
-					{onNone: () => ({}), onSome: refresh => ({refresh_token: refresh})}
-				)
+			// A refresh answer may leave the refresh token out, which keeps the one sent on a refresh grant.
+			function refreshToken() {
+				if (token.refresh_token !== undefined) return token.refresh_token
+				if (params['grant_type'] !== 'refresh_token') return undefined
+				return params['refresh_token']
 			}
+			const next = Option.match(Option.fromUndefinedOr(refreshToken()), {
+				onNone: () => Struct.omit(token, ['refresh_token']),
+				onSome: refresh_token => ({...token, refresh_token})
+			})
 			// The tokens are saved with the client they were issued to.
 			yield* update(connection.id, connection.generation, found => ({
 				...Struct.omit(found, ['error']),
