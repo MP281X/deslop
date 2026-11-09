@@ -16,7 +16,7 @@ import {
 } from 'effect'
 
 import {RouterProvider, createRouter} from '@tanstack/react-router'
-import type {AnyContext, AnyRoute, AnyRouter, RouterOptions} from '@tanstack/react-router'
+import type {AnyContext, AnyRoute} from '@tanstack/react-router'
 import {FetchHttpClient} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
 import {Atom, AtomRegistry} from 'effect/reactivity'
@@ -61,33 +61,17 @@ const errorAtom = Atom.fn(
 	}
 )
 
-export function makeRouter<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(
-	routeTree: TRouteTree,
-	getScrollRestorationKey?: RouterOptions<TRouteTree, 'never'>['getScrollRestorationKey']
-) {
+export function mount<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(routeTree: TRouteTree) {
 	const root = document.querySelector('#root')
 	if (Predicate.isNull(root)) throw new TypeError('Missing application mount element with id "root"')
-
-	return {
-		root,
-		router: createRouter({
-			context: {},
-			defaultErrorComponent: Error,
-			defaultNotFoundComponent: NotFound,
-			defaultPreload: 'intent',
-			getScrollRestorationKey,
-			routeTree,
-			scrollRestoration: true
-		})
-	}
-}
-
-export function searchOf<S extends Schema.Decoder<object>>(schema: S) {
-	return (search: Record<string, unknown>) =>
-		Option.getOrElse(Schema.decodeOption(schema)(search), () => Schema.decodeSync(schema)({}))
-}
-
-export function mount(app: {root: Element; router: AnyRouter}) {
+	const router = createRouter({
+		context: {},
+		defaultErrorComponent: Error,
+		defaultNotFoundComponent: NotFound,
+		defaultPreload: 'intent',
+		routeTree,
+		scrollRestoration: true
+	})
 	const errors = AtomRegistry.make()
 	function report(error: unknown, source: 'route' | 'caught' | 'uncaught', stack?: string | null) {
 		if (Predicate.isObjectOrArray(error)) {
@@ -97,8 +81,8 @@ export function mount(app: {root: Element; router: AnyRouter}) {
 		errors.set(errorAtom, {
 			error,
 			route: pipe(
-				Array.findLast(app.router.state.matches, match => match.error === error),
-				Option.orElse(() => Array.last(app.router.state.matches)),
+				Array.findLast(router.state.matches, match => match.error === error),
+				Option.orElse(() => Array.last(router.state.matches)),
 				Option.flatMap(match => Option.liftPredicate(match.routeId, String.isString)),
 				Option.getOrElse(() => '__root__')
 			),
@@ -106,15 +90,23 @@ export function mount(app: {root: Element; router: AnyRouter}) {
 			stack
 		})
 	}
-	app.router.update({defaultOnCatch: (error, info) => report(error, 'route', info.componentStack)})
-	createRoot(app.root, {
+	router.options.defaultOnCatch = (error, info) => {
+		report(error, 'route', info.componentStack)
+	}
+	createRoot(root, {
 		onCaughtError: (error, info) => report(error, 'caught', info.componentStack),
 		onUncaughtError: (error, info) => report(error, 'uncaught', info.componentStack)
 	}).render(
 		<StrictMode>
-			<RouterProvider router={app.router} />
+			<RouterProvider router={router} />
 		</StrictMode>
 	)
+	return router
+}
+
+export function searchOf<S extends Schema.Decoder<object>>(schema: S) {
+	return (search: Record<string, unknown>) =>
+		Option.getOrElse(Schema.decodeOption(schema)(search), () => Schema.decodeSync(schema)({}))
 }
 
 // Every app's icon by its folder, from the icon glob a page runs four levels above its own routes.
