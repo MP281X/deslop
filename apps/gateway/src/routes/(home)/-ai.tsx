@@ -471,8 +471,8 @@ function UsageReport(props: {
 		props.onFocus(Boolean.match(same, {onFalse: () => next, onTrue: () => ({})}))
 	}
 	return (
-		<Card>
-			<div className="flex flex-col">
+		<Card size="list">
+			<div className="flex flex-col pt-4">
 				<Totals metric={props.metric} onMetric={props.onMetric} report={props.report} />
 				<div className="px-4 pt-3">
 					<UsageChart
@@ -631,7 +631,7 @@ function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; peri
 	)
 	return (
 		<>
-			<Card>
+			<Card size="list">
 				<div role="list" aria-label="Keys">
 					{Array.map(PROVIDERS, provider => (
 						<KeyRow
@@ -670,7 +670,7 @@ export function AiPane(props: {
 		<CatchBoundary getResetKey={() => `ai-${props.period}`} errorComponent={FailureContent}>
 			<Suspense
 				fallback={
-					<Card>
+					<Card size="list">
 						<ItemListSkeleton label="AI usage" media rows={6} />
 					</Card>
 				}
@@ -685,7 +685,7 @@ export function AiPane(props: {
 			</Suspense>
 			<Suspense
 				fallback={
-					<Card>
+					<Card size="list">
 						<ItemListSkeleton label="Keys" media rows={4} />
 					</Card>
 				}
