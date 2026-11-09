@@ -23,8 +23,8 @@ function usage(nodes: readonly ProcessNode[]) {
 			onFalse: () => ({}),
 			onTrue: () => ({cpu: Number.sumAll(cpus)})
 		}),
-		count: Array.reduce(nodes, 0, (sum, node) => sum + node.count),
-		memory: Array.reduce(nodes, 0, (sum, node) => sum + node.memory)
+		count: Number.sumAll(Array.map(nodes, node => node.count)),
+		memory: Number.sumAll(Array.map(nodes, node => node.memory))
 	}
 }
 
@@ -85,17 +85,10 @@ export function processTree(rows: readonly Process[]) {
 // An app's current memory and CPU over its processes; CPU stays unknown while none reports one.
 export function appUsage(rows: readonly Process[]) {
 	return {
-		cpu: Boolean.match(
-			Array.some(rows, row => row.cpu !== undefined),
-			{
-				onFalse: () => undefined,
-				onTrue: () =>
-					Number.round(
-						Array.reduce(rows, 0, (sum, row) => sum + (row.cpu ?? 0)),
-						2
-					)
-			}
-		),
-		memory: Array.reduce(rows, 0, (sum, row) => sum + row.memory)
+		cpu: Array.match(Array.getSomes(Array.map(rows, row => Option.fromUndefinedOr(row.cpu))), {
+			onEmpty: () => undefined,
+			onNonEmpty: values => Number.round(Number.sumAll(values), 2)
+		}),
+		memory: Number.sumAll(Array.map(rows, row => row.memory))
 	}
 }

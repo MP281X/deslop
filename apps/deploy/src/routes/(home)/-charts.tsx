@@ -48,7 +48,7 @@ export function UsageChart(props: {
 	)
 	const valueText = Option.getOrElse(
 		Option.map(pointerSample, point => {
-			const total = Array.reduce(props.layers, 0, (sum, layer) => sum + (layer.values[point.index] ?? 0))
+			const total = Number.sumAll(Array.map(props.layers, layer => layer.values[point.index] ?? 0))
 			const value = Option.map(hoveredBand, band => band.values[point.index] ?? 0)
 			const at = pipe(
 				Match.value(props.minutes),
@@ -187,6 +187,7 @@ export function UsageChart(props: {
 
 // Each core's use across the range as a small line, so a core that spiked or idled reads in its history, not only its last reading.
 export function Cores(props: {history: MachineHistory}) {
+	const samples = Array.map(props.history.samples, sample => Array.groupBy(sample.cores ?? [], core => core.id))
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
 			<figcaption className="tracking-label text-muted-foreground mb-1.5 text-xs font-semibold uppercase">
@@ -200,12 +201,9 @@ export function Cores(props: {history: MachineHistory}) {
 						style={{'--cores': `repeat(${Number.min(32, Number.max(1, entries.length))}, minmax(0, 1fr))`}}
 					>
 						{Array.map(entries, core => {
-							const values = Array.map(props.history.samples, sample =>
+							const values = Array.map(samples, cores =>
 								Option.getOrElse(
-									Option.map(
-										Array.findFirst(sample.cores ?? [], entry => entry.id === core.id),
-										entry => entry.usage ?? 0
-									),
+									Option.map(Array.head(cores[core.id] ?? []), entry => entry.usage ?? 0),
 									() => 0
 								)
 							)

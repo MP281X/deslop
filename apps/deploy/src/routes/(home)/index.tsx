@@ -131,14 +131,34 @@ function bytes(value: number) {
 
 // The highest total of one metric's stacked bands over the range, in the same percentage the chart draws.
 function peakOf(layers: readonly {values: readonly number[]}[]) {
-	return Array.reduce(
-		Array.makeBy(
-			Array.reduce(layers, 0, (longest, layer) => Number.max(longest, layer.values.length)),
-			index => Array.reduce(layers, 0, (sum, layer) => sum + (layer.values[index] ?? 0))
+	return Array.max(
+		Array.prepend(
+			Array.makeBy(
+				Array.max(
+					Array.prepend(
+						Array.map(layers, layer => layer.values.length),
+						0
+					),
+					Number.Order
+				),
+				index => Number.sumAll(Array.map(layers, layer => layer.values[index] ?? 0))
+			),
+			0
 		),
-		0,
-		(highest, value) => Number.max(highest, value)
+		Number.Order
 	)
+}
+
+// The process holding the most memory, which names an app's row and its pane.
+function heaviestName(processes: readonly Process[]) {
+	return Array.match(processes, {
+		onEmpty: () => undefined,
+		onNonEmpty: entries =>
+			Array.max(
+				entries,
+				Order.mapInput(Number.Order, (entry: Process) => entry.memory)
+			).name
+	})
 }
 
 // The key a service or container's usage history is recorded under; loose ports have none.
@@ -333,41 +353,38 @@ function Endpoint(props: {item: InventoryItem}) {
 // A row's ports: an unexposed reachable one opens its Expose dialog, and every exposure leads to its endpoint.
 function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeof workloads>[number]}) {
 	const expose = useExpose()
+	const exposedPorts = HashSet.fromIterable(Array.map(props.row.exposures, exposure => exposure.port))
+	const freePorts = Array.groupBy(props.free, port => port.id)
 	return (
 		<>
 			{Array.map(
 				Array.dedupeWith(
 					Array.filter(
 						props.row.listeners,
-						listener =>
-							listener.address !== 'container' &&
-							!Array.some(props.row.exposures, exposure => exposure.port === listener.port)
+						listener => listener.address !== 'container' && !HashSet.has(exposedPorts, listener.port)
 					),
 					(first: InventoryItem, second: InventoryItem) => first.port === second.port
 				),
 				listener =>
-					Option.match(
-						Array.findFirst(props.free, port => port.id === listener.id),
-						{
-							onNone: () => (
-								<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
-									:{listener.port}
-								</Button>
-							),
-							onSome: port => (
-								<Button
-									key={listener.id}
-									size="sm"
-									variant="secondary"
-									className="min-w-port relative max-sm:h-11"
-									aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
-									onClick={() => expose(port)}
-								>
-									:{listener.port}
-								</Button>
-							)
-						}
-					)
+					Option.match(Array.head(freePorts[listener.id] ?? []), {
+						onNone: () => (
+							<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
+								:{listener.port}
+							</Button>
+						),
+						onSome: port => (
+							<Button
+								key={listener.id}
+								size="sm"
+								variant="secondary"
+								className="min-w-port relative max-sm:h-11"
+								aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
+								onClick={() => expose(port)}
+							>
+								:{listener.port}
+							</Button>
+						)
+					})
 			)}
 			{Array.map(props.row.exposures, exposure => (
 				<Endpoint key={exposure.id} item={exposure} />
@@ -465,17 +482,7 @@ function AppListRow(props: {
 	const running =
 		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
 		Option.exists(requested, at => props.now - at < 10_000)
-	const process = Option.getOrUndefined(
-		Option.map(
-			Array.head(
-				Array.sort(
-					processes,
-					Order.mapInput(Order.flip(Order.Number), (entry: Process) => entry.memory)
-				)
-			),
-			entry => entry.name
-		)
-	)
+	const process = heaviestName(processes)
 	// A job is no chart band of its own, so hovering the shared band of small apps never lights the jobs.
 	const band = Option.filter(
 		Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id)),
@@ -828,17 +835,7 @@ function ProcessPane(props: {
 		onSome: current => dot(current.item, state)
 	})
 	const processes = props.row?.item.processes ?? []
-	const process = Option.getOrUndefined(
-		Option.map(
-			Array.head(
-				Array.sort(
-					processes,
-					Order.mapInput(Order.flip(Order.Number), (entry: Process) => entry.memory)
-				)
-			),
-			entry => entry.name
-		)
-	)
+	const process = heaviestName(processes)
 	const tree = processTree(processes)
 	const count = Array.reduce(tree, 0, (sum, node) => sum + node.count)
 	return (
@@ -1102,6 +1099,7 @@ function MachinePane(props: {
 }
 
 // The two machines as one line at the top: their names, their size, and whether they answer.
+// judge-ignore no-repeated-search -- two workers and two histories; an index would only add a step.
 function MachineTabs(props: {
 	active?: string
 	histories: readonly MachineHistory[]
