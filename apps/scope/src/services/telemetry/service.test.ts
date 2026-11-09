@@ -557,7 +557,7 @@ it.layer(layer)(test => {
 							scopeLogs: [
 								{
 									logRecords: [
-										{body: {stringValue: 'standalone'}, observedTimeUnixNano: '1781870000001000000'},
+										{body: {stringValue: 'standalone'}, timeUnixNano: '1781870000001000000'},
 										{
 											body: {kvlistValue: {values: [{key: 'bytes', value: {bytesValue: 'AAE='}}]}},
 											severityNumber: 17,

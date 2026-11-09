@@ -31,7 +31,6 @@ import {
 	durationMs,
 	filterEntries,
 	logMessage,
-	logTime,
 	newestVersions,
 	orderEntries,
 	overview,
@@ -166,7 +165,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		return {
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(function* (payload: LogsRequest) {
 				const receivedAt = yield* Clock.currentTimeMillis
-				const now = `${BigInt(receivedAt) * 1_000_000n}`
 				yield* save(
 					yield* Effect.forEach(
 						Array.flatMap(payload.resourceLogs ?? [], group =>
@@ -186,7 +184,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								signal: 'log' as const,
 								spanId: String.toLowerCase(item.log.spanId ?? ''),
 								status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {onFalse: () => 0, onTrue: () => 2}),
-								time: logTime(item.log, now),
+								time: item.log.timeUnixNano,
 								traceId: String.toLowerCase(item.log.traceId ?? '')
 							})),
 						{concurrency: 1}

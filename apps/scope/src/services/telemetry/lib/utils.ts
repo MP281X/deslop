@@ -48,15 +48,6 @@ export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset
 	}
 }
 
-// A log's own time, else when the exporter saw it; OTLP sends 0 for a time it does not know.
-export function logTime(log: {observedTimeUnixNano?: string; timeUnixNano?: string}, now: string) {
-	return pipe(
-		Array.findFirst([log.timeUnixNano, log.observedTimeUnixNano], time => time !== undefined && time !== '0'),
-		Option.flatMap(Option.fromUndefinedOr),
-		Option.getOrElse(() => now)
-	)
-}
-
 function resourceString(resource: {readonly attributes?: readonly Attribute[]}, key: string) {
 	return pipe(
 		resource.attributes ?? [],

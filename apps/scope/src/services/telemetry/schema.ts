@@ -74,7 +74,7 @@ const Log = Schema.StructWithRest(
 		severityNumber: Schema.optionalKey(Schema.Int),
 		severityText: Schema.optionalKey(Schema.String),
 		spanId: Schema.optionalKey(Schema.Union([SpanId, Schema.Literal('')])),
-		timeUnixNano: Schema.optionalKey(Nano),
+		timeUnixNano: Nano,
 		traceId: Schema.optionalKey(Schema.Union([TraceId, Schema.Literal('')]))
 	}),
 	[Schema.JsonObject]
