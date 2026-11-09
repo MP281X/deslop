@@ -1,40 +1,22 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {
-	Array,
-	Boolean,
-	Cause,
-	HashMap,
-	HashSet,
-	Number,
-	Option,
-	Order,
-	Predicate,
-	Record,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, Cause, HashMap, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
 
-import {XIcon} from '@phosphor-icons/react'
+import {KeyIcon, PlusIcon, SparkleIcon, XIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactNode} from 'react'
 import {Bar, BarChart, XAxis} from 'recharts'
 
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {EmptyState} from '@deslop/components-web/fallbacks'
+import {ItemListHeading, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Stat} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
-import {
-	ChartContainer,
-	ChartLegend,
-	ChartLegendContent,
-	ChartTooltip,
-	ChartTooltipContent
-} from '@deslop/components-web/ui/chart'
+import {Card} from '@deslop/components-web/ui/card'
+import {ChartContainer, ChartTooltip, ChartTooltipContent} from '@deslop/components-web/ui/chart'
 import type {ChartConfig} from '@deslop/components-web/ui/chart'
 import {
 	ContextMenu,
@@ -42,18 +24,12 @@ import {
 	ContextMenuItem,
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
-import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogTitle
-} from '@deslop/components-web/ui/dialog'
+import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
+import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 
@@ -68,17 +44,17 @@ const PERIODS = [
 	{label: '7d', name: 'last 7 days', value: '7d'},
 	{label: '30d', name: 'last 30 days', value: '30d'}
 ] satisfies {label: string; name: string; value: Period}[]
-// Each app's identity hue; any other client takes a hue none of the shown apps holds.
+// Each app's identity hue; any other client is zinc grey.
 const IDENTITIES: Record<string, {color: string; name: string}> = {
 	auth: {color: 'var(--slate)', name: 'Auth'},
 	deploy: {color: 'var(--blue)', name: 'Deploy'},
 	gateway: {color: 'var(--pink)', name: 'Gateway'},
 	opm: {color: 'var(--ivory)', name: 'OPM'},
+	portfolio: {color: 'var(--coral)', name: 'Portfolio'},
 	scope: {color: 'var(--cyan)', name: 'Scope'},
 	stash: {color: 'var(--amber)', name: 'Stash'},
 	trips: {color: 'var(--orange)', name: 'Trips'}
 }
-const SPARE = ['var(--purple)', 'var(--cyan)', 'var(--blue)', 'var(--coral)', 'var(--machine-dev)', 'var(--ivory)']
 const PROVIDER_NAMES = {
 	anthropic: 'Anthropic',
 	'opencode-go': 'OpenCode Go',
@@ -124,6 +100,9 @@ function appName(app: string) {
 	const identity = IDENTITIES[appKey(app)]
 	if (identity !== undefined) return identity.name
 	return app
+}
+function colorOf(app: string) {
+	return IDENTITIES[appKey(app)]?.color ?? 'var(--muted-foreground)'
 }
 
 function sums(cells: readonly AiUsageCell[], key: (cell: AiUsageCell) => string) {
@@ -174,92 +153,85 @@ function bucketLabel(bucket: Range['bucket'], at: number) {
 	return longDay.format(at)
 }
 
-export function AiControls(props: {
-	metric: Metric
-	onMetric: (metric: Metric) => void
-	onPeriod: (period: Period) => void
-	period: Period
+// The window beside the view, in the bar at every width.
+export function AiControls(props: {onPeriod: (period: Period) => void; period: Period}) {
+	return (
+		<Tabs
+			value={props.period}
+			onValueChange={value =>
+				Option.map(
+					Array.findFirst(PERIODS, entry => entry.value === value),
+					entry => props.onPeriod(entry.value)
+				)
+			}
+		>
+			<TabsList aria-label="Period">
+				{Array.map(PERIODS, entry => (
+					<TabsTrigger key={entry.value} value={entry.value}>
+						{entry.label}
+					</TabsTrigger>
+				))}
+			</TabsList>
+		</Tabs>
+	)
+}
+
+// The measure only switches the chart, so it sits on the card's summary line.
+function MetricTabs(props: {metric: Metric; onMetric: (metric: Metric) => void}) {
+	return (
+		<Tabs
+			value={props.metric}
+			onValueChange={value =>
+				props.onMetric(Boolean.match(value === 'tokens', {onFalse: () => 'cost', onTrue: () => 'tokens'}))
+			}
+		>
+			<TabsList aria-label="Measure">
+				<TabsTrigger value="cost">Cost</TabsTrigger>
+				<TabsTrigger value="tokens">Tokens</TabsTrigger>
+			</TabsList>
+		</Tabs>
+	)
+}
+
+// The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
+function Row(props: {
+	button?: boolean
+	children: ReactNode
+	label: string
+	menu?: ReactNode
+	onClick: () => void
+	selected?: boolean
+	trailing?: ReactNode
 }) {
 	return (
-		<>
-			<ToggleGroup
-				aria-label="Period"
-				size="sm"
-				spacing={1}
-				variant="outline"
-				value={[props.period]}
-				onValueChange={values =>
-					Option.map(
-						Option.flatMap(Array.head(values), value => Array.findFirst(PERIODS, entry => entry.value === value)),
-						entry => props.onPeriod(entry.value)
-					)
-				}
-			>
-				{Array.map(PERIODS, entry => (
-					<ToggleGroupItem key={entry.value} value={entry.value} className="max-sm:h-11">
-						{entry.label}
-					</ToggleGroupItem>
-				))}
-			</ToggleGroup>
-			<ToggleGroup
-				aria-label="Measure"
-				size="sm"
-				spacing={1}
-				variant="outline"
-				value={[props.metric]}
-				onValueChange={values =>
-					Option.map(Array.head(values), value =>
-						props.onMetric(Boolean.match(value === 'tokens', {onFalse: () => 'cost', onTrue: () => 'tokens'}))
-					)
-				}
-			>
-				<ToggleGroupItem value="cost" className="max-sm:h-11">
-					Cost
-				</ToggleGroupItem>
-				<ToggleGroupItem value="tokens" className="max-sm:h-11">
-					Tokens
-				</ToggleGroupItem>
-			</ToggleGroup>
-		</>
-	)
-}
-
-function GroupLabel(props: {children: ReactNode}) {
-	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
-	)
-}
-
-function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
-	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem">
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
-					<ContextMenuTrigger
-						render={
-							<Button
-								variant={Boolean.match(props.selected === true, {
-									onFalse: () => 'ghost' as const,
-									onTrue: () => 'secondary' as const
-								})}
-								type="button"
-								aria-label={props.label}
-								aria-pressed={props.selected}
-								onClick={props.onClick}
-								className="absolute inset-0 h-full w-full"
-							/>
-						}
-					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">{props.children}</div>
-				</div>
+				<ContextMenuTrigger
+					render={
+						<Item
+							size="row"
+							data-selected={props.selected}
+							aria-label={props.label}
+							aria-pressed={props.selected}
+							render={Boolean.match(props.button === false, {
+								onFalse: () => <button type="button" aria-label={props.label} onClick={props.onClick} />,
+								onTrue: () => <div />
+							})}
+						/>
+					}
+				>
+					{props.children}
+					{props.trailing !== undefined && <ItemActions>{props.trailing}</ItemActions>}
+				</ContextMenuTrigger>
 				{props.menu !== undefined && <ContextMenuContent className="w-auto min-w-36">{props.menu}</ContextMenuContent>}
 			</ContextMenu>
 		</div>
 	)
 }
 
+// Swatch, name, share of the shown total, tokens and cost: the same columns in both breakdowns; models keep the slot but carry no swatch.
 function ShareRow(props: {
-	color: string
+	color?: string
 	label: string
 	menu?: ReactNode
 	onClick: () => void
@@ -268,55 +240,43 @@ function ShareRow(props: {
 	sum: Option.Option<Sum>
 }) {
 	return (
-		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
-			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
-				<span
-					className="h-full w-(--share) bg-(--share-color)"
-					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
-				/>
-			</span>
-			{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
-			<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-				{Option.getOrElse(
-					Option.map(
-						Option.filter(props.sum, sum => sum.tokens > 0),
-						sum => compact.format(sum.tokens)
-					),
-					() => '—'
-				)}
-			</span>
-			<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
-				{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
-			</span>
+		<Row
+			label={props.label}
+			menu={props.menu}
+			onClick={props.onClick}
+			selected={props.selected}
+			trailing={
+				<>
+					<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+						{Number.round(props.share * 100, 0)}%
+					</span>
+					{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
+					<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+						{Option.getOrElse(
+							Option.map(
+								Option.filter(props.sum, sum => sum.tokens > 0),
+								sum => compact.format(sum.tokens)
+							),
+							() => '—'
+						)}
+					</span>
+					<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
+						{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
+					</span>
+				</>
+			}
+		>
+			<ItemMedia>
+				<span className="flex w-4 items-center justify-center">
+					{props.color !== undefined && (
+						<span className="size-2.5 bg-(--swatch-color)" style={{'--swatch-color': props.color}} />
+					)}
+				</span>
+			</ItemMedia>
+			<ItemContent>
+				<ItemTitle>{props.label}</ItemTitle>
+			</ItemContent>
 		</Row>
-	)
-}
-
-function ConfirmDialog(props: {
-	action: string
-	description: string
-	onOpenChange: (open: boolean) => void
-	open: boolean
-	result: AsyncResult.AsyncResult<unknown, {message: string}>
-	run: () => void
-	title: string
-}) {
-	const waiting = AsyncResult.isWaiting(props.result)
-	return (
-		<Dialog open={props.open && !AsyncResult.isSuccess(props.result)} onOpenChange={props.onOpenChange}>
-			<DialogContent>
-				<DialogTitle>{props.title}</DialogTitle>
-				<DialogDescription>{props.description}</DialogDescription>
-				<ResultError result={props.result} />
-				<DialogFooter>
-					<DialogClose render={<Button variant="ghost" disabled={waiting} />}>Cancel</DialogClose>
-					<Button variant="destructive" disabled={waiting} onClick={props.run}>
-						{props.action}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
 	)
 }
 
@@ -356,7 +316,7 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
+		<ChartContainer config={config} className="h-40 w-full">
 			<BarChart
 				accessibilityLayer
 				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
@@ -414,7 +374,6 @@ function UsageChart(props: {
 						isAnimationActive={false}
 					/>
 				))}
-				<ChartLegend content={<ChartLegendContent />} />
 			</BarChart>
 		</ChartContainer>
 	)
@@ -430,7 +389,7 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 		{
 			onNone: () => null,
 			onSome: text => (
-				<div className="flex">
+				<div className="flex px-4 pt-3">
 					<Button variant="secondary" size="xs" aria-label={`Show all, not only ${text}`} onClick={props.onClear}>
 						{text}
 						<XIcon data-icon="inline-end" />
@@ -441,21 +400,16 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-function Stats(props: {range: Range; report: AiUsageReport}) {
+// The period at a glance, with the measure it charts by.
+function Totals(props: {metric: Metric; onMetric: (metric: Metric) => void; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
-			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
-			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
-			<span className="max-sm:hidden">
-				<Stat
-					label="Per day"
-					value={cost(
-						props.report.totals.costUsd /
-							Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
-					)}
-				/>
-			</span>
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4">
+			<span className="text-2xl font-medium tabular-nums">{cost(props.report.totals.costUsd)}</span>
+			<Stat label="tokens" value={compact.format(props.report.totals.tokens)} />
+			<Stat label="calls" value={count.format(props.report.totals.calls)} />
+			<div className="ml-auto">
+				<MetricTabs metric={props.metric} onMetric={props.onMetric} />
+			</div>
 		</div>
 	)
 }
@@ -464,25 +418,23 @@ function UsageReport(props: {
 	focus: Focus
 	metric: Metric
 	onFocus: (focus: Focus) => void
+	onMetric: (metric: Metric) => void
 	period: Period
 	range: Range
 	report: AiUsageReport
 }) {
 	if (Array.isReadonlyArrayEmpty(props.report.cells)) {
 		return (
-			<>
-				<Stats range={props.range} report={props.report} />
-				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
-					No AI calls in the{' '}
-					{Option.getOrElse(
-						Option.map(
-							Array.findFirst(PERIODS, entry => entry.value === props.period),
-							entry => entry.name
-						),
-						() => 'period'
-					)}
-				</p>
-			</>
+			<EmptyState
+				label={`No AI calls in the ${Option.getOrElse(
+					Option.map(
+						Array.findFirst(PERIODS, entry => entry.value === props.period),
+						entry => entry.name
+					),
+					() => 'period'
+				)}`}
+				icon={<SparkleIcon className="size-5" weight="light" />}
+			/>
 		)
 	}
 	const value = measure(props.metric)
@@ -491,32 +443,6 @@ function UsageReport(props: {
 		sums(props.report.cells, cell => cell.app),
 		byMetric
 	)
-	const taken = HashSet.fromIterable(
-		Array.filter(
-			Array.map(allApps, sum => IDENTITIES[appKey(sum.name)]?.color),
-			Predicate.isNotUndefined
-		)
-	)
-	const spare = Array.filter(SPARE, color => !HashSet.has(taken, color))
-	const unnamed = Array.filter(
-		Array.map(allApps, sum => sum.name),
-		app => IDENTITIES[appKey(app)] === undefined
-	)
-	function colorOf(app: string) {
-		return (
-			IDENTITIES[appKey(app)]?.color ??
-			Option.getOrElse(
-				Array.get(
-					spare,
-					Option.getOrElse(
-						Array.findFirstIndex(unnamed, name => name === app),
-						() => 0
-					) % Number.max(1, spare.length)
-				),
-				() => 'var(--chart-3)'
-			)
-		)
-	}
 	const inBucket = Array.filter(
 		props.report.cells,
 		cell => props.focus.bucket === undefined || cell.at === props.focus.bucket
@@ -545,25 +471,27 @@ function UsageReport(props: {
 		props.onFocus(Boolean.match(same, {onFalse: () => next, onTrue: () => ({})}))
 	}
 	return (
-		<>
-			<Stats range={props.range} report={props.report} />
-			<UsageChart
-				apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
-				metric={props.metric}
-				onBucket={at => toggle({bucket: at})}
-				range={props.range}
-				report={props.report}
-			/>
-			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
-			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
-				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
-					<GroupLabel>By app</GroupLabel>
+		<Card>
+			<div className="flex flex-col">
+				<Totals metric={props.metric} onMetric={props.onMetric} report={props.report} />
+				<div className="px-4 pt-3">
+					<UsageChart
+						apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
+						metric={props.metric}
+						onBucket={at => toggle({bucket: at})}
+						range={props.range}
+						report={props.report}
+					/>
+				</div>
+				<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
+				<div className="mt-3 border-t">
+					<ItemListHeading>Apps</ItemListHeading>
 					<div role="list" aria-label="By app">
 						{Array.map(appSums, sum => (
 							<ShareRow
 								key={sum.name}
-								label={appName(sum.name)}
 								color={colorOf(sum.name)}
+								label={appName(sum.name)}
 								onClick={() => toggle({app: sum.name})}
 								selected={props.focus.app === sum.name}
 								share={share(value(sum), appTotal)}
@@ -571,152 +499,162 @@ function UsageReport(props: {
 							/>
 						))}
 					</div>
-				</section>
-				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">
-					<GroupLabel>By model</GroupLabel>
-					<div role="list" aria-label="By model">
-						{Array.map(modelSums, sum => (
-							<ShareRow
-								key={sum.name}
-								color="var(--primary)"
-								label={sum.name}
-								onClick={() => toggle({model: sum.name})}
-								selected={props.focus.model === sum.name}
-								share={share(value(sum), modelTotal)}
-								sum={Option.some(sum)}
-							/>
-						))}
-					</div>
-				</section>
+					{Array.isReadonlyArrayNonEmpty(modelSums) && (
+						<>
+							<ItemListHeading>Models</ItemListHeading>
+							<div role="list" aria-label="By model">
+								{Array.map(modelSums, sum => (
+									<ShareRow
+										key={sum.name}
+										label={sum.name}
+										onClick={() => toggle({model: sum.name})}
+										selected={props.focus.model === sum.name}
+										share={share(value(sum), modelTotal)}
+										sum={Option.some(sum)}
+									/>
+								))}
+							</div>
+						</>
+					)}
+				</div>
 			</div>
-		</>
+		</Card>
 	)
 }
 
 // judge-ignore no-dropped-content -- a period's usage loads once; only this failure's Retry reloads it, so nothing loaded can drop.
-function Usage(props: {focus: Focus; metric: Metric; onFocus: (focus: Focus) => void; period: Period}) {
+function Usage(props: {
+	focus: Focus
+	metric: Metric
+	onFocus: (focus: Focus) => void
+	onMetric: (metric: Metric) => void
+	period: Period
+}) {
 	const result = useAtomSuspense(aiUsageAtom(props.period), {includeFailure: true})
 	const refresh = useAtomRefresh(aiUsageAtom(props.period))
 	if (AsyncResult.isFailure(result)) return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
 	return <UsageReport {...props} range={result.value.range} report={result.value.report} />
 }
 
-function RemoveKeyDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; provider: AiProvider}) {
-	const [result, remove] = useAtom(removeKeyAtom(props.provider))
-	return (
-		<ConfirmDialog
-			action="Remove key"
-			description="Apps calling this provider through Gateway stop until you add a key again."
-			open={props.open}
-			onOpenChange={props.onOpenChange}
-			result={result}
-			run={() => remove()}
-			title={`Remove the ${PROVIDER_NAMES[props.provider]} key?`}
-		/>
-	)
-}
-
-function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provider: AiProvider; spent: string}) {
-	const [confirm, setConfirm] = useState(false)
-	const reset = useAtomSet(removeKeyAtom(props.provider))
+// A provider's key by its last four, what it cost in the period and a red dot once the provider refused it.
+function KeyRow(props: {
+	info: Option.Option<AiKeyInfo>
+	onAdd: () => void
+	onRemove: () => void
+	provider: AiProvider
+	spent: string
+}) {
 	const rejected = Option.exists(props.info, info => info.lastStatus === 401 || info.lastStatus === 403)
-	const detail = Option.match(props.info, {
-		onNone: () => 'no key',
-		onSome: info =>
-			Boolean.match(rejected, {onFalse: () => `••••${info.last4}`, onTrue: () => `${info.lastStatus} · replace key`})
-	})
+	const last4 = Option.map(props.info, info => `••••${info.last4}`)
 	return (
-		<>
-			{Option.isSome(props.info) && (
-				<RemoveKeyDialog open={confirm} onOpenChange={setConfirm} provider={props.provider} />
-			)}
-			<Row
-				label={`${PROVIDER_NAMES[props.provider]}, ${detail}`}
-				onClick={props.onAdd}
-				menu={Option.match(props.info, {
-					onNone: () => undefined,
-					onSome: () => (
-						<>
-							<ContextMenuItem className="max-sm:h-11" onClick={props.onAdd}>
-								Replace key
-							</ContextMenuItem>
-							<ContextMenuItem
-								variant="destructive"
-								className="max-sm:h-11"
-								onClick={() => {
-									reset(Atom.Reset)
-									setConfirm(true)
-								}}
-							>
-								Remove key
-							</ContextMenuItem>
-						</>
-					)
-				})}
-			>
-				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
-				<span
-					className={cn(
-						'min-w-0 flex-1 truncate font-mono text-xs',
-						Boolean.match(rejected, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-destructive'})
-					)}
-				>
-					{detail}
-				</span>
-				<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
-				<span className="flex size-3 shrink-0 items-center justify-center">
-					<StatusDot
-						status={Option.match(props.info, {
-							onNone: () => 'off' as const,
-							onSome: () => Boolean.match(rejected, {onFalse: () => 'live' as const, onTrue: () => 'error' as const})
-						})}
-					/>
-				</span>
-			</Row>
-		</>
+		<Row
+			button={Option.isSome(props.info)}
+			label={`${PROVIDER_NAMES[props.provider]}, ${Option.getOrElse(last4, () => 'no key')}`}
+			onClick={props.onAdd}
+			menu={Option.match(props.info, {
+				onNone: () => undefined,
+				onSome: () => (
+					<>
+						<ContextMenuItem className="max-sm:h-11" onClick={props.onAdd}>
+							Replace key
+						</ContextMenuItem>
+						<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={props.onRemove}>
+							Remove key
+						</ContextMenuItem>
+					</>
+				)
+			})}
+			trailing={Option.match(props.info, {
+				onNone: () => (
+					<Button
+						variant="secondary"
+						size="sm"
+						aria-label={`Add ${PROVIDER_NAMES[props.provider]} key`}
+						onClick={event => {
+							event.stopPropagation()
+							props.onAdd()
+						}}
+					>
+						<PlusIcon />
+						Add key
+					</Button>
+				),
+				onSome: () => (
+					<>
+						{rejected && <StatusDot status="error" />}
+						<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
+					</>
+				)
+			})}
+		>
+			<ItemMedia>
+				<KeyIcon className="text-muted-foreground size-4" />
+			</ItemMedia>
+			<ItemContent>
+				<ItemTitle>
+					<span
+						className={cn(
+							'truncate',
+							Boolean.match(Option.isNone(props.info), {
+								onFalse: () => undefined,
+								onTrue: () => 'text-muted-foreground'
+							})
+						)}
+					>
+						{PROVIDER_NAMES[props.provider]}
+					</span>
+					{Option.match(last4, {
+						onNone: () => null,
+						onSome: value => <span className="text-muted-foreground font-mono text-xs">{value}</span>
+					})}
+				</ItemTitle>
+			</ItemContent>
+		</Row>
 	)
 }
 
 function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; period: Period}) {
 	const result = useAtomSuspense(aiKeysAtom, {includeFailure: true})
 	const usage = useAtomValue(aiUsageAtom(props.period))
+	const [removal, removeKey] = useAtom(removeKeyAtom)
 	if (AsyncResult.isFailure(result)) {
 		if (Option.exists(AsyncResult.error(result), isDenied)) return null
-		return <ResultError result={result} />
+		return (
+			<div className="px-4">
+				<ResultError result={result} />
+			</div>
+		)
 	}
 	const byProvider = AsyncResult.getOrElse(
 		AsyncResult.map(usage, value => value.report.byProvider),
 		() => []
 	)
 	return (
-		<section aria-label="Keys" className="flex flex-col">
-			<GroupLabel>Keys</GroupLabel>
-			<div role="list" aria-label="Keys">
-				{Array.match(result.value, {
-					onEmpty: () => (
-						<Row label="Add a provider key" onClick={() => props.onAdd(Option.none())}>
-							<span className="text-muted-foreground text-sm">Add a provider key</span>
-						</Row>
-					),
-					onNonEmpty: keys =>
-						Array.map(PROVIDERS, provider => (
-							<KeyRow
-								key={provider}
-								provider={provider}
-								info={Array.findFirst(keys, key => key.provider === provider)}
-								onAdd={() => props.onAdd(Option.some(provider))}
-								spent={Option.getOrElse(
-									Option.map(
-										Array.findFirst(byProvider, entry => entry.name === provider),
-										costOf
-									),
-									() => '—'
-								)}
-							/>
-						))
-				})}
+		<>
+			<Card>
+				<div role="list" aria-label="Keys">
+					{Array.map(PROVIDERS, provider => (
+						<KeyRow
+							key={provider}
+							provider={provider}
+							info={Array.findFirst(result.value, key => key.provider === provider)}
+							onAdd={() => props.onAdd(Option.some(provider))}
+							onRemove={() => removeKey(provider)}
+							spent={Option.getOrElse(
+								Option.map(
+									Array.findFirst(byProvider, entry => entry.name === provider),
+									costOf
+								),
+								() => '—'
+							)}
+						/>
+					))}
+				</div>
+			</Card>
+			<div className="px-4">
+				<ResultError result={removal} />
 			</div>
-		</section>
+		</>
 	)
 }
 
@@ -725,14 +663,33 @@ export function AiPane(props: {
 	metric: Metric
 	onAdd: (provider: Option.Option<AiProvider>) => void
 	onFocus: (focus: Focus) => void
+	onMetric: (metric: Metric) => void
 	period: Period
 }) {
 	return (
 		<CatchBoundary getResetKey={() => `ai-${props.period}`} errorComponent={FailureContent}>
-			<Suspense fallback={<ItemListSkeleton label="AI usage" rows={6} />}>
-				<Usage focus={props.focus} metric={props.metric} onFocus={props.onFocus} period={props.period} />
+			<Suspense
+				fallback={
+					<Card>
+						<ItemListSkeleton label="AI usage" media rows={6} />
+					</Card>
+				}
+			>
+				<Usage
+					focus={props.focus}
+					metric={props.metric}
+					onFocus={props.onFocus}
+					onMetric={props.onMetric}
+					period={props.period}
+				/>
 			</Suspense>
-			<Suspense fallback={<ItemListSkeleton label="Keys" rows={4} />}>
+			<Suspense
+				fallback={
+					<Card>
+						<ItemListSkeleton label="Keys" media rows={4} />
+					</Card>
+				}
+			>
 				<Keys onAdd={props.onAdd} period={props.period} />
 			</Suspense>
 		</CatchBoundary>

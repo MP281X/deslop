@@ -203,15 +203,14 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps the bar outside initial suspension, its actions in the palette and no second heading',
+		'keeps the bar outside initial suspension, its actions in the bar and no second heading',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.initial())
 			assert.include(html, '>gateway</span>')
-			assert.include(html, 'aria-label="View"')
+			assert.include(html, 'aria-label="Sections"')
 			assert.notInclude(html, '>Servers</h2>')
-			assert.include(html, 'aria-label="Search gateway"')
-			assert.notInclude(html, 'aria-label="Add server"')
-			assert.notInclude(html, 'aria-label="Copy MCP URL"')
+			assert.include(html, 'aria-label="Add server"')
+			assert.include(html, 'aria-label="Copy MCP URL"')
 			assert.include(html, 'aria-busy="true"')
 			assert.notInclude(html, 'aria-label="No servers yet"')
 		})
@@ -236,7 +235,7 @@ it.layer(NodeServices.layer)(test => {
 				)
 			)
 			assert.include(html, sample.name)
-			assert.include(html, 'aria-label="Servers out of date"')
+			assert.include(html, 'aria-label="Out of date"')
 			assert.notInclude(html, 'Authorization is temporarily unavailable')
 			assert.notInclude(html, 'Something went wrong')
 		})
@@ -276,7 +275,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			assert.include(html, sample.name)
 			assert.notInclude(html, 'Cannot decode the latest update')
-			assert.include(html, 'aria-label="Servers out of date"')
+			assert.include(html, 'aria-label="Out of date"')
 		})
 	)
 })

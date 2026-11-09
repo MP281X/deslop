@@ -1,53 +1,55 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, Match, Number, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
-import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
+import {CheckIcon, CopyIcon, HardDrivesIcon, PlusIcon, WrenchIcon} from '@phosphor-icons/react'
+import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
-import {otherApps} from '@deslop/components-web/command-palette'
-import type {PaletteGroup} from '@deslop/components-web/command-palette'
+import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Page, Section, Stat} from '@deslop/components-web/page'
+import {Page} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
-import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
+import {Card} from '@deslop/components-web/ui/card'
 import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
-import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogTitle
-} from '@deslop/components-web/ui/dialog'
+import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
-import {cn} from '@deslop/components-web/utils'
+import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {UndoButton} from '@deslop/components-web/undo'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {addAtom, connectUrl, copyAtom, ENDPOINT, Period, removeAtom, serversAtom, setKeyAtom} from '#lib/utils.ts'
+import {
+	addAtom,
+	aiKeysAtom,
+	aiUsageAtom,
+	connectUrl,
+	copiedAtom,
+	copyAtom,
+	ENDPOINT,
+	Period,
+	removeServerAtom,
+	serversAtom,
+	setKeyAtom
+} from '#lib/utils.ts'
 import {AddKeyDialog, AiControls, AiPane, PROVIDERS} from '#routes/(home)/-ai.tsx'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import icon from '#routes/icon.svg'
 import type {AiProvider} from '#services/ai/schema.ts'
 import type {ConnectionInfo} from '#services/connections/schema.ts'
 
-type View = 'ai' | 'servers'
 type Search = typeof Search.Type
 const Search = Schema.Struct({
 	app: Schema.optionalKey(Schema.String),
@@ -72,21 +74,9 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 	)
 )
 
-// Live in the primary, expired red, not connected hollow.
-function Status(props: {server: ConnectionInfo}) {
-	return (
-		<StatusDot
-			status={pipe(
-				Match.value(props.server.status),
-				Match.when('Connected', () => 'live' as const),
-				Match.when('Expired', () => 'error' as const),
-				Match.orElse(() => 'off' as const)
-			)}
-		/>
-	)
-}
-
+// A server's own words for why it needs the user, or its host when it is fine.
 function reasonText(server: ConnectionInfo) {
+	if (server.error !== undefined) return 'Connection failed'
 	return pipe(
 		Match.value(server.status),
 		Match.when('Expired', () => 'Sign-in expired'),
@@ -95,38 +85,11 @@ function reasonText(server: ConnectionInfo) {
 	)
 }
 
-function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boolean; server: ConnectionInfo}) {
-	const [removing, remove] = useAtom(removeAtom(props.server.id))
-	return (
-		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogContent>
-				<DialogTitle>Remove {props.server.name}?</DialogTitle>
-				<DialogDescription>
-					Its tools will no longer be available through the gateway. This does not revoke the provider’s grant.
-				</DialogDescription>
-				<ResultError result={removing} />
-				<DialogFooter>
-					<DialogClose render={<Button variant="ghost" disabled={AsyncResult.isWaiting(removing)} />}>
-						Cancel
-					</DialogClose>
-					<Button variant="destructive" disabled={AsyncResult.isWaiting(removing)} onClick={() => remove()}>
-						Remove server
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
-	)
-}
-
-function FirstImage(props: {small?: boolean; sources: string[]}) {
+// Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
+function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span
-			className={cn(
-				'flex shrink-0 items-center justify-center',
-				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
-			)}
-		>
+		<span className="flex size-5 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
@@ -137,8 +100,8 @@ function FirstImage(props: {small?: boolean; sources: string[]}) {
 	)
 }
 
-// Keyed by sources, so icons a later discovery finds get their turn; a dark-background icon goes first without a tile.
-function ServerIcon(props: {server: ConnectionInfo; small?: boolean}) {
+// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
+function ServerIcon(props: {server: ConnectionInfo}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
 		...Array.map(
@@ -151,174 +114,169 @@ function ServerIcon(props: {server: ConnectionInfo; small?: boolean}) {
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
-	return <FirstImage key={Array.join(sources, ' ')} small={props.small} sources={sources} />
+	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
-// The page has no detail pane, so a palette pick brings its row into view.
-function focusServer(server: ConnectionInfo) {
-	const row = document.getElementById(`server-${server.id}`)
-	row?.focus()
-	row?.scrollIntoView({block: 'center'})
-}
-
-function ServerRow(props: {server: ConnectionInfo}) {
-	const [confirm, setConfirm] = useState(false)
+// One row per server: its icon, name over host, then its tool count or the button that reconnects it; its context menu removes it.
+function ServerRow(props: {
+	failure: Option.Option<string>
+	onRemove: () => void
+	onSelect: () => void
+	removed: boolean
+	selected: boolean
+	server: ConnectionInfo
+	undo: () => void
+}) {
 	const connected = props.server.status === 'Connected'
+	const needsUser = !connected || props.server.error !== undefined
+	const failed = props.server.status === 'Expired' || props.server.error !== undefined
+	function connect() {
+		location.assign(connectUrl(props.server.id))
+	}
 	return (
-		<div role="listitem" className="list-row">
-			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
+		<div role="listitem" className="relative">
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
-					<ContextMenuTrigger
-						render={
-							<Button
-								variant="ghost"
-								id={`server-${props.server.id}`}
-								type="button"
-								aria-label={`${props.server.name}, ${reasonText(props.server)}`}
-								className="absolute inset-0 h-full w-full"
-							/>
-						}
-					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
+				<ContextMenuTrigger
+					render={
+						<Item
+							size="row"
+							id={`server-${props.server.id}`}
+							tabIndex={0}
+							data-removed={props.removed}
+							data-selected={props.selected}
+							aria-label={`${props.server.name}, ${reasonText(props.server)}`}
+							onFocus={props.onSelect}
+							render={Boolean.match(needsUser, {
+								onFalse: () => <div />,
+								onTrue: () => <button type="button" aria-label={`${props.server.name}, ${reasonText(props.server)}`} />
+							})}
+							{...Boolean.match(needsUser, {onFalse: () => ({}), onTrue: () => ({onClick: connect})})}
+						/>
+					}
+				>
+					<ItemMedia>
 						<ServerIcon server={props.server} />
-						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-							{new URL(props.server.url).hostname}
-						</span>{' '}
-						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
-								title="Tools"
-							>
-								{props.server.tools.length}
-							</span>
-						)}
-					</div>
-					<div className="relative flex w-16 shrink-0 justify-end">
-						{connected && props.server.error === undefined && (
-							<span
-								role="img"
-								title={props.server.status}
-								aria-label={props.server.status}
-								className="flex size-3 shrink-0 items-center justify-center"
-							>
-								<Status server={props.server} />
-							</span>
-						)}
-						{(!connected || props.server.error !== undefined) && (
-							<Problem
-								label={Boolean.match(connected, {
-									onFalse: () => reasonText(props.server),
-									onTrue: () => 'Connection failed'
-								})}
-								reset={() => location.assign(connectUrl(props.server.id))}
-							/>
-						)}
-					</div>
-				</div>
+					</ItemMedia>
+					<ItemContent>
+						<ItemTitle>{props.server.name}</ItemTitle>
+						<ItemDescription>
+							{Option.getOrElse(props.failure, () => new URL(props.server.url).hostname)}
+						</ItemDescription>
+					</ItemContent>
+					<ItemActions>
+						{Boolean.match(props.removed, {
+							onFalse: () => (
+								<>
+									{failed && <StatusDot status="error" />}
+									{Boolean.match(needsUser, {
+										onFalse: () =>
+											Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+												<span
+													className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
+													title="Tools"
+												>
+													{props.server.tools.length}
+													<WrenchIcon className="size-3.5" />
+												</span>
+											),
+										onTrue: () => <span className="w-20" />
+									})}
+								</>
+							),
+							onTrue: () => <UndoButton onClick={props.undo} />
+						})}
+					</ItemActions>
+				</ContextMenuTrigger>
 				<ContextMenuContent className="w-auto min-w-36">
-					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={() => setConfirm(true)}>
+					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={props.onRemove}>
 						Remove
 					</ContextMenuItem>
 				</ContextMenuContent>
 			</ContextMenu>
+			{needsUser && !props.removed && (
+				<Button size="sm" className="absolute top-1/2 right-4 -translate-y-1/2" onClick={connect}>
+					{Boolean.match(connected, {onFalse: () => 'Connect', onTrue: () => 'Reconnect'})}
+				</Button>
+			)}
 		</div>
 	)
 }
 
-function ServersContent(props: {onAdd: () => void}) {
+function ServersContent(props: {
+	onAdd: () => void
+	onSelect: (server: ConnectionInfo) => void
+	selected: Option.Option<string>
+}) {
 	const result = useAtomSuspense(serversAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(serversAtom)
-	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(serversAtom)))
+	const send = useAtomSet(removeServerAtom.send)
+	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Waiting')), Option.none)
+	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Failed')), Option.none)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
 		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
 	}
-	return (
-		<>
-			{Option.getOrUndefined(
-				Option.map(value, current =>
-					Array.match(Array.sort(current, urgency), {
-						onEmpty: () => (
-							<EmptyState
-								label="No servers yet"
-								icon={<HardDrivesIcon className="size-5" weight="light" />}
-								action={
-									<Button onClick={props.onAdd}>
-										<PlusIcon />
-										Add server
-									</Button>
-								}
-							/>
-						),
-						onNonEmpty: servers => (
-							<Section title="Servers" meta={`${servers.length} configured`}>
-								<div role="list" aria-label="MCP servers">
-									{Array.map(servers, server => (
-										<ServerRow key={server.id} server={server} />
-									))}
-								</div>
-							</Section>
-						)
-					})
+	return Option.getOrUndefined(
+		Option.map(value, current =>
+			Array.match(Array.sort(current, urgency), {
+				onEmpty: () => (
+					<EmptyState
+						label="No servers yet"
+						icon={<HardDrivesIcon className="size-5" weight="light" />}
+						action={
+							<Button onClick={props.onAdd}>
+								<PlusIcon />
+								Add server
+							</Button>
+						}
+					/>
+				),
+				onNonEmpty: servers => (
+					<Card size="list">
+						<div role="list" aria-label="MCP servers">
+							{Array.map(servers, server => (
+								<ServerRow
+									key={server.id}
+									server={server}
+									failure={Option.map(
+										Option.filter(failed, state => state.id === server.id),
+										state => state.message
+									)}
+									removed={Option.exists(waiting, state => state.id === server.id)}
+									selected={Option.contains(props.selected, server.id)}
+									onSelect={() => props.onSelect(server)}
+									undo={() => send({_tag: 'Undone'})}
+									onRemove={() => {
+										send({_tag: 'Dismissed'})
+										send({_tag: 'Removed', id: server.id})
+									}}
+								/>
+							))}
+						</div>
+					</Card>
 				)
-			)}
-			{AsyncResult.isFailure(result) && (
-				<div className="bg-background sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end">
-					<Problem label="Servers out of date" warning reset={refresh} since={since} />
-				</div>
-			)}
-		</>
+			})
+		)
 	)
 }
 
-function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
+function ServersPane(props: {
+	onAdd: () => void
+	onSelect: (server: ConnectionInfo) => void
+	selected: Option.Option<string>
+}) {
 	return (
-		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-				<Stat label="Configured" value={props.servers.length} />
-				<Stat
-					label="Connected"
-					value={Array.countBy(props.servers, server => server.status === 'Connected' && server.error === undefined)}
-				/>
-				<Stat
-					label="Need you"
-					value={Array.countBy(props.servers, server => server.status !== 'Connected' || server.error !== undefined)}
-				/>
-			</div>
-			<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} />}>
-					<ServersContent onAdd={props.onAdd} />
-				</Suspense>
-			</CatchBoundary>
-		</>
-	)
-}
-
-function ViewToggle(props: {onView: (view: View) => void; view: View}) {
-	return (
-		<ToggleGroup
-			aria-label="View"
-			size="sm"
-			spacing={1}
-			variant="outline"
-			value={[props.view]}
-			onValueChange={values =>
-				Option.map(Array.head(values), value =>
-					props.onView(Boolean.match(value === 'ai', {onFalse: () => 'servers', onTrue: () => 'ai'}))
-				)
-			}
-		>
-			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
-				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
-			</ToggleGroupItem>
-			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
-				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
-			</ToggleGroupItem>
-		</ToggleGroup>
+		<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+			<Suspense
+				fallback={
+					<Card>
+						<ItemListSkeleton label="MCP servers" media rows={5} />
+					</Card>
+				}
+			>
+				<ServersContent onAdd={props.onAdd} onSelect={props.onSelect} selected={props.selected} />
+			</Suspense>
+		</CatchBoundary>
 	)
 }
 
@@ -383,6 +341,64 @@ function AddDialog() {
 	)
 }
 
+function ServersProblem() {
+	const since = useAtomValue(problemSinceAtom(serversAtom))
+	const refresh = useAtomRefresh(serversAtom)
+	return Option.match(since, {
+		onNone: () => null,
+		onSome: value => <Problem label="Out of date" warning reset={refresh} since={value} />
+	})
+}
+
+function AiProblem(props: {period: Period}) {
+	const serversSince = useAtomValue(problemSinceAtom(serversAtom))
+	const usageSince = useAtomValue(problemSinceAtom(aiUsageAtom(props.period)))
+	const keysSince = useAtomValue(problemSinceAtom(aiKeysAtom))
+	const refreshServers = useAtomRefresh(serversAtom)
+	const refreshUsage = useAtomRefresh(aiUsageAtom(props.period))
+	const refreshKeys = useAtomRefresh(aiKeysAtom)
+	return Option.match(
+		Array.reduce(
+			Array.flatMap([serversSince, usageSince, keysSince], Option.toArray),
+			Option.none<number>(),
+			(oldest, value) =>
+				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
+		),
+		{
+			onNone: () => null,
+			onSome: value => (
+				<Problem
+					label="Out of date"
+					warning
+					since={value}
+					reset={() => {
+						refreshServers()
+						refreshUsage()
+						refreshKeys()
+					}}
+				/>
+			)
+		}
+	)
+}
+
+// Copies the gateway's MCP URL; the button shows a check for a moment after a copy.
+function CopyEndpoint() {
+	const copy = useAtomSet(copyAtom(ENDPOINT))
+	const copied = useAtomValue(copiedAtom)
+	return (
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			className="max-sm:size-11"
+			aria-label={Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'})}
+			onClick={() => copy()}
+		>
+			{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon />})}
+		</Button>
+	)
+}
+
 function Home() {
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
@@ -398,6 +414,7 @@ function Home() {
 		opened: 0,
 		provider: PROVIDERS[0]
 	})
+	const [selected, setSelected] = useState<Option.Option<string>>(() => Option.none())
 	const resetKey = useAtomSet(setKeyAtom)
 	function addKey(provider: Option.Option<AiProvider>) {
 		resetKey(Atom.Reset)
@@ -408,123 +425,74 @@ function Home() {
 		}))
 	}
 	const send = useAtomSet(addAtom.send)
-	const copyText = useAtomSet(copyAtom(ENDPOINT))
-	const servers = useAtomValue(serversAtom)
-	useAtomValue(problemSinceAtom(serversAtom))
-	const value = AsyncResult.value(servers)
-	const authFailure = Option.filter(AsyncResult.error(servers), isDenied)
-	const sorted = Array.sort(
-		Option.getOrElse(value, () => Array.empty<ConnectionInfo>()),
-		urgency
-	)
-	const ready = Option.isNone(authFailure) && Option.isSome(value)
-
-	const needsYou: PaletteGroup = {
-		items: Array.map(
-			Array.filter(sorted, server => server.status !== 'Connected' || server.error !== undefined),
-			server => ({
-				detail: reasonText(server),
-				icon: <ServerIcon server={server} small />,
-				id: server.id,
-				keywords: `${server.name} ${server.url}`,
-				label: server.name,
-				run: () => focusServer(server)
-			})
-		),
-		label: 'Needs you'
-	}
-	const all: PaletteGroup = {
-		items: Array.map(sorted, server => ({
-			detail: new URL(server.url).hostname,
-			icon: <ServerIcon server={server} small />,
-			id: server.id,
-			keywords: `${server.name} ${server.url} ${Array.join(
-				Array.map(server.tools, tool => tool.name),
-				' '
-			)}`,
-			label: server.name,
-			run: () => focusServer(server)
-		})),
-		label: 'Servers'
-	}
-	const actions: PaletteGroup = {
-		items: [
-			...Boolean.match(ready, {
-				onFalse: () => [],
-				onTrue: () => [{icon: <PlusIcon />, label: 'Add server', run: () => send({_tag: 'Open' as const})}]
-			}),
-			{icon: <KeyIcon />, label: 'Add key', run: () => addKey(Option.none())},
-			{icon: <CopyIcon />, label: 'Copy MCP URL', run: () => copyText()}
-		],
-		label: 'Actions'
-	}
+	// Switching view clears the narrowing; the period and measure carry over.
+	const clear = {app: undefined, bucket: undefined, model: undefined, view: undefined}
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
 				icon={icon}
 				name="gateway"
-				palette={Boolean.match(Option.isSome(authFailure), {
-					onFalse: () => [actions, needsYou, all, otherApps('gateway')],
-					onTrue: () => [otherApps('gateway')]
-				})}
 				tabs={
-					<ViewToggle
-						view={view}
-						onView={next =>
-							show({
-								app: undefined,
-								bucket: undefined,
-								model: undefined,
-								view: Boolean.match(next === 'ai', {onFalse: () => undefined, onTrue: () => 'ai' as const})
-							})
-						}
-					/>
+					<AppBarTabs value={view}>
+						<AppBarTab value="servers" render={<Link to="/" search={{...search, ...clear}} />}>
+							Servers
+						</AppBarTab>
+						<AppBarTab value="ai" render={<Link to="/" search={{...search, ...clear, view: 'ai'}} />}>
+							AI
+						</AppBarTab>
+					</AppBarTabs>
 				}
 				controls={
-					view === 'ai' && (
-						<div className="flex items-center gap-2 max-sm:hidden">
+					<>
+						{Boolean.match(view === 'ai', {
+							onFalse: () => <ServersProblem />,
+							onTrue: () => <AiProblem period={period} />
+						})}
+						{view === 'servers' && (
+							<>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									className="max-sm:size-11"
+									aria-label="Add server"
+									onClick={() => send({_tag: 'Open'})}
+								>
+									<PlusIcon />
+								</Button>
+								<CopyEndpoint />
+							</>
+						)}
+						{view === 'ai' && (
 							<AiControls
-								metric={metric}
 								period={period}
-								onMetric={next =>
-									show({
-										metric: Boolean.match(next === 'tokens', {
-											onFalse: () => undefined,
-											onTrue: () => 'tokens' as const
-										})
-									})
-								}
 								onPeriod={next => show({app: undefined, bucket: undefined, model: undefined, period: next})}
 							/>
-						</div>
-					)
+						)}
+					</>
 				}
 			/>
-			{view === 'ai' && (
-				<div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-1 sm:hidden">
-					<AiControls
-						metric={metric}
-						period={period}
-						onMetric={next =>
-							show({
-								metric: Boolean.match(next === 'tokens', {onFalse: () => undefined, onTrue: () => 'tokens' as const})
-							})
-						}
-						onPeriod={next => show({app: undefined, bucket: undefined, model: undefined, period: next})}
-					/>
-				</div>
-			)}
 			<Page width="column">
 				<h1 className="sr-only">Gateway</h1>
 				{Boolean.match(view === 'ai', {
-					onFalse: () => <ServersPane onAdd={() => send({_tag: 'Open'})} servers={sorted} />,
+					onFalse: () => (
+						<ServersPane
+							onAdd={() => send({_tag: 'Open'})}
+							onSelect={server => setSelected(Option.some(server.id))}
+							selected={selected}
+						/>
+					),
 					onTrue: () => (
 						<AiPane
 							focus={{app: search.app, bucket: search.bucket, model: search.model}}
 							metric={metric}
 							onAdd={addKey}
 							onFocus={focus => show({app: focus.app, bucket: focus.bucket, model: focus.model})}
+							onMetric={next =>
+								show({
+									metric: Boolean.match(next === 'tokens', {onFalse: () => undefined, onTrue: () => 'tokens' as const})
+								})
+							}
 							period={period}
 						/>
 					)

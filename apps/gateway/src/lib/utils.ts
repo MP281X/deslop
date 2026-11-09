@@ -1,10 +1,11 @@
-import {Boolean, Clock, Effect, Redacted, Schema, Stream, pipe} from 'effect'
+import {Boolean, Clock, Context, Effect, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
+import {removalMachine} from '@deslop/components-web/undo'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -34,8 +35,13 @@ export const serversAtom = Atom.keepAlive(
 	)
 )
 
-export const removeAtom = Atom.family((id: string) =>
-	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('gateway.remove', {id})))
+// A removal waits eight seconds with Undo before the server hears it; the commit takes the client from the atom runtime.
+export const removeServerAtom = AtomMachine.bind(RpcClient.runtime).make(
+	removalMachine(id =>
+		Effect.gen(function* () {
+			return yield* Context.get(yield* Atom.getResult(RpcClient.runtime), RpcClient)('gateway.remove', {id})
+		})
+	)
 )
 
 export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
@@ -128,21 +134,24 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 	)
 )
 
-export const removeKeyAtom = Atom.family((provider: AiProvider) =>
-	RpcClient.runtime.fn(() =>
-		Reactivity.mutation(
-			Effect.flatMap(RpcClient, client => client('ai.removeKey', {provider})),
-			['ai-keys']
-		)
+export const removeKeyAtom = RpcClient.runtime.fn((provider: AiProvider) =>
+	Reactivity.mutation(
+		Effect.flatMap(RpcClient, client => client('ai.removeKey', {provider})),
+		['ai-keys']
 	)
 )
 
+// The copy button's check, set by the copy and cleared a moment later.
+export const copiedAtom = Atom.make(false)
+
+// The button confirms a copy in place; a failure says why in a toast.
 export const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		pipe(
 			Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => navigator.clipboard.writeText(value)}),
-			// The palette closes as it runs, so the toast is the only place the copy can be confirmed.
-			Effect.tap(() => Effect.sync(() => toast.add({description: value, title: 'Copied', type: 'success'}))),
+			Effect.andThen(Atom.set(copiedAtom, true)),
+			Effect.andThen(Effect.sleep('1500 millis')),
+			Effect.andThen(Atom.set(copiedAtom, false)),
 			Effect.tapError(() => Effect.sync(() => toast.add({description: value, title: 'Cannot copy', type: 'error'})))
 		)
 	)
