@@ -2,6 +2,7 @@ import {
 	Array,
 	Clock,
 	Context,
+	Duration,
 	Effect,
 	Exit,
 	HashMap,
@@ -26,7 +27,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL, rejected} from '@deslop/runtime/auth/utils'
 
 import {People} from '#services/people/service.ts'
-import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
+import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
 import {
@@ -47,8 +48,7 @@ export const REQUEST_COOKIE = '__Host-request-'
 
 const expired = AuthError.make({message: 'This sign-in expired. Start it again in the app.'})
 const notWaiting = AuthError.make({
-	message:
-		'No waiting sign-in has this code: it is mistyped, already answered or expired after 10 minutes. Read the code again from the page or command that is still waiting; start a new sign-in only if none is.'
+	message: `No waiting sign-in has this code: it is mistyped, already answered or expired after ${Duration.toMinutes(SIGN_IN_LIFETIME)} minutes. Read the code again from the page or command that is still waiting; start a new sign-in only if none is.`
 })
 
 const deliver = Effect.fnUntraced(function* (input: {
@@ -120,7 +120,7 @@ const SignIn = Machine.make({
 	}),
 	input: SignInInput,
 	root: SignInStates,
-	timers: {lifetime: '10 minutes'}
+	timers: {lifetime: SIGN_IN_LIFETIME}
 }).handle({
 	initial: {data: transition => transition.input, target: 'Open'},
 	states: {
@@ -360,7 +360,7 @@ export class SignIns extends Context.Service<
 								})
 							}),
 							// The machine's lifetime timer.
-							expiresAt: now + 10 * 60_000,
+							expiresAt: now + Duration.toMillis(SIGN_IN_LIFETIME),
 							id: code
 						}),
 						receiver: yield* hash(receiver),

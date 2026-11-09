@@ -22,7 +22,7 @@ import {GitHub} from '#services/github/service.ts'
 import {PasskeySignIn} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
-import {typedCode} from '#services/sign-ins/lib/utils.ts'
+import {SIGN_IN_LIFETIME, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {BrowserParams, RequestParams} from '#services/sign-ins/schema.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import {
@@ -338,7 +338,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						)
 						return HttpServerResponse.jsonUnsafe({
 							device_code: started.receiver,
-							expires_in: 600,
+							expires_in: Duration.toSeconds(SIGN_IN_LIFETIME),
 							interval: 2,
 							user_code: started.code,
 							verification_uri: `${origin}/`,

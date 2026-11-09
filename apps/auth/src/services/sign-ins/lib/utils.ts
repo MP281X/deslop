@@ -1,9 +1,11 @@
-import {Array, Option, String, pipe} from 'effect'
+import {Array, Duration, Option, String, pipe} from 'effect'
 
 // A sign-in's code is its id, in RFC 8628's user-code letters: no vowels and no letters that read alike.
 const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'
 
 export const CODE_LENGTH = 8
+
+export const SIGN_IN_LIFETIME = Duration.minutes(10)
 
 export function typedCode(text: string) {
 	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))
