@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -39,6 +39,7 @@ import {
 	signInLabel
 } from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
@@ -322,28 +323,11 @@ function PendingRow(props: {
 	)
 }
 
-function clientsWithChildActivity(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
-	const children = Array.groupBy(
-		Array.filter(signIns, signIn => signIn.parent !== undefined),
-		signIn => signIn.parent ?? ''
-	)
-	const parents = Array.map(
-		Array.filter(signIns, signIn => signIn.parent === undefined),
-		signIn => {
-			if (signIn.kind !== 'Browser') return signIn
-			return {
-				...signIn,
-				lastActive: Array.reduce(
-					Option.getOrElse(Record.get(children, signIn.family), () => []),
-					signIn.lastActive,
-					(latest, app) => Number.max(latest, app.lastActive)
-				)
-			}
-		}
-	)
+// Browser children contribute activity to their browser, never rows of their own.
+function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
 	const byName = Array.groupBy(catalog, app => String.toLowerCase(app.name))
 	return pipe(
-		Array.groupBy(parents, signIn => signInLabel(signIn.client, signIn.device)),
+		Array.groupBy(withChildActivity(signIns), signIn => signInLabel(signIn.client, signIn.device)),
 		Record.values,
 		Array.filter(Array.isReadonlyArrayNonEmpty),
 		Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),

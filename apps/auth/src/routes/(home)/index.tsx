@@ -9,7 +9,6 @@ import {Suspense} from 'react'
 
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
-import {cn} from '@deslop/components-web/utils'
 
 import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
@@ -31,38 +30,33 @@ function Enter(props: {
 	return (
 		<section className="flex w-full flex-col gap-2">
 			<Field data-invalid={invalid}>
-				<div className={cn(props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}>
-					<InputGroup className="h-9">
-						<InputGroupAddon>
-							<KeyIcon />
-						</InputGroupAddon>
-						<InputGroupInput
-							id="code"
-							aria-label="Code of a sign-in to approve"
-							placeholder="Code"
-							maxLength={CODE_LENGTH}
-							value={props.typed}
-							onChange={event => props.onType(typedCode(event.target.value))}
-							autoFocus={linked}
-							autoComplete="off"
-							autoCapitalize="characters"
-							spellCheck={false}
-							disabled={props.state === 'Checking'}
-							aria-invalid={invalid}
-							aria-describedby="code-error"
-						/>
-					</InputGroup>
-				</div>
+				<InputGroup className="h-9">
+					<InputGroupAddon>
+						<KeyIcon />
+					</InputGroupAddon>
+					<InputGroupInput
+						id="code"
+						aria-label="Code of a sign-in to approve"
+						placeholder="Code"
+						maxLength={CODE_LENGTH}
+						value={props.typed}
+						onChange={event => props.onType(typedCode(event.target.value))}
+						autoFocus={linked}
+						autoComplete="off"
+						autoCapitalize="characters"
+						spellCheck={false}
+						disabled={props.state === 'Checking'}
+						aria-invalid={invalid}
+						aria-describedby="code-error"
+					/>
+				</InputGroup>
 				{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
 				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
 			</Field>
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (
-					<p
-						className="text-muted-foreground animate-settle-in flex items-center gap-1.5 text-xs motion-reduce:animate-none"
-						role="status"
-					>
+					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
 						{Boolean.match(answer.accept, {
 							onFalse: () => (
 								<>

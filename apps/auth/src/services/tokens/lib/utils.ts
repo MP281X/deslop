@@ -68,6 +68,29 @@ export function signedInApps(grants: Grants, now: number, owner: CredentialOwner
 	)
 }
 
+// Child app sign-ins are never rows of their own; their browser takes the newest activity and address.
+export function withChildActivity(signIns: readonly SignedInApp[]) {
+	const children = Array.groupBy(
+		Array.filter(signIns, signIn => signIn.parent !== undefined),
+		signIn => signIn.parent ?? ''
+	)
+	return Array.map(
+		Array.filter(signIns, signIn => signIn.parent === undefined),
+		signIn => {
+			const latest = Array.reduce(
+				Option.getOrElse(Record.get(children, signIn.family), () => []),
+				signIn,
+				Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
+			)
+			return {
+				...Struct.omit(signIn, ['address']),
+				lastActive: latest.lastActive,
+				...Struct.pick(latest, ['address'])
+			} satisfies SignedInApp
+		}
+	)
+}
+
 // The address as its own family, an IPv4-mapped IPv6 address read as that IPv4 address.
 function parsedAddress(address: string) {
 	return pipe(

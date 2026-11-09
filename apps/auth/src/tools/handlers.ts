@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Layer, Option, Record, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Layer, Option, Stream, String, Struct, pipe} from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
 
@@ -7,6 +7,7 @@ import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
 
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
+import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
@@ -48,34 +49,11 @@ export const ToolHandlers = Tools.toLayer(
 			answer_request: Effect.fnUntraced(function* (input) {
 				return yield* signIns.answer(input, yield* CurrentOwner, 'Token')
 			}),
-			// The rows the page shows: each browser or app with the latest activity among its child app sign-ins.
 			list_sessions: Effect.fnUntraced(function* () {
-				const listed = Option.getOrElse(yield* Stream.runHead(tokens.apps(yield* CurrentOwner)), () => [])
-				const children = Array.groupBy(
-					Array.filter(listed, app => app.parent !== undefined),
-					app => app.parent ?? ''
-				)
 				return {
 					sessions: Array.map(
-						Array.filter(listed, app => app.parent === undefined),
-						app => {
-							const latest = Array.reduce(
-								[app, ...Option.getOrElse(Record.get(children, app.family), () => [])],
-								app,
-								(newest, entry) =>
-									Boolean.match(entry.lastActive > newest.lastActive, {onFalse: () => newest, onTrue: () => entry})
-							)
-							return {
-								client: app.client,
-								device: app.device,
-								id: app.family,
-								lastActive: latest.lastActive,
-								...Option.match(Option.fromUndefinedOr(latest.address), {
-									onNone: () => ({}),
-									onSome: address => ({address})
-								})
-							}
-						}
+						withChildActivity(Option.getOrElse(yield* Stream.runHead(tokens.apps(yield* CurrentOwner)), () => [])),
+						app => ({...Struct.pick(app, ['address', 'client', 'device', 'lastActive']), id: app.family})
 					)
 				}
 			}),
