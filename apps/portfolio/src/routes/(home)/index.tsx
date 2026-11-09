@@ -19,7 +19,15 @@ import {
 	pipe
 } from 'effect'
 
-import {ArrowUpRightIcon, CursorIcon} from '@phosphor-icons/react'
+import {
+	ArrowUpRightIcon,
+	CursorIcon,
+	EnvelopeIcon,
+	FileTextIcon,
+	GithubLogoIcon,
+	PhoneIcon,
+	SealCheckIcon
+} from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
@@ -430,11 +438,11 @@ function ContactSection() {
 			<SectionBody title="contact">
 				{Array.map(
 					[
-						contacts.email,
-						contacts.pec,
-						contacts.phone,
-						contacts.github,
-						{href: '/cv', label: 'CV', value: `${profile.portfolio}/cv`}
+						{...contacts.email, icon: EnvelopeIcon},
+						{...contacts.pec, icon: SealCheckIcon},
+						{...contacts.phone, icon: PhoneIcon},
+						{...contacts.github, icon: GithubLogoIcon},
+						{href: '/cv', icon: FileTextIcon, label: 'CV', value: `${profile.portfolio}/cv`}
 					],
 					item => {
 						const internal = String.startsWith('/')(item.href)
@@ -442,20 +450,18 @@ function ContactSection() {
 							<a
 								key={item.label}
 								href={item.href}
-								className="hover:text-primary flex items-baseline justify-between gap-3 py-3 text-sm"
+								className="hover:text-primary flex h-7 items-center gap-2 text-sm"
 								target={Boolean.match(internal, {onFalse: () => '_blank' as const, onTrue: () => undefined})}
 								rel={Boolean.match(internal, {onFalse: () => 'noopener noreferrer' as const, onTrue: () => undefined})}
 							>
+								<item.icon aria-hidden="true" className="text-primary size-4 shrink-0" />
 								<span className="text-muted-foreground">{item.label}</span>
-								<span className="font-mono text-xs break-all">{item.value}</span>
+								<span className="ml-auto text-right font-mono text-xs break-all">{item.value}</span>
 							</a>
 						)
 					}
 				)}
 			</SectionBody>
-			<p className="bg-background text-muted-foreground mt-4 font-mono text-xs">
-				© 2026 {profile.firstName} {profile.lastName} · VAT {profile.vat}
-			</p>
 		</Section>
 	)
 }
@@ -521,6 +527,10 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 	)
 }
 
+// Italian law asks a VAT holder's website to show the number on its home page.
+const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${profile.vat}`
+const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
+
 // Presence is a quiet line at the page's edge: live count, connecting, or unavailable, never a hero.
 function PresenceHud(input: {
 	state: 'connecting' | 'live' | 'offline'
@@ -529,36 +539,44 @@ function PresenceHud(input: {
 	shortcutsOpen?: boolean
 }) {
 	return (
-		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 flex min-h-10 items-center justify-between border-t px-3 font-mono text-xs backdrop-blur sm:px-4 print:hidden">
-			<span className="flex items-center gap-2">
-				{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
-					onFalse: () => (
-						<>
-							<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
-							<span className="text-muted-foreground">
-								{Boolean.match(input.state === 'offline', {
-									onFalse: () => 'presence connecting',
-									onTrue: () => 'presence unavailable'
-								})}
-							</span>
-						</>
-					),
-					onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
-				})}
-			</span>
-			{Predicate.isNotUndefined(input.onToggleShortcuts) && (
-				<Button
-					variant="ghost"
-					size="xs"
-					aria-expanded={input.shortcutsOpen === true}
-					aria-haspopup="dialog"
-					aria-label="Toggle keyboard shortcuts"
-					onClick={input.onToggleShortcuts}
-					className="pointer-events-auto -mr-1"
-				>
-					?
-				</Button>
-			)}
+		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 border-t font-mono text-xs backdrop-blur print:hidden">
+			<div className="relative flex min-h-10 items-center justify-between px-3 sm:px-4">
+				<span className="flex min-w-0 items-center gap-2">
+					{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
+						onFalse: () => (
+							<>
+								<span className="bg-muted-foreground/50 size-1.5 rounded-full" />
+								<span className="text-muted-foreground truncate">
+									{Boolean.match(input.state === 'offline', {
+										onFalse: () => 'presence connecting',
+										onTrue: () => 'presence unavailable'
+									})}
+								</span>
+							</>
+						),
+						onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
+					})}
+				</span>
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap sm:inline">
+					{LEGAL_LINE}
+				</span>
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap sm:hidden">
+					{LEGAL_LINE_NARROW}
+				</span>
+				{Predicate.isNotUndefined(input.onToggleShortcuts) && (
+					<Button
+						variant="ghost"
+						size="xs"
+						aria-expanded={input.shortcutsOpen === true}
+						aria-haspopup="dialog"
+						aria-label="Toggle keyboard shortcuts"
+						onClick={input.onToggleShortcuts}
+						className="pointer-events-auto -mr-1"
+					>
+						?
+					</Button>
+				)}
+			</div>
 		</div>
 	)
 }

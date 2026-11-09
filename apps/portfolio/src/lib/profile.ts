@@ -8,7 +8,6 @@ export const profile = {
 	location: 'Moimacco (UD), Italy',
 	portfolio: 'portfolio.mp281x.xyz',
 	title: 'Full-Stack TypeScript Developer',
-	// Italian law asks a VAT holder's website to show the number on its home page.
 	vat: 'IT03224930309'
 }
 
