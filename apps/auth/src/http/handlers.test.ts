@@ -351,11 +351,11 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 						)
 					),
 					Layer.provideMerge(layerIssuerAuth),
-					Layer.provideMerge(Layer.mergeAll(SignIns.layer, RateLimiter.layer)),
-					Layer.provideMerge(People.layer),
 					Layer.provideMerge(
-						Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer, RateLimiter.layerStoreMemory)
+						Layer.mergeAll(SignIns.layer, Layer.provide(RateLimiter.layer, RateLimiter.layerStoreMemory))
 					),
+					Layer.provideMerge(People.layer),
+					Layer.provideMerge(Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer)),
 					Layer.provide(storage),
 					Layer.provide(
 						Layer.mergeAll(
