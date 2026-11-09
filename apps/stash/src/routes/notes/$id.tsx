@@ -44,14 +44,7 @@ import {BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle
-} from '@deslop/components-mobile/ui/empty'
+import {Empty} from '@deslop/components-mobile/ui/empty'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {AuthError} from '@deslop/runtime/auth/schema'
 
@@ -210,41 +203,23 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 					Match.value(props.note.status),
 					Match.when('organizing', () => (
 						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="sparkles" />
-								<EmptyTitle>Reading This Link</EmptyTitle>
-								<EmptyDescription>Stash is reading the source of this entry.</EmptyDescription>
-							</EmptyHeader>
-							<EmptyContent>
-								<ProgressView modifiers={[tint(primary)]} />
-							</EmptyContent>
+							<ProgressView modifiers={[tint(primary), accessibilityLabel('Reading this link')]} />
 						</Empty>
 					)),
 					Match.when('failed', () => (
 						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="exclamationmark.triangle" />
-								<EmptyTitle>Couldn’t Read This Link</EmptyTitle>
-								<EmptyDescription>
-									{Option.getOrElse(
-										Option.filter(Option.fromUndefinedOr(props.note.issue), String.isNonEmpty),
-										() => 'The source could not be read.'
-									)}
-								</EmptyDescription>
-							</EmptyHeader>
-							<EmptyContent>
-								<Button
-									label="Try Again"
-									systemImage="arrow.clockwise"
-									onPress={props.onRetry}
-									modifiers={[
-										buttonStyle('glassProminent'),
-										buttonBorderShape('capsule'),
-										controlSize('large'),
-										tint(primary)
-									]}
-								/>
-							</EmptyContent>
+							<Button
+								label="Can’t Read This Link"
+								systemImage="arrow.clockwise"
+								role="destructive"
+								onPress={props.onRetry}
+								modifiers={[
+									buttonStyle('glassProminent'),
+									buttonBorderShape('capsule'),
+									controlSize('large'),
+									tint(colors.destructive)
+								]}
+							/>
 						</Empty>
 					)),
 					Match.orElse(() => (
@@ -284,14 +259,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 	return Option.match(
 		Array.findFirst(shown.success, item => item.id === props.id),
 		{
-			onNone: () => (
-				<Empty>
-					<EmptyHeader>
-						<EmptyMedia systemImage="trash" />
-						<EmptyTitle>Note Deleted</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			),
+			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
 			onSome: item => (
 				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
