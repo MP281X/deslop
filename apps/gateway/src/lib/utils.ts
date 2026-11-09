@@ -1,4 +1,4 @@
-import {Boolean, Clock, Effect, Redacted, Schema, Stream, pipe} from 'effect'
+import {Effect, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -12,6 +12,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {AiProvider} from '#services/ai/schema.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
+import type {Period} from '#services/usage/schema.ts'
 
 export const ENDPOINT = `${window.location.origin}/mcp`
 
@@ -34,10 +35,7 @@ export const serversAtom = Atom.keepAlive(
 	)
 )
 
-export const removeAtom = Atom.family((id: string) =>
-	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('gateway.remove', {id})))
-)
-
+// The field under the bar: its text and why the last add failed, until the next edit; a success clears it.
 export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	Machine.make({
 		effects: {
@@ -55,21 +53,18 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
 			})
 		},
-		events: Machine.events({Cancel: {}, Open: {}, Submit: {}, Typed: {url: Schema.String}}),
+		events: Machine.events({Submit: {}, Typed: {url: Schema.String}}),
 		root: Machine.state({
-			states: {
-				Adding: {fields: {url: Schema.String}},
-				Closed: {},
-				Editing: {fields: {error: Schema.String, url: Schema.String}}
-			}
+			states: {Adding: {fields: {url: Schema.String}}, Editing: {fields: {error: Schema.String, url: Schema.String}}}
 		})
 	}).handle({
-		initial: {target: 'Closed'},
+		initial: {data: {error: '', url: ''}, target: 'Editing'},
+		on: {Typed: {data: transition => ({error: '', url: transition.event.url}), target: 'Editing'}},
 		states: {
 			Adding: {
 				invoke: {
 					input: transition => transition.state.url,
-					onDone: {target: 'Closed'},
+					onDone: {data: {error: '', url: ''}, target: 'Editing'},
 					onFailure: {
 						data: transition => ({error: transition.error.message, url: transition.state.url}),
 						target: 'Editing'
@@ -77,45 +72,27 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 					src: 'add'
 				}
 			},
-			Closed: {on: {Open: {data: {error: '', url: ''}, target: 'Editing'}}},
-			Editing: {
-				on: {
-					Cancel: {target: 'Closed'},
-					Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'},
-					Typed: {data: transition => ({error: '', url: transition.event.url}), update: 'Editing'}
-				}
-			}
+			Editing: {on: {Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'}}}
 		}
 	})
 )
 
-export type Period = typeof Period.Type
-export const Period = Schema.Literals(['24h', '7d', '30d'])
-
-// The period's buckets, ending with the current one: hours for a day, UTC days otherwise.
-function periodRange(period: Period, now: number) {
-	const bucket = Boolean.match(period === '24h', {onFalse: () => 'day' as const, onTrue: () => 'hour' as const})
-	const size = Boolean.match(bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
-	const count = {'7d': 7, '24h': 24, '30d': 30}[period]
-	const to = (Math.floor(now / size) + 1) * size
-	return {bucket, count, from: to - count * size, size, to}
-}
-
 export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
 
+// A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: Period) =>
-	pipe(
-		RpcClient.runtime.atom(
-			Effect.gen(function* () {
-				const range = periodRange(period, yield* Clock.currentTimeMillis)
+	Atom.keepAlive(
+		RpcClient.runtime.atom(() =>
+			Stream.unwrap(Effect.map(RpcClient, client => WebRuntime.reconnecting(client('ai.usage', period))))
+		)
+	)
+)
 
-				return {
-					range,
-					report: yield* (yield* RpcClient)('ai.usage', {bucket: range.bucket, from: range.from, to: range.to})
-				}
-			})
-		),
-		Atom.withReactivity(['ai-usage'])
+export const mcpUsageAtom = Atom.family((period: Period) =>
+	Atom.keepAlive(
+		RpcClient.runtime.atom(() =>
+			Stream.unwrap(Effect.map(RpcClient, client => WebRuntime.reconnecting(client('gateway.usage', period))))
+		)
 	)
 )
 
@@ -128,21 +105,17 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 	)
 )
 
-export const removeKeyAtom = Atom.family((provider: AiProvider) =>
-	RpcClient.runtime.fn(() =>
-		Reactivity.mutation(
-			Effect.flatMap(RpcClient, client => client('ai.removeKey', {provider})),
-			['ai-keys']
-		)
-	)
-)
+// The copy button's check, set by the copy and cleared a moment later.
+export const copiedAtom = Atom.make(false)
 
+// The button confirms a copy in place; a failure says why in a toast.
 export const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		pipe(
 			Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => navigator.clipboard.writeText(value)}),
-			// The palette closes as it runs, so the toast is the only place the copy can be confirmed.
-			Effect.tap(() => Effect.sync(() => toast.add({description: value, title: 'Copied', type: 'success'}))),
+			Effect.andThen(Atom.set(copiedAtom, true)),
+			Effect.andThen(Effect.sleep('1500 millis')),
+			Effect.andThen(Atom.set(copiedAtom, false)),
 			Effect.tapError(() => Effect.sync(() => toast.add({description: value, title: 'Cannot copy', type: 'error'})))
 		)
 	)

@@ -1,3 +1,4 @@
+import type {Record} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -16,6 +17,7 @@ import {
 	Semaphore,
 	Stream,
 	String,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -33,9 +35,11 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {bearerOf, failureOptions, isJwt, localAuth} from '@deslop/runtime/auth/utils'
 
-import type {AiProvider, AiUsageQuery} from '#services/ai/schema.ts'
+import type {AiProvider} from '#services/ai/schema.ts'
 import {AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
+import type {Period, UsageRange} from '#services/usage/schema.ts'
+import {usageWindow} from '#services/usage/utils.ts'
 
 const UPSTREAMS = {
 	anthropic: 'https://api.anthropic.com',
@@ -66,6 +70,8 @@ const make = Effect.gen(function* () {
 	const kv = yield* KeyValueStore.KeyValueStore
 	const keys = KeyValueStore.toSchemaStore(kv, Schema.Array(AiStoredKey))
 	const usage = KeyValueStore.toSchemaStore(kv, Schema.Array(AiUsageEntry))
+	// Each person's recorded calls wake only that person's open reader; reads coalesce, so one report goes out at most each second.
+	const usageChanged = yield* SubscriptionRef.make<Record<string, number>>({})
 	const auth = yield* Auth
 	const local = yield* localAuth
 	const client = yield* HttpClient.HttpClient
@@ -131,7 +137,26 @@ const make = Effect.gen(function* () {
 			}),
 			Semaphore.withPermit(lock)
 		)
+		yield* SubscriptionRef.update(usageChanged, versions => ({...versions, [id]: (versions[id] ?? 0) + 1}))
 	})
+	const usageReport = Effect.fnUntraced(function* (id: string, range: UsageRange) {
+		const months = MutableList.make<string>()
+		const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(range.from), 'month')}
+		while (DateTime.toEpochMillis(cursor.date) < range.to) {
+			MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
+			cursor.date = DateTime.add(cursor.date, {months: 1})
+		}
+		const entries = yield* Effect.forEach(
+			MutableList.toArray(months),
+			month =>
+				Effect.map(
+					usage.get(`ai-usage/${id}/${month}`),
+					Option.getOrElse(() => [])
+				),
+			{concurrency: 1}
+		)
+		return report(Array.flatten(entries), range)
+	}, failed)
 	return {
 		keys: (id: string) =>
 			Effect.map(loadKeys(id), entries =>
@@ -312,29 +337,17 @@ const make = Effect.gen(function* () {
 				failed
 			)
 		}),
-		usage: Effect.fnUntraced(function* (id: string, query: AiUsageQuery) {
-			return yield* pipe(
-				Effect.gen(function* () {
-					const months = MutableList.make<string>()
-					const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(query.from), 'month')}
-					while (DateTime.toEpochMillis(cursor.date) < query.to) {
-						MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
-						cursor.date = DateTime.add(cursor.date, {months: 1})
-					}
-					const entries = yield* Effect.forEach(
-						MutableList.toArray(months),
-						month =>
-							Effect.map(
-								usage.get(`ai-usage/${id}/${month}`),
-								Option.getOrElse(() => [])
-							),
-						{concurrency: 1}
-					)
-					return report(Array.flatten(entries), query)
-				}),
-				failed
+		usage: (id: string, period: Period) =>
+			usageWindow(
+				period,
+				pipe(
+					SubscriptionRef.changes(usageChanged),
+					Stream.map(versions => versions[id] ?? 0),
+					Stream.changes,
+					Stream.map(() => undefined)
+				),
+				range => usageReport(id, range)
 			)
-		})
 	}
 })
 export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()(

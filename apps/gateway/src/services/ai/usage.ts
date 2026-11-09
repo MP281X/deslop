@@ -85,7 +85,8 @@ export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
 			Array.map(Record.values(Array.groupBy(selected, entry => `${bucket(entry)}`)), group => ({
 				at: bucket(group[0]),
 				byApp: grouped(group, entry => entry.app),
-				byModel: grouped(group, entry => entry.model ?? 'unknown')
+				byModel: grouped(group, entry => entry.model ?? 'unknown'),
+				byProvider: grouped(group, entry => entry.provider)
 			})),
 			Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
 		),

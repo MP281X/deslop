@@ -31,6 +31,7 @@ import {
 	HttpServerRequest,
 	HttpServerResponse
 } from 'effect/http'
+import {RpcTest} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -39,11 +40,18 @@ import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
 import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
-import {HttpHandlers} from '#http/handlers.ts'
+import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
+import {RpcContracts} from '#rpcs/contracts.ts'
+import {RpcHandlers} from '#rpcs/handlers.ts'
+import {AiKeyInfo, AiSetKey} from '#services/ai/schema.ts'
+import type {AiUsageReport} from '#services/ai/schema.ts'
+import {AiProxy} from '#services/ai/service.ts'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
 import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
+import type {UsageRange} from '#services/usage/schema.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
@@ -234,6 +242,8 @@ function layerAuth(verified: Ref.Ref<number>) {
 const servers = Effect.fnUntraced(function* (home?: string, origin: string = GATEWAY_URL, local: boolean = false) {
 	const directory = home ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	const clock = yield* Clock.Clock
+	const scope = yield* Effect.scope
+	const memoMap = yield* Layer.makeMemoMap
 	const verified = yield* Ref.make(0)
 	const ready = yield* Queue.make<true>()
 	const rejectAccess = yield* Ref.make('never')
@@ -353,6 +363,12 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	}
 	const provider = HttpClient.make(request =>
 		Effect.gen(function* () {
+			if (new URL(request.url).origin === 'https://api.anthropic.com') {
+				return HttpClientResponse.fromWeb(
+					request,
+					Response.json({usage: {cost: 0.123, input_tokens: 10, output_tokens: 5}})
+				)
+			}
 			if (request.url === PROVIDERS.mobbin.metadata || request.url === PROVIDERS.dual.metadata) {
 				return HttpClientResponse.fromWeb(
 					request,
@@ -407,11 +423,42 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 		})
 	)
+	const store = ServerRuntime.layerKeyValueStore(directory)
+	const platform = Layer.mergeAll(
+		NodeCrypto.layer,
+		NodeServices.layer,
+		Layer.succeed(HttpClient.HttpClient, provider),
+		Layer.succeed(FetchHttpClient.Fetch, fetchUpstream),
+		ConfigProvider.layer(
+			ConfigProvider.fromUnknown({
+				...Boolean.match(local, {onFalse: () => ({AUTH_URL, GITHUB_ADMINS: '42'}), onTrue: () => ({})}),
+				APP_URL: origin
+			})
+		)
+	)
+	const auth = layerAuth(verified)
+	const clockLayer = Layer.succeed(Clock.Clock, clock)
+	// The RPC client reads the same services the route handlers write, so a recorded call reaches both.
+	const rpc = yield* Layer.buildWithMemoMap(
+		pipe(
+			RpcHandlers,
+			Layer.provideMerge(Connections.layer),
+			Layer.provideMerge(AiProxy.layer),
+			Layer.provide(store),
+			Layer.provide(platform),
+			Layer.provideMerge(auth),
+			Layer.provideMerge(clockLayer)
+		),
+		memoMap,
+		scope
+	)
+	const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), rpc)
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
 				pipe(
 					Layer.mergeAll(
+						AiHttpHandlers,
 						HttpHandlers,
 						mcp,
 						pipe(
@@ -498,6 +545,31 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 										}),
 										refused
 									)
+								),
+								// The keys page's reader and writer, which the MCP tools remove from.
+								HttpRouter.add(
+									'GET',
+									'/ai/keys',
+									pipe(
+										Effect.gen(function* () {
+											return yield* HttpServerResponse.schemaJson(Schema.Array(AiKeyInfo))(
+												yield* (yield* AiProxy).keys((yield* CurrentUser).id)
+											)
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
+									'/ai/keys',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(AiSetKey)
+											yield* (yield* AiProxy).setKey((yield* CurrentUser).id, input.provider, input.secret)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
 								)
 							),
 							Layer.provide(HttpAuth.layer)
@@ -505,31 +577,20 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					),
 					Layer.provideMerge(Layer.provide(Gateway.layer, McpServer.McpServer.layer)),
 					Layer.provideMerge(Connections.layer),
-					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
-					Layer.provide(
-						Layer.mergeAll(
-							NodeCrypto.layer,
-							NodeServices.layer,
-							Layer.succeed(HttpClient.HttpClient, provider),
-							Layer.succeed(FetchHttpClient.Fetch, fetchUpstream),
-							ConfigProvider.layer(
-								ConfigProvider.fromUnknown({
-									...Boolean.match(local, {onFalse: () => ({AUTH_URL, GITHUB_ADMINS: '42'}), onTrue: () => ({})}),
-									APP_URL: origin
-								})
-							)
-						)
-					),
-					Layer.provideMerge(layerAuth(verified)),
-					Layer.provideMerge(Layer.succeed(Clock.Clock, clock))
+					Layer.provideMerge(AiProxy.layer),
+					Layer.provide(store),
+					Layer.provide(platform),
+					Layer.provideMerge(auth),
+					Layer.provideMerge(clockLayer)
 				),
-				{disableLogger: true}
+				{disableLogger: true, memoMap}
 			)
 		),
 		handler => Effect.promise(() => handler.dispose())
 	)
 	return {
 		challengeMethods,
+		client,
 		grants,
 		metadataUnavailable,
 		pauseReject,
@@ -591,6 +652,13 @@ const listServers = Effect.fnUntraced(function* (web: Web) {
 	return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
 		yield* Effect.promise(() => response.text())
 	)
+})
+
+const listKeys = Effect.fnUntraced(function* (web: Web, session: string) {
+	const response = yield* send(web, '/ai/keys', {headers: {cookie: session}})
+	return yield* Schema.decodeEffect(
+		Schema.fromJsonString(Schema.Array(Schema.Struct({last4: Schema.String, provider: Schema.String})))
+	)(yield* Effect.promise(() => response.text()))
 })
 
 const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: string, input: Record<string, unknown>) {
@@ -931,6 +999,106 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 	test.effect(
+		'counts each proxied tool call in a usage window that moves at the bucket boundary',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			const updates = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
+			yield* Effect.forkScoped(
+				Stream.runForEach(gateway.client('gateway.usage', '24h', {headers: {cookie: SESSION}}), value =>
+					Queue.offer(updates, value)
+				)
+			)
+			const first = yield* Queue.take(updates)
+			assert.deepStrictEqual(first, {
+				range: {bucket: 'hour', count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
+				report: [{id: added.id, series: []}]
+			})
+			for (const index of Array.range(1, 2)) {
+				const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
+					arguments: {query: `call ${index}`},
+					name: `${added.id}__search`
+				})
+				assert.strictEqual(called.status, 200)
+			}
+			// An open page hears the burst once, with both calls counted in the same window.
+			yield* TestClock.adjust('1 second')
+			yield* TestClock.adjust('1 second')
+			assert.deepStrictEqual(yield* Queue.take(updates), {
+				range: first.range,
+				report: [{id: added.id, series: [{at: 0, calls: 2}]}]
+			})
+			assert.strictEqual(yield* Queue.size(updates), 0)
+			// Past the hour boundary, the window moves and a later call still counts.
+			yield* TestClock.adjust('1 hour')
+			assert.deepStrictEqual((yield* Queue.take(updates)).range, {
+				bucket: 'hour',
+				count: 24,
+				from: -79_200_000,
+				size: 3_600_000,
+				to: 7_200_000
+			})
+			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
+				arguments: {query: 'after the boundary'},
+				name: `${added.id}__search`
+			})
+			assert.strictEqual(called.status, 200)
+			yield* TestClock.adjust('1 second')
+			yield* TestClock.adjust('1 second')
+			assert.deepStrictEqual((yield* Queue.take(updates)).report, [
+				{
+					id: added.id,
+					series: [
+						{at: 0, calls: 2},
+						{at: 3_600_000, calls: 1}
+					]
+				}
+			])
+			// The page's day view sums the same hours into one day.
+			const daily = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
+			yield* Effect.forkScoped(
+				Stream.runForEach(gateway.client('gateway.usage', '30d', {headers: {cookie: SESSION}}), value =>
+					Queue.offer(daily, value)
+				)
+			)
+			assert.deepStrictEqual((yield* Queue.take(daily)).report, [{id: added.id, series: [{at: 0, calls: 3}]}])
+		})
+	)
+	test.effect(
+		'streams AI usage only to the person whose calls it counts',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* post(gateway.web, '/ai/keys', 'session=stranger', {provider: 'anthropic', secret: 'sk-stranger'})
+			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
+			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
+			yield* Effect.forkScoped(
+				Stream.runForEach(gateway.client('ai.usage', '24h', {headers: {cookie: SESSION}}), value =>
+					Queue.offer(mine, value)
+				)
+			)
+			yield* Effect.forkScoped(
+				Stream.runForEach(gateway.client('ai.usage', '24h', {headers: {cookie: 'session=stranger'}}), value =>
+					Queue.offer(theirs, value)
+				)
+			)
+			assert.strictEqual((yield* Queue.take(mine)).report.totals.calls, 0)
+			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 0)
+			const called = yield* send(gateway.web, '/ai/anthropic/json', {
+				body: '{"model":"test"}',
+				headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
+				method: 'POST'
+			})
+			assert.strictEqual(called.status, 200)
+			yield* Effect.promise(() => called.text())
+			yield* TestClock.adjust('1 second')
+			yield* TestClock.adjust('1 second')
+			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 1)
+			// Another person's call never reaches this reader, not even as a tick.
+			assert.strictEqual(yield* Queue.size(mine), 0)
+		})
+	)
+	test.effect(
 		'shares provider authorization across harnesses and restarts while bridging stateless calls to legacy sessions',
 		Effect.fnUntraced(function* () {
 			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
@@ -1259,6 +1427,46 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// A provider cannot redirect metadata discovery to a different issuer.
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: PROVIDERS.dual.url})).status, 400)
 			assert.strictEqual((yield* post(gateway.web, '/servers/remove', 'session=stranger', {id: 'mobbin'})).status, 400)
+		})
+	)
+	test.effect(
+		'removes a shared MCP server through the MCP tool only as an admin',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			const first = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			const second = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
+			const denied = yield* callTool(gateway.web, 'agent.stranger.signature', 'remove_mcp_server', {server: first.id})
+			assert.include(yield* Effect.promise(() => denied.text()), 'Only an admin can manage MCP servers')
+			assert.deepStrictEqual(
+				Array.map(yield* listServers(gateway.web), server => server.id),
+				[first.id, second.id]
+			)
+			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_mcp_server', {server: first.id})).status, 200)
+			assert.deepStrictEqual(
+				Array.map(yield* listServers(gateway.web), server => server.id),
+				[second.id]
+			)
+			const unknown = yield* callTool(gateway.web, TOKEN, 'remove_mcp_server', {server: 'ghost'})
+			assert.include(yield* Effect.promise(() => unknown.text()), 'This MCP was removed')
+		})
+	)
+	test.effect(
+		'removes only the caller’s own AI key through the MCP tool',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* post(gateway.web, '/ai/keys', SESSION, {provider: 'anthropic', secret: 'sk-octocat'})
+			yield* post(gateway.web, '/ai/keys', 'session=stranger', {provider: 'anthropic', secret: 'sk-stranger'})
+			assert.deepStrictEqual(
+				Array.map(yield* listKeys(gateway.web, SESSION), key => key.last4),
+				['ocat']
+			)
+			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_ai_key', {provider: 'anthropic'})).status, 200)
+			assert.deepStrictEqual(yield* listKeys(gateway.web, SESSION), [])
+			assert.deepStrictEqual(
+				Array.map(yield* listKeys(gateway.web, 'session=stranger'), key => key.last4),
+				['nger']
+			)
+			assert.strictEqual((yield* callTool(gateway.web, '', 'remove_ai_key', {provider: 'anthropic'})).status, 401)
 		})
 	)
 })

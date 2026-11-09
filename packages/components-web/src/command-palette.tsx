@@ -1,8 +1,7 @@
 import {Array, Option, Record} from 'effect'
 
-import {ArrowRightIcon, AppWindowIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
+import {ArrowRightIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
 import {defaultFilter} from 'cmdk'
-import {useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {
@@ -16,15 +15,6 @@ import {
 	CommandShortcut
 } from '#components/ui/command.tsx'
 
-// The iOS apps have no browser screen to land on.
-export const WEB_APPS = [
-	{name: 'deploy', url: 'https://deploy.mp281x.xyz'},
-	{name: 'scope', url: 'https://scope.mp281x.xyz'},
-	{name: 'gateway', url: 'https://gateway.mp281x.xyz'},
-	{name: 'auth', url: 'https://auth.mp281x.xyz'},
-	{name: 'portfolio', url: 'https://portfolio.mp281x.xyz'}
-] as const
-
 // `id` is the record's stable identity: cmdk selects by `value`, so it must not change when a label or detail updates.
 export type PaletteItem = {
 	detail?: string
@@ -37,35 +27,6 @@ export type PaletteItem = {
 }
 
 export type PaletteGroup = {items: readonly PaletteItem[]; label: string}
-
-function AppIcon(props: {name: string; url: string}) {
-	const [failed, setFailed] = useState(false)
-	if (failed) return <AppWindowIcon className="text-muted-foreground size-4" />
-	return (
-		<img
-			src={`${props.url}/icon`}
-			alt=""
-			className="pixelated size-4"
-			onError={() => setFailed(true)}
-			title={props.name}
-		/>
-	)
-}
-
-export function otherApps(current: string) {
-	return {
-		items: Array.map(
-			Array.filter(WEB_APPS, app => app.name !== current),
-			app => ({
-				detail: new URL(app.url).hostname,
-				icon: <AppIcon name={app.name} url={app.url} />,
-				label: app.name,
-				run: () => location.assign(app.url)
-			})
-		),
-		label: 'Other apps'
-	}
-}
 
 // The detail trails the label in the muted tone, so a hostname or reason reads as part of the same entry.
 function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {

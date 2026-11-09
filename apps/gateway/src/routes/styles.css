@@ -4,8 +4,3 @@
 :root {
 	--primary: var(--pink);
 }
-
-/* Two columns for the server rows and their detail. */
-@theme {
-	--grid-template-columns-gateway: 22rem 1fr;
-}

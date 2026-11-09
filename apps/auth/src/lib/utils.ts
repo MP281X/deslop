@@ -170,23 +170,16 @@ function failedWith(title: string) {
 		)
 }
 
-// Each client's failure stays under its row; signing it out ends all its families.
-export const disconnectAtom = Atom.family((_label: string) =>
-	RpcClient.runtime.fn((families: string[]) =>
-		Effect.flatMap(RpcClient, client =>
-			Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
-		)
-	)
-)
-
-// One per person, so a failed answer or removal shows beneath that person's row.
+// One per person, so a failed answer shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
 )
 
-export const removeAtom = Atom.family((id: string) =>
-	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.remove', {id})))
-)
+// The waiting sign-in the list leads with, approved on its own row.
+export const pendingAtom = Atom.make(Option.none<PendingAuthorization>())
+
+// The row that carries focus, as the id of its element.
+export const selectedRowAtom = Atom.make(Option.none<string>())
 
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
@@ -286,7 +279,7 @@ export function newest(apps: readonly SignedInApp[]) {
 }
 
 export function dayLabel(time: number) {
-	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({day: 'numeric', month: 'short'}))
+	return pipe(DateTime.makeUnsafe(time), DateTime.formatLocal({month: 'short', year: 'numeric'}))
 }
 
 // Accounts are keyed "provider:id"; GitHub serves every account's picture by its numeric id.

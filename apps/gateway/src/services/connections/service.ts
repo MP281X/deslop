@@ -8,8 +8,8 @@ import {
 	Effect,
 	Layer,
 	Match,
+	Number,
 	Option,
-	PubSub,
 	Record,
 	Schema,
 	Semaphore,
@@ -47,18 +47,29 @@ import {
 	gatewayUrl,
 	mcpClient,
 	serverIcons,
-	serverName
+	serverName,
+	usageSeries
 } from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
 	ConnectionInfo,
 	Discovery,
+	McpUsageReport,
 	OAuth,
 	ServerId,
 	Connection,
 	ServerUrl
 } from '#services/connections/schema.ts'
-import {ConnectionStore, Metadata, Registration, Token, UpstreamError} from '#services/connections/schema.ts'
+import {
+	ConnectionStore,
+	McpUsageBucket,
+	Metadata,
+	Registration,
+	Token,
+	UpstreamError
+} from '#services/connections/schema.ts'
+import type {Period, UsageRange} from '#services/usage/schema.ts'
+import {usageWindow} from '#services/usage/utils.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {
@@ -81,13 +92,16 @@ function failed(message: string) {
 	})
 }
 
+function usageKey(id: ServerId) {
+	return `mcp-usage/${id}`
+}
+
 export class Connections extends Context.Service<
 	Connections,
 	{
 		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionInfo, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
 		readonly called: (id: ServerId) => Effect.Effect<void>
-		readonly calls: (user: User) => Stream.Stream<ServerId, AuthError>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
@@ -96,6 +110,8 @@ export class Connections extends Context.Service<
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
+		// Each proxied call, summed into the period's buckets by server, in a window that reopens at each bucket boundary.
+		readonly usage: (period: Period) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
@@ -118,11 +134,49 @@ export class Connections extends Context.Service<
 			)
 		}
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
+		const usage = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Schema.Array(McpUsageBucket))
+		const usageLock = yield* Semaphore.make(1)
+		// The bar's longest period: an hour older than 30 days is dropped as a new call arrives.
+		const recordUsage = Effect.fnUntraced(function* (id: ServerId) {
+			const now = yield* Clock.currentTimeMillis
+			const at = Math.floor(now / 3_600_000) * 3_600_000
+			yield* Semaphore.withPermit(
+				usageLock,
+				Effect.gen(function* () {
+					const buckets = Option.getOrElse(yield* usage.get(usageKey(id)), () => [])
+					const calls = Option.getOrElse(
+						Option.map(
+							Array.findFirst(buckets, bucket => bucket.at === at),
+							bucket => bucket.calls
+						),
+						() => 0
+					)
+					yield* usage.set(usageKey(id), [
+						...Array.filter(buckets, bucket => bucket.at !== at && bucket.at >= now - 30 * 86_400_000),
+						{at, calls: calls + 1}
+					])
+				})
+			)
+		})
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
+		// A recorded call wakes every open usage reader; reads coalesce, so one report goes out at most each second.
+		const usageChanged = yield* SubscriptionRef.make(0)
+		const usageReport = Effect.fnUntraced(function* (range: UsageRange) {
+			return yield* Effect.forEach(
+				Array.map(Record.values(yield* SubscriptionRef.get(state)), row => row.id),
+				id =>
+					Effect.map(usage.get(usageKey(id)), buckets => ({
+						id,
+						series: usageSeries(
+							Option.getOrElse(buckets, () => []),
+							range
+						)
+					})),
+				{concurrency: 1}
+			)
+		}, failed('MCP usage storage failed'))
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
-		// Only the latest calls matter to a light, so a slow page drops the oldest.
-		const traffic = yield* PubSub.sliding<ServerId>(64)
 		const admin = Effect.fnUntraced(function* (user: User) {
 			if (!isAdmin(admins, user.id)) {
 				return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage MCP servers'})
@@ -540,8 +594,11 @@ export class Connections extends Context.Service<
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, failed('Cannot connect this MCP')),
-			called: id => Effect.asVoid(PubSub.publish(traffic, id)),
-			calls: user => Stream.unwrap(Effect.as(admin(user), Stream.fromPubSub(traffic))),
+			called: id =>
+				Effect.catchCause(
+					Effect.tap(recordUsage(id), () => SubscriptionRef.update(usageChanged, Number.increment)),
+					cause => Effect.logWarning('MCP usage could not be recorded', cause)
+				),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
 				route: Option.Option<string>,
@@ -609,7 +666,11 @@ export class Connections extends Context.Service<
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
 			get,
 			list,
-			remove: (id, user) => manage(id, user, () => Option.none()),
+			remove: (id, user) =>
+				Effect.andThen(
+					manage(id, user, () => Option.none()),
+					Effect.ignore(usage.remove(usageKey(id)), {log: 'Warn', message: 'Cannot delete the MCP usage'})
+				),
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
 				yield* pipe(
 					update(id, generation, found =>
@@ -626,6 +687,12 @@ export class Connections extends Context.Service<
 				)
 			}),
 			token,
+			usage: period =>
+				usageWindow(
+					period,
+					Stream.map(SubscriptionRef.changes(usageChanged), () => undefined),
+					usageReport
+				),
 			// The list is read again on each change and once a minute, so an expired provider shows as expired.
 			watch: user =>
 				Stream.mapEffect(

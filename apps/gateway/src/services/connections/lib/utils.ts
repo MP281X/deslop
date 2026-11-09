@@ -1,4 +1,20 @@
-import {Array, Boolean, Config, Effect, Match, Option, Predicate, Record, Schema, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Config,
+	Effect,
+	Match,
+	MutableHashMap,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schema,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {Client} from '@modelcontextprotocol/client'
 import type {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
@@ -7,7 +23,13 @@ import {HttpClientError} from 'effect/http'
 import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {UpstreamError} from '#services/connections/schema.ts'
-import type {Connection, ConnectionInfo, ServerIcon} from '#services/connections/schema.ts'
+import type {
+	Connection,
+	ConnectionInfo,
+	McpUsageBucket,
+	McpUsageQuery,
+	ServerIcon
+} from '#services/connections/schema.ts'
 
 export const gatewayUrl = Config.String('APP_URL')
 
@@ -71,6 +93,25 @@ export function connectionInfo(connection: Connection, now: number) {
 			)
 		}))
 	} satisfies ConnectionInfo
+}
+
+// Usage is stored by hour; the page's day view sums each day's hours.
+export function usageSeries(buckets: readonly McpUsageBucket[], query: McpUsageQuery) {
+	const size = Boolean.match(query.bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
+	const sums = MutableHashMap.empty<number, number>()
+	for (const bucket of buckets) {
+		if (bucket.at >= query.from && bucket.at < query.to) {
+			const at = Math.floor(bucket.at / size) * size
+			MutableHashMap.set(sums, at, Option.getOrElse(MutableHashMap.get(sums, at), () => 0) + bucket.calls)
+		}
+	}
+	return Array.sort(
+		Array.map(Array.fromIterable(MutableHashMap.keys(sums)), at => ({
+			at,
+			calls: Option.getOrElse(MutableHashMap.get(sums, at), () => 0)
+		})),
+		Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
+	)
 }
 
 // The icons a server names in its MCP server info, kept to a few a page can show, each small enough to stream to it.

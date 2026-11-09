@@ -1,18 +1,16 @@
 import {useAtomMount, useAtomSet} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Predicate} from 'effect'
+import {Boolean, Option, Predicate} from 'effect'
 
-import {CheckIcon, XIcon} from '@phosphor-icons/react'
+import {CheckIcon, KeyIcon, XIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {Suspense} from 'react'
 
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
-import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
-import {Spinner} from '@deslop/components-web/ui/spinner'
+import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
-import {SignInList} from '#lib/components.tsx'
+import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -30,45 +28,29 @@ function Enter(props: {
 	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex w-full flex-col gap-4">
+		<section className="flex w-full flex-col gap-2">
 			<Field data-invalid={invalid}>
-				<InputOTP
-					id="code"
-					aria-label="Code of a sign-in to approve"
-					maxLength={CODE_LENGTH}
-					value={props.typed}
-					onChange={value => {
-						props.onType(typedCode(value))
-					}}
-					pasteTransformer={typedCode}
-					pattern="^[A-Za-z]+$"
-					inputMode="text"
-					autoFocus={linked}
-					autoComplete="off"
-					autoCapitalize="characters"
-					disabled={props.state === 'Checking'}
-					aria-invalid={invalid}
-					aria-describedby="code-error"
-					containerClassName="gap-2"
-				>
-					<InputOTPGroup className="flex-1">
-						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
-						))}
-					</InputOTPGroup>
-					<InputOTPSeparator />
-					<InputOTPGroup className="flex-1">
-						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
-						))}
-					</InputOTPGroup>
-				</InputOTP>
-				{props.state === 'Checking' && (
-					<p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
-						<Spinner />
-						Checking…
-					</p>
-				)}
+				<InputGroup className="h-9 max-sm:h-11">
+					<InputGroupAddon>
+						<KeyIcon />
+					</InputGroupAddon>
+					<InputGroupInput
+						id="code"
+						className="max-sm:h-11"
+						aria-label="Code of a sign-in to approve"
+						placeholder="Code"
+						maxLength={CODE_LENGTH}
+						value={props.typed}
+						onChange={event => props.onType(typedCode(event.target.value))}
+						autoFocus={linked}
+						autoComplete="off"
+						autoCapitalize="characters"
+						spellCheck={false}
+						disabled={props.state === 'Checking'}
+						aria-invalid={invalid}
+						aria-describedby="code-error"
+					/>
+				</InputGroup>
 				{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
 				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
 			</Field>
@@ -97,7 +79,7 @@ function Enter(props: {
 	)
 }
 
-function Page(props: {
+function Content(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
 	pending: Option.Option<PendingAuthorization>
@@ -105,13 +87,21 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+		<>
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
-			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>
-				<SignInList pending={props.pending} />
+			<Suspense
+				fallback={
+					<SignInRowsSkeleton
+						label="Signed in"
+						pending={props.state === 'Checking' || Option.isSome(props.pending)}
+						rows={CLIENT_ROWS}
+					/>
+				}
+			>
+				<SignInList checking={props.state === 'Checking'} pending={props.pending} />
 			</Suspense>
-		</div>
+		</>
 	)
 }
 
@@ -127,7 +117,7 @@ function SignIns() {
 		<>
 			<MachineState machine={codeAtom} path="Typing">
 				{typing => (
-					<Page
+					<Content
 						answered={Option.fromUndefinedOr(typing.value.answered)}
 						onType={type}
 						pending={Option.none()}
@@ -141,7 +131,7 @@ function SignIns() {
 					<>
 						<MachineState machine={codeAtom} path="Code.Looking">
 							{() => (
-								<Page
+								<Content
 									answered={Option.none()}
 									onType={type}
 									pending={Option.none()}
@@ -152,7 +142,7 @@ function SignIns() {
 						</MachineState>
 						<MachineState machine={codeAtom} path="Code.Found">
 							{found => (
-								<Page
+								<Content
 									answered={Option.none()}
 									onType={type}
 									pending={Option.some(found.value.request)}
@@ -163,7 +153,7 @@ function SignIns() {
 						</MachineState>
 						<MachineState machine={codeAtom} path="Code.Failed">
 							{failed => (
-								<Page
+								<Content
 									answered={Option.none()}
 									onType={type}
 									pending={Option.none()}
@@ -174,7 +164,7 @@ function SignIns() {
 						</MachineState>
 						<MachineState machine={codeAtom} path="Code.Missing">
 							{() => (
-								<Page
+								<Content
 									answered={Option.none()}
 									onType={type}
 									pending={Option.none()}
