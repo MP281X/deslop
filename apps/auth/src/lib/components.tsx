@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -180,33 +180,28 @@ export function PeopleRowsSkeleton() {
 
 const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
 
-function brandLogoOf(client: Client) {
-	if (client.kind === 'Browser') return Option.map(Record.get(BROWSERS, client.name), src => ({invert: false, src}))
-	if (Option.isSome(String.match(/claude/iu)(client.name))) return Option.some({invert: false, src: claude})
-	if (Option.isSome(String.match(/codex/iu)(client.name))) return Option.some({invert: true, src: codex})
-	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
-	if (Option.isSome(String.match(/gateway/iu)(client.name))) return Option.none()
-	if (Array.contains(['iPhone', 'iPad'], client.device)) return Option.some({invert: true, src: apple})
-	if (client.device === 'Android') return Option.some({invert: false, src: android})
-	return Option.none()
-}
-
 type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
 function Brand(props: {client: Client}) {
-	return Option.match(brandLogoOf(props.client), {
-		onNone: () =>
-			pipe(
-				Match.value(props.client),
-				Match.when({kind: 'Browser'}, () => <GlobeIcon />),
-				Match.when(
-					client => Option.isSome(String.match(/gateway/iu)(client.name)),
-					() => <GraphIcon />
-				),
-				Match.orElse(() => <HardDrivesIcon />)
-			),
-		onSome: brand => <img src={brand.src} alt="" className={cn('size-3.5', brand.invert && 'dark:invert')} />
-	})
+	if (props.client.kind === 'Browser') {
+		return Option.match(Record.get(BROWSERS, props.client.name), {
+			onNone: () => <GlobeIcon />,
+			onSome: src => <img src={src} alt="" className="size-3.5" />
+		})
+	}
+	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
+		return <img src={claude} alt="" className="size-3.5" />
+	}
+	if (Option.isSome(String.match(/codex/iu)(props.client.name))) {
+		return <img src={codex} alt="" className="size-3.5 dark:invert" />
+	}
+	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
+	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon />
+	if (Array.contains(['iPhone', 'iPad'], props.client.device)) {
+		return <img src={apple} alt="" className="size-3.5 dark:invert" />
+	}
+	if (props.client.device === 'Android') return <img src={android} alt="" className="size-3.5" />
+	return <HardDrivesIcon />
 }
 
 function ClientIcon(props: {client: Client}) {
