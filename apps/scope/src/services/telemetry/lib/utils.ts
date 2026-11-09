@@ -246,24 +246,22 @@ export function durationMs(start: string, end: string) {
 	return pipe(Number.parse(`${BigInt(end) - BigInt(start)}`), Option.getOrThrow) / 1_000_000
 }
 
+function percentile(times: readonly number[], ratio: number) {
+	return Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)), () => 0)
+}
+
 export function summary(entries: Entry[], query: Query) {
 	const times = Array.sort(
 		Array.map(entries, entry => entry.durationMs),
 		Order.Number
 	)
-	function percentile(ratio: number) {
-		return pipe(
-			Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)),
-			Option.getOrElse(() => 0)
-		)
-	}
 	return {
 		count: entries.length,
 		errors: Array.countBy(entries, entry => entry.status === 2),
 		from: query.from,
-		maxMs: percentile(1),
-		p50Ms: percentile(0.5),
-		p95Ms: percentile(0.95),
+		maxMs: percentile(times, 1),
+		p50Ms: percentile(times, 0.5),
+		p95Ms: percentile(times, 0.95),
 		to: query.to
 	} satisfies Stats
 }
@@ -505,7 +503,7 @@ function operationsOf(group: readonly Traced[]) {
 				count: entry[1].length,
 				failures: failureCount(entry[1]),
 				name: Array.headNonEmpty(entry[1]).name,
-				p50Ms: Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length / 2) - 1)), () => 0),
+				p50Ms: percentile(times, 0.5),
 				runtime: Array.headNonEmpty(entry[1]).runtime,
 				// The slowest first, with the newest failures always among them, since those are the traces worth opening.
 				traces: Array.map(
