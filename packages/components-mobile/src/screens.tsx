@@ -30,7 +30,7 @@ import {colors, radius, space, text} from './theme.ts'
 import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
-const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
+const FULL_SCREEN = [padding({all: space[4]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
 
 // Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
 export function BlankScreen() {
@@ -56,8 +56,8 @@ export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Su
 export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
 	const denied = deniedBy(props.cause)
 	return (
-		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
-			<VStack spacing={space[3]}>
+		<VStack spacing={space[4]} modifiers={FULL_SCREEN}>
+			<VStack spacing={space[2]}>
 				<Label
 					icon={
 						<Image
@@ -67,7 +67,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					}
 					modifiers={[labelStyle('titleAndIcon')]}
 				>
-					<Text modifiers={[text.body, foregroundStyle(colors.foreground), multilineTextAlignment('center')]}>
+					<Text modifiers={[text.detail, foregroundStyle(colors.foreground), multilineTextAlignment('center')]}>
 						{Boolean.match(denied, {
 							onFalse: () => `${props.name} unavailable.`,
 							onTrue: () => 'You don’t have access.'
@@ -94,13 +94,13 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
-			<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
+			<VStack spacing={space[4]} modifiers={FULL_SCREEN}>
 				<Spacer />
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
 					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
 				/>
-				<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
+				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
 					Sign in with GitHub to keep this app in sync.
 				</Text>
 				<Spacer />

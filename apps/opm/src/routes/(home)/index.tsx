@@ -18,6 +18,7 @@ import {
 import {
 	accessibilityHidden,
 	accessibilityLabel,
+	alignmentGuide,
 	clipShape,
 	font,
 	foregroundStyle,
@@ -96,6 +97,7 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 			onPress={() => props.onOpen(props.chapter.number, props.page)}
 			modifiers={[
 				...itemRow,
+				alignmentGuide('listRowSeparatorLeading', 0),
 				accessibilityLabel(
 					Boolean.match(done, {
 						onFalse: () => `Continue reading Chapter ${props.chapter.number}, page ${page} of ${pages}`,
@@ -114,10 +116,10 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 				/>
 			</ItemMedia>
 			<ItemContent>
-				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>
+				<Text modifiers={[text.row, foregroundStyle(colors.foreground)]}>
 					{Boolean.match(done, {onFalse: () => 'Continue Reading', onTrue: () => 'Read Again'})}
 				</Text>
-				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>
+				<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
 					{`Chapter ${props.chapter.number} · ${Boolean.match(done, {
 						onFalse: () => `Page ${page} of ${pages}`,
 						onTrue: () => 'Finished'
@@ -142,12 +144,15 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	const done = props.chapter.reading?.done === true
 	return (
 		<SwipeActions modifiers={itemRow}>
-			<Item onPress={() => props.onOpen(props.chapter.number)}>
+			<Item
+				onPress={() => props.onOpen(props.chapter.number)}
+				modifiers={[alignmentGuide('listRowSeparatorLeading', 0)]}
+			>
 				<ItemMedia>
 					<Cover
 						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
 						modifiers={[
-							frame({height: 68, width: 48}),
+							frame({height: 40, width: 28}),
 							clipShape('roundedRectangle', radius),
 							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
 							accessibilityHidden(true)

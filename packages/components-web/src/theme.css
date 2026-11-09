@@ -6,39 +6,42 @@
 
 /* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
-	--red: oklch(from #c92b38 l c h);
-	--orange: oklch(from #b64b11 l c h);
-	--amber: oklch(from #91601d l c h);
-	--ivory: oklch(from #686868 l c h);
-	--cyan: oklch(from #25777a l c h);
-	--blue: oklch(from #345dad l c h);
-	--purple: oklch(from #74519b l c h);
-	--pink: oklch(from #a63c69 l c h);
-	--slate: oklch(from #526887 l c h);
-	--coral: oklch(from #bd4630 l c h);
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
+	/* A developer console: blue and amber signals over neutral ink, statuses readable on white in light. */
+	--red: #c92b38;
+	--orange: #b64b11;
+	--amber: #91601d;
+	--ivory: #686868;
+	--cyan: #25777a;
+	--blue: #2f5fb3;
+	--purple: #74519b;
+	--pink: #a63c69;
+	--slate: #526887;
+	--coral: #bd4630;
+	--machine-dev: #2c718b;
+	--machine-desktop: #98601f;
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
+	--background: #f6f7fb;
+	--foreground: #151b26;
+	--card: #ffffff;
 	--popover: #ffffff;
 	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--secondary: #e9edf4;
+	--muted: #eef1f7;
+	--muted-foreground: #5e6a7e;
+	--accent: #e7ecf4;
+	--border: #d8deea;
+	--input: #c3cbd9;
+	--surface: #f0f3f8;
+	--selection: #d9e5fb;
+	--selection-foreground: #101722;
 
-	--primary: var(--slate);
+	--primary: var(--blue);
+	--signal: var(--blue);
 	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
-	--ring: var(--primary);
+	--warning: #8f5a00;
+	--success: #2f6b2f;
+	--info: #1f6f8b;
+	--ring: var(--signal);
 
 	--card-foreground: var(--foreground);
 	--popover-foreground: var(--foreground);
@@ -47,11 +50,12 @@
 	--surface-foreground: var(--foreground);
 
 	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
-	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	--chart-1: var(--blue);
+	--chart-2: var(--info);
+	--chart-3: var(--success);
+	--chart-4: var(--warning);
+	--chart-5: var(--destructive);
+	--chart-6: var(--purple);
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -61,54 +65,66 @@
 	--sidebar-border: var(--border);
 	--sidebar-ring: var(--ring);
 
-	--radius: 0px;
+	--radius: 3px;
+	--radius-card: 4px;
 }
 
 /* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
-		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
-		--amber: oklch(from #e6c384 l c h);
-		--ivory: oklch(from #dcd7ba l c h);
-		--cyan: oklch(from #a3d4d5 l c h);
-		--blue: oklch(from #7e9cd8 l c h);
-		--purple: oklch(from #957fb8 l c h);
-		--pink: oklch(from #d27e99 l c h);
-		--slate: oklch(from #9cabca l c h);
-		--coral: oklch(from #fd7357 l c h);
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		--red: #f7768e;
+		--orange: #ff9e64;
+		--amber: #e0af68;
+		--ivory: #c0caf5;
+		--cyan: #7dcfff;
+		--blue: #7aa2f7;
+		--purple: #bb9af7;
+		--pink: #e06c9f;
+		--slate: #9aa5ce;
+		--coral: #ff9e64;
+		--machine-dev: #7dcfff;
+		--machine-desktop: #e0af68;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
+		--background: #0b0e14;
+		--foreground: #d7deea;
+		--card: #111722;
+		--popover: #151b26;
+		--primary-foreground: #08101d;
 		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--secondary: #17202d;
+		--muted: #131a25;
+		--muted-foreground: #7f8ba0;
+		--accent: #1b2635;
+		--border: #1f2937;
+		--input: #273244;
+		--surface: #10141c;
+		--selection: #22304a;
+		--selection-foreground: #e8eefb;
+
+		--warning: #e0af68;
+		--success: #9ece6a;
+		--info: #7dcfff;
 	}
 }
 
 @theme inline {
-	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	/* The console speaks in Geist Mono; Geist is reserved for the one heading that names a view. */
+	--font-sans: 'Geist Mono Variable', ui-monospace, monospace;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--tracking-label: 0.08em;
+	--text-2xs: 10px;
+	--text-2sm: 13px;
+	--radius-card: 4px;
+	--grid-template-columns-keys: auto 1fr;
+	--color-signal: var(--signal);
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
+	--color-info: var(--info);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -132,6 +148,7 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -160,14 +177,13 @@
 	image-rendering: pixelated;
 }
 
-/* Sera's display face, for the one heading that names a view. */
 /* A ruled row: the fill may meet the pane edge, the divider never does. */
 @utility list-row {
 	position: relative;
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 4);
+		inset-inline: calc(var(--spacing) * 3);
 		bottom: 0;
 		height: 1px;
 		background: var(--border);
@@ -180,6 +196,49 @@
 	&:has(+ [data-selected='true'])::after {
 		opacity: 0;
 	}
+}
+
+/* A horizontal scroller keeps its chrome out of a dense console. */
+@utility no-scrollbar {
+	scrollbar-width: none;
+}
+
+/* A console table row: 32px, a hairline, and the one selection mark the suite uses. */
+@utility console-row {
+	position: relative;
+	min-height: 2rem;
+	border-bottom: 1px solid var(--border);
+	&:last-child {
+		border-bottom: 0;
+	}
+	&[data-selected='true'] {
+		background: var(--selection);
+		&::before {
+			content: '';
+			position: absolute;
+			inset-block: 0;
+			left: 0;
+			width: 2px;
+			background: var(--signal);
+		}
+	}
+}
+
+/* The sticky head of a scrolling console table. */
+@utility console-head {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	height: 28px;
+	background: var(--background);
+	border-bottom: 1px solid var(--border);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 500;
+	letter-spacing: 0.08em;
+	line-height: 1;
+	text-transform: uppercase;
+	color: var(--muted-foreground);
 }
 
 @layer base {

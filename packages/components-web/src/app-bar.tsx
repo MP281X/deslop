@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Clock, DateTime, Effect, Number, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {useRender} from '@base-ui/react/use-render'
 import {CaretLeftIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
@@ -13,6 +13,7 @@ import {CommandPalette} from '#components/command-palette.tsx'
 import type {PaletteGroup} from '#components/command-palette.tsx'
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
+import {Dialog, DialogContent, DialogDescription, DialogTitle} from '#components/ui/dialog.tsx'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -22,12 +23,25 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
-import {Kbd} from '#components/ui/kbd.tsx'
+import {Kbd, KbdGroup} from '#components/ui/kbd.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
 // The signed-in account every Deslop server answers at /auth/user; without an issuer it is the developer, who cannot sign out.
 const Account = Schema.Struct({id: Schema.String, name: Schema.String, signOut: Schema.Boolean})
+
+// The key rail's clock: one Effect stream, so the console has no browser timer of its own.
+const clockAtom = Atom.make(
+	Stream.unwrap(
+		Effect.map(Clock.currentTimeMillis, () => Stream.map(Stream.tick('1 second'), () => DateTime.nowUnsafe()))
+	)
+)
+const clockFormat = new Intl.DateTimeFormat(undefined, {
+	hour: '2-digit',
+	hourCycle: 'h23',
+	minute: '2-digit',
+	second: '2-digit'
+})
 
 const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 	pipe(
@@ -73,17 +87,27 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
+// A section of the app as a bracketed console word in the command strip; the current one carries the blue fill.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
-			children: props.children,
+			children: (
+				<>
+					<span aria-hidden className="opacity-50">
+						[
+					</span>
+					{props.children}
+					<span aria-hidden className="opacity-50">
+						]
+					</span>
+				</>
+			),
 			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				'focus-visible:ring-ring/50 relative flex h-6 shrink-0 items-center gap-1.5 rounded-xs px-1.5 font-mono text-xs font-medium whitespace-nowrap transition-colors duration-75 outline-none select-none focus-visible:ring-2 max-sm:h-11',
 				Boolean.match(props.active, {
-					onFalse: () => 'text-muted-foreground hover:text-foreground',
-					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
+					onFalse: () => 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+					onTrue: () => 'bg-signal/15 text-signal'
 				})
 			)
 		},
@@ -91,19 +115,12 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
-function SearchTrigger(props: {label: string; onClick: () => void}) {
+// The command strip's right-hand search: a visible ⌘K on a pointer, a 44px icon on a phone.
+function CommandTrigger(props: {label: string; onClick: () => void}) {
 	return (
 		<>
-			<Button
-				variant="search"
-				size="search"
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
-			>
-				<MagnifyingGlassIcon className="size-4 shrink-0" />
-				<span className="flex-1">Search or jump to…</span>
+			<Button variant="command" size="xs" aria-label={props.label} onClick={props.onClick} className="hidden sm:flex">
+				<span className="hidden lg:inline">search</span>
 				<Kbd>⌘K</Kbd>
 			</Button>
 			<Button
@@ -111,7 +128,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				size="icon-sm"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="max-sm:size-11 xl:hidden"
+				className="max-sm:size-11 sm:hidden"
 			>
 				<MagnifyingGlassIcon />
 			</Button>
@@ -119,7 +136,61 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 	)
 }
 
-// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
+function isTyping(target: EventTarget | null) {
+	if (!(target instanceof HTMLElement)) return false
+	return (
+		target.isContentEditable ||
+		target.tagName === 'INPUT' ||
+		target.tagName === 'TEXTAREA' ||
+		target.tagName === 'SELECT'
+	)
+}
+
+// The shortcuts sheet: one small popover of the keys the console has taught.
+function KeysSheet(props: {name: string; onOpenChange: (open: boolean) => void; open: boolean; palette: boolean}) {
+	return (
+		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
+			<DialogContent className="max-w-sm">
+				<DialogTitle>Keys</DialogTitle>
+				<DialogDescription className="sr-only">Keyboard shortcuts for {props.name}.</DialogDescription>
+				<dl className="grid-cols-keys grid items-center gap-x-4 gap-y-2 font-mono text-xs">
+					{props.palette && (
+						<>
+							<dt>
+								<KbdGroup>
+									<Kbd>/</Kbd>
+									<Kbd>⌘K</Kbd>
+								</KbdGroup>
+							</dt>
+							<dd className="text-muted-foreground">Search and commands</dd>
+						</>
+					)}
+					<dt>
+						<KbdGroup>
+							<Kbd>j</Kbd>
+							<Kbd>k</Kbd>
+						</KbdGroup>
+					</dt>
+					<dd className="text-muted-foreground">Move through rows</dd>
+					<dt>
+						<Kbd>enter</Kbd>
+					</dt>
+					<dd className="text-muted-foreground">Open the focused row</dd>
+					<dt>
+						<Kbd>esc</Kbd>
+					</dt>
+					<dd className="text-muted-foreground">Close this sheet</dd>
+					<dt>
+						<Kbd>?</Kbd>
+					</dt>
+					<dd className="text-muted-foreground">Show these keys</dd>
+				</dl>
+			</DialogContent>
+		</Dialog>
+	)
+}
+
+// The masthead: a 40px command strip with the app's path, bracketed sections, ⌘K and the account, then a thin key rail.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}
@@ -131,73 +202,158 @@ export function AppBar(props: {
 	title?: string
 }) {
 	const [paletteOpen, setPaletteOpen] = useState(false)
+	const [keysOpen, setKeysOpen] = useState(false)
+	const palette = Option.isSome(Option.fromUndefinedOr(props.palette))
+	const clock = pipe(
+		AsyncResult.value(useAtomValue(clockAtom)),
+		Option.map(now => clockFormat.format(DateTime.toEpochMillis(now))),
+		Option.getOrElse(() => '--:--:--')
+	)
 	useEffect(() => {
-		if (props.palette === undefined) return
 		function open(event: KeyboardEvent) {
-			if (event.key !== 'k' || !(event.metaKey || event.ctrlKey)) return
+			if (event.defaultPrevented) return
+			if ((event.metaKey || event.ctrlKey) && String.toLowerCase(event.key) === 'k') {
+				if (!palette) return
+				event.preventDefault()
+				setPaletteOpen(true)
+				return
+			}
+			if (event.metaKey || event.ctrlKey || event.altKey) return
+			if (document.querySelector('[data-slot="dialog-content"][data-open]') !== null) return
+			if (isTyping(event.target)) return
+			if (event.key === '/') {
+				if (!palette) return
+				event.preventDefault()
+				setPaletteOpen(true)
+				return
+			}
+			if (event.key === '?') {
+				event.preventDefault()
+				setKeysOpen(true)
+				return
+			}
+			if (event.key !== 'j' && event.key !== 'k' && event.key !== 'Enter') return
+			const rows = Array.filter(
+				Array.fromIterable(document.querySelectorAll<HTMLElement>('[data-row]')),
+				row => row.getClientRects().item(0) !== null
+			)
+			if (Array.isArrayEmpty(rows)) return
+			const index = Option.getOrElse(
+				Array.findFirstIndex(rows, row => row === document.activeElement),
+				() => -1
+			)
+			if (event.key === 'Enter') {
+				if (index < 0) return
+				event.preventDefault()
+				const row = rows[index]
+				if (row === undefined) return
+				if (row.matches('[data-slot="context-menu-trigger"]')) {
+					const rect = row.getBoundingClientRect()
+					row.dispatchEvent(
+						new MouseEvent('contextmenu', {
+							bubbles: true,
+							cancelable: true,
+							clientX: rect.left + rect.width / 2,
+							clientY: rect.top + rect.height / 2
+						})
+					)
+				} else {
+					row.click()
+				}
+				return
+			}
 			event.preventDefault()
-			setPaletteOpen(true)
+			const targetIndex = Boolean.match(index < 0, {
+				onFalse: () =>
+					Boolean.match(event.key === 'j', {
+						onFalse: () => Number.max(0, index - 1),
+						onTrue: () => Number.min(rows.length - 1, index + 1)
+					}),
+				onTrue: () => 0
+			})
+			const target = rows[targetIndex]
+			target?.focus()
+			target?.scrollIntoView({block: 'nearest'})
 		}
 		addEventListener('keydown', open)
 		return () => removeEventListener('keydown', open)
-	}, [props.palette])
+	}, [palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
-				{Option.match(Option.fromUndefinedOr(props.title), {
-					onNone: () => (
-						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
+			<header className="bg-background relative sticky top-0 z-30 shrink-0 border-b">
+				<div className="flex h-10 items-center gap-2 px-3 max-sm:h-11 sm:px-4">
+					<div className="flex min-w-0 shrink items-center gap-1.5">
+						{Option.match(Option.fromUndefinedOr(props.back), {
+							onNone: () => null,
+							onSome: back => (
+								<Button
+									variant="ghost"
+									size="icon-xs"
+									className="max-sm:size-11"
+									aria-label={back.label}
+									onClick={back.onClick}
+								>
+									<CaretLeftIcon />
+								</Button>
+							)
+						})}
+						<a
+							href="/"
+							aria-label={props.name}
+							className="hover:text-primary flex min-w-0 shrink-0 items-center gap-1.5 font-mono text-xs font-medium max-sm:h-11"
+						>
+							<img src={props.icon} alt="" className="pixelated size-4 opacity-80 sm:hidden" />
+							<span className="max-sm:hidden">~/{props.name}</span>
+							{props.title === undefined && <span className="sm:hidden">[{props.name}]</span>}
 						</a>
-					),
-					// The leading slot keeps its width on every pane, so the title and the right controls never move.
-					onSome: title => (
-						<div className="flex min-w-0 shrink items-center gap-1.5">
-							{Option.match(Option.fromUndefinedOr(props.back), {
-								onNone: () => (
-									<a
-										href="/"
-										aria-label={props.name}
-										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
-									>
-										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-									</a>
-								),
-								onSome: back => (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										className="max-sm:size-11"
-										aria-label={back.label}
-										onClick={back.onClick}
-									>
-										<CaretLeftIcon className="size-4" />
-									</Button>
-								)
-							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
-								{title}
-							</span>
-						</div>
-					)
-				})}
-				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
-						{props.tabs}
-					</nav>
-				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
-					{Option.match(Option.fromUndefinedOr(props.palette), {
-						onNone: () => null,
-						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
-					})}
+						{props.title !== undefined && (
+							<>
+								<span aria-hidden className="text-muted-foreground/60">
+									/
+								</span>
+								<span className="text-muted-foreground max-w-40 min-w-0 truncate font-mono text-xs">{props.title}</span>
+							</>
+						)}
+					</div>
+					<span aria-hidden className="text-signal hidden sm:inline">
+						$
+					</span>
+					{props.tabs !== undefined && (
+						<nav
+							aria-label="Sections"
+							className="no-scrollbar flex h-10 min-w-0 items-center gap-1 overflow-x-auto font-mono text-xs max-sm:h-11"
+						>
+							{props.tabs}
+						</nav>
+					)}
+					<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-2" />
+					<div className="flex shrink-0 items-center gap-1">
+						{Boolean.match(palette, {
+							onFalse: () => null,
+							onTrue: () => <CommandTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+						})}
+						{props.controls}
+						{props.account ?? <AccountMenu />}
+					</div>
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					{props.controls}
-					{props.account ?? <AccountMenu />}
+				{/* The key rail is desktop chrome: a clock, the three moves, and the sheet that lists the rest. */}
+				<div className="text-muted-foreground text-2xs hidden h-6 items-center gap-3 border-t px-4 font-mono lg:flex">
+					<span className="tabular-nums">{clock}</span>
+					<span aria-hidden>·</span>
+					<span>
+						<kbd className="text-foreground">j/k</kbd> move
+					</span>
+					<span aria-hidden>·</span>
+					<span>
+						<kbd className="text-foreground">enter</kbd> open
+					</span>
+					<span aria-hidden>·</span>
+					<Button variant="ghost" size="xs" onClick={() => setKeysOpen(true)}>
+						<kbd className="text-foreground">?</kbd> <span className="text-2xs">keys</span>
+					</Button>
 				</div>
 			</header>
+			<KeysSheet name={props.name} open={keysOpen} onOpenChange={setKeysOpen} palette={palette} />
 			{Option.match(Option.fromUndefinedOr(props.palette), {
 				onNone: () => null,
 				onSome: groups => (

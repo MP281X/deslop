@@ -65,9 +65,9 @@ export function UsageChart(props: {
 	)
 	return (
 		<figure className={cn('flex min-h-0 flex-col', props.className)} aria-label={props.label}>
-			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2 text-xs">
-				<span className="tracking-label font-semibold uppercase">{props.label}</span>
-				<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tabular-nums" title={valueText}>
+			<figcaption className="text-2xs mb-1 flex items-baseline justify-between gap-2 font-mono">
+				<span className="tracking-label font-medium uppercase">{props.label}</span>
+				<span className="text-muted-foreground text-2xs min-w-0 truncate font-mono tabular-nums" title={valueText}>
 					{valueText}
 				</span>
 			</figcaption>
@@ -190,11 +190,11 @@ export function Cores(props: {history: MachineHistory}) {
 	const samples = Array.map(props.history.samples, sample => Array.groupBy(sample.cores ?? [], core => core.id))
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
-			<figcaption className="tracking-label text-muted-foreground mb-1.5 text-xs font-semibold uppercase">
+			<figcaption className="tracking-label text-muted-foreground text-2xs mb-1 font-mono font-medium uppercase">
 				Cores
 			</figcaption>
 			{Array.match(Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? [], {
-				onEmpty: () => <span className="text-muted-foreground text-xs">No readings</span>,
+				onEmpty: () => <span className="text-muted-foreground text-2xs font-mono">No readings</span>,
 				onNonEmpty: entries => (
 					<div
 						className="grid grid-cols-(--cores) items-end gap-1"
@@ -219,7 +219,7 @@ export function Cores(props: {history: MachineHistory}) {
 									aria-label={`${core.id} use ${formatPercent.format(core.usage ?? 0)} percent`}
 									viewBox="0 0 100 100"
 									preserveAspectRatio="none"
-									className="h-4 w-full text-(--machine)"
+									className="h-3 w-full text-(--machine)"
 								>
 									<title>{`${core.id} · ${formatPercent.format(core.usage ?? 0)}%`}</title>
 									<polyline
@@ -243,14 +243,14 @@ export function Cores(props: {history: MachineHistory}) {
 export function TimeAxis(props: {history: MachineHistory; minutes: number}) {
 	return (
 		<div aria-hidden="true">
-			<svg width="100%" height="16" className="text-muted-foreground overflow-visible font-mono text-xs tabular-nums">
+			<svg width="100%" height="14" className="text-muted-foreground text-2xs overflow-visible font-mono tabular-nums">
 				{Array.map(
 					Array.filter(chartTicks(props.minutes, props.history.time), tick => tick.label),
 					tick => (
 						<text
 							key={tick.at}
 							x={`${tick.x}%`}
-							y="12"
+							y="10"
 							textAnchor={Boolean.match(tick.x < 8, {
 								onFalse: () => Boolean.match(tick.x > 92, {onFalse: () => 'middle', onTrue: () => 'end'}),
 								onTrue: () => 'start'

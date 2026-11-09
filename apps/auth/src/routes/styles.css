@@ -5,29 +5,28 @@
 	--primary: var(--slate);
 }
 
-/* A code no sign-in has shakes once, as a lock refuses a wrong key. */
+/* The ledger's fixed columns: client, device, address, last active. */
 @theme {
-	--animate-refuse: refuse 300ms cubic-bezier(0.23, 1, 0.32, 1);
+	--grid-template-columns-ledger: minmax(0, 1fr) 5rem;
+	--grid-template-columns-ledger-sm: minmax(0, 1fr) 6rem 8rem 6rem;
+}
+
+/* A code no sign-in has dims once, the console's only refusal motion. */
+@theme {
+	--animate-refuse: refuse 80ms linear;
 
 	@keyframes refuse {
-		25% {
-			translate: -4px;
-		}
-		50% {
-			translate: 3px;
-		}
-		75% {
-			translate: -2px;
+		from {
+			opacity: 0.35;
 		}
 	}
 
-	/* An answer arrives out of a blur, so it reads as the approval it replaced rather than a new line. */
-	--animate-settle-in: settle-in 200ms ease;
+	/* An answer fades in, so it reads as the approval it replaced rather than a new line. */
+	--animate-settle-in: settle-in 80ms ease-out;
 
 	@keyframes settle-in {
 		from {
 			opacity: 0;
-			filter: blur(2px);
 		}
 	}
 }

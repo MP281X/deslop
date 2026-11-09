@@ -137,7 +137,7 @@ function Thumbnail(props: {id: Note['id']}) {
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fill'}),
-				frame({height: 64, width: 64}),
+				frame({height: 40, width: 40}),
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
@@ -151,7 +151,7 @@ function NoteMedia(props: {note: NoteItem}) {
 	return (
 		<ZStack
 			modifiers={[
-				frame({height: 64, width: 64}),
+				frame({height: 40, width: 40}),
 				background(colors.card),
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
@@ -159,9 +159,9 @@ function NoteMedia(props: {note: NoteItem}) {
 		>
 			{pipe(
 				Match.value(kind),
-				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
+				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={18} />),
 				Match.orElse(other => (
-					<Image systemName={kinds[other].symbol} size={24} modifiers={[foregroundStyle(colors.mutedForeground)]} />
+					<Image systemName={kinds[other].symbol} size={18} modifiers={[foregroundStyle(colors.mutedForeground)]} />
 				))
 			)}
 			{props.note.image !== undefined && <Thumbnail id={props.note.id} />}

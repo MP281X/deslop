@@ -186,11 +186,12 @@ it.effect(
 )
 
 it.effect(
-	'marks the selected row with independent inset row dividers',
+	'marks the selected console row without animating it',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
-		assert.include(html, 'class="list-row" data-selected="true"')
-		assert.match(html, /aria-current="true" class="[^"]*bg-secondary/u)
+		assert.include(html, 'console-row')
+		assert.match(html, /data-selected="true"/u)
+		assert.match(html, /aria-current="true"/u)
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
 	})

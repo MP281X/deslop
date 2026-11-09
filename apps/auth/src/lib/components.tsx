@@ -157,33 +157,48 @@ type SignedInClient = {
 function ClientRow(props: {client: SignedInClient; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
 	const minutes = minutesSince(props.client.lastActive, props.now)
-	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
+	const active = Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<ContextMenu>
-			<div role="listitem" className="border-b">
+			<div role="listitem" className="console-row group relative">
 				<ContextMenuTrigger
 					render={
 						<div
 							role="button"
 							tabIndex={0}
+							data-row
 							aria-haspopup="menu"
-							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							aria-label={`${props.client.label}, ${Array.join([`active ${active}`, ...Option.toArray(address)], ' · ')}`}
+							className="hover:bg-signal/5 focus-visible:border-signal focus-visible:bg-signal/10 absolute inset-0 z-0 border-l-2 border-transparent transition-colors duration-75 outline-none"
 						/>
 					}
-				>
-					<ClientIcon client={props.client.client} />
-					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
-					{Option.match(address, {
-						onNone: () => null,
-						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
-						)
-					})}
-				</ContextMenuTrigger>
-				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
+				/>
+				<div className="grid-cols-ledger sm:grid-cols-ledger-sm pointer-events-none relative z-10 grid min-h-8 items-center gap-3 px-2 max-sm:min-h-11">
+					<span className="flex min-w-0 items-center gap-2">
+						<ClientIcon client={props.client.client} />
+						<span className="truncate font-mono text-xs font-medium">
+							{props.client.client.name}
+							<span className="text-muted-foreground sm:hidden"> · {props.client.client.device}</span>
+						</span>
+					</span>
+					<span className="text-muted-foreground text-2xs hidden truncate font-mono sm:block">
+						{props.client.client.device}
+					</span>
+					<span className="text-muted-foreground text-2xs hidden truncate font-mono sm:block">
+						{Option.getOrElse(address, () => '—')}
+					</span>
+					<span className="flex min-w-0 items-center justify-end gap-1.5">
+						<span className="text-muted-foreground text-2xs font-mono whitespace-nowrap tabular-nums">{active}</span>
+						<span
+							aria-hidden
+							className="text-signal opacity-0 transition-opacity duration-75 group-focus-within:opacity-100 group-hover:opacity-100"
+						>
+							›
+						</span>
+					</span>
+				</div>
+				<ResultError result={disconnection} className="relative z-10 mr-1 mb-2 ml-8 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
@@ -205,10 +220,12 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="bg-card rounded-card flex flex-col gap-3 border p-4">
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+				<h2 className="text-2sm font-mono leading-none font-medium">
+					<span className="text-warning">▸ </span>A sign-in is waiting
+				</h2>
+				<span className="text-muted-foreground text-2xs font-mono tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>
 			</div>
@@ -229,6 +246,7 @@ function Answer(props: {request: PendingAuthorization}) {
 			<div className="grid grid-cols-2 gap-2">
 				<Button
 					size="lg"
+					className="max-sm:h-11"
 					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
 					disabled={waiting}
 					onClick={() => {
@@ -242,6 +260,7 @@ function Answer(props: {request: PendingAuthorization}) {
 				<Button
 					size="lg"
 					variant="outline"
+					className="max-sm:h-11"
 					disabled={waiting}
 					onClick={() => {
 						setChoice(false)
@@ -329,11 +348,22 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 					/>
 				),
 				onNonEmpty: rows => (
-					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
-						))}
-					</div>
+					<>
+						<div
+							aria-hidden="true"
+							className="console-head grid-cols-ledger sm:grid-cols-ledger-sm grid items-center gap-3 px-2"
+						>
+							<span>Client</span>
+							<span className="hidden sm:block">Device</span>
+							<span className="hidden sm:block">Address</span>
+							<span className="text-right">Last active</span>
+						</div>
+						<div role="list" aria-label="Signed-in clients">
+							{Array.map(rows, client => (
+								<ClientRow key={client.label} client={client} now={data.now} />
+							))}
+						</div>
+					</>
 				)
 			})}
 		</Section>

@@ -183,45 +183,42 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	const connected = props.server.status === 'Connected'
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="console-row group">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="grid-cols-servers-sm sm:grid-cols-servers relative grid min-h-8 items-center gap-3 px-2 max-sm:min-h-11">
 					<ContextMenuTrigger
 						render={
 							<Button
-								variant="ghost"
+								variant="row"
 								id={`server-${props.server.id}`}
+								data-row
 								type="button"
 								aria-label={`${props.server.name}, ${reasonText(props.server)}`}
-								className="absolute inset-0 h-full w-full"
+								className="absolute inset-0 z-0 h-full w-full"
 							/>
 						}
 					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
+					<div className="pointer-events-none relative z-10 flex min-w-0 items-center gap-2">
 						<ServerIcon server={props.server} />
-						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						<span className="min-w-0 truncate font-mono text-xs font-medium">{props.server.name}</span>
+						<span className="text-muted-foreground text-2xs min-w-0 truncate font-mono sm:hidden">
 							{new URL(props.server.url).hostname}
-						</span>{' '}
-						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
-								title="Tools"
-							>
-								{props.server.tools.length}
-							</span>
-						)}
+						</span>
 					</div>
-					<div className="relative flex w-16 shrink-0 justify-end">
+					<span className="text-muted-foreground text-2xs pointer-events-none relative z-10 hidden min-w-0 truncate font-mono sm:block">
+						{new URL(props.server.url).hostname}
+					</span>
+					<div className="pointer-events-auto relative z-10 flex min-w-0 items-center justify-start gap-1.5">
 						{connected && props.server.error === undefined && (
 							<span
 								role="img"
 								title={props.server.status}
 								aria-label={props.server.status}
-								className="flex size-3 shrink-0 items-center justify-center"
+								className="text-muted-foreground text-2xs flex items-center gap-1.5 font-mono"
 							>
 								<Status server={props.server} />
+								connected
 							</span>
 						)}
 						{(!connected || props.server.error !== undefined) && (
@@ -234,6 +231,15 @@ function ServerRow(props: {server: ConnectionInfo}) {
 							/>
 						)}
 					</div>
+					<span
+						className="text-muted-foreground text-2xs pointer-events-none relative z-10 text-right font-mono tabular-nums"
+						title="Tools"
+					>
+						{Boolean.match(Array.isReadonlyArrayNonEmpty(props.server.tools), {
+							onFalse: () => '—',
+							onTrue: () => props.server.tools.length
+						})}
+					</span>
 				</div>
 				<ContextMenuContent className="w-auto min-w-36">
 					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={() => setConfirm(true)}>
@@ -273,6 +279,15 @@ function ServersContent(props: {onAdd: () => void}) {
 						),
 						onNonEmpty: servers => (
 							<Section title="Servers" meta={`${servers.length} configured`}>
+								<div
+									aria-hidden="true"
+									className="console-head grid-cols-servers-sm sm:grid-cols-servers grid items-center gap-3 px-2"
+								>
+									<span>Server</span>
+									<span className="hidden sm:block">Host</span>
+									<span>State</span>
+									<span className="text-right">Tools</span>
+								</div>
 								<div role="list" aria-label="MCP servers">
 									{Array.map(servers, server => (
 										<ServerRow key={server.id} server={server} />
@@ -295,7 +310,7 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-2">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"
@@ -321,7 +336,7 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 		<ToggleGroup
 			aria-label="View"
 			size="sm"
-			spacing={1}
+			spacing={0}
 			variant="outline"
 			value={[props.view]}
 			onValueChange={values =>
@@ -332,11 +347,27 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 		>
 			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
 				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
+				<span>
+					<span aria-hidden className="opacity-50">
+						[
+					</span>
+					servers
+					<span aria-hidden className="opacity-50">
+						]
+					</span>
+				</span>
 			</ToggleGroupItem>
 			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
 				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
+				<span>
+					<span aria-hidden className="opacity-50">
+						[
+					</span>
+					ai
+					<span aria-hidden className="opacity-50">
+						]
+					</span>
+				</span>
 			</ToggleGroupItem>
 		</ToggleGroup>
 	)

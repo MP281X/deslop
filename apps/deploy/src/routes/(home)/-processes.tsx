@@ -15,27 +15,26 @@ const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 // One process: its mark, name and what it holds of the app's memory; small ones read muted.
 function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
-		<div
-			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
-			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
-		>
+		<div className={cn('console-row flex h-8 w-full min-w-0 max-sm:h-11', props.padded === true && 'pr-2')}>
+			{/* The tree is drawn, not typed: one hairline per level plus this row's stub. */}
+			<span aria-hidden className="relative h-full w-2 shrink-0">
+				{props.depth > 0 && <span className="bg-border absolute top-1/2 left-0 h-px w-2" />}
+			</span>
 			<Item
 				size="xs"
-				className="h-full min-w-0"
+				className="h-full min-w-0 flex-1"
 				title={`Memory includes child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 			>
-				<ItemMedia variant="icon" className="ml-(--indent)">
+				<ItemMedia variant="icon">
 					<ApplicationIcon name={props.node.name} small />
 				</ItemMedia>
 				<ItemContent className="min-w-0">
 					<div
 						className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}
 					>
-						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case max-sm:max-w-3/5">
-							{props.node.name}
-						</span>
+						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs max-sm:max-w-3/5">{props.node.name}</span>
 						<span
-							className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case"
+							className="text-muted-foreground text-2xs min-w-0 flex-1 truncate font-mono"
 							title={Array.join(props.node.command ?? [], ' ')}
 						>
 							{/* The arguments that tell a process apart: no executable, no variable assignments, and paths cut to their last part; hovering shows them whole. */}
@@ -53,17 +52,17 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 				</ItemContent>
 				<ItemActions className="shrink-0">
 					{Array.isArrayNonEmpty(props.node.children) && (
-						<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case max-sm:hidden">
+						<span className="text-muted-foreground text-2xs w-5 shrink-0 text-right font-mono max-sm:hidden">
 							+{props.node.children.length}
 						</span>
 					)}
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tracking-normal normal-case tabular-nums">
+					<span className="text-muted-foreground text-2xs shrink-0 font-mono tabular-nums">
 						{mib.format(props.node.memory / 1024 ** 2)} MiB
 					</span>
 					{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
 						onFalse: () => <span className="size-3.5 shrink-0" />,
 						onTrue: () => (
-							<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/button:rotate-90" />
+							<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform duration-75 group-aria-expanded/button:rotate-90 motion-reduce:transition-none" />
 						)
 					})}
 				</ItemActions>
@@ -86,9 +85,11 @@ function Node(props: {depth: number; node: ProcessNode}) {
 				<Line depth={props.depth} node={props.node} />
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				{Array.map(props.node.children, child => (
-					<Node key={`${child.pid}:${child.name}`} depth={props.depth + 1} node={child} />
-				))}
+				<div className="border-border ml-2 border-l pl-1">
+					{Array.map(props.node.children, child => (
+						<Node key={`${child.pid}:${child.name}`} depth={props.depth + 1} node={child} />
+					))}
+				</div>
 			</CollapsibleContent>
 		</Collapsible>
 	)
@@ -96,7 +97,7 @@ function Node(props: {depth: number; node: ProcessNode}) {
 
 export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
-		<div className="min-w-0 px-2 pb-2">
+		<div className="min-w-0 pb-2">
 			{Array.map(props.tree, node => (
 				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
 			))}

@@ -6,6 +6,9 @@
 	--grid-template-rows-split: 3fr 2fr;
 	/* A port chip's least width, so single ports line up while a hostname keeps its full name. */
 	--spacing-port: 7ch;
+	/* The apps table: app, ports or reason, memory, and the row's mark. */
+	--grid-template-columns-apps: minmax(0, 1fr) minmax(0, 13rem) 5rem 1.5rem;
+	--grid-template-columns-apps-sm: minmax(0, 1fr) 5rem;
 }
 
 /* Each machine's identity, used by machine labels and icons. */

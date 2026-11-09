@@ -4,6 +4,7 @@ import {Array, Boolean, DateTime, Number, Option, Result, pipe} from 'effect'
 
 import {Button, HStack, Section, SwipeActions, Text, Toolbar, ToolbarItem, VStack} from '@expo/ui/swift-ui'
 import {
+	alignmentGuide,
 	fixedSize,
 	font,
 	foregroundStyle,
@@ -78,7 +79,7 @@ type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
-		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 34})]}>
+		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 32})]}>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
 			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
@@ -93,7 +94,7 @@ function Gutter(props: {countdown: Countdown}) {
 					>
 						{props.countdown.days}
 					</Text>
-					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
+					<Text modifiers={[text.label, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(props.countdown.days === 1, {onFalse: () => 'days', onTrue: () => 'day'})}
 					</Text>
 				</>
@@ -107,19 +108,23 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	const status = statusOf(props.booking, props.now)
 	return (
 		<SwipeActions modifiers={itemRow}>
-			<Item alignment="top" onPress={() => props.onOpen(props.booking.id)}>
+			<Item
+				alignment="top"
+				onPress={() => props.onOpen(props.booking.id)}
+				modifiers={[alignmentGuide('listRowSeparatorLeading', 0)]}
+			>
 				<ItemMedia>
 					<Gutter countdown={props.countdown} />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{headingOf(props.booking)}</ItemTitle>
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{scheduleOf(props.booking)}</Text>
-					<HStack spacing={space[2]}>
+					<HStack spacing={space[1]}>
 						<StatusDot status={dots[status.tone]} tint={primary} />
-						<Text modifiers={[text.detail, foregroundStyle(colors.foreground)]}>{status.label}</Text>
+						<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>{status.label}</Text>
 						{Option.match(status.where, {
 							onNone: () => undefined,
-							onSome: where => <Text modifiers={[text.detail, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
+							onSome: where => <Text modifiers={[text.data, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
 						})}
 					</HStack>
 				</ItemContent>

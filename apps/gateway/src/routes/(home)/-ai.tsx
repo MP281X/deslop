@@ -24,7 +24,6 @@ import type {ReactNode} from 'react'
 import {Bar, BarChart, XAxis} from 'recharts'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Stat} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
@@ -230,35 +229,37 @@ export function AiControls(props: {
 	)
 }
 
-// A muted label over a group of rows.
+// A muted 10px label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
 	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
+		<h2 className="text-muted-foreground tracking-label text-2xs px-1 pb-1 font-mono font-medium uppercase">
+			{props.children}
+		</h2>
 	)
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
 function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="console-row group" data-selected={props.selected}>
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex min-h-8 min-w-0 items-center gap-3 px-2 max-sm:min-h-11">
 					<ContextMenuTrigger
 						render={
 							<Button
-								variant={Boolean.match(props.selected === true, {
-									onFalse: () => 'ghost' as const,
-									onTrue: () => 'secondary' as const
-								})}
+								variant="row"
 								type="button"
+								data-row
 								aria-label={props.label}
 								aria-pressed={props.selected}
 								onClick={props.onClick}
-								className="absolute inset-0 h-full w-full"
+								className="absolute inset-0 z-0 h-full w-full"
 							/>
 						}
 					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">{props.children}</div>
+					<div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
+						{props.children}
+					</div>
 				</div>
 				{props.menu !== undefined && <ContextMenuContent className="w-auto min-w-36">{props.menu}</ContextMenuContent>}
 			</ContextMenu>
@@ -278,15 +279,15 @@ function ShareRow(props: {
 }) {
 	return (
 		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
-			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
+			<span className="min-w-0 flex-1 truncate font-mono text-xs font-medium">{props.label}</span>
+			<span className="flex h-1 w-12 shrink-0">
 				<span
 					className="h-full w-(--share) bg-(--share-color)"
 					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
 				/>
 			</span>
 			{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
-			<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-muted-foreground text-2xs w-10 shrink-0 text-right font-mono tabular-nums">
 				{Option.getOrElse(
 					Option.map(
 						Option.filter(props.sum, sum => sum.tokens > 0),
@@ -295,7 +296,7 @@ function ShareRow(props: {
 					() => '—'
 				)}
 			</span>
-			<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-2xs w-14 shrink-0 text-right font-mono tabular-nums">
 				{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
 			</span>
 		</Row>
@@ -367,67 +368,70 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
-			<BarChart
-				accessibilityLayer
-				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
-				className="[&_[tabindex]]:outline-hidden"
-				data={rows}
-				margin={{bottom: 0, left: 0, right: 0, top: 4}}
-				onClick={state =>
-					Option.map(
-						Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
-						props.onBucket
-					)
-				}
-			>
-				<XAxis
-					dataKey="bucket"
-					ticks={Array.filter(
-						Array.map(rows, row => row.bucket),
-						(_, index) => (props.range.count - 1 - index) % step === 0
-					)}
-					interval={0}
-					tickLine={false}
-					axisLine={false}
-					tickMargin={8}
-					tickFormatter={tickLabel(props.range)}
-				/>
-				<ChartTooltip
-					content={
-						<ChartTooltipContent
-							labelFormatter={label =>
-								Option.getOrElse(
-									Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
-										bucketLabel(props.range.bucket, at)
-									),
-									() => ''
-								)
-							}
-							formatter={(shown, name, item) => (
-								<>
-									<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
-									<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
-									<span className="text-foreground font-mono font-medium tabular-nums">
-										{amount(props.metric, shown)}
-									</span>
-								</>
-							)}
-						/>
+		<div className="bg-card/40 rounded-xs border p-2">
+			<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
+				<BarChart
+					accessibilityLayer
+					// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
+					className="[&_[tabindex]]:outline-hidden"
+					data={rows}
+					margin={{bottom: 0, left: 0, right: 0, top: 4}}
+					onClick={state =>
+						Option.map(
+							Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
+							props.onBucket
+						)
 					}
-				/>
-				{Array.map(props.apps, app => (
-					<Bar
-						key={app.key}
-						dataKey={app.key}
-						stackId="usage"
-						fill={`var(--color-${app.key})`}
-						isAnimationActive={false}
+				>
+					<XAxis
+						dataKey="bucket"
+						ticks={Array.filter(
+							Array.map(rows, row => row.bucket),
+							(_, index) => (props.range.count - 1 - index) % step === 0
+						)}
+						interval={0}
+						tickLine={false}
+						axisLine={false}
+						tickMargin={8}
+						tickFormatter={tickLabel(props.range)}
 					/>
-				))}
-				<ChartLegend content={<ChartLegendContent />} />
-			</BarChart>
-		</ChartContainer>
+					<ChartTooltip
+						content={
+							<ChartTooltipContent
+								labelFormatter={label =>
+									Option.getOrElse(
+										Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
+											bucketLabel(props.range.bucket, at)
+										),
+										() => ''
+									)
+								}
+								formatter={(shown, name, item) => (
+									<>
+										<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
+										<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
+										<span className="text-foreground font-mono font-medium tabular-nums">
+											{amount(props.metric, shown)}
+										</span>
+									</>
+								)}
+							/>
+						}
+					/>
+					{Array.map(props.apps, app => (
+						<Bar
+							key={app.key}
+							dataKey={app.key}
+							stackId="usage"
+							barSize={2}
+							fill={`var(--color-${app.key})`}
+							isAnimationActive={false}
+						/>
+					))}
+					<ChartLegend content={<ChartLegendContent />} />
+				</BarChart>
+			</ChartContainer>
+		</div>
 	)
 }
 
@@ -452,23 +456,33 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
+// The period as one mono invoice: each label sits over the figure the gateway charged for it.
+function Invoice(props: {label: string; value: string}) {
+	return (
+		<div className="flex min-w-0 items-baseline justify-between gap-3">
+			<dt className="text-muted-foreground tracking-label text-2xs font-mono uppercase">{props.label}</dt>
+			<dd className="truncate font-mono text-xs tabular-nums">{props.value}</dd>
+		</div>
+	)
+}
+
 // The period at a glance; a desktop adds the daily average.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
-			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
-			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
-			<span className="max-sm:hidden">
-				<Stat
+		<dl className="bg-card/40 grid grid-cols-2 gap-x-5 gap-y-1.5 rounded-xs border px-3 py-2 sm:grid-cols-4">
+			<Invoice label="Spent" value={cost(props.report.totals.costUsd)} />
+			<Invoice label="Tokens" value={compact.format(props.report.totals.tokens)} />
+			<Invoice label="Calls" value={count.format(props.report.totals.calls)} />
+			<div className="max-sm:hidden">
+				<Invoice
 					label="Per day"
 					value={cost(
 						props.report.totals.costUsd /
 							Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
 					)}
 				/>
-			</span>
-		</div>
+			</div>
+		</dl>
 	)
 }
 
@@ -484,7 +498,7 @@ function UsageReport(props: {
 		return (
 			<>
 				<Stats range={props.range} report={props.report} />
-				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
+				<p role="status" className="text-muted-foreground border-y py-6 text-center font-mono text-xs">
 					No AI calls in the{' '}
 					{Option.getOrElse(
 						Option.map(
@@ -568,8 +582,8 @@ function UsageReport(props: {
 				report={props.report}
 			/>
 			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
-			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
-				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
+			<div className="grid gap-4 md:grid-cols-2 md:gap-0 md:divide-x">
+				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-3">
 					<GroupLabel>By app</GroupLabel>
 					<div role="list" aria-label="By app">
 						{Array.map(appSums, sum => (
@@ -585,7 +599,7 @@ function UsageReport(props: {
 						))}
 					</div>
 				</section>
-				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">
+				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-3">
 					<GroupLabel>By model</GroupLabel>
 					<div role="list" aria-label="By model">
 						{Array.map(modelSums, sum => (
@@ -668,16 +682,18 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 					)
 				})}
 			>
-				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
+				<span className="w-24 min-w-0 shrink-0 truncate font-mono text-xs font-medium">
+					{PROVIDER_NAMES[props.provider]}
+				</span>
 				<span
 					className={cn(
-						'min-w-0 flex-1 truncate font-mono text-xs',
+						'text-2xs min-w-0 flex-1 truncate font-mono',
 						Boolean.match(rejected, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-destructive'})
 					)}
 				>
 					{detail}
 				</span>
-				<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
+				<span className="text-2xs w-14 shrink-0 text-right font-mono tabular-nums">{props.spent}</span>
 				<span className="flex size-3 shrink-0 items-center justify-center">
 					<StatusDot
 						status={Option.match(props.info, {

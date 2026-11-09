@@ -5,7 +5,6 @@ import {Array, Boolean, Cause, HashSet, Match, Number, Option, Order, Record, Sc
 import {
 	AppWindowIcon,
 	CaretDownIcon,
-	CaretRightIcon,
 	ChartLineIcon,
 	ClockIcon,
 	HardDrivesIcon,
@@ -506,7 +505,10 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn(
+								'console-row group grid-cols-apps max-sm:grid-cols-apps-sm relative grid h-8 items-center gap-2 px-2 max-sm:h-11',
+								highlighted && 'bg-signal/5'
+							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -515,26 +517,24 @@ function AppListRow(props: {
 					{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
 					<Button
 						aria-label={`Open ${fullName}`}
-						variant={Boolean.match(props.selected, {
-							onFalse: () => 'ghost' as const,
-							onTrue: () => 'secondary' as const
-						})}
+						data-row
+						variant="row"
 						className="absolute inset-0 z-0 size-full"
 						onClick={props.onSelect}
 					/>
-					<Item className="pointer-events-none relative z-10 h-full min-w-0 flex-1">
+					<Item className="pointer-events-none relative z-10 h-full min-w-0">
 						<ItemMedia variant="icon">
 							<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
 						</ItemMedia>
 						<ItemContent className="min-w-0">
 							<span
-								className={cn('min-w-0 truncate text-sm font-medium', scheduled && 'text-muted-foreground')}
+								className={cn('min-w-0 truncate font-mono text-xs font-medium', scheduled && 'text-muted-foreground')}
 								title={fullName}
 							>
 								{name}
 							</span>
 							{/* A phone reads the memory, and why a row needs a look, under its name; wider screens keep them in their columns. */}
-							<span className="flex min-w-0 items-center gap-1.5 font-mono text-xs tracking-normal normal-case tabular-nums sm:hidden">
+							<span className="text-2xs flex min-w-0 items-center gap-1.5 font-mono tabular-nums sm:hidden">
 								<span className="text-muted-foreground shrink-0">{bytes(memory)}</span>
 								{Boolean.match(failing, {
 									onFalse: () =>
@@ -564,13 +564,13 @@ function AppListRow(props: {
 							</span>
 						</ItemContent>
 					</Item>
-					<div className="pointer-events-auto relative z-10 flex max-w-1/2 min-w-0 shrink items-center justify-end gap-1 overflow-hidden max-sm:max-w-1/3">
+					<div className="pointer-events-auto relative z-10 hidden min-w-0 items-center justify-end gap-1 overflow-hidden sm:flex">
 						{Boolean.match(failing, {
 							onFalse: () =>
 								Boolean.match(scheduled, {
 									onFalse: () => <Endpoints free={props.free} row={props.row} />,
 									onTrue: () => (
-										<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs max-sm:hidden">
+										<span className="text-muted-foreground text-2xs flex shrink-0 items-center gap-1 font-mono">
 											<ClockIcon className="size-3" />
 											{next}
 										</span>
@@ -579,7 +579,7 @@ function AppListRow(props: {
 							onTrue: () => (
 								<span
 									className={cn(
-										'truncate text-xs max-sm:hidden',
+										'text-2xs truncate font-mono',
 										Boolean.match(light === 'error', {onFalse: () => 'text-warning', onTrue: () => 'text-destructive'})
 									)}
 									title={reason}
@@ -589,10 +589,10 @@ function AppListRow(props: {
 							)
 						})}
 					</div>
-					<div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-2">
+					<div className="pointer-events-none relative z-10 flex shrink-0 items-center justify-end gap-1.5">
 						<span
 							className={cn(
-								'w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden',
+								'text-2xs text-right font-mono whitespace-nowrap tabular-nums max-sm:hidden',
 								scheduled && 'text-muted-foreground'
 							)}
 						>
@@ -616,7 +616,14 @@ function AppListRow(props: {
 							)}
 						>
 							{Boolean.match(scheduled, {
-								onFalse: () => <CaretRightIcon className="text-muted-foreground size-3.5" />,
+								onFalse: () => (
+									<span
+										aria-hidden
+										className="text-signal text-sm leading-none opacity-0 transition-opacity duration-75 group-focus-within:opacity-100 group-hover:opacity-100"
+									>
+										›
+									</span>
+								),
 								onTrue: () => (
 									<RunNow busy={running} item={props.row.item} onRun={() => setRequested(Option.some(props.now))} />
 								)
@@ -630,7 +637,7 @@ function AppListRow(props: {
 					))}
 				</ContextMenuContent>
 			</ContextMenu>
-			<div className="pl-9 empty:hidden">
+			<div className="pl-8 empty:hidden">
 				{scheduled && <RunFailure item={props.row.item} />}
 				{Array.map(owned, exposure => (
 					<RemoveFailure key={exposure.id} item={exposure} />
@@ -698,11 +705,11 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 				<div
 					key={row}
 					aria-hidden
-					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
+					className={cn('console-row flex h-8 items-center gap-2.5 px-2 max-sm:h-11', props.indent === true && 'pl-7')}
 				>
-					<Skeleton className="size-5 shrink-0" />
-					<Skeleton className="h-3.5 w-1/3 max-w-40" />
-					<Skeleton className="ml-auto h-3 w-16" />
+					<Skeleton className="size-4 shrink-0" />
+					<Skeleton className="h-3 w-1/3 max-w-40" />
+					<Skeleton className="ml-auto h-2.5 w-14" />
 				</div>
 			))}
 		</div>
@@ -787,12 +794,21 @@ function AppsPane(props: {
 						),
 						onNonEmpty: () => (
 							<ScrollArea className="min-h-0 flex-1">
+								<div
+									aria-hidden="true"
+									className="console-head grid-cols-apps-sm sm:grid-cols-apps grid items-center gap-2 px-2"
+								>
+									<span>App</span>
+									<span className="hidden sm:block">Ports / reason</span>
+									<span className="hidden text-right sm:block">Memory</span>
+									<span />
+								</div>
 								<div role="list" className="pr-2">
 									{Array.map(props.rows, (row, index) => (
 										<Fragment key={row.item.id}>
 											{index === firstScheduled && (
-												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
-													<span className="tracking-label font-semibold uppercase">Scheduled</span>
+												<div className="bg-background text-muted-foreground text-2xs sticky top-7 z-20 flex h-7 shrink-0 items-center gap-2 border-b px-4 font-mono">
+													<span className="tracking-label font-medium uppercase">Scheduled</span>
 													<Badge variant="secondary">{scheduled.length}</Badge>
 												</div>
 											)}
@@ -854,7 +870,7 @@ function ProcessPane(props: {
 									process={process}
 									container={current.item.kind === 'container'}
 								/>
-								<span className="max-w-40 min-w-0 truncate text-sm font-medium tracking-normal normal-case">
+								<span className="max-w-40 min-w-0 truncate font-mono text-xs font-medium">
 									{workloadName(current.item)}
 								</span>
 							</span>
@@ -873,7 +889,7 @@ function ProcessPane(props: {
 					{Boolean.match(props.row?.item.scheduled === true, {
 						onFalse: () => null,
 						onTrue: () => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+							<span className="text-muted-foreground text-2xs shrink-0 font-mono whitespace-nowrap">
 								{nextRun(props.row?.item.next ?? props.now, props.now)}
 							</span>
 						)
@@ -982,8 +998,8 @@ function MachineContent(props: {
 	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="flex flex-col gap-4 px-4 pt-3 pb-4">
-				<div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+			<div className="flex flex-col gap-2 px-2 pt-2 pb-3">
+				<div className="text-2xs flex flex-wrap gap-x-3 gap-y-1 font-mono">
 					{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
 						<span key={band.id} className="flex min-w-0 items-center gap-1.5">
 							<span
@@ -996,46 +1012,48 @@ function MachineContent(props: {
 						</span>
 					))}
 				</div>
-				<UsageChart
-					className="h-40"
-					history={props.history}
-					minutes={props.minutes}
-					hovered={props.hovered}
-					label="Memory"
-					layers={Array.map(all, band => ({...band, values: band.memory}))}
-					names={bandName}
-					onHover={props.onHover}
-					recorded={() => true}
-					value={Option.getOrUndefined(memory)}
-				/>
-				<UsageChart
-					className="h-36"
-					history={props.history}
-					minutes={props.minutes}
-					hovered={props.hovered}
-					label="CPU"
-					layers={Array.map(all, band => ({...band, values: band.cpu}))}
-					names={bandName}
-					onHover={props.onHover}
-					recorded={sample => sample.cpu !== undefined}
-					value={Option.getOrUndefined(cpu)}
-				/>
-				<TimeAxis history={props.history} minutes={props.minutes} />
-				{Boolean.match(storage.total > 0, {
-					onFalse: () => null,
-					onTrue: () => (
-						// The bar alone says how full the disks are; the figures wait on hover, or sit beside them on a phone.
-						<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
-							<Progress value={(storage.used / storage.total) * 100}>
-								<ProgressLabel>Disk</ProgressLabel>
-								<span className="text-muted-foreground ml-auto text-sm tabular-nums sm:hidden">
-									{bytes(storage.used)} of {bytes(storage.total)}
-								</span>
-							</Progress>
-						</div>
-					)
-				})}
-				<Cores history={props.history} />
+				<div className="bg-card/40 flex flex-col gap-3 rounded-xs border p-3">
+					<UsageChart
+						className="h-40"
+						history={props.history}
+						minutes={props.minutes}
+						hovered={props.hovered}
+						label="Memory"
+						layers={Array.map(all, band => ({...band, values: band.memory}))}
+						names={bandName}
+						onHover={props.onHover}
+						recorded={() => true}
+						value={Option.getOrUndefined(memory)}
+					/>
+					<UsageChart
+						className="h-36"
+						history={props.history}
+						minutes={props.minutes}
+						hovered={props.hovered}
+						label="CPU"
+						layers={Array.map(all, band => ({...band, values: band.cpu}))}
+						names={bandName}
+						onHover={props.onHover}
+						recorded={sample => sample.cpu !== undefined}
+						value={Option.getOrUndefined(cpu)}
+					/>
+					<TimeAxis history={props.history} minutes={props.minutes} />
+					{Boolean.match(storage.total > 0, {
+						onFalse: () => null,
+						onTrue: () => (
+							// The bar alone says how full the disks are; the figures wait on hover, or sit beside them on a phone.
+							<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
+								<Progress value={(storage.used / storage.total) * 100}>
+									<ProgressLabel>Disk</ProgressLabel>
+									<span className="text-muted-foreground text-2xs ml-auto font-mono tabular-nums sm:hidden">
+										{bytes(storage.used)} of {bytes(storage.total)}
+									</span>
+								</Progress>
+							</div>
+						)
+					})}
+					<Cores history={props.history} />
+				</div>
 			</div>
 		</ScrollArea>
 	)
@@ -1114,10 +1132,10 @@ function MachineTabs(props: {
 			Boolean.match(props.pending, {
 				onFalse: () => null,
 				onTrue: () => (
-					<div aria-busy="true" aria-label="Machines" role="status" className="flex h-12 shrink-0 items-center gap-3">
+					<div aria-busy="true" aria-label="Machines" role="status" className="flex h-8 shrink-0 items-center gap-3">
 						<Skeleton className="size-4" />
-						<Skeleton className="h-4 w-24" />
-						<Skeleton className="h-3 w-32" />
+						<Skeleton className="h-3 w-20" />
+						<Skeleton className="h-2.5 w-28" />
 					</div>
 				)
 			}),
@@ -1127,17 +1145,23 @@ function MachineTabs(props: {
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				<TabsList variant="line" aria-label="Machines" className="w-full max-sm:group-data-horizontal/tabs:h-auto">
-					{Array.map(workers, worker => {
-						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
-						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
-						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
-						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-12">
-								<MachineIcon worker={worker} />
-								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-									<span className="flex min-w-0 items-center gap-1.5">
+				<div className="no-scrollbar overflow-x-auto">
+					<TabsList variant="line" aria-label="Machines" className="w-full max-sm:h-auto">
+						{Array.map(workers, worker => {
+							const history = Array.findFirst(props.histories, machine => machine.worker === worker)
+							const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
+							const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
+							return (
+								<TabsTrigger key={worker} value={worker} className="h-8 min-w-0 max-sm:h-11">
+									<MachineIcon worker={worker} />
+									<span className="flex min-w-0 items-baseline gap-1.5">
+										<span aria-hidden className="opacity-50">
+											[
+										</span>
 										<span className="min-w-0 truncate">{machineName(worker)}</span>
+										<span aria-hidden className="opacity-50">
+											]
+										</span>
 										{/* Only an unreachable machine is marked; one that answers needs no dot. */}
 										{failed && (
 											<span
@@ -1149,12 +1173,12 @@ function MachineTabs(props: {
 											</span>
 										)}
 									</span>
-									<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tracking-normal normal-case tabular-nums">
+									<span className="text-muted-foreground text-2xs hidden min-w-0 truncate font-mono tabular-nums sm:inline">
 										{Array.join(
 											[
 												...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
 													onFalse: () => [],
-													onTrue: () => [`${latest?.cores?.length} cores`]
+													onTrue: () => [`${latest?.cores?.length}c`]
 												}),
 												...Boolean.match(latest === undefined, {
 													onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
@@ -1164,11 +1188,11 @@ function MachineTabs(props: {
 											' · '
 										)}
 									</span>
-								</span>
-							</TabsTrigger>
-						)
-					})}
-				</TabsList>
+								</TabsTrigger>
+							)
+						})}
+					</TabsList>
+				</div>
 			</Tabs>
 		)
 	})
@@ -1185,7 +1209,7 @@ function SourceProblems(props: {
 		{
 			onEmpty: () => null,
 			onNonEmpty: sources => (
-				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
+				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b py-1">
 					{Array.map(sources, source => (
 						<div key={source.name} className="flex items-center gap-1.5">
 							<MachineIcon worker={source.name} />
@@ -1416,7 +1440,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="h-full min-h-0 gap-3">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}

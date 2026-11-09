@@ -23,6 +23,10 @@
 }
 
 @theme {
-	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
-	--grid-template-columns-attributes: repeat(auto-fill, minmax(14rem, 1fr));
+	--grid-template-columns-scope: minmax(20rem, 26rem) minmax(0, 1fr);
+	--grid-template-columns-attributes: repeat(auto-fill, minmax(12rem, 1fr));
+	/* The operation log and its traces: a name, then fixed figures. */
+	--grid-template-columns-operations: minmax(0, 1fr) 2.5rem 2.5rem 3.5rem;
+	--grid-template-columns-operations-sm: minmax(0, 1fr) 2.5rem 3.5rem;
+	--grid-template-columns-traces: 2.5rem minmax(0, 1fr) 1rem 3.5rem;
 }

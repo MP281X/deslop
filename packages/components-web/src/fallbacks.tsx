@@ -21,7 +21,7 @@ export function EmptyState(props: {action?: ReactNode; description?: string; ico
 				<EmptyMedia variant="icon" className="mb-3">
 					{props.icon}
 				</EmptyMedia>
-				<h2 className="font-heading text-2xl leading-none tracking-tight">{props.label}</h2>
+				<h2 className="text-2sm font-mono leading-none font-medium">{props.label}</h2>
 				{props.description !== undefined && <EmptyDescription>{props.description}</EmptyDescription>}
 			</EmptyHeader>
 			{props.action !== undefined && <EmptyContent>{props.action}</EmptyContent>}
@@ -36,7 +36,7 @@ export function NotFound() {
 				<EmptyMedia variant="icon">
 					<QuestionIcon className="size-5" weight="light" />
 				</EmptyMedia>
-				<h2 className="font-heading text-2xl leading-none tracking-tight">Page not found</h2>
+				<h2 className="text-2sm font-mono leading-none font-medium">Page not found</h2>
 				<EmptyDescription>The link is old, or it never existed.</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>

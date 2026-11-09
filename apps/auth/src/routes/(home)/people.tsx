@@ -48,8 +48,8 @@ function Identity(props: {person: Person}) {
 // The row's own line, then its failed answer or removal beneath it.
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
-		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12">
+		<div role="listitem" id={`person-${props.person.id}`} className="console-row">
+			<div className="flex min-h-8 min-w-0 items-center gap-3 px-2 font-mono text-xs max-sm:min-h-11">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -104,15 +104,16 @@ function MemberRow(props: {person: Person}) {
 	const name = props.person.fullName ?? props.person.name
 	return (
 		<ContextMenu>
-			<div role="listitem" id={`person-${props.person.id}`} className="border-b">
+			<div role="listitem" id={`person-${props.person.id}`} className="console-row">
 				<ContextMenuTrigger
 					render={
 						<div
 							role="button"
 							tabIndex={0}
+							data-row
 							aria-haspopup="menu"
 							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-signal/5 focus-visible:border-signal focus-visible:bg-signal/10 flex min-h-8 min-w-0 items-center gap-3 border-l-2 border-transparent px-2 font-mono text-xs transition-colors duration-75 outline-none max-sm:min-h-11"
 						/>
 					}
 				>
