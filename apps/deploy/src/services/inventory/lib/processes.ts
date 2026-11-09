@@ -1,7 +1,8 @@
 import {Array, Boolean, Clock, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
 
 import {commandLabel} from '#services/inventory/lib/command.ts'
-import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
+import {processOwner} from '#services/inventory/lib/owners.ts'
+import {itemOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 
@@ -9,16 +10,17 @@ const PROCESS_INTERVAL = 2000
 const SECRET = /(?:token|secret|passw(?:or)?d|key|auth|credential|cookie|session)/iu
 
 function processStatus(status: string) {
-	function field(name: string) {
-		return String.trim(
-			Option.getOrElse(String.match(new RegExp(`^${name}:\\s*([^\\n]+)`, 'mu'))(status), () => ['', ''])[1] ?? ''
-		)
-	}
+	const values = Record.fromEntries(
+		Array.map(String.split(String.trim(status), '\n'), line => {
+			const at = Option.getOrElse(String.indexOf(':')(line), () => -1)
+			return [String.slice(0, at)(line), String.trim(String.slice(at + 1)(line))] as const
+		})
+	)
 	return {
-		memory: Schema.decodeSync(Schema.FiniteFromString)(String.split(field('VmRSS'), /\s+/u)[0] || '0') * 1024,
-		name: field('Name'),
-		parent: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('PPid')),
-		pid: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(field('Pid'))
+		memory: Schema.decodeSync(Schema.FiniteFromString)(String.split(values['VmRSS'] ?? '', /\s+/u)[0] || '0') * 1024,
+		name: values['Name'] ?? '',
+		parent: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(values['PPid'] ?? ''),
+		pid: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(values['Pid'] ?? '')
 	}
 }
 

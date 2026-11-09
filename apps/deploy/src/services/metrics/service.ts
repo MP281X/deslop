@@ -21,7 +21,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {execute} from '@deslop/runtime/cli/service'
 
-import {processOwner} from '#services/inventory/lib/utils.ts'
+import {processOwner} from '#services/inventory/lib/owners.ts'
 import {DeployError} from '#services/inventory/schema.ts'
 import {appCgroup, appShares, cgroupUsage, compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
