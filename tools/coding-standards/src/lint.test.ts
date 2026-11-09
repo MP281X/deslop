@@ -1052,8 +1052,21 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.join('\n')
 					)
 				})
-				const lines = reportedLines(result, 'no-primitive-restyle')
-				assert.deepStrictEqual(lines.reported, lines.marked)
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => diagnostic.code === 'shadcn(no-restyle)'),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line),
+						Array.dedupe,
+						Array.sort(Order.Number)
+					),
+					pipe(
+						String.split(result.sources[0] ?? '', '\n'),
+						Array.map((line, index) => ({line, number: index + 1})),
+						Array.filter(entry => String.includes('// reported')(entry.line)),
+						Array.map(entry => entry.number)
+					)
+				)
 			})
 		)
 
