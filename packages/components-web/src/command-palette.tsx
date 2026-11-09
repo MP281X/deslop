@@ -16,8 +16,8 @@ import {
 	CommandShortcut
 } from '#components/ui/command.tsx'
 
-// The iOS apps have no browser screen to land on.
-export const WEB_APPS = [
+// The web tools the bar can jump to; the iOS apps have no browser screen to land on.
+const WEB_APPS = [
 	{name: 'deploy', url: 'https://deploy.mp281x.xyz'},
 	{name: 'scope', url: 'https://scope.mp281x.xyz'},
 	{name: 'gateway', url: 'https://gateway.mp281x.xyz'},

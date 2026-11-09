@@ -24,34 +24,7 @@ export function Page(props: {children: ReactNode; className?: string; width?: Wi
 	)
 }
 
-// A ruled section: the title names the set, the meta counts it, and the line separates it from the next set.
-export function Section(props: {
-	actions?: ReactNode
-	children: ReactNode
-	className?: string
-	headerClassName?: string
-	meta?: string
-	title: string
-}) {
-	return (
-		<section className={cn('flex flex-col', props.className)} aria-label={props.title}>
-			<div
-				className={cn(
-					'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t pt-3 pb-2',
-					props.headerClassName
-				)}
-			>
-				<div className="flex min-w-0 items-baseline gap-3">
-					<h2 className="font-heading text-sm font-medium">{props.title}</h2>
-					{props.meta !== undefined && <span className="text-muted-foreground text-xs tabular-nums">{props.meta}</span>}
-				</div>
-				{props.actions !== undefined && <div className="flex items-center gap-2">{props.actions}</div>}
-			</div>
-			{props.children}
-		</section>
-	)
-}
-
+// A one-line fact for a summary strip: the label stays quiet, the value carries the weight.
 export function Stat(props: {label: string; value: ReactNode}) {
 	return (
 		<span className="flex items-baseline gap-1.5 text-xs whitespace-nowrap">
