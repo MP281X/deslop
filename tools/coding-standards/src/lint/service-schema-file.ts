@@ -3,65 +3,11 @@ import {Array, Option, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {
-	importedMember,
-	isImportBinding,
-	isSchemaOperationName,
-	isTestFile,
-	matches,
-	memberName,
-	statementDeclaration
-} from '#lib/ast.ts'
+import {importedMember, isSchemaDefinition, isTestFile, memberName, statementDeclaration} from '#lib/ast.ts'
 
 const SERVICE_PATH = /[/\\]src[/\\]services[/\\][^/\\]+[/\\]/u
 const SCHEMA_FILE = /[/\\]schema\.ts$/u
 const SCHEMA_CLASSES = ['Class', 'TaggedClass', 'TaggedError', 'TaggedRequest']
-// A derivation such as `toEquivalence` or `isMinLength` reads a schema or builds a filter, but defines no schema of its own.
-const DERIVED = matches(/^(?:is|to)[A-Z]/u)
-const FILTER = matches(/^makeFilter(?:Group)?$/u)
-
-function schemaMember(input: {context: Context; node: ESTree.Expression}): Option.Option<ESTree.MemberExpression> {
-	if (input.node.type === 'CallExpression' && input.node.callee.type !== 'Super') {
-		return schemaMember({context: input.context, node: input.node.callee})
-	}
-	if (input.node.type === 'ChainExpression') return schemaMember({context: input.context, node: input.node.expression})
-	if (input.node.type === 'TSInstantiationExpression') {
-		return schemaMember({context: input.context, node: input.node.expression})
-	}
-	if (input.node.type === 'TSSatisfiesExpression') {
-		return schemaMember({context: input.context, node: input.node.expression})
-	}
-	if (input.node.type === 'MemberExpression') {
-		if (input.node.object.type === 'Identifier') return Option.some(input.node)
-		if (input.node.object.type !== 'Super') return schemaMember({context: input.context, node: input.node.object})
-	}
-	return Option.none()
-}
-
-function constructorMember(input: {context: Context; node: ESTree.MemberExpression}) {
-	return (
-		importedMember({context: input.context, importedName: 'Schema', node: input.node}) &&
-		pipe(
-			memberName(input.node),
-			Option.exists(name => !isSchemaOperationName(name) && !DERIVED(name) && !FILTER(name))
-		)
-	)
-}
-
-function definesSchema(input: {context: Context; node: ESTree.Expression}): boolean {
-	if (
-		input.node.type === 'CallExpression' &&
-		input.node.callee.type === 'Identifier' &&
-		isImportBinding({context: input.context, importedName: 'pipe', node: input.node.callee, source: 'effect'})
-	) {
-		const [first] = input.node.arguments
-		return first !== undefined && first.type !== 'SpreadElement' && definesSchema({...input, node: first})
-	}
-	return pipe(
-		schemaMember(input),
-		Option.exists(member => constructorMember({context: input.context, node: member}))
-	)
-}
 
 function schemaClass(input: {context: Context; node: ESTree.Expression}): boolean {
 	if (input.node.type === 'CallExpression' && input.node.callee.type !== 'Super') {
@@ -104,7 +50,7 @@ function definitions(context: Context, declaration: ReturnType<typeof exported>)
 			if (variable.init.type === 'ClassExpression') {
 				return Array.filter([variable.init], node => extendsSchema({context, node}))
 			}
-			return Array.filter([variable.init], node => definesSchema({context, node}))
+			return Array.filter([variable.init], node => isSchemaDefinition({context, node}))
 		})
 	}
 	if (declaration?.type === 'ClassDeclaration' || declaration?.type === 'ClassExpression') {

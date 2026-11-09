@@ -492,6 +492,71 @@ export function isSchemaOperationCall(input: {context: Context; node: ESTree.Cal
 	return pipe(memberName(input.node.callee), Option.exists(isSchemaOperationName))
 }
 
+function expressionRoot(node: ESTree.Expression): ESTree.Expression {
+	if (node.type === 'MemberExpression') return expressionRoot(node.object)
+	if (node.type === 'CallExpression' && node.callee.type !== 'Super') return expressionRoot(node.callee)
+	if (node.type === 'ChainExpression') return expressionRoot(node.expression)
+	if (node.type === 'TSInstantiationExpression') return expressionRoot(node.expression)
+	if (node.type === 'TSSatisfiesExpression') return expressionRoot(node.expression)
+	return node
+}
+
+function expressionUsesSchema(context: Context, node: ESTree.Expression) {
+	const root = expressionRoot(node)
+	return root.type === 'Identifier' && isImportBinding({context, importedName: 'Schema', node: root, source: 'effect'})
+}
+
+// The Schema constructor a definition reaches through calls, instantiations, chains and satisfies clauses.
+function schemaDefinitionMember(node: ESTree.Expression): Option.Option<ESTree.MemberExpression> {
+	if (node.type === 'CallExpression' && node.callee.type !== 'Super') return schemaDefinitionMember(node.callee)
+	if (node.type === 'ChainExpression') return schemaDefinitionMember(node.expression)
+	if (node.type === 'TSInstantiationExpression') return schemaDefinitionMember(node.expression)
+	if (node.type === 'TSSatisfiesExpression') return schemaDefinitionMember(node.expression)
+	if (node.type === 'MemberExpression') {
+		if (node.object.type === 'Identifier') return Option.some(node)
+		if (node.object.type !== 'Super') return schemaDefinitionMember(node.object)
+	}
+	return Option.none()
+}
+
+const isDerivedSchemaName = matches(/^(?:is|to)[A-Z]/u)
+const isFilterSchemaName = matches(/^makeFilter(?:Group)?$/u)
+
+// A schema this file defines: a Schema constructor or class, not a derivation, filter or operation.
+export function isSchemaDefinition(input: {context: Context; node: ESTree.Expression}): boolean {
+	if (
+		input.node.type === 'CallExpression' &&
+		input.node.callee.type === 'Identifier' &&
+		isImportBinding({context: input.context, importedName: 'pipe', node: input.node.callee, source: 'effect'}) &&
+		input.node.arguments[0] !== undefined &&
+		input.node.arguments[0].type !== 'SpreadElement'
+	) {
+		return isSchemaDefinition({context: input.context, node: input.node.arguments[0]})
+	}
+	if (input.node.type === 'TSSatisfiesExpression') {
+		return isSchemaDefinition({context: input.context, node: input.node.expression})
+	}
+	if (
+		input.node.type === 'CallExpression' &&
+		input.node.callee.type === 'MemberExpression' &&
+		!importedMember({context: input.context, importedName: 'Schema', node: input.node.callee}) &&
+		Option.contains(memberName(input.node.callee), 'make')
+	) {
+		return false
+	}
+	if (!expressionUsesSchema(input.context, input.node)) return false
+	return pipe(
+		schemaDefinitionMember(input.node),
+		Option.exists(member => {
+			if (!importedMember({context: input.context, importedName: 'Schema', node: member})) return false
+			return pipe(
+				memberName(member),
+				Option.exists(name => !isSchemaOperationName(name) && !isDerivedSchemaName(name) && !isFilterSchemaName(name))
+			)
+		})
+	)
+}
+
 export function isReactUseState(input: {context: Context; node: ESTree.CallExpression}) {
 	if (input.node.callee.type === 'Identifier') {
 		return isImportBinding({context: input.context, importedName: 'useState', node: input.node.callee, source: 'react'})
