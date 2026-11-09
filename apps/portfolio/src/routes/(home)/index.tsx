@@ -405,7 +405,7 @@ function ProfileSection() {
 	return (
 		<section
 			aria-labelledby="profile-title"
-			className="relative z-10 mx-auto w-full max-w-3xl px-6 pt-[max(2.5rem,env(safe-area-inset-top))] pb-12 select-text sm:px-8 sm:pt-16 sm:pb-16"
+			className="relative z-10 mx-auto w-full max-w-3xl px-6 pt-10 pb-12 select-text sm:px-8 sm:pt-16 sm:pb-16"
 		>
 			<div className="bg-background">
 				<div className="border-border flex items-center justify-between gap-4 border-t pt-3 pb-10 sm:pb-14">
@@ -425,7 +425,7 @@ function ProfileSection() {
 
 				<h1
 					id="profile-title"
-					className="font-heading mt-4 text-[clamp(2.5rem,12vw,3rem)] leading-none tracking-tight text-balance sm:text-7xl"
+					className="font-heading mt-4 text-5xl leading-none tracking-tight text-balance sm:text-7xl"
 				>
 					{profile.firstName} {profile.lastName}
 				</h1>
@@ -926,7 +926,9 @@ function PortfolioRoute() {
 			}}
 			tabIndex={0}
 		>
-			<ProfileSection />
+			<div className="pt-safe-top">
+				<ProfileSection />
+			</div>
 			<ProjectsSection />
 			<ExperienceSection />
 			<SkillsSection />
