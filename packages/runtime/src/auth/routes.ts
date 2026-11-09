@@ -10,6 +10,7 @@ import {appName} from '#server.ts'
 import {
 	AUTHORIZE_PATH,
 	CALLBACK_PATH,
+	COOKIE,
 	ISSUER_PATH,
 	SESSION_COOKIE,
 	clientIdOf,
@@ -19,7 +20,6 @@ import {
 import {AuthError, CodeGrant, SessionHandle} from '#auth/schema.ts'
 import {Sessions, sessionIdOf} from '#auth/sessions.ts'
 
-const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const SIGN_IN_COOKIE = '__Host-sign-in'
 
 type SignInState = typeof SignInState.Type
