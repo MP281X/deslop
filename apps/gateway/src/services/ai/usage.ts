@@ -1,7 +1,8 @@
 import {Array, Boolean, Number, Option, Order, Record, Result, Schema, String} from 'effect'
 
-import type {AiUsageEntry, AiUsageQuery} from '#services/ai/schema.ts'
+import type {AiUsageEntry} from '#services/ai/schema.ts'
 import {Usage} from '#services/ai/schema.ts'
+import type {UsageRange} from '#services/usage/schema.ts'
 
 export function readUsage(text: string, entry: AiUsageEntry) {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)
@@ -44,11 +45,10 @@ function totals(rows: AiUsageEntry[]) {
 function grouped(rows: AiUsageEntry[], key: (entry: AiUsageEntry) => string) {
 	return Array.map(Record.toEntries(Array.groupBy(rows, key)), entry => ({name: entry[0], ...totals(entry[1])}))
 }
-export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
-	const selected = Array.filter(entries, entry => entry.at >= query.from && entry.at < query.to)
-	const size = Boolean.match(query.bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
+export function report(entries: AiUsageEntry[], range: UsageRange) {
+	const selected = Array.filter(entries, entry => entry.at >= range.from && entry.at < range.to)
 	function bucket(entry: AiUsageEntry) {
-		return Math.floor(entry.at / size) * size
+		return Math.floor(entry.at / range.size) * range.size
 	}
 	return {
 		byProvider: grouped(selected, entry => entry.provider),

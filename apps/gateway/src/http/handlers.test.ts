@@ -1009,7 +1009,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			const first = yield* Queue.take(updates)
 			assert.deepStrictEqual(first, {
-				range: {bucket: 'hour', count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
+				range: {count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
 				report: [{id: added.id, series: []}]
 			})
 			for (const index of Array.range(1, 2)) {
@@ -1030,7 +1030,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// Past the hour boundary, the window moves and a later call still counts.
 			yield* TestClock.adjust('1 hour')
 			assert.deepStrictEqual((yield* Queue.take(updates)).range, {
-				bucket: 'hour',
 				count: 24,
 				from: -79_200_000,
 				size: 3_600_000,

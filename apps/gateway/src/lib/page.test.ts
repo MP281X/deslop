@@ -133,10 +133,7 @@ function render(result: Atom.Type<typeof serversAtom>) {
 			env.registry
 				.ensureNode(env.mcpUsageAtom('7d'))
 				.setInitialValue(
-					AsyncResult.success({
-						range: {bucket: 'day', count: 7, from: 0, size: 86_400_000, to: 7 * 86_400_000},
-						report: []
-					})
+					AsyncResult.success({range: {count: 7, from: 0, size: 86_400_000, to: 7 * 86_400_000}, report: []})
 				)
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: env.registry}, createElement(RouterProvider, {router}))

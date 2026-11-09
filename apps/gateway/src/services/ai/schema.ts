@@ -28,12 +28,6 @@ export const AiUsageEntry = Schema.Struct({
 	provider: AiProvider,
 	status: Schema.Finite
 })
-export type AiUsageQuery = typeof AiUsageQuery.Type
-export const AiUsageQuery = Schema.Struct({
-	bucket: Schema.Literals(['hour', 'day']),
-	from: Schema.Finite,
-	to: Schema.Finite
-})
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
 export const AiUsageBreakdown = Schema.Struct({
 	costUsd: Schema.Finite,

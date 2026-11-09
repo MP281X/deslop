@@ -5,7 +5,6 @@ export type Period = typeof Period.Type
 export const Period = Schema.Literals(['24h', '7d', '30d'])
 export type UsageRange = typeof UsageRange.Type
 export const UsageRange = Schema.Struct({
-	bucket: Schema.Literals(['hour', 'day']),
 	count: Schema.Finite,
 	from: Schema.Finite,
 	size: Schema.Finite,
@@ -13,9 +12,8 @@ export const UsageRange = Schema.Struct({
 })
 
 export function periodRange(period: Period, now: number) {
-	const bucket = Boolean.match(period === '24h', {onFalse: () => 'day' as const, onTrue: () => 'hour' as const})
-	const size = Boolean.match(bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
+	const size = Boolean.match(period === '24h', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
 	const count = {'7d': 7, '24h': 24, '30d': 30}[period]
 	const to = (Math.floor(now / size) + 1) * size
-	return {bucket, count, from: to - count * size, size, to} satisfies UsageRange
+	return {count, from: to - count * size, size, to} satisfies UsageRange
 }
