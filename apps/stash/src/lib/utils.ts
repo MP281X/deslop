@@ -2,7 +2,6 @@ import type {Record} from 'effect'
 import {Array, Boolean, Effect, Layer, HashSet, Option, Order, Predicate, Schema, Stream, String, pipe} from 'effect'
 
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {FetchHttpClient} from 'effect/http'
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
@@ -303,7 +302,7 @@ export const clipboardAtom = AtomMachine.bind(
 											Effect.flatMap(get.result(RpcClient.runtime), context =>
 												Effect.provideContext(saveLink(answer.count), context)
 											),
-										onTrue: () => Effect.provide(saveImage(answer.count), FetchHttpClient.layer)
+										onTrue: () => saveImage(answer.count)
 									})
 							})
 						),
