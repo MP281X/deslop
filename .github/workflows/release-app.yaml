@@ -47,11 +47,6 @@ jobs:
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           echo "native=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length == 0')" >> "$GITHUB_OUTPUT"
 
-      # The fingerprint runs alongside Verify; the update only ships once it passes.
-      - name: Await verification
-        if: steps.changes.outputs.changed == 'true' && steps.fingerprint.outputs.native == 'false'
-        uses: ./.github/actions/await-verify
-
       - name: Publish the EAS Update
         if: steps.changes.outputs.changed == 'true' && steps.fingerprint.outputs.native == 'false'
         run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
@@ -74,9 +69,6 @@ jobs:
         with: {eas: 'true', ios: 'true'}
       - name: Build the App Store app
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-      # The build overlaps Verify; nothing reaches Apple until it passes.
-      - name: Await verification
-        uses: ./.github/actions/await-verify
       # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
       - name: Submit to the App Store
         run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"

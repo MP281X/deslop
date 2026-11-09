@@ -5,6 +5,9 @@ on:
   push:
     branches-ignore: [main]
   workflow_call:
+    outputs:
+      mobile:
+        value: ${{ jobs.verify.outputs.mobile }}
 
 # A newer push to the same branch replaces the older run.
 concurrency:
@@ -16,23 +19,25 @@ permissions:
 
 # Branch pushes check bundling as well as source and tests.
 jobs:
-  check:
-    name: Check
+  verify:
+    name: Check and test
     runs-on: ubuntu-26.04
+    outputs:
+      mobile: ${{ steps.apps.outputs.mobile }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with: {tasks: 'true'}
+      - name: Discover mobile apps
+        id: apps
+        run: |
+          shopt -s nullglob
+          apps=(apps/*/app.config.ts)
+          apps=("${apps[@]%/app.config.ts}")
+          apps=("${apps[@]#apps/}")
+          echo "mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
       - name: Format, lint, types and dead code
         run: vp run check
-
-  test:
-    name: Test and build
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with: {tasks: 'true'}
       - name: Tests
         run: vp run test
       # Branch pushes check bundling; Release builds after verification, immediately before publishing.
