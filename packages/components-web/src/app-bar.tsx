@@ -157,9 +157,9 @@ export function AppBar(props: {
 							<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
 						</a>
 					),
-					// The leading slot keeps its width on every pane, so the title and the right controls never move.
+					// The back caret sits on the rows' 16px mark column and the title on their name column, at 44px.
 					onSome: title => (
-						<div className="flex min-w-0 shrink items-center gap-1.5">
+						<div className="flex min-w-0 shrink items-center gap-1">
 							{Option.match(Option.fromUndefinedOr(props.back), {
 								onNone: () => (
 									<a
@@ -174,7 +174,7 @@ export function AppBar(props: {
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										className="max-sm:size-11"
+										className="-ml-2 max-sm:-mr-1.5 max-sm:-ml-3.5 max-sm:size-11"
 										aria-label={back.label}
 										onClick={back.onClick}
 									>
