@@ -11,7 +11,6 @@ import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {Spinner} from '@deslop/components-web/ui/spinner'
-import {cn} from '@deslop/components-web/utils'
 
 import {SignInList} from '#lib/components.tsx'
 import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
@@ -50,7 +49,7 @@ function Enter(props: {
 					disabled={props.state === 'Checking'}
 					aria-invalid={invalid}
 					aria-describedby="code-error"
-					containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
+					containerClassName="gap-2"
 				>
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(0, 3), index => (
@@ -76,10 +75,7 @@ function Enter(props: {
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (
-					<p
-						className="text-muted-foreground animate-settle-in flex items-center gap-1.5 text-xs motion-reduce:animate-none"
-						role="status"
-					>
+					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
 						{Boolean.match(answer.accept, {
 							onFalse: () => (
 								<>

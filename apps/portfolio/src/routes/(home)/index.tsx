@@ -39,8 +39,6 @@ import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schem
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 const SECTION_NAMES = ['profile', 'expertise', 'experience', 'projects', 'education', 'contact'] as const
-// A cursor not yet on screen: its empty viewport makes the first sync place it at its target instead of gliding there.
-const UNPLACED_MOTION = {lastFrameAt: 0, targetX: 0, targetY: 0, viewportHeight: 0, viewportWidth: 0, x: 0, y: 0}
 
 type Scene = {trails: PortfolioVisitors; visitors: PortfolioVisitors}
 
@@ -120,66 +118,6 @@ const portfolioAtom = Atom.keepAlive(
 
 function setCursorTransform(node: HTMLDivElement, x: number, y: number) {
 	node.style.setProperty('--cursor-transform', `translate3d(${x}px, ${y}px, 0)`)
-}
-
-function createCursorMotion(target: {x: number; y: number}, viewport: {width: number; height: number}) {
-	return {
-		lastFrameAt: 0,
-		targetX: target.x,
-		targetY: target.y,
-		viewportHeight: viewport.height,
-		viewportWidth: viewport.width,
-		x: target.x,
-		y: target.y
-	}
-}
-
-function approach(input: {catchUp: number; maximum: number; position: number; target: number}) {
-	if (Math.abs(input.target - input.position) < 0.3) return input.target
-	return Number.clamp({maximum: input.maximum, minimum: 0})(
-		input.position + (input.target - input.position) * input.catchUp
-	)
-}
-
-function stepCursorMotion(motion: ReturnType<typeof createCursorMotion>, now: number) {
-	const frameDelta = Boolean.match(motion.lastFrameAt > 0, {
-		onFalse: () => 16,
-		onTrue: () => Number.clamp({maximum: 64, minimum: 8})(now - motion.lastFrameAt)
-	})
-	const deltaX = motion.targetX - motion.x
-	const deltaY = motion.targetY - motion.y
-	const catchUp = Number.min(1, (1 - Math.exp(-frameDelta / 130)) * (1 + Math.hypot(deltaX, deltaY) / 220))
-	// Reduced motion keeps the colour and drops the glide, as every other transition on the page does.
-	const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-	return {
-		...motion,
-		lastFrameAt: now,
-		x: Boolean.match(reduced, {
-			onFalse: () => approach({catchUp, maximum: motion.viewportWidth, position: motion.x, target: motion.targetX}),
-			onTrue: () => motion.targetX
-		}),
-		y: Boolean.match(reduced, {
-			onFalse: () => approach({catchUp, maximum: motion.viewportHeight, position: motion.y, target: motion.targetY}),
-			onTrue: () => motion.targetY
-		})
-	}
-}
-
-function syncCursorMotion(
-	motion: ReturnType<typeof createCursorMotion>,
-	cursor: PortfolioVisitor,
-	viewport: {width: number; height: number}
-) {
-	const target = {x: cursor.x * viewport.width, y: cursor.y * viewport.height}
-
-	if (motion.viewportWidth !== viewport.width || motion.viewportHeight !== viewport.height) {
-		return createCursorMotion(target, viewport)
-	}
-
-	if (motion.targetX === target.x && motion.targetY === target.y) return motion
-
-	return {...motion, targetX: target.x, targetY: target.y}
 }
 
 // React Compiler skips a component whose function schedules itself, so the frame loop lives outside it.
@@ -318,29 +256,14 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 	return at <= right || at - width < right
 }
 
+// Another visitor's cursor sits at each position the server reports.
 function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
 	const nodeRef = useRef<HTMLDivElement>(null)
-	const motionRef = useRef(UNPLACED_MOTION)
-	const animationFrameRef = useRef(0)
 
 	// Before paint, so the cursor's first frame is already where the server put it.
 	useLayoutEffect(() => {
-		motionRef.current = syncCursorMotion(motionRef.current, input.cursor, input.viewport)
-		if (nodeRef.current !== null) setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
-
-		function tick(now: number) {
-			if (nodeRef.current === null) return
-
-			motionRef.current = stepCursorMotion(motionRef.current, now)
-			setCursorTransform(nodeRef.current, motionRef.current.x, motionRef.current.y)
-			if (motionRef.current.x !== motionRef.current.targetX || motionRef.current.y !== motionRef.current.targetY) {
-				animationFrameRef.current = requestAnimationFrame(tick)
-			}
-		}
-		animationFrameRef.current = requestAnimationFrame(tick)
-
-		return () => {
-			cancelAnimationFrame(animationFrameRef.current)
+		if (nodeRef.current !== null) {
+			setCursorTransform(nodeRef.current, input.cursor.x * input.viewport.width, input.cursor.y * input.viewport.height)
 		}
 	}, [input.cursor, input.viewport])
 
@@ -348,7 +271,7 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 		<div
 			ref={nodeRef}
 			aria-hidden
-			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform) will-change-transform"
+			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform)"
 			style={{'--cursor-color': input.cursor.color}}
 		>
 			<CursorLabel
@@ -387,7 +310,7 @@ function HeaderLink(input: {children: React.ReactNode; external?: boolean; href:
 			href={input.href}
 			target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
 			rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
-			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 min-w-11 items-center gap-1.5 text-sm underline underline-offset-4 transition-colors sm:h-auto sm:pb-0.5"
+			className="text-foreground decoration-border hover:text-primary hover:decoration-primary inline-flex h-11 min-w-11 items-center gap-1.5 text-sm underline underline-offset-4 sm:h-auto sm:pb-0.5"
 		>
 			{input.children}
 			{external && <ArrowUpRightIcon className="size-3.5" />}
@@ -495,7 +418,7 @@ function ProjectsSection() {
 								target="_blank"
 								rel="noopener noreferrer"
 								aria-label={`View ${project.name} on GitHub`}
-								className="text-muted-foreground hover:text-primary tracking-label -mr-2 inline-flex h-11 items-center gap-1 px-2 text-xs font-semibold uppercase transition-colors sm:h-auto sm:py-0"
+								className="text-muted-foreground hover:text-primary tracking-label -mr-2 inline-flex h-11 items-center gap-1 px-2 text-xs font-semibold uppercase sm:h-auto sm:py-0"
 							>
 								GitHub
 								<ArrowUpRightIcon className="size-3.5" />
@@ -609,7 +532,7 @@ function ContactSection() {
 						<a
 							key={item.label}
 							href={item.href}
-							className="group border-border hover:text-primary flex min-h-11 items-center justify-between gap-6 border-b py-2.5 text-sm transition-colors last:border-b-0"
+							className="group border-border hover:text-primary flex min-h-11 items-center justify-between gap-6 border-b py-2.5 text-sm last:border-b-0"
 							target={Boolean.match(external, {onFalse: () => undefined, onTrue: () => '_blank' as const})}
 							rel={Boolean.match(external, {onFalse: () => undefined, onTrue: () => 'noopener noreferrer' as const})}
 						>

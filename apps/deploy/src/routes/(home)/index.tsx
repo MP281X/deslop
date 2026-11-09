@@ -1400,10 +1400,7 @@ function Home() {
 						/>
 						<SourceProblems onRetry={refreshInventory} sources={sources} workers={workers} />
 						<div
-							className={cn(
-								'machine flex min-h-0 flex-1 flex-col gap-4',
-								refreshing && 'opacity-60 transition-opacity'
-							)}
+							className={cn('machine flex min-h-0 flex-1 flex-col gap-4', refreshing && 'opacity-60')}
 							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
 						>
 							{Boolean.match(isNarrow, {

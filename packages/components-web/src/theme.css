@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/jetbrains-mono';
 
@@ -249,13 +248,5 @@
 	textarea,
 	select {
 		font-size: 1rem;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	*,
-	*::before,
-	*::after {
-		scroll-behavior: auto !important;
 	}
 }

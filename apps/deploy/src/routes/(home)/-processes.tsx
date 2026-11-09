@@ -62,7 +62,7 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 					{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
 						onFalse: () => <span className="size-3.5 shrink-0" />,
 						onTrue: () => (
-							<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 transition-transform group-aria-expanded/button:rotate-90" />
+							<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 group-aria-expanded/button:rotate-90" />
 						)
 					})}
 				</ItemActions>
