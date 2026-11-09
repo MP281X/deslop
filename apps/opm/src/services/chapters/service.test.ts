@@ -26,7 +26,7 @@ import {TestClock} from 'effect/testing'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {openStore} from '#services/chapters/lib/store.ts'
-import {keyOf, resumeOf} from '#services/chapters/lib/utils.ts'
+import {keyOf} from '#services/chapters/lib/utils.ts'
 import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
@@ -303,8 +303,14 @@ it.layer(NodeServices.layer)(test => {
 					)
 					yield* chapters.read({done: true, number: 2, opened: false, page: 0, series: 'manga'})
 					assert.deepStrictEqual(
-						resumeOf((yield* Effect.fromOption(yield* Stream.runHead(chapters.changes))).upserted),
-						Option.none()
+						Option.map(
+							Array.findFirst(
+								(yield* Effect.fromOption(yield* Stream.runHead(chapters.changes))).upserted,
+								chapter => chapter.series === 'manga' && chapter.number === 2
+							),
+							chapter => chapter.reading?.at
+						),
+						Option.some(0)
 					)
 					yield* TestClock.adjust('1 second')
 					yield* chapters.read({done: true, number: 1, opened: true, page: 0, series: 'manga'})
@@ -314,7 +320,16 @@ it.layer(NodeServices.layer)(test => {
 				})
 			)
 			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
-			assert.deepStrictEqual(resumeOf(yield* store.load), Option.some({number: 1, page: 0}))
+			assert.deepStrictEqual(
+				Array.map(
+					Array.filter(yield* store.load, chapter => (chapter.reading?.at ?? 0) > 0),
+					chapter => [keyOf(chapter), chapter.reading?.page]
+				),
+				[
+					['manga:1', 0],
+					['webcomic:1', 0]
+				]
+			)
 			assert.deepStrictEqual(
 				Array.map(yield* store.load, chapter => [keyOf(chapter), chapter.reading?.done]),
 				[

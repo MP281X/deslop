@@ -8,7 +8,6 @@ import {
 	HStack,
 	Image,
 	Menu,
-	ProgressView,
 	ScrollView,
 	ShareLink,
 	Text,
@@ -44,14 +43,8 @@ import {BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle
-} from '@deslop/components-mobile/ui/empty'
+import {Empty} from '@deslop/components-mobile/ui/empty'
+import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {AuthError} from '@deslop/runtime/auth/schema'
 
@@ -156,6 +149,39 @@ function Placeholder() {
 	)
 }
 
+// The summary and body a note shows once Stash has read its link.
+function Reading() {
+	return (
+		<VStack
+			alignment="leading"
+			spacing={space[4]}
+			modifiers={[
+				frame({alignment: 'leading', maxWidth: Infinity}),
+				accessibilityElement('ignore'),
+				accessibilityLabel('Reading this link')
+			]}
+		>
+			<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 300})]} />
+			<VStack alignment="leading" spacing={space[3]}>
+				<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: Infinity})]} />
+				<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 320})]} />
+				<HStack spacing={space[2]}>
+					<Skeleton modifiers={[frame({height: 14, width: 6})]} />
+					<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 280})]} />
+				</HStack>
+				<HStack spacing={space[2]}>
+					<Skeleton modifiers={[frame({height: 14, width: 6})]} />
+					<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 300})]} />
+				</HStack>
+				<HStack spacing={space[2]}>
+					<Skeleton modifiers={[frame({height: 14, width: 6})]} />
+					<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 240})]} />
+				</HStack>
+			</VStack>
+		</VStack>
+	)
+}
+
 function FullBody(props: {note: NoteItem}) {
 	const full = useAtomSuspense(noteAtom(props.note), {includeFailure: true})
 	const reload = useAtomRefresh(noteAtom(props.note))
@@ -208,43 +234,21 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				{props.note.image !== undefined && <Cover note={props.note} />}
 				{pipe(
 					Match.value(props.note.status),
-					Match.when('organizing', () => (
-						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="sparkles" />
-								<EmptyTitle>Reading This Link</EmptyTitle>
-								<EmptyDescription>Stash is reading the source of this entry.</EmptyDescription>
-							</EmptyHeader>
-							<EmptyContent>
-								<ProgressView modifiers={[tint(primary)]} />
-							</EmptyContent>
-						</Empty>
-					)),
+					Match.when('organizing', () => <Reading />),
 					Match.when('failed', () => (
 						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="exclamationmark.triangle" />
-								<EmptyTitle>Couldn’t Read This Link</EmptyTitle>
-								<EmptyDescription>
-									{Option.getOrElse(
-										Option.filter(Option.fromUndefinedOr(props.note.issue), String.isNonEmpty),
-										() => 'The source could not be read.'
-									)}
-								</EmptyDescription>
-							</EmptyHeader>
-							<EmptyContent>
-								<Button
-									label="Try Again"
-									systemImage="arrow.clockwise"
-									onPress={props.onRetry}
-									modifiers={[
-										buttonStyle('glassProminent'),
-										buttonBorderShape('capsule'),
-										controlSize('large'),
-										tint(primary)
-									]}
-								/>
-							</EmptyContent>
+							<Button
+								label="Can’t Read This Link"
+								systemImage="arrow.clockwise"
+								role="destructive"
+								onPress={props.onRetry}
+								modifiers={[
+									buttonStyle('glassProminent'),
+									buttonBorderShape('capsule'),
+									controlSize('large'),
+									tint(colors.destructive)
+								]}
+							/>
 						</Empty>
 					)),
 					Match.orElse(() => (
@@ -284,14 +288,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 	return Option.match(
 		Array.findFirst(shown.success, item => item.id === props.id),
 		{
-			onNone: () => (
-				<Empty>
-					<EmptyHeader>
-						<EmptyMedia systemImage="trash" />
-						<EmptyTitle>Note Deleted</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			),
+			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
 			onSome: item => (
 				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />

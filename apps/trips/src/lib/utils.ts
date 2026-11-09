@@ -761,14 +761,6 @@ export const tones = {
 	warn: colors.warning
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
-export const dots = {
-	bad: 'error',
-	good: 'live',
-	info: 'live',
-	plain: 'quiet',
-	warn: 'warning'
-} as const satisfies Record.ReadonlyRecord<Tone, string>
-
 type Where = {text: string; tone: Tone}
 
 function statusLine(label: string, tone: Tone, where: Option.Option<Where>) {
@@ -847,6 +839,24 @@ export function statusOf(booking: Booking, now: number) {
 	if (booking._tag === 'stay') return stayStatus(booking, now)
 	if (booking._tag === 'train') return trainStatus(booking, now)
 	return flightStatus(booking, now)
+}
+
+// Only a problem gets a dot: a delay, a cancellation, or a live answer that went stale with its age.
+export function problemOf(booking: Booking, status: {label: string; tone: Tone}, now: number) {
+	if (booking._tag !== 'stay' && booking.live !== undefined && isStale(booking, now)) {
+		return Option.some({
+			label: `${Number.max(0, Math.floor((now - booking.live.checkedAt) / MINUTE))}m`,
+			status: 'warning' as const,
+			tone: 'warn' as const
+		})
+	}
+	if (status.tone === 'bad') {
+		return Option.some({label: status.label, status: 'error' as const, tone: 'bad' as const})
+	}
+	if (status.tone === 'warn') {
+		return Option.some({label: status.label, status: 'warning' as const, tone: 'warn' as const})
+	}
+	return Option.none<{label: string; status: 'error' | 'warning'; tone: 'bad' | 'warn'}>()
 }
 
 function bookingIn(url?: string | null) {

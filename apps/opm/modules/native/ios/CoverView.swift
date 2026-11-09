@@ -24,12 +24,8 @@ public struct CoverView: ExpoSwiftUI.View {
         }
       }
       .overlay {
-        if image == nil {
-          if failed {
-            SwiftUI.Image(systemName: "arrow.clockwise").foregroundStyle(.secondary)
-          } else {
-            ProgressView().controlSize(.small)
-          }
+        if image == nil && failed {
+          SwiftUI.Image(systemName: "arrow.clockwise").foregroundStyle(.secondary)
         }
       }
       .clipped()

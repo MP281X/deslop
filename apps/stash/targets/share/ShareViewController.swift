@@ -55,17 +55,6 @@ private enum Theme {
   }
 }
 
-// The tick draws itself in where iOS can draw symbols, from iOS 26.
-private struct DrawsOn: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(iOS 26.0, *) {
-      content.transition(.symbolEffect(.drawOn))
-    } else {
-      content
-    }
-  }
-}
-
 private struct SaveView: View {
   let context: NSExtensionContext
   @State private var phase = Phase.saving
@@ -88,15 +77,16 @@ private struct SaveView: View {
       VStack(spacing: 12) {
         switch phase {
         case .saving:
-          ProgressView().controlSize(.large).tint(Theme.primary).frame(height: 44)
+          Image(systemName: "tray.and.arrow.down").font(.system(size: 36, weight: .semibold))
+            .foregroundStyle(Theme.muted).frame(height: 44)
           Text("Saving…").font(.headline).foregroundStyle(Theme.foreground)
         case .saved:
           Image(systemName: "checkmark").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
-            .frame(height: 44).modifier(DrawsOn())
+            .frame(height: 44)
           Text("Saved").font(.headline).foregroundStyle(Theme.foreground)
         case .queued:
           Image(systemName: "arrow.up").font(.system(size: 36, weight: .semibold)).foregroundStyle(Theme.primary)
-            .frame(height: 44).symbolEffect(.bounce, value: phase)
+            .frame(height: 44)
           Text("Sending…").font(.headline).foregroundStyle(Theme.foreground)
           Text("It shows up once the upload finishes.").font(.footnote).foregroundStyle(Theme.muted)
         case .failed(let message):
@@ -113,7 +103,6 @@ private struct SaveView: View {
     }
     .background(Theme.background)
     .contentShape(Rectangle())
-    .animation(.snappy, value: phase)
     .sensoryFeedback(trigger: phase) { _, next in
       switch next {
       case .saved: .success

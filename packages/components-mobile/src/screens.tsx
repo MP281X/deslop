@@ -2,17 +2,18 @@ import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Result} from 'effect'
 
-import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
+import {Button, Host, Image, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
+	accessibilityLabel,
 	buttonBorderShape,
 	buttonStyle,
 	clipShape,
 	controlSize,
 	disabled,
+	font,
 	foregroundStyle,
 	frame,
-	labelStyle,
-	multilineTextAlignment,
+	imageScale,
 	padding,
 	resizable,
 	tint
@@ -51,44 +52,42 @@ export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Su
 	return Result.fromOption(AsyncResult.value(result), () => result.cause)
 }
 
-// Retry takes the destructive hue of the failure it answers, not the app's accent.
+// A blocking failure is one destructive button carrying its reason; a denial is a lock with no retry.
 export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
-	const denied = deniedBy(props.cause)
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
-			<VStack spacing={space[3]}>
-				<Label
-					icon={
-						<Image
-							systemName={Boolean.match(denied, {onFalse: () => 'exclamationmark.circle', onTrue: () => 'lock'})}
-							modifiers={[text.body, foregroundStyle(colors.destructive)]}
-						/>
-					}
-					modifiers={[labelStyle('titleAndIcon')]}
-				>
-					<Text modifiers={[text.body, foregroundStyle(colors.foreground), multilineTextAlignment('center')]}>
-						{Boolean.match(denied, {
-							onFalse: () => `${props.name} unavailable.`,
-							onTrue: () => 'You don’t have access.'
-						})}
-					</Text>
-				</Label>
-				<Button
-					label="Retry"
-					role="destructive"
-					onPress={props.onRetry}
-					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
-						controlSize('regular'),
-						tint(colors.destructive)
-					]}
-				/>
-			</VStack>
+			{Boolean.match(deniedBy(props.cause), {
+				onFalse: () => (
+					<Button
+						label={`Can’t Reach ${props.name}`}
+						systemImage="arrow.clockwise"
+						role="destructive"
+						onPress={props.onRetry}
+						modifiers={[
+							buttonStyle('glassProminent'),
+							buttonBorderShape('capsule'),
+							controlSize('large'),
+							tint(colors.destructive)
+						]}
+					/>
+				),
+				onTrue: () => (
+					<Image
+						systemName="lock"
+						modifiers={[
+							font({textStyle: 'largeTitle'}),
+							imageScale('large'),
+							foregroundStyle(colors.foreground),
+							accessibilityLabel('You don’t have access')
+						]}
+					/>
+				)
+			})}
 		</VStack>
 	)
 }
 
+// The app's mark and GitHub sign-in at the bottom.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
@@ -98,9 +97,6 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
 					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
 				/>
-				<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
-					Sign in with GitHub to keep this app in sync.
-				</Text>
 				<Spacer />
 				<Button
 					onPress={() => props.onSignIn()}

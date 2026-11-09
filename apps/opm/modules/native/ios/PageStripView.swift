@@ -24,10 +24,8 @@ public struct PageStripView: ExpoSwiftUI.View {
       start: props.start,
       barsHidden: barsHidden,
       onPage: { index in props.onPage(["index": index]) },
-      onTap: { withAnimation(.easeInOut(duration: 0.2)) { barsHidden.toggle() } },
-      onScroll: {
-        if !barsHidden { withAnimation(.easeInOut(duration: 0.2)) { barsHidden = true } }
-      }
+      onTap: { barsHidden.toggle() },
+      onScroll: { barsHidden = true }
     )
     .ignoresSafeArea()
     .background(Color.black)
@@ -113,7 +111,7 @@ final class BarFade: NSObject {
   func set(hidden: Bool) {
     guard hidden != self.hidden else { return }
     self.hidden = hidden
-    UIView.animate(withDuration: 0.2) { self.apply() }
+    apply()
   }
 
   @objc private func swiped(_ gesture: UIGestureRecognizer) {
@@ -304,7 +302,6 @@ final class StripController: NSObject, UIScrollViewDelegate {
 
 final class PageView: UIImageView, UIContextMenuInteractionDelegate {
   let url: URL?
-  private let spinner = UIActivityIndicatorView(style: .medium)
   private let failure = UIImageView(image: UIImage(systemName: "arrow.clockwise"))
   private var task: Task<Void, Never>?
   private var failures = 0
@@ -315,11 +312,9 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
     super.init(frame: .zero)
     contentMode = .scaleAspectFit
     isUserInteractionEnabled = true
-    spinner.color = .gray
-    spinner.hidesWhenStopped = true
+    backgroundColor = .tertiarySystemFill
     failure.tintColor = .gray
     failure.isHidden = true
-    addSubview(spinner)
     addSubview(failure)
     addInteraction(UIContextMenuInteraction(delegate: self))
   }
@@ -330,13 +325,11 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
 
   override func layoutSubviews() {
     super.layoutSubviews()
-    spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
-    failure.center = spinner.center
+    failure.center = CGPoint(x: bounds.midX, y: bounds.midY)
   }
 
   func load() {
     guard image == nil, task == nil, let url else { return }
-    spinner.startAnimating()
     failure.isHidden = true
     task = Task { [weak self] in
       let loaded = await PageLoader.image(url, size: 2400)
@@ -344,7 +337,6 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
       guard let loaded, loaded.size.width > 0 else {
         // Two, four, then eight seconds, while the page stays near the screen.
         self.failures += 1
-        self.spinner.stopAnimating()
         self.failure.isHidden = false
         try? await Task.sleep(for: .seconds(min(pow(2, Double(self.failures)), 8)))
         guard !Task.isCancelled else { return }
@@ -354,7 +346,7 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
       }
       self.task = nil
       self.failures = 0
-      self.spinner.stopAnimating()
+      self.backgroundColor = nil
       self.image = loaded
       self.onAspect(loaded.size.height / loaded.size.width)
     }
@@ -363,8 +355,8 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
   func unload() {
     task?.cancel()
     task = nil
-    spinner.stopAnimating()
     failure.isHidden = true
+    backgroundColor = .tertiarySystemFill
     image = nil
   }
 

@@ -4,9 +4,7 @@ import {Array, Option} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 
-import {nameOf, notificationOf, pagesOf, postFrom, resumeOf, seriesOf} from '#services/chapters/lib/utils.ts'
-import type {Reading} from '#services/chapters/schema.ts'
-import {ChapterItem} from '#services/chapters/schema.ts'
+import {nameOf, notificationOf, pagesOf, postFrom, seriesOf} from '#services/chapters/lib/utils.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
 
@@ -79,26 +77,4 @@ it('extracts chapter names without release labels', () => {
 	assert.strictEqual(nameOf('ONE PUNCH MAN CHAPTER 233 - ENGLISH TRANSLATIONS'), '')
 	assert.strictEqual(nameOf('OPM WC 160'), '')
 	assert.strictEqual(nameOf('OPM (Webcomic) - Chapter 158 - The Koi Pond'), 'The Koi Pond')
-})
-
-function unread(number: number) {
-	return ChapterItem.make({number, pages: [], postedAt: 0, series: 'manga', source: '', title: ''})
-}
-
-function read(number: number, reading: Reading) {
-	return ChapterItem.make({...unread(number), reading})
-}
-
-it('reopens the last-read chapter even when finished or caught up, and has no resume before any reading', () => {
-	assert.deepStrictEqual(
-		resumeOf([read(240, {at: 1, done: true, page: 17}), read(241, {at: 2, done: false, page: 6}), unread(242)]),
-		Option.some({number: 241, page: 6})
-	)
-	assert.deepStrictEqual(
-		resumeOf([read(240, {at: 2, done: true, page: 17}), unread(241), unread(242)]),
-		Option.some({number: 240, page: 17})
-	)
-	assert.deepStrictEqual(resumeOf([read(241, {at: 1, done: true, page: 9})]), Option.some({number: 241, page: 9}))
-	assert.deepStrictEqual(resumeOf([unread(241), unread(242)]), Option.none())
-	assert.deepStrictEqual(resumeOf([read(242, {at: 0, done: true, page: 17})]), Option.none())
 })

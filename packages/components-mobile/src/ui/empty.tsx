@@ -1,65 +1,73 @@
-import {Image, Text, VStack} from '@expo/ui/swift-ui'
+import {Option} from 'effect'
+
+import {Button, Image, VStack} from '@expo/ui/swift-ui'
 import type {ImageProps} from '@expo/ui/swift-ui'
 import {
-	accessibilityHidden,
+	accessibilityLabel,
+	buttonBorderShape,
+	buttonStyle,
+	controlSize,
 	font,
 	foregroundStyle,
 	frame,
 	imageScale,
-	multilineTextAlignment,
-	padding
+	padding,
+	tint
 } from '@expo/ui/swift-ui/modifiers'
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import type {ReactNode} from 'react'
+import type {ColorValue} from 'react-native'
 
 import {colors, space} from '#components/theme.ts'
 
-export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
+// SwiftUI's ContentUnavailableView without words: one centred symbol, or a first run's one action. The label carries the words for VoiceOver.
+export function Empty(props: {
+	children?: ReactNode
+	label?: string
+	modifiers?: ViewModifier[]
+	systemImage?: ImageProps['systemName']
+}) {
 	return (
 		<VStack
-			spacing={space[4]}
+			spacing={space[6]}
 			modifiers={[
 				...(props.modifiers ?? []),
 				padding({all: space[8]}),
-				frame({maxHeight: Infinity, maxWidth: Infinity}),
-				multilineTextAlignment('center')
+				frame({maxHeight: Infinity, maxWidth: Infinity})
 			]}
 		>
+			{props.systemImage !== undefined && (
+				<Image
+					systemName={props.systemImage}
+					modifiers={[
+						font({textStyle: 'largeTitle'}),
+						imageScale('large'),
+						foregroundStyle(colors.mutedForeground),
+						...Option.match(Option.fromUndefinedOr(props.label), {
+							onNone: () => [],
+							onSome: label => [accessibilityLabel(label)]
+						})
+					]}
+				/>
+			)}
 			{props.children}
 		</VStack>
 	)
 }
 
-export function EmptyHeader(props: {children: ReactNode}) {
-	return <VStack spacing={space[2]}>{props.children}</VStack>
-}
-
-export function EmptyMedia(props: {systemImage: ImageProps['systemName']}) {
+// A first run's one action, in the app's hue.
+export function EmptyAction(props: {
+	label: string
+	onPress: () => void
+	systemImage?: ImageProps['systemName']
+	tint: ColorValue
+}) {
 	return (
-		<Image
-			systemName={props.systemImage}
-			modifiers={[
-				font({textStyle: 'largeTitle'}),
-				imageScale('large'),
-				foregroundStyle(colors.mutedForeground),
-				accessibilityHidden(true)
-			]}
+		<Button
+			label={props.label}
+			systemImage={props.systemImage}
+			onPress={props.onPress}
+			modifiers={[buttonStyle('glassProminent'), buttonBorderShape('capsule'), controlSize('large'), tint(props.tint)]}
 		/>
 	)
-}
-
-export function EmptyTitle(props: {children: string}) {
-	return (
-		<Text modifiers={[font({textStyle: 'title2', weight: 'semibold'}), foregroundStyle(colors.foreground)]}>
-			{props.children}
-		</Text>
-	)
-}
-
-export function EmptyDescription(props: {children: string}) {
-	return <Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>{props.children}</Text>
-}
-
-export function EmptyContent(props: {children: ReactNode}) {
-	return <VStack spacing={space[3]}>{props.children}</VStack>
 }

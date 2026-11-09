@@ -17,7 +17,7 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 
-import type {Chapter, ChapterItem, ChapterList, CubariSeries, Post, Series} from '#services/chapters/schema.ts'
+import type {Chapter, ChapterItem, CubariSeries, Post, Series} from '#services/chapters/schema.ts'
 import {ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
@@ -151,23 +151,6 @@ export function pagesOf(series: CubariSeries, chapter: string) {
 				links => Array.isReadonlyArrayNonEmpty(links) && links.length === pages.length
 			)
 		)
-	)
-}
-
-export function resumeOf(chapters: ChapterList) {
-	return pipe(
-		Array.filter(chapters, chapter => (chapter.reading?.at ?? 0) > 0),
-		Array.match({
-			onEmpty: () => Option.none<ChapterItem>(),
-			onNonEmpty: items =>
-				Option.some(
-					Array.max(
-						items,
-						Order.mapInput(Order.Number, (chapter: ChapterItem) => chapter.reading?.at ?? 0)
-					)
-				)
-		}),
-		Option.map(chapter => ({number: chapter.number, page: chapter.reading?.page ?? 0}))
 	)
 }
 

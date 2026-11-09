@@ -25,13 +25,9 @@ import {
 	accessibilityAddTraits,
 	accessibilityElement,
 	accessibilityHidden,
-	alignmentGuide,
 	aspectRatio,
 	background,
-	buttonBorderShape,
-	buttonStyle,
 	clipShape,
-	controlSize,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -62,14 +58,7 @@ import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle
-} from '@deslop/components-mobile/ui/empty'
+import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
@@ -111,7 +100,7 @@ function Lines(props: {note: NoteItem}) {
 						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
 					>
 						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>Reading the source</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>Reading this link</Text>
 					</HStack>
 				)),
 				Match.when('failed', () => (
@@ -192,11 +181,7 @@ function NoteRow(props: {
 				<ContextMenu.Trigger>
 					<Item
 						onPress={() => props.onOpen(props.note.id)}
-						modifiers={[
-							accessibilityAddTraits(['isButton']),
-							alignmentGuide('listRowSeparatorLeading', 0),
-							onAppear(props.onAppear)
-						]}
+						modifiers={[accessibilityAddTraits(['isButton']), onAppear(props.onAppear)]}
 					>
 						<ItemMedia>
 							<NoteMedia note={props.note} />
@@ -330,6 +315,7 @@ export function HomeRoute(props: {
 	const refresh = useAtomRefresh(notesAtom)
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
+	const paste = useAtomSet(clipboardAtom.send)
 	const query = String.trim(useAtomValue(queryAtom))
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
@@ -353,110 +339,97 @@ export function HomeRoute(props: {
 	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 
 	return (
-		<Toolbar modifiers={[navigationTitle('Stash'), navigationBarTitleDisplayMode('large')]}>
-			{/* SwiftUI shows the outermost toolbar's items first: the filter, the search field, then write. */}
-			<Toolbar modifiers={[searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}), bottomBarSearch]}>
-				<PasteSheet>
-					<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-						<Outages />
-						{Array.match(shown.success, {
-							onEmpty: () => (
-								<Empty>
-									<EmptyHeader>
-										<EmptyMedia systemImage="tray" />
-										<EmptyTitle>Nothing saved yet</EmptyTitle>
-										<EmptyDescription>Share a link to Stash, or write a note.</EmptyDescription>
-									</EmptyHeader>
-									<EmptyContent>
-										<Button
-											label="Write a note"
-											systemImage="square.and.pencil"
-											onPress={props.onCompose}
-											modifiers={[
-												buttonStyle('glassProminent'),
-												buttonBorderShape('capsule'),
-												controlSize('large'),
-												tint(primary)
-											]}
-										/>
-									</EmptyContent>
-								</Empty>
-							),
-							onNonEmpty: () => (
-								<Overlay>
-									<ItemGroup>
-										<ToggleGroup
-											value={props.tag ?? 'all'}
-											onValueChange={value =>
-												Boolean.match(value === 'all' || value === props.tag, {
-													onFalse: () => props.onTag(value),
-													onTrue: () => props.onTag()
-												})
-											}
-											tint={primary}
-											modifiers={[
-												listRowSeparator('hidden'),
-												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
-											]}
-										>
-											<ToggleGroupItem value="all" systemImage="tray">
-												all
+		<Toolbar
+			modifiers={[
+				navigationTitle('Stash'),
+				navigationBarTitleDisplayMode('large'),
+				searchable(props.query, {onChange: props.onSearch, prompt: 'Search'}),
+				bottomBarSearch
+			]}
+		>
+			<PasteSheet>
+				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+					<Outages />
+					{Array.match(shown.success, {
+						onEmpty: () => (
+							<Empty>
+								<EmptyAction
+									label="Paste Link"
+									systemImage="link"
+									onPress={() => paste({_tag: 'Returned'})}
+									tint={primary}
+								/>
+							</Empty>
+						),
+						onNonEmpty: () => (
+							// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
+							<Overlay>
+								<ItemGroup>
+									{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+									<ToggleGroup
+										value={props.tag ?? 'all'}
+										onValueChange={value =>
+											Boolean.match(value === 'all' || value === props.tag, {
+												onFalse: () => props.onTag(value),
+												onTrue: () => props.onTag()
+											})
+										}
+										tint={primary}
+										modifiers={[
+											listRowSeparator('hidden'),
+											listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
+										]}
+									>
+										<ToggleGroupItem value="all" systemImage="tray">
+											all
+										</ToggleGroupItem>
+										{Array.map(tags, name => (
+											<ToggleGroupItem key={name} value={name}>
+												{name}
 											</ToggleGroupItem>
-											{Array.map(tags, name => (
-												<ToggleGroupItem key={name} value={name}>
-													{name}
-												</ToggleGroupItem>
-											))}
-										</ToggleGroup>
-										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{Array.map(Array.take(notes, limit), (note, position) => (
-											<NoteRow
-												key={note.id}
-												note={note}
-												onAppear={() => {
-													if (position === limit - 1) setLimit(limit + 80)
-												}}
-												onOpen={props.onOpen}
-												onRegenerate={id => regenerate(id)}
-												onRemove={id => remove(id)}
-											/>
 										))}
-									</ItemGroup>
-									{filtered && Array.isReadonlyArrayEmpty(notes) && (
-										<Overlay.Content>
-											<Empty>
-												<EmptyHeader>
-													<EmptyMedia
-														systemImage={Boolean.match(String.isEmpty(query), {
-															onFalse: () => 'magnifyingglass',
-															onTrue: () => 'tray'
-														})}
-													/>
-													<EmptyTitle>No notes match</EmptyTitle>
-													<EmptyDescription>Try another search or tag.</EmptyDescription>
-												</EmptyHeader>
-											</Empty>
-										</Overlay.Content>
-									)}
-								</Overlay>
-							)
-						})}
-					</VStack>
-				</PasteSheet>
-				<Toolbar.Content>
-					<ToolbarItem placement="bottomBar">
-						<Button
-							label="Write"
-							systemImage="square.and.pencil"
-							onPress={props.onCompose}
-							modifiers={[labelStyle('iconOnly')]}
-						/>
-					</ToolbarItem>
-				</Toolbar.Content>
-			</Toolbar>
+									</ToggleGroup>
+									{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+									{Array.map(Array.take(notes, limit), (note, position) => (
+										<NoteRow
+											key={note.id}
+											note={note}
+											onAppear={() => {
+												if (position === limit - 1) setLimit(limit + 80)
+											}}
+											onOpen={props.onOpen}
+											onRegenerate={id => regenerate(id)}
+											onRemove={id => remove(id)}
+										/>
+									))}
+								</ItemGroup>
+								{filtered && Array.isReadonlyArrayEmpty(notes) && (
+									<Overlay.Content>
+										<Empty
+											systemImage={Boolean.match(String.isEmpty(query), {
+												onFalse: () => 'magnifyingglass',
+												onTrue: () => 'tray'
+											})}
+											label="No notes match"
+										/>
+									</Overlay.Content>
+								)}
+							</Overlay>
+						)
+					})}
+				</VStack>
+			</PasteSheet>
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
+				</ToolbarItem>
+				<ToolbarItem placement="bottomBar">
+					<Button
+						label="Write"
+						systemImage="square.and.pencil"
+						onPress={props.onCompose}
+						modifiers={[labelStyle('iconOnly')]}
+					/>
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
 					<FilterMenu kind={props.kind} onKind={props.onKind} />
