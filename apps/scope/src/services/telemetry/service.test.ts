@@ -505,6 +505,7 @@ it.layer(layer)(test => {
 			assert.strictEqual((yield* telemetry.spans(query)).total, 2)
 			const trace = yield* telemetry.trace(TRACE_ID)
 			assert.strictEqual(trace.spans.length, 2)
+			assert.strictEqual(trace.failureSpanId, '2222222222222222')
 			assert.deepStrictEqual(
 				Array.map(trace.spans, entry => entry.name),
 				['root', 'child']

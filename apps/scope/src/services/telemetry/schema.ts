@@ -269,6 +269,7 @@ const TraceSpan = Schema.Struct({
 export type Trace = typeof Trace.Type
 export const Trace = Schema.Struct({
 	durationMs: Schema.Finite,
+	failureSpanId: Schema.optionalKey(Schema.String),
 	id: TraceId,
 	logs: Schema.Array(EntryItem),
 	services: Schema.Array(Service),

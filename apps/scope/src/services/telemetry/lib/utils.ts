@@ -352,6 +352,7 @@ export function traceView(entries: Entry[], id: string) {
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const bySpan = Array.groupBy(logs, log => log.spanId)
 
+	const broken = brokeAt(Array.map(spans, span => span.entry))
 	const tree = pipe(
 		Array.map(spans, span => {
 			const ancestors = Array.reverse(
@@ -382,6 +383,7 @@ export function traceView(entries: Entry[], id: string) {
 	)
 	return {
 		durationMs: timing.durationMs,
+		...Option.match(broken, {onNone: () => ({}), onSome: span => ({failureSpanId: span.spanId})}),
 		id,
 		logs: Array.filter(logs, log => !Record.has(byId, log.spanId)),
 		services: Array.dedupeWith(

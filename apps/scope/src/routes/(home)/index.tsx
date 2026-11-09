@@ -6,7 +6,6 @@ import {
 	Cause,
 	DateTime,
 	Formatter,
-	HashSet,
 	Match,
 	Number,
 	Option,
@@ -931,24 +930,17 @@ function SpansList(props: {
 	)
 }
 
-// Effect marks every span a failure passed through, so where it broke is the failed span with no failed child.
-function brokeAt(spans: Trace['spans']) {
-	const failed = Array.filter(spans, span => span.status === 2)
-	const parents = HashSet.fromIterable(
-		Array.map(failed, span =>
-			String.toLowerCase(
-				Option.getOrElse(Option.filter(Option.fromNullishOr(span.payload['parentSpanId']), String.isString), () => '')
-			)
-		)
-	)
-	return Array.findFirst(failed, span => !HashSet.has(parents, span.spanId))
-}
-
 // The span the URL picks, else where the failure broke, else the first span.
 function focusOf(trace: Trace, pickedSpan?: string) {
 	return Option.orElse(
 		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
-		() => Option.orElse(brokeAt(trace.spans), () => Array.findFirst(trace.spans, span => span.depth === 0))
+		() =>
+			Option.orElse(
+				Option.flatMap(Option.fromUndefinedOr(trace.failureSpanId), id =>
+					Array.findFirst(trace.spans, span => span.spanId === id)
+				),
+				() => Array.findFirst(trace.spans, span => span.depth === 0)
+			)
 	)
 }
 
