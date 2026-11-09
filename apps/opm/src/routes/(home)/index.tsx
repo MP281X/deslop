@@ -103,22 +103,23 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 						)}
 					</ItemDescription>
 				</ItemContent>
-				<ItemActions>
-					{/* The pages before the one on screen are read, so a chapter marked unread at its first page is empty. */}
-					<ChapterProgress
-						fraction={Option.match(Option.fromUndefinedOr(props.chapter.reading), {
-							onNone: () => 0,
-							onSome: reading =>
-								Boolean.match(reading.done, {
-									onFalse: () => reading.page / Number.max(props.chapter.pages.length, 1),
-									onTrue: () => 1
-								})
-						})}
-						accent={primary}
-						read={colors.foreground}
-						modifiers={[frame({height: 14, width: 14})]}
-					/>
-				</ItemActions>
+				{/* Weight already says unread or read, so progress shows only for a chapter left part-way; the pages before the one on screen are read. */}
+				{Option.match(
+					Option.filter(Option.fromUndefinedOr(props.chapter.reading), reading => !reading.done && reading.page > 0),
+					{
+						onNone: () => null,
+						onSome: reading => (
+							<ItemActions>
+								<ChapterProgress
+									fraction={reading.page / Number.max(props.chapter.pages.length, 1)}
+									accent={primary}
+									read={colors.foreground}
+									modifiers={[frame({height: 14, width: 14})]}
+								/>
+							</ItemActions>
+						)
+					}
+				)}
 			</Item>
 			<SwipeActions.Actions edge="leading">
 				<Button
