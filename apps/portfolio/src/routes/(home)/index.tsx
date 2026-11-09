@@ -140,7 +140,7 @@ function subscribeToResize(onStoreChange: () => void) {
 
 // The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
 function Panel(input: {className?: string; children: React.ReactNode}) {
-	return <div className={cn('bg-background border-border border select-text', input.className)}>{input.children}</div>
+	return <div className={cn('panel-frosted border-border border select-text', input.className)}>{input.children}</div>
 }
 
 function Section(input: {className?: string; children: React.ReactNode}) {
@@ -156,12 +156,12 @@ function Section(input: {className?: string; children: React.ReactNode}) {
 	)
 }
 
-// A section of the column: its lowercase mono name over its rows.
+// A section of the column; its name stays for assistive technology, not on the card.
 function SectionBody(input: {children: React.ReactNode; title: string}) {
 	return (
-		<Panel className="flex w-full max-w-3xl flex-col px-4 py-3 sm:px-6">
-			<h2 className="text-muted-foreground pb-2 font-mono text-xs">{input.title}</h2>
-			<div className="flex flex-col">{input.children}</div>
+		<Panel className="flex w-full max-w-3xl flex-col p-4 sm:p-6">
+			<h2 className="sr-only">{input.title}</h2>
+			{input.children}
 		</Panel>
 	)
 }

@@ -63,6 +63,13 @@
 	}
 }
 
+/* The reading column floats a little over the grid: its paper stays 88% opaque and frosts what shows through. */
+.panel-frosted {
+	background-color: color-mix(in srgb, var(--background) 88%, transparent);
+	-webkit-backdrop-filter: blur(6px) saturate(1.1);
+	backdrop-filter: blur(6px) saturate(1.1);
+}
+
 /* Over links the browser's own pointer would return beside the drawn cursor. */
 @media (hover: hover) and (pointer: fine) {
 	.portfolio-page :is(a, button, [role='button']) {
@@ -105,5 +112,11 @@
 @media print {
 	:root {
 		color-scheme: light;
+	}
+
+	.panel-frosted {
+		background-color: var(--background);
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
 	}
 }
