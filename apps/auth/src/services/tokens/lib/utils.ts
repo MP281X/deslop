@@ -79,8 +79,7 @@ function parsedAddress(address: string) {
 	)
 }
 
-// A private IPv4 or a unique-local IPv6 address, the ranges only one family has.
-function isPrivate(ip: NetAddress.IpAddress) {
+function isPrivateOrUniqueLocal(ip: NetAddress.IpAddress) {
 	if (NetAddress.isIpv4Address(ip)) return NetAddress.isPrivate(ip)
 	return NetAddress.isUniqueLocal(ip)
 }
@@ -110,7 +109,6 @@ export function clientAddress(headers: Headers.Headers, remote: Option.Option<st
 	)
 }
 
-// Where a request comes from, as the signed-in list names it.
 export function originFrom(headers: Headers.Headers, remote: Option.Option<string>) {
 	return {
 		...Option.match(clientAddress(headers, remote), {onNone: () => ({}), onSome: address => ({address})}),
@@ -145,7 +143,6 @@ function platform(userAgent: string) {
 	return Option.none()
 }
 
-// A browser as GitHub and Google list it: its name from the User-Agent.
 export function browserLabel(origin: Origin) {
 	const agent = origin.userAgent ?? ''
 	if (String.includes('Edg/')(agent)) return 'Edge'
@@ -155,14 +152,13 @@ export function browserLabel(origin: Origin) {
 	return 'Browser'
 }
 
-// Where a sign-in runs: a known worker, the platform its User-Agent names, or its address.
 export function deviceLabel(origin: Origin) {
 	return pipe(
 		Option.flatMap(Option.fromUndefinedOr(origin.address), address => {
 			if (
 				Option.exists(
 					parsedAddress(address),
-					ip => NetAddress.isLinkLocal(ip) || NetAddress.isLoopback(ip) || isPrivate(ip)
+					ip => NetAddress.isLinkLocal(ip) || NetAddress.isLoopback(ip) || isPrivateOrUniqueLocal(ip)
 				)
 			) {
 				return Option.some('dev')
@@ -289,7 +285,6 @@ export const clientRequest = Effect.fnUntraced(function* (
 	})
 })
 
-// Where an authorization answer goes: the client's callback with its state and this issuer.
 export function callbackUrl(
 	request: {redirectUri: string; state?: string},
 	answer: Record<string, string>,
@@ -302,7 +297,6 @@ export function callbackUrl(
 	return target.href
 }
 
-// A web sign-in returns to Auth itself or an https page on mp281x.xyz.
 export function returnable(next: string, url: string) {
 	const domain = 'mp281x.xyz'
 	return Result.match(Url.fromString(next), {

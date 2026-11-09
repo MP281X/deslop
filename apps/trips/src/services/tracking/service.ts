@@ -40,7 +40,6 @@ function iso(time: number) {
 	return DateTime.formatIso(DateTime.makeUnsafe(time))
 }
 
-// Asks FlightAware and ViaggiaTreno about each journey on a schedule that tightens near departure and arrival.
 export class Tracker extends Context.Service<
 	Tracker,
 	{readonly refresh: (id: Flight['id']) => Effect.Effect<void, BookingsError>}

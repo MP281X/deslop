@@ -22,7 +22,6 @@ type Answer = {accept: boolean; request: PendingAuthorization}
 
 const route = getRouteApi('/(home)/')
 
-// The last answer stays as one line under an empty code, ready for the next sign-in.
 function Enter(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void
@@ -102,7 +101,6 @@ function Enter(props: {
 	)
 }
 
-// The code and signed-in clients share one centred column.
 function Page(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void

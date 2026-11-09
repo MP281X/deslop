@@ -34,7 +34,6 @@ import {AccessClaims, AuthError} from '#auth/schema.ts'
 import {Auth} from '#auth/service.ts'
 import {Sessions} from '#auth/sessions.ts'
 
-// An app as the runtime serves it, reaching Auth through `client`.
 const handler = Effect.fnUntraced(function* (
 	settings: Record<string, string>,
 	options: {auth?: typeof Auth.layer; client?: HttpClient.HttpClient} = {}
@@ -73,8 +72,7 @@ const handler = Effect.fnUntraced(function* (
 	)
 })
 
-// The `name=value` part of each cookie a response sets.
-function cookies(response: Response) {
+function cookiePairs(response: Response) {
 	return Array.map(response.headers.getSetCookie(), header => Array.headNonEmpty(String.split(header, ';')))
 }
 
@@ -396,7 +394,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 						scope: 'deslop offline_access'
 					}
 				)
-				const signIn = Array.join(cookies(started), '; ')
+				const signIn = Array.join(cookiePairs(started), '; ')
 				const state = authorize.searchParams.get('state') ?? ''
 
 				const forged = yield* send(
@@ -405,7 +403,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					{cookie: signIn, host}
 				)
 				assert.strictEqual(forged.headers.get('location'), next)
-				assert.isFalse(Array.some(cookies(forged), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)))
+				assert.isFalse(Array.some(cookiePairs(forged), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)))
 
 				const finished = yield* send(
 					web,
@@ -427,7 +425,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					authorize.searchParams.get('code_challenge')
 				)
 				const session = Array.join(
-					Array.filter(cookies(finished), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)),
+					Array.filter(cookiePairs(finished), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)),
 					'; '
 				)
 				assert.isTrue(String.isNonEmpty(session))

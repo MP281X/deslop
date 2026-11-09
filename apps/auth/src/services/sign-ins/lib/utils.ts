@@ -5,7 +5,6 @@ const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'
 
 export const CODE_LENGTH = 8
 
-// What someone typed, as the code it names: letters only, in capitals.
 export function typedCode(text: string) {
 	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))
 }

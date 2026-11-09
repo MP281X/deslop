@@ -1,6 +1,5 @@
 name: Simulator app
 
-# One mobile app's iOS Simulator build, once per native fingerprint; agents replace its JavaScript bundle with their branch's.
 # Linux computes the same fingerprint as the Mac, so a Mac starts only for a fingerprint without an artifact.
 on:
   workflow_call:

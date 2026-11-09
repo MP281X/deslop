@@ -9,7 +9,6 @@ const WIDTHS = {full: 'max-w-none', reading: 'max-w-3xl', standard: 'max-w-6xl',
 
 export type Width = 'full' | 'reading' | 'standard' | 'wide'
 
-// Full-height tools use the available screen; editorial documents own their separate paper layout.
 export function Page(props: {children: ReactNode; className?: string; width?: Width}) {
 	return (
 		// Positioned, so a row's screen-reader text stays beside it in this scroller.
@@ -27,7 +26,6 @@ export function Page(props: {children: ReactNode; className?: string; width?: Wi
 	)
 }
 
-// A ruled section: the label names the set, the meta counts it, and the line separates it from the next set.
 export function Section(props: {
 	actions?: ReactNode
 	children: ReactNode
@@ -57,7 +55,6 @@ export function Section(props: {
 	)
 }
 
-// A one-line fact for a summary strip: the label stays quiet, the value carries the weight.
 export function Stat(props: {label: string; value: ReactNode}) {
 	return (
 		<span className="flex items-baseline gap-1.5 whitespace-nowrap">

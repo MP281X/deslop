@@ -71,8 +71,6 @@ import {Bundle} from '#services/push/schema.ts'
 const SERVER = 'https://trips.mp281x.xyz'
 const CALENDAR = 'Trips'
 
-// Auth
-
 export const session = MobileSession.make('Trips', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
@@ -85,12 +83,9 @@ function withClient<A, E>(get: Atom.FnContext, effect: Effect.Effect<A, E, RpcCl
 	return Effect.flatMap(get.result(RpcClient.runtime), context => Effect.provideContext(effect, context))
 }
 
-// The link an island, a calendar event or the server's pushes open.
 function linkOf(bookingId: string) {
 	return `${MobileRuntime.extra.scheme}://booking/${bookingId}`
 }
-
-// Bookings
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
@@ -113,8 +108,6 @@ export const bookingsAtom = Atom.keepAlive(
 		)
 	})
 )
-
-// Clipboard
 
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
 type Offer = {count: string; kind: ClipboardKind}
@@ -184,13 +177,11 @@ export const clipboardAtom = AtomMachine.bind(
 	)
 ).make(clipboardMachine)
 
-// Each return from the background looks at the clipboard again.
 export const clipboardReturnsAtom = Atom.make(get => {
 	get(MobileRuntime.activationsAtom)
 	get.set(clipboardAtom.send, {_tag: 'Returned'})
 })
 
-// The booking deleted last, which the list offers to put back for eight seconds; a later delete takes its place, and a restore ends only its own offer.
 export const undoAtom = AtomMachine.make(
 	Machine.make({
 		events: Machine.events({Deleted: {booking: Booking}, Restored: {id: Schema.String}}),
@@ -255,13 +246,10 @@ export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 	)
 )
 
-// The time the screens read: a minute at a time, and again on each return to the app.
 export const nowAtom = Atom.make(get => {
 	get(MobileRuntime.activationsAtom)
 	return Stream.map(Stream.tick('1 minute'), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 })
-
-// Push
 
 const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(Application.applicationId), bundle => ({bundle}))
 
@@ -319,10 +307,8 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 	)
 )
 
-// Live Activities
-
 type ActivityEntry = typeof ActivityEntry.Type
-// The token last sent to the server, so a rotated one is sent again.
+// The token last sent, so a rotated one is sent again.
 const ActivityEntry = Schema.Struct({bookingId: Schema.String, leg: Leg, token: Schema.optionalKey(Schema.String)})
 type ActivityIndexJson = typeof ActivityIndexJson.Type
 const ActivityIndexJson = Schema.fromJsonString(Schema.Record(Schema.String, ActivityEntry))
@@ -476,7 +462,6 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 					}),
 				{concurrency: 1}
 			)
-			// An island whose leg is over or whose booking is gone ends with its last state.
 			yield* Effect.forEach(
 				plan.end,
 				item =>
@@ -486,7 +471,6 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 					}),
 				{concurrency: 1, discard: true}
 			)
-			// The index keeps the activities still on screen and the ones just started.
 			yield* writeIndex({
 				...Record.fromEntries(
 					Array.map(
@@ -502,15 +486,12 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 	)
 )
 
-// Calendar
-
 function notesOf(journey: Flight | Train) {
 	const known = [labelled('Confirmation', journey.confirmation), labelled('Seat', journey.seat)]
 	if (journey._tag === 'flight') return Array.join(Array.getSomes(known), '\n')
 	return Array.join(Array.getSomes([...known, labelled('Coach', journey.coach)]), '\n')
 }
 
-// The full name with its city, which Maps can place for Time to Leave.
 export function placeLine(place: Place) {
 	return Array.join(Array.filter([place.name, place.address ?? place.city ?? ''], String.isNonEmpty), ', ')
 }
@@ -669,9 +650,6 @@ export const calendarAtom = Atom.make(get =>
 	)
 )
 
-// Rides
-
-// Coordinates for Maps and Uber: the airport's and station's from the server, a stay's from Apple's geocoder on the iPhone.
 type Coordinates = {latitude: number; longitude: number}
 
 const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
@@ -691,7 +669,6 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 
 export type Ride = {label: string; place: Place}
 
-// Where the next ride goes: the airport or station before departure, the stay after arrival.
 export function ridesFor(booking: Booking, bookings: BookingList, now: number) {
 	if (booking._tag === 'stay') return [{label: booking.name, place: booking.place}] satisfies Ride[]
 	const stay = Option.map(
@@ -747,9 +724,6 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 	)
 )
 
-// Display
-
-// "16:40" or "Tue 28 Oct" in the place's own zone, which is what the ticket and the departures board show.
 export function timeAt(time: number, timeZone?: string) {
 	return DateTime.format(DateTime.makeUnsafe(time), {
 		hour: '2-digit',
@@ -768,7 +742,6 @@ export function dayAt(time: number, timeZone?: string) {
 	})
 }
 
-// Calendar days from today to the day of `time`, both counted in the place's own zone.
 export function daysUntil(time: number, now: number, timeZone?: string) {
 	function day(at: number) {
 		return DateTime.toEpochMillis(
@@ -780,7 +753,6 @@ export function daysUntil(time: number, now: number, timeZone?: string) {
 
 export const primary = hues.orange
 
-// The departures board's colours: a journey going to plan is live, in the app's primary.
 export const tones = {
 	bad: colors.destructive,
 	good: primary,
@@ -789,7 +761,6 @@ export const tones = {
 	warn: colors.warning
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
-// The same tones as a StatusDot shows them.
 export const dots = {
 	bad: 'error',
 	good: 'live',
@@ -798,7 +769,6 @@ export const dots = {
 	warn: 'warning'
 } as const satisfies Record.ReadonlyRecord<Tone, string>
 
-// Where to go, the gate or platform, read beside the state and never in place of it.
 type Where = {text: string; tone: Tone}
 
 function statusLine(label: string, tone: Tone, where: Option.Option<Where>) {
@@ -821,7 +791,6 @@ function stayStatus(stay: Stay, now: number) {
 	return statusLine('Checked out', 'plain', Option.none())
 }
 
-// The platform to board from, then the one it arrives at once it left.
 function platformOf(train: Train) {
 	if (train.live?.state === 'departed' || train.live?.state === 'running' || train.live?.state === 'arrived') {
 		return whereOf(labelled('Platform', train.live.arrivalPlatform), false)
@@ -880,8 +849,6 @@ export function statusOf(booking: Booking, now: number) {
 	return flightStatus(booking, now)
 }
 
-// Navigation
-
 function bookingIn(url?: string | null) {
 	return Option.flatMap(Option.fromNullishOr(url), link =>
 		Option.flatMap(String.match(/booking\/([0-9a-f-]{36})/iu)(link), match => Option.fromUndefinedOr(match[1]))
@@ -895,7 +862,6 @@ function tapped(response: Notifications.NotificationResponse | null) {
 	)
 }
 
-// The booking an island, a calendar event or a notification opened, also when it launched the app.
 export const openedAtom = Atom.keepAlive(
 	Atom.make(
 		pipe(

@@ -22,7 +22,6 @@ CliRuntime.runApp({
 		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracker.layer)),
 		Layer.provide(Bookings.layer),
 		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer)),
-		// One data folder for the bookings, the push tokens and the airport list.
 		Layer.provide(ServerRuntime.layerDataStore)
 	),
 	settings: {

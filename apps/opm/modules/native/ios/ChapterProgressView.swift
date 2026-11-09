@@ -3,14 +3,12 @@ import ExpoUI
 import SwiftUI
 
 public final class ChapterProgressViewProps: UIBaseViewProps {
-  // Read pages over all pages; 1 once the chapter is read.
   @Field var fraction: Double = 0
   // The theme's colors, so the disc follows it in either appearance.
   @Field var accent: Color = .orange
   @Field var read: Color = .primary
 }
 
-// A gray disc that fills with the accent as pages are read and turns the read color once the chapter is read.
 public struct ChapterProgressView: ExpoSwiftUI.View {
   @ObservedObject public var props: ChapterProgressViewProps
 

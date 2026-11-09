@@ -8,14 +8,12 @@ import type {ReactNode} from 'react'
 import {colors, radius} from '#components/theme.ts'
 import {Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle, itemRow} from '#components/ui/item.tsx'
 
-// shadcn's Skeleton on iOS: a muted block the caller sizes with frame, standing in for content that is loading.
 export function Skeleton(props: {modifiers?: ViewModifier[]}) {
 	return (
 		<RoundedRectangle cornerRadius={radius} modifiers={[...(props.modifiers ?? []), foregroundStyle(colors.card)]} />
 	)
 }
 
-// A list's rows while its data loads, as SwiftUI's own placeholder redaction draws them.
 export function ItemGroupSkeleton(props: {descriptionLines?: number; media?: ReactNode; rows: number}) {
 	return (
 		<ItemGroup modifiers={[redacted('placeholder'), accessibilityLabel('Loading')]}>

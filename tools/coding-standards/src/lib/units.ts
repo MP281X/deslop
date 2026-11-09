@@ -13,7 +13,6 @@ const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionEx
 // A unit with only the imports it uses, so an import added for another unit asks nothing again; `ignores` names the questions its `judge-ignore` comments opt out of.
 export type Unit = {ignores: HashSet.HashSet<string>; imports: string; kind: Kind; line: number; text: string}
 
-// The span every oxc node carries, walked through its visitor keys.
 type Node = {type: string; start: number; end: number}
 
 function isNode(value: unknown): value is Node {
@@ -33,7 +32,6 @@ function textOf(source: string, node: Node) {
 	return String.slice(node.start, node.end)(source)
 }
 
-// `it(...)`, `test(...)` or `it.effect(...)` with a written title.
 function isTestCall(source: string, node: Node) {
 	if (node.type !== 'CallExpression') return false
 	const title = pipe(field(node, 'arguments'), Option.map(Array.ensure), Option.flatMap(Array.head))
@@ -43,7 +41,6 @@ function isTestCall(source: string, node: Node) {
 	)
 }
 
-// A function's own name, or the name of the variable it is assigned to.
 function nameOf(node: Node, parent: Option.Option<Node>) {
 	return pipe(
 		Option.orElse(nodeAt(node, 'id'), () =>

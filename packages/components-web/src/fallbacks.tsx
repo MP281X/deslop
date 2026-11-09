@@ -7,7 +7,6 @@ import {Button} from '#components/ui/button.tsx'
 import {Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia} from '#components/ui/empty.tsx'
 
 export function EmptyState(props: {action?: ReactNode; description?: string; icon: ReactNode; label: string}) {
-	// A pane with nothing selected keeps the icon alone; a first-run or blocked list teaches with a title and a sentence.
 	if (props.action === undefined && props.description === undefined) {
 		return (
 			<Empty role="status" aria-label={props.label}>
@@ -49,7 +48,7 @@ export function NotFound() {
 	)
 }
 
-// A signed-out visitor goes straight to Auth through `href`, the app's sign-in link, which returns here; apps have no sign-in screen of their own.
+// Apps have no sign-in screen of their own: a signed-out visitor goes straight to Auth, which returns here.
 export function SignIn(props: {href: string}) {
 	useEffect(() => {
 		location.replace(props.href)

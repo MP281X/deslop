@@ -26,7 +26,7 @@ import {Kbd} from '#components/ui/kbd.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
-// The signed-in account every Deslop server answers at /auth/user; without an issuer it is the developer, who cannot sign out.
+// Without an issuer the account is the developer, who cannot sign out.
 const Account = Schema.Struct({id: Schema.String, name: Schema.String, signOut: Schema.Boolean})
 
 const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
@@ -37,7 +37,7 @@ const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 	)
 )
 
-// GitHub's avatar for the account; signing out goes through Auth, which ends the session every app shares.
+// Signing out goes through Auth, which ends the session every app shares.
 function AccountMenu() {
 	const account = useAtomValue(accountAtom)
 	if (!AsyncResult.isSuccess(account)) return null
@@ -73,7 +73,6 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
@@ -119,7 +118,6 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 	)
 }
 
-// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}

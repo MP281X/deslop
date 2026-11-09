@@ -69,11 +69,9 @@ import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
-// A phone shows one pane at a time; a wide screen shows all three.
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['apps', 'machine', 'process'])
 
-// The view lives in the URL, so a reload, Back or a shared link reopens the same machine, app, pane and range.
 type Search = typeof Search.Type
 const Search = Schema.Struct({
 	app: Schema.optionalKey(Schema.String),
@@ -102,7 +100,6 @@ function dot(item: InventoryItem, state: string) {
 	return 'quiet'
 }
 
-// A row that needs a look leads the list, whether it is an app or a job.
 function needsAttention(row: ReturnType<typeof workloads>[number]) {
 	const light = dot(row.item, status(row.item))
 	return light === 'error' || light === 'warning'
@@ -129,7 +126,6 @@ function bytes(value: number) {
 	return `${size.format(value / 1024 ** 2)} MiB`
 }
 
-// The highest total of one metric's stacked bands over the range, in the same percentage the chart draws.
 function peakOf(layers: readonly {values: readonly number[]}[]) {
 	return Array.max(
 		Array.prepend(
@@ -149,8 +145,7 @@ function peakOf(layers: readonly {values: readonly number[]}[]) {
 	)
 }
 
-// The process holding the most memory, which names an app's row and its pane.
-function heaviestName(processes: readonly Process[]) {
+function heaviestProcessName(processes: readonly Process[]) {
 	return Array.match(processes, {
 		onEmpty: () => undefined,
 		onNonEmpty: entries =>
@@ -169,7 +164,6 @@ function owner(row: ReturnType<typeof workloads>[number]) {
 	)
 }
 
-// The reason a row needs a look, or null for a healthy one.
 function reasonOf(row: ReturnType<typeof workloads>[number], now: number) {
 	return Option.match(Option.fromUndefinedOr(row.item.failure), {
 		onNone: () => row.item.detail,
@@ -181,7 +175,6 @@ function reasonOf(row: ReturnType<typeof workloads>[number], now: number) {
 	})
 }
 
-// An app or job in trouble leads; then the apps, heaviest first; what a timer starts follows the apps it serves.
 const order = Order.combine(
 	Order.combine(
 		Order.mapInput(Order.Number, (row: ReturnType<typeof workloads>[number]) =>
@@ -212,7 +205,6 @@ function text(row: ReturnType<typeof workloads>[number]) {
 	)
 }
 
-// The range's apps: a service or container that neither ran nor failed in it has no row. A job keeps its row to run it now, and a machine without history shows every app.
 function ranged(rows: ReturnType<typeof workloads>, minutes: number, history?: MachineHistory) {
 	if (history === undefined) return rows
 	const recorded = HashSet.fromIterable(
@@ -246,7 +238,6 @@ function failedFor(
 	)
 }
 
-// The page's one range control: a line of ranges at the same height as every other control.
 function RangeToggle(props: {
 	minutes: HistoryQuery['minutes']
 	onChange: (minutes: HistoryQuery['minutes']) => void
@@ -283,7 +274,6 @@ function RangeToggle(props: {
 	)
 }
 
-// A phone's bar keeps the range in the space of a word: the current range opens the five.
 function RangeMenu(props: {
 	minutes: HistoryQuery['minutes']
 	onChange: (minutes: HistoryQuery['minutes']) => void
@@ -323,7 +313,6 @@ function RangeMenu(props: {
 	)
 }
 
-// Port chips of one least width: exposed in Deploy's primary, unexposed neutral; a public endpoint reads as its whole hostname.
 function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Button
@@ -350,7 +339,6 @@ function Endpoint(props: {item: InventoryItem}) {
 	)
 }
 
-// A row's ports: an unexposed reachable one opens its Expose dialog, and every exposure leads to its endpoint.
 function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeof workloads>[number]}) {
 	const expose = useExpose()
 	const exposedPorts = HashSet.fromIterable(Array.map(props.row.exposures, exposure => exposure.port))
@@ -393,7 +381,6 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 	)
 }
 
-// A timer's job, started now from where other rows keep their chevron; its failure shows on the row.
 function RunNow(props: {busy: boolean; item: InventoryItem; onRun: () => void}) {
 	const [result, run] = useAtom(runAtom(props.item.id))
 	const working = props.busy || AsyncResult.isWaiting(result)
@@ -433,7 +420,6 @@ function hideTarget(item: InventoryItem) {
 	return ''
 }
 
-// The row's menu item for one exposure this app made; its failure shows on the row.
 function RemoveExposure(props: {item: InventoryItem}) {
 	const [result, hide] = useAtom(hideAtom(hideTarget(props.item))(props.item.name))
 	return (
@@ -455,12 +441,11 @@ function RemoveFailure(props: {item: InventoryItem}) {
 }
 
 // A long container name keeps its distinguishing end on a phone, short enough to fit the row.
-function middle(value: string) {
+function middleEllipsis(value: string) {
 	if (String.length(value) <= 28) return value
 	return `${String.slice(0, 7)(value)}…${String.slice(-7)(value)}`
 }
 
-// One app in the list: its mark, name, ports or reason, memory and light; the whole row opens its processes.
 function AppListRow(props: {
 	bandOf: Record<string, string>
 	compact: boolean
@@ -482,7 +467,7 @@ function AppListRow(props: {
 	const running =
 		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
 		Option.exists(requested, at => props.now - at < 10_000)
-	const process = heaviestName(processes)
+	const process = heaviestProcessName(processes)
 	// A job is no chart band of its own, so hovering the shared band of small apps never lights the jobs.
 	const band = Option.filter(
 		Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id)),
@@ -490,7 +475,7 @@ function AppListRow(props: {
 	)
 	const highlighted = Option.exists(band, id => props.hovered === id)
 	const fullName = workloadName(props.row.item)
-	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middle(fullName)})
+	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middleEllipsis(fullName)})
 	const failing = light === 'error' || light === 'warning'
 	const next = Boolean.match(running, {
 		onFalse: () => nextRun(props.row.item.next ?? props.now, props.now),
@@ -640,14 +625,12 @@ function AppListRow(props: {
 	)
 }
 
-// Sign-in or an error replaces content, never the bar.
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
 	if (isDenied(props.error)) return <Error error={props.error} label="Access denied" reset={props.reset} />
 	return <Error error={props.error} reset={props.reset} />
 }
 
-// Readers suspend below real headers. A partial outage keeps its last data; first-read errors stay local.
 function InventoryContent(props: {children: ReactNode}) {
 	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(inventoryAtom)
@@ -690,7 +673,6 @@ function MetricsProblem(props: {minutes: HistoryQuery['minutes']}) {
 	return <Problem className="ml-auto" label="History out of date" warning reset={refresh} since={problemSince} />
 }
 
-// A mark, a line and a trailing figure, shaped like the rows that replace them.
 function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 	return (
 		<div aria-busy="true" aria-label={props.label} role="status" className="min-h-0 flex-1 overflow-hidden">
@@ -731,7 +713,6 @@ function ChartSkeleton() {
 	)
 }
 
-// The apps on one machine, failures first; jobs keep their row at the end.
 function AppsPane(props: {
 	bandOf: Record<string, string>
 	className?: string
@@ -819,7 +800,6 @@ function AppsPane(props: {
 	)
 }
 
-// The selected app's processes, or a job's, with what the row cannot show: its state and next run.
 function ProcessPane(props: {
 	className?: string
 	now: number
@@ -835,7 +815,7 @@ function ProcessPane(props: {
 		onSome: current => dot(current.item, state)
 	})
 	const processes = props.row?.item.processes ?? []
-	const process = heaviestName(processes)
+	const process = heaviestProcessName(processes)
 	const tree = processTree(processes)
 	const count = Array.reduce(tree, 0, (sum, node) => sum + node.count)
 	return (
@@ -935,7 +915,6 @@ function ProcessPane(props: {
 	)
 }
 
-// A machine's graphs, on its own hue, at the range the bar carries.
 function MachineContent(props: {
 	history: MachineHistory
 	hovered?: string
@@ -1024,7 +1003,6 @@ function MachineContent(props: {
 				{Boolean.match(storage.total > 0, {
 					onFalse: () => null,
 					onTrue: () => (
-						// The bar alone says how full the disks are; the figures wait on hover, or sit beside them on a phone.
 						<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
 							<Progress value={(storage.used / storage.total) * 100}>
 								<ProgressLabel>Disk</ProgressLabel>
@@ -1098,7 +1076,6 @@ function MachinePane(props: {
 	)
 }
 
-// The two machines as one line at the top: their names, their size, and whether they answer.
 // judge-ignore no-repeated-search -- two workers and two histories; an index would only add a step.
 function MachineTabs(props: {
 	active?: string
@@ -1174,7 +1151,6 @@ function MachineTabs(props: {
 	})
 }
 
-// The workers that did not answer, above the content they would have filled.
 function SourceProblems(props: {
 	onRetry: () => void
 	sources: readonly {error: string; name: string}[]
@@ -1225,7 +1201,7 @@ function Home() {
 	const snapshot = AsyncResult.value(inventory)
 	const shownHistories = AsyncResult.getOrElse(metrics, () => [])
 	const inventoryFailure = AsyncResult.isFailure(inventory)
-	// A revoked session must show the sign-in even while the last snapshot is still cached; only other errors keep the panes.
+	// A revoked session shows the sign-in even while a cached snapshot remains.
 	const authFailure = Option.orElse(Option.filter(AsyncResult.error(inventory), isDenied), () =>
 		Option.filter(AsyncResult.error(metrics), isDenied)
 	)
@@ -1244,7 +1220,6 @@ function Home() {
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
-	// A row lights its own band, or the one band every small app joins.
 	const bandOf = Record.fromEntries(
 		Array.flatMap(
 			Option.getOrElse(
@@ -1295,7 +1270,6 @@ function Home() {
 		view({app: row.item.id, pane: 'process'})
 	}
 
-	// A phone's bar names the pane and backs out to Machines; desktop and the wide two-column layout keep the wordmark.
 	const mobileTitle = Boolean.match(isNarrow, {
 		onFalse: () => undefined,
 		onTrue: () =>

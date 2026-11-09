@@ -23,7 +23,6 @@ function JourneyLayout(props: ActivityProps) {
 	const palette = {bad: '#d14d41', good: '#4385be', info: '#4385be', plain: '#ededed', warn: '#d0a215'}
 	const gray = '#9a9a9a'
 
-	// The gate, belt or platform on its colour, the island's one value read at a glance.
 	function chip(size: number) {
 		if (props.chip === undefined) return undefined
 		return (

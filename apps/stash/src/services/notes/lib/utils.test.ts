@@ -74,7 +74,6 @@ it('makes each tag one lowercase token', () => {
 	])
 })
 
-// The tags an organization keeps once tags already in use claim their variants.
 function organizedTags(tags: string[], inUse: string[]) {
 	return reconcileOrganization(
 		{body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''},

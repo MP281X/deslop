@@ -9,7 +9,6 @@ on:
       mobile:
         value: ${{ jobs.check.outputs.mobile }}
 
-# A newer push to the same branch replaces the older run.
 concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
@@ -17,7 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-# Branch pushes check bundling as well as source and tests.
 jobs:
   build:
     name: Build

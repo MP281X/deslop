@@ -31,7 +31,6 @@ const WRAPPED = /^https:\/\/services\.f-ck\.me\/v1\/image\/(?<encoded>[\w+/=-]+)
 
 export const SERIES_NAMES = {manga: 'Manga', webcomic: 'Webcomic'}
 
-// A release post lists every translation, best first.
 const CUBARI_LINKS = new RegExp(CUBARI.source, 'gu')
 
 export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem, 'number'>) => chapter.number)
@@ -121,7 +120,6 @@ export function postFrom(entry: {content: string; published: string; title: stri
 	) satisfies Option.Option<Post>
 }
 
-// Where cubari answers with a link's pages, and which chapter of that answer the link means.
 export function seriesOf(link: string) {
 	return Option.map(Option.fromNullishOr(CUBARI.exec(link)?.groups), groups => ({
 		api: `https://cubari.moe/read/api/${groups['source']}/series/${groups['slug']}/`,
@@ -143,7 +141,6 @@ function pageLink(page: CubariSeries['chapters'][string]['groups'][string][numbe
 	return unwrapped(page.src)
 }
 
-// The first group's pages of one chapter of a cubari answer, when every page still loads.
 export function pagesOf(series: CubariSeries, chapter: string) {
 	return pipe(
 		Option.fromNullishOr(series.chapters[chapter]),
@@ -157,7 +154,6 @@ export function pagesOf(series: CubariSeries, chapter: string) {
 	)
 }
 
-// Reopen what was read last, including a finished chapter; choosing the next one belongs to the reader.
 export function resumeOf(chapters: ChapterList) {
 	return pipe(
 		Array.filter(chapters, chapter => (chapter.reading?.at ?? 0) > 0),

@@ -6,7 +6,6 @@ import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
 export type ActivityPropsJson = typeof ActivityPropsJson.Type
 export const ActivityPropsJson = Schema.fromJsonString(ActivityProps)
 
-// A provider token's header and claims.
 export type JwtPart = typeof JwtPart.Type
 export const JwtPart = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Finite])))
 
@@ -22,7 +21,6 @@ export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev
 export type ApnsToken = typeof ApnsToken.Type
 export const ApnsToken = pipe(Schema.String, Schema.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu)))
 
-// A device token for ordinary notifications, or the token that lets the server start a Live Activity.
 export type Device = typeof Device.Type
 export const Device = Schema.Struct({bundle: Bundle, kind: Schema.Literals(['alert', 'start']), token: ApnsToken})
 
@@ -32,7 +30,6 @@ export const ActivityClaim = Schema.Struct({bookingId: BookingId, bundle: Bundle
 export type ActivityToken = typeof ActivityToken.Type
 export const ActivityToken = Schema.Struct({...ActivityClaim.fields, token: ApnsToken})
 
-// One Live Activity of a booking's leg: started by the app, which sends its token, or by the server through a channel.
 export type ActivityRecord = typeof ActivityRecord.Type
 export const ActivityRecord = Schema.Struct({
 	bookingId: BookingId,
@@ -50,7 +47,6 @@ export type PushState = typeof PushState.Type
 export const PushState = Schema.Struct({
 	activities: Schema.Array(ActivityRecord),
 	devices: Schema.Array(Device),
-	// The alert keys each booking already announced.
 	sent: Schema.Record(Schema.String, Schema.Array(Schema.String))
 })
 

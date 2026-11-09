@@ -143,7 +143,6 @@ function tagKey(tag: string) {
 	return pipe(tag, String.replaceAll(/[^a-z0-9+#]/gu, ''), String.replace(/^(.{2,}[^s])s$/u, '$1'))
 }
 
-// A plural, hyphen or spacing variant of a tag in use is that tag.
 function reuseTags(tags: Note['tags'], existing: Note['tags']) {
 	const byKey = Array.groupBy(existing, tagKey)
 	return Array.dedupe(

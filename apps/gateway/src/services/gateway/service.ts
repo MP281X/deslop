@@ -84,7 +84,6 @@ export class Gateway extends Context.Service<
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
 			const installed = yield* Ref.make<Record<string, {fingerprint: string; generation: string; id: string}>>({})
-			// A server's tool counts while the server is connected.
 			const usable = Effect.fnUntraced(function* (id: string, generation: string) {
 				const now = yield* Clock.currentTimeMillis
 				return Option.exists(

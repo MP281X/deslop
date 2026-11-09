@@ -17,7 +17,6 @@ function calleeOf(node: ESTree.Node) {
 	return node
 }
 
-// Effect's empty constructors, such as `Array.empty()`, `HashMap.empty()` and `String.empty`.
 function isEffectEmpty(input: {context: Context; node: ESTree.Node}) {
 	const member = calleeOf(input.node)
 	return (

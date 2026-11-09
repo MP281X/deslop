@@ -50,7 +50,6 @@ const notWaiting = AuthError.make({
 		'No waiting sign-in has this code: it is mistyped, already answered or expired after 10 minutes. Read the code again from the page or command that is still waiting; start a new sign-in only if none is.'
 })
 
-// The answer, delivered: an app's code at its callback, or a session for the waiting browser; a removed approver delivers a denial.
 const deliver = Effect.fnUntraced(function* (input: {
 	delivery: Delivery
 	origin: Origin
@@ -183,7 +182,6 @@ function run(input: SignInInput) {
 	return Machine.start(SignIn, input)
 }
 
-// A started sign-in: what the approver sees, the browser or command it is bound to, and its process.
 type Open = {pending: PendingAuthorization; receiver: string; ref: Effect.Success<ReturnType<typeof run>>}
 
 export class SignIns extends Context.Service<
@@ -219,7 +217,6 @@ export class SignIns extends Context.Service<
 			function find(code: string) {
 				return Effect.map(SubscriptionRef.get(open), HashMap.get(typedCode(code)))
 			}
-			// Each sign-in's snapshots while it is open, and None once it has ended.
 			function watch(code: string) {
 				return Stream.switchMap(SubscriptionRef.changes(open), current =>
 					Option.match(HashMap.get(current, typedCode(code)), {
@@ -238,7 +235,6 @@ export class SignIns extends Context.Service<
 				}
 				return signIn
 			})
-			// Delivers an answered sign-in once: its redirect, browser session or a command's tokens.
 			const delivered = Effect.fnUntraced(function* (signIn: Open, previous: string) {
 				yield* signIn.ref.send({_tag: 'Collect', previous})
 				const done = yield* pipe(
@@ -287,7 +283,6 @@ export class SignIns extends Context.Service<
 					)
 					return {clientName: signIn.pending.clientName}
 				}, rejected('Cannot answer the sign-in')),
-				// The page continues here once the sign-in is answered.
 				collect: Effect.fn('SignIns.collect')(function* (code: string, headers: Headers.Headers) {
 					const signIn = yield* received(
 						yield* Effect.mapError(Effect.fromOption(yield* find(code)), () => expired),
@@ -354,7 +349,6 @@ export class SignIns extends Context.Service<
 									device: deviceLabel(origin),
 									kind: 'Browser' as const
 								}),
-								// Named as its row will be once signed in.
 								Client: client => ({
 									clientName: clientLabel(client.request.clientName),
 									device: deviceLabel(origin),

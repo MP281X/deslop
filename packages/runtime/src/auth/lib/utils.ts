@@ -24,17 +24,13 @@ import {RpcMiddleware} from 'effect/rpc'
 import type {User} from '#auth/schema.ts'
 import {AuthError, ClientInfo} from '#auth/schema.ts'
 
-// The Auth iOS apps sign in through.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
 
-// Auth serves and advertises its OAuth endpoints under this path, which its clients call.
 export const ISSUER_PATH = '/api/auth'
 export const ISSUER = `${AUTH_URL}${ISSUER_PATH}`
 
-// An app's server announces itself here at start.
 export const APPS_PATH = '/api/apps'
 
-// Every host's browser session: on an app, the id of the session its server keeps.
 export const SESSION_COOKIE = '__Host-session'
 
 export function matchingSessions<A extends {key: string; value: {user: User; expiresAt: number}}>(
@@ -60,14 +56,12 @@ export function isJwt(token: string) {
 	return Option.isSome(String.match(/^[\w-]+\.[\w-]+\.[\w-]+$/u)(token))
 }
 
-// Auth's OAuth endpoints under its issuer, and the public keys every app checks an access token's signature with.
 export const AUTHORIZE_PATH = `${ISSUER_PATH}/oauth2/authorize`
 export const TOKEN_PATH = `${ISSUER_PATH}/oauth2/token`
 export const REVOKE_PATH = `${ISSUER_PATH}/oauth2/revoke`
 export const DEVICE_PATH = `${ISSUER_PATH}/oauth2/device_authorization`
 export const JWKS_PATH = '/.well-known/jwks.json'
 
-// Where Auth returns an app's own sign-in, web or iOS, which the app's server finishes.
 export const CALLBACK_PATH = '/auth/callback'
 
 // An access token lives ten minutes, so a removed account or signed-out session stops working everywhere within that time.
@@ -95,7 +89,6 @@ export function isAdmin(admins: readonly string[], id: string) {
 	return Array.contains(admins, String.replace('github:', '')(id))
 }
 
-// The app's own server starts the sign-in through Auth and returns to `next`.
 export function signInUrl(next: string) {
 	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }
@@ -108,7 +101,6 @@ export function isDenied(error: unknown) {
 	return Schema.is(AuthError)(error) && error.error !== 'temporarily_unavailable'
 }
 
-// A failure that already carries its answer stays as it is; anything else becomes the message the caller names.
 export function rejected(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
@@ -129,13 +121,11 @@ export function failureOptions(error: unknown, status: number) {
 
 export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/auth/lib/utils/CurrentUser') {}
 
-// Contracts add it with `.middleware(RpcAuth)`; the server's `Auth.layer` verifies each request.
 export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
 	'@deslop/runtime/auth/lib/utils/RpcAuth',
 	{error: AuthError}
 ) {}
 
-// Sends the session token as the bearer of every request, read again for each one.
 export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>) {
 	return RpcMiddleware.layerClient(RpcAuth, options =>
 		Effect.gen(function* () {
@@ -147,7 +137,7 @@ export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>
 	)
 }
 
-// Observe the read before recovery can swallow its refusal. Only a real emission restores authorization, never empty completion.
+// Observe the read before recovery can swallow its refusal, since only a real emission restores authorization.
 export function withoutDeniedData<A, E, R>(
 	get: Atom.AtomContext,
 	live: Stream.Stream<A, E, R>,

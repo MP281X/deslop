@@ -105,7 +105,6 @@ function githubFailed(cause: unknown, flow: Option.Option<SignInParams>) {
 	)
 }
 
-// Where a finished sign-in returns: the waiting sign-in or approve link it started from, else its page on this domain.
 function returnTo(flow: SignInParams, origin: string) {
 	return pipe(
 		UrlParams.toString(UrlParams.fromInput({code: flow.code, request: flow.request})),
@@ -313,7 +312,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
-		// A command without a browser signs in with a code the person or their agent approves (RFC 8628).
 		yield* router.add(
 			'POST',
 			DEVICE_PATH,
@@ -475,7 +473,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
-		// A browser signs in with a code another signed-in browser, phone or agent approves, then returns to the page it came from.
 		yield* router.add(
 			'GET',
 			'/auth/code',
@@ -512,7 +509,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 			'/auth/passkey',
 			limited('passkey', 20)(oauth(Effect.map(passkeys.request, options => HttpServerResponse.jsonUnsafe(options))))
 		)
-		// The answer returns where the page asked, when that is on this domain; otherwise the page stays and reloads signed in.
 		yield* router.add(
 			'POST',
 			'/auth/passkey',
@@ -548,7 +544,6 @@ export const HttpHandlers = HttpRouter.use(router =>
 				)
 			)
 		)
-		// Delivers an answered sign-in to the browser holding its cookie; a command polls the token endpoint instead.
 		yield* router.add(
 			'GET',
 			'/auth/continue',

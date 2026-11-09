@@ -10,7 +10,6 @@ const KEYWORD_TYPES = ['TSBigIntKeyword', 'TSNumberKeyword', 'TSStringKeyword']
 
 type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function
 
-// A function wrapped in a call such as Effect.fn takes its name from the binding that holds the call.
 function boundName(node: FunctionNode) {
 	if (
 		node.parent.type === 'CallExpression' &&
@@ -22,7 +21,6 @@ function boundName(node: FunctionNode) {
 	return bindingName(node)
 }
 
-// The function scopes that a declaration holds, such as the arrow function of `const read = () => …`.
 function functionScopes(input: {context: Context; node: ESTree.Node}) {
 	const scope = input.context.sourceCode.getScope(input.node)
 	return Array.filter(
@@ -69,7 +67,6 @@ function reaches(input: {context: Context; nodes: ESTree.Node[]; targets: Variab
 	})
 }
 
-// A method that calls `this.<name>` on its own name reaches itself.
 function selfMethodCall(input: {context: Context; node: FunctionNode}) {
 	if (input.node.parent.type !== 'MethodDefinition' || input.node.parent.key.type !== 'Identifier') return false
 	return matches(new RegExp(`\\bthis\\.${String.replaceAll('$', '\\$')(input.node.parent.key.name)}\\(`, 'u'))(

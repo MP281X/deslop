@@ -74,7 +74,7 @@ function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
 	)
 }
 
-// The article's text as Markdown, so the AI keeps its headings, lists and link targets.
+// Markdown, so the AI keeps headings, lists and link targets.
 export function pageText(html: string, url: URL) {
 	const $ = cheerio.load(html)
 	$('script, style, noscript, iframe, svg, nav, header, footer, form, aside, button, dialog, template').remove()

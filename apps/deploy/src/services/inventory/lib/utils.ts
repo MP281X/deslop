@@ -196,7 +196,6 @@ export function processOwner(cgroup: string) {
 	)
 }
 
-// The owner key a service or container's processes carry, so history recorded by owner finds its row.
 export function itemOwner(item: InventoryItem) {
 	if (item.kind === 'container') {
 		return `container:${String.slice(0, 12)(Option.getOrElse(Array.last(String.split(item.id, ':docker:')), () => ''))}`

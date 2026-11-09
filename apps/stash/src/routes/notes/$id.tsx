@@ -61,7 +61,6 @@ import type {Note, NoteItem} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
 
-// The summary is the deck above the body, quieter than the words it introduces.
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
 
 function Cover(props: {note: NoteItem}) {
@@ -81,7 +80,6 @@ function Cover(props: {note: NoteItem}) {
 	)
 }
 
-// The AI writes Markdown lines: "## " headings, "- " facts, "1. " steps and "> " quotes, with inline bold, code and links.
 function Body(props: {text: string}) {
 	return (
 		<VStack
@@ -260,7 +258,6 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				)}
 				<Divider />
 				<Byline note={props.note} />
-				{/* No tag is chosen here: choosing one opens the list filtered to it. */}
 				{!Array.isReadonlyArrayEmpty(props.note.tags) && (
 					<ToggleGroup value="" onValueChange={props.onTag} tint={primary}>
 						{Array.map(props.note.tags, tag => (

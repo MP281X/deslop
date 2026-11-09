@@ -50,7 +50,6 @@ function doubled(input: {context: Context; first: Check; second: Check}) {
 	)
 }
 
-// Two neighbouring checks of one plain name, joined only by the operator, become one guard call.
 function guardCall(input: {checks: [Check, Check]; context: Context; fixer: Fixer; guard: string}) {
 	if (
 		input.checks[0].subject.type !== 'Identifier' ||

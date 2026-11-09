@@ -142,7 +142,6 @@ export class Inventory extends Context.Service<
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
 				const manager = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
-				// Each timer-started service, with its next start when one is due.
 				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
 						Array.map(

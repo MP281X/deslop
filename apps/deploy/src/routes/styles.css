@@ -8,7 +8,6 @@
 	--spacing-port: 7ch;
 }
 
-/* Each machine's identity, used by machine labels and icons. */
 @theme inline {
 	--color-machine-dev: var(--machine-dev);
 	--color-machine-desktop: var(--machine-desktop);

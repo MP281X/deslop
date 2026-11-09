@@ -3,7 +3,6 @@ import {Array} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-// `c ? a : d ? b : e` as its branches: each test with its value, then the final value.
 function branches(node: ESTree.ConditionalExpression): {
 	tests: ESTree.ConditionalExpression[]
 	last: ESTree.Expression
@@ -13,7 +12,6 @@ function branches(node: ESTree.ConditionalExpression): {
 	return {last: rest.last, tests: Array.prepend(rest.tests, node)}
 }
 
-// A returned value becomes an early return per branch: `return c ? a : b` is `if (c) return a` then `return b`.
 function returns(context: Context, node: ESTree.ConditionalExpression) {
 	const chain = branches(node)
 	if (Array.some(chain.tests, test => test.consequent.type === 'ConditionalExpression')) return []

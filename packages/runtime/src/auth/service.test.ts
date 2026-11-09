@@ -34,13 +34,11 @@ import {Sessions} from '#auth/sessions.ts'
 
 const AUTH = 'https://auth.mp281x.xyz'
 
-// Claims as Auth signs them, with any audience, so a token meant for something else can be made too.
 type AnyClaims = typeof AnyClaims.Type
 const AnyClaims = Schema.Struct({...AccessClaims.fields, aud: Schema.String})
 
 type Sign = (claims?: Partial<AnyClaims>) => Effect.Effect<string, Jwt.JwtError>
 
-// Auth as an app reaches it: its key set, which can go down, and its token endpoint, answered by `token`.
 const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign: Sign) => Effect.Effect<Response>) {
 	const pair = yield* Jwk.generateKeyPair({algorithm: 'EdDSA', kid: 'fixture'})
 	const key = yield* Jwk.importPrivate(pair.privateKey, 'EdDSA')
@@ -130,7 +128,6 @@ it.effect('ends a running RPC once its credentials are rejected, not while the i
 	)
 )
 
-// A page behind `HttpAuth` and an MCP endpoint behind `layerMcpAuth`, in a server with its own clock.
 const serve = Effect.fnUntraced(function* (client: HttpClient.HttpClient) {
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>

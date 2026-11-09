@@ -43,8 +43,7 @@ jobs:
           npm publish --loglevel=warn "$RUNNER_TEMP"/package/*.tgz
           echo "- @deslop/coding-standards 0.1.${{ github.run_number }}" >> "$GITHUB_STEP_SUMMARY"
 
-      # An app publishes its own folder only when its fingerprint, a hash of what it ships, differs from its latest release's; the version moves after the build. Everything is bundled, so the published manifest drops every dependency, the scripts and the Expo entry.
-      # The apps publish side by side, each taking about ten seconds; the summary keeps their order.
+      # An app publishes only when its shipped fingerprint changes; everything is bundled, so its published manifest drops dependencies, scripts and the Expo entry.
       - name: Publish changed apps
         run: |
           shopt -s nullglob

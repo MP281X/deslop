@@ -1,6 +1,5 @@
 name: Release app
 
-# One mobile app: its JavaScript ships as an EAS Update from Linux; a native fingerprint without a build yet goes to the Mac.
 on:
   workflow_call:
     inputs:

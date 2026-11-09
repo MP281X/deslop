@@ -59,7 +59,6 @@ import type {ConnectionInfo} from '#services/connections/schema.ts'
 
 type View = 'ai' | 'servers'
 type Search = typeof Search.Type
-// The view and what it shows live in the URL; Servers, the last week and cost are the defaults.
 const Search = Schema.Struct({
 	app: Schema.optionalKey(Schema.String),
 	bucket: Schema.optionalKey(Schema.Finite),
@@ -70,7 +69,6 @@ const Search = Schema.Struct({
 })
 const route = getRouteApi('/(home)/')
 
-// What needs the user first: an expired sign-in or a failure, then a server never connected, then the live ones.
 const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 	pipe(
 		Match.value(server.status),
@@ -84,7 +82,6 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 	)
 )
 
-// Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
 function Status(props: {server: ConnectionInfo}) {
 	const call = useAtomValue(lastCallAtom(props.server.id))
 	return (
@@ -101,7 +98,6 @@ function Status(props: {server: ConnectionInfo}) {
 	)
 }
 
-// A server's own words for why it needs the user, or its host when it is fine.
 function reasonText(server: ConnectionInfo) {
 	return pipe(
 		Match.value(server.status),
@@ -134,7 +130,6 @@ function RemoveDialog(props: {onOpenChange: (open: boolean) => void; open: boole
 	)
 }
 
-// Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
 function FirstImage(props: {small?: boolean; sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
@@ -154,7 +149,7 @@ function FirstImage(props: {small?: boolean; sources: string[]}) {
 	)
 }
 
-// Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first. Small, it takes the palette's icon slot so names line up with the actions'.
+// Keyed by sources, so icons a later discovery finds get their turn; a dark-background icon goes first without a tile.
 function ServerIcon(props: {server: ConnectionInfo; small?: boolean}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
@@ -178,7 +173,6 @@ function focusServer(server: ConnectionInfo) {
 	row?.scrollIntoView({block: 'center'})
 }
 
-// One line per server: its icon, name, host or why it needs the user, its tool count, its light, and Connect when it needs one; its context menu removes it.
 function ServerRow(props: {server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	const connected = props.server.status === 'Connected'
@@ -315,7 +309,6 @@ function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo
 	)
 }
 
-// Two views of one page, in the bar's section slot: the servers, then what AI calls through the gateway cost.
 function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 	return (
 		<ToggleGroup
@@ -381,7 +374,6 @@ function AddForm(props: {url: string; error: string; adding: boolean}) {
 	)
 }
 
-// One dialog while the URL is edited or added, so a submit or a failure only changes the form; it closes once the server is added, or on Cancel.
 function AddDialog() {
 	const send = useAtomSet(addAtom.send)
 	const editing = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Editing')), Option.none)
@@ -413,7 +405,7 @@ function Home() {
 	const view = search.view ?? 'servers'
 	const period = search.period ?? '7d'
 	const metric = search.metric ?? 'cost'
-	// Open, which opening it is (so each starts with an empty secret), and the provider it adds.
+	// The opening count starts each dialog with an empty secret.
 	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; provider: AiProvider}>({
 		open: false,
 		opened: 0,

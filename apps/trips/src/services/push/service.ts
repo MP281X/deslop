@@ -51,7 +51,6 @@ type Apns = {bundle: Bundle}
 type Answer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
 type LegOf = Pick<ActivityRecord, 'bookingId' | 'bundle' | 'leg'>
 type Span = {end: number; start: number}
-// One journey leg to show in its current window.
 type Showing = {journey: Flight | Train; leg: Leg; now: number; props: ActivityProps; window: Span}
 
 export const layerApnsClient = Layer.effect(
@@ -98,7 +97,6 @@ function seconds(time: number) {
 	return Math.floor(time / 1000)
 }
 
-// Each app, release and Simulator build, shows its own activity of a leg.
 function sameLeg(record: LegOf, other: LegOf) {
 	return record.bookingId === other.bookingId && record.leg === other.leg && record.bundle === other.bundle
 }
@@ -166,7 +164,6 @@ export class Push extends Context.Service<
 			const signingKey = yield* Effect.cached(
 				Effect.gen(function* () {
 					const found = yield* Effect.fromOption(signer)
-					// The .p8 file's body, with or without its PEM lines.
 					const der = yield* Effect.fromResult(
 						Base64.decode(String.replaceAll(/-----[^-]+-----|\\n|\s/gu, '')(Redacted.value(found.privateKey)))
 					)
@@ -348,7 +345,6 @@ export class Push extends Context.Service<
 				)
 			}
 
-			// Accepted, the start is a channel the server updates; refused, the channel goes, and a token Apple will refuse again leaves until the app registers it anew.
 			const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing, notification: string) {
 				const channel = yield* createChannel(target)
 				const json = yield* Schema.encodeEffect(ActivityPropsJson)(showing.props)
@@ -386,7 +382,6 @@ export class Push extends Context.Service<
 				return Result.fail(answer)
 			})
 
-			// The server starts an activity the app has not, through the push-to-start token and a channel for its updates.
 			const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 				// Every trip uses the same push-to-start token, but a refusal belongs to this leg's notification only.
 				const notification = `start ${target.bundle} ${target.token} ${showing.journey.id} ${showing.leg}`
@@ -470,7 +465,6 @@ export class Push extends Context.Service<
 				}))
 			})
 
-			// Each app shows the leg once; a given-up claim goes to the server, and an activity a delay outlived is replaced.
 			const show = Effect.fnUntraced(function* (
 				journey: Flight | Train,
 				window: Span & {leg: Leg},
@@ -574,7 +568,6 @@ export class Push extends Context.Service<
 							),
 						{concurrency: 1, discard: true}
 					)
-					// Activities whose leg is over, whose booking is gone or which ended long ago.
 					yield* Effect.forEach(
 						expiredActivities(yield* SubscriptionRef.get(state), all, now),
 						record => finish(record, now),
@@ -587,7 +580,6 @@ export class Push extends Context.Service<
 			)
 
 			yield* Effect.forkScoped(Effect.repeat(tick, Schedule.spaced('30 seconds')))
-			// A new booking or a provider's change shows on the island within seconds.
 			yield* Effect.forkScoped(
 				pipe(
 					bookings.changes,
@@ -611,7 +603,6 @@ export class Push extends Context.Service<
 						]
 					}))
 				}),
-				// The app may start an activity itself only for a leg nobody started in its current window.
 				claim: Effect.fn('Push.claim')(function* (input) {
 					const now = yield* Clock.currentTimeMillis
 					return yield* reserve(

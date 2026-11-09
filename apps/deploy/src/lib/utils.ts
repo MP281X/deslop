@@ -14,7 +14,6 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/R
 	protocol: WebRuntime.layer('@deslop/deploy')
 }) {}
 
-// The port whose Expose dialog is open, from a click on its badge on the app's row.
 export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
 
 export const inventoryAtom = Atom.keepAlive(
@@ -38,7 +37,6 @@ export const inventoryAtom = Atom.keepAlive(
 	)
 )
 
-// A port exposed closes the dialog: its endpoint replaces the port's badge.
 export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 	pipe(
 		Effect.flatMap(RpcClient, client => client('deploy.expose', input)),
@@ -46,7 +44,6 @@ export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 	)
 )
 
-// Removes an endpoint this app exposed, on its own worker when it is remote.
 export const hideAtom = Atom.family((target: string) =>
 	Atom.family((name: string) =>
 		RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('deploy.hide', {name, target})))
@@ -58,7 +55,6 @@ export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
 )
 
-// One reader per range, which comes from the URL; the page keeps showing the last range while a newer one loads.
 export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
 	RpcClient.runtime.atom(get =>
 		withoutDeniedData(

@@ -23,7 +23,6 @@ function named(node: Callback) {
 	)
 }
 
-// `Effect.gen(function* () {…})` with no `this` binding and an anonymous generator that takes nothing.
 function generator(context: Context, node: ReturnType<typeof returnedExpression>) {
 	if (
 		Predicate.isNullish(node) ||

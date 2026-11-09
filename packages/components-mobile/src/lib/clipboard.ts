@@ -5,7 +5,6 @@ import type {File} from 'expo-file-system'
 
 import {clipboardChangeCount} from '#lib/utils.ts'
 
-// What a copy holds, as far as its metadata tells.
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
 
@@ -35,11 +34,9 @@ export function readClipboard<A, E, R>(count: string, read: Effect.Effect<A, E, 
 	)
 }
 
-// What an app does with its clipboard; its runtime provides it to the machine.
 export class ClipboardOffer extends Context.Service<
 	ClipboardOffer,
 	{
-		// Handles the answer: keeps its count in `file` and, when asked, saves the copy.
 		readonly answer: (answer: Answer) => Effect.Effect<void>
 		// What the clipboard holds from its metadata alone, so iOS shows its paste banner only when the answer reads it.
 		readonly detect: Effect.Effect<Option.Option<ClipboardKind>>

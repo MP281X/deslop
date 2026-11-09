@@ -70,7 +70,6 @@ type Pending = {
 	verifier: string
 }
 
-// A host without its first label: `auth.mp281x.xyz` is on `mp281x.xyz`.
 function siteOf(url: URL) {
 	return Array.join(Array.drop(String.split('.')(url.hostname), 1), '.')
 }
@@ -87,7 +86,6 @@ export class Connections extends Context.Service<
 	{
 		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionInfo, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
-		// A tool call passing through, by server, for the page's port lights.
 		readonly called: (id: ServerId) => Effect.Effect<void>
 		readonly calls: (user: User) => Stream.Stream<ServerId, AuthError>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
@@ -157,7 +155,6 @@ export class Connections extends Context.Service<
 				Effect.mapError(() => AuthError.make({message: 'This MCP was removed. Add it again on the MCP page.'}))
 			)
 		})
-		// Changes one server, if it is still the one a step started with.
 		const update = Effect.fnUntraced(function* (
 			id: ServerId,
 			generation: string,
@@ -414,7 +411,6 @@ export class Connections extends Context.Service<
 				}
 			} satisfies Connection
 		})
-		// Records why a step failed on its row, so the MCP page shows it; the failure still reaches the caller.
 		const fail = Effect.fnUntraced(function* (connection: Connection, cause: unknown) {
 			const message = describe(cause)
 			yield* update(connection.id, connection.generation, found => ({...found, error: message}))
@@ -614,7 +610,6 @@ export class Connections extends Context.Service<
 			get,
 			list,
 			remove: (id, user) => manage(id, user, () => Option.none()),
-			// A discovery's outcome: its tools and instructions clear an earlier failure, a failure keeps the last ones.
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
 				yield* pipe(
 					update(id, generation, found =>

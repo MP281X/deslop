@@ -25,22 +25,19 @@ import type {ChapterList, Series} from '#services/chapters/schema.ts'
 // Immutable, so every reader starts from this one value and replaces it as chapters finish.
 const NOTHING_FINISHED = HashSet.empty<number>()
 
-// The strip grows into the next chapter as it is reached; no separate reading mode or navigation button.
 export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
 	const read = useAtomSet(readAtom)
 	const following = pipe(
 		Array.sort(props.chapters, byNumber),
 		Array.filter(chapter => chapter.series === props.series && chapter.number >= props.number)
 	)
-	// The continuous strip grows one chapter at a time as the reader reaches the last one in it.
 	const [length, setLength] = useState(2)
 	const [scrolledTo, setScrolledTo] = useState(Option.none<number>)
 	const previous = useRef(props.number)
 	// What this reader finished, so a page turn before the server's copy of the list arrives cannot unfinish it.
 	const finished = useRef(NOTHING_FINISHED)
 	const shown = Array.take(following, length)
-	// Where each chapter's first page sits in the strip.
-	const starts = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+	const chapterStartOffsets = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
 	const gaveUp = AsyncResult.isSuccess(useAtomValue(unreachableAtom(`${props.series}:${props.number}`)))
 
 	// A notification can open a chapter the copy on the iPhone does not have yet; the server's list brings it, unless it is out of reach.
@@ -56,7 +53,6 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 				</Empty>
 			)
 		}
-		// A page-shaped block where the chapter's first page will land.
 		return (
 			<Skeleton
 				modifiers={[
@@ -90,7 +86,10 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 				)}
 				onPage={event =>
 					Option.match(
-						Array.findFirst(Array.zip(shown, starts), pair => event.nativeEvent.index < pair[1] + pair[0].pages.length),
+						Array.findFirst(
+							Array.zip(shown, chapterStartOffsets),
+							pair => event.nativeEvent.index < pair[1] + pair[0].pages.length
+						),
 						{
 							onNone: () => undefined,
 							onSome: pair => {

@@ -23,7 +23,6 @@ export const ToolHandlers = Tools.toLayer(
 		const random = yield* SecureRandom.SecureRandom
 		return Tools.of({
 			read_note: input => notes.get(input),
-			// Saving a link that failed before reads it again.
 			save_note: Effect.fnUntraced(function* (input) {
 				const user = yield* CurrentUser
 				const saved = yield* notes.capture(user.id, {id: yield* random.uuidV4(), text: input.text})

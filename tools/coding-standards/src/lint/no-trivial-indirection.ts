@@ -65,7 +65,6 @@ function detachable(input: {context: Context; node: ESTree.Node}) {
 	)
 }
 
-// `value => Schema.is(File)(value)` and `value => Effect.succeed(value)` only pass their parameters, in order, to a fixed function.
 function forwardedChain(input: {context: Context; names: string[]; returned: ESTree.Node}) {
 	const chain = callGroups(input.returned)
 	function fixed(node: ESTree.Node) {

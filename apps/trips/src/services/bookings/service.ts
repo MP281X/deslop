@@ -142,7 +142,6 @@ export class Bookings extends Context.Service<
 						)
 					})
 				}),
-				// An undone delete puts the booking back as it was, under its own id.
 				restore: Effect.fn('Bookings.restore')(function* (booking) {
 					yield* transact(current => {
 						if (Array.some(current, found => found.id === booking.id)) return Tuple.make(undefined, current)

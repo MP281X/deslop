@@ -25,7 +25,6 @@ function y(percent: number, height: number) {
 	return height - (Number.clamp(percent, {maximum: 100, minimum: 0}) / 100) * height
 }
 
-// The machine's share each band holds over time, stacked on the whole machine's 0–100% so the height alone says how loaded it is.
 export function UsageChart(props: {
 	className?: string
 	history: MachineHistory
@@ -113,7 +112,6 @@ export function UsageChart(props: {
 							vectorEffect="non-scaling-stroke"
 						/>
 						{Array.map(
-							// Each band sits on the ones before it.
 							Array.mapAccum(
 								props.layers,
 								Array.map(props.history.samples, () => 0),
@@ -239,7 +237,6 @@ export function Cores(props: {history: MachineHistory}) {
 	)
 }
 
-// Clock-aligned times under the machine's time charts, shared by each of them.
 export function TimeAxis(props: {history: MachineHistory; minutes: number}) {
 	return (
 		<div aria-hidden="true">

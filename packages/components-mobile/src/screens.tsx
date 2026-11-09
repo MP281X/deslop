@@ -45,7 +45,6 @@ function deniedBy(cause: Cause.Cause<unknown>) {
 	return Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
 }
 
-// What a reader shows: its value, kept through an ordinary outage, or the failure that blocks it when nothing has loaded or access was refused.
 export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Success<A, E>) {
 	if (AsyncResult.isSuccess(result)) return Result.succeed(result.value)
 	if (deniedBy(result.cause)) return Result.fail(result.cause)
@@ -90,7 +89,6 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	)
 }
 
-// The app's icon and a short statement in the middle of the screen, with GitHub sign-in at the bottom.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
@@ -123,7 +121,6 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 	)
 }
 
-// The app once its saved session exists, its sign-in screen until then.
 export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session; tint: ColorValue}) {
 	const send = useAtomSet(props.session.send)
 	return (

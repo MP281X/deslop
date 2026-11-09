@@ -23,7 +23,6 @@ const ToggleGroupContext = createContext<{onValueChange: (value: string) => void
 	value: ''
 })
 
-// shadcn's ToggleGroup on iOS, by the same names: one choice among glass capsules, scrolling sideways when they overflow.
 export function ToggleGroup(props: {
 	children: ReactNode
 	modifiers?: ViewModifier[]

@@ -26,13 +26,11 @@ function pipeCall(node: ESTree.Node): node is PipeCall {
 	)
 }
 
-// The calls of `value.pipe(f).pipe(g)`, innermost first.
 function chain(node: PipeCall): PipeCall[] {
 	if (pipeCall(node.callee.object)) return Array.append(chain(node.callee.object), node)
 	return [node]
 }
 
-// The source between a call's parentheses, comments included and a trailing comma left out.
 function argumentsText(context: Context, node: ESTree.CallExpression) {
 	const open = context.sourceCode.getTokenAfter(node.callee)
 	if (open === null) return ''
@@ -52,7 +50,6 @@ function argumentsText(context: Context, node: ESTree.CallExpression) {
 	)
 }
 
-// A member of a namespace imported from Effect, such as `Effect.map` or `Schema.decode`.
 function effectMember(context: Context, node: ESTree.Node): boolean {
 	if (node.type !== 'MemberExpression' || node.computed) return false
 	if (node.object.type === 'MemberExpression') return effectMember(context, node.object)
@@ -110,7 +107,6 @@ function receiverText(context: Context, node: ESTree.Expression) {
 	return context.sourceCode.getText(node)
 }
 
-// `value.pipe(f).pipe(g)` becomes one `pipe(value, f, g)`.
 function fix(input: {context: Context; fixer: Fixer; node: PipeCall}) {
 	const calls = chain(input.node)
 	if (!rewritable(input.context, calls)) return []

@@ -173,7 +173,6 @@ export class People extends Context.Service<
 				allowed: Effect.fn('People.allowed')(allowed),
 				list,
 				people: user => Stream.mapEffect(SubscriptionRef.changes(state), () => list(user)),
-				// Every GitHub sign-in is recorded: an admin as allowed, anyone else as asking for access until an admin answers.
 				register: Effect.fn('People.register')(function* (profile: GitHubUser) {
 					const since = yield* Clock.currentTimeMillis
 					return yield* transact(current =>
@@ -226,7 +225,6 @@ export class People extends Context.Service<
 	)
 }
 
-// Auth answers its own requests: its browser session, or an access token it signed whose sign-in is still live.
 export const layerIssuerAuth = Layer.effectContext(
 	Effect.gen(function* () {
 		const tokens = yield* Tokens

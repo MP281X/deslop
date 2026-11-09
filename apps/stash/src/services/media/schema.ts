@@ -33,12 +33,10 @@ export const Metadata = Schema.Struct({
 	uploader: Schema.optionalKey(Schema.NullOr(Schema.String))
 })
 
-// A video frame with the second it shows.
 export type Still = typeof Still.Type
 export const Still = Schema.Struct({bytes: Schema.Uint8Array, seconds: Schema.Finite})
 
 export type Probe = typeof Probe.Type
-// ffprobe describes subtitle tracks before any speech is sent to a provider.
 export const Probe = Schema.Struct({
 	format: Schema.optionalKey(Schema.Struct({duration: Schema.optionalKey(Schema.String)})),
 	streams: Schema.Array(Schema.Struct({codec_type: Schema.String, index: Schema.Int}))

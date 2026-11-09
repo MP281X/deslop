@@ -65,7 +65,6 @@ const PROVIDERS = {
 		url: 'https://api.mobbin.com/mcp'
 	}
 }
-// A session cookie or agent token names its account; Auth itself is tested in its own app.
 const SESSION = 'session=octocat'
 const TOKEN = 'agent.octocat.signature'
 
@@ -104,7 +103,6 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 		})
 	}
 	if (!String.includes('/.well-known/')(url)) return undefined
-	// A Deslop MCP names Auth as its authorization server, as `@deslop/runtime` serves it.
 	if (url === 'https://stash.mp281x.xyz/.well-known/oauth-protected-resource/mcp') {
 		return Response.json({
 			authorization_servers: [`${AUTH_URL}/api/auth`],
@@ -112,7 +110,6 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 			scopes_supported: ['deslop']
 		})
 	}
-	// A server outside Deslop's site naming Auth, as one could to collect people's tokens.
 	if (url === 'https://mimic.example.com/.well-known/oauth-protected-resource/mcp') {
 		return Response.json({authorization_servers: [`${AUTH_URL}/api/auth`], resource: 'https://mimic.example.com/mcp'})
 	}
@@ -128,7 +125,6 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 		})
 	}
 	if (String.startsWith(AUTH_URL)(url)) return new Response(undefined, {status: 404})
-	// A provider that neither registers clients nor names itself in its answers.
 	if (String.includes('silent.example.com')(url)) {
 		if (String.includes('oauth-protected-resource')(url)) {
 			return Response.json({
@@ -201,7 +197,6 @@ function upstreamHttpResponse(request: Request, challengeMethods?: string[]) {
 	return undefined
 }
 
-// A test route answers a refusal with its message, as the page shows it.
 function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return Effect.catchIf(handler, Schema.is(AuthError), failure =>
 		Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))
@@ -216,7 +211,6 @@ function account(login?: string) {
 	)
 }
 
-// Auth as the gateway sees it: an agent's access token, which names its account, or a browser session.
 function layerAuth(verified: Ref.Ref<number>) {
 	return Layer.succeedContext(
 		Auth.makeContext(
@@ -310,7 +304,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 								capabilities: {tools: {}},
 								protocolVersion: '2025-06-18',
 								serverInfo: {
-									// A page shows only HTTPS and inline image icons.
 									icons: [{src: 'https://example.com/icon.png', theme: 'dark'}, {src: 'javascript:alert(1)'}],
 									name: yield* Ref.get(providerName),
 									version: '1'
@@ -358,7 +351,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			{signal: request.signal}
 		)
 	}
-	// The providers' registration and token endpoints; each registration gets a new client id.
 	const provider = HttpClient.make(request =>
 		Effect.gen(function* () {
 			if (request.url === PROVIDERS.mobbin.metadata || request.url === PROVIDERS.dual.metadata) {
@@ -422,7 +414,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					Layer.mergeAll(
 						HttpHandlers,
 						mcp,
-						// The servers page's RPCs.
 						pipe(
 							Layer.mergeAll(
 								HttpRouter.add(
@@ -474,7 +465,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 										refused
 									)
 								),
-								// The servers once every connected one has reported its tools.
 								HttpRouter.add(
 									'GET',
 									'/servers/discovered',
@@ -573,7 +563,6 @@ function cookie(response: Response) {
 	)
 }
 
-// A JSON body, posted by the signed-in session in `session`.
 const post = Effect.fnUntraced(function* (web: Web, path: string, session: string, body: unknown) {
 	return yield* send(web, path, {
 		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body),
@@ -588,7 +577,6 @@ const addMcp = Effect.fnUntraced(function* (web: Web, url: string) {
 	return yield* Schema.decodeEffect(Schema.fromJsonString(ConnectionInfo))(yield* Effect.promise(() => response.text()))
 })
 
-// A provider sign-in through the servers page: the connect redirect, then the provider's answer at the callback.
 const connect = Effect.fnUntraced(function* (web: Web, id: string, answer: Record<string, string>) {
 	const start = yield* send(web, `/oauth/connect?id=${id}`, {headers: {cookie: SESSION}})
 	return yield* send(
@@ -605,7 +593,6 @@ const listServers = Effect.fnUntraced(function* (web: Web) {
 	)
 })
 
-// An MCP client's initialize, then the tool call with the session it got.
 const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: string, input: Record<string, unknown>) {
 	const headers = {
 		accept: 'application/json, text/event-stream',
@@ -823,7 +810,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const gateway = yield* servers()
 			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			yield* Ref.set(gateway.toolNames, ['search.docs', 'search_docs', 'search__encoded_literal'])
-			// The server's tools an agent lists right now.
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
 				return Array.filter(
@@ -930,7 +916,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.isTrue(String.includes('new definition')(yield* Effect.promise(() => called.text())))
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: publicServer.url})).status, 400)
-			// Only an admin adds servers, and the gateway is never one of them.
 			assert.deepStrictEqual(
 				[
 					(yield* post(gateway.web, '/servers', 'session=stranger', {url: 'https://another.example.com/mcp'})).status,
@@ -1004,7 +989,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				})
 			)
 			const gateway = yield* servers(home)
-			// Another harness of the same account, signed in on another machine.
 			const second = `${TOKEN}-laptop`
 			yield* modern(gateway.web, second, 'tools/list')
 			assert.strictEqual(gateway.grants.length, 0)
@@ -1131,7 +1115,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* listServers(gateway.web), server => [server.status, server.tools]),
 				[['Connected', [{description: 'Search example', name: 'search'}]]]
 			)
-			// An agent's read hangs on Mobbin, having listed the servers before another provider connects.
 			yield* Ref.set(gateway.stall, true)
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
 			yield* Queue.take(gateway.stallReady)
@@ -1165,7 +1148,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
 			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			yield* modern(gateway.web, TOKEN, 'tools/list')
-			// The reconnect registers a client of its own, then never comes back.
 			yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 			assert.strictEqual(gateway.registrations.length, 3)
 			yield* TestClock.adjust('40 seconds')
@@ -1228,7 +1210,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
-			// Registered clients must also receive `iss` when the provider advertises it.
 			yield* connect(gateway.web, 'mobbin', {code: 'missing-issuer'})
 			assert.strictEqual(gateway.grants.length, 0)
 			assert.strictEqual(
@@ -1237,7 +1218,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				'/'
 			)
-			// A signed-out browser signs in first, then returns to the connection.
 			assert.strictEqual(
 				(yield* send(gateway.web, '/oauth/connect?id=mobbin')).headers.get('location'),
 				`https://gateway.mp281x.xyz/auth/sign-in?${new URLSearchParams({next: 'https://gateway.mp281x.xyz/oauth/connect?id=mobbin'})}`
@@ -1264,7 +1244,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				302
 			)
 			assert.strictEqual(gateway.grants.length, 0)
-			// The servers page names why the connection failed.
 			assert.deepStrictEqual(
 				Array.map(yield* listServers(gateway.web), server => server.error),
 				['The answer came from another authorization server']
@@ -1279,7 +1258,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(gateway.grants.length, 0)
 			// A provider cannot redirect metadata discovery to a different issuer.
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: PROVIDERS.dual.url})).status, 400)
-			// Only an admin manages the servers everyone shares.
 			assert.strictEqual((yield* post(gateway.web, '/servers/remove', 'session=stranger', {id: 'mobbin'})).status, 400)
 		})
 	)

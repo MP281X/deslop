@@ -93,7 +93,6 @@ function Failures() {
 	)
 }
 
-// The code copies on click; its icon turns into a tick for a moment, in the same place so nothing moves. A failed copy says so beneath.
 function Code(props: {id: string}) {
 	const [copy, copyCode] = useAtom(copyCodeAtom)
 	const copied = AsyncResult.isWaiting(copy)
@@ -134,7 +133,6 @@ function Countdown(props: {expiresAt: number}) {
 	)
 }
 
-// A device that is not signed in, centred and sparse: who asks, a QR a signed-in phone scans, its code to copy, its time running down.
 function CodeCard(props: {request: PendingAuthorization}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
@@ -239,7 +237,6 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 	)
 }
 
-// Signed-in accounts see their sign-ins; admins also see people, with those waiting as a count.
 function Tabs(props: {admin: boolean; waiting: number}) {
 	const matchRoute = useMatchRoute()
 	const tabs: {count: number; label: string; to: '/' | '/people'}[] = [
@@ -274,7 +271,6 @@ function Signed(props: {account: SignedAccount}) {
 	)
 }
 
-// This account's passkeys, each removed from its own submenu; adding one lets the browser offer any kind it can make.
 function PasskeyItems(props: {via: SessionVia}) {
 	const read = useAtomValue(passkeysAtom)
 	const passkeys = AsyncResult.getOrElse(read, () => [])
@@ -327,7 +323,6 @@ function PasskeyItems(props: {via: SessionVia}) {
 	)
 }
 
-// The account's avatar opens who is signed in, its passkeys and the sign-out.
 function AccountMenu(props: {account: SignedAccount}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
@@ -373,7 +368,6 @@ function AccountMenu(props: {account: SignedAccount}) {
 	)
 }
 
-// The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
 		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
@@ -387,7 +381,6 @@ function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	)
 }
 
-// Without an account: GitHub, or a code approved from another browser, a phone or an agent.
 function SignIn() {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
@@ -440,7 +433,6 @@ function SignIn() {
 	)
 }
 
-// Arriving from another app's Sign out ends the session every app shares, then returns there.
 function SigningOut() {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(signOutAtom)
@@ -469,7 +461,6 @@ function SigningOut() {
 	})
 }
 
-// A signed-in account narrows its apps or people from the bar, where admins also switch between the two.
 function Shell() {
 	const search = route.useSearch()
 	const requestId = Option.fromUndefinedOr(search.request)

@@ -80,7 +80,6 @@ function uiImport(program: ESTree.Program) {
 	})
 }
 
-// Every string a className can produce: literals, template quasis and the string arguments of cn.
 function classStrings(node: ESTree.Node): string[] {
 	if (node.type === 'Literal') return Array.filter([node.value], Predicate.isString)
 	if (node.type === 'TemplateLiteral') return Array.map(node.quasis, quasi => quasi.value.raw)

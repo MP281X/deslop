@@ -12,7 +12,6 @@ import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 
-// One process: its mark, name and what it holds of the app's memory; small ones read muted.
 function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
 		<div
@@ -72,7 +71,6 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	)
 }
 
-// A parent opens on its own, as a small accordion; the first level starts open, deeper ones closed.
 function Node(props: {depth: number; node: ProcessNode}) {
 	if (Array.isArrayEmpty(props.node.children)) {
 		return <Line depth={props.depth} node={props.node} padded />

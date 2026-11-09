@@ -34,7 +34,6 @@ const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
 )
 
-// Filters as a query over the window ending now; stats ignores the page and order these defaults fill.
 export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset' | 'sort'>>, now: number) {
 	return {
 		limit: 1000,
@@ -81,7 +80,6 @@ export function spanName(span: Schema.JsonObject) {
 	)
 }
 
-// The release that sent an entry, such as "0.1.1235"; empty for a local build or an app that names none.
 function versionOf(entry: Entry) {
 	return resourceString(entry.resource, 'service.version')
 }
@@ -94,7 +92,6 @@ function releaseOf(entry: Entry) {
 	)
 }
 
-// Each service's newest release among the entries and those already known.
 export function newestVersions(entries: readonly Entry[], known: Record<string, string>) {
 	const versioned = Array.filter(
 		Array.map(entries, entry => ({service: entry.service, version: releaseOf(entry)})),
@@ -114,8 +111,7 @@ export function newestVersions(entries: readonly Entry[], known: Record<string, 
 	)
 }
 
-// An entry an older release of its service sent; one that names no release is never older.
-function superseded(entry: Entry, newest: Record<string, string>) {
+function isSuperseded(entry: Entry, newest: Record<string, string>) {
 	const version = releaseOf(entry)
 	return (
 		version !== '' &&
@@ -141,7 +137,7 @@ export function retentionOf(
 			onNone: () => BigInt(entry.time),
 			onSome: time => BigInt(time) * 1_000_000n
 		})
-		return received < cutoff || superseded(entry, newest)
+		return received < cutoff || isSuperseded(entry, newest)
 	})
 	return {
 		expired,
@@ -160,13 +156,13 @@ export function reconcileReleases(
 	known: Record<string, string>
 ) {
 	const newest = newestVersions(entries, known)
-	const accepted = Array.filter(entries, entry => !superseded(entry, newest))
+	const accepted = Array.filter(entries, entry => !isSuperseded(entry, newest))
 	const replaced = Array.filter(
 		Boolean.match(Record.isEmptyRecord(Record.filter(newest, (latest, name) => known[name] !== latest)), {
 			onFalse: () => Array.fromIterable(HashMap.values(current)),
 			onTrue: () => []
 		}),
-		entry => superseded(entry, newest)
+		entry => isSuperseded(entry, newest)
 	)
 	return {
 		accepted,
@@ -180,7 +176,6 @@ export function reconcileReleases(
 	}
 }
 
-// The app a service belongs to: "@deslop/stash-server", "@deslop/stash-client" and "@deslop/stash-ios" are all "stash".
 export function appName(service: string) {
 	return pipe(service, String.replace(/^@deslop\//u, ''), String.replace(/-(?:server|client|ios)$/u, ''))
 }
@@ -303,7 +298,6 @@ export function filterEntries(entries: Entry[], query: Query, signal: Entry['sig
 // OTLP timestamps are nanoseconds since the epoch, so they compare exactly as BigInts.
 const byTime = Order.mapInput(Order.BigInt, (time: string) => BigInt(time))
 
-// Entries and traces ordered by when they started, earliest first.
 const byStart = Order.mapInput(byTime, (entry: {time: string}) => entry.time)
 
 export function orderEntries<A extends {durationMs: number; time: string}>(entries: A[], sort: Query['sort']) {
@@ -421,7 +415,6 @@ function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
 	)
 }
 
-// A kept trace as the operation it ran, and the app, side (server, web or iOS) and release that started it.
 type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
 
 function spanAttributes(entry: Entry) {
@@ -513,7 +506,7 @@ function traced(records: readonly Entry[], now: number) {
 	)
 }
 
-// One app's operations, each from one side: how often, how long they typically take and how often they failed, with the slowest `keep` traces; failures lead, then the busiest.
+// Failures lead, then the busiest.
 function operationsOf(group: readonly Traced[], keep: number) {
 	return Array.sort(
 		Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
@@ -562,7 +555,7 @@ function operationsOf(group: readonly Traced[], keep: number) {
 	)
 }
 
-// Every kept trace grouped by the app that started it and its operation, with the release each side runs; apps with failures lead, then the busiest.
+// Apps with failures lead, then the busiest.
 export function overview(entries: readonly Entry[], keep: number, now: number) {
 	return {
 		apps: Array.map(

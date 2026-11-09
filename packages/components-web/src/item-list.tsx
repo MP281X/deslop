@@ -3,7 +3,6 @@ import {Array} from 'effect'
 import {Skeleton} from '#components/ui/skeleton.tsx'
 import {cn} from '#lib/utils.ts'
 
-// The one-line rows a list will hold while its data loads, shaped like them: a mark when the real rows lead with one.
 export function ItemListSkeleton(props: {
 	label: string
 	media?: boolean

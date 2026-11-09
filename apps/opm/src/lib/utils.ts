@@ -21,16 +21,12 @@ const SERVER = 'https://opm.mp281x.xyz'
 
 export const primary = hues.ivory
 
-// Auth
-
 export const session = MobileSession.make('opm', SERVER, keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
 	protocol: MobileRuntime.layerSignedIn('@deslop/opm', session.bearer)(SERVER)
 }) {}
-
-// Chapters
 
 const chaptersFile = new File(Paths.document, 'chapters.json')
 
@@ -62,8 +58,6 @@ export const chaptersAtom = Atom.keepAlive(
 	})
 )
 
-// Reading
-
 // A chapter the list still lacks ten seconds after the reader opened it is out of reach, such as offline.
 export const unreachableAtom = Atom.family((_key: string) => Atom.make(Effect.as(Effect.sleep('10 seconds'), true)))
 
@@ -84,8 +78,6 @@ export const readAtom = Atom.keepAlive(
 		{concurrent: true}
 	)
 )
-
-// Notifications
 
 Notifications.setNotificationHandler({
 	handleNotification: () =>
@@ -122,8 +114,6 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 		Effect.ignore({log: 'Warn', message: 'Notifications are not set up on this iPhone'})
 	)
 )
-
-// Diagnostics
 
 const crashFile = new File(Paths.document, 'crash.txt')
 
@@ -164,7 +154,6 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 	)
 )
 
-// The chapter of the notification the user tapped, also when it launched the app.
 export const openedAtom = Atom.keepAlive(
 	Atom.make(get => {
 		const subscription = Notifications.addNotificationResponseReceivedListener(response =>

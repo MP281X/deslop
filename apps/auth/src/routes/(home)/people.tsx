@@ -45,7 +45,6 @@ function Identity(props: {person: Person}) {
 	)
 }
 
-// The row's own line, then its failed answer or removal beneath it.
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
 		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
@@ -58,7 +57,6 @@ function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Per
 	)
 }
 
-// Someone asking for access leads the list, with the answer on the row.
 // judge-ignore no-repeated-text-action -- apps/auth/AGENTS.md requires Allow and Decline on each access-request row.
 function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
@@ -88,7 +86,6 @@ function AskingRow(props: {person: Person}) {
 	)
 }
 
-// An admin is marked as one; a member shows since when, and right-click or long-press removes them after a confirmation.
 function MemberRow(props: {person: Person}) {
 	const [removal, remove] = useAtom(removeAtom(props.person.id))
 	const [confirm, setConfirm] = useState(false)
@@ -152,7 +149,6 @@ function MemberRow(props: {person: Person}) {
 	)
 }
 
-// One list: whoever is asking for access first, then everyone with it.
 function Directory() {
 	const people = Array.sort(
 		useAtomSuspense(peopleAtom).value,
@@ -190,7 +186,6 @@ function Directory() {
 	)
 }
 
-// Admins manage people here; anyone else who opens it goes back to their sign-ins.
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (

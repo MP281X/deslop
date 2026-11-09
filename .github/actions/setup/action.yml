@@ -24,7 +24,7 @@ runs:
         cache-save: ${{ github.ref == 'refs/heads/main' }}
         run-install: true
 
-    # After the install, which recreates node_modules. Each job restores its own newest results and saves the next once it succeeds; entries are immutable, so the key rolls with each run.
+    # After the install, which recreates node_modules, each job restores its own newest entries and saves the next once it succeeds, so the key rolls with each run.
     - name: Restore the task cache
       if: inputs.tasks == 'true'
       uses: actions/cache@v6
@@ -39,7 +39,7 @@ runs:
       shell: bash
       run: npm install --global --silent eas-cli@latest
 
-    # CocoaPods and the Hermes tarball download with curl to files: a reset or a stalled transfer retries instead of failing the build or hanging for minutes. After setup-vp, whose installer streams into bash, where a retry would append a second script.
+    # CocoaPods and the Hermes tarball download with curl to files, so stalled transfers retry; this comes after setup-vp, whose installer streams into bash where a retry would append a second script.
     - name: Retry stalled downloads
       if: inputs.ios == 'true'
       shell: bash

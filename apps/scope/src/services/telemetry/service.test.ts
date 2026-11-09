@@ -31,7 +31,6 @@ const TRACE_ID = '1234567890abcdef1234567890abcdef'
 
 const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
 
-// One span of `@deslop/stash-server` from a release, or a local build when the version is empty.
 function release(version: string, id: string) {
 	return TracesRequest.make({
 		resourceSpans: [
@@ -159,7 +158,6 @@ it.layer(platform)(test => {
 					assert.strictEqual(trace.logs[0]?.time, '99999999999999999999')
 				})
 			)
-			// The immediately previous release stored only the client's clock, without receipt timestamps.
 			for (const file of yield* fs.readDirectory(directory)) {
 				yield* pipe(
 					fs.readFileString(`${directory}/${file}`),
@@ -249,7 +247,6 @@ const query = Query.make({
 	traceId: ''
 })
 
-// The first letter of each kept trace of that service, which names it.
 const kept = Effect.fnUntraced(function* (telemetry: Telemetry['Service']) {
 	return Array.sort(
 		Array.map(
@@ -272,7 +269,6 @@ it.layer(platform)(test => {
 					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
 					yield* telemetry.ingestTraces(release('0.1.999', 'a'))
 					yield* telemetry.ingestTraces(release('', 'b'))
-					// A tab still on the release before sends after the server moved on: it never shows.
 					yield* telemetry.ingestTraces(release('0.1.998', 'c'))
 					assert.deepStrictEqual(yield* kept(telemetry), ['a', 'b'])
 					// Parts compare as numbers: 0.1.1000 is newer than 0.1.999, whose trace goes; the local build's stays.
@@ -743,7 +739,6 @@ it.layer(layer)(test => {
 								}
 							]
 						},
-						// The app's web client starts its own traces; they list under the same app as its server's.
 						{
 							resource: {
 								attributes: [

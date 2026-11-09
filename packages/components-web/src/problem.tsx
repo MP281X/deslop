@@ -45,7 +45,7 @@ const ageAtom = Atom.family((identity: number | string) =>
 	)
 )
 
-// One problem belongs beside the affected content. The popup works with hover, keyboard and touch.
+// The popup works with hover, keyboard and touch.
 export function Problem(props: {
 	className?: string
 	label: string

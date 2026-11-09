@@ -114,7 +114,6 @@ private struct SaveView: View {
     .background(Theme.background)
     .contentShape(Rectangle())
     .animation(.snappy, value: phase)
-    // One haptic as the outcome lands, on the same frame as its symbol.
     .sensoryFeedback(trigger: phase) { _, next in
       switch next {
       case .saved: .success
@@ -263,7 +262,6 @@ private struct Upload {
       kSecAttrAccessGroup as String: keychainGroup]
   }
 
-  // The app's session on the Stash server, which the app saved after signing in.
   private func sessionId() throws -> String {
     var query = keychainQuery
     query[kSecReturnData as String] = true

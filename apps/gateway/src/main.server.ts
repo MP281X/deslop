@@ -33,7 +33,6 @@ CliRuntime.runApp({
 			HttpHandlers,
 			AiHttpHandlers,
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-			// The instructions name each connected server by the first sentence of its own, read when the gateway starts.
 			Layer.unwrap(
 				Effect.gen(function* () {
 					const now = yield* Clock.currentTimeMillis

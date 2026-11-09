@@ -22,7 +22,6 @@ function iterates(node: ESTree.Node) {
 	)
 }
 
-// Where a registration repeats: inside a loop of its own function, or in a per-element callback.
 function repetition(node: ESTree.Node): Option.Option<'callback' | 'loop'> {
 	if (Predicate.isNullish(node.parent)) return Option.none()
 	if (Array.contains(LOOPS, node.parent.type)) return Option.some('loop')

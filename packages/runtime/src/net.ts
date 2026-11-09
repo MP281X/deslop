@@ -33,13 +33,11 @@ const BLOCKED = Array.map(
 	source => Result.getOrThrow(IpNetwork.fromString(source))
 )
 
-// A private IPv4 or a unique-local IPv6 address, the ranges only one family has.
-function isHome(ip: NetAddress.IpAddress) {
+function isPrivateAddress(ip: NetAddress.IpAddress) {
 	if (NetAddress.isIpv4Address(ip)) return NetAddress.isPrivate(ip)
 	return NetAddress.isUniqueLocal(ip)
 }
 
-// An address the internet routes to, unlike the ranges a network keeps for itself.
 export function isPublicIp(ip: NetAddress.IpAddress) {
 	return (
 		!NetAddress.isUnspecified(ip) &&
@@ -47,7 +45,7 @@ export function isPublicIp(ip: NetAddress.IpAddress) {
 		!NetAddress.isLinkLocal(ip) &&
 		!NetAddress.isMulticast(ip) &&
 		!(NetAddress.isIpv4Address(ip) && NetAddress.isBroadcast(ip)) &&
-		!isHome(ip) &&
+		!isPrivateAddress(ip) &&
 		!Array.some(BLOCKED, network => IpNetwork.contains(network, ip))
 	)
 }

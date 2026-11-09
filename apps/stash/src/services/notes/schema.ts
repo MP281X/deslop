@@ -15,11 +15,9 @@ export const Tag = pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schem
 export type Source = typeof Source.Type
 export const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
 
-// What the list filters by, in menu order.
 export type Kind = typeof Kind.Type
 export const Kind = Schema.Literals(['tiktok', 'x', 'youtube', 'web', 'note', 'file'])
 
-// The kinds whose app has a logo.
 export type Brand = typeof Brand.Type
 export const Brand = Kind.pick(['tiktok', 'x', 'youtube'])
 
@@ -29,7 +27,6 @@ export const ImageType = Schema.Literals(['image/jpeg', 'image/png', 'image/webp
 export type Image = typeof Image.Type
 export const Image = Schema.Struct({bytes: Schema.Uint8Array, type: ImageType})
 
-// An image the AI sees, labeled with what it is: the preview, one of the post's images or a video still at its time.
 export type Picture = typeof Picture.Type
 export const Picture = Schema.Struct({...Image.fields, label: Schema.String})
 
@@ -109,8 +106,6 @@ export const Organization = Schema.Struct({
 	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(90))),
 	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(1000)))
 })
-
-// What the sources answer.
 
 export type FxArticle = typeof FxArticle.Type
 export const FxArticle = Schema.Struct({

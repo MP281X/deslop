@@ -27,9 +27,7 @@ export const Chapter = Schema.Struct({
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
 	revisedAt: Schema.optionalKey(Schema.Finite),
 	series: Series,
-	// The cubari reader link the pages came from; a revision of the same chapter replaces it.
 	source: Schema.String,
-	// The chapter's name where the source has one, such as "Fury"; empty otherwise.
 	title: Schema.String
 })
 
@@ -76,7 +74,6 @@ export const CubariSeries = Schema.Struct({
 	)
 })
 
-// One Reddit post that links a chapter's translations, best first.
 export type Post = typeof Post.Type
 export const Post = Schema.Struct({
 	links: Schema.NonEmptyArray(Schema.String),

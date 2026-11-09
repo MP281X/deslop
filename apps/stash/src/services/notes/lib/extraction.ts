@@ -57,7 +57,6 @@ const CHALLENGE =
 
 const UNREACHABLE = 'The link could not be loaded.'
 
-// The proxy every request of a Sources method exits through.
 const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
 	defaultValue: Option.none
 })
@@ -366,7 +365,6 @@ function readable(found: {body: string; type: string; url: URL}) {
 	return Option.liftPredicate(pageText(found.body, found.url), extraction => String.isNonEmpty(extraction.text))
 }
 
-// A blocked page, a bot check, a page without text or a page that is mostly script and renders its text in the browser goes to the reader.
 const readPage = Effect.fnUntraced(function* (url: URL) {
 	const loaded = yield* pipe(
 		follow(url, page, 0),
@@ -408,7 +406,6 @@ function readLinked(url: URL) {
 	)
 }
 
-// The saved post with its conversation and linked sources.
 const xThread = Effect.fnUntraced(function* (url: URL) {
 	const id = yield* pipe(
 		String.match(/\/status\/(\d+)/u)(url.pathname),

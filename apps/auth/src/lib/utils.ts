@@ -35,7 +35,6 @@ import type {SignedInApp} from '#services/tokens/schema.ts'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
-// What the server hands the page: a sign-in to wait on, a code to approve, the app to return to, a failed GitHub sign-in or another app's Sign out.
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
 	code: Schema.optionalKey(Schema.String),
@@ -84,7 +83,6 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 						Missing: {}
 					}
 				},
-				// The last answer stays as one line under an empty code, ready for the next sign-in.
 				Typing: {fields: {answered: Schema.optionalKey(Schema.Struct(Answered)), typed: Schema.String}}
 			}
 		}),
@@ -190,7 +188,6 @@ export const removeAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('auth.remove', {id})))
 )
 
-// Once answered, the page continues where the answer is delivered: the app's callback, or this browser's session.
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(
@@ -233,7 +230,6 @@ export const catalogAtom = Atom.keepAlive(
 	)
 )
 
-// The rows the signed-in list's skeleton draws while it loads.
 export const CLIENT_ROWS = 9
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
@@ -322,7 +318,6 @@ const refused = Effect.fnUntraced(function* (response: HttpClientResponse.HttpCl
 	})
 })
 
-// The browser asks for any passkey of this site, whichever device or key holds it, then lands signed in where the page asked.
 export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 	pipe(
 		Effect.gen(function* () {
@@ -368,7 +363,6 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 	)
 )
 
-// The passkeys this account can sign in with, live, for the account menu.
 export const passkeysAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
@@ -430,7 +424,6 @@ export const signInAtom = Atom.fn(() =>
 	})
 )
 
-// The page an app sent this browser to sign in from, carried through either way of signing in.
 export const codeSignInAtom = Atom.fn((next: Search['next']) =>
 	Effect.try({
 		catch: cause => AuthError.make({cause, message: 'Cannot start the sign-in'}),
@@ -444,7 +437,6 @@ export const codeSignInAtom = Atom.fn((next: Search['next']) =>
 	})
 )
 
-// Ends the session every app shares, then returns to the app that asked, keeping the reason it could not.
 function signOut(next: Search['next']) {
 	return pipe(
 		HttpClient.HttpClient.use(client => HttpClient.filterStatusOk(client).post('/auth/sign-out')),

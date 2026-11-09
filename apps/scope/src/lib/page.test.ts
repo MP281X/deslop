@@ -42,7 +42,6 @@ const trace = traceView(
 	ID
 )
 
-// The page with one deploy operation, routed as the browser routes it.
 function render(
 	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
 	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>

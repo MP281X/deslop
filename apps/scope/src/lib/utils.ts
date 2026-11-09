@@ -33,7 +33,6 @@ export type NavigationEvent =
 	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: string; traceId: string}}
 	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
 
-// The view lives in the URL, so a reload, the browser's Back or a shared link reopens the same operation, trace and span.
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
 	app: Schema.optionalKey(Schema.String),
@@ -44,7 +43,6 @@ export const Search = Schema.Struct({
 	trace: Schema.optionalKey(Schema.String)
 })
 
-// The pane and selection a URL names.
 export function navigationOf(search: Search) {
 	return {
 		path: search.pane ?? 'Operations',
@@ -62,7 +60,6 @@ export function navigationOf(search: Search) {
 	}
 }
 
-// Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
 export function nextSearch(search: Search, event: NavigationEvent) {
 	function select(selection: Selection, pane: Pane) {
 		return {
@@ -83,7 +80,6 @@ export function nextSearch(search: Search, event: NavigationEvent) {
 	) satisfies Search
 }
 
-// Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
 		withoutDeniedData(
@@ -109,7 +105,6 @@ export const traceAtom = Atom.family((id: string) =>
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))
 
-// "now", "40s", "12m", "3h" or "2d" since a nanosecond timestamp.
 export function ageOf(time: string, now: number) {
 	return Option.match(Number.parse(pipe(time, String.slice(0, -6))), {
 		onNone: () => '—',
@@ -124,7 +119,6 @@ export function ageOf(time: string, now: number) {
 	})
 }
 
-// "412 ms", "2.8 s", "28 s", "48 min" or "1.2 h": short enough to keep to its column.
 export function durationOf(ms: number) {
 	// Each bound sits where rounding would reach the next unit, so 59.6 s reads 1 min, not 60 s.
 	if (ms < 999.5) return `${Number.round(ms, 0)} ms`

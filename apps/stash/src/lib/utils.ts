@@ -31,7 +31,7 @@ export const primary = hues.amber
 
 const listFile = new File(Paths.document, 'list.json')
 
-// The share extension sends the same session, from the Keychain item both processes share.
+// The share extension shares this Keychain item.
 export const session = MobileSession.make('Stash', SERVER, {
 	clear: Effect.try({
 		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
@@ -58,8 +58,6 @@ function withClient<A, E>(get: Atom.FnContext, effect: Effect.Effect<A, E, RpcCl
 	return Effect.flatMap(get.result(RpcClient.runtime), context => Effect.provideContext(effect, context))
 }
 
-// Kinds
-
 export const kinds = {
 	file: {label: 'Photos and Videos', symbol: 'photo'},
 	note: {label: 'Notes', symbol: 'text.alignleft'},
@@ -78,7 +76,6 @@ export function kindOf(note: NoteItem) {
 	return 'web'
 }
 
-// The site a web page is on, such as github.com.
 export function siteOf(note: NoteItem) {
 	return pipe(
 		Option.fromNullishOr(note.url),
@@ -88,17 +85,13 @@ export function siteOf(note: NoteItem) {
 	)
 }
 
-// The kind of a note whose app has a logo.
 export function brandOf(note: NoteItem) {
 	return Option.liftPredicate(kindOf(note), Schema.is(Brand))
 }
 
-// The app that opens the note's link, when it is not the browser.
 export function appOf(note: NoteItem) {
 	return Option.map(brandOf(note), brand => kinds[brand].label)
 }
-
-// Notes
 
 const newestFirst = Order.flip(Order.mapInput(Order.Number, (item: NoteItem) => item.createdAt))
 
@@ -129,7 +122,6 @@ export const noteAtom = Atom.family((item: NoteItem) =>
 
 export const queryAtom = Atom.make('')
 
-// Debounce typing once, then the server keeps the same full-text query current as notes change.
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
 	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
@@ -147,7 +139,7 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 
 const images = new Directory(Paths.cache, 'downloads')
 
-// SwiftUI images read local files, so each note's preview is downloaded once into the cache; a failed download tries again on the next return to the app.
+// SwiftUI images read local files, so each preview is downloaded into the cache.
 export const imageAtom = Atom.family((id: Note['id']) =>
 	session.runtime.atom(get => {
 		get(MobileRuntime.activationsAtom)
@@ -224,8 +216,6 @@ export const writeAtom = Atom.keepAlive(
 	)
 )
 
-// Clipboard
-
 const clipboardFile = new File(Paths.document, 'clipboard.txt')
 
 type Offer = {count: string; kind: ClipboardKind}
@@ -281,13 +271,12 @@ const saveLink = Effect.fnUntraced(function* (count: string) {
 	yield* capture(link)
 })
 
-// A copy is offered once: the change count it was answered at is kept, so the next return offers only a newer copy.
+// A copy is offered once: the count it was answered at is kept, so only a newer copy returns.
 export const clipboardAtom = AtomMachine.bind(
 	Atom.runtime(get =>
 		Layer.succeed(
 			ClipboardOffer,
 			ClipboardOffer.of({
-				// The sheet closes at once; the note arrives in the list when the server has it.
 				answer: Effect.fnUntraced(function* (answer: Offer & {save: boolean}) {
 					yield* pipe(
 						Effect.try({
@@ -323,7 +312,6 @@ export const clipboardAtom = AtomMachine.bind(
 	)
 ).make(clipboardMachine)
 
-// Each return from the background looks at the clipboard again.
 export const clipboardReturnsAtom = Atom.make(get => {
 	get(MobileRuntime.activationsAtom)
 	get.set(clipboardAtom.send, {_tag: 'Returned'})

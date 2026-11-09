@@ -101,7 +101,6 @@ const fixture = Effect.gen(function* () {
 		Effect.sync(() => AtomRegistry.make()),
 		value => Effect.sync(() => value.dispose())
 	)
-	// One range's reader, mounted for the test, with every value it publishes.
 	const watch = Effect.fnUntraced(function* (minutes: 1 | 60) {
 		const updates = yield* Queue.unbounded<Atom.Type<ReturnType<typeof metricsAtom>>>()
 		yield* Effect.acquireRelease(

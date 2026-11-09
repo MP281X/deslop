@@ -17,14 +17,13 @@ import {activationsAtom, extra} from '#mobile/client.ts'
 type SessionJson = typeof SessionJson.Type
 const SessionJson = Schema.fromJsonString(SessionHandle)
 
-// Where an app keeps its session as JSON; an empty text means signed out.
+// An empty text means signed out.
 export type Storage = {
 	clear: Effect.Effect<void, AuthError>
 	read: Effect.Effect<string, AuthError>
 	write: (text: string) => Effect.Effect<void, AuthError>
 }
 
-// One iOS app's session on its own server, which holds the sign-in Auth issued and acts with it.
 export function make(name: string, server: string, storage: Storage) {
 	const runtime = Atom.runtime(FetchHttpClient.layer)
 
@@ -130,7 +129,6 @@ export function make(name: string, server: string, storage: Storage) {
 						src: 'read'
 					}
 				},
-				// A check keeps the app on screen while it reads the Keychain again.
 				SignedIn: {
 					initial: {target: 'SignedIn.Idle'},
 					on: {Changed: {target: 'SignedIn.Checking'}, SignOut: {target: 'SigningOut'}},
@@ -160,7 +158,6 @@ export function make(name: string, server: string, storage: Storage) {
 	)
 	const signedIn = AtomMachine.matches(machine, 'SignedIn')
 
-	// Who is signed in, as the web app bar shows it: the app's server answers for its own session.
 	const account = runtime.atom(get => {
 		get(signedIn)
 		get(activationsAtom)

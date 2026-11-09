@@ -19,7 +19,6 @@ import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterPath} from '#services/chapters/schema.ts'
 import type {Series} from '#services/chapters/schema.ts'
 
-// A pushed chapter reads its data inside native navigation.
 function Destination(props: {number: number; series: Series; start?: number}) {
 	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(chaptersAtom)
@@ -30,7 +29,6 @@ function Destination(props: {number: number; series: Series; start?: number}) {
 	return <ReaderRoute chapters={shown.success} number={props.number} series={props.series} start={props.start} />
 }
 
-// The app opens on the list; a tapped notification opens its chapter.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(diagnosticsAtom)

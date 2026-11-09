@@ -503,7 +503,6 @@ it.layer(NodeServices.layer)('Notes', test => {
 	test.effect(
 		'joins a share to a note saved under an older form of its link',
 		Effect.fnUntraced(function* () {
-			// The first save stands in for the release that stored youtu.be links as shared.
 			const older = yield* Ref.make(Option.some('https://youtu.be/USeyDcWyVCc'))
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),

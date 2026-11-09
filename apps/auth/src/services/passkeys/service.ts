@@ -56,8 +56,7 @@ const owned = Effect.fnUntraced(function* (via: SessionVia) {
 	}
 })
 
-// The challenge a response answers, read from its client data so it can be taken from the issued ones.
-const challengeOf = Effect.fnUntraced(function* (clientDataJSON: string) {
+const challengeFromClientData = Effect.fnUntraced(function* (clientDataJSON: string) {
 	return (yield* Schema.decodeEffect(Schema.fromJsonString(ClientData))(
 		yield* Effect.fromResult(Base64Url.decodeString(clientDataJSON))
 	)).challenge
@@ -76,7 +75,6 @@ function registrationKey(owner: CredentialOwner) {
 export class Passkeys extends Context.Service<
 	Passkeys,
 	{
-		// `from` names where it was added; `via` is how the adding browser signed in.
 		readonly add: (
 			response: Registration,
 			session: {from: Origin; owner: CredentialOwner; via: SessionVia}
@@ -187,7 +185,6 @@ export class Passkeys extends Context.Service<
 							})
 						)
 					),
-				// Any kind: a phone's or laptop's built-in one, a password manager's, or a security key. Each holds the account, so signing in needs no name.
 				registration: Effect.fn('Passkeys.registration')(function* (owner: CredentialOwner, via: SessionVia) {
 					yield* owned(via)
 					const user = owner.user
@@ -241,7 +238,7 @@ export class Passkeys extends Context.Service<
 					Effect.withSpan('Passkeys.request')
 				),
 				signIn: Effect.fn('Passkeys.signIn')(function* (response: Assertion) {
-					const challenge = yield* challengeOf(response.response.clientDataJSON)
+					const challenge = yield* challengeFromClientData(response.response.clientDataJSON)
 					const now = yield* Clock.currentTimeMillis
 					const taken = yield* Ref.modify(signingIn, issued => [
 						HashMap.has(live(issued, now), challenge),
