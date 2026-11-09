@@ -37,7 +37,6 @@ export type NavigationEvent =
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
-	app: Schema.optionalKey(Schema.String),
 	operation: Schema.optionalKey(Schema.String),
 	pane: Schema.optionalKey(Pane),
 	side: Schema.optionalKey(Operation.fields.runtime),
@@ -54,7 +53,7 @@ export function navigationOf(search: Search) {
 				Option.fromUndefinedOr(search.side),
 				runtime =>
 					({
-						operation: {app: search.app ?? '', name: search.operation ?? '', runtime},
+						operation: {app: search.source ?? '', name: search.operation ?? '', runtime},
 						...Option.match(Option.fromUndefinedOr(search.trace), {onNone: () => ({}), onSome: traceId => ({traceId})}),
 						...Option.match(Option.fromUndefinedOr(search.span), {onNone: () => ({}), onSome: spanId => ({spanId})})
 					}) satisfies Selection
@@ -66,37 +65,26 @@ export function navigationOf(search: Search) {
 // The URL a selection produces in the given pane; a pick keeps the pane it was made in.
 function select(selection: Selection, pane?: Pane) {
 	return {
-		app: selection.operation.app,
 		operation: selection.operation.name,
-		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
 		side: selection.operation.runtime,
+		source: selection.operation.app,
+		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
 		...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})}),
 		...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})})
 	} satisfies Search
 }
 
-// The chosen app is a view rather than a selection: choosing a row keeps it.
-function sourceOf(search: Search, next: Search) {
-	return Option.match(Option.fromUndefinedOr(search.source), {
-		onNone: () => next,
-		onSome: source => ({...next, source})
-	})
-}
-
-// The bar chooses one app at a time and keeps a selection it contains; choosing the chosen app again changes nothing.
+// The bar chooses one app at a time and clears the selection it no longer contains; choosing the chosen app again changes nothing.
 function sourceSearch(search: Search, app: string) {
 	if (search.source === app) return search
-	if (search.app !== app) {
-		return {...Struct.omit(search, ['app', 'operation', 'pane', 'side', 'span', 'trace']), source: app}
-	}
-	return {...search, source: app}
+	return {...Struct.omit(search, ['operation', 'pane', 'side', 'span', 'trace']), source: app}
 }
 
 export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
-	if (event._tag === 'Operation') return sourceOf(search, select({operation: event.operation}, 'Traces'))
-	if (event._tag === 'Trace') return sourceOf(search, select(event.selection, 'Trace'))
-	if (event._tag === 'Span') return sourceOf(search, select(event.selection, 'Span'))
+	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
+	if (event._tag === 'Trace') return select(event.selection, 'Trace')
+	if (event._tag === 'Span') return select(event.selection, 'Span')
 	return Option.match(
 		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
 		{onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})}

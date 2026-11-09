@@ -453,7 +453,7 @@ it.effect(
 		const html = yield* render(
 			AsyncResult.success(trace),
 			undefined,
-			`/?source=deploy&app=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
+			`/?source=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
 		)
 		assert.include(html, 'aria-label="Span details"')
 		assert.include(html, 'deploy · at 0 ms')
