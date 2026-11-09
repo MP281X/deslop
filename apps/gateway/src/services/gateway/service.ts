@@ -15,7 +15,6 @@ import {
 	Schema,
 	Semaphore,
 	String,
-	Tuple,
 	Struct,
 	pipe
 } from 'effect'
@@ -43,7 +42,7 @@ import {
 } from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
-import {compact} from '#services/gateway/lib/utils.ts'
+import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 
 type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
@@ -102,17 +101,10 @@ export class Gateway extends Context.Service<
 				yield* registry.notifications['notifications/tools/list_changed']({})
 			})
 			const prune = Effect.gen(function* () {
-				const connected = HashSet.fromIterable(
-					Array.map(
-						Array.filter(yield* connections.definitions, server => server.link._tag !== 'Disconnected'),
-						server => Tuple.make(server.id, server.generation)
-					)
-				)
-				for (const entry of Record.toEntries(yield* Ref.get(installed))) {
-					if (!HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))) {
-						yield* remove(entry[0])
-					}
-				}
+				yield* Effect.forEach(prunedTools(yield* connections.definitions, yield* Ref.get(installed)), remove, {
+					concurrency: 1,
+					discard: true
+				})
 			})
 			const updateVisible = Effect.fnUntraced(function* (server: Connection, names: HashSet.HashSet<string>) {
 				const changed = yield* Ref.modify(visible, current => {

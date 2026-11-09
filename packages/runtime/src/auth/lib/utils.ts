@@ -7,6 +7,7 @@ import {
 	Function,
 	MutableRef,
 	Option,
+	Order,
 	Predicate,
 	Schema,
 	Stream,
@@ -35,6 +36,16 @@ export const APPS_PATH = '/api/apps'
 
 // Every host's browser session: on an app, the id of the session its server keeps.
 export const SESSION_COOKIE = '__Host-session'
+
+export function matchingSessions<A extends {key: string; value: {user: User; expiresAt: number}}>(
+	saved: Option.Option<A>[],
+	userId: string
+) {
+	return Array.sort(
+		Array.filter(Array.getSomes(saved), session => session.value.user.id === userId),
+		Order.mapInput(Order.flip(Order.Number), (session: A) => session.value.expiresAt)
+	)
+}
 
 // RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
 export function bearerOf(headers: Headers.Headers) {

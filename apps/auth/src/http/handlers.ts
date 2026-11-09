@@ -559,7 +559,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 					const collected = yield* signIns.collect(params.request, request.headers)
 					const cookie = `${REQUEST_COOKIE}${typedCode(params.request)}`
 					return Match.valueTags(collected, {
-						// A command's answer goes to its device code, never to a browser.
+						// Denied and Granted answer a command through its device code, so a browser that lands here gets an error.
 						Denied: () => HttpServerResponse.text('This sign-in belongs to a command', {status: 400}),
 						Granted: () => HttpServerResponse.text('This sign-in belongs to a command', {status: 400}),
 						Redirect: found =>

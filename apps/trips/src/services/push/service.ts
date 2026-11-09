@@ -31,12 +31,10 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {
-	ACTIVITY_LIFETIME,
 	ACTIVITY_NAME,
 	activeWindow,
 	activityProps,
 	alertsFor,
-	DAY,
 	HOUR,
 	MINUTE,
 	startAlert,
@@ -45,6 +43,7 @@ import {
 import type {Alert} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
+import {alertKey, announced, holds, showPlan, expiredActivities, retainPushState} from '#services/push/lib/utils.ts'
 import type {ActivityClaim, ActivityRecord, ActivityToken, Bundle, Device} from '#services/push/schema.ts'
 import {ActivityPropsJson, ApnsReason, JwtPart, PushError, PushState} from '#services/push/schema.ts'
 
@@ -110,23 +109,6 @@ function sameActivity(record: ActivityRecord, other: ActivityRecord) {
 		record.claimedAt === other.claimedAt &&
 		record.token === other.token &&
 		record.channel === other.channel
-	)
-}
-
-// A leg stays taken by an activity that lives to the window's end and did not end before it opened, or a claim not yet given up.
-function holds(record: ActivityRecord, window: Span, now: number) {
-	if (record.claimedAt + ACTIVITY_LIFETIME < window.end) return false
-	if (record.endedAt !== undefined) return record.endedAt >= window.start
-	return record.token !== undefined || record.channel !== undefined || now - record.claimedAt < 2 * MINUTE
-}
-
-// A gate, platform or belt that changes back is news again; a delay step or a one-off is announced once.
-function announced(sent: PushState['sent'][string], key: string) {
-	const category = Array.headNonEmpty(String.split(':')(key))
-	if (category === key || category === 'delay') return Array.contains(sent, key)
-	return Option.exists(
-		Array.findLast(sent, found => String.startsWith(`${category}:`)(found)),
-		found => found === key
 	)
 }
 
@@ -502,14 +484,12 @@ export class Push extends Context.Service<
 					props: activityProps(journey, all, now),
 					window
 				} satisfies Showing
-				function mine(record: ActivityRecord) {
-					return record.bookingId === journey.id && record.leg === window.leg
-				}
 				yield* Effect.forEach(
 					Array.filter(
 						(yield* SubscriptionRef.get(state)).activities,
 						record =>
-							mine(record) &&
+							record.bookingId === journey.id &&
+							record.leg === window.leg &&
 							record.endedAt === undefined &&
 							(record.token !== undefined || record.channel !== undefined) &&
 							!holds(record, window, now)
@@ -517,27 +497,12 @@ export class Push extends Context.Service<
 					record => finish(record, now),
 					{concurrency: 1, discard: true}
 				)
-				const current = yield* SubscriptionRef.get(state)
-				const starters = Array.filter(current.devices, device => device.kind === 'start')
-				const records = Array.filter(current.activities, item => mine(item) && holds(item, window, now))
-				const startersByBundle = Array.groupBy(starters, device => device.bundle)
-				const recordsByBundle = Array.groupBy(records, item => item.bundle)
 				yield* Effect.forEach(
-					Array.dedupe([...Array.map(starters, device => device.bundle), ...Array.map(records, item => item.bundle)]),
-					bundle =>
-						Option.match(Array.head(recordsByBundle[bundle] ?? []), {
-							onNone: () =>
-								Option.match(Array.head(startersByBundle[bundle] ?? []), {
-									onNone: () => Effect.void,
-									onSome: target => launch(target, showing)
-								}),
-							onSome: record => {
-								if (record.endedAt !== undefined || (record.token === undefined && record.channel === undefined)) {
-									return Effect.void
-								}
-								return refresh(record, showing.props, now)
-							}
-						}),
+					showPlan(yield* SubscriptionRef.get(state), journey, window, now),
+					action => {
+						if (action._tag === 'launch') return launch(action.target, showing)
+						return refresh(action.target, showing.props, now)
+					},
 					{concurrency: 1, discard: true}
 				)
 			})
@@ -566,7 +531,7 @@ export class Push extends Context.Service<
 			const announce = Effect.fnUntraced(function* (booking: Booking, now: number) {
 				const current = yield* SubscriptionRef.get(state)
 				const sent = Option.getOrElse(Record.get(current.sent, booking.id), () => Array.empty<string>())
-				const fresh = Array.filter(alertsFor(booking, now), alert => !announced(sent, alert.key))
+				const fresh = Array.filter(alertsFor(booking, now), alert => !announced(sent, alert))
 				if (Array.isReadonlyArrayEmpty(fresh)) return
 				const devices = Array.filter(current.devices, device => device.kind === 'alert')
 				// An alert every device refused for now, such as a throttled one, is sent again next round.
@@ -583,7 +548,7 @@ export class Push extends Context.Service<
 				if (Array.isReadonlyArrayEmpty(done)) return
 				yield* save(latest => ({
 					...latest,
-					sent: Record.set(latest.sent, booking.id, [...sent, ...Array.map(done, alert => alert.key)])
+					sent: Record.set(latest.sent, booking.id, [...sent, ...Array.map(done, alertKey)])
 				}))
 			})
 
@@ -593,7 +558,6 @@ export class Push extends Context.Service<
 					if (Option.isNone(signer)) return
 					const now = yield* Clock.currentTimeMillis
 					const all = yield* bookings.list
-					const byId = Array.groupBy(all, booking => booking.id)
 					yield* Effect.forEach(
 						all,
 						booking =>
@@ -612,23 +576,11 @@ export class Push extends Context.Service<
 					)
 					// Activities whose leg is over, whose booking is gone or which ended long ago.
 					yield* Effect.forEach(
-						Array.filter((yield* SubscriptionRef.get(state)).activities, record => {
-							if (record.endedAt !== undefined) return false
-							return !Option.exists(Array.head(byId[record.bookingId] ?? []), found =>
-								Option.exists(activeWindow(found, now), window => window.leg === record.leg)
-							)
-						}),
+						expiredActivities(yield* SubscriptionRef.get(state), all, now),
 						record => finish(record, now),
 						{concurrency: 1, discard: true}
 					)
-					yield* save(current => ({
-						...current,
-						activities: Array.filter(
-							current.activities,
-							record => record.endedAt === undefined || now - record.endedAt < 2 * DAY
-						),
-						sent: Record.filter(current.sent, (_keys, id) => Record.has(byId, id))
-					}))
+					yield* save(current => retainPushState(current, all, now))
 				}),
 				Semaphore.withPermit(ticking),
 				Effect.ignore({log: 'Warn', message: 'The push round failed'})

@@ -93,6 +93,9 @@ const make = Effect.gen(function* () {
 						client.get('https://models.dev/api.json'),
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(ModelsCatalog)),
 						Effect.timeout('10 seconds'),
+						Effect.tapError(error =>
+							Effect.logWarning('The pricing catalog could not be refreshed; keeping cached pricing', error)
+						),
 						Effect.orElseSucceed(() => pricing.catalog)
 					)
 				}),
@@ -227,6 +230,17 @@ const make = Effect.gen(function* () {
 			yield* pipe(
 				Effect.gen(function* () {
 					const state = {current: entry, pending: ''}
+					const updateUsage = Effect.fnUntraced(function* (text: string) {
+						state.current = yield* pipe(
+							Effect.fromResult(readUsage(text, state.current)),
+							Effect.catch(error =>
+								Effect.as(
+									Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
+									state.current
+								)
+							)
+						)
+					})
 					const sse = String.includes('text/event-stream')(response.headers['content-type'] ?? '')
 					const decoder = new TextDecoder()
 					yield* pipe(
@@ -236,26 +250,25 @@ const make = Effect.gen(function* () {
 						}),
 						Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
 						Stream.runForEach(chunk =>
-							Effect.sync(() => {
+							Effect.gen(function* () {
 								state.pending += decoder.decode(chunk, {stream: true})
 								if (!sse) return
 								const lines = String.split(/\r?\n/u)(state.pending)
 								state.pending = Option.getOrElse(Array.last(lines), () => '')
 								for (const line of Array.dropRight(lines, 1)) {
 									if (String.startsWith('data:')(line)) {
-										state.current = readUsage(String.trim(String.slice(5)(line)), state.current)
+										yield* updateUsage(String.trim(String.slice(5)(line)))
 									}
 								}
 							})
 						),
 						Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
 					)
-					state.current = readUsage(
+					yield* updateUsage(
 						Boolean.match(sse, {
 							onFalse: () => state.pending,
 							onTrue: () => String.replace(/^data:\s*/u, '')(state.pending)
-						}),
-						state.current
+						})
 					)
 					yield* saveUsage(id, state.current)
 				}),

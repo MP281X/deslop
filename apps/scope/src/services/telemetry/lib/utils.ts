@@ -3,6 +3,7 @@ import {
 	Boolean,
 	Duration,
 	Function,
+	HashMap,
 	HashSet,
 	Number,
 	Option,
@@ -48,8 +49,7 @@ export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset
 // A log's own time, else when the exporter saw it; OTLP sends 0 for a time it does not know.
 export function logTime(log: {observedTimeUnixNano?: string; timeUnixNano?: string}, now: string) {
 	return pipe(
-		Array.filter([log.timeUnixNano, log.observedTimeUnixNano], time => time !== undefined && time !== '0'),
-		Array.head,
+		Array.findFirst([log.timeUnixNano, log.observedTimeUnixNano], time => time !== undefined && time !== '0'),
 		Option.flatMap(Option.fromUndefinedOr),
 		Option.getOrElse(() => now)
 	)
@@ -115,12 +115,69 @@ export function newestVersions(entries: readonly Entry[], known: Record<string, 
 }
 
 // An entry an older release of its service sent; one that names no release is never older.
-export function superseded(entry: Entry, newest: Record<string, string>) {
+function superseded(entry: Entry, newest: Record<string, string>) {
 	const version = releaseOf(entry)
 	return (
 		version !== '' &&
 		Option.exists(Record.get(newest, entry.service), latest => Order.isLessThan(byRelease)(version, latest))
 	)
+}
+
+export function retentionOf(
+	current: HashMap.HashMap<string, Entry>,
+	newest: Record<string, string>,
+	receivedAt: number,
+	retentionMs: number
+) {
+	const now = BigInt(receivedAt) * 1_000_000n
+	const cutoff = now - BigInt(retentionMs) * 1_000_000n
+	const entries = Array.fromIterable(HashMap.values(current))
+	const repaired = Array.map(
+		Array.filter(entries, entry => entry.receivedAt === undefined && BigInt(entry.time) > now),
+		entry => ({...entry, receivedAt})
+	)
+	const expired = Array.filter(entries, entry => {
+		const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
+			onNone: () => BigInt(entry.time),
+			onSome: time => BigInt(time) * 1_000_000n
+		})
+		return received < cutoff || superseded(entry, newest)
+	})
+	return {
+		expired,
+		next: Array.reduce(
+			expired,
+			Array.reduce(repaired, current, (all, entry) => HashMap.set(all, entry.id, entry)),
+			(all, entry) => HashMap.remove(all, entry.id)
+		),
+		repaired
+	}
+}
+
+export function reconcileReleases(
+	current: HashMap.HashMap<string, Entry>,
+	entries: Entry[],
+	known: Record<string, string>
+) {
+	const newest = newestVersions(entries, known)
+	const accepted = Array.filter(entries, entry => !superseded(entry, newest))
+	const replaced = Array.filter(
+		Boolean.match(Record.isEmptyRecord(Record.filter(newest, (latest, name) => known[name] !== latest)), {
+			onFalse: () => Array.fromIterable(HashMap.values(current)),
+			onTrue: () => []
+		}),
+		entry => superseded(entry, newest)
+	)
+	return {
+		accepted,
+		newest,
+		next: Array.reduce(
+			accepted,
+			Array.reduce(replaced, current, (all, entry) => HashMap.remove(all, entry.id)),
+			(all, entry) => HashMap.set(all, entry.id, entry)
+		),
+		replaced
+	}
 }
 
 // The app a service belongs to: "@deslop/stash-server", "@deslop/stash-client" and "@deslop/stash-ios" are all "stash".
@@ -150,10 +207,7 @@ function runsOf(entries: Entry[]) {
 }
 
 function latestEntry(entries: Array.NonEmptyReadonlyArray<Entry>, run: (entry: Entry) => bigint) {
-	return Array.reduce(entries, Array.headNonEmpty(entries), (current, entry) => {
-		if (run(entry) > run(current)) return entry
-		return current
-	})
+	return Array.max(entries, Order.mapInput(Order.BigInt, run))
 }
 
 export function currentEntries(entries: Entry[]) {
@@ -272,10 +326,7 @@ export function serviceStatuses(entries: Entry[]) {
 			const current = Array.filter(group, entry => runOf(entry) === run)
 			return {
 				entries: current.length,
-				lastEventAt: Array.reduce(current, '0', (time, entry) => {
-					if (BigInt(entry.time) > BigInt(time)) return entry.time
-					return time
-				}),
+				lastEventAt: Array.max(['0', ...Array.map(current, entry => entry.time)], byTime),
 				name,
 				runStartedAt: `${run}`,
 				runtime: runtime(latest.resource),
@@ -361,14 +412,12 @@ export function traceView(entries: Entry[], id: string) {
 // The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
 function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
 	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
-	return Array.headNonEmpty(
-		Array.sort(
-			Array.match(
-				Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
-				{onEmpty: () => spans, onNonEmpty: Function.identity}
-			),
-			byStart
-		)
+	return Array.min(
+		Array.match(
+			Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
+			{onEmpty: () => spans, onNonEmpty: Function.identity}
+		),
+		byStart
 	)
 }
 
@@ -409,11 +458,9 @@ function failureCount(group: readonly Traced[]) {
 function brokeAt(spans: readonly Entry[]) {
 	const failed = Array.filter(spans, span => span.status === 2)
 	const parents = HashSet.fromIterable(Array.map(failed, parentId))
-	return Array.head(
-		Array.sort(
-			Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
-			byStart
-		)
+	return Array.match(
+		Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
+		{onEmpty: () => Option.none(), onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))}
 	)
 }
 

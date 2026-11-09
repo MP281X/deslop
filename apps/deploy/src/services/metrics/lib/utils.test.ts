@@ -233,7 +233,7 @@ it('excludes file cache and reclaimable slab from cgroup memory', () => {
 			'usage_usec 5000000\nuser_usec 4000000\n',
 			'anon 3000000\nfile 9000000\nkernel 2000000\nshmem 1000000\nslab_reclaimable 1500000\n'
 		),
-		{memory: 4_500_000, usage: 5_000_000}
+		Option.some({memory: 4_500_000, usage: 5_000_000})
 	)
 })
 

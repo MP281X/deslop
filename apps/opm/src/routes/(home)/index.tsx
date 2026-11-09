@@ -1,6 +1,6 @@
-import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, Result, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -33,10 +33,11 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {useState} from 'react'
+import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
+import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
@@ -50,6 +51,7 @@ import {
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
@@ -208,31 +210,93 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	)
 }
 
+function Chapters(props: {onOpen: (number: number, page?: number) => void; searched: string; series: Series}) {
+	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(chaptersAtom)
+	const result = shownOf(loaded)
+	if (Result.isFailure(result)) {
+		return <FailureContent cause={result.failure} name="Chapters" onRetry={refresh} />
+	}
+	const chapters = Array.filter(result.success, chapter => chapter.series === props.series)
+	const needle = String.toLowerCase(String.trim(props.searched))
+	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
+	const reached = pipe(
+		Array.filter(chapters, chapter => (chapter.reading?.at ?? 0) > 0),
+		Array.map(chapter => chapter.number),
+		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
+	)
+	const resume = resumingOf(chapters)
+	// A query matches a chapter's number from its start, or any part of its name.
+	return Array.match(
+		pipe(
+			Array.sort(chapters, Order.flip(byNumber)),
+			Array.filter(
+				chapter =>
+					String.startsWith(needle)(`${chapter.number}`) || String.includes(needle)(String.toLowerCase(chapter.title))
+			)
+		),
+		{
+			onEmpty: () =>
+				Boolean.match(String.isEmpty(needle), {
+					onFalse: () => (
+						<Empty>
+							<EmptyHeader>
+								<EmptyMedia systemImage="magnifyingglass" />
+								<EmptyTitle>No chapters match</EmptyTitle>
+								<EmptyDescription>Try another number or title.</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
+					),
+					onTrue: () => (
+						<Empty>
+							<EmptyHeader>
+								<EmptyMedia systemImage="book.closed" />
+								<EmptyTitle>No chapters yet</EmptyTitle>
+								<EmptyDescription>New chapters appear here when they are posted.</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
+					)
+				}),
+			onNonEmpty: matches => (
+				<ItemGroup>
+					{/* A search is about the query, so the resume row waits until the full list is back. */}
+					{Boolean.match(String.isEmpty(needle), {
+						onFalse: () => undefined,
+						onTrue: () =>
+							Option.match(resume, {
+								onNone: () => undefined,
+								onSome: found => (
+									<Section>
+										<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
+									</Section>
+								)
+							})
+					})}
+					<Section>
+						{Array.map(matches, chapter => (
+							<ChapterRow
+								key={chapter.number}
+								chapter={chapter}
+								fresh={Option.exists(reached, number => chapter.number > number)}
+								onOpen={props.onOpen}
+							/>
+						))}
+					</Section>
+				</ItemGroup>
+			)
+		}
+	)
+}
+
 export function ChaptersRoute(props: {
-	chapters: ChapterList
 	onOpen: (number: number, page?: number) => void
 	onSeries: (series: Series) => void
 	series: Series
 }) {
 	const query = useNativeState('')
+	const loaded = useAtomValue(chaptersAtom)
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
-	const needle = String.toLowerCase(String.trim(searched))
-	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
-	const reached = pipe(
-		Array.filter(props.chapters, chapter => (chapter.reading?.at ?? 0) > 0),
-		Array.map(chapter => chapter.number),
-		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
-	)
-	const resume = resumingOf(props.chapters)
-	// A query matches a chapter's number from its start, or any part of its name.
-	const shown = pipe(
-		Array.sort(props.chapters, Order.flip(byNumber)),
-		Array.filter(
-			chapter =>
-				String.startsWith(needle)(`${chapter.number}`) || String.includes(needle)(String.toLowerCase(chapter.title))
-		)
-	)
 	return (
 		<Toolbar modifiers={[navigationTitle(SERIES_NAMES[props.series]), navigationBarTitleDisplayMode('large')]}>
 			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
@@ -242,60 +306,13 @@ export function ChaptersRoute(props: {
 					bottomBarSearch
 				]}
 			>
-				{Array.match(shown, {
-					onEmpty: () =>
-						Boolean.match(String.isEmpty(needle), {
-							onFalse: () => (
-								<Empty>
-									<EmptyHeader>
-										<EmptyMedia systemImage="magnifyingglass" />
-										<EmptyTitle>No chapters match</EmptyTitle>
-										<EmptyDescription>Try another number or title.</EmptyDescription>
-									</EmptyHeader>
-								</Empty>
-							),
-							onTrue: () => (
-								<Empty>
-									<EmptyHeader>
-										<EmptyMedia systemImage="book.closed" />
-										<EmptyTitle>No chapters yet</EmptyTitle>
-										<EmptyDescription>New chapters appear here when they are posted.</EmptyDescription>
-									</EmptyHeader>
-								</Empty>
-							)
-						}),
-					onNonEmpty: chapters => (
-						<ItemGroup>
-							{/* A search is about the query, so the resume row waits until the full list is back. */}
-							{Boolean.match(String.isEmpty(needle), {
-								onFalse: () => undefined,
-								onTrue: () =>
-									Option.match(resume, {
-										onNone: () => undefined,
-										onSome: found => (
-											<Section>
-												<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
-											</Section>
-										)
-									})
-							})}
-							<Section>
-								{Array.map(chapters, chapter => (
-									<ChapterRow
-										key={chapter.number}
-										chapter={chapter}
-										fresh={Option.exists(reached, number => chapter.number > number)}
-										onOpen={props.onOpen}
-									/>
-								))}
-							</Section>
-						</ItemGroup>
-					)
-				})}
+				<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
+					<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
+				</Suspense>
 			</Toolbar>
 			<Toolbar.Content>
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
-				{AsyncResult.isFailure(useAtomValue(chaptersAtom)) && (
+				{AsyncResult.isFailure(loaded) && Result.isSuccess(shownOf(loaded)) && (
 					<ToolbarItem placement="topBarLeading">
 						<Problem label="Chapters not updating" onRetry={refresh} />
 					</ToolbarItem>

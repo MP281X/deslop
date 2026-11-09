@@ -1,4 +1,4 @@
-import {Array, Effect, Option, Record, Result, Schema, String, pipe} from 'effect'
+import {Array, Effect, Option, Order, Record, Result, Schema, String, Struct, pipe} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 import {Cookies, Headers, Url} from 'effect/http'
@@ -7,7 +7,14 @@ import {NetAddress} from 'effect/net'
 import {AuthError, ClientInfo} from '@deslop/runtime/auth/schema'
 import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
 
-import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin} from '#services/tokens/schema.ts'
+import type {
+	AuthorizeClient,
+	AuthorizeParams,
+	CredentialOwner,
+	Origin,
+	Grants,
+	SignedInApp
+} from '#services/tokens/schema.ts'
 import {ClientRequest} from '#services/tokens/schema.ts'
 
 // The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
@@ -24,6 +31,41 @@ export function browserToken(headers: Headers.Headers) {
 
 export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
 	return left.user.id === right.user.id && left.incarnation === right.incarnation
+}
+
+export function live(grants: Grants, now: number) {
+	const current = Record.filter(grants, grant => grant.credential.expiresAt > now)
+	return Record.filter(
+		current,
+		grant =>
+			grant.parent === undefined ||
+			Option.exists(Record.get(current, grant.parent), parent => parent.credential._tag === 'Browser')
+	)
+}
+
+export function signedInApps(grants: Grants, now: number, owner: CredentialOwner) {
+	return pipe(
+		Record.toEntries(live(grants, now)),
+		Array.filter(entry => sameOwner(entry[1], owner)),
+		Array.map(
+			entry =>
+				({
+					client: entry[1].client,
+					createdAt: entry[1].createdAt,
+					device: entry[1].device,
+					expiresAt: entry[1].credential.expiresAt,
+					family: entry[0],
+					kind: entry[1].credential._tag,
+					lastActive: entry[1].lastActive,
+					...Struct.pick(entry[1], ['parent']),
+					...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
+						onNone: () => ({}),
+						onSome: address => ({address})
+					})
+				}) satisfies SignedInApp
+		),
+		Array.sort(Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive)))
+	)
 }
 
 // The address as its own family, an IPv4-mapped IPv6 address read as that IPv4 address.

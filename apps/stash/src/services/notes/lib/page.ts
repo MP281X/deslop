@@ -22,7 +22,7 @@ const BLOCK_TAGS = [
 	'table'
 ]
 
-const BY_SIZE = Order.mapInput(Order.flip(Order.Number), (icon: {href: string; size: number}) => icon.size)
+const BY_SIZE = Order.mapInput(Order.Number, (icon: {href: string; size: number}) => icon.size)
 
 function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
 	const text = String.trim(input.inner)
@@ -145,8 +145,8 @@ export function pageText(html: string, url: URL) {
 							() => undefined
 						)
 					),
-					Array.sort(BY_SIZE),
-					Array.head,
+					Option.liftPredicate(Array.isArrayNonEmpty),
+					Option.map(Array.max(BY_SIZE)),
 					Option.map(icon => icon.href)
 				)
 			),

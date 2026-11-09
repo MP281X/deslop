@@ -6,6 +6,7 @@ import {
 	DateTime,
 	Effect,
 	Layer,
+	Match,
 	Number,
 	Option,
 	Record,
@@ -22,7 +23,7 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {checkEvery, HOUR, isDue, MINUTE} from '#services/bookings/lib/utils.ts'
-import type {Booking, Flight, Train} from '#services/bookings/schema.ts'
+import type {Booking, Flight, Train, FlightTracking, TrainTracking} from '#services/bookings/schema.ts'
 import {BookingsError, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {flightTracking, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
@@ -155,22 +156,24 @@ export class Tracker extends Context.Service<
 			const observe = Effect.fnUntraced(function* (booking: Booking, now: number) {
 				if (booking._tag === 'stay') return
 				yield* Ref.update(attempts, Record.set(booking.id, now))
-				if (booking._tag === 'flight') {
-					return yield* Option.match(yield* flight(booking, now), {
-						onNone: () => Effect.void,
-						onSome: live =>
-							bookings.update(booking.id, item => {
-								if (item !== booking) return item
-								return {...booking, live}
-							})
-					})
-				}
-				return yield* Option.match(yield* train(booking, now), {
+				const updated: Option.Option<Booking> = yield* pipe(
+					Match.value(booking),
+					Match.tag('flight', item =>
+						Effect.map(flight(item, now), found =>
+							Option.map<FlightTracking, Booking>(found, live => ({...item, live}))
+						)
+					),
+					Match.tag('train', item =>
+						Effect.map(train(item, now), found => Option.map<TrainTracking, Booking>(found, live => ({...item, live})))
+					),
+					Match.exhaustive
+				)
+				return yield* Option.match(updated, {
 					onNone: () => Effect.void,
-					onSome: live =>
+					onSome: next =>
 						bookings.update(booking.id, item => {
 							if (item !== booking) return item
-							return {...booking, live}
+							return next
 						})
 				})
 			})

@@ -11,17 +11,22 @@ const TIERS = [
 	{every: 3_600_000, keep: 604_800_000}
 ] as const
 
-export function counters(stat: string, network: string, disk: string, uptime: string, time: number) {
-	const cpu = pipe(
-		stat,
-		String.split('\n'),
-		Array.head,
-		Option.getOrElse(() => ''),
-		String.trim,
-		String.split(/\s+/u)
+function cpuFields(fields: readonly string[]) {
+	return Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
+		Array.take(Array.drop(fields, 1), 8)
 	)
-	const values = Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
-		Array.take(Array.drop(cpu, 1), 8)
+}
+
+export function counters(stat: string, network: string, disk: string, uptime: string, time: number) {
+	const values = cpuFields(
+		pipe(
+			stat,
+			String.split('\n'),
+			Array.head,
+			Option.getOrElse(() => ''),
+			String.trim,
+			String.split(/\s+/u)
+		)
 	)
 	const interfaces = pipe(
 		network,
@@ -42,9 +47,7 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 			Array.filter(line => Option.isSome(String.match(/^cpu[0-9]+\s/u)(line))),
 			Array.map(line => {
 				const fields = String.split(String.trim(line), /\s+/u)
-				const counts = Schema.decodeSync(Schema.Array(Schema.FiniteFromString).check(Schema.isMinLength(5)))(
-					Array.take(Array.drop(fields, 1), 8)
-				)
+				const counts = cpuFields(fields)
 				return {id: fields[0], idle: (counts[3] ?? 0) + (counts[4] ?? 0), total: Number.sumAll(counts)}
 			})
 		),
@@ -339,21 +342,26 @@ export function appCgroup(path: string, siblings: readonly string[]) {
 }
 
 function statField(text: string, name: string) {
-	return Option.getOrElse(
-		Option.flatMap(String.match(new RegExp(`^${name} ([0-9]+)$`, 'mu'))(text), match => Number.parse(match[1] ?? '')),
-		() => 0
+	return Option.flatMap(String.match(new RegExp(`^${name} ([0-9]+)$`, 'mu'))(text), match =>
+		Number.parse(match[1] ?? '')
 	)
 }
 
 // A cgroup's CPU time so far in microseconds, and the memory the machine can't reclaim from it: anonymous, shared and unreclaimable kernel memory.
 export function cgroupUsage(cpuStat: string, memoryStat: string) {
-	return {
-		memory:
-			statField(memoryStat, 'anon') +
-			statField(memoryStat, 'shmem') +
-			Number.max(0, statField(memoryStat, 'kernel') - statField(memoryStat, 'slab_reclaimable')),
-		usage: statField(cpuStat, 'usage_usec')
-	}
+	return Option.map(
+		Option.all({
+			anon: statField(memoryStat, 'anon'),
+			kernel: statField(memoryStat, 'kernel'),
+			reclaimable: statField(memoryStat, 'slab_reclaimable'),
+			shmem: statField(memoryStat, 'shmem'),
+			usage: statField(cpuStat, 'usage_usec')
+		}),
+		fields => ({
+			memory: fields.anon + fields.shmem + Number.max(0, fields.kernel - fields.reclaimable),
+			usage: fields.usage
+		})
+	)
 }
 
 export type AppReading = {

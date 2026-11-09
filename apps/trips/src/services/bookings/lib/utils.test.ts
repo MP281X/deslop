@@ -265,7 +265,7 @@ it('shows a cancelled train without a countdown and announces it', () => {
 		['cancelled', 'Cancelled', undefined, 'exclamationmark.triangle.fill', 'bad']
 	)
 	assert.deepStrictEqual(
-		Array.map(alertsFor(cancelled, DEPARTS - HOUR), alert => alert.key),
+		Array.map(alertsFor(cancelled, DEPARTS - HOUR), alert => alert.category),
 		['cancelled']
 	)
 })
@@ -282,15 +282,18 @@ it('announces gate changes, delays in steps and cancellations once each', () => 
 		}
 	}
 	assert.deepStrictEqual(
-		Array.map(alertsFor(late, DEPARTS - HOUR), alert => [alert.key, alert.body]),
+		Array.map(alertsFor(late, DEPARTS - HOUR), alert => [alert.category, alert.value, alert.body]),
 		[
-			['gate:B12', 'Changed from A3'],
-			['delay:15', 'Now departs 17:00']
+			['gate', 'B12', 'Changed from A3'],
+			['delay', '15', 'Now departs 17:00']
 		]
 	)
 	assert.deepStrictEqual(
-		Array.map(alertsFor({...late, status: 'cancelled'}, DEPARTS - HOUR), alert => alert.key),
-		['cancelled', 'gate:B12']
+		Array.map(alertsFor({...late, status: 'cancelled'}, DEPARTS - HOUR), alert => [alert.category, alert.value]),
+		[
+			['cancelled', undefined],
+			['gate', 'B12']
+		]
 	)
 	assert.deepStrictEqual(alertsFor(flight, DEPARTS - 40 * HOUR), [])
 })

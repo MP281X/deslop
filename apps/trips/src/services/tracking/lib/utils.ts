@@ -30,8 +30,17 @@ export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
 				{onNone: () => Result.failVoid, onSome: gap => Result.succeed({candidate, gap})}
 			)
 		),
-		Array.sort(Order.mapInput(Order.Number, (match: {gap: number}) => match.gap)),
-		Array.head,
+		matches => {
+			if (Array.isReadonlyArrayNonEmpty(matches)) {
+				return Option.some(
+					Array.min(
+						matches,
+						Order.mapInput(Order.Number, (match: {gap: number}) => match.gap)
+					)
+				)
+			}
+			return Option.none()
+		},
 		Option.map(match => match.candidate)
 	)
 }

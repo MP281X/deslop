@@ -30,32 +30,20 @@ import {AiGateway} from '@deslop/runtime/ai'
 import {ToolPath} from '@deslop/runtime/server'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
-import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
-import type {Comment, Still} from '#services/media/schema.ts'
+import {
+	captionTracks,
+	captionTranscript,
+	clock,
+	isBlocked,
+	speechOnly,
+	mediaMarkdown
+} from '#services/media/lib/utils.ts'
+import type {Still} from '#services/media/schema.ts'
 import {CreatorCaptions, MediaError, Metadata, Probe} from '#services/media/schema.ts'
 
 const MAX_WHISPER_SECONDS = 2 * 60 * 60
 
 const YOUTUBE = /^https?:\/\/(?:[\w-]+\.)?(?:youtube\.com|youtu\.be)\//u
-
-// A pinned comment first, then the most liked.
-const byStanding = Order.combine(
-	Order.mapInput(Order.flip(Order.Boolean), (comment: Comment) => comment.is_pinned ?? false),
-	Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)
-)
-
-function commentLine(comment: Comment) {
-	return Array.join(
-		[
-			`**${comment.author ?? 'Someone'}**`,
-			Boolean.match(comment.author_is_uploader ?? false, {onFalse: () => '', onTrue: () => ' (the uploader)'}),
-			Boolean.match(comment.is_pinned ?? false, {onFalse: () => '', onTrue: () => ', pinned'}),
-			Option.match(Option.fromNullishOr(comment.like_count), {onNone: () => '', onSome: likes => `, ${likes} likes`}),
-			`: ${String.trim(comment.text)}`
-		],
-		''
-	)
-}
 
 export class Media extends Context.Service<
 	Media,
@@ -503,48 +491,8 @@ export class Media extends Context.Service<
 							if (fallback !== undefined && fallback !== link) return inspect(fallback)
 							return Effect.fail(error)
 						})
-						const details = pipe(
-							[
-								Option.fromNullishOr(found.media.uploader),
-								Option.map(
-									Option.fromNullishOr(found.media.upload_date),
-									String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')
-								),
-								Option.map(Option.fromNullishOr(found.media.duration), clock)
-							],
-							Array.getSomes,
-							Array.filter(String.isNonEmpty)
-						)
-						const info = Array.join(
-							Array.getSomes([
-								Option.some(`# ${found.media.title}\n\n${Array.join(details, ', ')}\n${link}`),
-								pipe(
-									Option.fromNullishOr(found.media.description),
-									Option.filter(String.isNonEmpty),
-									Option.map(description => `## Description\n\n${description}`)
-								),
-								Option.map(
-									Option.fromNullishOr(found.media.chapters),
-									chapters =>
-										`## Chapters\n\n${Array.join(
-											Array.map(chapters, chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`),
-											'\n'
-										)}`
-								),
-								pipe(
-									Option.fromNullishOr(found.media.comments),
-									Option.map(Array.filter(comment => (comment.parent ?? 'root') === 'root')),
-									Option.filter(comments => Array.isReadonlyArrayNonEmpty(comments)),
-									Option.map(
-										comments =>
-											`## Top comments\n\n${Array.join(Array.map(Array.take(Array.sort(comments, byStanding), 40), commentLine), '\n\n')}`
-									)
-								)
-							]),
-							'\n\n'
-						)
 						return {
-							info,
+							info: mediaMarkdown(found.media, link),
 							transcript: withProcesses(Effect.scoped(transcribe(userId, found.url, found.media, fallback)))
 						}
 					},

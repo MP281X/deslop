@@ -6,8 +6,9 @@ import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureScreen, LoadingScreen, SessionGate, shownOf} from '@deslop/components-mobile/screens'
+import {BlankScreen, FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
+import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {updateAtom} from '@deslop/runtime/mobile'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
@@ -18,12 +19,21 @@ import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterPath} from '#services/chapters/schema.ts'
 import type {Series} from '#services/chapters/schema.ts'
 
+// A pushed chapter reads its data inside native navigation.
+function Destination(props: {number: number; series: Series; start?: number}) {
+	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(chaptersAtom)
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name="Chapters" onRetry={refresh} />
+	}
+	return <ReaderRoute chapters={shown.success} number={props.number} series={props.series} start={props.start} />
+}
+
 // The app opens on the list; a tapped notification opens its chapter.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(diagnosticsAtom)
-	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
-	const refreshChapters = useAtomRefresh(chaptersAtom)
 	const opened = useAtomValue(openedAtom)
 	const [series, setSeries] = useState<Series>(() =>
 		Option.match(opened, {onNone: () => 'manga', onSome: chapter => chapter.series})
@@ -46,28 +56,18 @@ function AppRoutes() {
 		setResumePage(page)
 		setPath([keyOf({number, series})])
 	}
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureScreen cause={shown.failure} name="Chapters" onRetry={refreshChapters} />
-	}
-	const chapters = shown.success
-
 	return (
 		<Host style={{flex: 1}}>
 			<NavigationStack path={path} onPathChange={setPath} modifiers={[tint(colors.foreground)]}>
-				<ChaptersRoute
-					key={series}
-					chapters={Array.filter(chapters, chapter => chapter.series === series)}
-					onOpen={open}
-					series={series}
-					onSeries={setSeries}
-				/>
+				<ChaptersRoute key={series} onOpen={open} series={series} onSeries={setSeries} />
 				{Array.map(path, value =>
 					Option.match(Schema.decodeUnknownOption(ChapterPath)(value), {
 						onNone: () => undefined,
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
-								<ReaderRoute key={value} chapters={chapters} number={target[2]} series={target[0]} start={resumePage} />
+								<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
+									<Destination number={target[2]} series={target[0]} start={resumePage} />
+								</Suspense>
 							</NavigationDestination>
 						)
 					})
@@ -82,9 +82,7 @@ export function RootRoute() {
 	return (
 		<Suspense fallback={<BlankScreen />}>
 			<SessionGate logo={icon} session={session.machine} tint={primary}>
-				<Suspense fallback={<LoadingScreen />}>
-					<AppRoutes />
-				</Suspense>
+				<AppRoutes />
 			</SessionGate>
 		</Suspense>
 	)

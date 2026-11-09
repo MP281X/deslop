@@ -19,7 +19,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
-import type {ComponentProps, ReactNode} from 'react'
+import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
 import {isDenied} from '@deslop/runtime/auth/utils'
@@ -27,7 +27,6 @@ import type {Session} from '@deslop/runtime/mobile/session'
 
 import {colors, radius, space, text} from './theme.ts'
 
-import {ItemGroupSkeleton} from '#components/ui/skeleton.tsx'
 import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
@@ -38,15 +37,6 @@ export function BlankScreen() {
 	return (
 		<Host style={{flex: 1}}>
 			<Rectangle modifiers={[foregroundStyle(colors.background)]} />
-		</Host>
-	)
-}
-
-// Data on its way, shaped like the list it will fill.
-export function LoadingScreen() {
-	return (
-		<Host style={{flex: 1}}>
-			<ItemGroupSkeleton rows={10} />
 		</Host>
 	)
 }
@@ -97,15 +87,6 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 				/>
 			</VStack>
 		</VStack>
-	)
-}
-
-// A root owns its Host; a reader already inside native navigation uses FailureContent.
-export function FailureScreen(props: ComponentProps<typeof FailureContent>) {
-	return (
-		<Host style={{flex: 1}}>
-			<FailureContent {...props} />
-		</Host>
 	)
 }
 

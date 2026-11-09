@@ -41,9 +41,8 @@ import {
 	commentFor,
 	findNotes,
 	hasVideo,
-	normalizeTags,
-	plainText,
-	reuseTags,
+	reconcileOrganization,
+	reconcileDefinitions,
 	sourceFor,
 	tagCounts
 } from '#services/notes/lib/utils.ts'
@@ -137,17 +136,9 @@ export class Notes extends Context.Service<
 
 				const define = Effect.fnUntraced(function* (entries: TagDefinition[]) {
 					if (Array.isReadonlyArrayEmpty(entries)) return
-					const next = {
-						...Record.fromEntries(
-							Array.map(
-								Array.dedupeWith(entries, (left, right) => left.tag === right.tag),
-								entry => [entry.tag, entry.definition] as const
-							)
-						),
-						...(yield* Ref.get(definitions))
-					}
-					yield* store.saveDefinitions(Array.map(Record.toEntries(next), pair => ({definition: pair[1], tag: pair[0]})))
-					yield* Ref.set(definitions, next)
+					const next = reconcileDefinitions(entries, yield* Ref.get(definitions))
+					yield* store.saveDefinitions(next.rows)
+					yield* Ref.set(definitions, next.definitions)
 				}, Effect.uninterruptible)
 
 				function transact<A>(change: (current: Note[]) => [A, Note[]]) {
@@ -204,23 +195,7 @@ export class Notes extends Context.Service<
 					const inUse = Array.map(entries, entry => entry.tag)
 					const organized = Result.map(
 						yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})),
-						organization => {
-							const tags = reuseTags(organization.tags, inUse)
-							return {
-								definitions: pipe(
-									organization.definitions,
-									Array.map(item =>
-										pipe(
-											Array.head(reuseTags(normalizeTags([item.tag]), inUse)),
-											Option.map(name => ({definition: plainText(item.definition), tag: name}))
-										)
-									),
-									Array.getSomes,
-									Array.filter(item => Array.contains(tags, item.tag) && !Record.has(known, item.tag))
-								),
-								organization: {...Struct.omit(organization, ['definitions']), tags}
-							}
-						}
+						organization => reconcileOrganization(organization, inUse, known)
 					)
 					yield* Result.match(organized, {onFailure: () => Effect.void, onSuccess: found => define(found.definitions)})
 					yield* updateNote(note.id, item =>

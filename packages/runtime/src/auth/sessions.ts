@@ -1,5 +1,4 @@
 import {
-	Array,
 	Clock,
 	Config,
 	Context,
@@ -8,7 +7,6 @@ import {
 	Layer,
 	MutableHashMap,
 	Option,
-	Order,
 	Redacted,
 	Schema,
 	Semaphore,
@@ -23,7 +21,7 @@ import {Cookies, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect
 import {Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import {REVOKE_PATH, SESSION_COOKIE, TOKEN_PATH, bearerOf, isJwt, rejected} from '#auth/lib/utils.ts'
+import {REVOKE_PATH, SESSION_COOKIE, TOKEN_PATH, bearerOf, isJwt, matchingSessions, rejected} from '#auth/lib/utils.ts'
 import type {CodeGrant} from '#auth/schema.ts'
 import {AccessClaims, AuthError, TokenResponse, User} from '#auth/schema.ts'
 
@@ -179,11 +177,7 @@ export class Sessions extends Context.Service<
 					key => Effect.map(store.get(key), session => Option.map(session, value => ({key, value}))),
 					{concurrency: 'unbounded'}
 				)
-				const candidates = Array.sort(
-					Array.filter(Array.getSomes(saved), session => session.value.user.id === userId),
-					Order.mapInput(Order.flip(Order.Number), (session: {key: string; value: Stored}) => session.value.expiresAt)
-				)
-				for (const session of candidates) {
+				for (const session of matchingSessions(saved, userId)) {
 					if (yield* fresh(session.value)) return session.value.access
 					const renewed = yield* Effect.result(
 						pipe(refreshed(session.key), rejected('AI access is temporarily unavailable'))

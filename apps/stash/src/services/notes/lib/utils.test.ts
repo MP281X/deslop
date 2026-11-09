@@ -8,7 +8,7 @@ import {
 	findNotes,
 	hasVideo,
 	normalizeTags,
-	reuseTags,
+	reconcileOrganization,
 	tagCounts
 } from '#services/notes/lib/utils.ts'
 import {Note} from '#services/notes/schema.ts'
@@ -43,6 +43,9 @@ it('maps every share of the same post to one canonical link', () => {
 			'no link'
 		]
 	)
+})
+
+it('keeps the words around a shared link as its comment', () => {
 	assert.strictEqual(commentFor('Try this  https://x.com/a/status/1 \n tonight'), 'Try this tonight')
 })
 
@@ -71,12 +74,21 @@ it('makes each tag one lowercase token', () => {
 	])
 })
 
+// The tags an organization keeps once tags already in use claim their variants.
+function organizedTags(tags: string[], inUse: string[]) {
+	return reconcileOrganization(
+		{body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''},
+		inUse,
+		{}
+	).organization.tags
+}
+
 it('takes a plural or separator variant of a tag in use as that tag, but keeps a narrower tag apart', () => {
 	assert.deepStrictEqual(
-		reuseTags(['databases', 'webdesign', 'load-testing', 'security'], ['database', 'web-design', 'testing']),
+		organizedTags(['databases', 'webdesign', 'load-testing', 'security'], ['database', 'web-design', 'testing']),
 		['database', 'web-design', 'load-testing', 'security']
 	)
-	assert.deepStrictEqual(reuseTags(['ios', 'c++', 'c#', 'aws', 'class'], ['io', 'c', 'aw', 'clas']), [
+	assert.deepStrictEqual(organizedTags(['ios', 'c++', 'c#', 'aws', 'class'], ['io', 'c', 'aw', 'clas']), [
 		'ios',
 		'c++',
 		'c#',
