@@ -37,7 +37,7 @@ const fixture = Effect.gen(function* () {
 	const handlers = RpcContracts.toLayer({
 		'ai.keys': () => Effect.never,
 		'ai.setKey': () => Effect.never,
-		'ai.usage': () => Effect.never,
+		'ai.usage': () => Stream.never,
 		'gateway.add': () => Effect.never,
 		'gateway.servers': () =>
 			Stream.unwrap(
@@ -47,7 +47,7 @@ const fixture = Effect.gen(function* () {
 					return pipe(Stream.fromQueue(answers), Stream.mapEffect(Function.identity))
 				})
 			),
-		'gateway.usage': () => Effect.never
+		'gateway.usage': () => Stream.never
 	})
 	const context = yield* Layer.build(
 		pipe(

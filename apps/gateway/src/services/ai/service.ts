@@ -1,3 +1,4 @@
+import type {Record} from 'effect'
 import {
 	Array,
 	Boolean,
@@ -16,6 +17,7 @@ import {
 	Semaphore,
 	Stream,
 	String,
+	SubscriptionRef,
 	pipe
 } from 'effect'
 
@@ -66,6 +68,8 @@ const make = Effect.gen(function* () {
 	const kv = yield* KeyValueStore.KeyValueStore
 	const keys = KeyValueStore.toSchemaStore(kv, Schema.Array(AiStoredKey))
 	const usage = KeyValueStore.toSchemaStore(kv, Schema.Array(AiUsageEntry))
+	// Each person's recorded calls wake only that person's open reader; reads coalesce, so one report goes out at most each second.
+	const usageChanged = yield* SubscriptionRef.make<Record<string, number>>({})
 	const auth = yield* Auth
 	const local = yield* localAuth
 	const client = yield* HttpClient.HttpClient
@@ -131,7 +135,26 @@ const make = Effect.gen(function* () {
 			}),
 			Semaphore.withPermit(lock)
 		)
+		yield* SubscriptionRef.update(usageChanged, versions => ({...versions, [id]: (versions[id] ?? 0) + 1}))
 	})
+	const usageReport = Effect.fnUntraced(function* (id: string, query: AiUsageQuery) {
+		const months = MutableList.make<string>()
+		const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(query.from), 'month')}
+		while (DateTime.toEpochMillis(cursor.date) < query.to) {
+			MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
+			cursor.date = DateTime.add(cursor.date, {months: 1})
+		}
+		const entries = yield* Effect.forEach(
+			MutableList.toArray(months),
+			month =>
+				Effect.map(
+					usage.get(`ai-usage/${id}/${month}`),
+					Option.getOrElse(() => [])
+				),
+			{concurrency: 1}
+		)
+		return report(Array.flatten(entries), query)
+	}, failed)
 	return {
 		keys: (id: string) =>
 			Effect.map(loadKeys(id), entries =>
@@ -312,29 +335,19 @@ const make = Effect.gen(function* () {
 				failed
 			)
 		}),
-		usage: Effect.fnUntraced(function* (id: string, query: AiUsageQuery) {
-			return yield* pipe(
-				Effect.gen(function* () {
-					const months = MutableList.make<string>()
-					const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(query.from), 'month')}
-					while (DateTime.toEpochMillis(cursor.date) < query.to) {
-						MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
-						cursor.date = DateTime.add(cursor.date, {months: 1})
-					}
-					const entries = yield* Effect.forEach(
-						MutableList.toArray(months),
-						month =>
-							Effect.map(
-								usage.get(`ai-usage/${id}/${month}`),
-								Option.getOrElse(() => [])
-							),
-						{concurrency: 1}
+		usage: (id: string, query: AiUsageQuery) =>
+			pipe(
+				SubscriptionRef.changes(usageChanged),
+				Stream.map(versions => versions[id] ?? 0),
+				Stream.changes,
+				Stream.buffer({capacity: 1, strategy: 'sliding'}),
+				Stream.flatMap(() =>
+					Stream.concat(
+						Stream.fromEffect(usageReport(id, query)),
+						Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
 					)
-					return report(Array.flatten(entries), query)
-				}),
-				failed
+				)
 			)
-		})
 	}
 })
 export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()(

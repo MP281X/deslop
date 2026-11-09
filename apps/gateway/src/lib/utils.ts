@@ -90,35 +90,41 @@ function periodRange(period: Period, now: number) {
 
 export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
 
-export const aiUsageAtom = Atom.family((period: Period) =>
-	pipe(
-		RpcClient.runtime.atom(
-			Effect.gen(function* () {
-				const range = periodRange(period, yield* Clock.currentTimeMillis)
+// A period's report now and again after each recorded call, reconnecting over a dropped socket.
+function usageAtom<A, E extends {_tag: string}>(
+	period: Period,
+	request: (range: ReturnType<typeof periodRange>) => Effect.Effect<Stream.Stream<A, E>, never, RpcClient>
+) {
+	return Atom.keepAlive(
+		RpcClient.runtime.atom(() =>
+			Stream.unwrap(
+				Effect.gen(function* () {
+					return WebRuntime.reconnecting(yield* request(periodRange(period, yield* Clock.currentTimeMillis)))
+				})
+			)
+		)
+	)
+}
 
-				return {
-					range,
-					report: yield* (yield* RpcClient)('ai.usage', {bucket: range.bucket, from: range.from, to: range.to})
-				}
-			})
-		),
-		Atom.withReactivity(['ai-usage'])
+export const aiUsageAtom = Atom.family((period: Period) =>
+	usageAtom(period, range =>
+		Effect.map(RpcClient, client =>
+			Stream.map(client('ai.usage', {bucket: range.bucket, from: range.from, to: range.to}), report => ({
+				range,
+				report
+			}))
+		)
 	)
 )
 
 export const mcpUsageAtom = Atom.family((period: Period) =>
-	pipe(
-		RpcClient.runtime.atom(
-			Effect.gen(function* () {
-				const range = periodRange(period, yield* Clock.currentTimeMillis)
-
-				return {
-					range,
-					report: yield* (yield* RpcClient)('gateway.usage', {bucket: range.bucket, from: range.from, to: range.to})
-				}
-			})
-		),
-		Atom.withReactivity(['mcp-usage'])
+	usageAtom(period, range =>
+		Effect.map(RpcClient, client =>
+			Stream.map(client('gateway.usage', {bucket: range.bucket, from: range.from, to: range.to}), report => ({
+				range,
+				report
+			}))
+		)
 	)
 )
 

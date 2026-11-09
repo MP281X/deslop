@@ -17,16 +17,12 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'ai.setKey': Effect.fnUntraced(function* (input) {
 				yield* ai.setKey((yield* CurrentUser).id, input.provider, input.secret)
 			}),
-			'ai.usage': Effect.fnUntraced(function* (input) {
-				return yield* ai.usage((yield* CurrentUser).id, input)
-			}),
+			'ai.usage': input => Stream.unwrap(Effect.map(CurrentUser, user => ai.usage(user.id, input))),
 			'gateway.add': Effect.fnUntraced(function* (input, options) {
 				return yield* connections.add(input.url, yield* CurrentUser, options.headers)
 			}),
 			'gateway.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch)),
-			'gateway.usage': Effect.fnUntraced(function* (input) {
-				return yield* connections.usage(input)
-			})
+			'gateway.usage': input => connections.usage(input)
 		})
 	})
 )

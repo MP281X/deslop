@@ -97,7 +97,7 @@ function Sparkline(props: {color: string; values: readonly number[]}) {
 		return `${x.toFixed(1)} ${y.toFixed(1)}`
 	})
 	return (
-		<svg aria-hidden className="h-3.5 w-16 shrink-0" fill="none" viewBox="0 0 64 14">
+		<svg aria-hidden className="h-3.5 w-16 shrink-0 max-sm:hidden" fill="none" viewBox="0 0 64 14">
 			<path
 				d={`M${Array.join(points, ' L')}`}
 				stroke={props.color}
@@ -128,7 +128,7 @@ function RowsSkeleton(props: {label: string; rows: number; tool?: boolean}) {
 					</ItemContent>
 					<ItemActions>
 						{props.tool === true && <Bone className="h-3.5 w-7" />}
-						<Bone className="h-3.5 w-16" />
+						<Bone className="h-3.5 w-16 max-sm:hidden" />
 						<Bone className="h-3 w-12" />
 					</ItemActions>
 				</Item>

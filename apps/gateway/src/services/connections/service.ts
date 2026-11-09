@@ -8,6 +8,7 @@ import {
 	Effect,
 	Layer,
 	Match,
+	Number,
 	Option,
 	Record,
 	Schema,
@@ -108,8 +109,8 @@ export class Connections extends Context.Service<
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
-		// Each proxied call, summed into the period's buckets by server.
-		readonly usage: (query: McpUsageQuery) => Effect.Effect<McpUsageReport, AuthError>
+		// Each proxied call, summed into the period's buckets by server: the report at once and again after every recorded call.
+		readonly usage: (query: McpUsageQuery) => Stream.Stream<McpUsageReport, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
@@ -157,6 +158,22 @@ export class Connections extends Context.Service<
 			)
 		})
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
+		// A recorded call wakes every open usage reader; reads coalesce, so one report goes out at most each second.
+		const usageChanged = yield* SubscriptionRef.make(0)
+		const usageReport = Effect.fnUntraced(function* (query: McpUsageQuery) {
+			return yield* Effect.forEach(
+				Array.map(Record.values(yield* SubscriptionRef.get(state)), row => row.id),
+				id =>
+					Effect.map(usage.get(usageKey(id)), buckets => ({
+						id,
+						series: usageSeries(
+							Option.getOrElse(buckets, () => []),
+							query
+						)
+					})),
+				{concurrency: 1}
+			)
+		}, failed('MCP usage storage failed'))
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
 		const admin = Effect.fnUntraced(function* (user: User) {
@@ -577,7 +594,10 @@ export class Connections extends Context.Service<
 				)
 			}, failed('Cannot connect this MCP')),
 			called: id =>
-				Effect.catchCause(recordUsage(id), cause => Effect.logWarning('MCP usage could not be recorded', cause)),
+				Effect.catchCause(
+					Effect.tap(recordUsage(id), () => SubscriptionRef.update(usageChanged, Number.increment)),
+					cause => Effect.logWarning('MCP usage could not be recorded', cause)
+				),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
 				route: Option.Option<string>,
@@ -666,20 +686,17 @@ export class Connections extends Context.Service<
 				)
 			}),
 			token,
-			usage: Effect.fnUntraced(function* (query) {
-				return yield* Effect.forEach(
-					Array.map(Record.values(yield* SubscriptionRef.get(state)), row => row.id),
-					id =>
-						Effect.map(usage.get(usageKey(id)), buckets => ({
-							id,
-							series: usageSeries(
-								Option.getOrElse(buckets, () => []),
-								query
-							)
-						})),
-					{concurrency: 1}
-				)
-			}, failed('MCP usage storage failed')),
+			usage: query =>
+				pipe(
+					SubscriptionRef.changes(usageChanged),
+					Stream.buffer({capacity: 1, strategy: 'sliding'}),
+					Stream.flatMap(() =>
+						Stream.concat(
+							Stream.fromEffect(usageReport(query)),
+							Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
+						)
+					)
+				),
 			// The list is read again on each change and once a minute, so an expired provider shows as expired.
 			watch: user =>
 				Stream.mapEffect(

@@ -11,8 +11,8 @@ import {AddServer, ConnectionInfo, McpUsageQuery, McpUsageReport} from '#service
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('ai.keys', {error: AuthError, success: Schema.Array(AiKeyInfo)}),
 	Rpc.make('ai.setKey', {error: AuthError, payload: AiSetKey}),
-	Rpc.make('ai.usage', {error: AuthError, payload: AiUsageQuery, success: AiUsageReport}),
+	Rpc.make('ai.usage', {error: AuthError, payload: AiUsageQuery, stream: true, success: AiUsageReport}),
 	Rpc.make('gateway.servers', {error: AuthError, stream: true, success: Schema.Array(ConnectionInfo)}),
-	Rpc.make('gateway.usage', {error: AuthError, payload: McpUsageQuery, success: McpUsageReport}),
+	Rpc.make('gateway.usage', {error: AuthError, payload: McpUsageQuery, stream: true, success: McpUsageReport}),
 	Rpc.make('gateway.add', {error: AuthError, payload: AddServer, success: ConnectionInfo})
 ).middleware(RpcAuth) {}
