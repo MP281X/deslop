@@ -219,11 +219,12 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 				Array.every(props.app.operations, operation => operation.runtime === 'ci'),
 				{
 					onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
+					// GitHub's mark fills its box edge to edge where the pixel icons keep a margin, so it sits at 14px in the same 16px slot.
 					onTrue: () => (
-						<>
-							<GithubLight aria-hidden className="size-4 shrink-0 dark:hidden" />
-							<GithubDark aria-hidden className="hidden size-4 shrink-0 dark:block" />
-						</>
+						<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+							<GithubLight className="size-3.5 dark:hidden" />
+							<GithubDark className="hidden size-3.5 dark:block" />
+						</span>
 					)
 				}
 			),
