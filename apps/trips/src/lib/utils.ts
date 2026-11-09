@@ -753,7 +753,16 @@ export const tones = {
 
 type Where = {text: string; tone: Tone}
 
-function statusLine(label: string, tone: Tone, where: Option.Option<Where>) {
+// Only a problem's dot carries its words; a healthy status shows where it leaves from.
+export type Status =
+	| {label: string; tone: 'bad' | 'warn'; where: Option.Option<Where>}
+	| {tone: 'good' | 'info' | 'plain'; where: Option.Option<Where>}
+
+function statusLine(tone: 'good' | 'info' | 'plain', where: Option.Option<Where>) {
+	return {tone, where}
+}
+
+function problemLine(label: string, tone: 'bad' | 'warn', where: Option.Option<Where>) {
 	return {label, tone, where}
 }
 
@@ -766,11 +775,9 @@ function whereOf(text: Option.Option<string>, changed: boolean) {
 }
 
 function stayStatus(stay: Stay, now: number) {
-	if (now < stay.checkIn) {
-		return statusLine(`Check-in ${timeAt(stay.checkIn, stay.place.timeZone)}`, 'plain', Option.none())
-	}
-	if (now < stay.checkOut) return statusLine(`Out ${timeAt(stay.checkOut, stay.place.timeZone)}`, 'good', Option.none())
-	return statusLine('Checked out', 'plain', Option.none())
+	if (now < stay.checkIn) return statusLine('plain', Option.none())
+	if (now < stay.checkOut) return statusLine('good', Option.none())
+	return statusLine('plain', Option.none())
 }
 
 function platformOf(train: Train) {
@@ -785,14 +792,14 @@ function platformOf(train: Train) {
 }
 
 function trainStatus(train: Train, now: number) {
-	if (train.operator !== 'trenitalia') return statusLine('Timetable', 'plain', Option.none())
-	if (train.live === undefined) return statusLine(timeAt(train.departs, train.from.timeZone), 'plain', Option.none())
+	if (train.operator !== 'trenitalia') return statusLine('plain', Option.none())
+	if (train.live === undefined) return statusLine('plain', Option.none())
 	if (isStale(train, now)) {
-		return statusLine(`Updated ${timeAt(train.live.checkedAt, train.from.timeZone)}`, 'warn', platformOf(train))
+		return problemLine(`Updated ${timeAt(train.live.checkedAt, train.from.timeZone)}`, 'warn', platformOf(train))
 	}
-	if (train.live.state === 'arrived') return statusLine('Arrived', 'plain', platformOf(train))
-	if (train.live.delayMinutes >= 5) return statusLine(`+${train.live.delayMinutes} min`, 'warn', platformOf(train))
-	return statusLine('On time', 'good', platformOf(train))
+	if (train.live.state === 'arrived') return statusLine('plain', platformOf(train))
+	if (train.live.delayMinutes >= 5) return problemLine(`+${train.live.delayMinutes} min`, 'warn', platformOf(train))
+	return statusLine('good', platformOf(train))
 }
 
 function gateOf(flight: Flight) {
@@ -807,32 +814,30 @@ function gateOf(flight: Flight) {
 function flightStatus(flight: Flight, now: number) {
 	const state = flight.live?.state
 	const delay = Number.round((departureOf(flight) - flight.departs) / MINUTE, 0)
-	if (state === 'cancelled') return statusLine('Cancelled', 'bad', Option.none())
-	if (state === 'diverted') return statusLine('Diverted', 'bad', Option.none())
-	if (flight.live === undefined) return statusLine(timeAt(flight.departs, flight.from.timeZone), 'plain', Option.none())
+	if (state === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
+	if (state === 'diverted') return problemLine('Diverted', 'bad', Option.none())
+	if (flight.live === undefined) return statusLine('plain', Option.none())
 	if (isStale(flight, now)) {
-		return statusLine(`Updated ${timeAt(flight.live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(flight))
+		return problemLine(`Updated ${timeAt(flight.live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(flight))
 	}
 	if (state === 'arrived' || state === 'landed') {
-		return statusLine('Landed', 'good', whereOf(labelled('Belt', flight.live.belt), false))
+		return statusLine('good', whereOf(labelled('Belt', flight.live.belt), false))
 	}
-	if (state === 'airborne' || state === 'departed') {
-		return statusLine(`Lands ${timeAt(arrivalOf(flight), flight.to.timeZone)}`, 'info', Option.none())
-	}
-	if (delay >= 15) return statusLine(`+${delay} min`, 'warn', gateOf(flight))
-	return statusLine('On time', 'good', gateOf(flight))
+	if (state === 'airborne' || state === 'departed') return statusLine('info', Option.none())
+	if (delay >= 15) return problemLine(`+${delay} min`, 'warn', gateOf(flight))
+	return statusLine('good', gateOf(flight))
 }
 
 // Where the journey stands, with the gate or platform; old live data says when it was read rather than look current.
 export function statusOf(booking: Booking, now: number) {
-	if (booking.status === 'cancelled') return statusLine('Cancelled', 'bad', Option.none())
+	if (booking.status === 'cancelled') return problemLine('Cancelled', 'bad', Option.none())
 	if (booking._tag === 'stay') return stayStatus(booking, now)
 	if (booking._tag === 'train') return trainStatus(booking, now)
 	return flightStatus(booking, now)
 }
 
 // Only a problem gets a dot: a delay, a cancellation, or a live answer that went stale with its age.
-export function problemOf(booking: Booking, status: {label: string; tone: Tone}, now: number) {
+export function problemOf(booking: Booking, status: Status, now: number) {
 	if (booking._tag !== 'stay' && booking.live !== undefined && isStale(booking, now)) {
 		return Option.some({
 			label: `${Number.max(0, Math.floor((now - booking.live.checkedAt) / MINUTE))}m`,
