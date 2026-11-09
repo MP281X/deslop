@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--slate);
+	--primary: var(--blue);
 }
 
 /* The ledger's fixed columns: client, device, address, last active. */
