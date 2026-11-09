@@ -239,36 +239,34 @@ function WaterfallGlyph() {
 // The bar's app filter: All as text, then each app's mark; a chosen app is a view and keeps a selection it contains.
 function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 	return (
-		<div className="overflow-x-auto max-sm:w-32">
-			<AppBarTabs value={props.source ?? 'all'}>
-				<AppBarTab value="all" render={<Link to="/" search={previous => Struct.omit(previous, ['source'])} />}>
-					All
+		<AppBarTabs value={props.source ?? 'all'}>
+			<AppBarTab value="all" render={<Link to="/" search={previous => Struct.omit(previous, ['source'])} />}>
+				All
+			</AppBarTab>
+			{Array.map(props.apps, app => (
+				<AppBarTab
+					key={app.name}
+					value={app.name}
+					render={
+						<Link
+							to="/"
+							aria-label={app.name}
+							search={previous =>
+								Boolean.match(previous.app === app.name, {
+									onFalse: () => ({
+										...Struct.omit(previous, ['app', 'operation', 'pane', 'side', 'span', 'trace']),
+										source: app.name
+									}),
+									onTrue: () => ({...previous, source: app.name})
+								})
+							}
+						/>
+					}
+				>
+					<AppMark app={app} />
 				</AppBarTab>
-				{Array.map(props.apps, app => (
-					<AppBarTab
-						key={app.name}
-						value={app.name}
-						render={
-							<Link
-								to="/"
-								aria-label={app.name}
-								search={previous =>
-									Boolean.match(previous.app === app.name, {
-										onFalse: () => ({
-											...Struct.omit(previous, ['app', 'operation', 'pane', 'side', 'span', 'trace']),
-											source: app.name
-										}),
-										onTrue: () => ({...previous, source: app.name})
-									})
-								}
-							/>
-						}
-					>
-						<AppMark app={app} />
-					</AppBarTab>
-				))}
-			</AppBarTabs>
-		</div>
+			))}
+		</AppBarTabs>
 	)
 }
 
@@ -1199,12 +1197,11 @@ function Home() {
 			<AppBar
 				icon={icon}
 				name="scope"
-				title={Boolean.match(isMobile, {
+				title={Boolean.match(isMobile && pane !== 'Operations', {
 					onFalse: () => undefined,
 					onTrue: () =>
 						pipe(
 							Match.value(pane),
-							Match.when('Operations', () => 'Scope'),
 							Match.when('Traces', () =>
 								Option.match(activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
 							),
