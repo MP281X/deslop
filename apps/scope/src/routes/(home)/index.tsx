@@ -699,7 +699,11 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
 	return (
-		<div role="listitem" className="list-row hover:bg-accent/40 mx-1 rounded-lg transition-colors" data-selected={props.active}>
+		<div
+			role="listitem"
+			className="list-row hover:bg-accent/40 mx-1 rounded-lg transition-colors"
+			data-selected={props.active}
+		>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -815,7 +819,11 @@ function OperationsPane(props: {
 // One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
-		<div role="listitem" className="list-row hover:bg-accent/40 mx-1 rounded-lg transition-colors" data-selected={props.active}>
+		<div
+			role="listitem"
+			className="list-row hover:bg-accent/40 mx-1 rounded-lg transition-colors"
+			data-selected={props.active}
+		>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
