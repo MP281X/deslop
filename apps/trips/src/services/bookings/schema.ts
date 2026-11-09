@@ -30,15 +30,7 @@ export const Place = Schema.Struct({
 
 // A booked journey always knows its place's zone; only a station lookup may answer one without it.
 export type BookedPlace = typeof BookedPlace.Type
-export const BookedPlace = Schema.Struct({
-	address: Schema.optionalKey(Schema.String),
-	city: Schema.optionalKey(Schema.String),
-	code: Schema.optionalKey(Schema.String),
-	latitude: Schema.optionalKey(Schema.Finite),
-	longitude: Schema.optionalKey(Schema.Finite),
-	name: Schema.String,
-	timeZone: Schema.String
-})
+export const BookedPlace = Schema.Struct({...Place.fields, timeZone: Schema.String})
 
 // Whether the reservation stands; a cancelled one stays listed so the change is visible.
 export type ReservationStatus = typeof ReservationStatus.Type
