@@ -533,7 +533,6 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 const LEGAL_LINE = `© 2026 ${profile.firstName} ${profile.lastName} · VAT ${profile.vat}`
 const LEGAL_LINE_NARROW = `© 2026 · VAT ${profile.vat}`
 
-// Presence is a quiet line at the page's edge: live count, connecting, or unavailable, never a hero.
 function PresenceHud(input: {
 	state: 'connecting' | 'live' | 'offline'
 	visitors?: PortfolioVisitors
