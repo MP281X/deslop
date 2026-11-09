@@ -184,11 +184,14 @@ it.effect(
 )
 
 it.effect(
-	'marks the selected row with independent inset row dividers',
+	'marks the selected rows with the stock row surface and edge-to-edge dividers',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
-		assert.include(html, 'class="list-row" data-selected="true"')
-		assert.match(html, /aria-current="true" class="[^"]*bg-secondary/u)
+		assert.include(html, 'list-row')
+		assert.include(html, 'h-12')
+		assert.include(html, 'data-selected="true"')
+		assert.match(html, /aria-current="true"/u)
+		assert.include(html, 'data-[selected=true]:bg-muted')
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
 	})
@@ -215,7 +218,7 @@ it.effect(
 )
 
 it.effect(
-	'wraps unbroken attribute keys as well as their values',
+	'keeps unbroken attribute keys and values whole on a one-line detail row',
 	Effect.fnUntraced(function* () {
 		const key = String.repeat(240)('k')
 		const html = yield* render(
@@ -227,8 +230,45 @@ it.effect(
 				}))
 			})
 		)
-		assert.include(html, `<dt class="text-muted-foreground wrap-anywhere">${key}</dt>`)
+		assert.include(html, `title="${key}"`)
 		assert.include(html, String.repeat(4000)('v'))
+		assert.include(html, 'truncate')
+	})
+)
+
+it.effect(
+	'lists every app’s operations together, failures first and without app headings',
+	Effect.fnUntraced(function* () {
+		const html = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'deploy',
+						operations: [{count: 9, failures: 0, name: 'deploy.idle', p50Ms: 4, runtime: 'server', traces: []}]
+					},
+					{
+						name: 'gateway',
+						operations: [
+							{
+								count: 2,
+								failures: 3,
+								name: 'gateway.fail',
+								p50Ms: 12,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+							}
+						]
+					}
+				]
+			})
+		)
+		assert.isBelow(
+			Option.getOrThrow(String.indexOf('gateway.fail')(html)),
+			Option.getOrThrow(String.indexOf('deploy.idle')(html))
+		)
+		assert.notInclude(html, '>gateway<')
+		assert.notInclude(html, '>deploy<')
 	})
 )
 
