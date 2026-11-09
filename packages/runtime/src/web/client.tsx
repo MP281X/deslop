@@ -30,6 +30,7 @@ import {Error, NotFound} from '@deslop/components-web/fallbacks'
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
 
+import {withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
@@ -131,6 +132,11 @@ export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stre
 			)
 		)
 	)
+}
+
+// The one way to read a live RPC stream: an outage keeps its content, a refusal clears it, and a transport miss reconnects.
+export function live<A, E extends {_tag: string}, R>(get: Atom.AtomContext, stream: Stream.Stream<A, E, R>) {
+	return withoutDeniedData(get, stream, reconnecting)
 }
 
 // The RPC socket alone, without the page's telemetry, so Scope's page never traces itself.

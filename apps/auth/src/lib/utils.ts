@@ -36,12 +36,16 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/Rpc
 
 // Live, so an account waiting for an admin moves on once allowed; a declined or removed account is signed out and reads None.
 export const accountAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
+	RpcClient.runtime.atom(get =>
 		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.account', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting,
+			WebRuntime.live(
+				get,
+				pipe(
+					RpcClient,
+					Effect.map(client => client('auth.account', undefined)),
+					Stream.unwrap
+				)
+			),
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
 		)
@@ -125,24 +129,28 @@ export const linkedCodeAtom = Atom.family((code: string) =>
 )
 
 export const peopleAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.people', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.people', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
 
 // Live, so a new sign-in, each refresh and a disconnect from another page show here.
 export const appsAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.apps', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.apps', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
@@ -164,12 +172,16 @@ export const admitAtom = Atom.family((id: string) =>
 export const selectedRowAtom = Atom.make(Option.none<string>())
 
 export const requestAtom = Atom.family((request: string) =>
-	RpcClient.runtime.atom(
+	RpcClient.runtime.atom(get =>
 		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.wait', {request})),
-			Stream.unwrap,
-			WebRuntime.reconnecting,
+			WebRuntime.live(
+				get,
+				pipe(
+					RpcClient,
+					Effect.map(client => client('auth.wait', {request})),
+					Stream.unwrap
+				)
+			),
 			Stream.tap(status =>
 				pipe(
 					Match.value(status),
@@ -195,12 +207,14 @@ export function approveLink(id: string) {
 
 // Live, so an app shows once its server announces itself to Auth.
 export const catalogAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.catalog', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.catalog', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
@@ -307,12 +321,14 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 )
 
 export const passkeysAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.passkeys', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.passkeys', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
