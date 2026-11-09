@@ -154,10 +154,12 @@ export const layerProtocol = pipe(
 	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
 )
 
-export function layer(applicationName: string) {
+// Apps opt in, because Scope imports this module for its page layer alone and must never trace itself.
+// oxlint-disable-next-line effecttsgo/lazy-effect -- Calling it registers telemetry; returning the page's protocol layer is not deferred work.
+export function layer() {
 	Atom.runtime.addGlobalLayer(
 		pipe(
-			layerWebTelemetry(applicationName),
+			layerWebTelemetry,
 			Layer.provide(FetchHttpClient.layer),
 			Layer.tap(services => {
 				if (Option.isNone(Context.getOption(services, OtlpExporter.Flusher))) return Effect.void
