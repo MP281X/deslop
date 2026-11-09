@@ -143,9 +143,6 @@ export const Entry = Schema.Struct({
 	// Absent on the immediately previous release's stored entries.
 	receivedAt: Schema.optionalKey(Schema.Natural),
 	resource: Resource,
-	resourceSchemaUrl: Schema.String,
-	scope: Resource,
-	scopeSchemaUrl: Schema.String,
 	service: Schema.String,
 	signal: Schema.Literals(['trace', 'log']),
 	spanId: Schema.String,
@@ -156,7 +153,7 @@ export const Entry = Schema.Struct({
 
 // What the tools answer for an entry: `service` already names its resource, so a page stays small enough to read.
 type EntryItem = typeof EntryItem.Type
-const EntryItem = Entry.mapFields(Struct.omit(['resource', 'resourceSchemaUrl', 'scope', 'scopeSchemaUrl']))
+const EntryItem = Entry.mapFields(Struct.omit(['resource']))
 
 export type Query = typeof Query.Type
 export const Query = Schema.Struct({

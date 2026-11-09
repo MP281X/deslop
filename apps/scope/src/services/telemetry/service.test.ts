@@ -514,8 +514,7 @@ it.layer(layer)(test => {
 					payload: {
 						attributes: [{key: 'big', value: {intValue: '9007199254740993'}}],
 						endTimeUnixNano: '1781870000001500001'
-					},
-					resourceSchemaUrl: 'https://opentelemetry.io/schemas/1.0.0'
+					}
 				}
 			])
 			assert.deepStrictEqual(yield* telemetry.traces(query), {
