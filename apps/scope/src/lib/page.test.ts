@@ -477,14 +477,7 @@ it.effect(
 								name: 'Inventory.snapshot',
 								p50Ms: 10,
 								runtime: 'server',
-								traces: [
-									{
-										durationMs: 10,
-										failure: {span: 'Parser.decode'},
-										id: ID,
-										time: '1781870000000000000'
-									}
-								]
+								traces: [{durationMs: 10, failure: {span: 'Parser.decode'}, id: ID, time: '1781870000000000000'}]
 							}
 						]
 					}

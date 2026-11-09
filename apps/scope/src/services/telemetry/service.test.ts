@@ -789,9 +789,11 @@ it.layer(layer)(test => {
 				]
 			)
 			// Only the root's operation lists the trace: its failing child is not a row.
-			const share = Option.getOrThrow(Array.findFirst(stash.operations, operation => operation.name === 'share'))
 			assert.deepStrictEqual(
-				Array.map(share.traces, trace => [trace.id, trace.failure]),
+				Array.map(
+					Option.getOrThrow(Array.findFirst(stash.operations, operation => operation.name === 'share')).traces,
+					trace => [trace.id, trace.failure]
+				),
 				[
 					['dddddddddddddddddddddddddddddddd', {span: 'http.get'}],
 					['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', undefined]
