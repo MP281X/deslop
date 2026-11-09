@@ -41,6 +41,23 @@ it('a new operation or trace cannot inherit the previous span selection', () => 
 	)
 })
 
+it('shows every app with no active tab, filters on an app’s tab, and clears the filter on the active tab', () => {
+	const filtered = nextSearch({}, {_tag: 'Source', app: 'deploy'})
+	assert.deepStrictEqual(filtered, {source: 'deploy'})
+	assert.deepStrictEqual(nextSearch(filtered, {_tag: 'Source', app: 'deploy'}), {})
+	const selected = follow([{_tag: 'Operation', operation: OPERATION}], {source: 'deploy'})
+	assert.deepStrictEqual(nextSearch(selected, {_tag: 'Source', app: 'deploy'}), {
+		app: 'deploy',
+		operation: 'Inventory.snapshot',
+		pane: 'Traces',
+		side: 'server'
+	})
+	assert.deepStrictEqual(nextSearch(selected, {_tag: 'Source', app: 'stash'}), {source: 'stash'})
+	assert.deepStrictEqual(nextSearch({...selected, source: undefined}, {_tag: 'Source', app: 'stash'}), {
+		source: 'stash'
+	})
+})
+
 it('keeps the bar’s app filter through a selection and Back', () => {
 	const selected = follow(
 		[

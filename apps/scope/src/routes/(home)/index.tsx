@@ -27,7 +27,7 @@ import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListHeading, ItemListSkeleton} from '@deslop/components-web/item-list'
+import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -129,6 +129,95 @@ type WorkspaceProps = {
 // A pane with nothing selected keeps its mark alone, never a sentence that repeats the pane's name.
 function EmptyIcon() {
 	return <img src={icon} alt="" className="pixelated size-8 opacity-50" />
+}
+
+// The operations rows' geometry while the overview loads: the 16px mark at the gutter, the name, then the same figure columns.
+function OperationsSkeleton(props: {label: string}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, 8), row => (
+				<Item key={row} aria-hidden size="row">
+					<ItemMedia>
+						<Skeleton className="size-4" />
+					</ItemMedia>
+					<ItemContent>
+						<Skeleton className="h-3 w-2/5" />
+					</ItemContent>
+					<ItemActions>
+						<span className="grid-cols-operation grid items-center gap-x-3">
+							<Skeleton className="h-3 w-full" />
+							<Skeleton className="h-3 w-full" />
+							<Skeleton className="h-3 w-full" />
+						</span>
+					</ItemActions>
+				</Item>
+			))}
+		</div>
+	)
+}
+
+// The trace rows' geometry while the overview loads: the age slot, the short id where names sit, and the duration column.
+function TracesSkeleton(props: {label: string}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, 8), row => (
+				<Item key={row} aria-hidden size="row">
+					<ItemMedia className="w-8">
+						<Skeleton className="h-3 w-6" />
+					</ItemMedia>
+					<ItemContent>
+						<Skeleton className="h-3 w-14" />
+					</ItemContent>
+					<ItemActions>
+						<span className="flex w-12 justify-end">
+							<Skeleton className="h-3 w-10" />
+						</span>
+					</ItemActions>
+				</Item>
+			))}
+		</div>
+	)
+}
+
+// The waterfall's 24px rows while its trace loads: the 16px mark at the gutter, a name bar, the span's bar and its duration column.
+function SpansSkeleton(props: {label: string}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, 6), row => (
+				<div
+					key={row}
+					aria-hidden
+					className="grid-cols-spans sm:grid-cols-spans-wide grid h-6 items-center gap-2.5 px-4"
+				>
+					<span className="flex min-w-0 items-center gap-1.5">
+						<Skeleton className="size-4 shrink-0" />
+						<Skeleton className="h-3 w-12" />
+					</span>
+					<Skeleton className="h-1.5 w-1/2" />
+					<Skeleton className="h-3 w-8 justify-self-end" />
+				</div>
+			))}
+		</div>
+	)
+}
+
+// The inspector's 24px rows while its span loads, sharing the same max-content key column as the real ones.
+function DetailSkeleton(props: {label: string}) {
+	return (
+		<div
+			aria-busy="true"
+			aria-label={props.label}
+			role="status"
+			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4"
+		>
+			{Array.map(Array.range(1, 6), row => (
+				<div key={row} aria-hidden className="col-span-2 grid h-6 grid-cols-subgrid items-center gap-2.5">
+					<Skeleton className="h-3 w-24" />
+					<Skeleton className="h-3 w-1/2" />
+				</div>
+			))}
+		</div>
+	)
 }
 
 function FailureContent(props: {error: unknown; reset: () => void}) {
@@ -237,13 +326,10 @@ function WaterfallGlyph() {
 	return <ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
 }
 
-// The bar's app filter: All as text, then each app's mark; a chosen app is a view and keeps a selection it contains.
+// The bar's app filter: one mark per app, no All; no tab is active while every app shows, and the active tab clears the filter.
 function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 	return (
-		<AppBarTabs value={props.source ?? 'all'}>
-			<AppBarTab value="all" render={<Link to="/" search={previous => Struct.omit(previous, ['source'])} />}>
-				All
-			</AppBarTab>
+		<AppBarTabs value={props.source ?? ''}>
 			{Array.map(props.apps, app => (
 				<AppBarTab
 					key={app.name}
@@ -252,15 +338,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 						<Link
 							to="/"
 							aria-label={app.name}
-							search={previous =>
-								Boolean.match(previous.app === app.name, {
-									onFalse: () => ({
-										...Struct.omit(previous, ['app', 'operation', 'pane', 'side', 'span', 'trace']),
-										source: app.name
-									}),
-									onTrue: () => ({...previous, source: app.name})
-								})
-							}
+							search={previous => nextSearch(previous, {_tag: 'Source', app: app.name})}
 						/>
 					}
 				>
@@ -352,7 +430,7 @@ function OperationRow(props: {
 					</ItemTitle>
 				</ItemContent>
 				<ItemActions>
-					<span className="grid-cols-operation grid items-center gap-x-2">
+					<span className="grid-cols-operation grid items-center gap-x-3">
 						<span
 							className="text-destructive text-right tabular-nums"
 							title={Boolean.match(props.operation.failures > 0, {
@@ -387,7 +465,7 @@ function OperationsPane(props: {
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense fallback={<ItemListSkeleton label="Operations" media rows={8} />}>
+			<Suspense fallback={<OperationsSkeleton label="Operations" />}>
 				<OverviewContent>
 					{overview =>
 						Array.match(operationsOf(overview, props.source), {
@@ -506,7 +584,7 @@ function TracesPane(props: {
 			>
 				{Option.match(active, {onNone: () => null, onSome: current => current.operation.name})}
 			</ItemListHeading>
-			<Suspense fallback={<ItemListSkeleton label="Traces" rows={8} />}>
+			<Suspense fallback={<TracesSkeleton label="Traces" />}>
 				<OverviewContent>
 					{() =>
 						Option.match(active, {
@@ -626,11 +704,15 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 		return <EmptyState label="Select a span" icon={<EmptyIcon />} />
 	}
 	return (
-		<div role="list" aria-label="Span details">
+		<div
+			role="list"
+			aria-label="Span details"
+			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4 text-xs"
+		>
 			{Option.match(error, {
 				onNone: () => null,
 				onSome: message => (
-					<div role="listitem" className="grid-cols-detail grid h-6 items-center gap-2.5 px-4 text-xs">
+					<div role="listitem" className="col-span-2 grid h-6 grid-cols-subgrid items-center gap-2.5">
 						<span className="text-muted-foreground truncate">error</span>
 						<span className="text-destructive min-w-0 truncate" title={message}>
 							<ErrorText message={message} />
@@ -642,7 +724,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				<div
 					key={`${attribute.key}:${index}`}
 					role="listitem"
-					className="grid-cols-detail grid h-6 items-center gap-2.5 px-4 text-xs"
+					className="col-span-2 grid h-6 grid-cols-subgrid items-center gap-2.5"
 				>
 					<span className="text-muted-foreground truncate" title={attribute.key}>
 						{attribute.key}
@@ -663,7 +745,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				<div
 					key={`${log.id}:${index}`}
 					role="listitem"
-					className="grid-cols-log grid h-6 items-center gap-2.5 px-4 text-xs"
+					className="grid-cols-log col-span-2 grid h-6 items-center gap-2.5"
 				>
 					<span className="text-muted-foreground truncate tabular-nums">
 						{Option.match(Number.parse(String.slice(0, -6)(log.time)), {
@@ -861,39 +943,6 @@ function Spans(props: {
 			)
 		}
 	})
-}
-
-// The waterfall's 24px rows while its trace loads.
-function SpansSkeleton(props: {label: string}) {
-	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 6), row => (
-				<div
-					key={row}
-					aria-hidden
-					className="grid-cols-spans sm:grid-cols-spans-wide grid h-6 items-center gap-2.5 px-4"
-				>
-					<Skeleton className="h-3 w-3/4" />
-					<Skeleton className="h-1.5 w-1/2" />
-					<Skeleton className="h-3 w-8 justify-self-end" />
-				</div>
-			))}
-		</div>
-	)
-}
-
-// The inspector's 24px rows while its span loads.
-function DetailSkeleton(props: {label: string}) {
-	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 6), row => (
-				<div key={row} aria-hidden className="grid-cols-detail grid h-6 items-center gap-2.5 px-4">
-					<Skeleton className="h-3 w-16" />
-					<Skeleton className="h-3 w-1/2" />
-				</div>
-			))}
-		</div>
-	)
 }
 
 // The open trace's waterfall: a band naming its short id and age, then, when inline, the picked span's details.

@@ -30,6 +30,7 @@ const Selection = Schema.Struct({
 export type NavigationEvent =
 	| {readonly _tag: 'Back'}
 	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
+	| {readonly _tag: 'Source'; readonly app: string}
 	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: string; traceId: string}}
 	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
 
@@ -81,8 +82,18 @@ function sourceOf(search: Search, next: Search) {
 	})
 }
 
+// An app's tab filters the list to that app and keeps a selection it contains; choosing the active tab again shows every app.
+function sourceSearch(search: Search, app: string) {
+	if (search.source === app) return Struct.omit(search, ['source'])
+	if (search.app !== app) {
+		return {...Struct.omit(search, ['app', 'operation', 'pane', 'side', 'span', 'trace']), source: app}
+	}
+	return {...search, source: app}
+}
+
 // Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
 export function nextSearch(search: Search, event: NavigationEvent) {
+	if (event._tag === 'Source') return sourceSearch(search, event.app)
 	if (event._tag === 'Operation') return sourceOf(search, select({operation: event.operation}, 'Traces'))
 	if (event._tag === 'Trace') return sourceOf(search, select(event.selection, 'Trace'))
 	if (event._tag === 'Span') return sourceOf(search, select(event.selection, 'Span'))
