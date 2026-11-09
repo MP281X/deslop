@@ -113,11 +113,11 @@ export type Alert = {
 
 function trainAlerts(train: Train) {
 	const title = titleOf(train)
-	const departure = clockAt(departureOf(train), train.from.timeZone ?? 'Europe/Rome')
+	const departure = clockAt(departureOf(train), train.from.timeZone)
 	return Array.getSomes([
 		Option.filter(
 			Option.some<Alert>({
-				body: `${routeOf(train)} at ${clockAt(train.departs, train.from.timeZone ?? 'Europe/Rome')}`,
+				body: `${routeOf(train)} at ${clockAt(train.departs, train.from.timeZone)}`,
 				category: 'cancelled',
 				title: `${title} is cancelled`
 			}),

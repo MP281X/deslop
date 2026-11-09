@@ -21,7 +21,7 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
 import {DAY} from '#services/bookings/lib/utils.ts'
-import type {Place} from '#services/bookings/schema.ts'
+import type {BookedPlace, Place} from '#services/bookings/schema.ts'
 import {Airport, AirportIndex, BookingsError, StopMatches} from '#services/bookings/schema.ts'
 
 const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
@@ -91,7 +91,7 @@ function stationMatch(name: string, matches: StopMatches) {
 export class Places extends Context.Service<
 	Places,
 	{
-		readonly airport: (code: string) => Effect.Effect<Place, BookingsError>
+		readonly airport: (code: string) => Effect.Effect<BookedPlace, BookingsError>
 		readonly station: (name: string) => Effect.Effect<Place, BookingsError>
 	}
 >()('@deslop/trips/services/bookings/lib/places') {
@@ -177,7 +177,7 @@ export class Places extends Context.Service<
 						longitude: airport.lon,
 						name: airport.name,
 						timeZone: airport.tz
-					} satisfies Place
+					} satisfies BookedPlace
 				}),
 				station: Effect.fn('Places.station')(function* (name) {
 					return Option.getOrElse(

@@ -48,18 +48,13 @@ export function instantOf(time: LocalTime, timeZone: string) {
 	return pipe(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), Option.map(DateTime.toEpochMillis))
 }
 
-export function clockAt(time: number, timeZone?: string) {
+export function clockAt(time: number, timeZone: string) {
 	return DateTime.format(DateTime.makeUnsafe(time), {
 		hour: '2-digit',
 		hourCycle: 'h23',
 		locale: 'en-GB',
 		minute: '2-digit',
-		timeZone: pipe(
-			Option.fromUndefinedOr(timeZone),
-			Option.flatMap(DateTime.zoneMakeNamed),
-			Option.map(zone => zone.id),
-			Option.getOrElse(() => 'UTC')
-		)
+		timeZone
 	})
 }
 
@@ -440,13 +435,13 @@ function trainActivity(train: Train, now: number) {
 			phase !== 'arrived' && phase !== 'cancelled'
 		),
 		arrivalNote: '',
-		arrivalTime: clockAt(arrivalOf(train), train.to.timeZone ?? 'Europe/Rome'),
+		arrivalTime: clockAt(arrivalOf(train), train.to.timeZone),
 		arrivalTone: tone,
 		arrives: arrivalOf(train),
 		delay,
 		departs: departureOf(train),
 		departureNote: '',
-		departureTime: clockAt(departureOf(train), train.from.timeZone ?? 'Europe/Rome'),
+		departureTime: clockAt(departureOf(train), train.from.timeZone),
 		departureTone: tone,
 		detail: line([labelled('Coach', train.coach), labelled('Seat', train.seat), trainDelayNote(phase, delay)]),
 		from: train.from.name,

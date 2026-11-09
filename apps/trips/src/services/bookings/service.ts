@@ -87,7 +87,7 @@ export class Bookings extends Context.Service<
 				if (item.kind === 'flight') {
 					const from = yield* places.airport(item.from)
 					const to = yield* places.airport(item.to)
-					const zone = from.timeZone ?? 'UTC'
+					const zone = from.timeZone
 					return Flight.make({
 						...base,
 						...Struct.pick(item, ['seat', 'boardingGroup', 'confirmation']),
@@ -97,7 +97,7 @@ export class Bookings extends Context.Service<
 						})),
 						airline: item.airlineName,
 						airlineCode: item.airlineCode,
-						arrives: yield* at(item.arrival, to.timeZone ?? 'UTC'),
+						arrives: yield* at(item.arrival, to.timeZone),
 						departs: yield* at(item.departure, zone),
 						from,
 						number: item.flightNumber,

@@ -81,13 +81,6 @@ it('reads a printed time in the place zone and an offset as given', () => {
 	assert.deepStrictEqual(instantOf('2026-10-28T16:40:30.125', 'Europe/Rome'), Option.some(DEPARTS + 30_125))
 })
 
-it('keeps journey activities available when a place has an invalid time zone', () => {
-	assert.strictEqual(
-		activityProps({...flight, from: {...flight.from, timeZone: 'Europe/Nowhere'}}, [], DEPARTS - HOUR).departureTime,
-		'15:40'
-	)
-})
-
 it('merges a reservation seen again and keeps live data unless the service moved', () => {
 	const tracked = {...flight, live: {checkedAt: 1, departureGate: 'B12', state: 'scheduled' as const}}
 	const again = Flight.make({...flight, id: 'aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f', seat: '14A', sources: ['mail:c']})

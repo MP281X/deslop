@@ -2,6 +2,7 @@ import {
 	Array,
 	Boolean,
 	DateTime,
+	Duration,
 	Effect,
 	HashSet,
 	Layer,
@@ -46,6 +47,7 @@ import {
 	activityProps,
 	arrivalOf,
 	byStart,
+	DAY,
 	departureOf,
 	endOf,
 	HOUR,
@@ -504,7 +506,7 @@ function eventOf(booking: Booking) {
 			location: booking.place.address ?? booking.name,
 			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), () => ''),
 			startDate: DateTime.toDateUtc(DateTime.makeUnsafe(booking.checkIn)),
-			timeZone: booking.place.timeZone ?? 'UTC',
+			timeZone: booking.place.timeZone,
 			title: booking.name
 		}
 	}
@@ -515,7 +517,7 @@ function eventOf(booking: Booking) {
 		location: placeLine(booking.from),
 		notes: notesOf(booking),
 		startDate: DateTime.toDateUtc(DateTime.makeUnsafe(departureOf(booking))),
-		timeZone: booking.from.timeZone ?? 'UTC',
+		timeZone: booking.from.timeZone,
 		title: `${titleOf(booking)} ${booking.from.code ?? booking.from.name} → ${booking.to.code ?? booking.to.name}`
 	}
 }
@@ -724,31 +726,19 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 	)
 )
 
-export function timeAt(time: number, timeZone?: string) {
-	return DateTime.format(DateTime.makeUnsafe(time), {
-		hour: '2-digit',
-		hourCycle: 'h23',
-		minute: '2-digit',
-		timeZone: timeZone ?? 'UTC'
-	})
+export function timeAt(time: number, timeZone: string) {
+	return DateTime.format(DateTime.makeUnsafe(time), {hour: '2-digit', hourCycle: 'h23', minute: '2-digit', timeZone})
 }
 
-export function dayAt(time: number, timeZone?: string) {
-	return DateTime.format(DateTime.makeUnsafe(time), {
-		day: 'numeric',
-		month: 'short',
-		timeZone: timeZone ?? 'UTC',
-		weekday: 'short'
-	})
+export function dayAt(time: number, timeZone: string) {
+	return DateTime.format(DateTime.makeUnsafe(time), {day: 'numeric', month: 'short', timeZone, weekday: 'short'})
 }
 
-export function daysUntil(time: number, now: number, timeZone?: string) {
+export function daysUntil(time: number, now: number, timeZone: string) {
 	function day(at: number) {
-		return DateTime.toEpochMillis(
-			DateTime.makeUnsafe(DateTime.formatIsoDate(DateTime.makeZonedUnsafe(at, {timeZone: timeZone ?? 'UTC'})))
-		)
+		return DateTime.startOf(DateTime.makeZonedUnsafe(at, {timeZone}), 'day')
 	}
-	return Number.round((day(time) - day(now)) / (24 * HOUR), 0)
+	return Number.round(Duration.toMillis(DateTime.distance(day(now), day(time))) / DAY, 0)
 }
 
 export const primary = hues.orange

@@ -58,14 +58,14 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 			arrives: 0,
 			createdAt: 0,
 			departs: 0,
-			from: {code: 'it-trenitalia_08409:station', name: 'Roma'},
+			from: {code: 'it-trenitalia_08409:station', name: 'Roma', timeZone: 'Europe/Rome'},
 			id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 			number: '9541',
 			operator: 'trenitalia',
 			operatorName: 'Frecciarossa',
 			sources: [],
 			status: 'confirmed',
-			to: {name: 'Bologna Centrale'}
+			to: {name: 'Bologna Centrale', timeZone: 'Europe/Rome'}
 		}),
 		1
 	)
@@ -80,14 +80,14 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 		arrives: 0,
 		createdAt: 0,
 		departs: 0,
-		from: {name: 'Roma Termini'},
+		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 		number: '9541',
 		operator: 'trenitalia',
 		operatorName: 'Frecciarossa',
 		sources: [],
 		status: 'confirmed',
-		to: {name: 'Milano Centrale'}
+		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 	})
 	const waiting = trainTracking(
 		{
@@ -191,14 +191,14 @@ it("answers nothing for another day's run of the number or a run that does not c
 		arrives: 0,
 		createdAt: 0,
 		departs: 0,
-		from: {name: 'Roma Termini'},
+		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 		number: '9541',
 		operator: 'trenitalia',
 		operatorName: 'Frecciarossa',
 		sources: [],
 		status: 'confirmed',
-		to: {name: 'Milano Centrale'}
+		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 	})
 	assert.deepStrictEqual(
 		[
