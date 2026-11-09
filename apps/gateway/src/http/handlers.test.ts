@@ -47,9 +47,11 @@ import {AiKeyInfo, AiSetKey} from '#services/ai/schema.ts'
 import type {AiUsageReport} from '#services/ai/schema.ts'
 import {AiProxy} from '#services/ai/service.ts'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
-import {AddServer, ConnectionInfo, McpUsageQuery, McpUsageReport, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
+import type {UsageRange} from '#services/usage/schema.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
@@ -511,19 +513,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 									)
 								),
 								HttpRouter.add(
-									'POST',
-									'/servers/usage',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(McpUsageQuery)
-											return yield* HttpServerResponse.schemaJson(McpUsageReport)(
-												yield* Effect.flatMap(Stream.runHead((yield* Connections).usage(input)), Effect.fromOption)
-											)
-										}),
-										refused
-									)
-								),
-								HttpRouter.add(
 									'GET',
 									'/servers/discovered',
 									Effect.gen(function* () {
@@ -663,11 +652,6 @@ const listServers = Effect.fnUntraced(function* (web: Web) {
 	return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
 		yield* Effect.promise(() => response.text())
 	)
-})
-
-const listUsage = Effect.fnUntraced(function* (web: Web, query: McpUsageQuery) {
-	const response = yield* post(web, '/servers/usage', SESSION, query)
-	return yield* Schema.decodeEffect(Schema.fromJsonString(McpUsageReport))(yield* Effect.promise(() => response.text()))
 })
 
 const listKeys = Effect.fnUntraced(function* (web: Web, session: string) {
@@ -1015,20 +999,22 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		})
 	)
 	test.effect(
-		'counts each proxied tool call into its server’s hourly usage',
+		'counts each proxied tool call in a usage window that moves at the bucket boundary',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
-			const query = {bucket: 'hour' as const, from: 0, to: 3_600_000}
-			assert.deepStrictEqual(yield* listUsage(gateway.web, query), [{id: added.id, series: []}])
-			const updates = yield* Queue.unbounded<McpUsageReport>()
+			const updates = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
 			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('gateway.usage', query, {headers: {cookie: SESSION}}), report =>
-					Queue.offer(updates, report)
+				Stream.runForEach(gateway.client('gateway.usage', '24h', {headers: {cookie: SESSION}}), value =>
+					Queue.offer(updates, value)
 				)
 			)
-			assert.deepStrictEqual(yield* Queue.take(updates), [{id: added.id, series: []}])
+			const first = yield* Queue.take(updates)
+			assert.deepStrictEqual(first, {
+				range: {bucket: 'hour', count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
+				report: [{id: added.id, series: []}]
+			})
 			for (const index of Array.range(1, 2)) {
 				const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
 					arguments: {query: `call ${index}`},
@@ -1036,16 +1022,47 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				})
 				assert.strictEqual(called.status, 200)
 			}
-			assert.deepStrictEqual(yield* listUsage(gateway.web, query), [{id: added.id, series: [{at: 0, calls: 2}]}])
-			// An open page hears the burst once, with both calls counted.
+			// An open page hears the burst once, with both calls counted in the same window.
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
-			assert.deepStrictEqual(yield* Queue.take(updates), [{id: added.id, series: [{at: 0, calls: 2}]}])
+			assert.deepStrictEqual(yield* Queue.take(updates), {
+				range: first.range,
+				report: [{id: added.id, series: [{at: 0, calls: 2}]}]
+			})
 			assert.strictEqual(yield* Queue.size(updates), 0)
-			// The page's day view sums the same hours into one bucket.
-			assert.deepStrictEqual(yield* listUsage(gateway.web, {bucket: 'day', from: 0, to: 86_400_000}), [
-				{id: added.id, series: [{at: 0, calls: 2}]}
+			// Past the hour boundary, the window moves and a later call still counts.
+			yield* TestClock.adjust('1 hour')
+			assert.deepStrictEqual((yield* Queue.take(updates)).range, {
+				bucket: 'hour',
+				count: 24,
+				from: -79_200_000,
+				size: 3_600_000,
+				to: 7_200_000
+			})
+			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
+				arguments: {query: 'after the boundary'},
+				name: `${added.id}__search`
+			})
+			assert.strictEqual(called.status, 200)
+			yield* TestClock.adjust('1 second')
+			yield* TestClock.adjust('1 second')
+			assert.deepStrictEqual((yield* Queue.take(updates)).report, [
+				{
+					id: added.id,
+					series: [
+						{at: 0, calls: 2},
+						{at: 3_600_000, calls: 1}
+					]
+				}
 			])
+			// The page's day view sums the same hours into one day.
+			const daily = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
+			yield* Effect.forkScoped(
+				Stream.runForEach(gateway.client('gateway.usage', '30d', {headers: {cookie: SESSION}}), value =>
+					Queue.offer(daily, value)
+				)
+			)
+			assert.deepStrictEqual((yield* Queue.take(daily)).report, [{id: added.id, series: [{at: 0, calls: 3}]}])
 		})
 	)
 	test.effect(
@@ -1053,21 +1070,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			yield* post(gateway.web, '/ai/keys', 'session=stranger', {provider: 'anthropic', secret: 'sk-stranger'})
-			const query = {bucket: 'day' as const, from: 0, to: 86_400_000}
-			const mine = yield* Queue.unbounded<AiUsageReport>()
-			const theirs = yield* Queue.unbounded<AiUsageReport>()
+			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
+			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('ai.usage', query, {headers: {cookie: SESSION}}), report =>
-					Queue.offer(mine, report)
+				Stream.runForEach(gateway.client('ai.usage', '24h', {headers: {cookie: SESSION}}), value =>
+					Queue.offer(mine, value)
 				)
 			)
 			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('ai.usage', query, {headers: {cookie: 'session=stranger'}}), report =>
-					Queue.offer(theirs, report)
+				Stream.runForEach(gateway.client('ai.usage', '24h', {headers: {cookie: 'session=stranger'}}), value =>
+					Queue.offer(theirs, value)
 				)
 			)
-			assert.strictEqual((yield* Queue.take(mine)).totals.calls, 0)
-			assert.strictEqual((yield* Queue.take(theirs)).totals.calls, 0)
+			assert.strictEqual((yield* Queue.take(mine)).report.totals.calls, 0)
+			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 0)
 			const called = yield* send(gateway.web, '/ai/anthropic/json', {
 				body: '{"model":"test"}',
 				headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
@@ -1077,7 +1093,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Effect.promise(() => called.text())
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
-			assert.strictEqual((yield* Queue.take(theirs)).totals.calls, 1)
+			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 1)
 			// Another person's call never reaches this reader, not even as a tick.
 			assert.strictEqual(yield* Queue.size(mine), 0)
 		})

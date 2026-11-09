@@ -5,14 +5,25 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {AiKeyInfo, AiSetKey, AiUsageQuery, AiUsageReport} from '#services/ai/schema.ts'
-import {AddServer, ConnectionInfo, McpUsageQuery, McpUsageReport} from '#services/connections/schema.ts'
+import {AiKeyInfo, AiSetKey, AiUsageReport} from '#services/ai/schema.ts'
+import {AddServer, ConnectionInfo, McpUsageReport} from '#services/connections/schema.ts'
+import {Period, UsageRange} from '#services/usage/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('ai.keys', {error: AuthError, success: Schema.Array(AiKeyInfo)}),
 	Rpc.make('ai.setKey', {error: AuthError, payload: AiSetKey}),
-	Rpc.make('ai.usage', {error: AuthError, payload: AiUsageQuery, stream: true, success: AiUsageReport}),
+	Rpc.make('ai.usage', {
+		error: AuthError,
+		payload: Period,
+		stream: true,
+		success: Schema.Struct({range: UsageRange, report: AiUsageReport})
+	}),
 	Rpc.make('gateway.servers', {error: AuthError, stream: true, success: Schema.Array(ConnectionInfo)}),
-	Rpc.make('gateway.usage', {error: AuthError, payload: McpUsageQuery, stream: true, success: McpUsageReport}),
+	Rpc.make('gateway.usage', {
+		error: AuthError,
+		payload: Period,
+		stream: true,
+		success: Schema.Struct({range: UsageRange, report: McpUsageReport})
+	}),
 	Rpc.make('gateway.add', {error: AuthError, payload: AddServer, success: ConnectionInfo})
 ).middleware(RpcAuth) {}

@@ -2,8 +2,7 @@ import {Array, Number, Option} from 'effect'
 
 import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai/schema.ts'
 import type {McpUsageServer} from '#services/connections/schema.ts'
-
-export type Range = {bucket: 'day' | 'hour'; count: number; from: number; size: number}
+import type {UsageRange} from '#services/usage/schema.ts'
 
 const usd = new Intl.NumberFormat('en', {
 	currency: 'USD',
@@ -23,10 +22,10 @@ function costOf(sum: AiUsageBreakdown) {
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.
-function seriesOf(range: Range, value: (at: number) => number) {
+function seriesOf(range: UsageRange, value: (at: number) => number) {
 	return Array.map(Array.range(0, range.count - 1), index => value(range.from + index * range.size))
 }
-export function providerSeries(report: AiUsageReport, provider: AiProvider, range: Range) {
+export function providerSeries(report: AiUsageReport, provider: AiProvider, range: UsageRange) {
 	return seriesOf(range, at =>
 		Option.getOrElse(
 			Option.map(
@@ -49,7 +48,7 @@ export function providerCost(report: AiUsageReport, provider: AiProvider) {
 		() => '—'
 	)
 }
-export function serverSeries(report: readonly McpUsageServer[], id: string, range: Range) {
+export function serverSeries(report: readonly McpUsageServer[], id: string, range: UsageRange) {
 	return seriesOf(range, at =>
 		Option.getOrElse(
 			Option.map(

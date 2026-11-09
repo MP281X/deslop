@@ -1,4 +1,4 @@
-import {Boolean, Clock, Effect, Redacted, Schema, Stream, pipe} from 'effect'
+import {Effect, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -12,6 +12,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {AiProvider} from '#services/ai/schema.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
+import type {Period} from '#services/usage/schema.ts'
 
 export const ENDPOINT = `${window.location.origin}/mcp`
 
@@ -76,54 +77,21 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
-export type Period = typeof Period.Type
-export const Period = Schema.Literals(['24h', '7d', '30d'])
-
-// The period's buckets, ending with the current one: hours for a day, UTC days otherwise.
-function periodRange(period: Period, now: number) {
-	const bucket = Boolean.match(period === '24h', {onFalse: () => 'day' as const, onTrue: () => 'hour' as const})
-	const size = Boolean.match(bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
-	const count = {'7d': 7, '24h': 24, '30d': 30}[period]
-	const to = (Math.floor(now / size) + 1) * size
-	return {bucket, count, from: to - count * size, size, to}
-}
-
 export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
 
-// A period's report now and again after each recorded call, reconnecting over a dropped socket.
-function usageAtom<A, E extends {_tag: string}>(
-	period: Period,
-	request: (range: ReturnType<typeof periodRange>) => Effect.Effect<Stream.Stream<A, E>, never, RpcClient>
-) {
-	return Atom.keepAlive(
-		RpcClient.runtime.atom(() =>
-			Stream.unwrap(
-				Effect.gen(function* () {
-					return WebRuntime.reconnecting(yield* request(periodRange(period, yield* Clock.currentTimeMillis)))
-				})
-			)
-		)
-	)
-}
-
+// A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: Period) =>
-	usageAtom(period, range =>
-		Effect.map(RpcClient, client =>
-			Stream.map(client('ai.usage', {bucket: range.bucket, from: range.from, to: range.to}), report => ({
-				range,
-				report
-			}))
+	Atom.keepAlive(
+		RpcClient.runtime.atom(() =>
+			Stream.unwrap(Effect.map(RpcClient, client => WebRuntime.reconnecting(client('ai.usage', period))))
 		)
 	)
 )
 
 export const mcpUsageAtom = Atom.family((period: Period) =>
-	usageAtom(period, range =>
-		Effect.map(RpcClient, client =>
-			Stream.map(client('gateway.usage', {bucket: range.bucket, from: range.from, to: range.to}), report => ({
-				range,
-				report
-			}))
+	Atom.keepAlive(
+		RpcClient.runtime.atom(() =>
+			Stream.unwrap(Effect.map(RpcClient, client => WebRuntime.reconnecting(client('gateway.usage', period))))
 		)
 	)
 )

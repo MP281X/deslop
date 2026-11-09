@@ -33,16 +33,17 @@ import {
 	copyAtom,
 	ENDPOINT,
 	mcpUsageAtom,
-	Period,
 	serversAtom,
 	setKeyAtom
 } from '#lib/utils.ts'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import {AddKeyDialog, PROVIDER_NAMES, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
-import {providerCost, providerSeries, serverCalls, serverSeries, type Range} from '#routes/(home)/-usage.ts'
+import {providerCost, providerSeries, serverCalls, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import type {AiKeyInfo, AiProvider, AiUsageReport} from '#services/ai/schema.ts'
 import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.ts'
+import {Period} from '#services/usage/schema.ts'
+import type {UsageRange} from '#services/usage/schema.ts'
 
 const PERIODS = [
 	{label: '24h', value: '24h'},
@@ -169,7 +170,7 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 }
 
 // One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period.
-function ServerRow(props: {period: Range; report: readonly McpUsageServer[]; server: ConnectionInfo}) {
+function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]; server: ConnectionInfo}) {
 	const [connecting, setConnecting] = useState(false)
 	const connected = props.server.status === 'Connected'
 	const needsUser = !connected || props.server.error !== undefined
@@ -266,7 +267,13 @@ function ServerRows(props: {period: Period}) {
 }
 
 // One key: its provider's mark and name, the secret's last four, then its cost over the period.
-function KeyRow(props: {cost: string; info: AiKeyInfo; period: Range; provider: AiProvider; report: AiUsageReport}) {
+function KeyRow(props: {
+	cost: string
+	info: AiKeyInfo
+	period: UsageRange
+	provider: AiProvider
+	report: AiUsageReport
+}) {
 	return (
 		<div role="listitem">
 			<Item size="row">

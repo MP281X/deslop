@@ -54,7 +54,6 @@ import type {
 	Callback,
 	ConnectionInfo,
 	Discovery,
-	McpUsageQuery,
 	McpUsageReport,
 	OAuth,
 	ServerId,
@@ -69,6 +68,8 @@ import {
 	Token,
 	UpstreamError
 } from '#services/connections/schema.ts'
+import type {Period, UsageRange} from '#services/usage/schema.ts'
+import {usageWindow} from '#services/usage/utils.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {
@@ -109,8 +110,8 @@ export class Connections extends Context.Service<
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
-		// Each proxied call, summed into the period's buckets by server: the report at once and again after every recorded call.
-		readonly usage: (query: McpUsageQuery) => Stream.Stream<McpUsageReport, AuthError>
+		// Each proxied call, summed into the period's buckets by server, in a window that reopens at each bucket boundary.
+		readonly usage: (period: Period) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
@@ -160,7 +161,7 @@ export class Connections extends Context.Service<
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
 		// A recorded call wakes every open usage reader; reads coalesce, so one report goes out at most each second.
 		const usageChanged = yield* SubscriptionRef.make(0)
-		const usageReport = Effect.fnUntraced(function* (query: McpUsageQuery) {
+		const usageReport = Effect.fnUntraced(function* (range: UsageRange) {
 			return yield* Effect.forEach(
 				Array.map(Record.values(yield* SubscriptionRef.get(state)), row => row.id),
 				id =>
@@ -168,7 +169,7 @@ export class Connections extends Context.Service<
 						id,
 						series: usageSeries(
 							Option.getOrElse(buckets, () => []),
-							query
+							range
 						)
 					})),
 				{concurrency: 1}
@@ -686,16 +687,11 @@ export class Connections extends Context.Service<
 				)
 			}),
 			token,
-			usage: query =>
-				pipe(
-					SubscriptionRef.changes(usageChanged),
-					Stream.buffer({capacity: 1, strategy: 'sliding'}),
-					Stream.flatMap(() =>
-						Stream.concat(
-							Stream.fromEffect(usageReport(query)),
-							Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
-						)
-					)
+			usage: period =>
+				usageWindow(
+					period,
+					Stream.map(SubscriptionRef.changes(usageChanged), () => undefined),
+					usageReport
 				),
 			// The list is read again on each change and once a minute, so an expired provider shows as expired.
 			watch: user =>

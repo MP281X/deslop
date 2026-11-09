@@ -35,9 +35,11 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {bearerOf, failureOptions, isJwt, localAuth} from '@deslop/runtime/auth/utils'
 
-import type {AiProvider, AiUsageQuery} from '#services/ai/schema.ts'
+import type {AiProvider} from '#services/ai/schema.ts'
 import {AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
+import type {Period, UsageRange} from '#services/usage/schema.ts'
+import {usageWindow} from '#services/usage/utils.ts'
 
 const UPSTREAMS = {
 	anthropic: 'https://api.anthropic.com',
@@ -137,10 +139,10 @@ const make = Effect.gen(function* () {
 		)
 		yield* SubscriptionRef.update(usageChanged, versions => ({...versions, [id]: (versions[id] ?? 0) + 1}))
 	})
-	const usageReport = Effect.fnUntraced(function* (id: string, query: AiUsageQuery) {
+	const usageReport = Effect.fnUntraced(function* (id: string, range: UsageRange) {
 		const months = MutableList.make<string>()
-		const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(query.from), 'month')}
-		while (DateTime.toEpochMillis(cursor.date) < query.to) {
+		const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(range.from), 'month')}
+		while (DateTime.toEpochMillis(cursor.date) < range.to) {
 			MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
 			cursor.date = DateTime.add(cursor.date, {months: 1})
 		}
@@ -153,7 +155,7 @@ const make = Effect.gen(function* () {
 				),
 			{concurrency: 1}
 		)
-		return report(Array.flatten(entries), query)
+		return report(Array.flatten(entries), range)
 	}, failed)
 	return {
 		keys: (id: string) =>
@@ -335,18 +337,16 @@ const make = Effect.gen(function* () {
 				failed
 			)
 		}),
-		usage: (id: string, query: AiUsageQuery) =>
-			pipe(
-				SubscriptionRef.changes(usageChanged),
-				Stream.map(versions => versions[id] ?? 0),
-				Stream.changes,
-				Stream.buffer({capacity: 1, strategy: 'sliding'}),
-				Stream.flatMap(() =>
-					Stream.concat(
-						Stream.fromEffect(usageReport(id, query)),
-						Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
-					)
-				)
+		usage: (id: string, period: Period) =>
+			usageWindow(
+				period,
+				pipe(
+					SubscriptionRef.changes(usageChanged),
+					Stream.map(versions => versions[id] ?? 0),
+					Stream.changes,
+					Stream.map(() => undefined)
+				),
+				range => usageReport(id, range)
 			)
 	}
 })
