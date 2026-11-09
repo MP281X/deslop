@@ -24,8 +24,7 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 
 export type StaleReaders = readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]
 
-// The oldest reader whose failure still shows its previous value; refreshing it refreshes every reader.
-// fallow-ignore-next-line unused-export -- the tests drive the age and retry protocol this atom exposes directly.
+// fallow-ignore-next-line unused-export -- the oldest reader still showing content, whose tests drive the age and retry protocol directly.
 export const staleSinceAtom = Atom.family((readers: StaleReaders) =>
 	Atom.readable(
 		get =>
