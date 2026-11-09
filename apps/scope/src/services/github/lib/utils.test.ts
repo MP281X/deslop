@@ -39,7 +39,6 @@ const run = WorkflowRun.make({
 		id: 101,
 		name: 'Release',
 		run_attempt: 1,
-		run_number: 1240,
 		run_started_at: '2026-11-03T08:00:00Z',
 		updated_at: '2026-11-03T08:06:00Z'
 	}

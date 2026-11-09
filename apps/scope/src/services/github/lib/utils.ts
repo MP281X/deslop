@@ -95,7 +95,6 @@ export function jobTrace(event: WorkflowJob) {
 					completed: Option.fromNullishOr(step.completed_at),
 					started: Option.fromNullishOr(step.started_at)
 				}),
-				Option.filter(() => step.conclusion !== 'skipped'),
 				Option.map(times => ({...step, ...times}))
 			)
 		)
