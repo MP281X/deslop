@@ -21,7 +21,7 @@ import type {ReactNode} from 'react'
 import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {Page, Section} from '@deslop/components-web/page'
+import {Page, Section, Legend} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -268,13 +268,13 @@ function RangeToggle(props: {
 						range => props.onChange(range.minutes)
 					)
 				}}
-				size="sm"
+				size="xs"
 				spacing={0}
 				value={[`${props.minutes}`]}
 				variant="outline"
 			>
 				{Array.map(RANGES, range => (
-					<ToggleGroupItem key={range.minutes} className="max-sm:h-11" value={`${range.minutes}`}>
+					<ToggleGroupItem key={range.minutes} value={`${range.minutes}`}>
 						{range.label}
 					</ToggleGroupItem>
 				))}
@@ -506,7 +506,7 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn('list-row relative flex h-12 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -526,6 +526,7 @@ function AppListRow(props: {
 						<ItemMedia variant="icon">
 							<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
 						</ItemMedia>
+						<span aria-hidden className="h-px w-2 shrink-0 bg-(--leader)" />
 						<ItemContent className="min-w-0">
 							<span
 								className={cn('min-w-0 truncate text-sm font-medium', scheduled && 'text-muted-foreground')}
@@ -592,7 +593,7 @@ function AppListRow(props: {
 					<div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-2">
 						<span
 							className={cn(
-								'w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden',
+								'border-border text-annotation w-20 shrink-0 border-l border-dashed pl-2 text-right font-mono whitespace-nowrap tabular-nums max-sm:hidden',
 								scheduled && 'text-muted-foreground'
 							)}
 						>
@@ -698,7 +699,7 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 				<div
 					key={row}
 					aria-hidden
-					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
+					className={cn('list-row flex h-12 items-center gap-3 px-4', props.indent === true && 'pl-8')}
 				>
 					<Skeleton className="size-5 shrink-0" />
 					<Skeleton className="h-3.5 w-1/3 max-w-40" />
@@ -755,6 +756,7 @@ function AppsPane(props: {
 	return (
 		<Section
 			title="Apps"
+			sheet="B"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
 			headerClassName="px-4"
 			actions={
@@ -841,6 +843,7 @@ function ProcessPane(props: {
 	return (
 		<Section
 			title="Processes"
+			sheet="C"
 			className={cn('min-h-0 min-w-0 flex-1 gap-0', props.className)}
 			headerClassName="px-4"
 			actions={
@@ -1053,10 +1056,23 @@ function MachinePane(props: {
 	return (
 		<Section
 			title="Machine"
+			sheet="A"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
 			headerClassName="px-4"
 			actions={
 				<div className="flex items-center gap-2">
+					<Legend
+						title="Chart marks"
+						items={[
+							{label: 'An app band, in the machine hue', mark: <span className="size-2 bg-(--machine)" />},
+							{label: 'Small apps share one grey band', mark: <span className="bg-muted-foreground size-2" />},
+							{
+								label: 'Half the machine',
+								mark: <span className="border-muted-foreground w-4 border-t border-dashed" />
+							},
+							{label: 'A failed service', mark: <span className="bg-destructive size-2 rounded-full" />}
+						]}
+					/>
 					<MetricsProblem minutes={props.minutes} />
 				</div>
 			}
@@ -1185,7 +1201,7 @@ function SourceProblems(props: {
 		{
 			onEmpty: () => null,
 			onNonEmpty: sources => (
-				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
+				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-dashed pb-2">
 					{Array.map(sources, source => (
 						<div key={source.name} className="flex items-center gap-1.5">
 							<MachineIcon worker={source.name} />

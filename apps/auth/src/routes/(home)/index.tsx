@@ -11,7 +11,6 @@ import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {Spinner} from '@deslop/components-web/ui/spinner'
-import {cn} from '@deslop/components-web/utils'
 
 import {SignInList} from '#lib/components.tsx'
 import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
@@ -51,17 +50,17 @@ function Enter(props: {
 					disabled={props.state === 'Checking'}
 					aria-invalid={invalid}
 					aria-describedby="code-error"
-					containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
+					containerClassName="gap-2"
 				>
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-12 flex-1" />
 						))}
 					</InputOTPGroup>
 					<InputOTPSeparator />
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-12 flex-1" />
 						))}
 					</InputOTPGroup>
 				</InputOTP>
@@ -74,6 +73,7 @@ function Enter(props: {
 				{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
 				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
 			</Field>
+			<span aria-hidden className="dimension-line" />
 			{Option.match(props.answered, {
 				onNone: () => null,
 				onSome: answer => (
@@ -111,7 +111,7 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+		<div className="m-auto flex w-full max-w-xl flex-col gap-8 py-6">
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>

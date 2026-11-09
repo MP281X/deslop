@@ -16,7 +16,7 @@ export function EmptyState(props: {action?: ReactNode; description?: string; ico
 		)
 	}
 	return (
-		<Empty role="status" aria-label={props.label}>
+		<Empty variant="sheet" role="status" aria-label={props.label}>
 			<EmptyHeader>
 				<EmptyMedia variant="icon" className="mb-3">
 					{props.icon}

@@ -5,7 +5,7 @@
 	/* Under a wide screen's split, apps and charts share the top and processes take the lower band. */
 	--grid-template-rows-split: 3fr 2fr;
 	/* A port chip's least width, so single ports line up while a hostname keeps its full name. */
-	--spacing-port: 7ch;
+	--spacing-port: 8ch;
 }
 
 /* Each machine's identity, used by machine labels and icons. */

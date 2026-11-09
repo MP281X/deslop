@@ -4,6 +4,7 @@ import {Array, Boolean, Cause, Result} from 'effect'
 
 import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
+	background,
 	buttonBorderShape,
 	buttonStyle,
 	clipShape,
@@ -57,7 +58,18 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	const denied = deniedBy(props.cause)
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
-			<VStack spacing={space[3]}>
+			<VStack
+				spacing={space[3]}
+				modifiers={[
+					padding({all: space[6]}),
+					background(colors.card),
+					clipShape('roundedRectangle', radius),
+					frame({maxWidth: 420})
+				]}
+			>
+				<Text modifiers={[text.annotation, foregroundStyle(colors.mutedForeground)]}>
+					{Boolean.match(denied, {onFalse: () => 'SHEET / STATE', onTrue: () => 'SHEET / ACCESS'})}
+				</Text>
 				<Label
 					icon={
 						<Image
@@ -80,7 +92,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					onPress={props.onRetry}
 					modifiers={[
 						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('regular'),
 						tint(colors.destructive)
 					]}
@@ -96,6 +108,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 		<Host style={{flex: 1}}>
 			<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
 				<Spacer />
+				<Text modifiers={[text.annotation, foregroundStyle(colors.mutedForeground)]}>AUTH / GITHUB</Text>
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
 					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
@@ -108,7 +121,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 					onPress={() => props.onSignIn()}
 					modifiers={[
 						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('large'),
 						tint(props.tint),
 						disabled(props.waiting)

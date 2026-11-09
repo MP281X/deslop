@@ -157,7 +157,8 @@ type SignedInClient = {
 function ClientRow(props: {client: SignedInClient; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
 	const minutes = minutesSince(props.client.lastActive, props.now)
-	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
+	const activity = Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})
+	const active = `active ${activity}`
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<ContextMenu>
@@ -169,17 +170,23 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-muted/50 flex h-12 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
 						/>
 					}
 				>
 					<ClientIcon client={props.client.client} />
+					<span aria-hidden className="h-px w-3 shrink-0 bg-(--leader)" />
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					<span className="text-muted-foreground border-border text-annotation tracking-annotation flex shrink-0 items-center gap-1.5 border-l border-dashed pl-2 font-mono uppercase">
+						<span className="text-primary">Last</span>
+						<span className="normal-case tabular-nums">{activity}</span>
+					</span>
 					{Option.match(address, {
 						onNone: () => null,
 						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
+							<span className="text-muted-foreground border-border text-annotation hidden shrink-0 border-l border-dashed pl-2 font-mono normal-case sm:block">
+								{value}
+							</span>
 						)
 					})}
 				</ContextMenuTrigger>
@@ -205,10 +212,19 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="blueprint-sheet flex flex-col gap-3 p-5">
+			<div className="text-annotation tracking-label flex items-center gap-2 font-mono uppercase">
+				<span
+					aria-hidden
+					className="border-border bg-surface text-ring flex size-6 shrink-0 items-center justify-center rounded-xs border font-semibold"
+				>
+					A
+				</span>
+				<span className="text-muted-foreground">Request / approval</span>
+			</div>
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+				<span className="text-muted-foreground text-annotation font-mono tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>
 			</div>
@@ -226,6 +242,7 @@ function Answer(props: {request: PendingAuthorization}) {
 				. Approve only a code you started yourself.
 			</FieldDescription>
 			<ResultError result={consent} />
+			<span aria-hidden className="dimension-line" />
 			<div className="grid grid-cols-2 gap-2">
 				<Button
 					size="lg"
@@ -316,6 +333,7 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 	return (
 		<Section
 			title="Signed in"
+			sheet="B"
 			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
 			className="gap-0"
 		>

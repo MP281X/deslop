@@ -6,39 +6,41 @@
 
 /* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
-	--red: oklch(from #c92b38 l c h);
-	--orange: oklch(from #b64b11 l c h);
-	--amber: oklch(from #91601d l c h);
-	--ivory: oklch(from #686868 l c h);
-	--cyan: oklch(from #25777a l c h);
-	--blue: oklch(from #345dad l c h);
-	--purple: oklch(from #74519b l c h);
-	--pink: oklch(from #a63c69 l c h);
-	--slate: oklch(from #526887 l c h);
-	--coral: oklch(from #bd4630 l c h);
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
+	/* Blueprint Ops: dark navy paper, cyan ink, identity hues kept apart so a mark still names its app. */
+	--red: #b42318;
+	--orange: #b45309;
+	--amber: #8a5a00;
+	--ivory: #52525b;
+	--cyan: #0b6f8a;
+	--blue: #2563a8;
+	--purple: #6d4fa1;
+	--pink: #a23b67;
+	--slate: #4a6178;
+	--coral: #b4422b;
+	--machine-dev: #176b87;
+	--machine-desktop: #8a5a00;
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
+	/* Blueprint paper in daylight: cool white ground, navy ink. */
+	--background: #eef4fa;
+	--foreground: #0b1d30;
+	--card: #ffffff;
 	--popover: #ffffff;
+	--primary: #087ea4;
 	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--secondary: #e3edf5;
+	--muted: #e8f0f7;
+	--muted-foreground: #526b80;
+	--accent: #dcebf6;
+	--border: #b8c9d8;
+	--input: #91aec6;
+	--surface: #e3edf5;
+	--selection: #cfe4f3;
+	--selection-foreground: #0b1d30;
 
-	--primary: var(--slate);
 	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
-	--ring: var(--primary);
+	--warning: #92400e;
+	--success: #0b7a5c;
+	--ring: var(--cyan);
 
 	--card-foreground: var(--foreground);
 	--popover-foreground: var(--foreground);
@@ -46,12 +48,18 @@
 	--accent-foreground: var(--foreground);
 	--surface-foreground: var(--foreground);
 
-	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
-	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	/* The drawing's own ink: 32px paper grid, ruler ticks and dimension leaders. */
+	--grid-line: color-mix(in oklab, var(--cyan) 4%, transparent);
+	--ruler-tick: color-mix(in oklab, var(--cyan) 42%, transparent);
+	--leader: color-mix(in oklab, var(--cyan) 55%, transparent);
+
+	/* One palette for charts: cyan, schematic blue, signal green, amber, destructive red, annotation grey. */
+	--chart-1: #087ea4;
+	--chart-2: #2563a8;
+	--chart-3: #0b7a5c;
+	--chart-4: #8a5a00;
+	--chart-5: #b42318;
+	--chart-6: #4a6178;
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -61,41 +69,53 @@
 	--sidebar-border: var(--border);
 	--sidebar-ring: var(--ring);
 
-	--radius: 0px;
+	/* Controls take a 2px corner, sheets a 6px one. */
+	--radius: 6px;
+	--radius-control: 2px;
 }
 
-/* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
+/* Blueprint Ops at night: deep navy paper, cyan ink, measured cyan lines. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
-		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
-		--amber: oklch(from #e6c384 l c h);
-		--ivory: oklch(from #dcd7ba l c h);
-		--cyan: oklch(from #a3d4d5 l c h);
-		--blue: oklch(from #7e9cd8 l c h);
-		--purple: oklch(from #957fb8 l c h);
-		--pink: oklch(from #d27e99 l c h);
-		--slate: oklch(from #9cabca l c h);
-		--coral: oklch(from #fd7357 l c h);
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		--red: #ff6b6b;
+		--orange: #f4a261;
+		--amber: #e9c46a;
+		--ivory: #dceaff;
+		--cyan: #4cc9f0;
+		--blue: #4895ef;
+		--purple: #9d8df1;
+		--pink: #e88fb4;
+		--slate: #7fa6c8;
+		--coral: #ff8a7a;
+		--machine-dev: #4cc9f0;
+		--machine-desktop: #ffb703;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #07111f;
+		--foreground: #dceaff;
+		--card: #0c1c30;
+		--popover: #10233a;
+		--primary: #4cc9f0;
+		--primary-foreground: #03101d;
+		--secondary: #0f2238;
+		--muted: #0f2238;
+		--muted-foreground: #7fa6c8;
+		--accent: #16324c;
+		--border: #1b3a5b;
+		--input: #16324e;
+		--surface: #0a1728;
+		--selection: #143c5a;
+		--selection-foreground: #dceaff;
+
+		--destructive: #ff6b6b;
+		--warning: #ffb703;
+		--success: #67e8b9;
+
+		--chart-1: #4cc9f0;
+		--chart-2: #4895ef;
+		--chart-3: #67e8b9;
+		--chart-4: #ffb703;
+		--chart-5: #ff6b6b;
+		--chart-6: #7fa6c8;
 	}
 }
 
@@ -103,12 +123,16 @@
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--tracking-label: 0.12em;
+	--tracking-annotation: 0.08em;
+	--text-annotation: 10px;
+	--text-annotation--line-height: 1.2;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -132,6 +156,7 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -140,8 +165,8 @@
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
-	--radius-xs: var(--radius);
-	--radius-sm: var(--radius);
+	--radius-xs: var(--radius-control);
+	--radius-sm: var(--radius-control);
 	--radius-md: var(--radius);
 	--radius-lg: var(--radius);
 	--radius-xl: var(--radius);
@@ -153,6 +178,86 @@
 	--spacing-safe-right: env(safe-area-inset-right);
 	--spacing-safe-bottom: env(safe-area-inset-bottom);
 	--spacing-safe-left: env(safe-area-inset-left);
+}
+
+/* A signal line draws once, then stays drawn; reduced motion shows it at rest. */
+@theme {
+	--animate-signal: signal-draw 220ms ease-out;
+
+	@keyframes signal-draw {
+		from {
+			stroke-dashoffset: 64;
+		}
+		to {
+			stroke-dashoffset: 0;
+		}
+	}
+}
+
+/* 32px grid paper, only where content sits. */
+@utility blueprint-grid {
+	background-image:
+		linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+	background-size: 32px 32px;
+}
+
+/* A measured sheet: 1px rule, 6px corner, card paper. */
+@utility blueprint-sheet {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--card);
+}
+
+/* A short cyan leader from a label to the thing it names. */
+@utility leader-line {
+	position: relative;
+	padding-left: calc(var(--spacing) * 4);
+	&::before {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 0;
+		width: calc(var(--spacing) * 3);
+		height: 1px;
+		background: var(--leader);
+	}
+}
+
+/* A dimension line: the rule between two measured ends, with its end ticks. */
+@utility dimension-line {
+	position: relative;
+	height: 1px;
+	background: var(--border);
+	&::before,
+	&::after {
+		content: '';
+		position: absolute;
+		top: calc(var(--spacing) * -1);
+		width: 1px;
+		height: calc(var(--spacing) * 2);
+		background: var(--leader);
+	}
+	&::before {
+		left: 0;
+	}
+	&::after {
+		right: 0;
+	}
+}
+
+/* The ruler's bottom edge: 8px ticks, no extra element. */
+@utility ruler-ticks {
+	position: relative;
+	&::after {
+		content: '';
+		position: absolute;
+		inset-inline: 0;
+		bottom: 0;
+		height: 5px;
+		background-image: repeating-linear-gradient(to right, var(--ruler-tick) 0 1px, transparent 1px 8px);
+		pointer-events: none;
+	}
 }
 
 /* Pixel art keeps its hard edges when scaled. */
@@ -170,7 +275,7 @@
 		inset-inline: calc(var(--spacing) * 4);
 		bottom: 0;
 		height: 1px;
-		background: var(--border);
+		background: repeating-linear-gradient(to right, var(--border) 0 4px, transparent 4px 8px);
 		pointer-events: none;
 	}
 	&:hover::after,
@@ -267,6 +372,9 @@
 	*,
 	*::before,
 	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
 		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
 	}
 }

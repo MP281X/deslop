@@ -3,6 +3,7 @@ import {Option} from 'effect'
 import {HStack, List, Text, VStack} from '@expo/ui/swift-ui'
 import {
 	accessibilityElement,
+	background,
 	contentShape,
 	foregroundStyle,
 	frame,
@@ -10,6 +11,7 @@ import {
 	listRowInsets,
 	listStyle,
 	onTapGesture,
+	scrollContentBackground,
 	scrollEdgeEffectStyle,
 	shapes
 } from '@expo/ui/swift-ui/modifiers'
@@ -22,13 +24,21 @@ import {colors, space, text} from '#components/theme.ts'
 
 // Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
 export const itemRow = [
-	frame({minHeight: 56}),
+	frame({minHeight: 48}),
 	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
 	return (
-		<List modifiers={[...(props.modifiers ?? []), scrollEdgeEffectStyle('soft'), listStyle('insetGrouped')]}>
+		<List
+			modifiers={[
+				...(props.modifiers ?? []),
+				scrollEdgeEffectStyle('soft'),
+				scrollContentBackground('hidden'),
+				background(colors.background),
+				listStyle('insetGrouped')
+			]}
+		>
 			{props.children}
 		</List>
 	)
@@ -87,6 +97,17 @@ export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]})
 export function ItemDescription(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
 		<Text modifiers={[...(props.modifiers ?? []), text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+			{props.children}
+		</Text>
+	)
+}
+
+// A measured annotation under a row's title: the mono figure the web draws in its trailing column.
+export function ItemAnnotation(props: {children: string; modifiers?: ViewModifier[]}) {
+	return (
+		<Text
+			modifiers={[...(props.modifiers ?? []), text.annotation, foregroundStyle(colors.mutedForeground), lineLimit(1)]}
+		>
 			{props.children}
 		</Text>
 	)

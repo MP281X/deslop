@@ -1,10 +1,11 @@
 import {Array, Boolean, DateTime, Match, Option, Schema, pipe} from 'effect'
 
-import {HStack, Image, Text} from '@expo/ui/swift-ui'
-import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
+import {HStack, Image} from '@expo/ui/swift-ui'
+import {accessibilityElement, accessibilityHidden, foregroundStyle} from '@expo/ui/swift-ui/modifiers'
 
 import {BrandLogo} from '@deslop/components-mobile/icons'
-import {colors, space, text} from '@deslop/components-mobile/theme'
+import {colors, space} from '@deslop/components-mobile/theme'
+import {ItemAnnotation} from '@deslop/components-mobile/ui/item'
 
 import {kindOf, kinds, siteOf} from '#lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
@@ -42,7 +43,7 @@ export function Byline(props: {note: NoteItem}) {
 	return (
 		<HStack spacing={space[1]} modifiers={[accessibilityElement('combine')]}>
 			<SourceIcon kind={kindOf(props.note)} />
-			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+			<ItemAnnotation>
 				{pipe(
 					[
 						Option.orElse(Option.fromUndefinedOr(props.note.author), () => siteOf(props.note)),
@@ -51,7 +52,7 @@ export function Byline(props: {note: NoteItem}) {
 					Array.getSomes,
 					Array.join(' · ')
 				)}
-			</Text>
+			</ItemAnnotation>
 		</HStack>
 	)
 }

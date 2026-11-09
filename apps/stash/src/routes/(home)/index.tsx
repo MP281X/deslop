@@ -16,6 +16,7 @@ import {
 	Text,
 	Toggle,
 	ZStack,
+	Section,
 	Toolbar,
 	ToolbarItem,
 	VStack
@@ -377,7 +378,7 @@ export function HomeRoute(props: {
 											onPress={props.onCompose}
 											modifiers={[
 												buttonStyle('glassProminent'),
-												buttonBorderShape('capsule'),
+												buttonBorderShape('roundedRectangle', radius),
 												controlSize('large'),
 												tint(primary)
 											]}
@@ -414,18 +415,20 @@ export function HomeRoute(props: {
 											))}
 										</ToggleGroup>
 										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{Array.map(Array.take(notes, limit), (note, position) => (
-											<NoteRow
-												key={note.id}
-												note={note}
-												onAppear={() => {
-													if (position === limit - 1) setLimit(limit + 80)
-												}}
-												onOpen={props.onOpen}
-												onRegenerate={id => regenerate(id)}
-												onRemove={id => remove(id)}
-											/>
-										))}
+										<Section title="A / NOTES">
+											{Array.map(Array.take(notes, limit), (note, position) => (
+												<NoteRow
+													key={note.id}
+													note={note}
+													onAppear={() => {
+														if (position === limit - 1) setLimit(limit + 80)
+													}}
+													onOpen={props.onOpen}
+													onRegenerate={id => regenerate(id)}
+													onRemove={id => remove(id)}
+												/>
+											))}
+										</Section>
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>

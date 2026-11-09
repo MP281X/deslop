@@ -3,37 +3,38 @@ import {DynamicColorIOS} from 'react-native'
 
 // Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
-	card: DynamicColorIOS({dark: '#141313', light: '#f8f7f4'}),
-	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
-	foreground: DynamicColorIOS({dark: '#e3e1db', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#a19e96', light: '#64625d'}),
-	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	surface: DynamicColorIOS({dark: '#191817', light: '#f2f1ed'}),
-	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
+	background: DynamicColorIOS({dark: '#07111f', light: '#eef4fa'}),
+	border: DynamicColorIOS({dark: '#1b3a5b', light: '#b8c9d8'}),
+	card: DynamicColorIOS({dark: '#0c1c30', light: '#ffffff'}),
+	destructive: DynamicColorIOS({dark: '#ff6b6b', light: '#b42318'}),
+	foreground: DynamicColorIOS({dark: '#dceaff', light: '#0b1d30'}),
+	mutedForeground: DynamicColorIOS({dark: '#7fa6c8', light: '#526b80'}),
+	primaryForeground: DynamicColorIOS({dark: '#03101d', light: '#ffffff'}),
+	surface: DynamicColorIOS({dark: '#0a1728', light: '#e3edf5'}),
+	warning: DynamicColorIOS({dark: '#ffb703', light: '#92400e'})
 }
 
 // Each app's primary tints its controls, live states and icon.
 export const hues = {
-	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
-	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),
-	cyan: DynamicColorIOS({dark: '#a3d4d5', light: '#25777a'}),
-	ivory: DynamicColorIOS({dark: '#dcd7ba', light: '#686868'}),
-	orange: DynamicColorIOS({dark: '#ffa066', light: '#b64b11'}),
-	pink: DynamicColorIOS({dark: '#d27e99', light: '#a63c69'}),
-	purple: DynamicColorIOS({dark: '#957fb8', light: '#74519b'}),
-	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
+	amber: DynamicColorIOS({dark: '#e9c46a', light: '#8a5a00'}),
+	blue: DynamicColorIOS({dark: '#4895ef', light: '#2563a8'}),
+	cyan: DynamicColorIOS({dark: '#4cc9f0', light: '#0b6f8a'}),
+	ivory: DynamicColorIOS({dark: '#dceaff', light: '#52525b'}),
+	orange: DynamicColorIOS({dark: '#f4a261', light: '#b45309'}),
+	pink: DynamicColorIOS({dark: '#e88fb4', light: '#a23b67'}),
+	purple: DynamicColorIOS({dark: '#9d8df1', light: '#6d4fa1'}),
+	slate: DynamicColorIOS({dark: '#7fa6c8', light: '#4a6178'})
 }
 
 // The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
 export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
 
-// Concentric with the system's list rows, sheets and icon tiles.
-export const radius = 12
+// Blueprint controls and sheets: 8pt corners, never a capsule.
+export const radius = 8
 
-// System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
+// System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes, counts and annotations.
 export const text = {
+	annotation: font({design: 'monospaced', textStyle: 'caption2', weight: 'medium'}),
 	body: font({textStyle: 'body'}),
 	caption: font({textStyle: 'caption'}),
 	data: font({design: 'monospaced', textStyle: 'footnote'}),

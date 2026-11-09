@@ -104,7 +104,7 @@ function Code(props: {id: string}) {
 				aria-label={`Copy the code ${requestCode(props.id)}`}
 				onClick={() => copyCode(requestCode(props.id))}
 			>
-				{requestCode(props.id)}
+				<span className="tracking-label font-mono text-base normal-case">{requestCode(props.id)}</span>
 				{Boolean.match(copied, {
 					onFalse: () => <CopyIcon className="text-muted-foreground" />,
 					onTrue: () => <CheckIcon className="text-primary" />
@@ -122,13 +122,13 @@ function Code(props: {id: string}) {
 function Countdown(props: {expiresAt: number}) {
 	const now = useAtomSuspense(secondAtom).value
 	return (
-		<span role="timer" className="text-muted-foreground flex items-center gap-1.5 text-xs">
+		<span role="timer" className="text-muted-foreground text-annotation flex items-center gap-1.5 font-mono uppercase">
 			<StatusDot
 				waiting
 				status={Boolean.match(props.expiresAt - now < 60_000, {onFalse: () => 'live', onTrue: () => 'warning'})}
 			/>
 			<span>
-				<span className="font-mono tabular-nums">{leftLabel(props.expiresAt, now)}</span> left
+				<span className="normal-case tabular-nums">{leftLabel(props.expiresAt, now)}</span> left
 			</span>
 		</span>
 	)
@@ -140,25 +140,38 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
+		<section className="blueprint-sheet m-auto flex w-full max-w-md flex-col gap-5 p-6" aria-labelledby="waiting-title">
+			<div className="text-annotation tracking-label flex items-center gap-2 font-mono uppercase">
+				<span
+					aria-hidden
+					className="border-border bg-surface text-ring flex size-6 shrink-0 items-center justify-center rounded-xs border font-semibold"
+				>
+					A
+				</span>
+				<span className="text-muted-foreground">Waiting / request</span>
+			</div>
 			<header className="flex flex-col gap-2">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
 				<h1
 					id="waiting-title"
 					title={`Sign in ${props.request.clientName} on ${props.request.device}`}
-					className="font-heading text-3xl leading-none tracking-tight"
+					className="font-heading text-2xl leading-none tracking-tight"
 				>
 					{props.request.clientName}
 				</h1>
-				<p className="text-muted-foreground text-sm">on {props.request.device} · asks to sign in to Deslop</p>
+				<p className="text-muted-foreground text-annotation font-mono uppercase">
+					on {props.request.device} · asks to sign in to Deslop
+				</p>
 			</header>
+			<span aria-hidden className="dimension-line" />
 			<div className="flex items-start gap-5">
 				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
+				<span className="bg-background text-foreground shrink-0 rounded-xs border border-dashed p-2">
 					<QrCode text={approveLink(props.request.id)} className="size-32" />
 				</span>
 				<div className="flex min-w-0 flex-col gap-2">
-					<span className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Code</span>
+					<span className="text-muted-foreground text-annotation tracking-label font-mono font-semibold uppercase">
+						Code
+					</span>
 					<Code id={props.request.id} />
 					<Countdown expiresAt={props.request.expiresAt} />
 					<p className="text-muted-foreground text-xs leading-relaxed">
@@ -168,7 +181,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			</div>
 			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
 			{props.request.kind === 'App' && (
-				<div className="flex flex-col gap-2 border-t pt-4">
+				<div className="flex flex-col gap-2 border-t border-dashed pt-4">
 					<Button
 						variant="outline"
 						size="sm"
@@ -376,7 +389,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 // The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t border-dashed pt-5 sm:grid-cols-3">
 			{Array.map(props.apps, app => (
 				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
 					<AppIcon origin={app.origin} small />
@@ -397,7 +410,16 @@ function SignIn() {
 	return (
 		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
+			<div className="blueprint-sheet flex w-full flex-col gap-5 p-6">
+				<div className="text-annotation tracking-label flex items-center gap-2 font-mono uppercase">
+					<span
+						aria-hidden
+						className="border-border bg-surface text-ring flex size-6 shrink-0 items-center justify-center rounded-xs border font-semibold"
+					>
+						A
+					</span>
+					<span className="text-muted-foreground">Access / credentials</span>
+				</div>
 				<div className="flex flex-col gap-2">
 					<Button
 						size="lg"
@@ -578,7 +600,7 @@ function HomeLayout() {
 								<Skeleton className="h-7 w-52" />
 								<Skeleton className="h-4 w-44" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="blueprint-sheet flex w-full max-w-sm flex-col gap-2 p-4">
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />

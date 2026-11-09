@@ -15,7 +15,7 @@ import {createContext, useContext} from 'react'
 import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
-import {colors, space, text} from '#components/theme.ts'
+import {colors, radius, space, text} from '#components/theme.ts'
 
 const ToggleGroupContext = createContext<{onValueChange: (value: string) => void; tint: ColorValue; value: string}>({
 	onValueChange: () => undefined,
@@ -23,7 +23,7 @@ const ToggleGroupContext = createContext<{onValueChange: (value: string) => void
 	value: ''
 })
 
-// shadcn's ToggleGroup on iOS, by the same names: one choice among glass capsules, scrolling sideways when they overflow.
+// shadcn's ToggleGroup on iOS, by the same names: one choice among drawn trays, scrolling sideways when they overflow.
 export function ToggleGroup(props: {
 	children: ReactNode
 	modifiers?: ViewModifier[]
@@ -58,7 +58,7 @@ export function ToggleGroupItem(props: {
 				buttonStyle(
 					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
 				),
-				buttonBorderShape('capsule'),
+				buttonBorderShape('roundedRectangle', radius),
 				controlSize('large'),
 				...Boolean.match(selected, {onFalse: () => [], onTrue: () => [tint(group.tint)]}),
 				labelStyle('titleAndIcon'),

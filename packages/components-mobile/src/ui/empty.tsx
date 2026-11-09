@@ -2,6 +2,8 @@ import {Image, Text, VStack} from '@expo/ui/swift-ui'
 import type {ImageProps} from '@expo/ui/swift-ui'
 import {
 	accessibilityHidden,
+	background,
+	clipShape,
 	font,
 	foregroundStyle,
 	frame,
@@ -12,7 +14,7 @@ import {
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import type {ReactNode} from 'react'
 
-import {colors, space} from '#components/theme.ts'
+import {colors, radius, space} from '#components/theme.ts'
 
 // shadcn's Empty on iOS, by the same names, laid out as SwiftUI's ContentUnavailableView: centered symbol, title, description, actions.
 export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
@@ -22,6 +24,8 @@ export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) 
 			modifiers={[
 				...(props.modifiers ?? []),
 				padding({all: space[8]}),
+				background(colors.card),
+				clipShape('roundedRectangle', radius),
 				frame({maxHeight: Infinity, maxWidth: Infinity}),
 				multilineTextAlignment('center')
 			]}

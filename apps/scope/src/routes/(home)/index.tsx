@@ -27,7 +27,7 @@ import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {Page, Section} from '@deslop/components-web/page'
+import {Legend, Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
@@ -352,11 +352,12 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="relative mx-2 flex h-4 flex-1 items-center">
+				<span aria-hidden className="border-border absolute inset-x-0 top-1/2 border-t border-dashed" />
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+						'absolute top-1/2 left-(--offset) h-2 w-(--length) min-w-0.5 -translate-y-1/2',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -364,8 +365,13 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 						'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`
 					}}
 				/>
+				<span
+					aria-hidden
+					data-side={props.span.runtime}
+					className="absolute top-1/2 left-(--offset) h-2.5 w-px -translate-y-1/2 bg-(--side)"
+				/>
 			</span>
-			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+			<span className="text-muted-foreground border-border text-annotation w-14 shrink-0 border-l border-dashed pl-2 text-right font-mono whitespace-nowrap tabular-nums">
 				{durationOf(props.span.durationMs)}
 			</span>
 			{Option.match(Option.fromUndefinedOr(props.open), {
@@ -438,6 +444,25 @@ function SpanRow(props: {
 	)
 }
 
+// The trace's own scale above the rows: ticks at the start, middle and end, in the same columns as every bar.
+function SpansRuler(props: {trace: Trace}) {
+	return (
+		<div aria-hidden className="text-muted-foreground text-annotation flex items-center gap-1 px-3 pb-1 font-mono">
+			<span className="w-40 shrink-0 xl:w-80">0</span>
+			<span className="relative mx-2 h-5 flex-1">
+				<span className="dimension-line absolute inset-x-0 top-1/2" />
+				<span className="absolute inset-x-0 top-2 flex justify-between">
+					<span>0</span>
+					<span>50%</span>
+					<span>{durationOf(props.trace.durationMs)}</span>
+				</span>
+			</span>
+			<span className="w-14 shrink-0 text-right">{durationOf(props.trace.durationMs)}</span>
+			<span className="size-3.5 shrink-0" />
+		</div>
+	)
+}
+
 // The waterfall in trace order, independently scrolling; its time scale is the trace's own duration.
 function SpansList(props: {focus: Option.Option<Trace['spans'][number]>; onPick: (id: string) => void; trace: Trace}) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
@@ -458,6 +483,7 @@ function SpansList(props: {focus: Option.Option<Trace['spans'][number]>; onPick:
 	return (
 		<ScrollArea className="min-h-0 flex-1">
 			<div className="flex flex-col pb-2" style={{'--trace-total': `${Number.max(props.trace.durationMs, 1)}`}}>
+				<SpansRuler trace={props.trace} />
 				{Option.match(root, {
 					onNone: () => null,
 					onSome: span => <SpanRow focus={focusId} mark={mark} onPick={props.onPick} span={span} />
@@ -500,7 +526,7 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 			<section
 				aria-label="Span details"
 				className={cn(
-					'flex min-h-0 min-w-0 flex-col border-t',
+					'flex min-h-0 min-w-0 flex-col border-t border-dashed',
 					Boolean.match(props.detailOnly === true, {onFalse: () => 'max-lg:hidden', onTrue: () => 'max-lg:border-t-0'})
 				)}
 			>
@@ -624,7 +650,7 @@ function OperationsSkeleton() {
 				<Skeleton className="h-3 w-24" />
 			</div>
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-12 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
 					<Skeleton className="size-3.5 shrink-0" />
 					<Skeleton className="h-3.5 min-w-0 flex-1" />
 					<Skeleton className="h-3 w-6 shrink-0" />
@@ -641,7 +667,7 @@ function TracesSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Traces" className="flex flex-col">
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-12 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
 					<Skeleton className="h-3 w-8 shrink-0" />
 					<Skeleton className="h-3 min-w-0 flex-1" />
 					<Skeleton className="size-1.5 shrink-0" />
@@ -676,7 +702,7 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 // An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
+		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b border-dashed px-3">
 			<AppMark app={props.app} />
 			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
 				{props.app.name}
@@ -686,17 +712,20 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 }
 
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
-function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
+function OperationRow(props: {active: boolean; index: number; onSelect: () => void; operation: Operation}) {
 	return (
 		<div role="listitem" className="list-row" data-selected={props.active}>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-12 w-full max-sm:h-12 pointer-coarse:h-12"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
 				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
+					<span className="text-muted-foreground border-border text-annotation w-7 shrink-0 border-r border-dashed pr-2 text-right font-mono tabular-nums">
+						{String.padStart(2, '0')(`${props.index}`)}
+					</span>
 					{DEVICES[props.operation.runtime]}
 					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
 					{props.operation.failures > 0 && (
@@ -740,6 +769,7 @@ function OperationsPane(props: {
 	return (
 		<Section
 			title="By app"
+			sheet="A"
 			headerClassName="px-3"
 			meta={Option.match(AsyncResult.value(current), {
 				onNone: () => undefined,
@@ -774,7 +804,7 @@ function OperationsPane(props: {
 											<section key={app.name} aria-label={app.name}>
 												<AppHeading app={app} />
 												<div role="list">
-													{Array.map(app.operations, operation => (
+													{Array.map(app.operations, (operation, index) => (
 														<OperationRow
 															key={`${operation.runtime} ${operation.name}`}
 															active={
@@ -783,6 +813,7 @@ function OperationsPane(props: {
 																props.activeKey.runtime === operation.runtime &&
 																props.activeKey.name === operation.name
 															}
+															index={index + 1}
 															onSelect={() => props.onSelect(app.name, operation)}
 															operation={operation}
 														/>
@@ -808,7 +839,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-12 w-full max-sm:h-12 pointer-coarse:h-12"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
@@ -858,23 +889,42 @@ function TracesPane(props: {
 	return (
 		<Section
 			title="Traces"
+			sheet="B"
 			headerClassName="px-3"
 			meta={Option.match(active, {
 				onNone: () => undefined,
 				onSome: current =>
 					`${count.format(current.operation.traces.length)} ${Boolean.match(current.operation.traces.length === 1, {onFalse: () => 'traces', onTrue: () => 'trace'})}`
 			})}
-			actions={Option.match(active, {
-				onNone: () => undefined,
-				onSome: current => (
-					<span className="flex min-w-0 items-center gap-2 max-lg:hidden">
-						<AppMark app={current.app} />
-						<span className="text-muted-foreground max-w-40 truncate font-mono text-xs" title={current.operation.name}>
-							{current.operation.name}
-						</span>
-					</span>
-				)
-			})}
+			actions={
+				<div className="flex min-w-0 items-center gap-2">
+					<Legend
+						title="Waterfall marks"
+						items={[
+							{label: 'Server span', mark: <span data-side="server" className="size-2 bg-(--side)" />},
+							{label: 'Web span', mark: <span data-side="web" className="size-2 bg-(--side)" />},
+							{label: 'iOS span', mark: <span data-side="mobile" className="size-2 bg-(--side)" />},
+							{label: 'CI span', mark: <span data-side="ci" className="size-2 bg-(--side)" />},
+							{label: 'A failed span', mark: <span className="bg-destructive size-2" />},
+							{label: 'Bar length is its duration', mark: <span className="border-primary w-4 border-t-2" />}
+						]}
+					/>
+					{Option.match(active, {
+						onNone: () => undefined,
+						onSome: current => (
+							<span className="flex min-w-0 items-center gap-2 max-lg:hidden">
+								<AppMark app={current.app} />
+								<span
+									className="text-muted-foreground max-w-40 truncate font-mono text-xs"
+									title={current.operation.name}
+								>
+									{current.operation.name}
+								</span>
+							</span>
+						)
+					})}
+				</div>
+			}
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
 		>
 			<Suspense fallback={<TracesSkeleton />}>
@@ -1038,7 +1088,7 @@ function WideTracePane(props: {onPickSpan: (id: string) => void; pickedSpan?: st
 function NarrowWorkspace(props: WorkspaceProps) {
 	return (
 		<div className="grid-cols-scope grid min-h-0 flex-1">
-			<div className="grid min-h-0 grid-rows-2 border-r">
+			<div className="grid min-h-0 grid-rows-2 border-r border-dashed">
 				<OperationsPane activeKey={props.activeKey} onSelect={props.onSelectOperation} />
 				<TracesPane
 					active={props.active}

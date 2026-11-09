@@ -25,9 +25,24 @@ import {
 import {Kbd} from '#components/ui/kbd.tsx'
 import {cn} from '#lib/utils.ts'
 
+// A drawing's sheet number for each app, beside its name in the ruler.
+const APP_CODES: Record<string, string> = {
+	auth: '01',
+	deploy: '02',
+	gateway: '03',
+	opm: '06',
+	scope: '04',
+	stash: '05',
+	trips: '07'
+}
+
 type Account = typeof Account.Type
 // The signed-in account every Deslop server answers at /auth/user; without an issuer it is the developer, who cannot sign out.
 const Account = Schema.Struct({id: Schema.String, name: Schema.String, signOut: Schema.Boolean})
+
+function appCode(name: string) {
+	return APP_CODES[name] ?? '00'
+}
 
 const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 	pipe(
@@ -73,17 +88,17 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
+// A section of the app as a drawn label: a short leader, the name, and a cyan rule under the current one.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
 			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				'tracking-label text-annotation relative flex h-14 shrink-0 items-center pl-4 font-mono font-semibold uppercase transition-colors duration-150 before:absolute before:top-1/2 before:left-0 before:h-px before:w-2.5 before:bg-(--leader) max-sm:h-13',
 				Boolean.match(props.active, {
 					onFalse: () => 'text-muted-foreground hover:text-foreground',
-					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
+					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-ring'
 				})
 			)
 		},
@@ -103,7 +118,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
 			>
 				<MagnifyingGlassIcon className="size-4 shrink-0" />
-				<span className="flex-1">Search or jump to…</span>
+				<span className="text-annotation tracking-label flex-1 font-mono uppercase">Search / jump</span>
 				<Kbd>⌘K</Kbd>
 			</Button>
 			<Button
@@ -143,61 +158,96 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
-				{Option.match(Option.fromUndefinedOr(props.title), {
-					onNone: () => (
-						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
-						</a>
-					),
-					// The leading slot keeps its width on every pane, so the title and the right controls never move.
-					onSome: title => (
-						<div className="flex min-w-0 shrink items-center gap-1.5">
-							{Option.match(Option.fromUndefinedOr(props.back), {
-								onNone: () => (
-									<a
-										href="/"
-										aria-label={props.name}
-										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
-									>
-										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-									</a>
-								),
-								onSome: back => (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										className="max-sm:size-11"
-										aria-label={back.label}
-										onClick={back.onClick}
-									>
-										<CaretLeftIcon className="size-4" />
-									</Button>
-								)
-							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
-								{title}
-							</span>
-						</div>
-					)
-				})}
-				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
-						{props.tabs}
-					</nav>
-				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
-					{Option.match(Option.fromUndefinedOr(props.palette), {
-						onNone: () => null,
-						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+			<div className="bg-background sticky top-0 z-30 flex shrink-0 flex-col border-b">
+				<header className="ruler-ticks relative flex h-14 shrink-0 items-center gap-4 px-6 max-sm:h-13 max-sm:px-4">
+					{Option.match(Option.fromUndefinedOr(props.title), {
+						onNone: () => (
+							<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2 max-sm:h-11">
+								<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
+								<span className="text-annotation tracking-label font-mono font-semibold uppercase">{props.name}</span>
+								<span aria-hidden className="text-muted-foreground text-annotation tracking-label font-mono">
+									/ {appCode(props.name)}
+								</span>
+								<svg
+									aria-hidden
+									viewBox="0 0 64 1"
+									preserveAspectRatio="none"
+									className="text-primary hidden h-px w-12 shrink-0 sm:block"
+								>
+									<line
+										x1="0"
+										x2="64"
+										y1="0.5"
+										y2="0.5"
+										stroke="currentColor"
+										strokeDasharray="64"
+										strokeWidth="1"
+										vectorEffect="non-scaling-stroke"
+										className="animate-signal motion-reduce:animate-none"
+									/>
+								</svg>
+							</a>
+						),
+						// The leading slot keeps its width on every pane, so the title and the right controls never move.
+						onSome: title => (
+							<div className="flex min-w-0 shrink items-center gap-1.5">
+								{Option.match(Option.fromUndefinedOr(props.back), {
+									onNone: () => (
+										<a
+											href="/"
+											aria-label={props.name}
+											className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
+										>
+											<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
+										</a>
+									),
+									onSome: back => (
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											className="max-sm:size-11"
+											aria-label={back.label}
+											onClick={back.onClick}
+										>
+											<CaretLeftIcon className="size-4" />
+										</Button>
+									)
+								})}
+								<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
+									{title}
+								</span>
+								<span aria-hidden className="text-muted-foreground text-annotation tracking-label font-mono">
+									{appCode(props.name)}
+								</span>
+							</div>
+						)
 					})}
-				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					{props.controls}
-					{props.account ?? <AccountMenu />}
-				</div>
-			</header>
+					{props.tabs !== undefined && (
+						<nav aria-label="Sections" className="flex h-14 items-center gap-5 max-sm:h-13">
+							{props.tabs}
+						</nav>
+					)}
+					<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
+						{Option.match(Option.fromUndefinedOr(props.palette), {
+							onNone: () => null,
+							onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+						})}
+					</div>
+					<div className="flex shrink-0 items-center gap-2">
+						{props.controls !== undefined && <div className="lg:hidden">{props.controls}</div>}
+						{props.account ?? <AccountMenu />}
+					</div>
+				</header>
+				{/* The second line is a real control row: range or measure, drawn as a dimension. */}
+				{props.controls !== undefined && (
+					<div className="border-border/70 hidden h-6 shrink-0 items-center gap-3 border-t border-dashed px-6 lg:flex">
+						<span className="text-muted-foreground text-annotation tracking-label font-mono uppercase">Dim</span>
+						<span aria-hidden className="dimension-line w-10 shrink-0" />
+						<span className="text-muted-foreground text-annotation font-mono tabular-nums">{appCode(props.name)}</span>
+						<div className="ml-auto flex items-center gap-2">{props.controls}</div>
+					</div>
+				)}
+			</div>
 			{Option.match(Option.fromUndefinedOr(props.palette), {
 				onNone: () => null,
 				onSome: groups => (

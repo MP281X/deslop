@@ -195,7 +195,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 			{Array.isReadonlyArrayNonEmpty(shown.success) && (
 				<ItemGroup modifiers={[tint(primary)]}>
 					{Array.isReadonlyArrayNonEmpty(current) && (
-						<Section title="Now">
+						<Section title="A / NOW">
 							{Array.map(current, booking => (
 								<BookingRow
 									key={booking.id}
@@ -208,7 +208,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 						</Section>
 					)}
 					{Array.isReadonlyArrayNonEmpty(ahead) && (
-						<Section title="Upcoming">
+						<Section title="B / UPCOMING">
 							{Array.map(ahead, (booking, position) => (
 								<BookingRow
 									key={booking.id}
@@ -239,7 +239,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 						</Section>
 					)}
 					{Array.isReadonlyArrayNonEmpty(past) && (
-						<Section title="Past" isExpanded={pastOpen} onIsExpandedChange={setPastOpen}>
+						<Section title="C / PAST" isExpanded={pastOpen} onIsExpandedChange={setPastOpen}>
 							{Array.map(past, booking => (
 								<BookingRow
 									key={booking.id}

@@ -1,12 +1,18 @@
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "#lib/utils.ts"
 
-function Empty({ className, ...props }: React.ComponentProps<"div">) {
+function Empty({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"div"> & { variant?: "default" | "sheet" }) {
   return (
     <div
       data-slot="empty"
+      data-variant={variant}
       className={cn(
         "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 border-dashed p-12 text-center text-balance",
+        variant === "sheet" && "rounded-md border border-border bg-card",
         className
       )}
       {...props}

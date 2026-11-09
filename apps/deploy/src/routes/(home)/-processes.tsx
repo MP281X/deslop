@@ -16,9 +16,10 @@ const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
 		<div
-			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
+			className={cn('list-row relative h-12 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
 		>
+			<span aria-hidden className="border-border absolute inset-y-0 left-(--indent) border-l border-dashed" />
 			<Item
 				size="xs"
 				className="h-full min-w-0"
@@ -57,7 +58,7 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 							+{props.node.children.length}
 						</span>
 					)}
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tracking-normal normal-case tabular-nums">
+					<span className="text-muted-foreground border-border text-annotation shrink-0 border-l border-dashed pl-2 font-mono tracking-normal normal-case tabular-nums">
 						{mib.format(props.node.memory / 1024 ** 2)} MiB
 					</span>
 					{Boolean.match(Array.isArrayNonEmpty(props.node.children), {

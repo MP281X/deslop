@@ -44,8 +44,8 @@ import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@des
 import {
 	Item,
 	ItemActions,
+	ItemAnnotation,
 	ItemContent,
-	ItemDescription,
 	ItemGroup,
 	ItemMedia,
 	ItemTitle,
@@ -160,12 +160,12 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						{props.fresh && <StatusDot status="live" tint={primary} />}
 						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					</HStack>
-					<ItemDescription>
+					<ItemAnnotation>
 						{Array.join(
 							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
 							' · '
 						)}
-					</ItemDescription>
+					</ItemAnnotation>
 				</ItemContent>
 				<ItemActions>
 					{/* The pages before the one on screen are read, so a chapter marked unread at its first page is empty. */}
@@ -266,13 +266,13 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 							Option.match(resume, {
 								onNone: () => undefined,
 								onSome: found => (
-									<Section>
+									<Section title="A / RESUME">
 										<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
 									</Section>
 								)
 							})
 					})}
-					<Section>
+					<Section title="B / CHAPTERS">
 						{Array.map(matches, chapter => (
 							<ChapterRow
 								key={chapter.number}
