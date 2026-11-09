@@ -363,13 +363,13 @@ function RunNow(props: {item: InventoryItem; onRun: () => void}) {
 			aria-label={`Run ${workloadName(props.item)} now`}
 			onClick={props.onRun}
 		>
-			<PlayIcon />
+			<PlayIcon className="size-4" />
 		</Button>
 	)
 }
 
 function RunFailure(props: {item: InventoryItem}) {
-	return <ResultError result={useAtomValue(runAtom(props.item.id))} className="wrap-anywhere" />
+	return <ResultError result={useAtomValue(runAtom(props.item.id))} className="mx-4 wrap-anywhere" />
 }
 
 function hideTarget(item: InventoryItem) {
@@ -393,7 +393,10 @@ function RemoveExposure(props: {item: InventoryItem}) {
 
 function RemoveFailure(props: {item: InventoryItem}) {
 	return (
-		<ResultError result={useAtomValue(hideAtom(hideTarget(props.item))(props.item.name))} className="wrap-anywhere" />
+		<ResultError
+			result={useAtomValue(hideAtom(hideTarget(props.item))(props.item.name))}
+			className="mx-4 wrap-anywhere"
+		/>
 	)
 }
 
@@ -504,12 +507,12 @@ function AppRow(props: {
 										onFalse: () =>
 											Boolean.match(failing, {
 												onFalse: () => (
-													<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
+													<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
 														{next}
 													</span>
 												),
 												onTrue: () => (
-													<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap tabular-nums">
+													<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
 														{Option.getOrElse(age, () => next)}
 													</span>
 												)
@@ -520,7 +523,7 @@ function AppRow(props: {
 						</span>
 						<span className="flex w-6 shrink-0 items-center justify-center">
 							{Boolean.match(scheduled, {
-								onFalse: () => <CaretRightIcon className="text-muted-foreground size-3.5" />,
+								onFalse: () => <CaretRightIcon className="text-muted-foreground size-4" />,
 								onTrue: () =>
 									Boolean.match(running, {
 										onFalse: () => (
@@ -532,7 +535,7 @@ function AppRow(props: {
 												}}
 											/>
 										),
-										onTrue: () => <Spinner className="size-3.5" />
+										onTrue: () => <Spinner className="size-4" />
 									})
 							})}
 						</span>
@@ -544,18 +547,10 @@ function AppRow(props: {
 					))}
 				</ContextMenuContent>
 			</ContextMenu>
-			<div className="empty:hidden">
-				{scheduled && (
-					<div className="px-4">
-						<RunFailure item={props.row.item} />
-					</div>
-				)}
-				{Array.map(owned, exposure => (
-					<div key={exposure.id} className="px-4">
-						<RemoveFailure item={exposure} />
-					</div>
-				))}
-			</div>
+			{scheduled && <RunFailure item={props.row.item} />}
+			{Array.map(owned, exposure => (
+				<RemoveFailure key={exposure.id} item={exposure} />
+			))}
 		</>
 	)
 }
