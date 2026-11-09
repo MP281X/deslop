@@ -15,7 +15,6 @@ import {
 	Record,
 	Schema,
 	String,
-	Struct,
 	pipe
 } from 'effect'
 

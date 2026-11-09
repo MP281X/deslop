@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Option, String} from 'effect'
 
 import {navigationOf, nextSearch, openingApp} from '#lib/utils.ts'
 import type {NavigationEvent, Search} from '#lib/utils.ts'
@@ -15,7 +15,7 @@ function follow(events: NavigationEvent[], search: Search = {}) {
 function failureTrace(time: string, failed: boolean) {
 	return {
 		durationMs: 1,
-		id: 'a'.repeat(32),
+		id: String.repeat(32)('a'),
 		time,
 		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {message: '', span: 'run'}})})
 	}
@@ -95,11 +95,11 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 	}
 	assert.deepStrictEqual(openingApp(overview), Option.some('gateway'))
 	const quiet: Overview = {
-		apps: overview.apps.map(app => ({
+		apps: Array.map(overview.apps, app => ({
 			...app,
-			operations: app.operations.map(operation => ({
+			operations: Array.map(app.operations, operation => ({
 				...operation,
-				traces: [failureTrace(operation.traces[0].time, false)]
+				traces: Array.map(operation.traces, trace => failureTrace(trace.time, false))
 			}))
 		}))
 	}
