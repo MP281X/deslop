@@ -124,7 +124,7 @@ export function nextSearch(search: Search, event: NavigationEvent) {
 }
 
 // The app a plain open lands on: the one whose newest failed trace is newest, else the first tab.
-export function openingApp(overview: Overview) {
+function openingApp(overview: Overview) {
 	const failed = Array.flatMap(overview.apps, app =>
 		Array.flatMap(app.operations, operation =>
 			Array.getSomes(

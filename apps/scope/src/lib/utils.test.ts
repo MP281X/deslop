@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Boolean, Option, String} from 'effect'
 
-import {navigationOf, nextSearch, openingApp, selectionOf} from '#lib/utils.ts'
+import {navigationOf, nextSearch, selectionOf} from '#lib/utils.ts'
 import type {NavigationEvent, Search} from '#lib/utils.ts'
 import type {Overview} from '#services/telemetry/schema.ts'
 
@@ -93,7 +93,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			}
 		]
 	}
-	assert.deepStrictEqual(openingApp(overview), Option.some('gateway'))
+	assert.strictEqual(selectionOf(Option.some(overview), {}, false).source, 'gateway')
 	const quiet: Overview = {
 		apps: Array.map(overview.apps, app => ({
 			...app,
@@ -103,8 +103,8 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			}))
 		}))
 	}
-	assert.deepStrictEqual(openingApp(quiet), Option.some('stash'))
-	assert.deepStrictEqual(openingApp({apps: []}), Option.none())
+	assert.strictEqual(selectionOf(Option.some(quiet), {}, false).source, 'stash')
+	assert.isUndefined(selectionOf(Option.some({apps: []}), {}, false).source)
 })
 
 it('selects the app, operation, trace and span the URL names, defaulting a desktop layout', () => {
