@@ -27,7 +27,6 @@ const layerServices = pipe(
 	Layer.mergeAll(SignIns.layer, Layer.provide(RateLimiter.layer, RateLimiter.layerStoreMemory)),
 	Layer.provideMerge(People.layer),
 	Layer.provideMerge(Layer.mergeAll(Tokens.layer, Passkeys.layer, GitHub.layer, Apps.layer)),
-	Layer.provide(ServerRuntime.layerDataStore),
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )
 

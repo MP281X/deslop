@@ -21,7 +21,7 @@ const layerServices = pipe(
 	Layer.mergeAll(Gateway.layer, pipe(AiProxy.layer, Layer.provide(FetchHttpClient.layer))),
 	Layer.provide(McpServer.McpServer.layer),
 	Layer.provideMerge(Connections.layer),
-	Layer.provide(Layer.mergeAll(ServerRuntime.layerDataStore, layerUpstream))
+	Layer.provide(layerUpstream)
 )
 
 CliRuntime.runApp({

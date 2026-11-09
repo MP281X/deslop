@@ -21,8 +21,7 @@ CliRuntime.runApp({
 		Layer.provide(RpcSerialization.layerJson),
 		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracker.layer)),
 		Layer.provide(Bookings.layer),
-		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer)),
-		Layer.provide(ServerRuntime.layerDataStore)
+		Layer.provide(Layer.mergeAll(Places.layer, Extractor.layer))
 	),
 	settings: {
 		APNS_KEY_ID: {description: "The APNs signing key's id", flag: 'apns-key-id', schema: Schema.NonEmptyString},
