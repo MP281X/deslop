@@ -154,7 +154,6 @@ export class Chapters extends Context.Service<
 				)
 			}
 
-			// The community's back catalogues; Reddit supplies the newer releases.
 			const backfill = Effect.fnUntraced(function* (kind: Series) {
 				const chapters = chaptersFromIndex(
 					yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`),
@@ -228,7 +227,6 @@ export class Chapters extends Context.Service<
 				)
 				if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
 				const now = yield* Clock.currentTimeMillis
-				// A new chapter's posts, oldest first, or later explicit revisions of a known one, each with the links not already read.
 				const candidates = revisionCandidates(
 					[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
 					yield* SubscriptionRef.get(state)

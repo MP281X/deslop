@@ -7,8 +7,6 @@ public final class CoverViewProps: UIBaseViewProps {
   @Field var url: String = ""
 }
 
-// A chapter's first page as a thumbnail, a gray tile with a spinner until it loads; the caller sizes and rounds it.
-// A failed cover shows a retry mark and tries again after two, four, then every eight seconds while its row is on screen.
 public struct CoverView: ExpoSwiftUI.View {
   @ObservedObject public var props: CoverViewProps
   @State private var image: UIImage?

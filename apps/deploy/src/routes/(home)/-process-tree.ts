@@ -82,7 +82,6 @@ export function processTree(rows: readonly Process[]) {
 	return settle(Array.map(roots, place), appMemory)
 }
 
-// An app's current memory and CPU over its processes; CPU stays unknown while none reports one.
 export function appUsage(rows: readonly Process[]) {
 	return {
 		cpu: Array.match(Array.getSomes(Array.map(rows, row => Option.fromUndefinedOr(row.cpu))), {

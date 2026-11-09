@@ -56,7 +56,6 @@ const readings = [
 	})
 ]
 
-// The page at its default hour range, routed as the browser routes it.
 function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<ReturnType<typeof metricsAtom>>) {
 	return Effect.scoped(
 		Effect.gen(function* () {

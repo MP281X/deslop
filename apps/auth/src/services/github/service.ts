@@ -13,7 +13,6 @@ import {GitHubUser} from '#services/people/schema.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
 const CALLBACK = `${AUTH_URL}/auth/github/callback`
-// The account every app signs in as without an issuer, `github:0`.
 const DEVELOPER_PROFILE = GitHubUser.make({id: 0, login: DEVELOPER.name})
 
 // GitHub proves who someone is; the step in between lives here for ten minutes, and an Auth restart cancels it.
@@ -39,7 +38,6 @@ export class GitHub extends Context.Service<
 				timeToLive: '10 minutes'
 			})
 			const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
-			// The sign-in GitHub's callback belongs to, read once.
 			const take = Effect.fnUntraced(function* (state: string) {
 				const flow = yield* Cache.get(flows, state)
 				yield* Cache.invalidate(flows, state)

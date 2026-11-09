@@ -7,7 +7,6 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {Apps} from '#services/apps/service.ts'
 
-// Each app's server as Auth reaches it: its runtime settings, and a manifest only where it serves pages.
 const SERVERS: Record<string, {auth: string; name: string; web: boolean; status?: number; manifestStatus?: number}> = {
 	'https://broken.mp281x.xyz': {auth: 'not a URL', name: 'broken', web: true},
 	'https://elsewhere.mp281x.xyz': {auth: 'https://auth.example.com', name: 'elsewhere', web: true},

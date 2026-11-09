@@ -24,7 +24,6 @@ import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/utils.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {InventoryItem} from '#services/inventory/schema.ts'
 
-// Opens the Expose dialog on a port, with no answer left from an earlier one.
 export function useExpose() {
 	const setTarget = useAtomSet(exposeTargetAtom)
 	const reset = useAtomSet(exposeAtom)
@@ -34,7 +33,6 @@ export function useExpose() {
 	}
 }
 
-// The port is chosen by its badge, so the dialog only asks who reaches it and, for the public, at which hostname.
 function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const [result, expose] = useAtom(exposeAtom)
 	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
@@ -138,7 +136,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	)
 }
 
-// Open while a port is chosen; it closes on success, the new endpoint replacing the port's badge.
 export function ExposeDialog() {
 	const [target, setTarget] = useAtom(exposeTargetAtom)
 	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {

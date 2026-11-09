@@ -101,7 +101,6 @@ function cpuUsage(current: {idle: number; total: number}, seconds: number, previ
 	)
 }
 
-// Each core's usage against the same core in the previous reading.
 function coreUsages(current: Counters, seconds: number, old?: Counters) {
 	const oldCores = Array.groupBy(old?.cores ?? [], core => core.id)
 	return Array.map(current.cores ?? [], core => ({

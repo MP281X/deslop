@@ -2,11 +2,9 @@ import {Schema} from 'effect'
 
 import {ClientRequest, DeviceRequest, Origin, TokenResponse} from '#services/tokens/schema.ts'
 
-// An app or agent asks for tokens to Deslop apps; a browser asks for Auth's own session.
 export type SignInKind = typeof SignInKind.Type
 export const SignInKind = Schema.Literals(['App', 'Browser'])
 
-// What the approver sees of a waiting sign-in: the app or browser, the device and address it was started from.
 export type PendingAuthorization = typeof PendingAuthorization.Type
 export const PendingAuthorization = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
@@ -26,7 +24,6 @@ export const AuthorizationStatus = Schema.TaggedUnion({
 	Waiting: {request: PendingAuthorization}
 })
 
-// Where an approval goes: an app's checked authorization request, the page a browser returns to, or a command polling with its device code.
 export type Delivery = typeof Delivery.Type
 export const Delivery = Schema.TaggedUnion({
 	Browser: {next: Schema.optionalKey(Schema.String)},
@@ -34,7 +31,6 @@ export const Delivery = Schema.TaggedUnion({
 	Device: {request: DeviceRequest}
 })
 
-// The delivered answer: a redirect, a session for the waiting browser, or a command's tokens or refusal.
 export type Collected = typeof Collected.Type
 export const Collected = Schema.TaggedUnion({
 	Denied: {},
@@ -43,7 +39,6 @@ export const Collected = Schema.TaggedUnion({
 	Session: {next: Schema.optionalKey(Schema.String), seconds: Schema.Int, token: Schema.NonEmptyString}
 })
 
-// What a sign-in's process starts with: how its answer is delivered and where it was started from.
 export type SignInInput = typeof SignInInput.Type
 export const SignInInput = Schema.Struct({delivery: Delivery, origin: Origin})
 

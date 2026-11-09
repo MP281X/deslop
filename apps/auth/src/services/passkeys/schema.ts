@@ -78,10 +78,8 @@ export const Assertion = Schema.Struct({
 })
 
 export type ClientData = typeof ClientData.Type
-// The part of a response's client data that names the challenge it answers.
 export const ClientData = Schema.Struct({challenge: Schema.String})
 
-// A passkey as saved: its public key and signature counter, the account it signs in, and where it was added.
 export type StoredPasskey = typeof StoredPasskey.Type
 export const StoredPasskey = Schema.Struct({
 	...StoredOwner.fields,
@@ -91,7 +89,6 @@ export const StoredPasskey = Schema.Struct({
 	id: Schema.NonEmptyString,
 	lastUsed: Schema.Finite,
 	publicKey: Schema.NonEmptyString,
-	// Synced through a password manager, rather than bound to one security key or device.
 	synced: Schema.Boolean,
 	transports: Schema.Array(Transport)
 })
@@ -99,7 +96,6 @@ export const StoredPasskey = Schema.Struct({
 export type StoredPasskeys = typeof StoredPasskeys.Type
 export const StoredPasskeys = Schema.Array(StoredPasskey)
 
-// What the account menu lists of a passkey.
 export type Passkey = typeof Passkey.Type
 export const Passkey = Schema.Struct({
 	addedFrom: Schema.String,
@@ -115,7 +111,6 @@ export const PasskeyParams = Schema.Struct({id: Schema.NonEmptyString})
 export type AddPasskeyParams = typeof AddPasskeyParams.Type
 export const AddPasskeyParams = Schema.Struct({response: Registration})
 
-// A browser signing in with a passkey, and the page it returns to.
 export type PasskeySignIn = typeof PasskeySignIn.Type
 export const PasskeySignIn = Schema.Struct({
 	next: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(2048))),

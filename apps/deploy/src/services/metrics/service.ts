@@ -31,8 +31,7 @@ import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
-// The samples of each hour are saved in a file named for that hour.
-const SAVED = 'metrics-'
+const HOURLY_FILE_PREFIX = 'metrics-'
 
 export class Metrics extends Context.Service<
 	Metrics,
@@ -53,7 +52,10 @@ export class Metrics extends Context.Service<
 			const store = KeyValueStore.toSchemaStore(base, Schema.Array(Sample))
 			const now = yield* Clock.currentTimeMillis
 			const saved = yield* Effect.forEach(
-				Array.filter(yield* base.keys, key => String.startsWith(SAVED)(key) && !String.endsWith('.tmp')(key)),
+				Array.filter(
+					yield* base.keys,
+					key => String.startsWith(HOURLY_FILE_PREFIX)(key) && !String.endsWith('.tmp')(key)
+				),
 				key =>
 					pipe(
 						store.get(key),
@@ -79,7 +81,6 @@ export class Metrics extends Context.Service<
 				const done = yield* Effect.repeat(
 					Effect.gen(function* () {
 						const level = yield* Ref.get(walk)
-						// Each opened cgroup's children, judged beside their siblings.
 						const children = Array.flatMap(
 							Array.getSomes(
 								yield* Effect.forEach(
@@ -252,7 +253,7 @@ export class Metrics extends Context.Service<
 							buckets,
 							bucket =>
 								store.set(
-									`${SAVED}${bucket}`,
+									`${HOURLY_FILE_PREFIX}${bucket}`,
 									Array.filter(samples, entry => Math.floor(entry.time / 3_600_000) === bucket)
 								),
 							{concurrency: 1, discard: true}
@@ -263,10 +264,10 @@ export class Metrics extends Context.Service<
 						Array.filter(
 							yield* base.keys,
 							key =>
-								String.startsWith(SAVED)(key) &&
+								String.startsWith(HOURLY_FILE_PREFIX)(key) &&
 								(String.endsWith('.tmp')(key) ||
 									Option.exists(
-										Number.parse(String.slice(SAVED.length)(key)),
+										Number.parse(String.slice(HOURLY_FILE_PREFIX.length)(key)),
 										bucket => bucket < Math.floor(time / 3_600_000) - 168
 									))
 						),

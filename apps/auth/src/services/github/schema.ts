@@ -1,6 +1,5 @@
 import {Schema} from 'effect'
 
-// Where a GitHub sign-in returns: a waiting sign-in, an approve link's code or a page of an app.
 export type SignInParams = typeof SignInParams.Type
 export const SignInParams = Schema.Struct({
 	// The approve link's code, kept through GitHub sign-in on a phone that was signed out.

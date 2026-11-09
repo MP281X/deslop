@@ -41,7 +41,6 @@ export const AuthorizeParams = Schema.Struct({
 	scope: Schema.optionalKey(Schema.String)
 })
 
-// A checked authorization request: what its code is later bound to.
 export type ClientRequest = typeof ClientRequest.Type
 export const ClientRequest = Schema.Struct({
 	challenge: Schema.NonEmptyString,
@@ -52,7 +51,6 @@ export const ClientRequest = Schema.Struct({
 	state: Schema.optionalKey(Schema.NonEmptyString)
 })
 
-// A command's sign-in, approved by its code like any other.
 export type DeviceRequest = typeof DeviceRequest.Type
 export const DeviceRequest = Schema.Struct({clientId: Schema.NonEmptyString, clientName: Schema.String})
 
@@ -117,7 +115,6 @@ export const Origin = Schema.Struct({
 export type SessionVia = typeof SessionVia.Type
 export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
 
-// One signed-in app or browser, keyed by its family: what the signed-in list shows and what signing it out removes.
 export type Grant = typeof Grant.Type
 export const Grant = Schema.Struct({
 	...CredentialOwner.fields,

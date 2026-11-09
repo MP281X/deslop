@@ -88,10 +88,8 @@ export class Tokens extends Context.Service<
 	Tokens,
 	{
 		readonly apps: (owner: CredentialOwner) => Stream.Stream<SignedInApp[], AuthError>
-		// Each saved change to the signed-in apps and browsers, starting with the current state.
 		readonly changes: Stream.Stream<void>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
-		// Signs a command in once its device code is approved.
 		readonly device: (
 			request: DeviceRequest,
 			owner: CredentialOwner,
@@ -112,7 +110,6 @@ export class Tokens extends Context.Service<
 		readonly revoke: (params: RevokeParams) => Effect.Effect<void, AuthError>
 		readonly session: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 		readonly sessionVia: (headers: Headers.Headers) => Effect.Effect<SessionVia, AuthError>
-		// The session's account and how it signed in, read once.
 		readonly browserSession: (
 			headers: Headers.Headers
 		) => Effect.Effect<{family: string; owner: CredentialOwner; via: SessionVia}, AuthError>
@@ -282,7 +279,6 @@ export class Tokens extends Context.Service<
 					}
 				}
 			})
-			// A client's new sign-in and its first tokens; it replaces an earlier one of the same client, device, browser and apps.
 			const signIn = Effect.fnUntraced(function* (
 				current: Grants,
 				now: number,

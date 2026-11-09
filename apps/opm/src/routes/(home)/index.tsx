@@ -73,7 +73,6 @@ function postedOn(postedAt: number) {
 	)
 }
 
-// The last chapter read, with its place in the list so the top row can say what it resumes.
 function resumingOf(chapters: ChapterList) {
 	return pipe(
 		resumeOf(chapters),
@@ -86,7 +85,6 @@ function resumingOf(chapters: ChapterList) {
 	)
 }
 
-// The one row above the list: where reading stopped, and how much of the chapter is left.
 function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page?: number) => void; page: number}) {
 	const pages = Number.max(props.chapter.pages.length, 1)
 	const done = props.chapter.reading?.done === true
@@ -226,7 +224,6 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
 	)
 	const resume = resumingOf(chapters)
-	// A query matches a chapter's number from its start, or any part of its name.
 	return Array.match(
 		pipe(
 			Array.sort(chapters, Order.flip(byNumber)),

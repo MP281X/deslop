@@ -12,7 +12,6 @@ const Guest = PortfolioVisitor.mapFields(fields => ({
 
 // Visitors are guests, so the room needs no sign-in, unlike every other app's RPC.
 export class RpcContracts extends RpcGroup.make(
-	// Every visitor whenever one moves; each page draws the trails itself.
 	Rpc.make('portfolio.join', {
 		payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'name']))),
 		stream: true,

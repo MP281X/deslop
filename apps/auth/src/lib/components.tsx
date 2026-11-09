@@ -70,7 +70,6 @@ export function QrCode(props: {className?: string; text: string}) {
 	)
 }
 
-// A GitHub account's picture, or its first letter until the picture loads.
 export function AccountAvatar(props: {id: string; name: string}) {
 	return (
 		<Avatar size="sm">
@@ -106,24 +105,21 @@ export function AppIcon(props: {origin: string; small?: boolean}) {
 
 const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
 
-// A browser, harness or app platform's logo; `mono` marks a black one that turns white on the dark page.
-function brandOf(client: Client) {
-	if (client.kind === 'Browser') return Option.map(Record.get(BROWSERS, client.name), src => ({mono: false, src}))
-	if (Option.isSome(String.match(/claude/iu)(client.name))) return Option.some({mono: false, src: claude})
-	if (Option.isSome(String.match(/codex/iu)(client.name))) return Option.some({mono: true, src: codex})
+function brandLogoOf(client: Client) {
+	if (client.kind === 'Browser') return Option.map(Record.get(BROWSERS, client.name), src => ({invert: false, src}))
+	if (Option.isSome(String.match(/claude/iu)(client.name))) return Option.some({invert: false, src: claude})
+	if (Option.isSome(String.match(/codex/iu)(client.name))) return Option.some({invert: true, src: codex})
 	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
 	if (Option.isSome(String.match(/gateway/iu)(client.name))) return Option.none()
-	if (Array.contains(['iPhone', 'iPad'], client.device)) return Option.some({mono: true, src: apple})
-	if (client.device === 'Android') return Option.some({mono: false, src: android})
+	if (Array.contains(['iPhone', 'iPad'], client.device)) return Option.some({invert: true, src: apple})
+	if (client.device === 'Android') return Option.some({invert: false, src: android})
 	return Option.none()
 }
 
-// `app` is the origin of the Deslop app the client is, such as Stash on an iPhone, whose own icon marks it.
 type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
-// A brand's logo when the client has one, else a glyph for the gateway, a browser or the machine it runs on.
 function Brand(props: {client: Client}) {
-	return Option.match(brandOf(props.client), {
+	return Option.match(brandLogoOf(props.client), {
 		onNone: () =>
 			pipe(
 				Match.value(props.client),
@@ -134,11 +130,10 @@ function Brand(props: {client: Client}) {
 				),
 				Match.orElse(() => <HardDrivesIcon />)
 			),
-		onSome: brand => <img src={brand.src} alt="" className={cn('size-3.5', brand.mono && 'dark:invert')} />
+		onSome: brand => <img src={brand.src} alt="" className={cn('size-3.5', brand.invert && 'dark:invert')} />
 	})
 }
 
-// The kind of client: a Deslop app's own icon, else its brand or a glyph.
 function ClientIcon(props: {client: Client}) {
 	return Option.match(props.client.app, {
 		onNone: () => <Brand client={props.client} />,
@@ -199,7 +194,6 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 	)
 }
 
-// A failed answer stays above the clients to retry. Where the sign-in started tells a stranger's code from one's own.
 function Answer(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const [choice, setChoice] = useState<boolean>()
@@ -256,8 +250,7 @@ function Answer(props: {request: PendingAuthorization}) {
 	)
 }
 
-// Browser children contribute activity to their browser, never rows of their own.
-function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
+function clientsWithChildActivity(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
 	const children = Array.groupBy(
 		Array.filter(signIns, signIn => signIn.parent !== undefined),
 		signIn => signIn.parent ?? ''
@@ -312,7 +305,7 @@ const signInListAtom = Atom.make(get =>
 
 export function SignInList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const data = useAtomSuspense(signInListAtom).value
-	const clients = clientsOf(data.signIns, data.catalog)
+	const clients = clientsWithChildActivity(data.signIns, data.catalog)
 	return (
 		<Section
 			title="Signed in"

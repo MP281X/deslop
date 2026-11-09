@@ -202,7 +202,6 @@ function CvRoute() {
 
 export const Route = createFileRoute('/cv')({
 	component: CvRoute,
-	// The title names the PDF a browser saves, and the file a recruiter downloads.
 	head: () => ({
 		meta: [
 			{title: `${profile.firstName} ${profile.lastName} CV`},

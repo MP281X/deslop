@@ -11,11 +11,9 @@ export const Role = Schema.Literals(['Admin', 'Member', 'Waiting'])
 export type Account = typeof Account.Type
 export const Account = Schema.Struct({...User.fields, fullName: Schema.optionalKey(Schema.String), role: Role})
 
-// The signed-in browser's own account, and how that browser signed in.
 export type SignedAccount = typeof SignedAccount.Type
 export const SignedAccount = Schema.Struct({...Account.fields, via: SessionVia})
 
-// `since` is when a waiting account asked, or when a member was allowed.
 export type Person = typeof Person.Type
 export const Person = Schema.Struct({...Account.fields, since: Schema.Finite})
 
@@ -35,7 +33,6 @@ export const MemberRow = Schema.Struct({
 export type Members = typeof Members.Type
 export const Members = Schema.Array(MemberRow)
 
-// The GitHub account a sign-in proved, as GitHub's API answers it.
 export type GitHubUser = typeof GitHubUser.Type
 export const GitHubUser = Schema.Struct({
 	id: Schema.Int,

@@ -21,7 +21,6 @@ function total(group: readonly {cpu: number[]; memory: number[]}[], index: numbe
 	return Number.sumAll(Array.map(group, app => app[key][index] ?? 0))
 }
 
-// Every app the range recorded, stopped ones too, heaviest first, then the small ones as one band and the rest of the machine's use as another.
 export function bands(history: MachineHistory) {
 	// One lookup per sample, so each app's series reads its entry directly.
 	const indexed = Array.map(history.samples, sample =>

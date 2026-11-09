@@ -171,7 +171,6 @@ it('averages a merged bucket so a short spike still counts, and merges each buck
 			time: 10_000 + index * 1000
 		}
 	}
-	// A spike in the first second, and the app missing from the fourth.
 	const seconds = [
 		{
 			...second(0),

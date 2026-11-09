@@ -10,7 +10,6 @@ public final class PageStripViewProps: UIBaseViewProps {
   var onPage = EventDispatcher()
 }
 
-// The pages of one or more chapters in one vertical strip: tap to show the bars, scroll to hide them, hold a page to copy it.
 public struct PageStripView: ExpoSwiftUI.View {
   @ObservedObject public var props: PageStripViewProps
   @State private var barsHidden = true
@@ -117,7 +116,6 @@ final class BarFade: NSObject {
     UIView.animate(withDuration: 0.2) { self.apply() }
   }
 
-  // The list's bar fades in with the swipe back, and out again if the swipe is cancelled.
   @objc private func swiped(_ gesture: UIGestureRecognizer) {
     guard gesture.state == .began, let coordinator = navigation?.transitionCoordinator else { return }
     coordinator.animate(
@@ -125,7 +123,6 @@ final class BarFade: NSObject {
       completion: { context in if context.isCancelled { self.apply() } })
   }
 
-  // A reader replaced by another one leaves the bar to it; one popped back to the list shows it.
   func detach() {
     guard let navigation else { return }
     navigation.interactivePopGestureRecognizer?.removeTarget(self, action: #selector(swiped(_:)))
@@ -149,7 +146,6 @@ final class StripController: NSObject, UIScrollViewDelegate {
   // Height over width of each page; a page keeps a typical manga shape until its image arrives.
   private var aspects: [CGFloat] = []
   private var pendingStart: Int?
-  // Every page asked for ahead, with its download while one runs.
   private var prefetches: [URL: URLSessionDataTask?] = [:]
   private var current = -1
   private var laidOutWidth: CGFloat = 0
@@ -298,7 +294,6 @@ final class StripController: NSObject, UIScrollViewDelegate {
     onTap()
   }
 
-  // Leaving the reader stops every download and decode it started, and gives the list its bar back.
   func stop() {
     bar.detach()
     pageViews.forEach { $0.unload() }
@@ -307,7 +302,6 @@ final class StripController: NSObject, UIScrollViewDelegate {
   }
 }
 
-// A page spins while its image is on its way and tries again after a failure, so a page is never silently black.
 final class PageView: UIImageView, UIContextMenuInteractionDelegate {
   let url: URL?
   private let spinner = UIActivityIndicatorView(style: .medium)
@@ -374,7 +368,6 @@ final class PageView: UIImageView, UIContextMenuInteractionDelegate {
     image = nil
   }
 
-  // Holding a page offers to copy it, as Photos does.
   func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint)
     -> UIContextMenuConfiguration?
   {
@@ -421,7 +414,6 @@ enum PageLoader {
     return URLSession(configuration: configuration)
   }
 
-  // No download when the page is already on disk.
   static func prefetch(_ url: URL) -> URLSessionDataTask? {
     guard cache.cachedResponse(for: URLRequest(url: url)) == nil else { return nil }
     let task = ahead.dataTask(with: url) { _, _, _ in }

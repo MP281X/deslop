@@ -199,7 +199,6 @@ function subscribeToResize(onStoreChange: () => void) {
 	}
 }
 
-// A ruled label names each part of the page; its number and note stay in mono, the label itself a tracked sans.
 function SectionLabel(input: {id: string; label: string; meta?: React.ReactNode; number: string}) {
 	return (
 		<div className="border-border flex items-center justify-between gap-4 border-t pt-3 pb-5">
@@ -289,7 +288,6 @@ function TrailGrid(input: {trails: PortfolioVisitors; viewport: {width: number; 
 	)
 }
 
-// The pointer stays, the name only where it would not sit over the page's reading column.
 function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 	return (
 		<div className={cn('flex items-center gap-1', input.flip === true && '-translate-x-full flex-row-reverse')}>
@@ -306,13 +304,12 @@ function CursorLabel(input: {flip?: boolean; label: string; show?: boolean}) {
 	)
 }
 
-// The name is a small mono chip; its width matters when it sits just outside the reading column.
+// An 8px glyph plus 28px for the icon and padding.
 function labelWidth(label: string) {
 	return label.length * 8 + 28
 }
 
-// Whether a cursor's label would sit over the centered reading column, where it would cover the text.
-function overContent(x: number, viewport: {width: number}, label: string) {
+function labelOverReadingColumn(x: number, viewport: {width: number}, label: string) {
 	const at = x * viewport.width
 	const width = labelWidth(label)
 	const left = (viewport.width - 768) / 2
@@ -321,7 +318,6 @@ function overContent(x: number, viewport: {width: number}, label: string) {
 	return at <= right || at - width < right
 }
 
-// Another visitor's cursor glides behind the page towards each position the server reports.
 function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
 	const nodeRef = useRef<HTMLDivElement>(null)
 	const motionRef = useRef(UNPLACED_MOTION)
@@ -358,7 +354,7 @@ function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: numbe
 			<CursorLabel
 				flip={input.cursor.x * input.viewport.width + labelWidth(input.cursor.name) > input.viewport.width - 8}
 				label={input.cursor.name}
-				show={!overContent(input.cursor.x, input.viewport, input.cursor.name)}
+				show={!labelOverReadingColumn(input.cursor.x, input.viewport, input.cursor.name)}
 			/>
 		</div>
 	)
@@ -378,13 +374,12 @@ function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; h
 			<CursorLabel
 				flip={input.cursor.x * input.viewport.width + labelWidth('You') > input.viewport.width - 8}
 				label="You"
-				show={!overContent(input.cursor.x, input.viewport, 'You')}
+				show={!labelOverReadingColumn(input.cursor.x, input.viewport, 'You')}
 			/>
 		</div>
 	)
 }
 
-// A header action is a link first: the value, a hairline underline, and a 44px row on a phone.
 function HeaderLink(input: {children: React.ReactNode; external?: boolean; href: string}) {
 	const external = input.external === true
 	return (
@@ -400,7 +395,6 @@ function HeaderLink(input: {children: React.ReactNode; external?: boolean; href:
 	)
 }
 
-// The masthead is the first ruled section: role and place set the stage, the name is the one display statement.
 function ProfileSection() {
 	return (
 		<section
@@ -634,7 +628,6 @@ function ContactSection() {
 	)
 }
 
-// The shortcut legend is a printed card, not an app dialog: ruled rows and the page's own mono keys.
 function ShortcutRow(input: {keys: React.ReactNode; label: React.ReactNode}) {
 	return (
 		<div className="flex items-center justify-between gap-6 py-3">
@@ -689,7 +682,6 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 	)
 }
 
-// The live count, its dot in the local cursor's color; the fixed HUD adds the shortcut hint.
 function VisitorCount(props: {visitors: PortfolioVisitors}) {
 	return (
 		<>
@@ -710,7 +702,6 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 	)
 }
 
-// Presence is a quiet line at the page's edge: live count, connecting, or unavailable, never a hero.
 function PresenceHud(input: {state: 'connecting' | 'live' | 'offline'; visitors?: PortfolioVisitors}) {
 	return (
 		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 flex min-h-10 items-center justify-between border-t px-3 font-mono text-xs backdrop-blur sm:px-4 print:hidden">

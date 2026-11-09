@@ -41,7 +41,6 @@ export const InventoryItem = Schema.Struct({
 	processes: Schema.optionalKey(Schema.Array(Process)),
 	protocol: Schema.optionalKey(Schema.Literals(['tcp', 'udp'])),
 	publicAccess: Schema.optionalKey(Schema.Boolean),
-	// A service a systemd timer starts, such as an updater or a backup: a job, not an app.
 	scheduled: Schema.optionalKey(Schema.Boolean),
 	scope: Schema.optionalKey(Schema.Literals(['user', 'system'])),
 	self: Schema.optionalKey(Schema.Boolean),
@@ -121,7 +120,6 @@ export const ExposeRequest = Schema.Struct({...Exposure.fields, target: Schema.o
 export type HideRequest = typeof HideRequest.Type
 export const HideRequest = Schema.Struct({name: Schema.String, target: Schema.optionalKey(Schema.String)})
 
-// A timer-started service to start now, outside its schedule.
 export type RunRequest = typeof RunRequest.Type
 export const RunRequest = Schema.Struct({
 	name: Schema.String,

@@ -88,7 +88,6 @@ const requestOwner = Effect.gen(function* () {
 	return yield* (yield* Tokens).session((yield* HttpServerRequest.HttpServerRequest).headers)
 })
 
-// A test route answers a refusal with its message, as the page shows it.
 function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return Effect.catchIf(handler, Schema.is(AuthError), failure =>
 		Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))
@@ -162,7 +161,6 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 						me,
 						HttpHandlers,
 						mcp,
-						// What the waiting page's watch reads first.
 						HttpRouter.add(
 							'GET',
 							'/auth/request',
@@ -183,7 +181,6 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 						),
 						pipe(
 							Layer.mergeAll(
-								// The People page's RPCs.
 								HttpRouter.add(
 									'GET',
 									'/people',
@@ -244,7 +241,6 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
 									)
 								),
-								// The account menu's passkey RPCs.
 								HttpRouter.add(
 									'GET',
 									'/passkey-options',
@@ -300,7 +296,6 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 										refused
 									)
 								),
-								// The page's `auth.answer` RPC.
 								HttpRouter.add(
 									'POST',
 									'/answer',
@@ -461,7 +456,6 @@ const authorize = Effect.fnUntraced(function* (
 	}
 })
 
-// An approval as the page sends it, by the signed-in session in `session`.
 const answer = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	session: string,
@@ -475,7 +469,6 @@ const answer = Effect.fnUntraced(function* (
 	})
 })
 
-// The answer, delivered to the browser or command that holds the sign-in's cookie.
 const delivered = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: {cookie: string; id: string}
@@ -494,7 +487,6 @@ const consent = Effect.fnUntraced(function* (
 	return yield* delivered(web, request)
 })
 
-// An MCP client's initialize, then the tool call with the session it got.
 const callTool = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	token: string,
@@ -574,7 +566,6 @@ const refresh = Effect.fnUntraced(function* (
 	})
 })
 
-// An agent's auth MCP token, approved in the browser of the signed-in session.
 const agentToken = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	session: string
@@ -585,7 +576,6 @@ const agentToken = Effect.fnUntraced(function* (
 		.access_token
 })
 
-// A JSON body, posted by the signed-in session in `session`.
 const post = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	path: string,
@@ -634,7 +624,6 @@ function cborBytes(bytes: Uint8Array) {
 	return Uint8Array.of(0x58, bytes.length, ...bytes)
 }
 
-// A short CBOR text string.
 function cborText(text: string) {
 	const bytes = new TextEncoder().encode(text)
 	return Uint8Array.of(0x60 + bytes.length, ...bytes)
@@ -646,7 +635,6 @@ function clientData(type: string, challenge: string) {
 	)
 }
 
-// A passkey in software, answering as a phone or a security key does: ES256, the user verified, attestation "none".
 const authenticator = Effect.fnUntraced(function* () {
 	const signature = yield* Signature.Signature
 	const digest = yield* Digest.Digest
@@ -729,7 +717,6 @@ const authenticator = Effect.fnUntraced(function* () {
 	}
 })
 
-// A new authentication proof, re-run after a failed write; a code retries the same approved request.
 const replacement = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	previous: string,
@@ -1128,7 +1115,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(listed, passkey => [passkey.addedFrom, passkey.synced]),
 				[['Safari · iPhone', false]]
 			)
-			// A browser with no session: the options name no account, and the passkey alone signs it in.
 			const challenge = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
 				yield* Effect.flatMap(send(web.issuer, '/auth/passkey'), response => Effect.promise(() => response.text()))
 			)
@@ -1177,7 +1163,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				'Sign in with GitHub or a passkey on this browser to add a passkey'
 			)
-			// A removed passkey signs no one in.
 			yield* send(web.issuer, '/remove-passkey', {
 				body: yield* Schema.encodeEffect(Schema.fromJsonString(PasskeyParams))({id: assertion.id}),
 				headers: {...json, cookie: session},
@@ -2029,7 +2014,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const granted = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => exchanged.text())
 			)
-			// The account's browsers are listed too; these checks read its apps.
 			const apps = Effect.fnUntraced(function* (session: string) {
 				const response = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
 				return Array.filter(
