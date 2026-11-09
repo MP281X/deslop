@@ -21,7 +21,7 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/Rp
 
 export type OperationKey = typeof OperationKey.Type
 const OperationKey = Schema.Struct({app: Schema.String, name: Operation.fields.name, runtime: Operation.fields.runtime})
-export type Selection = typeof Selection.Type
+type Selection = typeof Selection.Type
 const Selection = Schema.Struct({
 	operation: OperationKey,
 	spanId: Schema.optionalKey(Schema.String),
@@ -30,7 +30,6 @@ const Selection = Schema.Struct({
 export type NavigationEvent =
 	| {readonly _tag: 'Back'}
 	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
-	| {readonly _tag: 'Pick'; readonly selection: Selection}
 	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: string; traceId: string}}
 	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
 
@@ -73,10 +72,9 @@ function select(selection: Selection, pane?: Pane) {
 	} satisfies Search
 }
 
-// Back keeps the selection and moves up one level; a new operation or trace drops the selection below it, while a pick only moves it inside the focused list.
+// Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
 export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
-	if (event._tag === 'Pick') return select(event.selection, search.pane)
 	if (event._tag === 'Trace') return select(event.selection, 'Trace')
 	if (event._tag === 'Span') return select(event.selection, 'Span')
 	return Option.match(

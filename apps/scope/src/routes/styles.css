@@ -36,5 +36,5 @@
 
 @theme {
 	--grid-template-columns-scope: minmax(26rem, 28rem) minmax(0, 1fr);
-	--grid-template-columns-operation: 1rem 4ch 5ch 8ch;
+	--grid-template-columns-operation: 4ch 5ch 8ch;
 }

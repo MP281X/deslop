@@ -40,21 +40,3 @@ it('a new operation or trace cannot inherit the previous span selection', () => 
 		{operation: {...OPERATION, name: 'Metrics.current'}}
 	)
 })
-
-it('picks a row inside the focused list without drilling into it', () => {
-	const operations = nextSearch({}, {_tag: 'Pick', selection: {operation: OPERATION}})
-	assert.strictEqual(navigationOf(operations).path, 'Operations')
-	assert.deepStrictEqual(navigationOf(operations).selection, {operation: OPERATION})
-	const traces = nextSearch(follow([{_tag: 'Operation', operation: OPERATION}]), {
-		_tag: 'Pick',
-		selection: {operation: OPERATION, traceId: 'third'}
-	})
-	assert.strictEqual(navigationOf(traces).path, 'Traces')
-	assert.deepStrictEqual(navigationOf(traces).selection, {operation: OPERATION, traceId: 'third'})
-	const spans = nextSearch(
-		{app: 'deploy', operation: OPERATION.name, pane: 'Trace', side: OPERATION.runtime},
-		{_tag: 'Pick', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}}
-	)
-	assert.strictEqual(navigationOf(spans).path, 'Trace')
-	assert.deepStrictEqual(navigationOf(spans).selection, {operation: OPERATION, spanId: 'child', traceId: 'second'})
-})

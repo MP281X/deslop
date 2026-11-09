@@ -101,7 +101,9 @@ it.effect(
 			})
 		)
 		assert.include(html, 'Private retained span')
-		assert.include(html, 'aria-label="Trace out of date"')
+		assert.include(html, 'aria-label="Out of date"')
+		assert.notInclude(html, 'Trace out of date')
+		assert.notInclude(html, 'Operations out of date')
 		assert.notInclude(html, 'Trace unavailable')
 	})
 )
@@ -113,7 +115,9 @@ it.effect(
 			AsyncResult.failureWithPrevious(Cause.die('Decode failed'), {previous: Option.some(AsyncResult.success(trace))})
 		)
 		assert.include(html, 'Private retained span')
-		assert.include(html, 'aria-label="Trace out of date"')
+		assert.include(html, 'aria-label="Out of date"')
+		assert.notInclude(html, 'Trace out of date')
+		assert.notInclude(html, 'Operations out of date')
 		assert.notInclude(html, 'Decode failed')
 	})
 )
@@ -237,7 +241,7 @@ it.effect(
 )
 
 it.effect(
-	'lists every app’s operations together, failures first and without app headings',
+	'groups operations under their apps, failing groups and operations first',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
@@ -245,11 +249,12 @@ it.effect(
 				apps: [
 					{
 						name: 'deploy',
-						operations: [{count: 9, failures: 0, name: 'deploy.idle', p50Ms: 4, runtime: 'server', traces: []}]
+						operations: [{count: 99, failures: 0, name: 'deploy.idle', p50Ms: 4, runtime: 'server', traces: []}]
 					},
 					{
 						name: 'gateway',
 						operations: [
+							{count: 9, failures: 0, name: 'gateway.idle', p50Ms: 40, runtime: 'server', traces: []},
 							{
 								count: 2,
 								failures: 3,
@@ -263,12 +268,19 @@ it.effect(
 				]
 			})
 		)
-		assert.isBelow(
-			Option.getOrThrow(String.indexOf('gateway.fail')(html)),
-			Option.getOrThrow(String.indexOf('deploy.idle')(html))
-		)
-		assert.notInclude(html, '>gateway<')
-		assert.notInclude(html, '>deploy<')
+		for (const pair of [
+			{after: 'gateway.fail', before: '>gateway<'},
+			{after: 'gateway.idle', before: 'gateway.fail'},
+			{after: '>deploy<', before: 'gateway.idle'},
+			{after: 'deploy.idle', before: '>deploy<'}
+		]) {
+			assert.isBelow(
+				Option.getOrThrow(String.indexOf(pair.before)(html)),
+				Option.getOrThrow(String.indexOf(pair.after)(html))
+			)
+		}
+		assert.match(html, /class="list-row[^"]*"[^>]*><img [^>]*>gateway\.fail<\/div>/u)
+		assert.include(html, 'aaaaaaaa · ')
 	})
 )
 

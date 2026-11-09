@@ -18,17 +18,15 @@ import {
 	pipe
 } from 'effect'
 
-import {DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon, XIcon} from '@phosphor-icons/react'
+import {DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect, useRef} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
-import {otherApps} from '@deslop/components-web/command-palette'
-import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {ItemListHeading, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -45,8 +43,6 @@ import type {NavigationEvent, OperationKey} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
-
-const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -114,20 +110,14 @@ const marks = WebRuntime.appIcons(
 )
 
 type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
-type FlatOperation = {app: Overview['apps'][number]; operation: Operation}
-
-// The span rows the page's hotkeys move through, owned by the open trace's list.
-type SpanNavigation = {next: () => void; open: () => void; previous: () => void}
-const NO_SPAN_NAVIGATION: SpanNavigation = {next: () => undefined, open: () => undefined, previous: () => undefined}
+type OperationGroup = {app: Overview['apps'][number]; calls: number; operations: Operation[]}
 
 type WorkspaceProps = {
 	active?: ActiveOperation
 	activeKey?: OperationKey
 	activeTrace?: OperationTrace
 	now: number
-	onMoveSpan: (id: string) => void
 	onPickSpan: (id: string) => void
-	onRegisterSpanNavigation: (navigation: SpanNavigation) => void
 	onSelectOperation: (app: string, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
 	pickedSpan?: string
@@ -218,35 +208,46 @@ function hasDetail(span: Trace['spans'][number]) {
 	)
 }
 
-// An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile.
+// An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
 function AppMark(props: {app: Overview['apps'][number]}) {
 	return Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
 		onNone: () =>
 			Boolean.match(
 				Array.every(props.app.operations, operation => operation.runtime === 'ci'),
 				{
-					onFalse: () => (
-						<HardDrivesIcon role="img" aria-label={props.app.name} className="text-muted-foreground size-4 shrink-0" />
-					),
+					onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
 					onTrue: () => (
 						<>
-							<GithubLight role="img" aria-label={props.app.name} className="size-4 shrink-0 dark:hidden" />
-							<GithubDark role="img" aria-label={props.app.name} className="hidden size-4 shrink-0 dark:block" />
+							<GithubLight aria-hidden className="size-4 shrink-0 dark:hidden" />
+							<GithubDark aria-hidden className="hidden size-4 shrink-0 dark:block" />
 						</>
 					)
 				}
 			),
-		onSome: mark => <img src={mark} alt={props.app.name} className="pixelated size-4 shrink-0" />
+		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 	})
 }
 
-// Every app's operations as one list: failures first, then the busiest, never grouped by app.
-function flatOperations(overview: Overview) {
+// The apps as groups: any app with a failure leads, then the busiest; inside a group failing operations lead, then the busiest.
+function groupedOperations(overview: Overview) {
+	const groups: OperationGroup[] = Array.map(overview.apps, app => ({
+		app,
+		calls: Array.reduce(app.operations, 0, (total, operation) => total + operation.count),
+		operations: Array.sort(
+			app.operations,
+			Order.combine(
+				Order.mapInput(Order.flip(Order.Boolean), (operation: Operation) => operation.failures > 0),
+				Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.count)
+			)
+		)
+	}))
 	return Array.sort(
-		Array.flatMap(overview.apps, app => Array.map(app.operations, operation => ({app, operation}))),
+		groups,
 		Order.combine(
-			Order.mapInput(Order.flip(Order.Number), (row: FlatOperation) => row.operation.failures),
-			Order.mapInput(Order.flip(Order.Number), (row: FlatOperation) => row.operation.count)
+			Order.mapInput(Order.flip(Order.Boolean), (group: OperationGroup) =>
+				Array.some(group.operations, operation => operation.failures > 0)
+			),
+			Order.mapInput(Order.flip(Order.Number), (group: OperationGroup) => group.calls)
 		)
 	)
 }
@@ -259,7 +260,7 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode}) {
 	})
 }
 
-// One operation: its app's mark, its name, the side it starts on, then errors, runs and typical duration.
+// One operation in its app's group: the side it starts on, its name, then errors, runs and typical duration.
 function OperationRow(props: {
 	active: boolean
 	app: Overview['apps'][number]
@@ -291,9 +292,7 @@ function OperationRow(props: {
 					/>
 				}
 			>
-				<ItemMedia>
-					<AppMark app={props.app} />
-				</ItemMedia>
+				<ItemMedia>{DEVICES[props.operation.runtime]}</ItemMedia>
 				<ItemContent>
 					<ItemTitle className="w-full" title={props.operation.name}>
 						{props.operation.name}
@@ -301,7 +300,6 @@ function OperationRow(props: {
 				</ItemContent>
 				<ItemActions>
 					<span className="grid-cols-operation grid items-center gap-x-2">
-						{DEVICES[props.operation.runtime]}
 						<span
 							className="text-destructive text-right tabular-nums"
 							title={Boolean.match(props.operation.failures > 0, {
@@ -327,54 +325,60 @@ function OperationRow(props: {
 	)
 }
 
-// Every app's operations as one flat list; nothing selects when there are no traces yet.
+// The operations under a heading per app; the first heading is the pane's 32px band, so rows line up across panes.
 function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
 	onSelect: (app: string, operation: Operation) => void
 }) {
-	const current = useAtomValue(overviewAtom)
-	const refresh = useAtomRefresh(overviewAtom)
-	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense fallback={<ItemListSkeleton label="Operations" media rows={8} />}>
+			<Suspense
+				fallback={
+					<>
+						<ItemListHeading>{null}</ItemListHeading>
+						<ItemListSkeleton label="Operations" media rows={8} />
+					</>
+				}
+			>
 				<OverviewContent>
 					{overview =>
-						Array.match(flatOperations(overview), {
-							onEmpty: () => <EmptyState label="No traces yet" icon={<EmptyIcon />} />,
-							onNonEmpty: rows => (
+						Array.match(groupedOperations(overview), {
+							onEmpty: () => (
+								<>
+									<ItemListHeading>{null}</ItemListHeading>
+									<EmptyState label="No traces yet" icon={<EmptyIcon />} />
+								</>
+							),
+							onNonEmpty: groups => (
 								<ScrollArea className="min-h-0 flex-1">
-									<div role="list">
-										{Array.map(rows, row => (
-											<OperationRow
-												key={`${row.app.name} ${row.operation.runtime} ${row.operation.name}`}
-												active={
-													props.activeKey !== undefined &&
-													props.activeKey.app === row.app.name &&
-													props.activeKey.runtime === row.operation.runtime &&
-													props.activeKey.name === row.operation.name
-												}
-												app={row.app}
-												onSelect={() => props.onSelect(row.app.name, row.operation)}
-												operation={row.operation}
-											/>
-										))}
-									</div>
+									{Array.map(groups, group => (
+										<div key={group.app.name}>
+											<ItemListHeading icon={<AppMark app={group.app} />}>{group.app.name}</ItemListHeading>
+											<div role="list">
+												{Array.map(group.operations, operation => (
+													<OperationRow
+														key={`${group.app.name} ${operation.runtime} ${operation.name}`}
+														active={
+															props.activeKey !== undefined &&
+															props.activeKey.app === group.app.name &&
+															props.activeKey.runtime === operation.runtime &&
+															props.activeKey.name === operation.name
+														}
+														app={group.app}
+														onSelect={() => props.onSelect(group.app.name, operation)}
+														operation={operation}
+													/>
+												))}
+											</div>
+										</div>
+									))}
 								</ScrollArea>
 							)
 						})
 					}
 				</OverviewContent>
 			</Suspense>
-			{Boolean.match(AsyncResult.isFailure(current) && Option.isSome(AsyncResult.value(current)), {
-				onFalse: () => null,
-				onTrue: () => (
-					<div className="flex shrink-0 justify-end px-4">
-						<Problem label="Operations out of date" warning reset={refresh} since={since} />
-					</div>
-				)
-			})}
 		</section>
 	)
 }
@@ -453,6 +457,11 @@ function TracesPane(props: {
 	const active = Option.fromUndefinedOr(props.active)
 	return (
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
+			<ItemListHeading
+				icon={Option.match(active, {onNone: () => undefined, onSome: current => <AppMark app={current.app} />})}
+			>
+				{Option.match(active, {onNone: () => null, onSome: current => current.operation.name})}
+			</ItemListHeading>
 			<Suspense fallback={<ItemListSkeleton label="Traces" rows={8} />}>
 				<OverviewContent>
 					{() =>
@@ -575,8 +584,8 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				onSome: message => (
 					<div role="listitem">
 						<Item size="row">
-							<ItemMedia>
-								<XIcon aria-hidden className="text-destructive size-4" />
+							<ItemMedia className="w-36 sm:w-50">
+								<span className="text-muted-foreground w-full truncate">error</span>
 							</ItemMedia>
 							<ItemContent>
 								<span className="text-destructive block min-w-0 truncate" title={message}>
@@ -653,42 +662,6 @@ function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	})
 }
 
-// Registers the open trace's span rows for the page's hotkeys; only rows with detail can be picked.
-function SpanHotkeys(props: {
-	focus: Option.Option<Trace['spans'][number]>
-	onMove: (id: string) => void
-	onOpen: (id: string) => void
-	onRegister: (navigation: SpanNavigation) => void
-	spans: Trace['spans']
-}) {
-	useEffect(() => {
-		const rows = Array.filter(props.spans, hasDetail)
-		const index = Option.match(props.focus, {
-			onNone: () => -1,
-			onSome: span =>
-				Option.getOrElse(
-					Array.findFirstIndex(rows, row => row.spanId === span.spanId),
-					() => -1
-				)
-		})
-		function move(delta: number) {
-			if (Array.isArrayEmpty(rows)) return
-			const next = Number.clamp(index + delta, {maximum: rows.length - 1, minimum: 0})
-			if (next === index) return
-			Option.match(Array.get(rows, next), {onNone: () => undefined, onSome: span => props.onMove(span.spanId)})
-		}
-		props.onRegister({
-			next: () => move(1),
-			open: () => Option.match(props.focus, {onNone: () => undefined, onSome: span => props.onOpen(span.spanId)}),
-			previous: () => move(-1)
-		})
-		return () => {
-			props.onRegister(NO_SPAN_NAVIGATION)
-		}
-	}, [props])
-	return null
-}
-
 // The waterfall in trace order, independently scrolling; its time scale is the trace's own duration.
 function SpansList(props: {
 	focus: Option.Option<Trace['spans'][number]>
@@ -759,27 +732,74 @@ function focusOf(trace: Trace, pickedSpan?: string) {
 	)
 }
 
-function TraceProblem(props: {id: string}) {
-	const atom = traceAtom(props.id)
-	const result = useAtomValue(atom)
-	const refresh = useAtomRefresh(atom)
-	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(atom)))
-	if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return null
+// A failed refresh keeps its last data; an authorization failure never does.
+function retained(result: AsyncResult.AsyncResult<unknown, unknown>) {
 	return (
-		<div className="flex shrink-0 justify-end px-4">
-			<Problem label="Trace out of date" warning reset={refresh} since={since} />
-		</div>
+		AsyncResult.isFailure(result) &&
+		Option.isSome(AsyncResult.value(result)) &&
+		!Option.exists(AsyncResult.error(result), error => isDenied(error) || needsSignIn(error))
 	)
 }
 
-// A failed refresh keeps the last trace, but authorization failures never expose retained spans.
+// The operations reader alone, before a trace is open.
+function OverviewStale() {
+	const result = useAtomValue(overviewAtom)
+	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
+	const refresh = useAtomRefresh(overviewAtom)
+	if (!retained(result)) return null
+	return <Problem label="Out of date" warning reset={refresh} since={since} />
+}
+
+// The page's readers as one mark: the oldest age among those still showing retained data, and one retry for both.
+function TraceStale(props: {trace: OperationTrace}) {
+	const overview = useAtomValue(overviewAtom)
+	const traceResult = useAtomValue(traceAtom(props.trace.id))
+	const overviewSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
+	const traceSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(traceAtom(props.trace.id))))
+	const refreshOverview = useAtomRefresh(overviewAtom)
+	const refreshTrace = useAtomRefresh(traceAtom(props.trace.id))
+	const overviewStale = retained(overview)
+	const traceStale = retained(traceResult)
+	if (!overviewStale && !traceStale) return null
+	const since = Option.getOrUndefined(
+		Array.head(
+			Array.sort(
+				Array.filter(
+					[
+						Boolean.match(overviewStale, {onFalse: () => undefined, onTrue: () => overviewSince}),
+						Boolean.match(traceStale, {onFalse: () => undefined, onTrue: () => traceSince})
+					],
+					Predicate.isNumber
+				),
+				Order.Number
+			)
+		)
+	)
+	return (
+		<Problem
+			label="Out of date"
+			warning
+			reset={() => {
+				refreshOverview()
+				refreshTrace()
+			}}
+			since={since}
+		/>
+	)
+}
+
+function StaleMark(props: {trace?: OperationTrace}) {
+	return Option.match(Option.fromUndefinedOr(props.trace), {
+		onNone: () => <OverviewStale />,
+		onSome: trace => <TraceStale trace={trace} />
+	})
+}
+
 function Spans(props: {
 	detailOnly?: boolean
 	id: string
 	inlineDetails?: boolean
-	onMove: (id: string) => void
 	onPick: (id: string) => void
-	onRegisterSpanNavigation: (navigation: SpanNavigation) => void
 	pickedSpan?: string
 }) {
 	const atom = traceAtom(props.id)
@@ -793,49 +813,38 @@ function Spans(props: {
 		onNone: () => null,
 		onSome: trace => {
 			const focus = focusOf(trace, props.pickedSpan)
+			if (props.detailOnly === true) return <SpanDetails focus={focus} />
 			return (
-				<>
-					<SpanHotkeys
-						focus={focus}
-						onMove={props.onMove}
-						onOpen={props.onPick}
-						onRegister={props.onRegisterSpanNavigation}
-						spans={trace.spans}
-					/>
-					{Boolean.match(props.detailOnly === true, {
-						onFalse: () => (
-							<>
-								<SpansList
-									focus={focus}
-									inlineDetails={props.inlineDetails === true}
-									onPick={props.onPick}
-									trace={trace}
-								/>
-								<TraceProblem id={props.id} />
-							</>
-						),
-						onTrue: () => <SpanDetails focus={focus} />
-					})}
-				</>
+				<SpansList focus={focus} inlineDetails={props.inlineDetails === true} onPick={props.onPick} trace={trace} />
 			)
 		}
 	})
 }
 
-// The open trace's waterfall and, when inline, the picked span's details; its age, id and duration already sit on its selected row.
+// The open trace's waterfall: a band naming its short id and age, then, when inline, the picked span's details.
 function TracePane(props: {
 	className?: string
 	detailOnly?: boolean
 	inlineDetails?: boolean
-	onMoveSpan: (id: string) => void
+	now: number
 	onPickSpan: (id: string) => void
-	onRegisterSpanNavigation: (navigation: SpanNavigation) => void
 	pickedSpan?: string
 	trace?: OperationTrace
 }) {
 	const trace = Option.fromUndefinedOr(props.trace)
 	return (
 		<section aria-label="Trace" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
+			{Boolean.match(props.detailOnly === true, {
+				onFalse: () => (
+					<ItemListHeading>
+						{Option.match(trace, {
+							onNone: () => null,
+							onSome: current => `${String.slice(0, 8)(current.id)} · ${ageOf(current.time, props.now)}`
+						})}
+					</ItemListHeading>
+				),
+				onTrue: () => null
+			})}
 			<Suspense
 				fallback={
 					<ItemListSkeleton
@@ -873,10 +882,8 @@ function TracePane(props: {
 										detailOnly={props.detailOnly}
 										id={current.id}
 										inlineDetails={props.inlineDetails}
-										onMove={props.onMoveSpan}
 										onPick={props.onPickSpan}
 										pickedSpan={props.pickedSpan}
-										onRegisterSpanNavigation={props.onRegisterSpanNavigation}
 									/>
 								</Suspense>
 							)
@@ -903,10 +910,9 @@ function NarrowWorkspace(props: WorkspaceProps) {
 			</div>
 			<TracePane
 				inlineDetails
-				onMoveSpan={props.onMoveSpan}
+				now={props.now}
 				onPickSpan={props.onPickSpan}
 				pickedSpan={props.pickedSpan}
-				onRegisterSpanNavigation={props.onRegisterSpanNavigation}
 				trace={props.activeTrace}
 			/>
 		</div>
@@ -933,10 +939,9 @@ function WideWorkspace(props: WorkspaceProps) {
 			<ResizablePanel minSize={320}>
 				<TracePane
 					inlineDetails
-					onMoveSpan={props.onMoveSpan}
+					now={props.now}
 					onPickSpan={props.onPickSpan}
 					pickedSpan={props.pickedSpan}
-					onRegisterSpanNavigation={props.onRegisterSpanNavigation}
 					trace={props.activeTrace}
 				/>
 			</ResizablePanel>
@@ -965,10 +970,9 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 					<TracePane
 						className="min-h-0 flex-1"
 						detailOnly={props.pane === 'Span'}
-						onMoveSpan={props.onMoveSpan}
+						now={props.now}
 						onPickSpan={props.onPickSpan}
 						pickedSpan={props.pickedSpan}
-						onRegisterSpanNavigation={props.onRegisterSpanNavigation}
 						trace={props.activeTrace}
 					/>
 				))
@@ -1008,7 +1012,6 @@ function Home() {
 	}
 	const pane = navigation.path
 	const root = useRef<HTMLDivElement>(null)
-	const spanNavigation = useRef<SpanNavigation>(NO_SPAN_NAVIGATION)
 	useEffect(() => {
 		const container = root.current
 		if (!isMobile || container === null) return
@@ -1049,11 +1052,7 @@ function Home() {
 		})
 		return () => pending.disconnect()
 	}, [isMobile, pane, root])
-	function registerSpanNavigation(registered: SpanNavigation) {
-		spanNavigation.current = registered
-	}
 	const overview = useAtomValue(overviewAtom)
-	useAtomValue(problemSinceAtom(overviewAtom))
 	const refresh = useAtomRefresh(overviewAtom)
 	const value = AsyncResult.value(overview)
 	const authFailure = Option.filter(AsyncResult.error(overview), isDenied)
@@ -1064,7 +1063,12 @@ function Home() {
 		Option.flatMap(Option.fromUndefinedOr(navigation.selection?.operation), key =>
 			Option.flatMap(value, current => findOperation(current, key))
 		),
-		() => Option.flatMap(value, current => Array.head(flatOperations(current)))
+		() =>
+			Option.flatMap(value, current =>
+				Option.flatMap(Array.head(groupedOperations(current)), group =>
+					Option.map(Array.head(group.operations), operation => ({app: group.app, operation}))
+				)
+			)
 	)
 	const activeKey = Option.map(activeOperation, active => ({
 		app: active.app.name,
@@ -1079,30 +1083,6 @@ function Home() {
 			() => Array.head(active.operation.traces)
 		)
 	)
-	const operations: FlatOperation[] = Option.getOrElse(Option.map(value, flatOperations), () => [])
-	const operationIndex = Option.match(activeKey, {
-		onNone: () => -1,
-		onSome: key =>
-			Option.getOrElse(
-				Array.findFirstIndex(
-					operations,
-					row => row.app.name === key.app && row.operation.name === key.name && row.operation.runtime === key.runtime
-				),
-				() => -1
-			)
-	})
-	const traces = Option.getOrElse(
-		Option.map(activeOperation, active => active.operation.traces),
-		() => []
-	)
-	const traceIndex = Option.match(activeTrace, {
-		onNone: () => -1,
-		onSome: trace =>
-			Option.getOrElse(
-				Array.findFirstIndex(traces, row => row.id === trace.id),
-				() => -1
-			)
-	})
 
 	function selectOperation(app: string, operation: Operation) {
 		send({_tag: 'Operation', operation: {app, name: operation.name, runtime: operation.runtime}})
@@ -1118,64 +1098,6 @@ function Home() {
 		)
 	}
 
-	function moveSpan(id: string) {
-		Option.map(Option.all({operation: activeKey, trace: activeTrace}), selected =>
-			send({_tag: 'Pick', selection: {operation: selected.operation, spanId: id, traceId: selected.trace.id}})
-		)
-	}
-
-	function moveOperation(delta: number) {
-		const index = Number.clamp(operationIndex + delta, {maximum: Number.max(0, operations.length - 1), minimum: 0})
-		if (index === operationIndex) return
-		Option.match(Array.get(operations, index), {
-			onNone: () => undefined,
-			onSome: row =>
-				send({
-					_tag: 'Pick',
-					selection: {operation: {app: row.app.name, name: row.operation.name, runtime: row.operation.runtime}}
-				})
-		})
-	}
-
-	function moveTrace(delta: number) {
-		const index = Number.clamp(traceIndex + delta, {maximum: Number.max(0, traces.length - 1), minimum: 0})
-		if (index === traceIndex) return
-		Option.match(Option.all({operation: activeKey, trace: Array.get(traces, index)}), {
-			onNone: () => undefined,
-			onSome: selected => send({_tag: 'Pick', selection: {operation: selected.operation, traceId: selected.trace.id}})
-		})
-	}
-
-	// J and K move the focused list's selection; Enter drills into it and Escape moves back one level.
-	function move(delta: number) {
-		if (pane === 'Operations') {
-			moveOperation(delta)
-			return
-		}
-		if (pane === 'Traces') {
-			moveTrace(delta)
-			return
-		}
-		if (delta > 0) spanNavigation.current.next()
-		else spanNavigation.current.previous()
-	}
-
-	function openSelection() {
-		if (pane === 'Operations') {
-			Option.match(activeKey, {onNone: () => undefined, onSome: operation => send({_tag: 'Operation', operation})})
-			return
-		}
-		if (pane === 'Traces') {
-			Option.match(Option.all({operation: activeKey, trace: activeTrace}), {
-				onNone: () => undefined,
-				onSome: selected =>
-					send({_tag: 'Trace', selection: {operation: selected.operation, traceId: selected.trace.id}})
-			})
-			return
-		}
-		spanNavigation.current.open()
-	}
-
 	const pickedSpan = Option.getOrUndefined(
 		Option.flatMap(
 			Option.filter(Option.fromUndefinedOr(navigation.selection), selected =>
@@ -1184,55 +1106,7 @@ function Home() {
 			selected => Option.fromUndefinedOr(selected.spanId)
 		)
 	)
-	const level = pipe(
-		Match.value(pane),
-		Match.when('Operations', () => 'operations'),
-		Match.when('Traces', () => 'traces'),
-		Match.orElse(() => 'spans')
-	)
 
-	const operationsPalette: PaletteGroup = {
-		items: Option.match(value, {
-			onNone: () => [],
-			onSome: current =>
-				Array.map(flatOperations(current), row => ({
-					detail: `${row.operation.failures} failed · ${durationOf(row.operation.p50Ms)} typical`,
-					icon: DEVICES[row.operation.runtime],
-					id: `${row.app.name}:${row.operation.runtime}:${row.operation.name}`,
-					keywords: `${row.app.name} ${row.operation.name} ${SIDES[row.operation.runtime]}`,
-					label: `${row.app.name} · ${row.operation.name}`,
-					run: () => selectOperation(row.app.name, row.operation)
-				}))
-		}),
-		label: 'Operations'
-	}
-	const tracesPalette: PaletteGroup = {
-		items: Option.match(activeOperation, {
-			onNone: () => [],
-			onSome: active =>
-				Array.map(Array.take(active.operation.traces, 6), trace => ({
-					detail: Option.match(Option.fromUndefinedOr(trace.failure), {
-						onNone: () => 'ok',
-						onSome: failure => `failed at ${failure.span}`
-					}),
-					icon: DEVICES[active.operation.runtime],
-					id: trace.id,
-					keywords: trace.id,
-					label: `${ageOf(trace.time, now)} · ${durationOf(trace.durationMs)}`,
-					run: () => selectTrace(trace)
-				}))
-		}),
-		label: 'Traces'
-	}
-	const navigatePalette: PaletteGroup = {
-		items: [
-			{detail: level, hotkey: 'J', id: 'next-row', label: 'Next row', run: () => move(1)},
-			{detail: level, hotkey: 'K', id: 'previous-row', label: 'Previous row', run: () => move(-1)},
-			{detail: level, hotkey: 'Enter', id: 'open-selection', label: 'Open', run: openSelection},
-			{detail: 'one level', hotkey: 'Escape', id: 'back', label: 'Back', run: () => send({_tag: 'Back'})}
-		],
-		label: 'Navigate'
-	}
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
 			Boolean.match(isWide, {
@@ -1242,12 +1116,10 @@ function Home() {
 						activeKey={Option.getOrUndefined(activeKey)}
 						activeTrace={Option.getOrUndefined(activeTrace)}
 						now={now}
-						onMoveSpan={moveSpan}
 						onPickSpan={selectSpan}
 						onSelectOperation={selectOperation}
 						onSelectTrace={selectTrace}
 						pickedSpan={pickedSpan}
-						onRegisterSpanNavigation={registerSpanNavigation}
 					/>
 				),
 				onTrue: () => (
@@ -1256,12 +1128,10 @@ function Home() {
 						activeKey={Option.getOrUndefined(activeKey)}
 						activeTrace={Option.getOrUndefined(activeTrace)}
 						now={now}
-						onMoveSpan={moveSpan}
 						onPickSpan={selectSpan}
 						onSelectOperation={selectOperation}
 						onSelectTrace={selectTrace}
 						pickedSpan={pickedSpan}
-						onRegisterSpanNavigation={registerSpanNavigation}
 					/>
 				)
 			}),
@@ -1271,13 +1141,11 @@ function Home() {
 				activeKey={Option.getOrUndefined(activeKey)}
 				activeTrace={Option.getOrUndefined(activeTrace)}
 				now={now}
-				onMoveSpan={moveSpan}
 				onPickSpan={selectSpan}
 				onSelectOperation={selectOperation}
 				onSelectTrace={selectTrace}
 				pane={pane}
 				pickedSpan={pickedSpan}
-				onRegisterSpanNavigation={registerSpanNavigation}
 			/>
 		)
 	})
@@ -1311,10 +1179,7 @@ function Home() {
 						onClick: () => send({_tag: 'Back'})
 					})
 				})}
-				palette={Boolean.match(Option.isSome(authFailure), {
-					onFalse: () => [navigatePalette, tracesPalette, operationsPalette, otherApps('scope')],
-					onTrue: () => [otherApps('scope')]
-				})}
+				controls={<StaleMark trace={Option.getOrUndefined(activeTrace)} />}
 			/>
 			{Option.match(authFailure, {
 				onNone: () =>
