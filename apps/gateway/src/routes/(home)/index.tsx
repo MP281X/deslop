@@ -9,7 +9,7 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
 import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
@@ -21,7 +21,6 @@ import {Card} from '@deslop/components-web/ui/card'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -411,23 +410,17 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 
 function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period}) {
 	return (
-		<Tabs
+		<AppBarChoice
+			label="Period"
+			options={PERIODS}
 			value={props.period}
-			onValueChange={value =>
+			onChange={value =>
 				Option.map(
 					Array.findFirst(PERIODS, entry => entry.value === value),
 					entry => props.onPeriod(entry.value)
 				)
 			}
-		>
-			<TabsList aria-label="Period">
-				{Array.map(PERIODS, entry => (
-					<TabsTrigger key={entry.value} value={entry.value}>
-						{entry.label}
-					</TabsTrigger>
-				))}
-			</TabsList>
-		</Tabs>
+		/>
 	)
 }
 

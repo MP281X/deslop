@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Effect, Option, Schema, String, pipe} from 'effect'
+import {Array, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
@@ -73,6 +73,26 @@ export function AppBarTabs(props: {children: ReactNode; value: string}) {
 	return (
 		<Tabs value={props.value}>
 			<TabsList>{props.children}</TabsList>
+		</Tabs>
+	)
+}
+
+// A bar's segmented choice: the stock tabs over one list of options, named for assistive technology.
+export function AppBarChoice(props: {
+	label: string
+	onChange: (value: string) => void
+	options: readonly {label: string; value: string}[]
+	value: string
+}) {
+	return (
+		<Tabs value={props.value} onValueChange={props.onChange}>
+			<TabsList aria-label={props.label}>
+				{Array.map(props.options, option => (
+					<TabsTrigger key={option.value} value={option.value}>
+						{option.label}
+					</TabsTrigger>
+				))}
+			</TabsList>
 		</Tabs>
 	)
 }

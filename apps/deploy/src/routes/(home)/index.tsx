@@ -8,7 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {StaleProblem} from '@deslop/components-web/problem'
 import type {StaleReaders} from '@deslop/components-web/problem'
@@ -17,7 +17,6 @@ import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -55,23 +54,17 @@ function RangeTabs(props: {
 	ranges: readonly {label: string; minutes: HistoryQuery['minutes']}[]
 }) {
 	return (
-		<Tabs
+		<AppBarChoice
+			label="History range"
 			value={`${props.minutes}`}
-			onValueChange={(value: string) => {
+			options={Array.map(props.ranges, range => ({label: range.label, value: `${range.minutes}`}))}
+			onChange={value => {
 				Option.map(
 					Array.findFirst(props.ranges, range => `${range.minutes}` === value),
 					range => props.onChange(range.minutes)
 				)
 			}}
-		>
-			<TabsList aria-label="History range">
-				{Array.map(props.ranges, range => (
-					<TabsTrigger key={range.minutes} value={`${range.minutes}`}>
-						{range.label}
-					</TabsTrigger>
-				))}
-			</TabsList>
-		</Tabs>
+		/>
 	)
 }
 
