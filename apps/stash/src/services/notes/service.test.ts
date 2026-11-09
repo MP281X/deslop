@@ -310,10 +310,6 @@ it.layer(NodeServices.layer)('Notes', test => {
 					)
 				})
 			)
-			assert.deepStrictEqual(yield* (yield* open({directory, organizer, sources: recipe})).tags, [
-				{count: 2, definition: 'Recipes and kitchen techniques.', tag: 'cooking'},
-				{count: 1, definition: 'Soups and stews.', tag: 'soup'}
-			])
 			assert.deepStrictEqual(
 				Array.get(yield* Ref.get(seen), 1),
 				Option.some([{count: 1, definition: 'Recipes and kitchen techniques.', tag: 'cooking'}])

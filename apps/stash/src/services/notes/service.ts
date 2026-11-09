@@ -95,7 +95,6 @@ export class Notes extends Context.Service<
 		readonly regenerate: (userId: string, input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly search: (input: {query: string}) => Stream.Stream<readonly Note['id'][]>
-		readonly tags: Effect.Effect<TagEntry[]>
 	}
 >()('@deslop/stash/services/notes/service/Notes') {
 	static readonly layer = (directory: string) =>
@@ -569,8 +568,7 @@ export class Notes extends Context.Service<
 							SubscriptionRef.changes(state),
 							Stream.map(all => Array.map(findNotes(all, input.query), note => note.id)),
 							Stream.changesWith(Array.makeEquivalence(Equivalence.String))
-						),
-					tags: tagEntries
+						)
 				})
 			})
 		)
