@@ -17,7 +17,7 @@
 }
 
 :root {
-	--primary: var(--blue);
+	--primary: var(--slate);
 }
 
 /* Each machine's charts and swatches draw in its own hue; the app's primary stays Deploy's blue. */

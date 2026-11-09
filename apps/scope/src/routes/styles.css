@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--cyan);
+	--primary: var(--slate);
 	/* The waterfall's one live head is the suite's muted blue; span bars keep their side's hue. */
 	--trace-head: var(--blue);
 }
