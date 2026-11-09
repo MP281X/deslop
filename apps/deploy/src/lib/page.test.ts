@@ -1,7 +1,7 @@
 import {RegistryContext} from '@effect/atom-react'
 import {assert, beforeAll, it} from '@effect/vitest'
 
-import {Cause, Effect, Option} from 'effect'
+import {Array, Cause, Effect, Option, String} from 'effect'
 
 import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
@@ -88,10 +88,11 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.initial())
 		assert.include(html, 'aria-label="History range"')
-		assert.include(html, 'aria-label="Metric"')
 		assert.include(html, 'aria-label="Usage history"')
 		assert.include(html, 'aria-label="Apps loading"')
 		assert.include(html, 'aria-label="Select an app"')
+		assert.include(html, 'Processes')
+		assert.notInclude(html, 'aria-label="Search deploy"')
 		assert.include(html, 'aria-busy="true"')
 		assert.notInclude(html, 'No apps in this range')
 	})
@@ -112,8 +113,9 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.success(readings))
 		assert.include(html, 'Memory over time')
+		assert.include(html, 'CPU over time')
+		assert.include(html, 'Disk over time')
 		assert.include(html, 'aria-label="Apps loading"')
-		assert.include(html, 'aria-label="Metric"')
 		assert.notInclude(html, 'aria-label="Usage history"')
 	})
 )
@@ -156,8 +158,9 @@ it.effect(
 		)
 		assert.include(html, 'Open private')
 		assert.include(html, 'Memory over time')
-		assert.include(html, 'aria-label="Inventory out of date"')
-		assert.include(html, 'aria-label="History out of date"')
+		assert.strictEqual(Array.length(String.split(html, 'aria-label="Data out of date"')) - 1, 1)
+		assert.notInclude(html, 'Inventory out of date')
+		assert.notInclude(html, 'History out of date')
 		assert.notInclude(html, 'Inventory decode failed')
 		assert.notInclude(html, 'History decode failed')
 		assert.notInclude(html, 'aria-busy="true"')
@@ -175,6 +178,6 @@ it.effect(
 		)
 		assert.include(html, 'Access denied')
 		assert.notInclude(html, 'Open private')
-		assert.notInclude(html, 'aria-label="Metric"')
+		assert.notInclude(html, 'aria-label="Data out of date"')
 	})
 )

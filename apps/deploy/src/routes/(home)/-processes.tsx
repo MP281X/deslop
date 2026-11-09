@@ -1,11 +1,5 @@
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Option, String} from 'effect'
 
-import {CaretRightIcon} from '@phosphor-icons/react'
-import {useState} from 'react'
-import type {ReactNode} from 'react'
-
-import {Button} from '@deslop/components-web/ui/button'
-import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '@deslop/components-web/ui/collapsible'
 import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {cn} from '@deslop/components-web/utils'
 
@@ -15,16 +9,16 @@ import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 
 // One process: its mark, name and what it holds of the app's memory; small ones read muted. The column is MiB, named on hover rather than in every row.
-function Line(props: {depth: number; node: ProcessNode; open?: boolean; trigger?: ReactNode}) {
+function Line(props: {band?: string; depth: number; node: ProcessNode; onHover: (id?: string) => void}) {
 	const memory = mib.format(props.node.memory / 1024 ** 2)
 	return (
 		<Item
 			size="row"
 			className="relative"
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
-			title={`Memory includes child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
+			onPointerEnter={() => props.onHover(props.band)}
+			onPointerLeave={() => props.onHover()}
 		>
-			{props.trigger}
 			<ItemMedia className="pointer-events-none relative z-10 ml-(--indent)">
 				<ApplicationIcon name={props.node.name} small />
 			</ItemMedia>
@@ -51,11 +45,6 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean; trigger?
 				</div>
 			</ItemContent>
 			<ItemActions className="pointer-events-none relative z-10 shrink-0">
-				{Array.isArrayNonEmpty(props.node.children) && (
-					<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case max-sm:hidden">
-						+{props.node.children.length}
-					</span>
-				)}
 				<span
 					aria-label={`${memory} MiB`}
 					title="MiB"
@@ -63,59 +52,34 @@ function Line(props: {depth: number; node: ProcessNode; open?: boolean; trigger?
 				>
 					{memory}
 				</span>
-				{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
-					onFalse: () => <span className="size-3.5 shrink-0" />,
-					onTrue: () => (
-						<CaretRightIcon
-							className={cn(
-								'text-muted-foreground size-3.5 shrink-0 transition-transform',
-								props.open === true && 'rotate-90'
-							)}
-						/>
-					)
-				})}
 			</ItemActions>
 		</Item>
 	)
 }
 
-function Node(props: {depth: number; node: ProcessNode}) {
-	const [open, setOpen] = useState(props.depth === 0 && !props.node.small)
-	if (Array.isArrayEmpty(props.node.children)) {
-		return <Line depth={props.depth} node={props.node} />
-	}
+// Every process stays open; nesting is its indentation.
+function Node(props: {band?: string; depth: number; node: ProcessNode; onHover: (id?: string) => void}) {
 	return (
-		<Collapsible open={open} onOpenChange={setOpen}>
-			<Line
-				depth={props.depth}
-				node={props.node}
-				open={open}
-				trigger={
-					<CollapsibleTrigger
-						render={
-							<Button
-								variant="ghost"
-								className="absolute inset-0 z-0 size-full"
-								aria-label={`${props.node.name} processes`}
-							/>
-						}
-					/>
-				}
-			/>
-			<CollapsibleContent>
-				{Array.map(props.node.children, child => (
-					<Node key={`${child.pid}:${child.name}`} depth={props.depth + 1} node={child} />
-				))}
-			</CollapsibleContent>
-		</Collapsible>
+		<>
+			<Line band={props.band} depth={props.depth} node={props.node} onHover={props.onHover} />
+			{Array.map(props.node.children, child => (
+				<Node
+					key={`${child.pid}:${child.name}`}
+					band={props.band}
+					depth={props.depth + 1}
+					node={child}
+					onHover={props.onHover}
+				/>
+			))}
+		</>
 	)
 }
 
-export function Processes(props: {tree: readonly ProcessNode[]}) {
+export function Processes(props: {band?: string; onHover: (id?: string) => void; tree: readonly ProcessNode[]}) {
 	return (
 		<div className="min-w-0">
 			{Array.map(props.tree, node => (
-				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
+				<Node key={`${node.pid}:${node.name}`} band={props.band} depth={0} node={node} onHover={props.onHover} />
 			))}
 		</div>
 	)

@@ -22,6 +22,7 @@ export type Band = {
 	kind: 'app' | 'other' | 'system'
 	members: readonly string[]
 	memory: number[]
+	memoryBytes: number[]
 	opacity: number
 }
 
@@ -37,7 +38,11 @@ function peak(values: readonly number[]) {
 	return Array.reduce(values, 0, Number.max)
 }
 
-function total(group: readonly {cpu: number[]; memory: number[]}[], index: number, key: 'cpu' | 'memory') {
+function total(
+	group: readonly {cpu: number[]; memory: number[]; memoryBytes: number[]}[],
+	index: number,
+	key: 'cpu' | 'memory' | 'memoryBytes'
+) {
 	return Number.sumAll(Array.map(group, app => app[key][index] ?? 0))
 }
 
@@ -62,7 +67,8 @@ export function bands(history: MachineHistory) {
 			(entries, index) =>
 				(((entries[id]?.memory ?? 0) * (fit[index] ?? 1)) / Number.max(1, history.samples[index]?.memoryTotal ?? 1)) *
 				100
-		)
+		),
+		memoryBytes: Array.map(indexed, entries => entries[id]?.memory ?? 0)
 	}))
 	// Never above 5% of the machine's memory or CPU an app is barely visible at the chart's height, so it joins the one band of small apps.
 	const small = Array.filter(apps, app => peak(app.memory) < 5 && peak(app.cpu) < 5)
@@ -89,6 +95,7 @@ export function bands(history: MachineHistory) {
 				kind: 'other' as const,
 				members: Array.map(group, app => app.id),
 				memory: Array.map(history.samples, (_, index) => total(group, index, 'memory')),
+				memoryBytes: Array.map(history.samples, (_, index) => total(group, index, 'memoryBytes')),
 				opacity: 0.35
 			}
 		]
@@ -103,6 +110,9 @@ export function bands(history: MachineHistory) {
 			members: [],
 			memory: Array.map(history.samples, (sample, index) =>
 				Number.max(0, (sample.memoryUsed / Number.max(1, sample.memoryTotal)) * 100 - total(apps, index, 'memory'))
+			),
+			memoryBytes: Array.map(history.samples, (sample, index) =>
+				Number.max(0, sample.memoryUsed - total(apps, index, 'memoryBytes'))
 			),
 			opacity: 0.18
 		}

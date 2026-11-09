@@ -63,10 +63,7 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 		return <TerminalWindowIcon className="size-full" weight={weight} />
 	}
 	return (
-		<span
-			className={`text-muted-foreground inline-flex shrink-0 items-center justify-center ${Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})}`}
-			aria-hidden="true"
-		>
+		<span className="text-muted-foreground inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
 			{mark()}
 		</span>
 	)

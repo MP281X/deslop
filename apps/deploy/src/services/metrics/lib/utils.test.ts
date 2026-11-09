@@ -47,7 +47,9 @@ it('measures deltas, excludes virtual interfaces and partitions, and leaves rese
 	assert.strictEqual(value.diskRead, 1000)
 	assert.strictEqual(value.memoryUsed, 768 * 1024)
 	assert.strictEqual(value.swapUsed, 384 * 1024)
+	assert.strictEqual(value.storageUsed, 750_000)
 	assert.deepStrictEqual(value.disks, [{mount: '/', total: 1_000_000, used: 750_000}])
+	assert.isUndefined(sample(current, MEMORY, '').storageUsed)
 	assert.isUndefined(sample(current, MEMORY, STORAGE).cpu)
 	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cpu)
 	assert.isUndefined(sample({...current, networkReceive: 1}, MEMORY, STORAGE, first).networkReceive)
@@ -207,6 +209,16 @@ it('weights each sample by the time it covers, across a clock jump and a slot wh
 	]
 	assert.strictEqual(compact(mixed, 700_000)[0]?.cpu, 50)
 	assert.strictEqual(history(mixed, 60, 20_000)[0]?.cpu, 50)
+	// Disk use is averaged over its bucket like the other readings.
+	const disk = history(
+		[
+			{...value, storageUsed: 0, time: 1000},
+			{...value, storageUsed: 100, time: 2000}
+		],
+		60,
+		2000
+	)
+	assert.strictEqual(disk[0]?.storageUsed, 50)
 })
 
 it("reads apps from their own cgroups: services, containers and the slice a user's service starts its children in", () => {
