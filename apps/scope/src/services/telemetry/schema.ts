@@ -224,7 +224,7 @@ export const TracesPage = Schema.Struct({entries: Schema.Array(TraceSummary), to
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
 	durationMs: Schema.Finite,
-	failure: Schema.optionalKey(Schema.Struct({message: Schema.String, span: Schema.String})),
+	failure: Schema.optionalKey(Schema.Struct({span: Schema.String})),
 	id: TraceId,
 	time: Nano
 })

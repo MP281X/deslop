@@ -393,7 +393,7 @@ it.effect(
 								name: 'deploy.only',
 								p50Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, failure: {message: 'old', span: 'run'}, id: ID, time: '1781850000000000000'}]
+								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781850000000000000'}]
 							}
 						]
 					},
@@ -406,7 +406,7 @@ it.effect(
 								name: 'gateway.only',
 								p50Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, failure: {message: 'new', span: 'run'}, id: ID, time: '1781860000000000000'}]
+								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781860000000000000'}]
 							}
 						]
 					}
@@ -487,7 +487,7 @@ it.effect(
 								traces: [
 									{
 										durationMs: 10,
-										failure: {message: 'PRIVATE ROW DIAGNOSTIC', span: 'Parser.decode'},
+										failure: {span: 'Parser.decode'},
 										id: ID,
 										time: '1781870000000000000'
 									}
@@ -500,6 +500,5 @@ it.effect(
 		)
 		assert.include(html, 'aria-label="Failed in Parser.decode"')
 		assert.include(html, 'title="Failed in Parser.decode"')
-		assert.notInclude(html, 'PRIVATE ROW DIAGNOSTIC')
 	})
 )

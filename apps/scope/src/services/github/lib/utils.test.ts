@@ -102,10 +102,7 @@ it.layer(layer)(test => {
 				[['ci', 'Release', 1, 1]]
 			)
 			const trace = Option.getOrThrow(Array.head(app.operations[0]?.traces ?? []))
-			assert.deepStrictEqual(trace.failure, {
-				message: 'Format, lint, types and dead code failed',
-				span: 'Format, lint, types and dead code'
-			})
+			assert.deepStrictEqual(trace.failure, {span: 'Format, lint, types and dead code'})
 			assert.strictEqual(trace.durationMs, 360_000)
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.trace(trace.id)).spans, span => [span.depth, span.name]),

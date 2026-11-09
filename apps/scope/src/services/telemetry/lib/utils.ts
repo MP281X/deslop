@@ -485,18 +485,7 @@ function traced(records: readonly Entry[], now: number) {
 					durationMs: timing.durationMs,
 					...Option.match(brokeAt(spans), {
 						onNone: () => ({}),
-						onSome: span => ({
-							failure: {
-								message: pipe(
-									Option.fromNullishOr(span.payload['status']),
-									Option.filter(Predicate.isObject),
-									Option.flatMap(status => Option.fromNullishOr(Struct.get(status, 'message'))),
-									Option.filter(String.isString),
-									Option.getOrElse(() => '')
-								),
-								span: span.name
-							}
-						})
+						onSome: span => ({failure: {span: span.name}})
 					}),
 					id: root.traceId,
 					time: timing.time

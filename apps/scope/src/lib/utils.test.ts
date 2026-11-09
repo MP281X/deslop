@@ -17,7 +17,7 @@ function failureTrace(time: string, failed: boolean) {
 		durationMs: 1,
 		id: String.repeat(32)('a'),
 		time,
-		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {message: '', span: 'run'}})})
+		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {span: 'run'}})})
 	}
 }
 

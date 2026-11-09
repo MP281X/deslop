@@ -795,7 +795,7 @@ it.layer(layer)(test => {
 			assert.deepStrictEqual(
 				Array.map(stash.operations[0]?.traces ?? [], trace => [trace.id, trace.failure]),
 				[
-					['dddddddddddddddddddddddddddddddd', {message: 'upstream returned 502', span: 'http.get'}],
+					['dddddddddddddddddddddddddddddddd', {span: 'http.get'}],
 					['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', undefined]
 				]
 			)
