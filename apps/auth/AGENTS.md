@@ -1,12 +1,13 @@
 # Auth intent
 
-- Signed in is one Card of 32px rows (44 on phones), most recently active first: each client's mark in one 16px slot, label, last activity and address when it differs from the device, hidden on phones. Its context menu signs it out from every app at once, without confirmation; a failed sign-out stays under its row.
-- A waiting sign-in leads that Card, tinted: its app mark, label and the muted code on one line, then Deny and Approve. The code field, with no visible label and a key icon, stays above the Card.
+- Signed in is one Card of 32px rows (44 on phones), most recently active first: each client's mark in one 16px slot, the device as the row's name, last activity and address when it differs from the device, hidden on phones; the app or browser is named by the mark alone. Its trash button signs it out from every app at once, without confirmation; a failed sign-out stays under its row.
+- A waiting sign-in leads that Card, tinted: its app mark, device and the muted code on one line, then Deny and Approve. The code field, with no visible label and a key icon, stays above the Card.
 - Staleness shows once per page, in the bar's Problem: the oldest stale reader of the view and one retry that refreshes them all. Rows stay unmarked.
 - Rejected: apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
-- The bar switches between Sign-ins and People; signing out of every app stays in the account menu. Rows carry their own actions: a client's context menu signs it out, a member's removes them. The client list itself is never narrowed.
+- The bar switches between Sign-ins and People; signing out of every app stays in the account menu. Rows carry their own actions at their end, never a context menu: one action is an icon button, several sit behind one … menu. A client's trash signs it out, a member's removes them. The client list itself is never narrowed.
 - A browser's child app sign-ins contribute to its row's latest activity, never rows of their own; signing the browser out ends them all.
-- People are one Card of 32px rows (44 on phones): a 16px square picture, name with the GitHub handle muted inline; whoever asks for access leads with Decline and Allow, an admin carries a shield in the app's hue, a member shows since when and is removed from the row's context menu after eight seconds with Undo; a failed removal keeps the row and its reason.
+- Loading is skeleton rows at the loaded geometry, never a spinner; a sign-in button that waits keeps its own icon and disabled label.
+- People are one Card of 32px rows (44 on phones): a 16px square picture, name with the GitHub handle muted inline; whoever asks for access leads with Decline and Allow, an admin carries a shield in the app's hue, a member shows since when and a trash removes them after eight seconds with Undo; your own row and an admin's show no trash, and a failed removal keeps the row and its reason.
 
 ## Journeys
 

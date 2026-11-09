@@ -2,7 +2,7 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 
 import {Array, Boolean, Option, Order} from 'effect'
 
-import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
+import {ShieldIcon, TrashIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -11,29 +11,21 @@ import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger
-} from '@deslop/components-web/ui/context-menu'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {UndoButton} from '@deslop/components-web/undo'
 
-import {AccountAvatar} from '#lib/components.tsx'
+import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
 import {accountAtom, admitAtom, dayLabel, peopleAtom, removePersonAtom, selectedRowAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
-// The row's own line, then its failed answer beneath it; a context menu, when given, holds the rest.
+// The row's own line, then its failed answer beneath it; its actions sit at its end.
 function PersonRow(props: {
 	children?: ReactNode
 	failure: Option.Option<string>
 	footer?: ReactNode
-	menu?: ReactNode
 	onSelect: () => void
 	person: Person
 	removed: boolean
@@ -41,34 +33,27 @@ function PersonRow(props: {
 }) {
 	return (
 		<div role="listitem">
-			<ContextMenu disabled={props.menu === undefined}>
-				<ContextMenuTrigger
-					render={
-						<Item
-							size="row"
-							id={`person-${props.person.id}`}
-							tabIndex={0}
-							data-removed={props.removed}
-							data-selected={props.selected}
-							onFocus={props.onSelect}
-						/>
-					}
-				>
-					<ItemMedia>
-						<AccountAvatar id={props.person.id} name={props.person.name} small />
-					</ItemMedia>
-					<ItemContent>
-						<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
-						{Option.match(props.failure, {
-							onNone: () =>
-								props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>,
-							onSome: message => <ItemDescription>{message}</ItemDescription>
-						})}
-					</ItemContent>
-					{props.children}
-				</ContextMenuTrigger>
-				{props.menu !== undefined && <ContextMenuContent className="w-auto min-w-36">{props.menu}</ContextMenuContent>}
-			</ContextMenu>
+			<Item
+				size="row"
+				id={`person-${props.person.id}`}
+				tabIndex={0}
+				data-removed={props.removed}
+				data-selected={props.selected}
+				onFocus={props.onSelect}
+			>
+				<ItemMedia>
+					<AccountAvatar id={props.person.id} name={props.person.name} small />
+				</ItemMedia>
+				<ItemContent>
+					<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
+					{Option.match(props.failure, {
+						onNone: () =>
+							props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>,
+						onSome: message => <ItemDescription>{message}</ItemDescription>
+					})}
+				</ItemContent>
+				{props.children}
+			</Item>
 			{props.footer}
 		</div>
 	)
@@ -98,16 +83,18 @@ function AskingRow(props: {onSelect: () => void; person: Person; selected: boole
 	)
 }
 
-// An admin is marked with a shield; a member shows since when, and right-click or long-press removes them.
+// An admin is marked with a shield; a member shows since when, and a trash removes them unless the row is yours.
 function MemberRow(props: {
 	failure: Option.Option<string>
 	onRemove: () => void
 	onSelect: () => void
 	person: Person
+	removable: boolean
 	removed: boolean
 	selected: boolean
 	undo: () => void
 }) {
+	const name = props.person.fullName ?? props.person.name
 	if (props.person.role === 'Admin') {
 		return (
 			<PersonRow
@@ -130,16 +117,25 @@ function MemberRow(props: {
 			onSelect={props.onSelect}
 			removed={props.removed}
 			failure={props.failure}
-			menu={
-				<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={props.onRemove}>
-					Remove
-				</ContextMenuItem>
-			}
 		>
 			<ItemActions>
 				{Boolean.match(props.removed, {
 					onFalse: () => (
-						<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
+						<>
+							<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
+							{props.removable && (
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									className="max-sm:size-11"
+									aria-label={`Remove ${name}`}
+									title="Remove"
+									onClick={props.onRemove}
+								>
+									<TrashIcon />
+								</Button>
+							)}
+						</>
 					),
 					onTrue: () => <UndoButton onClick={props.undo} />
 				})}
@@ -150,6 +146,7 @@ function MemberRow(props: {
 
 // One card: whoever is asking for access first, then everyone with it.
 function Directory() {
+	const signed = useAtomSuspense(accountAtom).value
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
 	const send = useAtomSet(removePersonAtom.send)
@@ -179,6 +176,7 @@ function Directory() {
 													state => state.message
 												)}
 												removed={Option.exists(waiting, state => state.id === person.id)}
+												removable={!Option.exists(signed, account => account.id === person.id)}
 												selected={Option.contains(selected, `person-${person.id}`)}
 												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
 												undo={() => send({_tag: 'Undone'})}
@@ -210,13 +208,7 @@ function Directory() {
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
-		<Suspense
-			fallback={
-				<Card>
-					<ItemListSkeleton label="People" media rows={3} />
-				</Card>
-			}
-		>
+		<Suspense fallback={<PeopleRowsSkeleton label="People" rows={3} />}>
 			<Directory />
 		</Suspense>
 	)

@@ -2,7 +2,7 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 
 import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
-import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon, TrashIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useEffect, useState} from 'react'
 import {toQR} from 'toqr'
@@ -12,13 +12,8 @@ import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger
-} from '@deslop/components-web/ui/context-menu'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 
 import android from '#lib/brands/android.svg'
@@ -75,7 +70,10 @@ export function QrCode(props: {className?: string; text: string}) {
 // A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
 export function AccountAvatar(props: {id: string; name: string; small?: boolean}) {
 	return (
-		<Avatar size="sm" className={cn(props.small === true && 'size-4')}>
+		<Avatar
+			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
+			className={cn(props.small === true && 'size-4')}
+		>
 			<AvatarImage src={avatarUrl(props.id)} alt={props.name} />
 			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
 		</Avatar>
@@ -103,6 +101,88 @@ export function AppIcon(props: {origin: string; small?: boolean}) {
 				/>
 			)}
 		</span>
+	)
+}
+
+function ClientRowSkeleton() {
+	return (
+		<Item aria-hidden size="row">
+			<ItemMedia className="size-4">
+				<Skeleton className="size-4" />
+			</ItemMedia>
+			<ItemContent>
+				<Skeleton className="h-3 w-2/5" />
+			</ItemContent>
+			<ItemActions>
+				<Skeleton className="h-3 w-12 shrink-0" />
+				<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
+				<Skeleton className="size-7 shrink-0 max-sm:size-11" />
+			</ItemActions>
+		</Item>
+	)
+}
+
+// The row whose code lookup is running, where the found sign-in will sit.
+function PendingRowSkeleton() {
+	return (
+		<div role="listitem" className="bg-primary/10">
+			<Item aria-hidden size="row">
+				<ItemMedia className="size-4">
+					<Skeleton className="size-4" />
+				</ItemMedia>
+				<ItemContent>
+					<Skeleton className="h-3 w-24" />
+					<Skeleton className="h-3 w-16" />
+				</ItemContent>
+				<ItemActions>
+					<Skeleton className="h-6 w-14" />
+					<Skeleton className="h-6 w-16" />
+				</ItemActions>
+			</Item>
+		</div>
+	)
+}
+
+// The sign-in rows a card will hold while its data loads, at the loaded rows' geometry: 16px mark at the gutter, name at 44px, figures right-aligned.
+export function SignInRowsSkeleton(props: {label: string; pending?: boolean; rows: number}) {
+	return (
+		<Card size="list">
+			<div aria-busy="true" aria-label={props.label} role="status">
+				<div role="list" aria-label="Signed-in clients">
+					{props.pending === true && <PendingRowSkeleton />}
+					{Array.map(Array.range(1, props.rows), row => (
+						<ClientRowSkeleton key={row} />
+					))}
+				</div>
+			</div>
+		</Card>
+	)
+}
+
+// The people rows a card will hold while the list loads, with the mark, name, handle, since date and its trash's column.
+export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
+	return (
+		<Card size="list">
+			<div aria-busy="true" aria-label={props.label} role="status">
+				<div role="list" aria-label="People">
+					{Array.map(Array.range(1, props.rows), row => (
+						<Item key={row} aria-hidden size="row">
+							<ItemMedia className="size-4">
+								<Skeleton className="size-4" />
+							</ItemMedia>
+							<ItemContent>
+								<Skeleton className="h-3 w-2/5" />
+								<Skeleton className="h-3 w-16" />
+							</ItemContent>
+							<ItemActions>
+								<Skeleton className="h-3 w-14 shrink-0" />
+								<Skeleton className="size-7 shrink-0 max-sm:size-11" />
+							</ItemActions>
+						</Item>
+					))}
+				</div>
+			</div>
+		</Card>
 	)
 }
 
@@ -164,46 +244,42 @@ function ClientRow(props: {
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<div role="listitem">
-			<ContextMenu>
-				<ContextMenuTrigger
-					render={
-						<Item
-							size="row"
-							id={`client-${props.client.label}`}
-							tabIndex={0}
-							data-selected={props.selected}
-							aria-label={`${props.client.label}, active ${active}${Option.match(address, {
-								onNone: () => '',
-								onSome: value => ` · ${value}`
-							})}`}
-							onFocus={props.onSelect}
-						/>
-					}
-				>
-					<ItemMedia className="size-4">
-						<ClientIcon client={props.client.client} />
-					</ItemMedia>
-					<ItemContent>
-						<ItemTitle>{props.client.label}</ItemTitle>
-					</ItemContent>
-					<ItemActions>
-						<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
-						<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
-							{Option.getOrElse(address, () => '')}
-						</span>
-					</ItemActions>
-				</ContextMenuTrigger>
-				<ContextMenuContent className="w-auto min-w-36">
-					<ContextMenuItem
-						variant="destructive"
-						className="max-sm:h-11"
+			<Item
+				size="row"
+				id={`client-${props.client.label}`}
+				tabIndex={0}
+				data-selected={props.selected}
+				aria-label={`${props.client.client.device}, active ${active}${Option.match(address, {
+					onNone: () => '',
+					onSome: value => ` · ${value}`
+				})}`}
+				onFocus={props.onSelect}
+			>
+				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
+				<ItemMedia className="size-4" role="img" aria-label={props.client.client.name} title={props.client.client.name}>
+					<ClientIcon client={props.client.client} />
+				</ItemMedia>
+				<ItemContent>
+					<ItemTitle>{props.client.client.device}</ItemTitle>
+				</ItemContent>
+				<ItemActions>
+					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
+					<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
+						{Option.getOrElse(address, () => '')}
+					</span>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						className="max-sm:size-11"
+						aria-label={`Sign out ${props.client.client.device}`}
+						title="Sign out"
 						disabled={props.disconnecting}
 						onClick={props.onDisconnect}
 					>
-						Sign out
-					</ContextMenuItem>
-				</ContextMenuContent>
-			</ContextMenu>
+						<TrashIcon />
+					</Button>
+				</ItemActions>
+			</Item>
 		</div>
 	)
 }
@@ -238,15 +314,14 @@ function PendingRow(props: {
 }) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
-	const label = signInLabel(props.request.clientName, props.request.device)
 	return (
 		<div role="listitem" className={cn('bg-primary/10', props.selected && 'bg-primary/20')}>
 			<Item size="row" id="pending-sign-in" tabIndex={0} onFocus={props.onSelect}>
-				<ItemMedia className="size-4">
+				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
 					<PendingMark catalog={props.catalog} request={props.request} />
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle>{label}</ItemTitle>
+					<ItemTitle>{props.request.device}</ItemTitle>
 					<ItemDescription>{requestCode(props.request.id)}</ItemDescription>
 				</ItemContent>
 				<ItemActions>
@@ -254,7 +329,7 @@ function PendingRow(props: {
 						variant="outline"
 						size="xs"
 						disabled={waiting}
-						aria-label={`Deny ${label}`}
+						aria-label={`Deny ${props.request.device}`}
 						onClick={() => respond({accept: false, request: props.request})}
 					>
 						Deny
@@ -262,7 +337,7 @@ function PendingRow(props: {
 					<Button
 						size="xs"
 						disabled={waiting}
-						aria-label={`Approve ${label}`}
+						aria-label={`Approve ${props.request.device}`}
 						onClick={() => respond({accept: true, request: props.request})}
 					>
 						Approve
@@ -327,30 +402,39 @@ const signInListAtom = Atom.make(get =>
 	AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)})
 )
 
-export function SignInList(props: {pending: Option.Option<PendingAuthorization>}) {
+export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {
 	const data = useAtomSuspense(signInListAtom).value
 	const clients = clientsOf(data.signIns, data.catalog)
+	const checking = props.checking === true && Option.isNone(props.pending)
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
 	const setPending = useAtomSet(pendingAtom)
 	const [disconnection, disconnect] = useAtom(disconnectAtom)
 	useEffect(() => setPending(props.pending), [props.pending, setPending])
-	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending)) {
+	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 		return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
 	}
 	return (
 		<>
 			<Card size="list">
 				<div role="list" aria-label="Signed-in clients">
-					{Option.match(props.pending, {
-						onNone: () => null,
-						onSome: request => (
-							<PendingRow
-								catalog={data.catalog}
-								request={request}
-								selected={Option.contains(selected, 'pending-sign-in')}
-								onSelect={() => setSelected(Option.some('pending-sign-in'))}
-							/>
+					{Boolean.match(checking, {
+						onFalse: () =>
+							Option.match(props.pending, {
+								onNone: () => null,
+								onSome: request => (
+									<PendingRow
+										catalog={data.catalog}
+										request={request}
+										selected={Option.contains(selected, 'pending-sign-in')}
+										onSelect={() => setSelected(Option.some('pending-sign-in'))}
+									/>
+								)
+							}),
+						onTrue: () => (
+							<div role="status" aria-label="Checking the code">
+								<PendingRowSkeleton />
+							</div>
 						)
 					})}
 					{Array.map(clients, client => (

@@ -1,8 +1,8 @@
 import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, Match, Number, Option, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, HourglassIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
+import {ArrowRightIcon, CheckIcon, CopyIcon, HourglassIcon, KeyIcon, SignOutIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
@@ -10,12 +10,10 @@ import {Suspense, useEffect} from 'react'
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState, Error} from '@deslop/components-web/fallbacks'
 import {GitHubIcon} from '@deslop/components-web/icons'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {
@@ -32,10 +30,9 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {Spinner} from '@deslop/components-web/ui/spinner'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {AccountAvatar, AppIcon, SignInList, QrCode} from '#lib/components.tsx'
+import {AccountAvatar, AppIcon, SignInList, SignInRowsSkeleton, QrCode} from '#lib/components.tsx'
 import {
 	ADDING_PASSKEY,
 	CLIENT_ROWS,
@@ -182,7 +179,7 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,
 		Match.tagsExhaustive({
-			Decided: () => <EmptyState label="Continuing" icon={<Spinner />} />,
+			Decided: () => <EmptyState label="Continuing" icon={<ArrowRightIcon weight="light" />} />,
 			// The link stays expired on every reload, so the way out drops it: Auth's own sign-in, or its sign-ins when signed in.
 			Expired: () => (
 				<EmptyState
@@ -201,13 +198,7 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 					{
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
-							<Suspense
-								fallback={
-									<Card>
-										<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />
-									</Card>
-								}
-							>
+							<Suspense fallback={<SignInRowsSkeleton label="Signed in" pending rows={CLIENT_ROWS} />}>
 								<SignInList pending={Option.some(value.request)} />
 							</Suspense>
 						)
@@ -217,14 +208,12 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 	)
 }
 
-function Tabs(props: {admin: boolean; waiting: number}) {
+// Signed-in accounts see their sign-ins; admins also see people.
+function Tabs(props: {admin: boolean}) {
 	const matchRoute = useMatchRoute()
-	const tabs: {count: number; label: string; to: '/' | '/people'}[] = [
-		{count: 0, label: 'Sign-ins', to: '/'},
-		...Boolean.match(props.admin, {
-			onFalse: () => [],
-			onTrue: () => [{count: props.waiting, label: 'People', to: '/people' as const}]
-		})
+	const tabs: {label: string; to: '/' | '/people'}[] = [
+		{label: 'Sign-ins', to: '/'},
+		...Boolean.match(props.admin, {onFalse: () => [], onTrue: () => [{label: 'People', to: '/people' as const}]})
 	]
 	return (
 		<AppBarTabs
@@ -233,7 +222,6 @@ function Tabs(props: {admin: boolean; waiting: number}) {
 			{Array.map(tabs, tab => (
 				<AppBarTab key={tab.to} value={tab.to} render={<Link to={tab.to} />}>
 					{tab.label}
-					{tab.count > 0 && <Badge>{tab.count}</Badge>}
 				</AppBarTab>
 			))}
 		</AppBarTabs>
@@ -258,7 +246,6 @@ function PasskeyItems(props: {via: SessionVia}) {
 	const [confirming, confirm] = useAtom(confirmForPasskeyAtom)
 	return (
 		<DropdownMenuGroup>
-			<DropdownMenuLabel>Passkeys</DropdownMenuLabel>
 			{/* A failed read says so, rather than looking like an account without passkeys. */}
 			{Option.match(AsyncResult.error(read), {
 				onNone: () => null,
@@ -295,7 +282,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
 				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
 			>
-				<PlusIcon />
+				<KeyIcon />
 				Add a passkey
 			</DropdownMenuItem>
 		</DropdownMenuGroup>
@@ -323,17 +310,12 @@ function AccountMenu(props: {account: SignedAccount}) {
 			<DropdownMenuContent align="end" className="w-auto min-w-48">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>
-						<span className="text-foreground block text-sm">{props.account.fullName ?? props.account.name}</span>
-						{`@${props.account.name} · ${String.toLowerCase(props.account.role)}`}
+						<span className="text-foreground">{`@${props.account.name}`}</span>
+						{props.account.role === 'Admin' && <span className="text-muted-foreground"> admin</span>}
 					</DropdownMenuLabel>
 				</DropdownMenuGroup>
+				{props.account.role !== 'Waiting' && <PasskeyItems via={props.account.via} />}
 				<DropdownMenuSeparator />
-				{props.account.role !== 'Waiting' && (
-					<>
-						<PasskeyItems via={props.account.via} />
-						<DropdownMenuSeparator />
-					</>
-				)}
 				<DropdownMenuItem
 					variant="destructive"
 					className="max-sm:h-11"
@@ -350,7 +332,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 // The suite's apps, as they announced themselves to Auth; each opens its app.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<nav aria-label="Apps" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<nav aria-label="Apps" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
 			{Array.map(props.apps, app => (
 				<a
 					key={app.origin}
@@ -365,6 +347,33 @@ function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	)
 }
 
+// The page's shape while the account loads: the centred sign-in block, never a skeleton for the bar, tabs, a heading or the code field.
+function SignInSkeleton() {
+	return (
+		<section
+			aria-busy="true"
+			aria-label="Sign in"
+			role="status"
+			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
+		>
+			<div className="flex flex-col gap-2">
+				<Skeleton className="h-9 w-full max-sm:h-11" />
+				<Skeleton className="h-9 w-full max-sm:h-11" />
+				<Skeleton className="h-9 w-full max-sm:h-11" />
+			</div>
+			<div className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
+				{Array.map(Array.range(1, 4), row => (
+					<span key={row} className="flex h-6 min-w-0 items-center gap-2.5 max-sm:h-11">
+						<Skeleton className="size-4 shrink-0" />
+						<Skeleton className="h-3 w-20" />
+					</span>
+				))}
+			</div>
+		</section>
+	)
+}
+
+// Without an account: GitHub, or a code approved from another browser, a phone or an agent.
 function SignIn() {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
@@ -372,7 +381,10 @@ function SignIn() {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="flex w-full flex-col gap-6" aria-label="Sign in">
+		<section
+			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
+			aria-label="Sign in"
+		>
 			<h1 className="sr-only">Sign in</h1>
 			<div className="flex flex-col gap-2">
 				<Button
@@ -381,7 +393,7 @@ function SignIn() {
 					disabled={AsyncResult.isWaiting(signIn)}
 					onClick={() => startSignIn()}
 				>
-					{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+					<GitHubIcon />
 					Continue with GitHub
 				</Button>
 				<Button
@@ -391,7 +403,7 @@ function SignIn() {
 					disabled={AsyncResult.isWaiting(passkey)}
 					onClick={() => startPasskey(next)}
 				>
-					{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
+					<KeyIcon />
 					Continue with a passkey
 				</Button>
 				<Button
@@ -415,7 +427,7 @@ function SigningOut() {
 	const [signOut, endSession] = useAtom(signOutAtom)
 	useEffect(() => endSession(next), [endSession, next])
 	return Option.match(AsyncResult.error(signOut), {
-		onNone: () => <EmptyState label="Signing out" icon={<Spinner />} />,
+		onNone: () => <EmptyState label="Signing out" icon={<SignOutIcon weight="light" />} />,
 		onSome: failure => <Error error={failure} label="Sign-out failed" reset={() => endSession(next)} />
 	})
 }
@@ -459,9 +471,7 @@ function Shell() {
 	const requestId = Option.fromUndefinedOr(search.request)
 	const signingOut = search['sign-out'] !== undefined
 	const account = useAtomSuspense(accountAtom).value
-	const people = AsyncResult.getOrElse(useAtomValue(peopleAtom), () => [])
 	const admin = Option.exists(account, signed => signed.role === 'Admin')
-	const waiting = Array.countBy(people, person => person.role === 'Waiting')
 	return (
 		<>
 			<AppBar
@@ -469,7 +479,7 @@ function Shell() {
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
 				controls={<PageProblem />}
-				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} waiting={waiting} />}
+				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} />}
 			/>
 			<Page width="column">
 				{signingOut && <SigningOut />}
@@ -487,7 +497,7 @@ function Shell() {
 	)
 }
 
-// Until the account is known: the app bar and the sign-in card's shape, never a blank page with a spinner.
+// Until the account is known: the app bar and the sign-in page's exact shape, never a skeleton for the bar, tabs, a heading or the code field.
 function HomeLayout() {
 	return (
 		<Suspense
@@ -495,23 +505,7 @@ function HomeLayout() {
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
 					<Page width="column">
-						<section
-							aria-busy="true"
-							aria-label="Sign in"
-							role="status"
-							className="flex flex-1 flex-col items-center justify-center gap-6 pb-12"
-						>
-							<div className="flex flex-col items-center gap-2">
-								<Skeleton className="h-7 w-52" />
-								<Skeleton className="h-4 w-44" />
-							</div>
-							<div className="flex w-full flex-col gap-2 border p-4">
-								<Skeleton className="h-11 w-full" />
-								<Skeleton className="h-4 w-8 self-center" />
-								<Skeleton className="h-11 w-full" />
-								<Skeleton className="h-11 w-full" />
-							</div>
-						</section>
+						<SignInSkeleton />
 					</Page>
 				</>
 			}

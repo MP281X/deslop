@@ -7,14 +7,11 @@ import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {Suspense} from 'react'
 
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Card} from '@deslop/components-web/ui/card'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
-import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 
-import {SignInList} from '#lib/components.tsx'
+import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -56,12 +53,6 @@ function Enter(props: {
 						/>
 					</InputGroup>
 				</div>
-				{props.state === 'Checking' && (
-					<p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
-						<Spinner />
-						Checking…
-					</p>
-				)}
 				{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
 				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
 			</Field>
@@ -107,12 +98,14 @@ function Content(props: {
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense
 				fallback={
-					<Card>
-						<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />
-					</Card>
+					<SignInRowsSkeleton
+						label="Signed in"
+						pending={props.state === 'Checking' || Option.isSome(props.pending)}
+						rows={CLIENT_ROWS}
+					/>
 				}
 			>
-				<SignInList pending={props.pending} />
+				<SignInList checking={props.state === 'Checking'} pending={props.pending} />
 			</Suspense>
 		</>
 	)
