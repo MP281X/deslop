@@ -140,7 +140,10 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
+		<section
+			className="bg-card block-shadow m-auto flex w-full max-w-md flex-col gap-5 border-2 p-6"
+			aria-labelledby="waiting-title"
+		>
 			<header className="flex flex-col gap-2">
 				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
 				<h1
@@ -154,7 +157,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			</header>
 			<div className="flex items-start gap-5">
 				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
+				<span className="bg-background text-foreground shrink-0 border-2 p-2">
 					<QrCode text={approveLink(props.request.id)} className="size-32" />
 				</span>
 				<div className="flex min-w-0 flex-col gap-2">
@@ -168,7 +171,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			</div>
 			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
 			{props.request.kind === 'App' && (
-				<div className="flex flex-col gap-2 border-t pt-4">
+				<div className="flex flex-col gap-2 border-t-2 pt-4">
 					<Button
 						variant="outline"
 						size="sm"
@@ -376,7 +379,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 // The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t-2 pt-5 sm:grid-cols-3">
 			{Array.map(props.apps, app => (
 				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
 					<AppIcon origin={app.origin} small />
@@ -397,7 +400,7 @@ function SignIn() {
 	return (
 		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
+			<div className="bg-card block-shadow flex w-full flex-col gap-5 border-2 p-6">
 				<div className="flex flex-col gap-2">
 					<Button
 						size="lg"
@@ -578,7 +581,7 @@ function HomeLayout() {
 								<Skeleton className="h-7 w-52" />
 								<Skeleton className="h-4 w-44" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="flex w-full max-w-sm flex-col gap-2 border-2 p-4">
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />

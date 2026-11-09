@@ -2,6 +2,7 @@ import {Boolean} from 'effect'
 
 import {Button, HStack, ScrollView} from '@expo/ui/swift-ui'
 import {
+	border,
 	buttonBorderShape,
 	buttonStyle,
 	controlSize,
@@ -23,7 +24,7 @@ const ToggleGroupContext = createContext<{onValueChange: (value: string) => void
 	value: ''
 })
 
-// shadcn's ToggleGroup on iOS, by the same names: one choice among glass capsules, scrolling sideways when they overflow.
+// shadcn's ToggleGroup on iOS, by the same names: one choice among hard-edged blocks, scrolling sideways when they overflow.
 export function ToggleGroup(props: {
 	children: ReactNode
 	modifiers?: ViewModifier[]
@@ -56,9 +57,10 @@ export function ToggleGroupItem(props: {
 			onPress={() => group.onValueChange(props.value)}
 			modifiers={[
 				buttonStyle(
-					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
+					Boolean.match(selected, {onFalse: () => 'bordered' as const, onTrue: () => 'borderedProminent' as const})
 				),
-				buttonBorderShape('capsule'),
+				buttonBorderShape('roundedRectangle', 0),
+				border({content: group.tint, width: 2}),
 				controlSize('large'),
 				...Boolean.match(selected, {onFalse: () => [], onTrue: () => [tint(group.tint)]}),
 				labelStyle('titleAndIcon'),

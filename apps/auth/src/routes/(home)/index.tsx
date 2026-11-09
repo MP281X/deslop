@@ -33,71 +33,82 @@ function Enter(props: {
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
 		<section className="flex w-full flex-col gap-4">
-			<Field data-invalid={invalid}>
-				<InputOTP
-					id="code"
-					aria-label="Code of a sign-in to approve"
-					maxLength={CODE_LENGTH}
-					value={props.typed}
-					onChange={value => {
-						props.onType(typedCode(value))
-					}}
-					pasteTransformer={typedCode}
-					pattern="^[A-Za-z]+$"
-					inputMode="text"
-					autoFocus={linked}
-					autoComplete="off"
-					autoCapitalize="characters"
-					disabled={props.state === 'Checking'}
-					aria-invalid={invalid}
-					aria-describedby="code-error"
-					containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
-				>
-					<InputOTPGroup className="flex-1">
-						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
-						))}
-					</InputOTPGroup>
-					<InputOTPSeparator />
-					<InputOTPGroup className="flex-1">
-						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
-						))}
-					</InputOTPGroup>
-				</InputOTP>
-				{props.state === 'Checking' && (
-					<p role="status" className="text-muted-foreground flex items-center gap-1.5 text-xs">
-						<Spinner />
-						Checking…
-					</p>
-				)}
-				{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
-				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
-			</Field>
-			{Option.match(props.answered, {
-				onNone: () => null,
-				onSome: answer => (
-					<p
-						className="text-muted-foreground animate-settle-in flex items-center gap-1.5 text-xs motion-reduce:animate-none"
-						role="status"
+			<div className="border-rule-strong flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b-2 pb-2">
+				<div className="flex items-baseline gap-3">
+					<span className="text-signal font-mono text-xs tabular-nums">01</span>
+					<h2 className="tracking-block text-sm font-extrabold uppercase">Sign in</h2>
+				</div>
+				<span className="text-muted-foreground text-2xs tracking-label font-mono uppercase">
+					Approve a waiting code
+				</span>
+			</div>
+			<div className="block-shadow border-foreground/70 bg-card flex flex-col gap-4 border-2 p-5 sm:p-6">
+				<Field data-invalid={invalid}>
+					<InputOTP
+						id="code"
+						aria-label="Code of a sign-in to approve"
+						maxLength={CODE_LENGTH}
+						value={props.typed}
+						onChange={value => {
+							props.onType(typedCode(value))
+						}}
+						pasteTransformer={typedCode}
+						pattern="^[A-Za-z]+$"
+						inputMode="text"
+						autoFocus={linked}
+						autoComplete="off"
+						autoCapitalize="characters"
+						disabled={props.state === 'Checking'}
+						aria-invalid={invalid}
+						aria-describedby="code-error"
+						containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
 					>
-						{Boolean.match(answer.accept, {
-							onFalse: () => (
-								<>
-									<XIcon className="size-3.5" />
-									{signInLabel(answer.request.clientName, answer.request.device)} denied
-								</>
-							),
-							onTrue: () => (
-								<>
-									<CheckIcon className="text-primary size-3.5" />
-									{signInLabel(answer.request.clientName, answer.request.device)} approved
-								</>
-							)
-						})}
-					</p>
-				)
-			})}
+						<InputOTPGroup className="flex-1">
+							{Array.map(Array.range(0, 3), index => (
+								<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="flex-1" />
+							))}
+						</InputOTPGroup>
+						<InputOTPSeparator />
+						<InputOTPGroup className="flex-1">
+							{Array.map(Array.range(4, 7), index => (
+								<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="flex-1" />
+							))}
+						</InputOTPGroup>
+					</InputOTP>
+					{props.state === 'Checking' && (
+						<p role="status" className="text-muted-foreground text-meta flex items-center gap-1.5 font-mono">
+							<Spinner />
+							Checking…
+						</p>
+					)}
+					{props.state === 'Missing' && <FieldError id="code-error">No waiting sign-in has this code.</FieldError>}
+					{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
+				</Field>
+				{Option.match(props.answered, {
+					onNone: () => null,
+					onSome: answer => (
+						<p
+							className="text-muted-foreground animate-settle-in text-meta flex items-center gap-1.5 font-mono motion-reduce:animate-none"
+							role="status"
+						>
+							{Boolean.match(answer.accept, {
+								onFalse: () => (
+									<>
+										<XIcon className="size-3.5" />
+										{signInLabel(answer.request.clientName, answer.request.device)} denied
+									</>
+								),
+								onTrue: () => (
+									<>
+										<CheckIcon className="text-primary size-3.5" />
+										{signInLabel(answer.request.clientName, answer.request.device)} approved
+									</>
+								)
+							})}
+						</p>
+					)
+				})}
+			</div>
 		</section>
 	)
 }
@@ -111,7 +122,7 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+		<div className="m-auto flex w-full max-w-3xl flex-col gap-8 py-8">
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>

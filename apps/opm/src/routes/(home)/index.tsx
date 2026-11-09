@@ -39,7 +39,7 @@ import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -148,7 +148,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
 						modifiers={[
 							frame({height: 68, width: 48}),
-							clipShape('roundedRectangle', radius),
+							clipShape('rectangle'),
 							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
 							accessibilityHidden(true)
 						]}
@@ -158,7 +158,9 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 				<ItemContent modifiers={[opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.6}))]}>
 					<HStack spacing={space[2]}>
 						{props.fresh && <StatusDot status="live" tint={primary} />}
-						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
+						<ItemTitle modifiers={[font({design: 'monospaced', textStyle: 'headline', weight: 'bold'})]}>
+							{`Chapter ${props.chapter.number}`}
+						</ItemTitle>
 					</HStack>
 					<ItemDescription>
 						{Array.join(

@@ -3,7 +3,7 @@ import type {VariantProps} from 'class-variance-authority'
 
 import {cn} from '#lib/utils.ts'
 
-const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
+const statusDotVariants = cva('inline-block size-2 shrink-0 rounded-none', {
 	defaultVariants: {status: 'live'},
 	variants: {
 		status: {

@@ -340,7 +340,7 @@ function Endpoint(props: {item: InventoryItem}) {
 				/>
 			}
 		>
-			<span className="block max-w-48 truncate">
+			<span className="block max-w-48 truncate font-mono tracking-normal">
 				{Boolean.match(props.item.publicAccess === true, {
 					onFalse: () => `:${props.item.port}`,
 					onTrue: () => String.replace(/^https:\/\//u, '')(props.item.url)
@@ -369,7 +369,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
 							<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
-								:{listener.port}
+								<span className="font-mono tracking-normal">:{listener.port}</span>
 							</Button>
 						),
 						onSome: port => (
@@ -381,7 +381,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
 								onClick={() => expose(port)}
 							>
-								:{listener.port}
+								<span className="font-mono tracking-normal">:{listener.port}</span>
 							</Button>
 						)
 					})
@@ -506,7 +506,11 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn(
+								'list-row border-border relative flex h-14 items-center gap-2 border-l-2 border-l-transparent pr-3',
+								highlighted && 'bg-secondary',
+								props.selected && 'border-l-signal bg-secondary'
+							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -755,6 +759,7 @@ function AppsPane(props: {
 	return (
 		<Section
 			title="Apps"
+			index="01"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
 			headerClassName="px-4"
 			actions={
@@ -791,8 +796,8 @@ function AppsPane(props: {
 									{Array.map(props.rows, (row, index) => (
 										<Fragment key={row.item.id}>
 											{index === firstScheduled && (
-												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
-													<span className="tracking-label font-semibold uppercase">Scheduled</span>
+												<div className="bg-background border-border text-2xs tracking-label sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b-2 px-4 font-mono uppercase">
+													<span className="text-muted-foreground">Scheduled</span>
 													<Badge variant="secondary">{scheduled.length}</Badge>
 												</div>
 											)}
@@ -841,6 +846,7 @@ function ProcessPane(props: {
 	return (
 		<Section
 			title="Processes"
+			index="02"
 			className={cn('min-h-0 min-w-0 flex-1 gap-0', props.className)}
 			headerClassName="px-4"
 			actions={
@@ -1053,6 +1059,7 @@ function MachinePane(props: {
 	return (
 		<Section
 			title="Machine"
+			index="03"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
 			headerClassName="px-4"
 			actions={
@@ -1127,17 +1134,19 @@ function MachineTabs(props: {
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				<TabsList variant="line" aria-label="Machines" className="w-full max-sm:group-data-horizontal/tabs:h-auto">
+				<TabsList variant="line" aria-label="Machines" className="w-full group-data-horizontal/tabs:h-auto">
 					{Array.map(workers, worker => {
 						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
 						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-12">
+							<TabsTrigger key={worker} value={worker} className="h-14 min-w-0">
 								<MachineIcon worker={worker} />
-								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
 									<span className="flex min-w-0 items-center gap-1.5">
-										<span className="min-w-0 truncate">{machineName(worker)}</span>
+										<span className="tracking-block min-w-0 truncate text-sm font-extrabold uppercase">
+											{machineName(worker)}
+										</span>
 										{/* Only an unreachable machine is marked; one that answers needs no dot. */}
 										{failed && (
 											<span
@@ -1185,7 +1194,7 @@ function SourceProblems(props: {
 		{
 			onEmpty: () => null,
 			onNonEmpty: sources => (
-				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
+				<div className="border-border flex shrink-0 flex-wrap items-center gap-3 border-b-2 pb-2">
 					{Array.map(sources, source => (
 						<div key={source.name} className="flex items-center gap-1.5">
 							<MachineIcon worker={source.name} />
@@ -1416,7 +1425,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="h-full min-h-0 gap-y-4 max-sm:px-2">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}

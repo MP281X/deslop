@@ -3,6 +3,8 @@
 
 :root {
 	--primary: var(--pink);
+	/* Key tags and the usage frame take Gateway's own rule, one step off the shared border. */
+	--app-rule: color-mix(in oklch, var(--primary) 40%, var(--border));
 }
 
 /* A tool call passing through: the dot dims and comes straight back, an opacity change even under reduced motion. */

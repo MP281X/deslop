@@ -3,6 +3,8 @@
 
 :root {
 	--primary: var(--slate);
+	/* The app rule darkens the shared border toward Auth's own identity without adding a second accent. */
+	--app-rule: color-mix(in oklch, var(--primary) 45%, var(--border));
 }
 
 /* A code no sign-in has shakes once, as a lock refuses a wrong key. */

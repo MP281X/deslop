@@ -35,7 +35,7 @@ import {
 } from '@deslop/components-web/ui/dialog'
 import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
-import {ToggleGroup, ToggleGroupItem} from '@deslop/components-web/ui/toggle-group'
+import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -178,15 +178,15 @@ function focusServer(server: ConnectionInfo) {
 	row?.scrollIntoView({block: 'center'})
 }
 
-// One line per server: its icon, name, host or why it needs the user, its tool count, its light, and Connect when it needs one; its context menu removes it.
-function ServerRow(props: {server: ConnectionInfo}) {
+// One line per server: its number, icon, name, host or why it needs the user, its tool count, its light, and Connect when it needs one; its context menu removes it.
+function ServerRow(props: {index: number; server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	const connected = props.server.status === 'Connected'
 	return (
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="border-border relative flex h-14 min-w-0 items-center gap-3 border-l-2 border-l-transparent px-1 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -198,15 +198,18 @@ function ServerRow(props: {server: ConnectionInfo}) {
 							/>
 						}
 					/>
+					<span className="text-muted-foreground text-meta pointer-events-none relative w-6 shrink-0 text-right font-mono tabular-nums">
+						{String.padStart(2, '0')(`${props.index + 1}`)}
+					</span>
 					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
 						<ServerIcon server={props.server} />
 						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						<span className="text-muted-foreground text-meta min-w-0 flex-1 truncate font-mono">
 							{new URL(props.server.url).hostname}
 						</span>{' '}
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
 							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
+								className="text-muted-foreground text-meta w-8 shrink-0 text-right font-mono tabular-nums"
 								title="Tools"
 							>
 								{props.server.tools.length}
@@ -272,10 +275,16 @@ function ServersContent(props: {onAdd: () => void}) {
 							/>
 						),
 						onNonEmpty: servers => (
-							<Section title="Servers" meta={`${servers.length} configured`}>
+							<Section title="Servers" index="01" meta={`${servers.length} configured`} className="gap-0">
+								<div className="bg-background text-muted-foreground border-border text-2xs tracking-label sticky top-0 z-20 flex h-8 shrink-0 items-center gap-3 border-b-2 px-1 font-mono uppercase">
+									<span className="w-6 shrink-0 text-right">#</span>
+									<span className="min-w-0 flex-1">Server</span>
+									<span className="w-8 shrink-0 text-right">Tools</span>
+									<span className="w-16 shrink-0 text-right">State</span>
+								</div>
 								<div role="list" aria-label="MCP servers">
-									{Array.map(servers, server => (
-										<ServerRow key={server.id} server={server} />
+									{Array.map(servers, (server, index) => (
+										<ServerRow key={server.id} index={index} server={server} />
 									))}
 								</div>
 							</Section>
@@ -294,51 +303,52 @@ function ServersContent(props: {onAdd: () => void}) {
 
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
-		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-				<Stat label="Configured" value={props.servers.length} />
-				<Stat
-					label="Connected"
-					value={Array.countBy(props.servers, server => server.status === 'Connected' && server.error === undefined)}
-				/>
-				<Stat
-					label="Need you"
-					value={Array.countBy(props.servers, server => server.status !== 'Connected' || server.error !== undefined)}
-				/>
+		<div className="grid-aside">
+			<aside className="col-span-full flex flex-col gap-3 max-lg:order-first lg:order-2 lg:col-span-4">
+				<h2 className="border-rule-strong text-2xs tracking-label border-b-2 pb-2 font-mono uppercase">At a glance</h2>
+				<div className="flex flex-wrap gap-2 lg:flex-col">
+					<Stat label="Configured" value={props.servers.length} />
+					<Stat
+						label="Connected"
+						value={Array.countBy(props.servers, server => server.status === 'Connected' && server.error === undefined)}
+					/>
+					<Stat
+						label="Need you"
+						value={Array.countBy(props.servers, server => server.status !== 'Connected' || server.error !== undefined)}
+					/>
+				</div>
+			</aside>
+			<div className="col-span-full flex min-w-0 flex-col gap-4 lg:order-1 lg:col-span-8">
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+					<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} />}>
+						<ServersContent onAdd={props.onAdd} />
+					</Suspense>
+				</CatchBoundary>
 			</div>
-			<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-				<Suspense fallback={<ItemListSkeleton label="MCP servers" media rows={5} />}>
-					<ServersContent onAdd={props.onAdd} />
-				</Suspense>
-			</CatchBoundary>
-		</>
+		</div>
 	)
 }
 
 // Two views of one page, in the bar's section slot: the servers, then what AI calls through the gateway cost.
 function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 	return (
-		<ToggleGroup
-			aria-label="View"
-			size="sm"
-			spacing={1}
-			variant="outline"
-			value={[props.view]}
-			onValueChange={values =>
-				Option.map(Array.head(values), value =>
-					props.onView(Boolean.match(value === 'ai', {onFalse: () => 'servers', onTrue: () => 'ai'}))
-				)
+		<Tabs
+			value={props.view}
+			onValueChange={(value: string) =>
+				props.onView(Boolean.match(value === 'ai', {onFalse: () => 'servers', onTrue: () => 'ai'}))
 			}
 		>
-			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
-				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
-			</ToggleGroupItem>
-			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
-				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
-			</ToggleGroupItem>
-		</ToggleGroup>
+			<TabsList aria-label="View" className="h-10">
+				<TabsTrigger value="servers" aria-label="Servers">
+					<HardDrivesIcon />
+					<span className="max-sm:sr-only">Servers</span>
+				</TabsTrigger>
+				<TabsTrigger value="ai" aria-label="AI">
+					<SparkleIcon />
+					<span className="max-sm:sr-only">AI</span>
+				</TabsTrigger>
+			</TabsList>
+		</Tabs>
 	)
 }
 
@@ -523,7 +533,7 @@ function Home() {
 				}
 			/>
 			{view === 'ai' && (
-				<div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-1 sm:hidden">
+				<div className="border-border flex shrink-0 items-center justify-between gap-2 border-b-2 px-4 py-2 sm:hidden">
 					<AiControls
 						metric={metric}
 						period={period}

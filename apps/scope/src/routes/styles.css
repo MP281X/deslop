@@ -3,6 +3,8 @@
 
 :root {
 	--primary: var(--cyan);
+	/* The selected operation and trace rule take Scope's own identity off the shared border. */
+	--app-rule: color-mix(in oklch, var(--primary) 40%, var(--border));
 }
 
 /* Where a span ran, in its operation's device icon and its bar: server blue, browser pink, iOS amber, CI violet. */

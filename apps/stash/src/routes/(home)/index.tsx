@@ -28,6 +28,7 @@ import {
 	alignmentGuide,
 	aspectRatio,
 	background,
+	border,
 	buttonBorderShape,
 	buttonStyle,
 	clipShape,
@@ -61,7 +62,7 @@ import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
 	EmptyContent,
@@ -138,7 +139,7 @@ function Thumbnail(props: {id: Note['id']}) {
 				resizable(),
 				aspectRatio({contentMode: 'fill'}),
 				frame({height: 64, width: 64}),
-				clipShape('roundedRectangle', radius),
+				clipShape('rectangle'),
 				accessibilityHidden(true)
 			]}
 		/>
@@ -153,7 +154,8 @@ function NoteMedia(props: {note: NoteItem}) {
 			modifiers={[
 				frame({height: 64, width: 64}),
 				background(colors.card),
-				clipShape('roundedRectangle', radius),
+				clipShape('rectangle'),
+				border({content: colors.border, width: 2}),
 				accessibilityHidden(true)
 			]}
 		>
@@ -182,6 +184,7 @@ function DeleteButton(props: {onPress: () => void}) {
 }
 
 function NoteRow(props: {
+	index: number
 	note: NoteItem
 	onAppear: () => void
 	onOpen: (id: Note['id']) => void
@@ -201,7 +204,18 @@ function NoteRow(props: {
 						]}
 					>
 						<ItemMedia>
-							<NoteMedia note={props.note} />
+							<HStack spacing={space[2]}>
+								<Text
+									modifiers={[
+										text.data,
+										foregroundStyle(colors.mutedForeground),
+										frame({alignment: 'trailing', minWidth: 24})
+									]}
+								>
+									{String.padStart(2, '0')(`${props.index + 1}`)}
+								</Text>
+								<NoteMedia note={props.note} />
+							</HStack>
 						</ItemMedia>
 						<Lines note={props.note} />
 					</Item>
@@ -376,9 +390,10 @@ export function HomeRoute(props: {
 											systemImage="square.and.pencil"
 											onPress={props.onCompose}
 											modifiers={[
-												buttonStyle('glassProminent'),
-												buttonBorderShape('capsule'),
+												buttonStyle('borderedProminent'),
+												buttonBorderShape('roundedRectangle', 0),
 												controlSize('large'),
+												border({content: colors.foreground, width: 2}),
 												tint(primary)
 											]}
 										/>
@@ -417,6 +432,7 @@ export function HomeRoute(props: {
 										{Array.map(Array.take(notes, limit), (note, position) => (
 											<NoteRow
 												key={note.id}
+												index={position}
 												note={note}
 												onAppear={() => {
 													if (position === limit - 1) setLimit(limit + 80)

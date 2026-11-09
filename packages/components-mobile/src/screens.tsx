@@ -4,6 +4,7 @@ import {Array, Boolean, Cause, Result} from 'effect'
 
 import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
+	border,
 	buttonBorderShape,
 	buttonStyle,
 	clipShape,
@@ -25,12 +26,12 @@ import type {ColorValue} from 'react-native'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {colors, radius, space, text} from './theme.ts'
+import {colors, space, text} from './theme.ts'
 
 import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
-const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
+const FULL_SCREEN = [padding({all: space[8]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
 
 // Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
 export function BlankScreen() {
@@ -79,9 +80,10 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					role="destructive"
 					onPress={props.onRetry}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonStyle('borderedProminent'),
+						buttonBorderShape('roundedRectangle', 0),
 						controlSize('regular'),
+						border({content: colors.destructive, width: 2}),
 						tint(colors.destructive)
 					]}
 				/>
@@ -90,7 +92,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	)
 }
 
-// The app's icon and a short statement in the middle of the screen, with GitHub sign-in at the bottom.
+// The app's icon, its name and a short statement in the middle of the screen, with GitHub sign-in at the bottom.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
@@ -98,18 +100,23 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 				<Spacer />
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
-					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
+					modifiers={[resizable(), frame({height: 72, width: 72}), clipShape('rectangle')]}
 				/>
-				<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
-					Sign in with GitHub to keep this app in sync.
-				</Text>
+				<VStack spacing={space[2]}>
+					<Text modifiers={[text.display, foregroundStyle(colors.foreground)]}>Sign in</Text>
+					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
+						Sign in with GitHub to keep this app in sync.
+					</Text>
+				</VStack>
 				<Spacer />
 				<Button
 					onPress={() => props.onSignIn()}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonStyle('borderedProminent'),
+						buttonBorderShape('roundedRectangle', 0),
 						controlSize('large'),
+						border({content: colors.foreground, width: 2}),
+						frame({maxWidth: Infinity}),
 						tint(props.tint),
 						disabled(props.waiting)
 					]}

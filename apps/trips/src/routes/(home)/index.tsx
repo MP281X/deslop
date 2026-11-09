@@ -93,7 +93,7 @@ function Gutter(props: {countdown: Countdown}) {
 					>
 						{props.countdown.days}
 					</Text>
-					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
+					<Text modifiers={[text.label, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(props.countdown.days === 1, {onFalse: () => 'days', onTrue: () => 'day'})}
 					</Text>
 				</>
@@ -116,10 +116,10 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{scheduleOf(props.booking)}</Text>
 					<HStack spacing={space[2]}>
 						<StatusDot status={dots[status.tone]} tint={primary} />
-						<Text modifiers={[text.detail, foregroundStyle(colors.foreground)]}>{status.label}</Text>
+						<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>{status.label}</Text>
 						{Option.match(status.where, {
 							onNone: () => undefined,
-							onSome: where => <Text modifiers={[text.detail, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
+							onSome: where => <Text modifiers={[text.data, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
 						})}
 					</HStack>
 				</ItemContent>

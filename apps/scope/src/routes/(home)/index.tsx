@@ -228,7 +228,8 @@ function DetailLines(props: {lines: readonly DetailLine[]}) {
 				<div
 					key={`${line.key}:${index}`}
 					className={cn(
-						'flex min-w-0 flex-col gap-0.5 py-1',
+						'border-border flex min-w-0 flex-col gap-0.5 border-l-2 py-1 pl-2',
+						line.failed && 'border-destructive',
 						(line.key === 'error' || line.key === 'log' || String.length(line.value) > 48) && 'col-span-full'
 					)}
 				>
@@ -352,11 +353,11 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="bg-muted relative mx-2 h-2 flex-1 overflow-hidden border border-(--app-rule)">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+						'absolute top-0 left-(--offset) h-full w-(--length) min-w-0.5',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -676,19 +677,26 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 // An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
+		<div className="bg-background sticky top-0 z-10 flex h-10 shrink-0 items-center gap-2 border-b-2 border-(--app-rule) px-3">
 			<AppMark app={props.app} />
-			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
+			<span className="text-muted-foreground text-2xs tracking-label min-w-0 truncate font-mono font-semibold uppercase">
 				{props.app.name}
 			</span>
 		</div>
 	)
 }
 
-// One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
-function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
+// One operation in the list: its index, device, name, failures, runs and typical duration; the row selects it.
+function OperationRow(props: {active: boolean; index: number; onSelect: () => void; operation: Operation}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div
+			role="listitem"
+			className={cn(
+				'list-row border-border border-l-2 border-l-transparent',
+				props.active && 'border-l-signal bg-secondary'
+			)}
+			data-selected={props.active}
+		>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -697,6 +705,9 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 				onClick={props.onSelect}
 			>
 				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
+					<span className="text-muted-foreground text-meta w-6 shrink-0 text-right font-mono tabular-nums">
+						{String.padStart(2, '0')(`${props.index + 1}`)}
+					</span>
 					{DEVICES[props.operation.runtime]}
 					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
 					{props.operation.failures > 0 && (
@@ -737,9 +748,42 @@ function OperationsPane(props: {
 	const current = useAtomValue(overviewAtom)
 	const refresh = useAtomRefresh(overviewAtom)
 	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
+	const ordered = Option.getOrElse(
+		Option.map(AsyncResult.value(current), overview =>
+			Array.flatMap(overview.apps, app => Array.map(app.operations, operation => ({app: app.name, operation})))
+		),
+		() => []
+	)
+	const jumpTo = useRef(ordered)
+	const select = useRef(props.onSelect)
+	useEffect(() => {
+		jumpTo.current = ordered
+		select.current = props.onSelect
+	}, [ordered, props.onSelect])
+	// A digit selects that operation without taking focus from a text field or the palette.
+	useEffect(() => {
+		function jump(event: KeyboardEvent) {
+			if (event.metaKey || event.ctrlKey || event.altKey) return
+			if (
+				event.target instanceof HTMLElement &&
+				event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]') !== null
+			) {
+				return
+			}
+			const index = Option.getOrUndefined(Number.parse(event.key))
+			if (index === undefined || !(index >= 1 && index <= 9)) return
+			const entry = jumpTo.current[index - 1]
+			if (entry === undefined) return
+			event.preventDefault()
+			select.current(entry.app, entry.operation)
+		}
+		addEventListener('keydown', jump)
+		return () => removeEventListener('keydown', jump)
+	}, [])
 	return (
 		<Section
 			title="By app"
+			index="01"
 			headerClassName="px-3"
 			meta={Option.match(AsyncResult.value(current), {
 				onNone: () => undefined,
@@ -756,34 +800,50 @@ function OperationsPane(props: {
 					)
 				}
 			})}
-			actions={Boolean.match(AsyncResult.isFailure(current) && Option.isSome(AsyncResult.value(current)), {
-				onFalse: () => undefined,
-				onTrue: () => <Problem label="Operations out of date" warning reset={refresh} since={since} />
-			})}
+			actions={
+				<div className="flex items-center gap-3">
+					<span className="text-muted-foreground text-2xs hidden font-mono uppercase md:inline">1–9 jump</span>
+					{Boolean.match(AsyncResult.isFailure(current) && Option.isSome(AsyncResult.value(current)), {
+						onFalse: () => null,
+						onTrue: () => <Problem label="Operations out of date" warning reset={refresh} since={since} />
+					})}
+				</div>
+			}
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
 		>
 			<Suspense fallback={<OperationsSkeleton />}>
 				<OverviewContent>
-					{overview =>
-						Array.match(overview.apps, {
-							onEmpty: () => <EmptyState label="No traces yet" icon={<EmptyIcon />} />,
-							onNonEmpty: apps => (
+					{overview => {
+						const sections = Array.mapAccum(overview.apps, 0, (offset, app) => [
+							offset + app.operations.length,
+							{app, offset}
+						])[1]
+						return Array.match(overview.apps, {
+							onEmpty: () => (
+								<EmptyState
+									label="No traces yet"
+									description="Send a request to any Deslop app; its operations appear here."
+									icon={<EmptyIcon />}
+								/>
+							),
+							onNonEmpty: () => (
 								<ScrollArea className="min-h-0 flex-1">
 									<div className="flex flex-col">
-										{Array.map(apps, app => (
-											<section key={app.name} aria-label={app.name}>
-												<AppHeading app={app} />
+										{Array.map(sections, section => (
+											<section key={section.app.name} aria-label={section.app.name}>
+												<AppHeading app={section.app} />
 												<div role="list">
-													{Array.map(app.operations, operation => (
+													{Array.map(section.app.operations, (operation, index) => (
 														<OperationRow
 															key={`${operation.runtime} ${operation.name}`}
+															index={section.offset + index}
 															active={
 																props.activeKey !== undefined &&
-																props.activeKey.app === app.name &&
+																props.activeKey.app === section.app.name &&
 																props.activeKey.runtime === operation.runtime &&
 																props.activeKey.name === operation.name
 															}
-															onSelect={() => props.onSelect(app.name, operation)}
+															onSelect={() => props.onSelect(section.app.name, operation)}
 															operation={operation}
 														/>
 													))}
@@ -794,7 +854,7 @@ function OperationsPane(props: {
 								</ScrollArea>
 							)
 						})
-					}
+					}}
 				</OverviewContent>
 			</Suspense>
 		</Section>
@@ -858,6 +918,7 @@ function TracesPane(props: {
 	return (
 		<Section
 			title="Traces"
+			index="02"
 			headerClassName="px-3"
 			meta={Option.match(active, {
 				onNone: () => undefined,
@@ -1121,7 +1182,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function renderPage(children: ReactNode) {
 	return (
-		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+		<Page width="full" className="h-full min-h-0 gap-y-4 px-2 sm:px-0">
 			<h1 className="sr-only">Scope</h1>
 			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
 		</Page>

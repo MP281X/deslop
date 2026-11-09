@@ -4,7 +4,7 @@ import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
@@ -154,25 +154,29 @@ type SignedInClient = {
 	lastActive: number
 }
 
-function ClientRow(props: {client: SignedInClient; now: number}) {
+function ClientRow(props: {client: SignedInClient; index: number; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
 	const minutes = minutesSince(props.client.lastActive, props.now)
 	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<ContextMenu>
-			<div role="listitem" className="border-b">
+			<div role="listitem" className="border-border border-b-2">
 				<ContextMenuTrigger
 					render={
 						<div
 							role="button"
 							tabIndex={0}
+							data-client-row={props.index}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-secondary flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
 						/>
 					}
 				>
+					<span className="text-muted-foreground text-meta w-6 shrink-0 text-right font-mono tabular-nums">
+						{String.padStart(2, '0')(`${props.index + 1}`)}
+					</span>
 					<ClientIcon client={props.client.client} />
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
 					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
@@ -205,7 +209,7 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="bg-card border-destructive/60 flex flex-col gap-3 border-2 p-5">
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
 				<span className="text-muted-foreground font-mono text-xs tabular-nums">
@@ -313,10 +317,33 @@ const signInListAtom = Atom.make(get =>
 export function SignInList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const data = useAtomSuspense(signInListAtom).value
 	const clients = clientsOf(data.signIns, data.catalog)
+	const list = useRef<HTMLDivElement>(null)
+	// A digit jumps to that row without taking focus from a text field or the palette.
+	useEffect(() => {
+		function jump(event: KeyboardEvent) {
+			if (event.metaKey || event.ctrlKey || event.altKey) return
+			if (
+				event.target instanceof HTMLElement &&
+				event.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]') !== null
+			) {
+				return
+			}
+			const index = Option.getOrUndefined(Number.parse(event.key))
+			if (index === undefined || !(index >= 1 && index <= 9)) return
+			const row = list.current?.querySelectorAll<HTMLElement>('[data-client-row]').item(index - 1)
+			if (row === undefined) return
+			event.preventDefault()
+			row.focus()
+		}
+		addEventListener('keydown', jump)
+		return () => removeEventListener('keydown', jump)
+	}, [])
 	return (
 		<Section
 			title="Signed in"
+			index="02"
 			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
+			actions={<span className="text-muted-foreground text-2xs hidden font-mono uppercase sm:block">1–9 jump</span>}
 			className="gap-0"
 		>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
@@ -329,9 +356,9 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 					/>
 				),
 				onNonEmpty: rows => (
-					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
+					<div ref={list} role="list" aria-label="Signed-in clients">
+						{Array.map(rows, (client, index) => (
+							<ClientRow key={client.label} client={client} index={index} now={data.now} />
 						))}
 					</div>
 				)

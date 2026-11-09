@@ -6,7 +6,7 @@
 
 /* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
+	/* Concrete and ink: app and status hues stay readable on the light ground. */
 	--red: oklch(from #c92b38 l c h);
 	--orange: oklch(from #b64b11 l c h);
 	--amber: oklch(from #91601d l c h);
@@ -20,25 +20,30 @@
 	--machine-dev: oklch(from #2c718b l c h);
 	--machine-desktop: oklch(from #98601f l c h);
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
-	--popover: #ffffff;
-	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--background: #ece8e0;
+	--foreground: #171512;
+	--card: #f6f2ea;
+	--popover: #f6f2ea;
+	--primary-foreground: #f6f2ea;
+	--secondary: #e3ded4;
+	--muted: #e3ded4;
+	--muted-foreground: #6a6358;
+	--accent: #ded8cd;
+	--border: #35312b;
+	--input: #c9c2b5;
+	--surface: #e5e0d7;
+	--selection: #d6cfc2;
+	--selection-foreground: #171512;
+	--rule-strong: #171512;
 
-	--primary: var(--slate);
-	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
-	--ring: var(--primary);
+	/* The block accent every app shares: the active tab, the index and the focus ring. */
+	--primary: #d84622;
+	--signal: #d84622;
+	--signal-foreground: #171512;
+	--destructive: #b83333;
+	--warning: #8a5a12;
+	--success: #4f6b3f;
+	--ring: var(--signal);
 
 	--card-foreground: var(--foreground);
 	--popover-foreground: var(--foreground);
@@ -47,11 +52,12 @@
 	--surface-foreground: var(--foreground);
 
 	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
-	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	--chart-1: #171512;
+	--chart-2: #6a6358;
+	--chart-3: #d84622;
+	--chart-4: #8a5a12;
+	--chart-5: #4f6b3f;
+	--chart-6: #35312b;
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -64,11 +70,11 @@
 	--radius: 0px;
 }
 
-/* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
+/* Concrete stays concrete: printing a dark-mode page keeps dark ink on the light ground. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
 		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
+		--orange: #ff5c35;
 		--amber: oklch(from #e6c384 l c h);
 		--ivory: oklch(from #dcd7ba l c h);
 		--cyan: oklch(from #a3d4d5 l c h);
@@ -79,23 +85,37 @@
 		--coral: oklch(from #fd7357 l c h);
 		--machine-dev: oklch(from #7fb4ca l c h);
 		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		--warning: #d9a441;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #121110;
+		--foreground: #efe9df;
+		--card: #201e1b;
+		--popover: #24211d;
+		--primary-foreground: #141210;
+		/* A muted fill stands a step above the cards, so a tab list, a hover or a selected row shows on them. */
+		--secondary: #282520;
+		--muted: #282520;
+		--muted-foreground: #b1a89b;
+		--accent: #332f29;
+		--border: #4a453e;
+		--input: #2c2924;
+		--surface: #191816;
+		--selection: #433b31;
+		--selection-foreground: #efe9df;
+		--rule-strong: #8a8175;
+
+		--primary: #ff5c35;
+		--signal: #ff5c35;
+		--signal-foreground: #141210;
+		--destructive: #ff5c5c;
+		--success: #8fae7a;
+
+		--chart-1: #efe9df;
+		--chart-2: #b1a89b;
+		--chart-3: #ff5c35;
+		--chart-4: #d9a441;
+		--chart-5: #8fae7a;
+		--chart-6: #8a8175;
 	}
 }
 
@@ -103,12 +123,18 @@
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--text-2xs: 0.625rem;
+	--text-meta: 0.6875rem;
+	--tracking-label: 0.1em;
+	--tracking-block: 0.08em;
+	--tracking-heading: -0.04em;
+	--tracking-title: -0.03em;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -117,6 +143,9 @@
 	--color-secondary: var(--secondary);
 	--color-primary-foreground: var(--primary-foreground);
 	--color-primary: var(--primary);
+	--color-signal-foreground: var(--signal-foreground);
+	--color-signal: var(--signal);
+	--color-rule-strong: var(--rule-strong);
 	--color-popover-foreground: var(--popover-foreground);
 	--color-popover: var(--popover);
 	--color-card-foreground: var(--card-foreground);
@@ -132,6 +161,7 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -160,25 +190,57 @@
 	image-rendering: pixelated;
 }
 
-/* Sera's display face, for the one heading that names a view. */
-/* A ruled row: the fill may meet the pane edge, the divider never does. */
+/* The page's 12 columns: 32px gutters, every direct child full width until a layout claims columns of its own. */
+@utility page-grid {
+	display: grid;
+	grid-template-columns: repeat(12, minmax(0, 1fr));
+	column-gap: calc(var(--spacing) * 8);
+
+	& > * {
+		grid-column: 1 / -1;
+		min-width: 0;
+	}
+}
+
+/* A tighter 12-column split for a 8/4 content-and-aside row. */
+@utility grid-aside {
+	display: grid;
+	grid-template-columns: repeat(12, minmax(0, 1fr));
+	gap: calc(var(--spacing) * 6);
+
+	& > * {
+		min-width: 0;
+	}
+}
+
+/* The grid stays visible as a hairline under the content, never as a decorative texture. */
+@utility page-rules {
+	background-image: linear-gradient(to right, color-mix(in oklch, var(--border) 38%, transparent) 1px, transparent 1px);
+	background-size: calc((100% + 2rem) / 12) 100%;
+	background-repeat: repeat-x;
+}
+
+/* One focal block per page carries the offset; nothing else does. */
+@utility block-shadow {
+	box-shadow: 4px 4px 0 var(--foreground);
+}
+
+@utility block-shadow-signal {
+	box-shadow: 4px 4px 0 var(--signal);
+}
+
+/* A ruled ledger row: the heavy rule is part of the page, so it survives hover and selection. */
 @utility list-row {
 	position: relative;
+
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 4);
+		inset-inline: 0;
 		bottom: 0;
-		height: 1px;
+		height: 2px;
 		background: var(--border);
 		pointer-events: none;
-	}
-	&:hover::after,
-	&:focus-within::after,
-	&[data-selected='true']::after,
-	&:has(+ :hover)::after,
-	&:has(+ [data-selected='true'])::after {
-		opacity: 0;
 	}
 }
 
@@ -235,13 +297,20 @@
 		-webkit-user-select: none;
 	}
 
+	/* A focus ring appears at once: no transition, two hard pixels of the block accent. */
+	:where(a, button, [role='button'], input, select, textarea, [tabindex]):focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
 	/* The display heading uses the app's sans at display weight, not a second typeface. */
 	.font-heading {
-		font-weight: 600;
+		font-weight: 800;
+		letter-spacing: -0.04em;
 	}
 
 	.cn-font-heading {
-		@apply font-heading font-semibold;
+		@apply font-heading font-extrabold;
 	}
 
 	/* A printed page, such as the portfolio's CV, flows onto as many sheets as it needs. */
@@ -263,10 +332,14 @@
 	}
 }
 
+/* Motion explains a change; removing it keeps every state. */
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,
 	*::after {
 		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
 	}
 }

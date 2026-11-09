@@ -230,19 +230,34 @@ export function AiControls(props: {
 	)
 }
 
-// A muted label over a group of rows.
-function GroupLabel(props: {children: ReactNode}) {
+// A block label over a group of rows, numbered when it is a page section of its own.
+function GroupLabel(props: {children: ReactNode; index?: string}) {
 	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
+		<h2 className="border-rule-strong text-2xs tracking-label flex items-baseline gap-3 border-b-2 pb-2 font-mono font-semibold uppercase">
+			{props.index !== undefined && <span className="text-signal">{props.index}</span>}
+			{props.children}
+		</h2>
 	)
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
-function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
+function Row(props: {
+	children: ReactNode
+	className?: string
+	label: string
+	menu?: ReactNode
+	onClick: () => void
+	selected?: boolean
+}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className={cn('list-row', props.className)}>
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div
+					className={cn(
+						'relative flex h-14 min-w-0 items-center gap-3 border-l-2 border-l-transparent px-1 max-sm:h-12',
+						props.selected === true && 'border-l-signal bg-secondary'
+					)}
+				>
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -278,8 +293,8 @@ function ShareRow(props: {
 }) {
 	return (
 		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
-			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
+			<span className="text-muted-foreground min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
+			<span className="border-border bg-muted flex h-2 w-16 shrink-0 border">
 				<span
 					className="h-full w-(--share) bg-(--share-color)"
 					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
@@ -367,67 +382,70 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
-			<BarChart
-				accessibilityLayer
-				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
-				className="[&_[tabindex]]:outline-hidden"
-				data={rows}
-				margin={{bottom: 0, left: 0, right: 0, top: 4}}
-				onClick={state =>
-					Option.map(
-						Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
-						props.onBucket
-					)
-				}
-			>
-				<XAxis
-					dataKey="bucket"
-					ticks={Array.filter(
-						Array.map(rows, row => row.bucket),
-						(_, index) => (props.range.count - 1 - index) % step === 0
-					)}
-					interval={0}
-					tickLine={false}
-					axisLine={false}
-					tickMargin={8}
-					tickFormatter={tickLabel(props.range)}
-				/>
-				<ChartTooltip
-					content={
-						<ChartTooltipContent
-							labelFormatter={label =>
-								Option.getOrElse(
-									Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
-										bucketLabel(props.range.bucket, at)
-									),
-									() => ''
-								)
-							}
-							formatter={(shown, name, item) => (
-								<>
-									<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
-									<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
-									<span className="text-foreground font-mono font-medium tabular-nums">
-										{amount(props.metric, shown)}
-									</span>
-								</>
-							)}
-						/>
+		<div className="bg-card/40 border-2 border-(--app-rule) p-3">
+			<ChartContainer config={config} className="h-52 w-full max-sm:h-44">
+				<BarChart
+					accessibilityLayer
+					barCategoryGap="8%"
+					// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
+					className="[&_[tabindex]]:outline-hidden"
+					data={rows}
+					margin={{bottom: 0, left: 0, right: 0, top: 4}}
+					onClick={state =>
+						Option.map(
+							Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
+							props.onBucket
+						)
 					}
-				/>
-				{Array.map(props.apps, app => (
-					<Bar
-						key={app.key}
-						dataKey={app.key}
-						stackId="usage"
-						fill={`var(--color-${app.key})`}
-						isAnimationActive={false}
+				>
+					<XAxis
+						dataKey="bucket"
+						ticks={Array.filter(
+							Array.map(rows, row => row.bucket),
+							(_, index) => (props.range.count - 1 - index) % step === 0
+						)}
+						interval={0}
+						tickLine={false}
+						axisLine={false}
+						tickMargin={8}
+						tickFormatter={tickLabel(props.range)}
 					/>
-				))}
-				<ChartLegend content={<ChartLegendContent />} />
-			</BarChart>
-		</ChartContainer>
+					<ChartTooltip
+						content={
+							<ChartTooltipContent
+								labelFormatter={label =>
+									Option.getOrElse(
+										Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
+											bucketLabel(props.range.bucket, at)
+										),
+										() => ''
+									)
+								}
+								formatter={(shown, name, item) => (
+									<>
+										<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
+										<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
+										<span className="text-foreground font-mono font-medium tabular-nums">
+											{amount(props.metric, shown)}
+										</span>
+									</>
+								)}
+							/>
+						}
+					/>
+					{Array.map(props.apps, app => (
+						<Bar
+							key={app.key}
+							dataKey={app.key}
+							stackId="usage"
+							fill={`var(--color-${app.key})`}
+							isAnimationActive={false}
+						/>
+					))}
+					<ChartLegend content={<ChartLegendContent />} />
+				</BarChart>
+			</ChartContainer>
+		</div>
 	)
 }
 
@@ -455,7 +473,7 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 // The period at a glance; a desktop adds the daily average.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+		<div className="flex flex-wrap gap-2">
 			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
 			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
 			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
@@ -483,8 +501,12 @@ function UsageReport(props: {
 	if (Array.isReadonlyArrayEmpty(props.report.cells)) {
 		return (
 			<>
+				<GroupLabel index="01">Usage</GroupLabel>
 				<Stats range={props.range} report={props.report} />
-				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
+				<p
+					role="status"
+					className="border-border bg-card/40 text-muted-foreground border-2 py-14 text-center font-mono text-xs"
+				>
 					No AI calls in the{' '}
 					{Option.getOrElse(
 						Option.map(
@@ -559,6 +581,7 @@ function UsageReport(props: {
 	}
 	return (
 		<>
+			<GroupLabel index="01">Usage</GroupLabel>
 			<Stats range={props.range} report={props.report} />
 			<UsageChart
 				apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
@@ -568,8 +591,8 @@ function UsageReport(props: {
 				report={props.report}
 			/>
 			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
-			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
-				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
+			<div className="grid gap-6 md:grid-cols-2">
+				<section aria-label="By app" className="border-border flex min-w-0 flex-col gap-2 border-2 p-3">
 					<GroupLabel>By app</GroupLabel>
 					<div role="list" aria-label="By app">
 						{Array.map(appSums, sum => (
@@ -585,7 +608,7 @@ function UsageReport(props: {
 						))}
 					</div>
 				</section>
-				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">
+				<section aria-label="By model" className="border-border flex min-w-0 flex-col gap-2 border-2 p-3">
 					<GroupLabel>By model</GroupLabel>
 					<div role="list" aria-label="By model">
 						{Array.map(modelSums, sum => (
@@ -630,7 +653,13 @@ function RemoveKeyDialog(props: {onOpenChange: (open: boolean) => void; open: bo
 }
 
 // A provider's key by its last four, what it cost in the period and its light: red once the provider refused it.
-function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provider: AiProvider; spent: string}) {
+function KeyRow(props: {
+	index: number
+	info: Option.Option<AiKeyInfo>
+	onAdd: () => void
+	provider: AiProvider
+	spent: string
+}) {
 	const [confirm, setConfirm] = useState(false)
 	const reset = useAtomSet(removeKeyAtom(props.provider))
 	const rejected = Option.exists(props.info, info => info.lastStatus === 401 || info.lastStatus === 403)
@@ -646,6 +675,7 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 			)}
 			<Row
 				label={`${PROVIDER_NAMES[props.provider]}, ${detail}`}
+				className="border-border bg-card/40 border-2"
 				onClick={props.onAdd}
 				menu={Option.match(props.info, {
 					onNone: () => undefined,
@@ -668,6 +698,9 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 					)
 				})}
 			>
+				<span className="text-muted-foreground border-border text-2xs flex w-16 shrink-0 items-center border-r-2 pr-2 font-mono uppercase">
+					KEY-{String.padStart(2, '0')(`${props.index + 1}`)}
+				</span>
 				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
 				<span
 					className={cn(
@@ -703,9 +736,9 @@ function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; peri
 		() => []
 	)
 	return (
-		<section aria-label="Keys" className="flex flex-col">
-			<GroupLabel>Keys</GroupLabel>
-			<div role="list" aria-label="Keys">
+		<section aria-label="Keys" className="flex flex-col gap-2">
+			<GroupLabel index="02">Keys</GroupLabel>
+			<div role="list" aria-label="Keys" className="flex flex-col gap-2">
 				{Array.match(result.value, {
 					onEmpty: () => (
 						<Row label="Add a provider key" onClick={() => props.onAdd(Option.none())}>
@@ -713,9 +746,10 @@ function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; peri
 						</Row>
 					),
 					onNonEmpty: keys =>
-						Array.map(PROVIDERS, provider => (
+						Array.map(PROVIDERS, (provider, index) => (
 							<KeyRow
 								key={provider}
+								index={index}
 								provider={provider}
 								info={Array.findFirst(keys, key => key.provider === provider)}
 								onAdd={() => props.onAdd(Option.some(provider))}

@@ -43,7 +43,7 @@ import {Linking} from 'react-native'
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
+import {colors, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
 	EmptyContent,
@@ -74,7 +74,7 @@ function Cover(props: {note: NoteItem}) {
 				resizable(),
 				aspectRatio({contentMode: 'fit'}),
 				frame({maxHeight: 280, maxWidth: Infinity}),
-				clipShape('roundedRectangle', radius),
+				clipShape('rectangle'),
 				accessibilityHidden(true)
 			]}
 		/>
@@ -240,8 +240,8 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 									systemImage="arrow.clockwise"
 									onPress={props.onRetry}
 									modifiers={[
-										buttonStyle('glassProminent'),
-										buttonBorderShape('capsule'),
+										buttonStyle('borderedProminent'),
+										buttonBorderShape('roundedRectangle', 0),
 										controlSize('large'),
 										tint(primary)
 									]}
