@@ -15,9 +15,14 @@ inputs:
 runs:
   using: composite
   steps:
+    # Main writes the pnpm store; a branch restores it without saving, since a lockfile change there would cache a store only that branch can read.
     - name: Install Node, Vite+ and dependencies
       uses: voidzero-dev/setup-vp@v1.21.2
-      with: {node-version: '26', cache: true, run-install: true}
+      with:
+        node-version: '26'
+        cache: true
+        cache-save: ${{ github.ref == 'refs/heads/main' }}
+        run-install: true
 
     # After the install, which recreates node_modules. Each job restores its own newest results and saves the next once it succeeds; entries are immutable, so the key rolls with each run.
     - name: Restore the task cache
