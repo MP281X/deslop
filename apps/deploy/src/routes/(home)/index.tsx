@@ -20,7 +20,7 @@ import type {ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
-import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
@@ -627,7 +627,7 @@ function AppListRow(props: {
 
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	if (isDenied(props.error)) return <Error error={props.error} label="Access denied" reset={props.reset} />
+	if (isDenied(props.error)) return <Denied />
 	return <Error error={props.error} reset={props.reset} />
 }
 
@@ -760,11 +760,7 @@ function AppsPane(props: {
 				<InventoryContent>
 					{Array.match(props.rows, {
 						onEmpty: () => (
-							<EmptyState
-								icon={<AppWindowIcon className="size-5" weight="light" />}
-								label="No apps in this range"
-								description="Nothing ran or failed in it. Try another machine or range."
-							/>
+							<EmptyState icon={<AppWindowIcon className="size-5" weight="light" />} label="No apps in this range" />
 						),
 						onNonEmpty: () => (
 							<ScrollArea className="min-h-0 flex-1">
@@ -874,11 +870,7 @@ function ProcessPane(props: {
 				<InventoryContent>
 					{Option.match(Option.fromUndefinedOr(props.row), {
 						onNone: () => (
-							<EmptyState
-								icon={<TerminalWindowIcon className="size-5" weight="light" />}
-								label="Select an app"
-								description="Choose an app to see its processes and what they hold."
-							/>
+							<EmptyState icon={<TerminalWindowIcon className="size-5" weight="light" />} label="Select an app" />
 						),
 						onSome: current => (
 							<>
@@ -895,7 +887,6 @@ function ProcessPane(props: {
 										<EmptyState
 											icon={<TerminalWindowIcon className="size-5" weight="light" />}
 											label="No processes right now"
-											description="Nothing of this app is running at the machine's last snapshot."
 										/>
 									),
 									onNonEmpty: () => (
@@ -1052,10 +1043,6 @@ function MachinePane(props: {
 									label={Boolean.match(props.worker === undefined, {
 										onFalse: () => 'No readings in this range',
 										onTrue: () => 'No machine'
-									})}
-									description={Boolean.match(props.worker === undefined, {
-										onFalse: () => 'Nothing was recorded in this range. Try another one.',
-										onTrue: () => 'Pick a machine above to see its apps and load.'
 									})}
 								/>
 							),

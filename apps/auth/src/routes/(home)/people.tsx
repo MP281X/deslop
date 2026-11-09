@@ -163,13 +163,7 @@ function Directory() {
 				className="gap-0"
 			>
 				{Array.match(people, {
-					onEmpty: () => (
-						<EmptyState
-							label="No one yet"
-							description="People appear here after they ask to join with GitHub."
-							icon={<AccountAvatar id="none" name="?" />}
-						/>
-					),
+					onEmpty: () => <EmptyState label="No one yet" icon={<AccountAvatar id="none" name="?" />} />,
 					onNonEmpty: rows => (
 						<div role="list" aria-label="People">
 							{Array.map(rows, person =>

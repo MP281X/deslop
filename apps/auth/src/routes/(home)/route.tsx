@@ -7,7 +7,7 @@ import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tansta
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
 
-import {AppBar, AppBarTab} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {WEB_APPS} from '@deslop/components-web/command-palette'
 import {GitHubIcon} from '@deslop/components-web/icons'
@@ -246,12 +246,18 @@ function Tabs(props: {admin: boolean; waiting: number}) {
 			onTrue: () => [{count: props.waiting, label: 'People', to: '/people' as const}]
 		})
 	]
-	return Array.map(tabs, tab => (
-		<AppBarTab key={tab.to} active={matchRoute({to: tab.to}) !== false} render={<Link to={tab.to} />}>
-			{tab.label}
-			{tab.count > 0 && <Badge>{tab.count}</Badge>}
-		</AppBarTab>
-	))
+	return (
+		<AppBarTabs
+			value={Boolean.match(matchRoute({to: '/people'}) !== false, {onFalse: () => '/', onTrue: () => '/people'})}
+		>
+			{Array.map(tabs, tab => (
+				<AppBarTab key={tab.to} value={tab.to} render={<Link to={tab.to} />}>
+					{tab.label}
+					{tab.count > 0 && <Badge>{tab.count}</Badge>}
+				</AppBarTab>
+			))}
+		</AppBarTabs>
+	)
 }
 
 function Signed(props: {account: SignedAccount}) {

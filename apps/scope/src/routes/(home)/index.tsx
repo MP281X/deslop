@@ -26,7 +26,7 @@ import type {ReactElement, ReactNode} from 'react'
 import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
-import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -136,7 +136,7 @@ function EmptyIcon() {
 
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	if (isDenied(props.error)) return <Error error={props.error} label="Access denied" reset={props.reset} />
+	if (isDenied(props.error)) return <Denied />
 	return <Error error={props.error} reset={props.reset} />
 }
 

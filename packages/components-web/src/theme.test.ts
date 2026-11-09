@@ -106,14 +106,14 @@ it.layer(NodeServices.layer)(test => {
 				['background', '#ffffff'],
 				['popover', '#ffffff'],
 				['primary-foreground', '#ffffff'],
-				['foreground', '#0a0a0a'],
-				['card', '#f8f7f4'],
-				['secondary', '#f1f0ec'],
-				['muted', '#f5f4f1'],
-				['muted-foreground', '#64625d'],
-				['accent', '#f0efea'],
-				['border', '#e6e4de'],
-				['input', '#d8d6cf']
+				['foreground', '#09090b'],
+				['card', '#ffffff'],
+				['secondary', '#f4f4f5'],
+				['muted', '#f4f4f5'],
+				['muted-foreground', '#71717b'],
+				['accent', '#f4f4f5'],
+				['border', '#e4e4e7'],
+				['input', '#e4e4e7']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}
@@ -146,10 +146,10 @@ it.layer(NodeServices.layer)(test => {
 			const source = yield* fs.readFileString(`${import.meta.dirname}/theme.css`)
 			const [light, dark = ''] = String.split(source, '@media screen and (prefers-color-scheme: dark)')
 			const darkDeclarations = [...declarations(dark), ...declarations(light)]
-			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
-			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#e3e1db')
-			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#242323')
-			assert.strictEqual(resolved(darkDeclarations, 'border'), '#262523')
+			assert.strictEqual(resolved(darkDeclarations, 'background'), '#09090b')
+			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#fafafa')
+			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#27272a')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), '#27272a')
 			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
 			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
 			assert.notInclude(source, '--green')

@@ -255,7 +255,6 @@ function ServersContent(props: {onAdd: () => void}) {
 						onEmpty: () => (
 							<EmptyState
 								label="No servers yet"
-								description="Add an MCP server and its tools appear in the gateway palette."
 								icon={<HardDrivesIcon className="size-5" weight="light" />}
 								action={
 									<Button onClick={props.onAdd}>
@@ -528,7 +527,7 @@ function Home() {
 					/>
 				</div>
 			)}
-			<Page width="reading">
+			<Page width="column">
 				<h1 className="sr-only">Gateway</h1>
 				{Boolean.match(view === 'ai', {
 					onFalse: () => <ServersPane onAdd={() => send({_tag: 'Open'})} servers={sorted} />,

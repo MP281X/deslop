@@ -1,12 +1,11 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/geist';
-@import '@fontsource-variable/geist-mono';
+@import '@fontsource-variable/jetbrains-mono';
 
-/* theme.test.ts fails when theme.ts drifts from these values; an app points --primary at its hue in its own styles.css. */
+/* shadcn's zinc, as its Lyra preset generates it; theme.ts mirrors these values and theme.test.ts fails when they drift. An app points --primary at the hue of its icon in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
+	/* App and status hues, darkened for white. */
 	--red: oklch(from #c92b38 l c h);
 	--orange: oklch(from #b64b11 l c h);
 	--amber: oklch(from #91601d l c h);
@@ -21,19 +20,19 @@
 	--machine-desktop: oklch(from #98601f l c h);
 
 	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
+	--foreground: #09090b;
+	--card: #ffffff;
 	--popover: #ffffff;
 	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--secondary: #f4f4f5;
+	--muted: #f4f4f5;
+	--muted-foreground: #71717b;
+	--accent: #f4f4f5;
+	--border: #e4e4e7;
+	--input: #e4e4e7;
+	--surface: #fafafa;
+	--selection: #e4e4e7;
+	--selection-foreground: #09090b;
 
 	--primary: var(--slate);
 	--destructive: var(--red);
@@ -81,28 +80,27 @@
 		--machine-desktop: oklch(from #dca561 l c h);
 		--warning: oklch(from #ff9e3b l c h);
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #09090b;
+		--foreground: #fafafa;
+		--card: #18181b;
+		--popover: #18181b;
+		--primary-foreground: #09090b;
+		--secondary: #27272a;
+		--muted: #27272a;
+		--muted-foreground: #9f9fa9;
+		--accent: #27272a;
+		--border: #27272a;
+		--input: #3f3f46;
+		--surface: #18181b;
+		--selection: #3f3f46;
+		--selection-foreground: #fafafa;
 	}
 }
 
 @theme inline {
-	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--font-sans: 'JetBrains Mono Variable', ui-monospace, monospace;
+	--font-heading: 'JetBrains Mono Variable', ui-monospace, monospace;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 	--tracking-label: 0.14em;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
@@ -160,22 +158,19 @@
 	image-rendering: pixelated;
 }
 
-/* A ruled row: the fill may meet the pane edge, the divider never does. */
+/* A ruled row: its divider runs the pane edge to edge, like every other list. */
 @utility list-row {
 	position: relative;
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 4);
+		inset-inline: 0;
 		bottom: 0;
 		height: 1px;
 		background: var(--border);
 		pointer-events: none;
 	}
-	&:hover::after,
-	&:focus-within::after,
 	&[data-selected='true']::after,
-	&:has(+ :hover)::after,
 	&:has(+ [data-selected='true'])::after {
 		opacity: 0;
 	}
@@ -232,11 +227,6 @@
 	label {
 		user-select: none;
 		-webkit-user-select: none;
-	}
-
-	/* The display heading uses the app's sans at display weight, not a second typeface. */
-	.font-heading {
-		font-weight: 600;
 	}
 
 	.cn-font-heading {
