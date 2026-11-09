@@ -725,38 +725,35 @@ function Home() {
 			}),
 		onTrue: () => <MobileWorkspace {...workspaceProps} pane={pane} />
 	})
+	// A phone pushes one pane at a time: the bar names it and its caret goes back up the tree.
+	const heading = Boolean.match(isMobile && pane !== 'Operations', {
+		onFalse: () => undefined,
+		onTrue: () => ({
+			back: {
+				label: pipe(
+					Match.value(pane),
+					Match.when('Span', () => 'Trace'),
+					Match.when('Trace', () => 'Traces'),
+					Match.orElse(() => 'Operations')
+				),
+				onClick: () => send({_tag: 'Back'})
+			},
+			title: pipe(
+				Match.value(pane),
+				Match.when('Traces', () =>
+					Option.match(selection.activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
+				),
+				Match.when('Span', () => 'Span'),
+				Match.orElse(() => 'Trace')
+			)
+		})
+	})
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
+				heading={heading}
 				icon={icon}
 				name="scope"
-				title={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => undefined,
-					onTrue: () =>
-						pipe(
-							Match.value(pane),
-							Match.when('Traces', () =>
-								Option.match(selection.activeOperation, {
-									onNone: () => 'Traces',
-									onSome: active => active.operation.name
-								})
-							),
-							Match.when('Span', () => 'Span'),
-							Match.orElse(() => 'Trace')
-						)
-				})}
-				back={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => undefined,
-					onTrue: () => ({
-						label: pipe(
-							Match.value(pane),
-							Match.when('Span', () => 'Trace'),
-							Match.when('Trace', () => 'Traces'),
-							Match.orElse(() => 'Operations')
-						),
-						onClick: () => send({_tag: 'Back'})
-					})
-				})}
 				controls={<StaleMark trace={Option.getOrUndefined(selection.activeTrace)} />}
 				tabs={Option.match(value, {
 					onNone: () => undefined,

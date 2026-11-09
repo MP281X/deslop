@@ -246,10 +246,6 @@
 		-webkit-user-select: none;
 	}
 
-	.cn-font-heading {
-		@apply font-heading font-semibold;
-	}
-
 	/* A printed page, such as the portfolio's CV, flows onto as many sheets as it needs. */
 	@media print {
 		html,

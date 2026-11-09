@@ -500,7 +500,7 @@ function Home() {
 					</>
 				}
 			/>
-			<Page width="column">
+			<Page>
 				<h1 className="sr-only">Gateway</h1>
 				<AddField onKey={addKey} />
 				<List period={period} />

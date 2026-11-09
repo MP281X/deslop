@@ -102,7 +102,7 @@ function ShellPage() {
 	const signingOut = search['sign-out'] !== undefined
 	const account = useAtomSuspense(accountAtom).value
 	return (
-		<Page width="column">
+		<Page>
 			{signingOut && <SigningOut />}
 			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {

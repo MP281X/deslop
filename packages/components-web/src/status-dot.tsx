@@ -4,11 +4,9 @@ import type {VariantProps} from 'class-variance-authority'
 import {cn} from '#lib/utils.ts'
 
 const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
-	defaultVariants: {status: 'live'},
 	variants: {
 		status: {
 			error: 'bg-destructive',
-			live: 'bg-primary',
 			off: 'border-muted-foreground border',
 			quiet: 'bg-muted-foreground/50',
 			warning: 'bg-warning'
@@ -16,13 +14,16 @@ const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
 	}
 })
 
-// The status dot, beside a word that says the same: live in the app's hue, quiet muted, off hollow; a waiting one is dimmed.
-export function StatusDot(props: VariantProps<typeof statusDotVariants> & {className?: string; waiting?: boolean}) {
+// The status dot marks a problem, never healthy state: error in red, warning in amber, off hollow, quiet muted.
+export function StatusDot(props: {
+	className?: string
+	status: NonNullable<VariantProps<typeof statusDotVariants>['status']>
+}) {
 	return (
 		<span
 			data-slot="status-dot"
 			aria-hidden="true"
-			className={cn(statusDotVariants({status: props.status}), props.waiting === true && 'opacity-60', props.className)}
+			className={cn(statusDotVariants({status: props.status}), props.className)}
 		/>
 	)
 }

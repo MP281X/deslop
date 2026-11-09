@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream} from 'effect'
+import {Array, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -9,7 +9,6 @@ import {useId, useRef, useState} from 'react'
 import {StatusDot} from '#components/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
-import {cn} from '#lib/utils.ts'
 
 // The page keeps this reader mounted even when its pane is offscreen.
 // judge-ignore no-silent-fallback -- now is when the problem began, not a stand-in for a failed read.
@@ -66,13 +65,7 @@ const ageAtom = Atom.family((identity: number | string) =>
 )
 
 // The popup works with hover, keyboard and touch.
-export function Problem(props: {
-	className?: string
-	label: string
-	reset?: () => void
-	since?: number
-	warning?: boolean
-}) {
+export function Problem(props: {label: string; reset?: () => void; since?: number}) {
 	const id = useId()
 	const age = useAtomValue(ageAtom(props.since ?? id))
 	const [open, setOpen] = useState(false)
@@ -98,7 +91,7 @@ export function Problem(props: {
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className={cn('h-8 w-16 max-sm:h-11', props.className)}
+				className="h-8 w-16 max-sm:h-11"
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false
@@ -115,7 +108,7 @@ export function Problem(props: {
 					returning.current = false
 				}}
 			>
-				<StatusDot status={Boolean.match(props.warning === true, {onFalse: () => 'error', onTrue: () => 'warning'})} />
+				<StatusDot status="warning" />
 				<span aria-hidden className="text-muted-foreground font-mono tabular-nums">
 					{Option.getOrElse(AsyncResult.value(age), () => '0s')}
 				</span>
@@ -148,6 +141,6 @@ export function StaleProblem(props: {label: string; readers: StaleReaders}) {
 	const retry = useAtomRefresh(staleSinceAtom(props.readers))
 	return Option.match(since, {
 		onNone: () => null,
-		onSome: value => <Problem label={props.label} reset={retry} since={value} warning />
+		onSome: value => <Problem label={props.label} reset={retry} since={value} />
 	})
 }
