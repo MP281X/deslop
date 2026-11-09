@@ -223,7 +223,7 @@ function SpansSkeleton(props: {label: string}) {
 	)
 }
 
-// The inspector's 24px rows while its span loads, sharing the same max-content key column as the real ones.
+// The inspector's stock-height rows while its span loads, sharing the same max-content key column as the real ones.
 function DetailSkeleton(props: {label: string}) {
 	return (
 		<div
@@ -233,7 +233,7 @@ function DetailSkeleton(props: {label: string}) {
 			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4"
 		>
 			{Array.map(Array.range(1, 6), row => (
-				<div key={row} aria-hidden className="col-span-2 grid h-6 grid-cols-subgrid items-center gap-2.5">
+				<div key={row} aria-hidden className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 					<Skeleton className="h-3 w-24" />
 					<Skeleton className="h-3 w-1/2" />
 				</div>
@@ -785,7 +785,7 @@ function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Tra
 	)
 }
 
-// The picked span's error, attributes and logs, as 24px rows with no dividers between them; a span with none shows no rows.
+// The picked span's error, attributes and logs, as stock-height rows with no dividers between them; a span with none shows no rows.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
@@ -805,7 +805,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 			{Option.match(error, {
 				onNone: () => null,
 				onSome: message => (
-					<div role="listitem" className="col-span-2 grid h-6 grid-cols-subgrid items-center gap-2.5">
+					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 						<span className="text-muted-foreground truncate">error</span>
 						<span className="text-destructive min-w-0 truncate" title={message}>
 							<ErrorText message={message} />
@@ -817,7 +817,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				<div
 					key={`${attribute.key}:${index}`}
 					role="listitem"
-					className="col-span-2 grid h-6 grid-cols-subgrid items-center gap-2.5"
+					className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11"
 				>
 					<span className="text-muted-foreground truncate" title={attribute.key}>
 						{attribute.key}
@@ -838,7 +838,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 				<div
 					key={`${log.id}:${index}`}
 					role="listitem"
-					className="grid-cols-log col-span-2 grid h-6 items-center gap-2.5"
+					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
 				>
 					<span className="text-muted-foreground truncate tabular-nums">
 						{Option.match(Number.parse(String.slice(0, -6)(log.time)), {
