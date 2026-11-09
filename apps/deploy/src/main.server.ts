@@ -19,10 +19,10 @@ import {ToolHandlers} from '#tools/handlers.ts'
 const layerServices = pipe(
 	Fleet.layer,
 	Layer.provideMerge(
-		Layer.unwrap(
-			Effect.map(ServerRuntime.dataDirectory, directory =>
-				Layer.mergeAll(Inventory.layer, Exposures.layer(directory), Metrics.layer)
-			)
+		Layer.mergeAll(
+			Inventory.layer,
+			Metrics.layer,
+			Layer.unwrap(Effect.map(ServerRuntime.dataDirectory, Exposures.layer))
 		)
 	),
 	Layer.provide(ServerRuntime.ToolPath.layer)
