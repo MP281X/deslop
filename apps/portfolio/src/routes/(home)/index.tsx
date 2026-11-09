@@ -713,7 +713,7 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 // Presence is a quiet line at the page's edge: live count, connecting, or unavailable, never a hero.
 function PresenceHud(input: {state: 'connecting' | 'live' | 'offline'; visitors?: PortfolioVisitors}) {
 	return (
-		<div className="border-border bg-background/95 pb-safe-bottom pointer-events-none fixed inset-x-0 bottom-0 z-50 flex min-h-10 items-center justify-between border-t px-3 font-mono text-xs backdrop-blur sm:px-4 print:hidden">
+		<div className="border-border bg-background/95 pr-safe-right pb-safe-bottom pl-safe-left pointer-events-none fixed inset-x-0 bottom-0 z-50 flex min-h-10 items-center justify-between border-t px-3 font-mono text-xs backdrop-blur sm:px-4 print:hidden">
 			<span className="flex items-center gap-2">
 				{Boolean.match(input.state === 'live' && Predicate.isNotUndefined(input.visitors), {
 					onFalse: () => (
@@ -887,7 +887,7 @@ function PortfolioRoute() {
 			ref={containerRef}
 			aria-label="Portfolio"
 			role="region"
-			className="focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			className="focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
 			onKeyDown={event => {
 				if (event.target !== event.currentTarget) return
 				const page = event.currentTarget.clientHeight * 0.9
@@ -926,7 +926,9 @@ function PortfolioRoute() {
 			}}
 			tabIndex={0}
 		>
-			<ProfileSection />
+			<div className="pt-safe-top">
+				<ProfileSection />
+			</div>
 			<ProjectsSection />
 			<ExperienceSection />
 			<SkillsSection />
