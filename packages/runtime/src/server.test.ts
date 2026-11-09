@@ -27,9 +27,10 @@ import {Jwk, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {guard, layerAnnounce, layerKeyValueStore, layerRoutes, layerSessionRoutes} from '#server.ts'
+import {guard, layerAnnounce, layerKeyValueStore, layerRoutes} from '#server.ts'
 
 import {SESSION_COOKIE, clientIdOf} from '#auth/lib/utils.ts'
+import {layerSessionRoutes} from '#auth/routes.ts'
 import {AccessClaims, AuthError} from '#auth/schema.ts'
 import {Auth} from '#auth/service.ts'
 import {Sessions} from '#auth/sessions.ts'

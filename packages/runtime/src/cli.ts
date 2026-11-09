@@ -35,7 +35,6 @@ import {
 	layerNodeHttpServer,
 	layerProtocol,
 	layerRoutes,
-	layerSessionRoutes,
 	layerTelemetry,
 	layerWeb,
 	packageMetadata,
@@ -44,6 +43,7 @@ import {
 
 import {AiGateway} from '#ai/service.ts'
 import type {RpcAuth} from '#auth/lib/utils.ts'
+import {layerSessionRoutes} from '#auth/routes.ts'
 import {Auth} from '#auth/service.ts'
 import {Sessions} from '#auth/sessions.ts'
 import {AppError} from '#cli/schema.ts'
