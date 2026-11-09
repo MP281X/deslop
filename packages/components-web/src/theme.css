@@ -32,8 +32,6 @@
 	--surface: #fafafa;
 	--selection: #e4e4e7;
 	--selection-foreground: #09090b;
-	/* A nested tree level's block, one step off the surface behind it. */
-	--tree-tint: rgb(0 0 0 / 3%);
 
 	--primary: var(--slate);
 	--destructive: var(--red);
@@ -95,7 +93,6 @@
 		--surface: #18181b;
 		--selection: #3f3f46;
 		--selection-foreground: #fafafa;
-		--tree-tint: rgb(255 255 255 / 3%);
 	}
 }
 
@@ -178,11 +175,7 @@
 	}
 }
 
-/* A tree: each level indents 12px, its children's block is one step lighter, and a parent's row pins above the rows under it. */
-@utility tree-tint {
-	background-color: var(--tree-tint);
-}
-
+/* A tree: each level indents 12px, and a parent's row pins above the rows under it on the pane's background. */
 @utility tree-sticky {
 	position: sticky;
 	top: calc(var(--tree-depth) * 2rem);
@@ -193,7 +186,11 @@
 }
 
 @utility tree-sticky-bg {
-	background-color: color-mix(in oklab, var(--foreground) calc(var(--tree-depth) * 3%), var(--background));
+	background-color: var(--background);
+}
+
+@utility tree-sticky-hover {
+	background-color: color-mix(in oklab, var(--muted) 30%, var(--background));
 }
 
 @layer base {

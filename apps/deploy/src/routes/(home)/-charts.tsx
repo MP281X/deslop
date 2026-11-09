@@ -69,14 +69,12 @@ export function UsageChart(props: {
 	className?: string
 	cover?: boolean
 	format: (value: number) => string
-	highlight?: string
 	history: MachineHistory
 	hue: (name: string) => Option.Option<string>
 	label: string
 	layers: readonly ChartLayer[]
 	minutes: number
 	names: (id: string) => string
-	onHover: (id?: string) => void
 	recorded: (sample: Sample) => boolean
 }) {
 	const [cursor, setCursor] = useState<{index: number; x: number; y: number}>()
@@ -93,19 +91,12 @@ export function UsageChart(props: {
 		Option.match(Array.head(props.layers), {
 			onNone: () => undefined,
 			onSome: first =>
-				Boolean.match(props.cover === true, {
-					onFalse: () => undefined,
-					onTrue: () => {
-						setHoverBand(first)
-						props.onHover(first.id)
-					}
-				})
+				Boolean.match(props.cover === true, {onFalse: () => undefined, onTrue: () => setHoverBand(first)})
 		})
 	}
 	function leave() {
 		setCursor(undefined)
 		setHoverBand(undefined)
-		props.onHover()
 	}
 	return (
 		<TooltipProvider delay={0}>
@@ -154,10 +145,6 @@ export function UsageChart(props: {
 								}
 							)[1],
 							layer => {
-								const lit = Boolean.match(props.highlight === undefined, {
-									onFalse: () => props.highlight === layer.band.id,
-									onTrue: () => true
-								})
 								const fill = fillOf(layer.band, props.names(layer.band.id), props.hue)
 								return Array.map(Array.map(runs(props.history, props.minutes, props.recorded), widen), run => (
 									<polygon
@@ -173,14 +160,11 @@ export function UsageChart(props: {
 											' '
 										)}
 										fill={fill.color}
-										fillOpacity={Boolean.match(lit, {onFalse: () => fill.opacity * 0.3, onTrue: () => fill.opacity})}
+										fillOpacity={fill.opacity}
 										stroke="var(--background)"
 										strokeWidth="0.6"
 										vectorEffect="non-scaling-stroke"
-										onPointerEnter={() => {
-											setHoverBand(layer.band)
-											props.onHover(layer.band.id)
-										}}
+										onPointerEnter={() => setHoverBand(layer.band)}
 									/>
 								))
 							}

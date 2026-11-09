@@ -47,13 +47,7 @@ function Meters(props: {appMemory: number; hue: string; node: ProcessNode}) {
 }
 
 // One process row: its mark, the command label and its two meters; small ones read muted.
-function rowOf(props: {
-	appMemory: number
-	band?: string
-	hue: string
-	node: ProcessNode
-	onHover: (id?: string) => void
-}): TreeRow {
+function rowOf(props: {appMemory: number; hue: string; node: ProcessNode}): TreeRow {
 	const row: TreeRow = {
 		actions: <Meters appMemory={props.appMemory} hue={props.hue} node={props.node} />,
 		content: (
@@ -72,10 +66,7 @@ function rowOf(props: {
 			</div>
 		),
 		id: `${props.node.pid}`,
-		label: props.node.label.name,
 		media: <ApplicationIcon name={props.node.label.name} small />,
-		onPointerEnter: () => props.onHover(props.band),
-		onPointerLeave: () => props.onHover(),
 		title: Array.join(props.node.command ?? [], ' ')
 	}
 	return Array.match(props.node.children, {
@@ -84,23 +75,13 @@ function rowOf(props: {
 	})
 }
 
-// Every process stays open unless folded; nesting indents inside tinted blocks, and a parent's row stays pinned under its ancestors.
-export function Processes(props: {
-	band?: string
-	hue: string
-	onHover: (id?: string) => void
-	tree: readonly ProcessNode[]
-}) {
+// Every process is shown; nesting indents plainly, and a parent's row stays pinned under its ancestors.
+export function Processes(props: {hue: string; tree: readonly ProcessNode[]}) {
 	const appMemory = Number.sumAll(Array.map(props.tree, node => node.memory))
 	return (
 		// Its own stacking context keeps the pinned parents under the pane's scrollbar.
 		<div className="isolate min-w-0">
-			<Tree
-				rows={Array.map(props.tree, node =>
-					rowOf({appMemory, band: props.band, hue: props.hue, node, onHover: props.onHover})
-				)}
-				stickyParents
-			/>
+			<Tree rows={Array.map(props.tree, node => rowOf({appMemory, hue: props.hue, node}))} stickyParents />
 		</div>
 	)
 }

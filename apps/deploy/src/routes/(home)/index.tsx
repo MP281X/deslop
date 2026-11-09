@@ -35,7 +35,6 @@ import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {appUsage, processTree} from '#routes/(home)/-process-tree.ts'
 import {Processes} from '#routes/(home)/-processes.tsx'
 import {appHue, bands} from '#routes/(home)/-usage.ts'
-import type {Band} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import {availablePorts, itemOwner, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process, RunRequest} from '#services/inventory/schema.ts'
@@ -275,7 +274,7 @@ function MachineTabs(props: {
 	)
 }
 
-// Ports of one least size, all in one badge box so their digits end on one edge: exposed in an outline badge that opens its endpoint, exposable as a clickable ghost, the rest plain muted text.
+// Every port is one bordered chip whose digits end on the same edge: exposed in foreground text opening its endpoint, exposable in muted text opening the Expose dialog, the rest muted and inert.
 function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeof workloads>[number]}) {
 	const expose = useExpose()
 	const exposedPorts = HashSet.fromIterable(Array.map(props.row.exposures, exposure => exposure.port))
@@ -293,23 +292,25 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
-							<span
-								key={listener.id}
-								className="text-muted-foreground inline-flex h-5 w-fit shrink-0 items-center justify-center overflow-hidden border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap tabular-nums"
-							>
-								{listener.port}
-							</span>
+							<Badge key={listener.id} variant="outline">
+								<span className="text-muted-foreground">{listener.port}</span>
+							</Badge>
 						),
 						onSome: port => (
-							<button
+							<Badge
 								key={listener.id}
-								type="button"
-								className="pointer-events-auto relative z-10"
-								aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
-								onClick={() => expose(port)}
+								variant="outline"
+								render={
+									<button
+										type="button"
+										className="pointer-events-auto relative z-10"
+										aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
+										onClick={() => expose(port)}
+									/>
+								}
 							>
-								<Badge variant="ghost">{listener.port}</Badge>
-							</button>
+								<span className="text-muted-foreground">{listener.port}</span>
+							</Badge>
 						)
 					})
 			)}
@@ -369,12 +370,12 @@ function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => voi
 		<Button
 			size="icon-xs"
 			variant="ghost"
-			className="pointer-events-auto"
+			className="pointer-events-auto size-5"
 			disabled={props.disabled}
 			aria-label={`Run ${workloadName(props.item)} now`}
 			onClick={props.onRun}
 		>
-			<PlayIcon className="size-4" />
+			<PlayIcon className="size-3" />
 		</Button>
 	)
 }
@@ -433,12 +434,9 @@ function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 
 // One app or job: its mark, name, ports or reason, and the actions it has at the row's end; the whole row opens its processes.
 function AppRow(props: {
-	bandOf: Record<string, string>
 	compact: boolean
 	free: readonly InventoryItem[]
-	hovered?: string
 	now: number
-	onHover: (id?: string) => void
 	onSelect: () => void
 	row: ReturnType<typeof workloads>[number]
 	selected: boolean
@@ -454,11 +452,6 @@ function AppRow(props: {
 		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
 		Option.exists(requested, at => props.now - at < 10_000) ||
 		AsyncResult.isWaiting(runResult)
-	const band = Option.filter(
-		Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id)),
-		() => !scheduled
-	)
-	const linked = Option.match(band, {onNone: () => false, onSome: id => props.hovered === id})
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middleEllipsis(fullName)})
 	const failing = light === 'error' || light === 'warning'
@@ -469,19 +462,11 @@ function AppRow(props: {
 	const reasonText = Boolean.match(scheduled, {onFalse: () => reasonLine(props.row, props.now), onTrue: () => reason})
 	return (
 		<>
-			<Item
-				size="row"
-				variant={Boolean.match(linked, {onFalse: () => 'default', onTrue: () => 'muted'})}
-				role="listitem"
-				data-selected={props.selected}
-				className="relative"
-				onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
-				onPointerLeave={() => props.onHover()}
-			>
+			<Item size="row" role="listitem" data-selected={props.selected} className="relative">
 				{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
 				<Button
 					aria-label={`Open ${fullName}`}
-					variant="ghost"
+					variant="bare"
 					className="absolute inset-0 z-0 size-full"
 					onClick={props.onSelect}
 				/>
@@ -549,7 +534,7 @@ function AppRow(props: {
 					{Boolean.match(scheduled, {
 						onFalse: () => null,
 						onTrue: () => (
-							<span className="flex size-6 shrink-0 items-center justify-center">
+							<span className="flex size-5 shrink-0 items-center justify-center">
 								<RunNow
 									disabled={running}
 									item={props.row.item}
@@ -698,12 +683,10 @@ function ChartTitle(props: {figure: string; label: string}) {
 
 // The machine's three readings over time: apps stacked on the whole machine's 0–100%, and disk used as one band.
 function ChartBlock(props: {
-	highlight?: string
 	history: MachineHistory
 	isPhone: boolean
 	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
-	onHover: (id?: string) => void
 }) {
 	const all = bands(props.history)
 	const latest = Option.getOrUndefined(Array.last(props.history.samples))
@@ -715,30 +698,31 @@ function ChartBlock(props: {
 		})
 	)
 	const charts: readonly {
+		cover: boolean
 		figure: string
 		format: (value: number) => string
 		label: string
 		layers: readonly ChartLayer[]
-		linked: boolean
 		recorded: (sample: Sample) => boolean
 	}[] = [
 		{
+			cover: false,
 			figure: Boolean.match(latest === undefined, {onFalse: () => bytes(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
 			format: bytes,
 			label: 'Memory',
 			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
-			linked: true,
 			recorded: () => true
 		},
 		{
+			cover: false,
 			figure: Boolean.match(latest?.cpu === undefined, {onFalse: () => rate(latest?.cpu ?? 0), onTrue: () => '—'}),
 			format: rate,
 			label: 'CPU',
 			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
-			linked: true,
 			recorded: sample => sample.cpu !== undefined
 		},
 		{
+			cover: true,
 			figure: Option.match(Option.fromUndefinedOr(latest), {
 				onNone: () => '—',
 				onSome: sample =>
@@ -750,7 +734,6 @@ function ChartBlock(props: {
 			format: rate,
 			label: 'Disk',
 			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
-			linked: false,
 			recorded: sample => sample.storageUsed !== undefined || Array.isReadonlyArrayNonEmpty(sample.disks)
 		}
 	]
@@ -779,9 +762,8 @@ function ChartBlock(props: {
 						})}
 						<UsageChart
 							className="h-16 sm:h-32"
-							cover={!chart.linked}
+							cover={chart.cover}
 							format={chart.format}
-							highlight={Boolean.match(chart.linked, {onFalse: () => undefined, onTrue: () => props.highlight})}
 							history={props.history}
 							hue={appHue}
 							label={chart.label}
@@ -790,7 +772,6 @@ function ChartBlock(props: {
 							names={id =>
 								Boolean.match(chart.label === 'Disk', {onFalse: () => bandName(id, props.labels), onTrue: () => 'Disk'})
 							}
-							onHover={Boolean.match(chart.linked, {onFalse: () => () => props.onHover(), onTrue: () => props.onHover})}
 							recorded={chart.recorded}
 						/>
 						{Boolean.match(props.isPhone, {
@@ -823,15 +804,9 @@ function EmptyChart(props: {worker?: string}) {
 }
 
 // The selected app's processes, or one job's, with what the row cannot show: its failure.
-function ProcessList(props: {
-	bandOf: Record<string, string>
-	now: number
-	onHover: (id?: string) => void
-	row: ReturnType<typeof workloads>[number]
-}) {
+function ProcessList(props: {now: number; row: ReturnType<typeof workloads>[number]}) {
 	const processes = props.row.item.processes ?? []
 	const tree = processTree(processes)
-	const band = Option.getOrUndefined(Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id)))
 	const hue = Option.getOrElse(appHue(workloadName(props.row.item)), () => 'var(--blue)')
 	return (
 		<>
@@ -847,7 +822,7 @@ function ProcessList(props: {
 				onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
 				onNonEmpty: () => (
 					<ScrollArea className="min-h-0 flex-1">
-						<Processes band={band} hue={hue} onHover={props.onHover} tree={tree} />
+						<Processes hue={hue} tree={tree} />
 					</ScrollArea>
 				)
 			})}
@@ -858,9 +833,7 @@ function ProcessList(props: {
 // The processes below the chart, or a phone's pushed pane; nothing selected is one symbol.
 function SelectedProcesses(props: {
 	app?: string
-	bandOf: Record<string, string>
 	now: number
-	onHover: (id?: string) => void
 	pending: boolean
 	row?: ReturnType<typeof workloads>[number]
 }) {
@@ -885,7 +858,7 @@ function SelectedProcesses(props: {
 						}
 					>
 						<InventoryContent>
-							<ProcessList bandOf={props.bandOf} now={props.now} onHover={props.onHover} row={row} />
+							<ProcessList now={props.now} row={row} />
 						</InventoryContent>
 					</Suspense>
 				)
@@ -895,12 +868,9 @@ function SelectedProcesses(props: {
 }
 
 function ListRows(props: {
-	bandOf: Record<string, string>
 	compact: boolean
 	free: readonly InventoryItem[]
-	hovered?: string
 	now: number
-	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
@@ -910,12 +880,9 @@ function ListRows(props: {
 			{Array.map(props.rows, row => (
 				<AppRow
 					key={row.item.id}
-					bandOf={props.bandOf}
 					compact={props.compact}
 					free={props.free}
-					hovered={props.hovered}
 					now={props.now}
-					onHover={props.onHover}
 					onSelect={() => props.onSelect(row)}
 					row={row}
 					selected={props.selectedId === row.item.id}
@@ -927,13 +894,10 @@ function ListRows(props: {
 
 // The apps on one machine: failures first, then apps by memory, then the jobs a timer starts under their own heading.
 function ListPane(props: {
-	bandOf: Record<string, string>
 	className?: string
 	compact: boolean
 	free: readonly InventoryItem[]
-	hovered?: string
 	now: number
-	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
@@ -959,12 +923,9 @@ function ListPane(props: {
 									onFalse: () => null,
 									onTrue: () => (
 										<ListRows
-											bandOf={props.bandOf}
 											compact={props.compact}
 											free={props.free}
-											hovered={props.hovered}
 											now={props.now}
-											onHover={props.onHover}
 											onSelect={props.onSelect}
 											rows={apps}
 											selectedId={props.selectedId}
@@ -977,12 +938,9 @@ function ListPane(props: {
 										<>
 											<ItemListHeading icon={<ClockIcon />}>Scheduled</ItemListHeading>
 											<ListRows
-												bandOf={props.bandOf}
 												compact={props.compact}
 												free={props.free}
-												hovered={props.hovered}
 												now={props.now}
-												onHover={props.onHover}
 												onSelect={props.onSelect}
 												rows={jobs}
 												selectedId={props.selectedId}
@@ -1002,13 +960,10 @@ function ListPane(props: {
 // The desktop detail: the three charts, then the chosen processes.
 function DetailPane(props: {
 	app?: string
-	bandOf: Record<string, string>
 	history?: MachineHistory
-	hovered?: string
 	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
 	now: number
-	onHover: (id?: string) => void
 	pending: boolean
 	row?: ReturnType<typeof workloads>[number]
 	worker?: string
@@ -1024,28 +979,14 @@ function DetailPane(props: {
 						{
 							onNone: () => <EmptyChart worker={props.worker} />,
 							onSome: history => (
-								<ChartBlock
-									highlight={props.hovered}
-									history={history}
-									isPhone={false}
-									labels={props.labels}
-									minutes={props.minutes}
-									onHover={props.onHover}
-								/>
+								<ChartBlock history={history} isPhone={false} labels={props.labels} minutes={props.minutes} />
 							)
 						}
 					)}
 				</MetricsContent>
 			</Suspense>
 			<div className="flex min-h-0 flex-1 flex-col">
-				<SelectedProcesses
-					app={props.app}
-					bandOf={props.bandOf}
-					now={props.now}
-					onHover={props.onHover}
-					pending={props.pending}
-					row={props.row}
-				/>
+				<SelectedProcesses app={props.app} now={props.now} pending={props.pending} row={props.row} />
 			</div>
 		</div>
 	)
@@ -1053,14 +994,11 @@ function DetailPane(props: {
 
 // A phone's list view: the three short charts, then the rows edge to edge.
 function PhoneList(props: {
-	bandOf: Record<string, string>
 	free: readonly InventoryItem[]
 	history?: MachineHistory
-	hovered?: string
 	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
 	now: number
-	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	rows: readonly ReturnType<typeof workloads>[number][]
 	selectedId?: string
@@ -1075,28 +1013,16 @@ function PhoneList(props: {
 						),
 						{
 							onNone: () => <EmptyChart />,
-							onSome: history => (
-								<ChartBlock
-									highlight={props.hovered}
-									history={history}
-									isPhone
-									labels={props.labels}
-									minutes={props.minutes}
-									onHover={props.onHover}
-								/>
-							)
+							onSome: history => <ChartBlock history={history} isPhone labels={props.labels} minutes={props.minutes} />
 						}
 					)}
 				</MetricsContent>
 			</Suspense>
 			<ListPane
-				bandOf={props.bandOf}
 				className="min-h-0 flex-1"
 				compact
 				free={props.free}
-				hovered={props.hovered}
 				now={props.now}
-				onHover={props.onHover}
 				onSelect={props.onSelect}
 				rows={props.rows}
 				selectedId={props.selectedId}
@@ -1109,15 +1035,12 @@ function PhoneList(props: {
 function Workspace(props: {
 	active?: string
 	authFailure: Option.Option<unknown>
-	bandOf: Record<string, string>
 	free: readonly InventoryItem[]
 	history?: MachineHistory
-	highlight?: string
 	isPhone: boolean
 	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
 	now: number
-	onHover: (id?: string) => void
 	onSelect: (row: ReturnType<typeof workloads>[number]) => void
 	pending: boolean
 	pushed: boolean
@@ -1144,13 +1067,10 @@ function Workspace(props: {
 									maxSize={480}
 								>
 									<ListPane
-										bandOf={props.bandOf}
 										className="h-full min-w-0"
 										compact={false}
 										free={props.free}
-										hovered={props.highlight}
 										now={props.now}
-										onHover={props.onHover}
 										onSelect={props.onSelect}
 										rows={props.rows}
 										selectedId={props.selectedRow?.item.id}
@@ -1160,13 +1080,10 @@ function Workspace(props: {
 								<ResizablePanel className="min-h-0">
 									<DetailPane
 										app={props.selectedApp}
-										bandOf={props.bandOf}
 										history={props.history}
-										hovered={props.highlight}
 										labels={props.labels}
 										minutes={props.minutes}
 										now={props.now}
-										onHover={props.onHover}
 										pending={props.pending}
 										row={props.selectedRow}
 										worker={props.active}
@@ -1178,14 +1095,11 @@ function Workspace(props: {
 							Boolean.match(props.pushed, {
 								onFalse: () => (
 									<PhoneList
-										bandOf={props.bandOf}
 										free={props.free}
 										history={props.history}
-										hovered={props.highlight}
 										labels={props.labels}
 										minutes={props.minutes}
 										now={props.now}
-										onHover={props.onHover}
 										onSelect={props.onSelect}
 										rows={props.rows}
 										selectedId={props.selectedRow?.item.id}
@@ -1194,9 +1108,7 @@ function Workspace(props: {
 								onTrue: () => (
 									<SelectedProcesses
 										app={props.selectedApp}
-										bandOf={props.bandOf}
 										now={props.now}
-										onHover={props.onHover}
 										pending={props.pending}
 										row={props.selectedRow}
 									/>
@@ -1254,7 +1166,6 @@ function Home() {
 	// The charts keep the last loaded range, dimmed, until the one the URL asks for arrives.
 	const shownMinutes = useDeferredValue(minutes)
 	const pane = search.pane ?? 'apps'
-	const [hovered, setHovered] = useState<string>()
 	const inventory = useAtomValue(inventoryAtom)
 	const metrics = useAtomValue(metricsAtom(shownMinutes))
 	const refreshInventory = useAtomRefresh(inventoryAtom)
@@ -1285,16 +1196,6 @@ function Home() {
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
-	// A row lights its own band, or the one band every small app joins; a selected row stays lit.
-	const bandOf = Record.fromEntries(
-		Array.flatMap(
-			Option.getOrElse(
-				Option.map(history, machine => bands(machine)),
-				() => Array.empty<Band>()
-			),
-			(band: Band) => Array.map(band.members, member => [member, band.id] as const)
-		)
-	) satisfies Record<string, string>
 	const rows = Option.getOrElse(
 		Option.map(snapshot, value => workloads(value.items)),
 		() => []
@@ -1327,19 +1228,10 @@ function Home() {
 			Array.findFirst(searchable, row => row.item.id === current)
 		)
 	)
-	const selectedBand = Option.flatMap(Option.fromUndefinedOr(selectedRow), row =>
-		Option.flatMap(owner(row), id => Record.get(bandOf, id))
-	)
-	const highlight = Option.getOrElse(Option.fromUndefinedOr(hovered), () => Option.getOrUndefined(selectedBand))
 	const ranges = rangeSet(isPhone, minutes)
 
 	function selectRow(row: ReturnType<typeof workloads>[number]) {
 		view({app: row.item.id, pane: 'process'})
-	}
-
-	function backToList() {
-		setHovered(undefined)
-		view({pane: 'apps'})
 	}
 
 	const pushed = Boolean.match(isPhone, {onFalse: () => false, onTrue: () => pane === 'process'})
@@ -1349,7 +1241,7 @@ function Home() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				back={phoneBack(pushed, backToList)}
+				back={phoneBack(pushed, () => view({pane: 'apps'}))}
 				icon={icon}
 				name="deploy"
 				title={mobileTitle}
@@ -1359,7 +1251,6 @@ function Home() {
 						active={active}
 						histories={shownHistories}
 						inventoryFailure={inventoryFailure}
-						onChoose={() => setHovered(undefined)}
 						sources={sources}
 						workers={workers}
 					/>
@@ -1368,15 +1259,12 @@ function Home() {
 			<Workspace
 				active={active}
 				authFailure={authFailure}
-				bandOf={bandOf}
 				free={free}
 				history={Option.getOrUndefined(history)}
-				highlight={highlight}
 				isPhone={isPhone}
 				labels={bandNames}
 				minutes={shownMinutes}
 				now={now}
-				onHover={setHovered}
 				onSelect={selectRow}
 				pending={inventoryPending}
 				pushed={pushed}
