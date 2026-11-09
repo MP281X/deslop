@@ -11,10 +11,10 @@ export function moveRowFocus(event: KeyboardEvent<HTMLElement>, listSelector: st
 	const rows = Array.fromIterable(list.querySelectorAll<HTMLElement>(rowSelector))
 	const current = Array.findFirstIndex(rows, row => row === document.activeElement)
 	if (current < 0) return
-	const next = Number.clamp(
-		current + Boolean.match(event.key === 'j', {onFalse: () => -1, onTrue: () => 1}),
-		{maximum: rows.length - 1, minimum: 0}
-	)
+	const next = Number.clamp(current + Boolean.match(event.key === 'j', {onFalse: () => -1, onTrue: () => 1}), {
+		maximum: rows.length - 1,
+		minimum: 0
+	})
 	if (next === current) return
 	event.preventDefault()
 	Option.map(Array.get(rows, next), row => row.focus())
