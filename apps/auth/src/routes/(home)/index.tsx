@@ -36,6 +36,7 @@ function Enter(props: {
 					</InputGroupAddon>
 					<InputGroupInput
 						id="code"
+						className="max-sm:h-11"
 						aria-label="Code of a sign-in to approve"
 						placeholder="Code"
 						maxLength={CODE_LENGTH}
