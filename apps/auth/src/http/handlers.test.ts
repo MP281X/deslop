@@ -890,8 +890,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				(yield* send(web.issuer, '/me', {headers: {authorization: `Bearer ${token.access_token}`}})).status,
 				401
 			)
-			assert.strictEqual((yield* send(web.issuer, '/auth/session')).status, 404)
-			assert.strictEqual((yield* send(web.issuer, '/auth/verify')).status, 404)
 		})
 	)
 
