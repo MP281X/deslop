@@ -26,7 +26,7 @@ import {Atom} from 'effect/reactivity'
 import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
+import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
 
@@ -34,12 +34,12 @@ import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
 import {RpcClient} from '#lib/utils.ts'
 import {PortfolioColor} from '#services/presence/schema.ts'
-import type {PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
+import type {PortfolioScene, PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
 const SECTION_KEYS = ['1', '2', '3', '4', '5', '6'] as const
 const SECTION_NAMES = ['profile', 'skills', 'experience', 'projects', 'education', 'contact'] as const
 
-type Scene = {trails: PortfolioVisitors; visitors: PortfolioVisitors}
+type Scene = {bots: PortfolioVisitors; trails: PortfolioVisitors; visitors: PortfolioVisitors}
 
 function randomIndex(length: number) {
 	return Math.floor(Random.Random.defaultValue().nextDoubleUnsafe() * length)
@@ -88,25 +88,27 @@ const portfolioAtom = Atom.keepAlive(
 			Stream.unwrap,
 			// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
 			Stream.retry(Schedule.spaced('2 seconds')),
-			Stream.mapAccum<Scene, PortfolioVisitors, Scene>(
-				() => ({trails: [], visitors: []}),
-				(scene, visitors) => {
+			Stream.mapAccum<Scene, PortfolioScene, Scene>(
+				() => ({bots: [], trails: [], visitors: []}),
+				(scene, update) => {
+					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						Array.map(scene.visitors, visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+						Array.map(cursors, visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 					)
-					// The latest 180 positions in the order visitors reached them; a recolour starts a new stretch where the cursor is.
+					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
+						bots: update.bots,
 						trails: Array.takeRight(
 							Array.appendAll(
 								scene.trails,
 								Array.filter(
-									visitors,
+									cursors,
 									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 								)
 							),
 							180
 						),
-						visitors
+						visitors: update.visitors
 					}
 					return Tuple.make(next, [next])
 				}
@@ -154,12 +156,12 @@ function Section(input: {className?: string; children: React.ReactNode}) {
 	)
 }
 
-// A section of the column: its lowercase mono name over the rows a hairline splits.
+// A section of the column: its lowercase mono name over its rows.
 function SectionBody(input: {children: React.ReactNode; title: string}) {
 	return (
 		<Panel className="flex w-full max-w-3xl flex-col px-4 py-3 sm:px-6">
-			<h2 className="text-muted-foreground border-border border-b pb-2 font-mono text-xs">{input.title}</h2>
-			<div className="divide-border flex flex-col divide-y">{input.children}</div>
+			<h2 className="text-muted-foreground pb-2 font-mono text-xs">{input.title}</h2>
+			<div className="flex flex-col">{input.children}</div>
 		</Panel>
 	)
 }
@@ -301,28 +303,6 @@ function ProfileSection() {
 				<p className="text-primary font-mono text-sm">{profile.title}</p>
 				<p className="text-foreground/90 text-base">{summary}</p>
 				<p className="text-muted-foreground font-mono text-xs">{profile.location}</p>
-				<div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-					<a
-						href={contacts.email.href}
-						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
-					>
-						email
-					</a>
-					<a
-						href={contacts.github.href}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
-					>
-						github
-					</a>
-					<a
-						href="/cv"
-						className="text-primary hover:underline max-sm:inline-flex max-sm:h-11 max-sm:min-w-11 max-sm:items-center max-sm:justify-center"
-					>
-						cv
-					</a>
-				</div>
 			</Panel>
 		</Section>
 	)
@@ -480,10 +460,13 @@ function ContactSection() {
 	)
 }
 
-function ShortcutRow(input: {keys: React.ReactNode; label: React.ReactNode}) {
+// The shortcut legend is the page's panel in miniature: one row per action.
+function ShortcutRow(input: {keys: React.ReactNode; label: string; title?: string}) {
 	return (
-		<div className="flex items-center justify-between gap-6 py-3">
-			<span className="text-sm">{input.label}</span>
+		<div className="flex min-h-9 items-center justify-between gap-6 py-2">
+			<span className="text-sm" title={input.title}>
+				{input.label}
+			</span>
 			{input.keys}
 		</div>
 	)
@@ -494,27 +477,20 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 		<Dialog open={input.open} onOpenChange={input.onOpenChange}>
 			<DialogContent className="sm:max-w-sm">
 				<DialogHeader>
-					<DialogTitle>Keyboard</DialogTitle>
-					<DialogDescription>The page moves without a mouse.</DialogDescription>
+					<DialogTitle>Shortcuts</DialogTitle>
 				</DialogHeader>
-				<div className="divide-border flex flex-col divide-y">
+				<div className="flex flex-col">
 					<ShortcutRow
 						keys={
 							<KbdGroup>
 								<Kbd>1</Kbd>–<Kbd>6</Kbd>
 							</KbdGroup>
 						}
-						label={
-							<span className="flex flex-col gap-1">
-								Jump to a section
-								<span className="text-muted-foreground font-mono text-xs">
-									{pipe(
-										Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
-										Array.join(' · ')
-									)}
-								</span>
-							</span>
-						}
+						label="Jump to a section"
+						title={pipe(
+							Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
+							Array.join(' · ')
+						)}
 					/>
 					<ShortcutRow keys={<Kbd>r</Kbd>} label="Change cursor color" />
 					<ShortcutRow keys={<Kbd>?</Kbd>} label="Toggle this panel" />
@@ -610,7 +586,7 @@ function RealtimeLayer(input: {
 			</div>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-					{Array.map(portfolio.value.visitors, cursor =>
+					{Array.map(Array.appendAll(portfolio.value.visitors, portfolio.value.bots), cursor =>
 						Boolean.match(cursor.id === identity.id, {
 							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
 							onTrue: () => null
@@ -735,7 +711,7 @@ function PortfolioRoute() {
 			ref={containerRef}
 			aria-label="Portfolio"
 			role="region"
-			className="focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
+			className="portfolio-page focus-visible:ring-border relative min-h-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain focus-visible:ring-1 focus-visible:ring-inset print:h-auto print:overflow-visible [@media(hover:hover)_and_(pointer:fine)]:cursor-none"
 			onKeyDown={event => {
 				if (event.target !== event.currentTarget) return
 				const page = event.currentTarget.clientHeight * 0.9

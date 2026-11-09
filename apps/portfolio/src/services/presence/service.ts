@@ -3,7 +3,7 @@ import {Array, Clock, Context, Effect, Layer, Number, Option, Record, Schedule, 
 import {Machine} from '@typeonce/effect-machine'
 
 import {hasMeaningfulMove, removePortfolioVisitor, upsertPortfolioVisitor} from '#lib/portfolio.ts'
-import type {PortfolioVisitors} from '#services/presence/schema.ts'
+import type {PortfolioScene} from '#services/presence/schema.ts'
 import {PortfolioColor, PortfolioVisitor} from '#services/presence/schema.ts'
 
 const SERVER_BOTS = [
@@ -30,7 +30,7 @@ const SERVER_BOTS = [
 export class Presence extends Context.Service<
 	Presence,
 	{
-		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioVisitors>
+		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioScene>
 		readonly move: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
 	}
 >()('@deslop/portfolio/services/presence/service/Presence') {
@@ -182,8 +182,8 @@ export class Presence extends Context.Service<
 								ref.changes,
 								Stream.map(snapshot =>
 									Option.match(room.root.get(snapshot.state, 'Occupied'), {
-										onNone: () => [],
-										onSome: occupied => [...occupied.visitors, ...occupied.bots]
+										onNone: () => ({bots: [], visitors: []}),
+										onSome: occupied => ({bots: occupied.bots, visitors: occupied.visitors})
 									})
 								),
 								Stream.buffer({capacity: 1, strategy: 'sliding'})

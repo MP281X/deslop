@@ -3,12 +3,12 @@ import {assert, it} from '@effect/vitest'
 import {Array, Context, Effect, Fiber, Layer, Order, Schema, Stream, SubscriptionRef, pipe} from 'effect'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {PortfolioVisitors} from '#services/presence/schema.ts'
+import type {PortfolioScene, PortfolioVisitors} from '#services/presence/schema.ts'
 import {Presence} from '#services/presence/service.ts'
 
 function guestAt(x: number, y: number) {
-	return (visitors: PortfolioVisitors) =>
-		Array.some(visitors, visitor => visitor.id === 'guest' && visitor.x === x && visitor.y === y)
+	return (scene: PortfolioScene) =>
+		Array.some(scene.visitors, visitor => visitor.id === 'guest' && visitor.x === x && visitor.y === y)
 }
 
 function idsOf(visitors: PortfolioVisitors) {
@@ -19,7 +19,7 @@ function idsOf(visitors: PortfolioVisitors) {
 }
 
 it.effect(
-	'rejects guest requests impersonating server bots without excluding bots from snapshots',
+	'rejects guest requests impersonating server bots and keeps bots out of the visitor list',
 	Effect.fnUntraced(function* () {
 		for (const entry of RpcContracts.requests) {
 			const request = entry[1]
@@ -36,18 +36,18 @@ it.effect(
 )
 
 it.effect(
-	'streams every cursor, keeps a visitor through a second tab and drops it with the last one',
+	'streams every cursor, counts only visitor tabs, keeps a visitor through a second tab and drops it with the last one',
 	Effect.fnUntraced(function* () {
 		const presence = Context.get(yield* Layer.build(Presence.layer), Presence)
-		const seen = yield* SubscriptionRef.make<PortfolioVisitors>([])
+		const seen = yield* SubscriptionRef.make<PortfolioScene>({bots: [], visitors: []})
 		function watch(id: string) {
 			return pipe(
 				presence.join({color: '#da702c', id, name: id}),
-				Stream.runForEach(visitors => SubscriptionRef.set(seen, visitors)),
+				Stream.runForEach(scene => SubscriptionRef.set(seen, scene)),
 				Effect.forkScoped
 			)
 		}
-		function until(predicate: (visitors: PortfolioVisitors) => boolean) {
+		function until(predicate: (scene: PortfolioScene) => boolean) {
 			return pipe(
 				SubscriptionRef.changes(seen),
 				Stream.filter(predicate),
@@ -58,12 +58,9 @@ it.effect(
 
 		const observer = yield* watch('observer')
 		const firstTab = yield* watch('guest')
-		assert.deepStrictEqual(idsOf(yield* until(visitors => Array.length(visitors) === 4)), [
-			'guest',
-			'observer',
-			'server-alpha',
-			'server-beta'
-		])
+		const scene = yield* until(first => Array.length(first.visitors) === 2 && Array.length(first.bots) === 2)
+		assert.deepStrictEqual(idsOf(scene.visitors), ['guest', 'observer'])
+		assert.deepStrictEqual(idsOf(scene.bots), ['server-alpha', 'server-beta'])
 
 		yield* presence.move({color: '#da702c', id: 'guest', x: 0.2, y: 0.3})
 		yield* until(guestAt(0.2, 0.3))
@@ -75,11 +72,9 @@ it.effect(
 		yield* until(guestAt(0.7, 0.7))
 
 		yield* Fiber.interrupt(secondTab)
-		assert.deepStrictEqual(idsOf(yield* until(visitors => !Array.some(visitors, visitor => visitor.id === 'guest'))), [
-			'observer',
-			'server-alpha',
-			'server-beta'
-		])
+		const after = yield* until(next => !Array.some(next.visitors, visitor => visitor.id === 'guest'))
+		assert.deepStrictEqual(idsOf(after.visitors), ['observer'])
+		assert.deepStrictEqual(idsOf(after.bots), ['server-alpha', 'server-beta'])
 		yield* Fiber.interrupt(observer)
 	})
 )

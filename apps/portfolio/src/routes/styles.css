@@ -63,6 +63,13 @@
 	}
 }
 
+/* Over links the browser's own pointer would return beside the drawn cursor. */
+@media (hover: hover) and (pointer: fine) {
+	.portfolio-page :is(a, button, [role='button']) {
+		cursor: none;
+	}
+}
+
 /* The 26px grid behind the home page's trails, drawn under the element's content, which must be positioned. */
 @utility trail-grid {
 	isolation: isolate;

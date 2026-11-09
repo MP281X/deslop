@@ -16,3 +16,7 @@ export const PortfolioVisitor = Schema.Struct({
 
 export type PortfolioVisitors = typeof PortfolioVisitors.Type
 export const PortfolioVisitors = Schema.Array(PortfolioVisitor)
+
+// The room's cursors and the wandering server marks; only the visitors are tabs.
+export type PortfolioScene = typeof PortfolioScene.Type
+export const PortfolioScene = Schema.Struct({bots: PortfolioVisitors, visitors: PortfolioVisitors})
