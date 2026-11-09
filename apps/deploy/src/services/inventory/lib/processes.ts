@@ -33,7 +33,7 @@ function commandArgs(cmdline: string) {
 		const previous = args[index - 1] ?? ''
 		const secretValue = String.startsWith('-')(previous) && !String.includes('=')(previous) && SECRET.test(previous)
 		const opaque = !String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))
-		if (index > 0 && !String.startsWith('-')(arg) && (secretValue || opaque)) return '…'
+		if (index > 0 && (secretValue || (!String.startsWith('-')(arg) && opaque))) return '…'
 		return String.slice(0, 200)(String.replaceAll(/:\/\/[^/@\s]+@/gu, '://…@')(arg))
 	})
 }

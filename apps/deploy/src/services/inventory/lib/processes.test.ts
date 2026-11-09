@@ -56,7 +56,9 @@ it.effect(
 								'--session-id=…',
 								'--allow-dangerously-skip-permissions',
 								'--mode',
-								'off'
+								'off',
+								'--oauth2-bearer',
+								'…'
 							],
 							label: {detail: 'x', name: 'auth'},
 							memory: 0,
@@ -82,7 +84,7 @@ it.effect(
 						if (path === '/proc/42/cmdline') return 'firefox\0--type=renderer\0'
 						// Secrets in arguments stay on the worker.
 						if (path === '/proc/7/cmdline') {
-							return `node\0server.js\0--api-token\0abc\0GITHUB_TOKEN=ghp_x\0https://user:pw@example.com/x\0${String.repeat(40)('a')}\0--session-id=abc\0--allow-dangerously-skip-permissions\0--mode\0off`
+							return `node\0server.js\0--api-token\0abc\0GITHUB_TOKEN=ghp_x\0https://user:pw@example.com/x\0${String.repeat(40)('a')}\0--session-id=abc\0--allow-dangerously-skip-permissions\0--mode\0off\0--oauth2-bearer\0-short-secret`
 						}
 						if (path === '/proc/42/status') return 'Name:\tWeb Content\nPid:\t42\nPPid:\t7\nVmRSS:\t1024 kB\n'
 						if (path === '/proc/7/status') return 'Name:\tworker\nPid:\t7\nPPid:\t1\n'
