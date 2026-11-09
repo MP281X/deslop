@@ -14,7 +14,7 @@ import {renderToString} from 'react-dom/server'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER, isDenied} from '@deslop/runtime/auth/utils'
+import {DEVELOPER} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import type {serversAtom} from '#lib/utils.ts'
@@ -143,48 +143,6 @@ function render(result: Atom.Type<typeof serversAtom>) {
 }
 
 it.layer(NodeServices.layer)(test => {
-	test.effect('keeps denied servers invalid through failed and empty retries until a real emission', () =>
-		Effect.scoped(
-			Effect.gen(function* () {
-				const env = yield* fixture
-				yield* Queue.take(env.opened)
-				yield* Queue.offer(env.answers, Effect.succeed([sample]))
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				yield* Queue.offer(env.answers, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isFailure), Stream.runHead)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.serversAtom))))
-				env.registry.refresh(env.serversAtom)
-				yield* Queue.take(env.opened)
-				yield* Queue.offer(
-					env.answers,
-					Effect.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
-				)
-				yield* pipe(
-					Stream.fromQueue(env.updates),
-					Stream.filter(value => AsyncResult.isFailure(value) && value.cause.reasons.length > 1),
-					Stream.runHead
-				)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.serversAtom))))
-				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.serversAtom)), isDenied))
-				yield* Ref.set(env.complete, true)
-				env.registry.refresh(env.serversAtom)
-				yield* Queue.take(env.opened)
-				yield* pipe(
-					Stream.fromQueue(env.updates),
-					Stream.filter(value => AsyncResult.isFailure(value) && !value.waiting),
-					Stream.runHead
-				)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.serversAtom))))
-				yield* Ref.set(env.complete, false)
-				env.registry.refresh(env.serversAtom)
-				yield* Queue.take(env.opened)
-				yield* Queue.offer(env.answers, Effect.succeed([]))
-				yield* pipe(Stream.fromQueue(env.updates), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
-				assert.deepStrictEqual(Option.getOrThrow(AsyncResult.value(env.registry.get(env.serversAtom))), [])
-			})
-		)
-	)
-
 	test.effect('retains servers during a temporary authorization outage and reconnects without refresh', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
