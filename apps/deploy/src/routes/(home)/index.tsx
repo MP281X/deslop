@@ -48,7 +48,6 @@ const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['apps', 'machine', 'process'])
 
-// The view lives in the URL, so a reload, Back or a shared link reopens the same machine, app, pane and range.
 type Search = typeof Search.Type
 const Search = Schema.Struct({
 	app: Schema.optionalKey(Schema.String),
@@ -104,8 +103,6 @@ function bytes(value: number) {
 	return `${size.format(value / 1024 ** 2)} MiB`
 }
 
-// The process holding the most memory, which names an app's row and its pane.
-
 // The key a service or container's usage history is recorded under; loose ports have none.
 function owner(row: ReturnType<typeof workloads>[number]) {
 	return Option.map(
@@ -150,7 +147,6 @@ const order = Order.combine(
 	Order.mapInput(Order.Number, (row: ReturnType<typeof workloads>[number]) => row.item.next ?? 0)
 )
 
-// The range's apps: a service or container that neither ran nor failed in it has no row. A job keeps its row to run it now, and a machine without history shows every app.
 function ranged(rows: readonly ReturnType<typeof workloads>[number][], minutes: number, history?: MachineHistory) {
 	if (history === undefined) return rows
 	const recorded = HashSet.fromIterable(

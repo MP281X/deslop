@@ -135,7 +135,6 @@ export function UsageChart(props: {
 							pointerEvents="none"
 						/>
 						{Array.map(
-							// Each band sits on the ones before it.
 							Array.mapAccum(
 								props.layers,
 								Array.map(props.history.samples, () => 0),
