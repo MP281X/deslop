@@ -4,8 +4,6 @@ import {Array, Boolean, DateTime, Number, Option, Order, Result, String, pipe} f
 
 import {
 	Button,
-	HStack,
-	Image,
 	Menu,
 	Picker,
 	Section,
@@ -38,9 +36,8 @@ import {Suspense, useState} from 'react'
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
-import {StatusDot} from '@deslop/components-mobile/status-dot'
-import {colors, radius, space, text} from '@deslop/components-mobile/theme'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {colors, radius} from '@deslop/components-mobile/theme'
+import {Empty} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
 	ItemActions,
@@ -56,8 +53,8 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
-import {byNumber, resumeOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
-import type {ChapterItem, ChapterList} from '#services/chapters/schema.ts'
+import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
+import type {ChapterItem} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
 
 // "21 Oct" this year, "21 Oct 2025" before it.
@@ -73,69 +70,8 @@ function postedOn(postedAt: number) {
 	)
 }
 
-function resumingOf(chapters: ChapterList) {
-	return pipe(
-		resumeOf(chapters),
-		Option.flatMap(found =>
-			Option.map(
-				Array.findFirst(chapters, chapter => chapter.number === found.number),
-				chapter => ({chapter, page: found.page})
-			)
-		)
-	)
-}
-
-function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page?: number) => void; page: number}) {
-	const pages = Number.max(props.chapter.pages.length, 1)
-	const done = props.chapter.reading?.done === true
-	const page = Number.clamp(props.page + 1, {maximum: pages, minimum: 1})
-	return (
-		<Item
-			onPress={() => props.onOpen(props.chapter.number, props.page)}
-			modifiers={[
-				...itemRow,
-				accessibilityLabel(
-					Boolean.match(done, {
-						onFalse: () => `Continue reading Chapter ${props.chapter.number}, page ${page} of ${pages}`,
-						onTrue: () => `Read again Chapter ${props.chapter.number}, finished`
-					})
-				)
-			]}
-		>
-			<ItemMedia>
-				<Image
-					systemName={Boolean.match(done, {
-						onFalse: () => 'book.pages.fill' as const,
-						onTrue: () => 'arrow.counterclockwise' as const
-					})}
-					modifiers={[font({textStyle: 'title2'}), foregroundStyle(primary), accessibilityHidden(true)]}
-				/>
-			</ItemMedia>
-			<ItemContent>
-				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>
-					{Boolean.match(done, {onFalse: () => 'Continue Reading', onTrue: () => 'Read Again'})}
-				</Text>
-				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>
-					{`Chapter ${props.chapter.number} · ${Boolean.match(done, {
-						onFalse: () => `Page ${page} of ${pages}`,
-						onTrue: () => 'Finished'
-					})}`}
-				</Text>
-			</ItemContent>
-			<ItemActions>
-				<ChapterProgress
-					fraction={Boolean.match(done, {onFalse: () => props.page / pages, onTrue: () => 1})}
-					accent={primary}
-					read={colors.foreground}
-					modifiers={[frame({height: 18, width: 18})]}
-				/>
-			</ItemActions>
-		</Item>
-	)
-}
-
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
-function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (number: number) => void}) {
+function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => void}) {
 	const read = useAtomSet(readAtom)
 	const done = props.chapter.reading?.done === true
 	return (
@@ -152,12 +88,14 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						]}
 					/>
 				</ItemMedia>
-				{/* Read rows recede as a whole, so the chapter number still leads the list. */}
-				<ItemContent modifiers={[opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.6}))]}>
-					<HStack spacing={space[2]}>
-						{props.fresh && <StatusDot status="live" tint={primary} />}
-						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
-					</HStack>
+				{/* Unread is bold, read recedes; the chapter number still leads the list. */}
+				<ItemContent>
+					<ItemTitle
+						modifiers={Boolean.match(done, {
+							onFalse: () => [font({textStyle: 'body', weight: 'bold'})],
+							onTrue: () => [font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]
+						})}
+					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
 						{Array.join(
 							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
@@ -217,13 +155,7 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 	}
 	const chapters = Array.filter(result.success, chapter => chapter.series === props.series)
 	const needle = String.toLowerCase(String.trim(props.searched))
-	// New means past the newest chapter ever opened, so the back catalogue carries no dots.
-	const reached = pipe(
-		Array.filter(chapters, chapter => (chapter.reading?.at ?? 0) > 0),
-		Array.map(chapter => chapter.number),
-		Array.match({onEmpty: Option.none<number>, onNonEmpty: numbers => Option.some(Array.max(numbers, Order.Number))})
-	)
-	const resume = resumingOf(chapters)
+	// A query matches a chapter's number from its start, or any part of its name.
 	return Array.match(
 		pipe(
 			Array.sort(chapters, Order.flip(byNumber)),
@@ -235,48 +167,14 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 		{
 			onEmpty: () =>
 				Boolean.match(String.isEmpty(needle), {
-					onFalse: () => (
-						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="magnifyingglass" />
-								<EmptyTitle>No chapters match</EmptyTitle>
-								<EmptyDescription>Try another number or title.</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					),
-					onTrue: () => (
-						<Empty>
-							<EmptyHeader>
-								<EmptyMedia systemImage="book.closed" />
-								<EmptyTitle>No chapters yet</EmptyTitle>
-								<EmptyDescription>New chapters appear here when they are posted.</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					)
+					onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
+					onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
 				}),
 			onNonEmpty: matches => (
 				<ItemGroup>
-					{/* A search is about the query, so the resume row waits until the full list is back. */}
-					{Boolean.match(String.isEmpty(needle), {
-						onFalse: () => undefined,
-						onTrue: () =>
-							Option.match(resume, {
-								onNone: () => undefined,
-								onSome: found => (
-									<Section>
-										<ContinueRow chapter={found.chapter} page={found.page} onOpen={props.onOpen} />
-									</Section>
-								)
-							})
-					})}
 					<Section>
 						{Array.map(matches, chapter => (
-							<ChapterRow
-								key={chapter.number}
-								chapter={chapter}
-								fresh={Option.exists(reached, number => chapter.number > number)}
-								onOpen={props.onOpen}
-							/>
+							<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
 						))}
 					</Section>
 				</ItemGroup>
@@ -295,18 +193,17 @@ export function ChaptersRoute(props: {
 	const refresh = useAtomRefresh(chaptersAtom)
 	const [searched, setSearched] = useState('')
 	return (
-		<Toolbar modifiers={[navigationTitle(SERIES_NAMES[props.series]), navigationBarTitleDisplayMode('large')]}>
-			{/* Search and its explicit bottom-bar item share the same SwiftUI owner. */}
-			<Toolbar
-				modifiers={[
-					searchable(query, {onChange: setSearched, prompt: `Search ${SERIES_NAMES[props.series]}`}),
-					bottomBarSearch
-				]}
-			>
-				<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
-					<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
-				</Suspense>
-			</Toolbar>
+		<Toolbar
+			modifiers={[
+				navigationTitle(SERIES_NAMES[props.series]),
+				navigationBarTitleDisplayMode('large'),
+				searchable(query, {onChange: setSearched, prompt: `Search ${SERIES_NAMES[props.series]}`}),
+				bottomBarSearch
+			]}
+		>
+			<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
+				<Chapters onOpen={props.onOpen} searched={searched} series={props.series} />
+			</Suspense>
 			<Toolbar.Content>
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
 				{AsyncResult.isFailure(loaded) && Result.isSuccess(shownOf(loaded)) && (

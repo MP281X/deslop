@@ -14,7 +14,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {useRef, useState} from 'react'
 
 import {space} from '@deslop/components-mobile/theme'
-import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
+import {Empty} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {readAtom, unreachableAtom} from '#lib/utils.ts'
@@ -44,13 +44,11 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 	if (!Array.isReadonlyArrayNonEmpty(shown)) {
 		if (gaveUp) {
 			return (
-				<Empty modifiers={[navigationTitle(`Chapter ${props.number}`), navigationBarTitleDisplayMode('inline')]}>
-					<EmptyHeader>
-						<EmptyMedia systemImage="book.closed" />
-						<EmptyTitle>Chapter Unavailable</EmptyTitle>
-						<EmptyDescription>This chapter isn’t available yet. Open it again from the chapters list.</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
+				<Empty
+					systemImage="book.closed"
+					label="Chapter Unavailable"
+					modifiers={[navigationTitle(`Chapter ${props.number}`), navigationBarTitleDisplayMode('inline')]}
+				/>
 			)
 		}
 		return (
