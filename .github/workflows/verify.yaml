@@ -16,18 +16,6 @@ permissions:
 
 # Branch pushes check bundling as well as source and tests.
 jobs:
-  build:
-    name: Build
-    # Release already builds after verification, immediately before publishing.
-    if: github.ref != 'refs/heads/main'
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with: {tasks: 'true'}
-      - name: Build applications
-        run: vp run build
-
   check:
     name: Check
     runs-on: ubuntu-26.04
@@ -39,7 +27,7 @@ jobs:
         run: vp run check
 
   test:
-    name: Test
+    name: Test and build
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -47,3 +35,7 @@ jobs:
         with: {tasks: 'true'}
       - name: Tests
         run: vp run test
+      # Branch pushes check bundling; Release builds after verification, immediately before publishing.
+      - name: Build applications
+        if: github.ref != 'refs/heads/main'
+        run: vp run build
