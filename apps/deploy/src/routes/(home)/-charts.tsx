@@ -98,6 +98,7 @@ export function UsageChart(props: {
 		setCursor(undefined)
 		setHoverBand(undefined)
 	}
+	const allRuns = Array.map(runs(props.history, props.minutes, props.recorded), widen)
 	return (
 		<TooltipProvider delay={0}>
 			<Tooltip open={Option.isSome(hovered)}>
@@ -145,7 +146,7 @@ export function UsageChart(props: {
 							)[1],
 							layer => {
 								const fill = fillOf(layer.band, props.names(layer.band.id), props.hue)
-								return Array.map(Array.map(runs(props.history, props.minutes, props.recorded), widen), run => (
+								return Array.map(allRuns, run => (
 									<polygon
 										key={`${layer.band.id}:${run[0]?.x}`}
 										points={Array.join(

@@ -110,13 +110,7 @@ function ports(items: readonly InventoryItem[]) {
 	return pipe(
 		items,
 		Array.filter(item => appPort(item) && item.http === true && !String.startsWith('stale')(item.state)),
-		Array.sort(
-			Order.mapInput(
-				Order.String,
-				(item: InventoryItem) =>
-					`${Boolean.match(appPort(item), {onFalse: () => '1', onTrue: () => '0'})}:${item.worker}:${item.port}:${item.address}`
-			)
-		),
+		Array.sort(Order.mapInput(Order.String, (item: InventoryItem) => `${item.worker}:${item.port}:${item.address}`)),
 		Array.dedupeWith((a, b) => a.worker === b.worker && a.port === b.port)
 	)
 }

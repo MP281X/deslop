@@ -38,7 +38,7 @@ import {appHue, bands} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import {availablePorts, itemOwner, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process, RunRequest} from '#services/inventory/schema.ts'
-import {chartWindow} from '#services/metrics/lib/utils.ts'
+import {chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
@@ -648,13 +648,6 @@ function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes'
 
 function rate(value: number) {
 	return `${size.format(value)}%`
-}
-
-// The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
-function usedStorage(sample: Sample) {
-	return Option.getOrElse(Option.fromUndefinedOr(sample.storageUsed), () =>
-		Array.reduce(sample.disks, 0, (sum, disk) => sum + disk.used)
-	)
 }
 
 function ChartTitle(props: {figure: string; label: string}) {
