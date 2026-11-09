@@ -43,19 +43,6 @@ const callsAtom = Atom.keepAlive(
 	)
 )
 
-// The number of one server's latest call, or -1 before any; its dot dims each time it changes.
-export const lastCallAtom = Atom.family((id: string) =>
-	Atom.make(get => {
-		const previous = Option.getOrElse(get.self<number>(), () => -1)
-		return AsyncResult.match(get(callsAtom), {
-			onFailure: () => previous,
-			onInitial: () => previous,
-			onSuccess: latest =>
-				Boolean.match(latest.value[0] === id, {onFalse: () => previous, onTrue: () => latest.value[1]})
-		})
-	})
-)
-
 export const removeAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('gateway.remove', {id})))
 )
