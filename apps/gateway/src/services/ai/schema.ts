@@ -62,7 +62,12 @@ export const AiUsageReport = Schema.Struct({
 	byProvider: Schema.Array(AiUsageBreakdown),
 	cells: Schema.Array(AiUsageCell),
 	series: Schema.Array(
-		Schema.Struct({at: Schema.Finite, byApp: Schema.Array(AiUsageBreakdown), byModel: Schema.Array(AiUsageBreakdown)})
+		Schema.Struct({
+			at: Schema.Finite,
+			byApp: Schema.Array(AiUsageBreakdown),
+			byModel: Schema.Array(AiUsageBreakdown),
+			byProvider: Schema.Array(AiUsageBreakdown)
+		})
 	),
 	totals: AiUsageTotals
 })

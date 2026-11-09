@@ -41,7 +41,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
-import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import {AddServer, ConnectionInfo, McpUsageQuery, McpUsageReport, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
 import {Tools} from '#tools/contracts.ts'
@@ -466,6 +466,20 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 									)
 								),
 								HttpRouter.add(
+									'POST',
+									'/servers/usage',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(McpUsageQuery)
+											return yield* HttpServerResponse.schemaJson(McpUsageReport)(
+												yield* (yield* Connections).usage(input)
+											)
+										}),
+										refused
+									)
+								),
+								// The servers once every connected one has reported its tools.
+								HttpRouter.add(
 									'GET',
 									'/servers/discovered',
 									Effect.gen(function* () {
@@ -593,6 +607,12 @@ const listServers = Effect.fnUntraced(function* (web: Web) {
 	)
 })
 
+const listUsage = Effect.fnUntraced(function* (web: Web, query: McpUsageQuery) {
+	const response = yield* post(web, '/servers/usage', SESSION, query)
+	return yield* Schema.decodeEffect(Schema.fromJsonString(McpUsageReport))(yield* Effect.promise(() => response.text()))
+})
+
+// An MCP client's initialize, then the tool call with the session it got.
 const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: string, input: Record<string, unknown>) {
 	const headers = {
 		accept: 'application/json, text/event-stream',
@@ -928,6 +948,28 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isFalse(String.includes('access_token')(snapshotText))
 			assert.isFalse(String.includes('refresh_token')(snapshotText))
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
+		})
+	)
+	test.effect(
+		'counts each proxied tool call into its server’s hourly usage',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			const query = {bucket: 'hour' as const, from: 0, to: 3_600_000}
+			assert.deepStrictEqual(yield* listUsage(gateway.web, query), [{id: added.id, series: []}])
+			for (const index of Array.range(1, 2)) {
+				const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
+					arguments: {query: `call ${index}`},
+					name: `${added.id}__search`
+				})
+				assert.strictEqual(called.status, 200)
+			}
+			assert.deepStrictEqual(yield* listUsage(gateway.web, query), [{id: added.id, series: [{at: 0, calls: 2}]}])
+			// The page's day view sums the same hours into one bucket.
+			assert.deepStrictEqual(yield* listUsage(gateway.web, {bucket: 'day', from: 0, to: 86_400_000}), [
+				{id: added.id, series: [{at: 0, calls: 2}]}
+			])
 		})
 	)
 	test.effect(

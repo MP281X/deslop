@@ -49,7 +49,8 @@ const fixture = Effect.gen(function* () {
 					if (yield* Ref.get(complete)) return Stream.empty
 					return pipe(Stream.fromQueue(answers), Stream.mapEffect(Function.identity))
 				})
-			)
+			),
+		'gateway.usage': () => Effect.never
 	})
 	const context = yield* Layer.build(
 		pipe(
@@ -110,7 +111,15 @@ const fixture = Effect.gen(function* () {
 		),
 		unsubscribe => Effect.sync(unsubscribe)
 	)
-	return {answers, complete, opened, registry, serversAtom: atoms.serversAtom, updates}
+	return {
+		answers,
+		complete,
+		mcpUsageAtom: atoms.mcpUsageAtom,
+		opened,
+		registry,
+		serversAtom: atoms.serversAtom,
+		updates
+	}
 })
 
 function render(result: Atom.Type<typeof serversAtom>) {
@@ -123,6 +132,15 @@ function render(result: Atom.Type<typeof serversAtom>) {
 			)
 			yield* Effect.promise(() => router.load())
 			env.registry.ensureNode(env.serversAtom).setInitialValue(result)
+			// The rows' figures, so a loaded server renders without waiting for the usage reader.
+			env.registry
+				.ensureNode(env.mcpUsageAtom('7d'))
+				.setInitialValue(
+					AsyncResult.success({
+						range: {bucket: 'day', count: 7, from: 0, size: 86_400_000, to: 7 * 86_400_000},
+						report: []
+					})
+				)
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: env.registry}, createElement(RouterProvider, {router}))
 			)
@@ -203,14 +221,15 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps the bar outside initial suspension, its actions in the bar and no second heading',
+		'keeps the bar and its field outside initial suspension, with no sections or Add server button',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.initial())
 			assert.include(html, '>gateway</span>')
-			assert.include(html, 'aria-label="Sections"')
+			assert.notInclude(html, 'aria-label="Sections"')
 			assert.notInclude(html, '>Servers</h2>')
-			assert.include(html, 'aria-label="Add server"')
+			assert.notInclude(html, 'aria-label="Add server"')
 			assert.include(html, 'aria-label="Copy MCP URL"')
+			assert.include(html, 'Paste an MCP server URL or a provider key')
 			assert.include(html, 'aria-busy="true"')
 			assert.notInclude(html, 'aria-label="No servers yet"')
 		})
@@ -220,8 +239,8 @@ it.layer(NodeServices.layer)(test => {
 		'treats an empty server list as loaded content',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.success([]))
-			assert.include(html, 'aria-label="No servers yet"')
-			assert.notInclude(html, 'aria-busy="true"')
+			assert.include(html, 'Servers')
+			assert.notInclude(html, 'aria-label="MCP servers"')
 		})
 	)
 
@@ -261,7 +280,7 @@ it.layer(NodeServices.layer)(test => {
 			assert.include(html, 'role="alert"')
 			assert.include(html, 'Can’t load this view')
 			assert.notInclude(html, 'Cannot decode server data')
-			assert.notInclude(html, 'aria-busy="true"')
+			assert.notInclude(html, 'aria-label="MCP servers"')
 		})
 	)
 

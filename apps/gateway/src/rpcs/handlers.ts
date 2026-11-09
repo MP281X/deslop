@@ -30,7 +30,10 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'gateway.remove': Effect.fnUntraced(function* (input) {
 				return yield* connections.remove(input.id, yield* CurrentUser)
 			}),
-			'gateway.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch))
+			'gateway.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch)),
+			'gateway.usage': Effect.fnUntraced(function* (input) {
+				return yield* connections.usage(input)
+			})
 		})
 	})
 )

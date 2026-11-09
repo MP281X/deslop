@@ -47,18 +47,28 @@ import {
 	gatewayUrl,
 	mcpClient,
 	serverIcons,
-	serverName
+	serverName,
+	usageSeries
 } from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
 	ConnectionInfo,
 	Discovery,
+	McpUsageQuery,
+	McpUsageReport,
 	OAuth,
 	ServerId,
 	Connection,
 	ServerUrl
 } from '#services/connections/schema.ts'
-import {ConnectionStore, Metadata, Registration, Token, UpstreamError} from '#services/connections/schema.ts'
+import {
+	ConnectionStore,
+	McpUsageBucket,
+	Metadata,
+	Registration,
+	Token,
+	UpstreamError
+} from '#services/connections/schema.ts'
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {
@@ -81,6 +91,10 @@ function failed(message: string) {
 	})
 }
 
+function usageKey(id: ServerId) {
+	return `mcp-usage/${id}`
+}
+
 export class Connections extends Context.Service<
 	Connections,
 	{
@@ -96,6 +110,8 @@ export class Connections extends Context.Service<
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
+		// Each proxied call, summed into the period's buckets by server.
+		readonly usage: (query: McpUsageQuery) => Effect.Effect<McpUsageReport, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
 >()('@deslop/gateway/services/connections/service/Connections') {
@@ -118,6 +134,30 @@ export class Connections extends Context.Service<
 			)
 		}
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, ConnectionStore)
+		const usage = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Schema.Array(McpUsageBucket))
+		const usageLock = yield* Semaphore.make(1)
+		// The bar's longest period: an hour older than 30 days is dropped as a new call arrives.
+		const recordUsage = Effect.fnUntraced(function* (id: ServerId) {
+			const now = yield* Clock.currentTimeMillis
+			const at = Math.floor(now / 3_600_000) * 3_600_000
+			yield* Semaphore.withPermit(
+				usageLock,
+				Effect.gen(function* () {
+					const buckets = Option.getOrElse(yield* usage.get(usageKey(id)), () => [])
+					const calls = Option.getOrElse(
+						Option.map(
+							Array.findFirst(buckets, bucket => bucket.at === at),
+							bucket => bucket.calls
+						),
+						() => 0
+					)
+					yield* usage.set(usageKey(id), [
+						...Array.filter(buckets, bucket => bucket.at !== at && bucket.at >= now - 30 * 86_400_000),
+						{at, calls: calls + 1}
+					])
+				})
+			)
+		})
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
@@ -540,7 +580,11 @@ export class Connections extends Context.Service<
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, failed('Cannot connect this MCP')),
-			called: id => Effect.asVoid(PubSub.publish(traffic, id)),
+			called: id =>
+				Effect.andThen(
+					Effect.catchCause(recordUsage(id), cause => Effect.logWarning('MCP usage could not be recorded', cause)),
+					Effect.asVoid(PubSub.publish(traffic, id))
+				),
 			calls: user => Stream.unwrap(Effect.as(admin(user), Stream.fromPubSub(traffic))),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
@@ -609,7 +653,12 @@ export class Connections extends Context.Service<
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
 			get,
 			list,
-			remove: (id, user) => manage(id, user, () => Option.none()),
+			remove: (id, user) =>
+				Effect.andThen(
+					manage(id, user, () => Option.none()),
+					Effect.ignore(usage.remove(usageKey(id)), {log: 'Warn', message: 'Cannot delete the MCP usage'})
+				),
+			// A discovery's outcome: its tools and instructions clear an earlier failure, a failure keeps the last ones.
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
 				yield* pipe(
 					update(id, generation, found =>
@@ -626,6 +675,20 @@ export class Connections extends Context.Service<
 				)
 			}),
 			token,
+			usage: Effect.fnUntraced(function* (query) {
+				return yield* Effect.forEach(
+					Array.map(Record.values(yield* SubscriptionRef.get(state)), row => row.id),
+					id =>
+						Effect.map(usage.get(usageKey(id)), buckets => ({
+							id,
+							series: usageSeries(
+								Option.getOrElse(buckets, () => []),
+								query
+							)
+						})),
+					{concurrency: 1}
+				)
+			}, failed('MCP usage storage failed')),
 			// The list is read again on each change and once a minute, so an expired provider shows as expired.
 			watch: user =>
 				Stream.mapEffect(

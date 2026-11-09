@@ -103,6 +103,20 @@ export const ConnectionInfo = Schema.Struct({
 	url: ServerUrl
 })
 
+// Each proxied call counted into its server's hour; the page sums them into the bar's period.
+export type McpUsageBucket = typeof McpUsageBucket.Type
+export const McpUsageBucket = Schema.Struct({at: Schema.Finite, calls: Schema.Finite})
+export type McpUsageQuery = typeof McpUsageQuery.Type
+export const McpUsageQuery = Schema.Struct({
+	bucket: Schema.Literals(['hour', 'day']),
+	from: Schema.Finite,
+	to: Schema.Finite
+})
+export type McpUsageServer = typeof McpUsageServer.Type
+export const McpUsageServer = Schema.Struct({id: ServerId, series: Schema.Array(McpUsageBucket)})
+export type McpUsageReport = typeof McpUsageReport.Type
+export const McpUsageReport = Schema.Array(McpUsageServer)
+
 // What a discovery found: its tools and instructions clear an earlier failure; a failure keeps the last ones.
 export type Discovery = typeof Discovery.Type
 export const Discovery = Schema.TaggedUnion({

@@ -1,33 +1,27 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Match, Number, Option, Order, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, Number, Option, Order, Schema, String, type Record} from 'effect'
 
-import {CheckIcon, CopyIcon, HardDrivesIcon, PlusIcon, WrenchIcon} from '@phosphor-icons/react'
-import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
+import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, TrashIcon, WrenchIcon} from '@phosphor-icons/react'
+import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import {EmptyState} from '@deslop/components-web/fallbacks'
-import {ItemListSkeleton} from '@deslop/components-web/item-list'
+import {AppBar} from '@deslop/components-web/app-bar'
+import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger
-} from '@deslop/components-web/ui/context-menu'
-import {Dialog, DialogClose, DialogContent, DialogFooter, DialogTitle} from '@deslop/components-web/ui/dialog'
-import {Field, FieldError, FieldLabel} from '@deslop/components-web/ui/field'
-import {Input} from '@deslop/components-web/ui/input'
+import {Field, FieldError} from '@deslop/components-web/ui/field'
+import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {UndoButton} from '@deslop/components-web/undo'
+import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -39,49 +33,120 @@ import {
 	copiedAtom,
 	copyAtom,
 	ENDPOINT,
+	mcpUsageAtom,
 	Period,
+	removeKeyAtom,
 	removeServerAtom,
 	serversAtom,
 	setKeyAtom
 } from '#lib/utils.ts'
-import {AddKeyDialog, AiControls, AiPane, PROVIDERS} from '#routes/(home)/-ai.tsx'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
+import {AddKeyDialog, PROVIDER_NAMES, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
+import {providerCost, providerSeries, serverCalls, serverSeries, type Range} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
-import type {AiProvider} from '#services/ai/schema.ts'
-import type {ConnectionInfo} from '#services/connections/schema.ts'
+import type {AiKeyInfo, AiProvider, AiUsageReport} from '#services/ai/schema.ts'
+import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.ts'
+
+const PERIODS = [
+	{label: '24h', value: '24h'},
+	{label: '7d', value: '7d'},
+	{label: '30d', value: '30d'}
+] satisfies {label: string; value: Period}[]
+// Each app's identity hue; a server without one of these marks stays zinc grey.
+const IDENTITY_HUES: Record<string, string> = {
+	auth: 'var(--slate)',
+	deploy: 'var(--blue)',
+	gateway: 'var(--pink)',
+	opm: 'var(--ivory)',
+	portfolio: 'var(--coral)',
+	scope: 'var(--cyan)',
+	stash: 'var(--amber)',
+	trips: 'var(--orange)'
+}
 
 type Search = typeof Search.Type
-const Search = Schema.Struct({
-	app: Schema.optionalKey(Schema.String),
-	bucket: Schema.optionalKey(Schema.Finite),
-	metric: Schema.optionalKey(Schema.Literal('tokens')),
-	model: Schema.optionalKey(Schema.String),
-	period: Schema.optionalKey(Period),
-	view: Schema.optionalKey(Schema.Literal('ai'))
-})
+// The period is the page's only view state; the default is the last week.
+const Search = Schema.Struct({period: Schema.optionalKey(Period)})
 const route = getRouteApi('/(home)/')
 
-const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
-	pipe(
-		Match.value(server.status),
-		Match.when('Expired', () => 0),
-		Match.when(
-			() => server.error !== undefined,
-			() => 0
-		),
-		Match.when('Not connected', () => 1),
-		Match.orElse(() => 2)
-	)
-)
+// Every app's canonical mark by its folder; Gateway's own mark joins by name.
+const APP_ICONS: Record<string, string> = {
+	...WebRuntime.appIcons(
+		import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
+	),
+	gateway: icon
+}
+const count = new Intl.NumberFormat('en')
+const appKey = String.toLowerCase
 
-// A server's own words for why it needs the user, or its host when it is fine.
-function reasonText(server: ConnectionInfo) {
-	if (server.error !== undefined) return 'Connection failed'
-	return pipe(
-		Match.value(server.status),
-		Match.when('Expired', () => 'Sign-in expired'),
-		Match.when('Not connected', () => 'Not connected'),
-		Match.orElse(() => new URL(server.url).hostname)
+function serverHue(server: ConnectionInfo) {
+	const key = appKey(server.id)
+	if (APP_ICONS[key] === undefined) return 'var(--muted-foreground)'
+	return IDENTITY_HUES[key] ?? 'var(--muted-foreground)'
+}
+// What needs the user first: an expired sign-in or a failure, then a server never connected, then the live ones.
+function urgency(server: ConnectionInfo) {
+	if (server.error !== undefined || server.status === 'Expired') return 0
+	if (server.status === 'Not connected') return 1
+	return 2
+}
+const byUrgency = Order.mapInput(Order.Number, urgency)
+
+// A 64×14 line of the period's figures in the row's own hue; zeros rest on the baseline.
+function Sparkline(props: {color: string; values: readonly number[]}) {
+	const high = Array.reduce(props.values, 0, (maximum, value) => Number.max(maximum, value))
+	const points = Array.map(props.values, (value, index) => {
+		const x = (index / Number.max(1, props.values.length - 1)) * 64
+		const y = Boolean.match(high === 0, {onFalse: () => 13 - (value / high) * 12, onTrue: () => 13})
+		return `${x.toFixed(1)} ${y.toFixed(1)}`
+	})
+	return (
+		<svg aria-hidden className="h-3.5 w-16 shrink-0" fill="none" viewBox="0 0 64 14">
+			<path
+				d={`M${Array.join(points, ' L')}`}
+				stroke={props.color}
+				strokeWidth="1.5"
+				vectorEffect="non-scaling-stroke"
+			/>
+		</svg>
+	)
+}
+
+// A loading row's block, without the app's shared skeleton's pulse: Gateway animates nothing.
+function Bone(props: {className: string}) {
+	return <div aria-hidden className={cn('bg-muted', props.className)} />
+}
+
+// The rows a group will hold, at their own row and column geometry; only a server row has a tool count.
+function RowsSkeleton(props: {label: string; rows: number; tool?: boolean}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, props.rows), row => (
+				<Item key={row} aria-hidden size="row">
+					<ItemMedia>
+						<Bone className="size-5" />
+					</ItemMedia>
+					<ItemContent>
+						<Bone className="h-3 w-24" />
+						<Bone className="h-3 w-16" />
+					</ItemContent>
+					<ItemActions>
+						{props.tool === true && <Bone className="h-3.5 w-7" />}
+						<Bone className="h-3.5 w-16" />
+						<Bone className="h-3 w-12" />
+						<Bone className="size-7 max-sm:size-11" />
+					</ItemActions>
+				</Item>
+			))}
+		</div>
+	)
+}
+
+function RemoveButton(props: {label: string; onClick: () => void}) {
+	return (
+		<Button variant="ghost" size="icon-sm" className="max-sm:size-11" aria-label={props.label} onClick={props.onClick}>
+			<TrashIcon />
+		</Button>
 	)
 }
 
@@ -117,268 +182,363 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
-// One row per server: its icon, name and host on one line, then its tool count or the button that reconnects it; its context menu removes it.
+// One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period and the trash.
 function ServerRow(props: {
 	failure: Option.Option<string>
+	period: Range
 	onRemove: () => void
-	onSelect: () => void
 	removed: boolean
-	selected: boolean
+	report: readonly McpUsageServer[]
 	server: ConnectionInfo
 	undo: () => void
 }) {
+	const [connecting, setConnecting] = useState(false)
 	const connected = props.server.status === 'Connected'
 	const needsUser = !connected || props.server.error !== undefined
 	const failed = props.server.status === 'Expired' || props.server.error !== undefined
+	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
 	function connect() {
+		setConnecting(true)
 		location.assign(connectUrl(props.server.id))
 	}
 	return (
-		<div role="listitem" className="relative">
-			<ContextMenu>
-				<ContextMenuTrigger
-					render={
-						<Item
-							size="row"
-							id={`server-${props.server.id}`}
-							tabIndex={0}
-							data-removed={props.removed}
-							data-selected={props.selected}
-							aria-label={`${props.server.name}, ${reasonText(props.server)}`}
-							onFocus={props.onSelect}
-							render={Boolean.match(needsUser, {
-								onFalse: () => <div />,
-								onTrue: () => <button type="button" aria-label={`${props.server.name}, ${reasonText(props.server)}`} />
+		<div role="listitem">
+			<Item size="row" data-removed={props.removed}>
+				<ItemMedia>
+					<ServerIcon server={props.server} />
+				</ItemMedia>
+				<ItemContent>
+					<ItemTitle>{props.server.name}</ItemTitle>
+					<ItemDescription>{Option.getOrElse(props.failure, () => new URL(props.server.url).hostname)}</ItemDescription>
+				</ItemContent>
+				{Boolean.match(props.removed, {
+					onFalse: () => (
+						<ItemActions>
+							{failed && <StatusDot status="error" />}
+							{Boolean.match(needsUser, {
+								onFalse: () =>
+									Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+										<span
+											className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
+											title="Tools"
+										>
+											{props.server.tools.length}
+											<WrenchIcon className="size-3.5" />
+										</span>
+									),
+								onTrue: () => (
+									<Button
+										size="xs"
+										className="max-sm:h-11"
+										disabled={connecting}
+										aria-label={`${action} ${props.server.name}`}
+										onClick={connect}
+									>
+										{action}
+									</Button>
+								)
 							})}
-							{...Boolean.match(needsUser, {onFalse: () => ({}), onTrue: () => ({onClick: connect})})}
-						/>
-					}
-				>
-					<ItemMedia>
-						<ServerIcon server={props.server} />
-					</ItemMedia>
-					<ItemContent>
-						<ItemTitle>{props.server.name}</ItemTitle>
-						<ItemDescription>
-							{Option.getOrElse(props.failure, () => new URL(props.server.url).hostname)}
-						</ItemDescription>
-					</ItemContent>
-					<ItemActions>
-						{Boolean.match(props.removed, {
-							onFalse: () => (
-								<>
-									{failed && <StatusDot status="error" />}
-									{Boolean.match(needsUser, {
-										onFalse: () =>
-											Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-												<span
-													className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
-													title="Tools"
-												>
-													{props.server.tools.length}
-													<WrenchIcon className="size-3.5" />
-												</span>
-											),
-										onTrue: () => <span className="w-20" />
-									})}
-								</>
-							),
-							onTrue: () => <UndoButton onClick={props.undo} />
-						})}
-					</ItemActions>
-				</ContextMenuTrigger>
-				<ContextMenuContent className="w-auto min-w-36">
-					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={props.onRemove}>
-						Remove
-					</ContextMenuItem>
-				</ContextMenuContent>
-			</ContextMenu>
-			{needsUser && !props.removed && (
-				<Button size="xs" className="absolute top-1/2 right-4 -translate-y-1/2" onClick={connect}>
-					{Boolean.match(connected, {onFalse: () => 'Connect', onTrue: () => 'Reconnect'})}
-				</Button>
-			)}
+							<Sparkline
+								color={serverHue(props.server)}
+								values={serverSeries(props.report, props.server.id, props.period)}
+							/>
+							<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+								{count.format(serverCalls(props.report, props.server.id))}
+							</span>
+							<RemoveButton label={`Remove ${props.server.name}`} onClick={props.onRemove} />
+						</ItemActions>
+					),
+					onTrue: () => (
+						<ItemActions>
+							<UndoButton onClick={props.undo} />
+						</ItemActions>
+					)
+				})}
+			</Item>
 		</div>
 	)
 }
 
-function ServersContent(props: {
-	onAdd: () => void
-	onSelect: (server: ConnectionInfo) => void
-	selected: Option.Option<string>
+function ServerUsage(props: {
+	failed: Option.Option<{id: string; message: string}>
+	period: Period
+	servers: readonly ConnectionInfo[]
+	waiting: Option.Option<{id: string}>
 }) {
-	const result = useAtomSuspense(serversAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(serversAtom)
+	const result = useAtomSuspense(mcpUsageAtom(props.period), {includeFailure: true})
+	const refresh = useAtomRefresh(mcpUsageAtom(props.period))
 	const send = useAtomSet(removeServerAtom.send)
-	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Waiting')), Option.none)
-	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Failed')), Option.none)
-	const value = AsyncResult.value(result)
-	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
+	if (
+		AsyncResult.isFailure(result) &&
+		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
+	) {
 		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
-		Option.map(value, current =>
-			Array.match(Array.sort(current, urgency), {
-				onEmpty: () => (
-					<EmptyState
-						label="No servers yet"
-						icon={<HardDrivesIcon className="size-5" weight="light" />}
-						action={
-							<Button onClick={props.onAdd}>
-								<PlusIcon />
-								Add server
-							</Button>
-						}
-					/>
-				),
-				onNonEmpty: servers => (
-					<Card size="list">
-						<div role="list" aria-label="MCP servers">
-							{Array.map(servers, server => (
-								<ServerRow
-									key={server.id}
-									server={server}
-									failure={Option.map(
-										Option.filter(failed, state => state.id === server.id),
-										state => state.message
-									)}
-									removed={Option.exists(waiting, state => state.id === server.id)}
-									selected={Option.contains(props.selected, server.id)}
-									onSelect={() => props.onSelect(server)}
-									undo={() => send({_tag: 'Undone'})}
-									onRemove={() => {
-										send({_tag: 'Dismissed'})
-										send({_tag: 'Removed', id: server.id})
-									}}
-								/>
-							))}
-						</div>
-					</Card>
-				)
-			})
+		Option.map(AsyncResult.value(result), current =>
+			Array.map(props.servers, server => (
+				<ServerRow
+					key={server.id}
+					server={server}
+					period={current.range}
+					report={current.report}
+					failure={Option.map(
+						Option.filter(props.failed, state => state.id === server.id),
+						state => state.message
+					)}
+					removed={Option.exists(props.waiting, state => state.id === server.id)}
+					undo={() => send({_tag: 'Undone'})}
+					onRemove={() => {
+						send({_tag: 'Dismissed'})
+						send({_tag: 'Removed', id: server.id})
+					}}
+				/>
+			))
 		)
 	)
 }
 
-function ServersPane(props: {
-	onAdd: () => void
-	onSelect: (server: ConnectionInfo) => void
-	selected: Option.Option<string>
-}) {
+// The servers reader first, so a refusal or a failed read shows without waiting for usage.
+function ServerRows(props: {period: Period}) {
+	const result = useAtomSuspense(serversAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(serversAtom)
+	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Waiting')), Option.none)
+	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Failed')), Option.none)
+	if (
+		AsyncResult.isFailure(result) &&
+		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
+	) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	const servers = Option.getOrElse(AsyncResult.value(result), () => [])
+	if (Array.isReadonlyArrayEmpty(servers)) return null
+	const ordered = Array.sort(servers, byUrgency)
 	return (
-		<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-			<Suspense
-				fallback={
-					<Card>
-						<ItemListSkeleton label="MCP servers" media rows={5} />
-					</Card>
-				}
-			>
-				<ServersContent onAdd={props.onAdd} onSelect={props.onSelect} selected={props.selected} />
-			</Suspense>
-		</CatchBoundary>
+		<Suspense fallback={<RowsSkeleton label="MCP servers" rows={ordered.length} tool />}>
+			<ServerUsage failed={failed} period={props.period} servers={ordered} waiting={waiting} />
+		</Suspense>
 	)
 }
 
-function AddForm(props: {url: string; error: string; adding: boolean}) {
+// One key: its provider's mark and name, the secret's last four, its cost over the period and the trash.
+function KeyRow(props: {
+	cost: string
+	failure: Option.Option<string>
+	info: AiKeyInfo
+	onRemove: () => void
+	period: Range
+	provider: AiProvider
+	removed: boolean
+	report: AiUsageReport
+	undo: () => void
+}) {
+	const rejected = props.info.lastStatus === 401 || props.info.lastStatus === 403
+	return (
+		<div role="listitem">
+			<Item size="row" data-removed={props.removed}>
+				<ItemMedia>
+					<span className="flex size-5 items-center justify-center">
+						<ProviderMark provider={props.provider} />
+					</span>
+				</ItemMedia>
+				<ItemContent>
+					<ItemTitle>{PROVIDER_NAMES[props.provider]}</ItemTitle>
+					<ItemDescription>{Option.getOrElse(props.failure, () => `…${props.info.last4}`)}</ItemDescription>
+				</ItemContent>
+				{Boolean.match(props.removed, {
+					onFalse: () => (
+						<ItemActions>
+							{rejected && <StatusDot status="error" />}
+							<Sparkline color="var(--primary)" values={providerSeries(props.report, props.provider, props.period)} />
+							<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
+							<RemoveButton label={`Remove ${PROVIDER_NAMES[props.provider]}`} onClick={props.onRemove} />
+						</ItemActions>
+					),
+					onTrue: () => (
+						<ItemActions>
+							<UndoButton onClick={props.undo} />
+						</ItemActions>
+					)
+				})}
+			</Item>
+		</div>
+	)
+}
+
+function KeyUsage(props: {
+	failed: Option.Option<{id: string; message: string}>
+	keys: readonly AiKeyInfo[]
+	period: Period
+	waiting: Option.Option<{id: string}>
+}) {
+	const result = useAtomSuspense(aiUsageAtom(props.period), {includeFailure: true})
+	const refresh = useAtomRefresh(aiUsageAtom(props.period))
+	const send = useAtomSet(removeKeyAtom.send)
+	if (
+		AsyncResult.isFailure(result) &&
+		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
+	) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	return Option.getOrUndefined(
+		Option.map(AsyncResult.value(result), current =>
+			Array.flatMap(PROVIDERS, provider =>
+				Option.match(
+					Array.findFirst(props.keys, key => key.provider === provider),
+					{
+						onNone: () => [],
+						onSome: info => [
+							<KeyRow
+								key={provider}
+								provider={provider}
+								info={info}
+								report={current.report}
+								period={current.range}
+								cost={providerCost(current.report, provider)}
+								failure={Option.map(
+									Option.filter(props.failed, state => state.id === provider),
+									state => state.message
+								)}
+								removed={Option.exists(props.waiting, state => state.id === provider)}
+								undo={() => send({_tag: 'Undone'})}
+								onRemove={() => {
+									send({_tag: 'Dismissed'})
+									send({_tag: 'Removed', id: provider})
+								}}
+							/>
+						]
+					}
+				)
+			)
+		)
+	)
+}
+
+// Only providers with a key have a row; the field adds and replaces them.
+function KeyRows(props: {period: Period}) {
+	const result = useAtomSuspense(aiKeysAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(aiKeysAtom)
+	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeKeyAtom, 'Waiting')), Option.none)
+	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeKeyAtom, 'Failed')), Option.none)
+	if (
+		AsyncResult.isFailure(result) &&
+		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
+	) {
+		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+	}
+	const keys = Array.filter(
+		Option.getOrElse(AsyncResult.value(result), () => []),
+		key => Array.contains(PROVIDERS, key.provider)
+	)
+	if (Array.isReadonlyArrayEmpty(keys)) return null
+	return (
+		<Suspense fallback={<RowsSkeleton label="AI keys" rows={keys.length} />}>
+			<KeyUsage failed={failed} keys={keys} period={props.period} waiting={waiting} />
+		</Suspense>
+	)
+}
+
+// Each group is read on its own, so one failing reader leaves the other group's rows.
+function List(props: {period: Period}) {
+	return (
+		<Card size="list">
+			<div role="list" aria-label="MCP servers and AI keys">
+				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
+					<Suspense fallback={<RowsSkeleton label="MCP servers" rows={3} tool />}>
+						<ServerRows period={props.period} />
+					</Suspense>
+				</CatchBoundary>
+				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
+				<CatchBoundary getResetKey={() => 'keys'} errorComponent={FailureContent}>
+					<Suspense fallback={<RowsSkeleton label="AI keys" rows={4} />}>
+						<KeyRows period={props.period} />
+					</Suspense>
+				</CatchBoundary>
+			</div>
+		</Card>
+	)
+}
+
+// The field adds a server URL through the existing flow, or opens the key flow with a pasted key.
+function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}) {
 	const send = useAtomSet(addAtom.send)
+	const editing = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Editing')), Option.none)
+	const adding = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Adding')), Option.none)
+	const typed = Option.getOrElse(
+		Option.map(editing, state => state.url),
+		() =>
+			Option.getOrElse(
+				Option.map(adding, state => state.url),
+				() => ''
+			)
+	)
+	const error = Option.getOrElse(
+		Option.map(editing, state => state.error),
+		() => ''
+	)
+	const busy = Option.isSome(adding)
+	function submit() {
+		const value = String.trim(typed)
+		if (value === '' || busy) return
+		if (String.startsWith('sk-')(value)) {
+			props.onKey(providerOfKey(value), value)
+			send({_tag: 'Typed', url: ''})
+			return
+		}
+		send({_tag: 'Submit'})
+	}
 	return (
 		<form
-			className="flex flex-col gap-4"
+			className="px-4"
 			onSubmit={event => {
 				event.preventDefault()
-				send({_tag: 'Submit'})
+				submit()
 			}}
 		>
-			<DialogTitle>Add a server</DialogTitle>
-			<Field data-invalid={props.error !== ''}>
-				<FieldLabel htmlFor="mcp-url">MCP URL</FieldLabel>
-				<Input
-					id="mcp-url"
-					type="url"
-					autoComplete="url"
-					placeholder="https://example.com/mcp"
-					required
-					autoFocus
-					value={props.url}
-					disabled={props.adding}
-					onChange={event => send({_tag: 'Typed', url: event.target.value})}
-					aria-invalid={props.error !== ''}
-					aria-describedby="mcp-add-error"
-				/>
-				<FieldError id="mcp-add-error">{props.error}</FieldError>
+			<Field data-invalid={error !== ''}>
+				<InputGroup className="h-9 max-sm:h-11">
+					<InputGroupAddon className="max-sm:hidden">
+						<LinkIcon />
+					</InputGroupAddon>
+					<InputGroupInput
+						className="max-sm:h-11"
+						aria-label="MCP server URL or provider key"
+						aria-invalid={error !== ''}
+						aria-describedby="gateway-add-error"
+						placeholder="Paste an MCP server URL or a provider key"
+						autoComplete="off"
+						spellCheck={false}
+						value={typed}
+						disabled={busy}
+						onChange={event => send({_tag: 'Typed', url: event.target.value})}
+					/>
+				</InputGroup>
+				{error !== '' && <FieldError id="gateway-add-error">{error}</FieldError>}
 			</Field>
-			{/* Outside the Field, whose invalid state would tint every control in it red. */}
-			<DialogFooter>
-				<DialogClose render={<Button variant="ghost" type="button" disabled={props.adding} />}>Cancel</DialogClose>
-				<Button type="submit" disabled={props.adding}>
-					{Boolean.match(props.adding, {onFalse: () => 'Add server', onTrue: () => 'Adding…'})}
-				</Button>
-			</DialogFooter>
 		</form>
 	)
 }
 
-function AddDialog() {
-	const send = useAtomSet(addAtom.send)
-	const editing = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Editing')), Option.none)
-	const adding = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Adding')), Option.none)
-	const form = Option.orElse(
-		Option.map(editing, state => ({adding: false, error: state.error, url: state.url})),
-		() => Option.map(adding, state => ({adding: true, error: '', url: state.url}))
-	)
+function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period}) {
 	return (
-		<Dialog
-			open={Option.isSome(form)}
-			onOpenChange={open => {
-				if (!open && Option.isSome(editing)) send({_tag: 'Cancel'})
-			}}
+		<Tabs
+			value={props.period}
+			onValueChange={value =>
+				Option.map(
+					Array.findFirst(PERIODS, entry => entry.value === value),
+					entry => props.onPeriod(entry.value)
+				)
+			}
 		>
-			<DialogContent showCloseButton={Option.isNone(adding)}>
-				{Option.match(form, {onNone: () => null, onSome: values => <AddForm {...values} />})}
-			</DialogContent>
-		</Dialog>
-	)
-}
-
-function ServersProblem() {
-	const since = useAtomValue(problemSinceAtom(serversAtom))
-	const refresh = useAtomRefresh(serversAtom)
-	return Option.match(since, {
-		onNone: () => null,
-		onSome: value => <Problem label="Out of date" warning reset={refresh} since={value} />
-	})
-}
-
-function AiProblem(props: {period: Period}) {
-	const serversSince = useAtomValue(problemSinceAtom(serversAtom))
-	const usageSince = useAtomValue(problemSinceAtom(aiUsageAtom(props.period)))
-	const keysSince = useAtomValue(problemSinceAtom(aiKeysAtom))
-	const refreshServers = useAtomRefresh(serversAtom)
-	const refreshUsage = useAtomRefresh(aiUsageAtom(props.period))
-	const refreshKeys = useAtomRefresh(aiKeysAtom)
-	return Option.match(
-		Array.reduce(
-			Array.flatMap([serversSince, usageSince, keysSince], Option.toArray),
-			Option.none<number>(),
-			(oldest, value) =>
-				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
-		),
-		{
-			onNone: () => null,
-			onSome: value => (
-				<Problem
-					label="Out of date"
-					warning
-					since={value}
-					reset={() => {
-						refreshServers()
-						refreshUsage()
-						refreshKeys()
-					}}
-				/>
-			)
-		}
+			<TabsList aria-label="Period">
+				{Array.map(PERIODS, entry => (
+					<TabsTrigger key={entry.value} value={entry.value}>
+						{entry.label}
+					</TabsTrigger>
+				))}
+			</TabsList>
+		</Tabs>
 	)
 }
 
@@ -399,110 +559,85 @@ function CopyEndpoint() {
 	)
 }
 
+// Staleness shows once, as the oldest stale reader; one retry refreshes them all.
+function GatewayProblem(props: {period: Period}) {
+	const serversSince = useAtomValue(problemSinceAtom(serversAtom))
+	const usageSince = useAtomValue(problemSinceAtom(mcpUsageAtom(props.period)))
+	const keysSince = useAtomValue(problemSinceAtom(aiKeysAtom))
+	const aiSince = useAtomValue(problemSinceAtom(aiUsageAtom(props.period)))
+	const refreshServers = useAtomRefresh(serversAtom)
+	const refreshUsage = useAtomRefresh(mcpUsageAtom(props.period))
+	const refreshKeys = useAtomRefresh(aiKeysAtom)
+	const refreshAi = useAtomRefresh(aiUsageAtom(props.period))
+	return Option.match(
+		Array.reduce(
+			Array.flatMap([serversSince, usageSince, keysSince, aiSince], Option.toArray),
+			Option.none<number>(),
+			(oldest, value) =>
+				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
+		),
+		{
+			onNone: () => null,
+			onSome: value => (
+				<Problem
+					label="Out of date"
+					warning
+					since={value}
+					reset={() => {
+						refreshServers()
+						refreshUsage()
+						refreshKeys()
+						refreshAi()
+					}}
+				/>
+			)
+		}
+	)
+}
+
 function Home() {
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
-	function show(next: Partial<Search>) {
-		navigate({search: previous => ({...previous, ...next})})
-	}
-	const view = search.view ?? 'servers'
 	const period = search.period ?? '7d'
-	const metric = search.metric ?? 'cost'
-	// The opening count starts each dialog with an empty secret.
-	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; provider: AiProvider}>({
+	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
+	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; provider: AiProvider; secret: string}>({
 		open: false,
 		opened: 0,
-		provider: PROVIDERS[0]
+		provider: PROVIDERS[0],
+		secret: ''
 	})
-	const [selected, setSelected] = useState<Option.Option<string>>(() => Option.none())
 	const resetKey = useAtomSet(setKeyAtom)
-	function addKey(provider: Option.Option<AiProvider>) {
+	function addKey(provider: AiProvider, secret: string) {
 		resetKey(Atom.Reset)
-		setKeyDialog(previous => ({
-			open: true,
-			opened: previous.opened + 1,
-			provider: Option.getOrElse(provider, () => PROVIDERS[0])
-		}))
+		setKeyDialog(previous => ({open: true, opened: previous.opened + 1, provider, secret}))
 	}
-	const send = useAtomSet(addAtom.send)
-	// Switching view clears the narrowing; the period and measure carry over.
-	const clear = {app: undefined, bucket: undefined, model: undefined, view: undefined}
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
 				icon={icon}
 				name="gateway"
-				tabs={
-					<AppBarTabs value={view}>
-						<AppBarTab value="servers" render={<Link to="/" search={{...search, ...clear}} />}>
-							Servers
-						</AppBarTab>
-						<AppBarTab value="ai" render={<Link to="/" search={{...search, ...clear, view: 'ai'}} />}>
-							AI
-						</AppBarTab>
-					</AppBarTabs>
-				}
 				controls={
 					<>
-						{Boolean.match(view === 'ai', {
-							onFalse: () => <ServersProblem />,
-							onTrue: () => <AiProblem period={period} />
-						})}
-						{view === 'servers' && (
-							<>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									className="max-sm:size-11"
-									aria-label="Add server"
-									onClick={() => send({_tag: 'Open'})}
-								>
-									<PlusIcon />
-								</Button>
-								<CopyEndpoint />
-							</>
-						)}
-						{view === 'ai' && (
-							<AiControls
-								period={period}
-								onPeriod={next => show({app: undefined, bucket: undefined, model: undefined, period: next})}
-							/>
-						)}
+						<GatewayProblem period={period} />
+						<PeriodTabs
+							period={period}
+							onPeriod={next => navigate({search: previous => ({...previous, period: next})})}
+						/>
+						<CopyEndpoint />
 					</>
 				}
 			/>
 			<Page width="column">
 				<h1 className="sr-only">Gateway</h1>
-				{Boolean.match(view === 'ai', {
-					onFalse: () => (
-						<ServersPane
-							onAdd={() => send({_tag: 'Open'})}
-							onSelect={server => setSelected(Option.some(server.id))}
-							selected={selected}
-						/>
-					),
-					onTrue: () => (
-						<AiPane
-							focus={{app: search.app, bucket: search.bucket, model: search.model}}
-							metric={metric}
-							onAdd={addKey}
-							onFocus={focus => show({app: focus.app, bucket: focus.bucket, model: focus.model})}
-							onMetric={next =>
-								show({
-									metric: Boolean.match(next === 'tokens', {onFalse: () => undefined, onTrue: () => 'tokens' as const})
-								})
-							}
-							period={period}
-						/>
-					)
-				})}
+				<AddField onKey={addKey} />
+				<List period={period} />
 			</Page>
-			<AddDialog />
 			<AddKeyDialog
 				key={keyDialog.opened}
 				open={keyDialog.open}
 				provider={keyDialog.provider}
+				secret={keyDialog.secret}
 				onProvider={provider => setKeyDialog(previous => ({...previous, provider}))}
 				onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
 			/>

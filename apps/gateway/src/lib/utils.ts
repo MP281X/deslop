@@ -2,7 +2,7 @@ import {Boolean, Clock, Context, Effect, Redacted, Schema, Stream, pipe} from 'e
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
+import {Atom, AtomRegistry, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {removalMachine} from '@deslop/components-web/undo'
@@ -11,7 +11,7 @@ import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {AiProvider} from '#services/ai/schema.ts'
+import {AiProvider} from '#services/ai/schema.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 
 export const ENDPOINT = `${window.location.origin}/mcp`
@@ -44,6 +44,7 @@ export const removeServerAtom = AtomMachine.bind(RpcClient.runtime).make(
 	)
 )
 
+// The field under the bar: its text and why the last add failed, until the next edit; a success clears it.
 export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	Machine.make({
 		effects: {
@@ -61,21 +62,18 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
 			})
 		},
-		events: Machine.events({Cancel: {}, Open: {}, Submit: {}, Typed: {url: Schema.String}}),
+		events: Machine.events({Submit: {}, Typed: {url: Schema.String}}),
 		root: Machine.state({
-			states: {
-				Adding: {fields: {url: Schema.String}},
-				Closed: {},
-				Editing: {fields: {error: Schema.String, url: Schema.String}}
-			}
+			states: {Adding: {fields: {url: Schema.String}}, Editing: {fields: {error: Schema.String, url: Schema.String}}}
 		})
 	}).handle({
-		initial: {target: 'Closed'},
+		initial: {data: {error: '', url: ''}, target: 'Editing'},
+		on: {Typed: {data: transition => ({error: '', url: transition.event.url}), target: 'Editing'}},
 		states: {
 			Adding: {
 				invoke: {
 					input: transition => transition.state.url,
-					onDone: {target: 'Closed'},
+					onDone: {data: {error: '', url: ''}, target: 'Editing'},
 					onFailure: {
 						data: transition => ({error: transition.error.message, url: transition.state.url}),
 						target: 'Editing'
@@ -83,14 +81,7 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 					src: 'add'
 				}
 			},
-			Closed: {on: {Open: {data: {error: '', url: ''}, target: 'Editing'}}},
-			Editing: {
-				on: {
-					Cancel: {target: 'Closed'},
-					Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'},
-					Typed: {data: transition => ({error: '', url: transition.event.url}), update: 'Editing'}
-				}
-			}
+			Editing: {on: {Submit: {data: transition => ({url: transition.state.url}), target: 'Adding'}}}
 		}
 	})
 )
@@ -125,6 +116,23 @@ export const aiUsageAtom = Atom.family((period: Period) =>
 	)
 )
 
+// One reader per period, its range taken when it runs, so a refresh moves the window to now.
+export const mcpUsageAtom = Atom.family((period: Period) =>
+	pipe(
+		RpcClient.runtime.atom(
+			Effect.gen(function* () {
+				const range = periodRange(period, yield* Clock.currentTimeMillis)
+
+				return {
+					range,
+					report: yield* (yield* RpcClient)('gateway.usage', {bucket: range.bucket, from: range.from, to: range.to})
+				}
+			})
+		),
+		Atom.withReactivity(['mcp-usage'])
+	)
+)
+
 export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; secret: string}) =>
 	Reactivity.mutation(
 		Effect.flatMap(RpcClient, client =>
@@ -134,10 +142,16 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 	)
 )
 
-export const removeKeyAtom = RpcClient.runtime.fn((provider: AiProvider) =>
-	Reactivity.mutation(
-		Effect.flatMap(RpcClient, client => client('ai.removeKey', {provider})),
-		['ai-keys']
+// A key removal waits eight seconds with Undo; once it commits the keys reader is refreshed.
+export const removeKeyAtom = AtomMachine.bind(RpcClient.runtime).make(
+	removalMachine(id =>
+		Effect.gen(function* () {
+			yield* Context.get(yield* Atom.getResult(RpcClient.runtime), RpcClient)('ai.removeKey', {
+				provider: yield* Schema.decodeUnknownEffect(AiProvider)(id)
+			})
+			const registry = yield* AtomRegistry.AtomRegistry
+			yield* Effect.sync(() => registry.refresh(aiKeysAtom))
+		})
 	)
 )
 
