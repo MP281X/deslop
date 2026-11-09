@@ -404,7 +404,7 @@ function AppRowsSkeleton(props: {label: string; rows: number}) {
 	)
 }
 
-// The processes' loading rows: the real mark and name and detail bars, and its memory figure right-aligned in the same column.
+// The processes' loading rows: the real mark and name and detail bars, and its two meters right-aligned at the row's end.
 function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 	return (
 		<div aria-busy="true" aria-label={props.label} role="status">
@@ -420,8 +420,9 @@ function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 						</div>
 					</ItemContent>
 					<ItemActions>
-						<div className="flex w-12 justify-end">
-							<Skeleton className="h-3 w-8" />
+						<div className="flex items-center gap-1.5">
+							<Skeleton className="h-1.5 w-12" />
+							<Skeleton className="h-1.5 w-12" />
 						</div>
 					</ItemActions>
 				</Item>
@@ -831,6 +832,7 @@ function ProcessList(props: {
 	const processes = props.row.item.processes ?? []
 	const tree = processTree(processes)
 	const band = Option.getOrUndefined(Option.flatMap(owner(props.row), id => Record.get(props.bandOf, id)))
+	const hue = Option.getOrElse(appHue(workloadName(props.row.item)), () => 'var(--blue)')
 	return (
 		<>
 			{Boolean.match(props.row.item.scheduled === true, {
@@ -845,7 +847,7 @@ function ProcessList(props: {
 				onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
 				onNonEmpty: () => (
 					<ScrollArea className="min-h-0 flex-1">
-						<Processes band={band} onHover={props.onHover} tree={tree} />
+						<Processes band={band} hue={hue} onHover={props.onHover} tree={tree} />
 					</ScrollArea>
 				)
 			})}

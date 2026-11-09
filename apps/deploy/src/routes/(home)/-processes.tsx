@@ -1,97 +1,106 @@
-import {Array, Boolean} from 'effect'
+import {Array, Number, Option} from 'effect'
 
-import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
+import {Tree} from '@deslop/components-web/tree'
+import type {TreeRow} from '@deslop/components-web/tree'
 import {cn} from '@deslop/components-web/utils'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
 
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
+const percent = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
 
-// One process: its mark, its command label and what it holds of the app's memory; small ones read muted. The column is MiB, named on hover rather than in every row.
-function Line(props: {band?: string; depth: number; node: ProcessNode; onHover: (id?: string) => void}) {
-	const memory = mib.format(props.node.memory / 1024 ** 2)
-	const parent = Array.isReadonlyArrayNonEmpty(props.node.children)
+// One 48×6px meter; its exact figure is what hovering reads and what the row announces.
+function Meter(props: {color: string; label: string; share: number}) {
 	return (
-		<Item
-			size="row"
-			title={Array.join(props.node.command ?? [], ' ')}
-			className={cn(
-				'after:hidden',
-				Boolean.match(parent, {
-					onFalse: () => 'relative',
-					onTrue: () =>
-						'sticky z-(--sticky-z) top-[calc(var(--sticky-depth)*2rem)] max-sm:top-[calc(var(--sticky-depth)*2.75rem)]'
-				})
-			)}
-			style={{
-				'--indent': `calc(var(--spacing) * ${props.depth * 4})`,
-				'--sticky-depth': `${props.depth}`,
-				'--sticky-z': `${100 - props.depth}`
-			}}
-			onPointerEnter={() => props.onHover(props.band)}
-			onPointerLeave={() => props.onHover()}
+		<span
+			role="img"
+			aria-label={props.label}
+			title={props.label}
+			className="bg-input h-1.5 w-12 shrink-0 overflow-hidden"
 		>
-			{/* A pinned parent covers the rows sliding under it with the pane's own background. */}
-			{parent && (
-				<span
-					aria-hidden="true"
-					className="bg-background group-hover/item:bg-muted/30 pointer-events-none absolute inset-0"
-				/>
-			)}
-			<ItemMedia className="pointer-events-none relative z-10 ml-(--indent)">
-				<ApplicationIcon name={props.node.label.name} small />
-			</ItemMedia>
-			<ItemContent className="pointer-events-none relative z-10">
-				<div
-					className={cn(
-						'flex min-w-0 flex-1 items-baseline gap-2 text-left',
-						props.node.small && 'text-muted-foreground'
-					)}
-				>
-					<span className="max-w-full min-w-0 shrink truncate font-mono text-xs tracking-normal normal-case">
-						{props.node.label.name}
-					</span>
-					<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case">
-						{props.node.label.detail}
-					</span>
-				</div>
-			</ItemContent>
-			<ItemActions className="pointer-events-none relative z-10 shrink-0">
-				<span
-					aria-label={`${memory} MiB`}
-					title="MiB"
-					className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tracking-normal normal-case tabular-nums"
-				>
-					{memory}
-				</span>
-			</ItemActions>
-		</Item>
+			<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" className="size-full">
+				<rect width={Number.clamp(props.share, {maximum: 100, minimum: 0})} height="100" fill={props.color} />
+			</svg>
+		</span>
 	)
 }
 
-// Every process stays open; nesting is its indentation. A parent's row sticks within its own subtree, so the chain to the rows on screen stays visible.
-function Node(props: {band?: string; depth: number; node: ProcessNode; onHover: (id?: string) => void}) {
-	if (Array.isReadonlyArrayEmpty(props.node.children)) {
-		return <Line band={props.band} depth={props.depth} node={props.node} onHover={props.onHover} />
-	}
+// A process ends with its memory share of the app in the app's band hue, then its CPU share of the machine in cyan.
+function Meters(props: {appMemory: number; hue: string; node: ProcessNode}) {
+	const memory = mib.format(props.node.memory / 1024 ** 2)
+	const cpu = Option.fromUndefinedOr(props.node.cpu)
 	return (
-		<div>
-			<Line band={props.band} depth={props.depth} node={props.node} onHover={props.onHover} />
-			{Array.map(props.node.children, child => (
-				<Node key={child.pid} band={props.band} depth={props.depth + 1} node={child} onHover={props.onHover} />
-			))}
-		</div>
+		<span className="flex shrink-0 items-center gap-1.5">
+			<Meter
+				color={props.hue}
+				label={`${memory} MiB`}
+				share={(props.node.memory / Number.max(1, props.appMemory)) * 100}
+			/>
+			<Meter
+				color="var(--cyan)"
+				label={Option.match(cpu, {onNone: () => 'CPU not recorded', onSome: value => `${percent.format(value)}% CPU`})}
+				share={Option.getOrElse(cpu, () => 0)}
+			/>
+		</span>
 	)
 }
 
-export function Processes(props: {band?: string; onHover: (id?: string) => void; tree: readonly ProcessNode[]}) {
+// One process row: its mark, the command label and its two meters; small ones read muted.
+function rowOf(props: {
+	appMemory: number
+	band?: string
+	hue: string
+	node: ProcessNode
+	onHover: (id?: string) => void
+}): TreeRow {
+	const row: TreeRow = {
+		actions: <Meters appMemory={props.appMemory} hue={props.hue} node={props.node} />,
+		content: (
+			<div
+				className={cn(
+					'flex min-w-0 flex-1 items-baseline gap-2 text-left',
+					props.node.small && 'text-muted-foreground'
+				)}
+			>
+				<span className="max-w-full min-w-0 shrink truncate font-mono text-xs tracking-normal normal-case">
+					{props.node.label.name}
+				</span>
+				<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case">
+					{props.node.label.detail}
+				</span>
+			</div>
+		),
+		id: `${props.node.pid}`,
+		label: props.node.label.name,
+		media: <ApplicationIcon name={props.node.label.name} small />,
+		onPointerEnter: () => props.onHover(props.band),
+		onPointerLeave: () => props.onHover(),
+		title: Array.join(props.node.command ?? [], ' ')
+	}
+	return Array.match(props.node.children, {
+		onEmpty: () => row,
+		onNonEmpty: children => ({...row, children: Array.map(children, child => rowOf({...props, node: child}))})
+	})
+}
+
+// Every process stays open unless folded; nesting indents inside tinted blocks, and a parent's row stays pinned under its ancestors.
+export function Processes(props: {
+	band?: string
+	hue: string
+	onHover: (id?: string) => void
+	tree: readonly ProcessNode[]
+}) {
+	const appMemory = Number.sumAll(Array.map(props.tree, node => node.memory))
 	return (
 		// Its own stacking context keeps the pinned parents under the pane's scrollbar.
 		<div className="isolate min-w-0">
-			{Array.map(props.tree, node => (
-				<Node key={node.pid} band={props.band} depth={0} node={node} onHover={props.onHover} />
-			))}
+			<Tree
+				rows={Array.map(props.tree, node =>
+					rowOf({appMemory, band: props.band, hue: props.hue, node, onHover: props.onHover})
+				)}
+				stickyParents
+			/>
 		</div>
 	)
 }
