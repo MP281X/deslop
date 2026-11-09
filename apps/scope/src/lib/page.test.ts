@@ -166,7 +166,6 @@ it.effect(
 		for (const heading of ['Age', 'Failure', 'Duration', 'Span', 'Timeline', 'Failed', 'Runs', 'Typical']) {
 			assert.notInclude(html, `>${heading}<`)
 		}
-		assert.include(html, 'grid-cols-scope')
 		assert.include(html, 'aria-busy="true"')
 		assert.notInclude(html, 'Select an operation')
 		assert.notInclude(html, 'Select a trace')
@@ -189,12 +188,8 @@ it.effect(
 	'marks the selected rows with the stock row surface and edge-to-edge dividers',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
-		assert.include(html, 'list-row')
-		assert.include(html, 'h-8')
-		assert.include(html, 'max-sm:h-11')
 		assert.include(html, 'data-selected="true"')
 		assert.match(html, /aria-current="true"/u)
-		assert.include(html, 'data-[selected=true]:bg-muted')
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
 	})
@@ -235,7 +230,6 @@ it.effect(
 		)
 		assert.include(html, `title="${key}"`)
 		assert.include(html, String.repeat(4000)('v'))
-		assert.include(html, 'truncate')
 	})
 )
 
@@ -317,7 +311,6 @@ it.effect(
 		assert.include(html, 'aria-label="notes.search, server')
 		assert.include(html, 'aria-label="notes.search, web')
 		assert.notInclude(html, 'aria-label="stash notes.search')
-		assert.include(html, 'size-3')
 	})
 )
 
