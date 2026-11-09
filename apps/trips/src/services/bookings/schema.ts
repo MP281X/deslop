@@ -84,7 +84,7 @@ export const TrainTracking = Schema.Struct({
 	departurePlatform: Schema.optionalKey(Schema.String),
 	departurePlatformPlanned: Schema.optionalKey(Schema.String),
 	lastSeen: Schema.optionalKey(Schema.Struct({at: Schema.Finite, station: Schema.String})),
-	state: Schema.Literals(['scheduled', 'running', 'departed', 'arrived'])
+	state: Schema.Literals(['scheduled', 'departed', 'arrived'])
 })
 
 export type Train = typeof Train.Type

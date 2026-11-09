@@ -784,7 +784,7 @@ function stayStatus(stay: Stay, now: number) {
 }
 
 function platformOf(train: Train) {
-	if (train.live?.state === 'departed' || train.live?.state === 'running' || train.live?.state === 'arrived') {
+	if (train.live?.state === 'departed' || train.live?.state === 'arrived') {
 		return whereOf(labelled('Platform', train.live.arrivalPlatform), false)
 	}
 	return whereOf(

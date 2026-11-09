@@ -381,7 +381,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: number) {
 function trainPhase(train: Train, now: number) {
 	if (train.status === 'cancelled') return 'cancelled'
 	if (train.live?.state === 'arrived') return 'arrived'
-	if (train.live?.state === 'running' || train.live?.state === 'departed') return 'running'
+	if (train.live?.state === 'departed') return 'running'
 	if (train.live?.departurePlatform !== undefined || now >= departureOf(train) - STATION_LEAD) return 'platform'
 	return 'upcoming'
 }
