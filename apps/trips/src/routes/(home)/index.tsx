@@ -55,13 +55,11 @@ function zoneOf(booking: Booking) {
 	return booking.from.timeZone
 }
 
-// "Bergamo to London", or the stay's name.
 function headingOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
 	return `${booking.from.city ?? booking.from.name} to ${booking.to.city ?? booking.to.name}`
 }
 
-// "FR 4512 · BGY 07:05 → STN 08:10" for a flight, "FR 9531 09:10 → 12:20" for a train, nights and check-in for a stay.
 function scheduleOf(booking: Booking) {
 	if (booking._tag === 'stay') {
 		const nights = Number.round((booking.checkOut - booking.checkIn) / DAY, 0)
@@ -73,7 +71,6 @@ function scheduleOf(booking: Booking) {
 	return `${titleOf(booking)} · ${booking.from.code ?? booking.from.name} ${departs} → ${booking.to.code ?? booking.to.name} ${arrives}`
 }
 
-// How far away a row is: now, today, or days until its day on its first row; blank for the rest of that day.
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
 
 function Gutter(props: {countdown: Countdown}) {
@@ -153,7 +150,6 @@ function PasteSheet(props: {children: ReactNode}) {
 	)
 }
 
-// What runs now, then the days ahead counted down in the gutter, then the last month folded away.
 function Bookings(props: {onOpen: (id: string) => void}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
@@ -177,7 +173,6 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	// One root: a SwiftUI modifier on several sibling views applies to each, so the dialog and the toolbar would repeat.
 	return (
 		<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-			{/* The bookings on screen stay through an outage; a dot above them marks that they stopped updating. */}
 			{AsyncResult.isFailure(loaded) && (
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
 					<Problem label="Bookings not updating" onRetry={refresh} />

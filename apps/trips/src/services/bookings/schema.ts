@@ -16,12 +16,11 @@ export const BookingSource = Schema.Union([
 export type BookingId = typeof BookingId.Type
 export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()))
 
-// An airport, a station or a stay's address; coordinates and the time zone come from a dataset or the provider, never from the ticket.
+// Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type
 export const Place = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
 	city: Schema.optionalKey(Schema.String),
-	// IATA code for an airport, the provider's station code for a station.
 	code: Schema.optionalKey(Schema.String),
 	latitude: Schema.optionalKey(Schema.Finite),
 	longitude: Schema.optionalKey(Schema.Finite),
@@ -47,9 +46,7 @@ export const FlightTracking = Schema.Struct({
 	departureEstimated: Schema.optionalKey(Schema.Finite),
 	departureGate: Schema.optionalKey(Schema.String),
 	departureTerminal: Schema.optionalKey(Schema.String),
-	// The gate the flight had before the current one, kept to show the change.
 	previousGate: Schema.optionalKey(Schema.String),
-	// The provider's own id for this operation, such as FlightAware's fa_flight_id.
 	providerId: Schema.optionalKey(Schema.String),
 	state: Schema.Literals(['scheduled', 'departed', 'airborne', 'landed', 'arrived', 'cancelled', 'diverted']),
 	takeoffActual: Schema.optionalKey(Schema.Finite)
@@ -58,7 +55,6 @@ export const FlightTracking = Schema.Struct({
 export type Flight = typeof Flight.Type
 export const Flight = Schema.TaggedStruct('flight', {
 	airline: Schema.String,
-	// The IATA airline designator, such as BA.
 	airlineCode: Schema.String,
 	arrives: Schema.Finite,
 	boardingAt: Schema.optionalKey(Schema.Finite),
@@ -83,12 +79,9 @@ export type TrainTracking = typeof TrainTracking.Type
 export const TrainTracking = Schema.Struct({
 	arrivalPlatform: Schema.optionalKey(Schema.String),
 	checkedAt: Schema.Finite,
-	// The train's delay now, which its arrival carries.
 	delayMinutes: Schema.Finite,
-	// The delay it left the booked station with.
 	departureDelay: Schema.optionalKey(Schema.Finite),
 	departurePlatform: Schema.optionalKey(Schema.String),
-	// The timetable's platform, kept to show a change.
 	departurePlatformPlanned: Schema.optionalKey(Schema.String),
 	lastSeen: Schema.optionalKey(Schema.Struct({at: Schema.Finite, station: Schema.String})),
 	state: Schema.Literals(['scheduled', 'running', 'departed', 'arrived'])
@@ -106,7 +99,6 @@ export const Train = Schema.TaggedStruct('train', {
 	live: Schema.optionalKey(TrainTracking),
 	number: Schema.String,
 	operator: TrainOperator,
-	// The brand on the ticket, such as Frecciarossa or Regionale.
 	operatorName: Schema.String,
 	seat: Schema.optionalKey(Schema.String),
 	sources: Schema.Array(Schema.String),
@@ -140,7 +132,6 @@ export const BookingsEvent = Schema.Struct({
 	upserted: Schema.Array(Booking)
 })
 
-// The departures board's colours, which the island and the app each map to their own palette.
 export type Tone = typeof Tone.Type
 export const Tone = Schema.Literals(['good', 'warn', 'bad', 'info', 'plain'])
 
@@ -159,7 +150,6 @@ export const FlightPhase = Schema.Literals([
 export type TrainPhase = typeof TrainPhase.Type
 export const TrainPhase = Schema.Literals(['upcoming', 'platform', 'running', 'arrived', 'cancelled'])
 
-// The gate, belt or platform: the one value worth reading at a glance.
 export type Chip = typeof Chip.Type
 export const Chip = Schema.Struct({text: Schema.String, tone: Tone})
 
@@ -167,12 +157,10 @@ export const Chip = Schema.Struct({text: Schema.String, tone: Tone})
 export type ActivityProps = typeof ActivityProps.Type
 export const ActivityProps = Schema.Struct({
 	arrivalNote: Schema.String,
-	// "18:35" in the arrival's own zone, as the airport's boards show it.
 	arrivalTime: Schema.String,
 	arrivalTone: Tone,
 	arrives: Schema.Finite,
 	chip: Schema.optionalKey(Chip),
-	// The time the timer counts down to; absent once there is nothing to count.
 	countdown: Schema.optionalKey(Schema.Finite),
 	delay: Schema.Finite,
 	departs: Schema.Finite,
@@ -184,11 +172,9 @@ export const ActivityProps = Schema.Struct({
 	headline: Schema.String,
 	id: BookingId,
 	kind: Schema.Literals(['flight', 'train']),
-	// What the compact island shows in place of the timer.
 	label: Schema.String,
 	note: Schema.String,
 	phase: Schema.Union([FlightPhase, TrainPhase]),
-	// Takeoff, while the flight is in the air.
 	progressFrom: Schema.optionalKey(Schema.Finite),
 	symbol: Schema.Literals([
 		'airplane',
@@ -218,7 +204,6 @@ export const LocalTime = pipe(
 export type TripNumber = typeof TripNumber.Type
 export const TripNumber = Schema.String.check(Schema.isPattern(/^\d+$/u))
 
-// One reservation as the ticket states it, before the airport, station and time zone are resolved.
 export type ExtractedItem = typeof ExtractedItem.Type
 export const ExtractedItem = Schema.Union([
 	Schema.Struct({
@@ -269,7 +254,6 @@ export const ExtractedItems = Schema.Array(ExtractedItem)
 export type Extraction = typeof Extraction.Type
 export const Extraction = Schema.Struct({items: ExtractedItems})
 
-// One mwgg/Airports entry, keyed by ICAO code.
 export type Airport = typeof Airport.Type
 export const Airport = Schema.Struct({
 	city: Schema.String,
@@ -281,20 +265,16 @@ export const Airport = Schema.Struct({
 	tz: Schema.String
 })
 
-// The airports by IATA code, kept for a month.
 export type AirportIndex = typeof AirportIndex.Type
 export const AirportIndex = Schema.Struct({airports: Schema.Record(Schema.String, Airport), fetchedAt: Schema.Finite})
 
-// Transitous' stop search, used for a station's coordinates and time zone.
 export type StopMatches = typeof StopMatches.Type
 export const StopMatches = Schema.Array(
 	Schema.Struct({
-		// The country, region and city the stop lies in.
 		areas: Schema.optionalKey(Schema.Array(Schema.Struct({name: Schema.String}))),
 		id: Schema.String,
 		lat: Schema.Finite,
 		lon: Schema.Finite,
-		// Transit modes calling at the stop, such as HIGHSPEED_RAIL or BUS.
 		modes: Schema.optionalKey(Schema.Array(Schema.String)),
 		name: Schema.String,
 		tz: Schema.optionalKey(Schema.String)

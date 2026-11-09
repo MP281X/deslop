@@ -68,7 +68,6 @@ const receiver = HttpRouter.use(router =>
 		})
 		yield* router.add('POST', '/v1/traces', cors(ingest('/v1/traces', TracesRequest, telemetry.ingestTraces)))
 		yield* router.add('POST', '/v1/logs', cors(ingest('/v1/logs', LogsRequest, telemetry.ingestLogs)))
-		// A browser asks before posting JSON across origins.
 		yield* router.add('OPTIONS', '/v1/*', cors(Effect.succeed(HttpServerResponse.empty())))
 		yield* router.add('GET', '/health', HttpServerResponse.text('ready'))
 	})
@@ -101,7 +100,6 @@ const github = HttpRouter.use(router =>
 						Effect.gen(function* () {
 							const request = yield* HttpServerRequest.HttpServerRequest
 							const body = new Uint8Array(yield* request.arrayBuffer)
-							// An unsigned or badly signed request is refused like a wrong signature.
 							const signed = yield* Option.match(
 								Schema.decodeOption(Signature)(request.headers['x-hub-signature-256'] ?? ''),
 								{onNone: () => Effect.succeed(false), onSome: tag => mac.verify(key, tag, body)}

@@ -117,7 +117,6 @@ function render(result: Atom.Type<typeof serversAtom>) {
 	return Effect.scoped(
 		Effect.gen(function* () {
 			const env = yield* fixture
-			// The page reads its view from the URL, so it renders inside the app's own router.
 			const router = yield* Effect.map(
 				Effect.promise(() => import('#routeTree.gen.ts')),
 				generated => createRouter({history: createMemoryHistory(), routeTree: generated.routeTree})

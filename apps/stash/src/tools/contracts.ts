@@ -7,7 +7,6 @@ import {CurrentUser} from '@deslop/runtime/auth/utils'
 import {Capture, Note, NoteId, NotesError, Tag} from '#services/notes/schema.ts'
 
 export type NoteRow = typeof NoteRow.Type
-// A note as a search lists it: what an agent needs to pick one, with the long texts left to read_note.
 const NoteRow = Schema.Struct({
 	id: NoteId,
 	saved: Schema.String,

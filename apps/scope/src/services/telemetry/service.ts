@@ -225,7 +225,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			logs: Effect.fn('Telemetry.logs')(function* (query: Query) {
 				return yield* page(query, 'log')
 			}),
-			// The live page's operations: the current ones at once, then each recompute.
 			overview: live,
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis

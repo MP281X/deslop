@@ -17,7 +17,6 @@ import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
 import icon from '#routes/icon.png'
 
-// A pushed booking by its id.
 function Destination(props: {onClose: () => void; value: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
@@ -28,7 +27,6 @@ function Destination(props: {onClose: () => void; value: string}) {
 	return <BookingRoute key={props.value} bookings={shown.success} id={props.value} onClose={props.onClose} />
 }
 
-// The app opens on the trip list; an island, a calendar event or a notification opens its booking.
 function AppRoutes() {
 	useAtomMount(pushAtom)
 	useAtomMount(activitiesAtom)

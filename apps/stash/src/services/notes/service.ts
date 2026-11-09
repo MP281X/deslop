@@ -576,7 +576,6 @@ export class Notes extends Context.Service<
 		)
 }
 
-// One shared notes folder.
 export const layerNotes = Layer.unwrap(
 	pipe(
 		dataDirectory,

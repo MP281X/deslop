@@ -54,7 +54,6 @@ import {
 import {arrivalOf, departureOf, isStale, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, FlightTracking, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
-// A changed value reads in its tone; everything else in the text colour.
 function colorOf(tone?: Tone) {
 	if (tone === undefined || tone === 'plain') return colors.foreground
 	return tones[tone]
@@ -65,7 +64,6 @@ function toneIf(changed: boolean, tone: Tone) {
 	return 'plain'
 }
 
-// A changed gate, platform or time flips in like a departures board; SwiftUI animates when the number it watches changes.
 function Field(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
@@ -85,13 +83,11 @@ function Field(props: {label: string; tone?: Tone; value?: string}) {
 	)
 }
 
-// "16:40", or "17:05 (16:40)" once the provider moved it.
 function moved(scheduled: number, current: number, timeZone?: string) {
 	if (Math.abs(current - scheduled) < MINUTE) return timeAt(scheduled, timeZone)
 	return `${timeAt(current, timeZone)} (${timeAt(scheduled, timeZone)})`
 }
 
-// "B12 (was B7)" after a gate change.
 function gateOf(live?: FlightTracking) {
 	if (live?.departureGate === undefined) return undefined
 	if (live.previousGate === undefined) return live.departureGate
@@ -207,7 +203,6 @@ function StayFields(props: {stay: Stay}) {
 	)
 }
 
-// One fact read at a glance: a small label over its value.
 function Essential(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
@@ -229,7 +224,6 @@ function Essential(props: {label: string; tone?: Tone; value?: string}) {
 	)
 }
 
-// What a traveller needs at the gate or on the platform, before the rest of the booking.
 function Departs(props: {journey: Flight | Train}) {
 	return (
 		<Essential

@@ -48,7 +48,6 @@ import icon from '#routes/icon.svg'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
 
-// The side an operation starts on, in words, so a search or a row can name it.
 const SIDES: Record<Runtime, string> = {ci: 'ci', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
 
 const STATUS: Record<string, string> = {
@@ -76,7 +75,6 @@ const HTTP_ATTRIBUTES = [
 	'url.scheme'
 ] as const
 
-// The device an operation starts on, as Auth marks a sign-in's, in its side's hue: a browser, a phone, a server or CI.
 const DEVICES: Record<Runtime, ReactElement> = {
 	ci: <DesktopIcon role="img" alt="CI" aria-label="ci" data-side="ci" className="size-3.5 shrink-0 text-(--side)" />,
 	mobile: (
@@ -115,7 +113,6 @@ const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema
 type Wrapped = typeof Wrapped.Type
 const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
-// Each Deslop app's mark, for the app a trace came from.
 const marks = WebRuntime.appIcons(
 	import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
 )
@@ -153,7 +150,6 @@ function valueOf(value: Schema.Json) {
 	)
 }
 
-// A failed span's own error message, which its details lead with.
 function errorOf(span: Trace['spans'][number]) {
 	return pipe(
 		Option.liftPredicate(span, current => current.status === 2),
@@ -165,7 +161,7 @@ function errorOf(span: Trace['spans'][number]) {
 	)
 }
 
-// What a span says beyond its row: attributes, without anything that only repeats its name, such as code.function, or the status code the error line already carries.
+// Attributes, without anything that only repeats the row: its name, code.function, or the status code the error line carries.
 function attributesOf(span: Trace['spans'][number]) {
 	if (span.payload['attributes'] === undefined) return []
 	return Option.match(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), {
@@ -220,7 +216,6 @@ function hasDetail(span: Trace['spans'][number]) {
 
 type DetailLine = {failed: boolean; key: string; value: string}
 
-// A key over its value so a long key or URL never truncates; short pairs share a row, so the inspector fills its width before it scrolls.
 function DetailLines(props: {lines: readonly DetailLine[]}) {
 	return (
 		<dl className="grid-cols-attributes grid gap-x-6 pb-1 font-mono text-xs">
@@ -257,7 +252,7 @@ function DetailLines(props: {lines: readonly DetailLine[]}) {
 
 type DetailTab = {content: ReactNode; label: string; value: string}
 
-// The picked span's error, attributes and logs as line views; the failure opens first because it is why the span was picked.
+// The failure opens first because it is why the span was picked.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
@@ -336,7 +331,6 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 	)
 }
 
-// One waterfall row: name, cross-app mark, side-coloured timing, duration and an inspector affordance.
 function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Trace['spans'][number]}) {
 	return (
 		<>
@@ -391,7 +385,6 @@ function brokeAt(spans: Trace['spans']) {
 	return Array.findFirst(failed, span => !HashSet.has(parents, span.spanId))
 }
 
-// The picked span when it has detail, else where the failure broke, else the root.
 function focusOf(trace: Trace, pickedSpan?: string) {
 	const root = Array.findFirst(trace.spans, span => span.depth === 0)
 	return Option.orElse(
@@ -438,7 +431,7 @@ function SpanRow(props: {
 	)
 }
 
-// The waterfall in trace order, independently scrolling; its time scale is the trace's own duration.
+// The waterfall's time scale is the trace's own duration.
 function SpansList(props: {focus: Option.Option<Trace['spans'][number]>; onPick: (id: string) => void; trace: Trace}) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
 		return <EmptyState label="No spans" icon={<EmptyIcon />} />
@@ -470,7 +463,6 @@ function SpansList(props: {focus: Option.Option<Trace['spans'][number]>; onPick:
 	)
 }
 
-// The picked span's inspector, or the mark alone when nothing has detail.
 function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	return Option.match(props.focus, {
 		onNone: () => <EmptyState label="Select a span" icon={<EmptyIcon />} />,
@@ -478,7 +470,6 @@ function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	})
 }
 
-// One inspector: below the waterfall on a narrower desktop, beside it from 1600px, a separate phone screen.
 function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?: ReactNode; spans: ReactNode}) {
 	return (
 		<div
@@ -653,7 +644,6 @@ function TracesSkeleton() {
 	)
 }
 
-// An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile.
 function AppMark(props: {app: Overview['apps'][number]}) {
 	return Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
 		onNone: () =>
@@ -673,7 +663,6 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 	})
 }
 
-// An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
 		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
@@ -685,7 +674,6 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 	)
 }
 
-// One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
 	return (
 		<div role="listitem" className="list-row" data-selected={props.active}>
@@ -728,7 +716,6 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 	)
 }
 
-// The operations of every app, failures first, as the page's root list.
 function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
@@ -801,7 +788,6 @@ function OperationsPane(props: {
 	)
 }
 
-// One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
 		<div role="listitem" className="list-row" data-selected={props.active}>
@@ -909,7 +895,7 @@ function TracesPane(props: {
 	)
 }
 
-// The picked trace's waterfall and the picked span's detail; its age, id and duration are already on its selected row.
+// Its age, id and duration are already on its selected row, so the pane has no header.
 function TracePane(props: {
 	className?: string
 	detailOnly?: boolean
@@ -950,7 +936,6 @@ function TracePane(props: {
 	)
 }
 
-// The 1600px workspace: the waterfall and the selected detail side by side, each scrolling on its own.
 function WidePanels(props: {details: ReactNode; problem?: ReactNode; spans: ReactNode}) {
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
@@ -1034,7 +1019,6 @@ function WideTracePane(props: {onPickSpan: (id: string) => void; pickedSpan?: st
 	)
 }
 
-// From 1024px to 1599px: operations and traces beside the waterfall, with the inspector below it.
 function NarrowWorkspace(props: WorkspaceProps) {
 	return (
 		<div className="grid-cols-scope grid min-h-0 flex-1">
@@ -1052,7 +1036,6 @@ function NarrowWorkspace(props: WorkspaceProps) {
 	)
 }
 
-// From 1600px: operations and traces, the waterfall, then the selected detail at full height, all resizable.
 function WideWorkspace(props: WorkspaceProps) {
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
@@ -1075,7 +1058,6 @@ function WideWorkspace(props: WorkspaceProps) {
 	)
 }
 
-// On a phone the URL's pane fills the screen; Back moves up one level and keeps the selection.
 function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof navigationOf>['path']}) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -1107,7 +1089,6 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 	)
 }
 
-// The operation the key names, with the app that owns it.
 function findOperation(overview: Overview, key: OperationKey) {
 	return Option.flatMap(
 		Array.findFirst(overview.apps, app => app.name === key.app),
@@ -1129,7 +1110,6 @@ function renderPage(children: ReactNode) {
 }
 
 function Home() {
-	// Below desktop width, the same selection navigates one screen at a time; from 1600px the detail stands beside the waterfall.
 	const isMobile = useMediaQuery('(width < 64rem)')
 	const isWide = useMediaQuery('(width >= 100rem)')
 	const navigation = navigationOf(route.useSearch())

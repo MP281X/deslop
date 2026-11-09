@@ -15,7 +15,7 @@ import {Gateway} from '#services/gateway/service.ts'
 
 const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 
-// A step's answer is never cached, and a failure returns to the servers page, whose row shows why the step failed.
+// A step's answer is never cached; a failure returns to the servers page, whose row shows why.
 function returning<E, R>(step: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return pipe(
 		step,

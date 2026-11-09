@@ -39,8 +39,7 @@ function text(key: string, value: string) {
 	return {key, value: {stringValue: value}}
 }
 
-// One repository's spans from GitHub Actions, which Scope shows as the CI side.
-function request(repository: string, spans: readonly Span[]) {
+function repositoryTraces(repository: string, spans: readonly Span[]) {
 	return TracesRequest.make({
 		resourceSpans: [
 			{
@@ -51,7 +50,6 @@ function request(repository: string, spans: readonly Span[]) {
 	})
 }
 
-// The trace a run attempt is and its root span.
 export function runIds(event: WorkflowRun) {
 	return {
 		spanId: runSpanId(event.workflow_run.id),
@@ -62,7 +60,7 @@ export function runIds(event: WorkflowRun) {
 // A workflow run as its trace's root: running, it has no end yet, so the trace lasts as long as its finished jobs.
 export function runTrace(event: WorkflowRun) {
 	const run = event.workflow_run
-	return request(event.repository.full_name, [
+	return repositoryTraces(event.repository.full_name, [
 		{
 			attributes: [
 				text('github.title', run.display_title),
@@ -86,11 +84,10 @@ export function runTrace(event: WorkflowRun) {
 	])
 }
 
-// A finished job under its run, with each step that ran; a failed step links to its log, since GitHub sends no output.
+// A failed step links to its log, since GitHub sends no output.
 export function jobTrace(event: WorkflowJob) {
 	const job = event.workflow_job
 	const traceId = traceIdOf(job.run_id, job.run_attempt)
-	// The steps that ran, with their times; a skipped or unstarted one has none.
 	const steps = Array.getSomes(
 		Array.map(job.steps, step =>
 			pipe(
@@ -104,12 +101,11 @@ export function jobTrace(event: WorkflowJob) {
 		)
 	)
 	const failed = Array.findFirst(steps, step => statusOf(step.conclusion, '').code === 2)
-	return request(event.repository.full_name, [
+	return repositoryTraces(event.repository.full_name, [
 		{
 			attributes: [
 				text('github.runner', job.runner_name ?? ''),
 				text('github.conclusion', job.conclusion ?? ''),
-				// How long the job waited for a runner before it started.
 				{
 					key: 'github.queued_ms',
 					value: {

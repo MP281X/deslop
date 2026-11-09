@@ -7,7 +7,6 @@ import {RpcAuth} from '@deslop/runtime/auth/utils'
 
 import {Overview, TelemetryError, Trace, TraceId} from '#services/telemetry/schema.ts'
 
-// The page reads its live overview and one trace whole; the MCP tools call the telemetry service themselves.
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('scope.overview', {error: Schema.Union([AuthError, TelemetryError]), stream: true, success: Overview}),
 	Rpc.make('scope.trace', {

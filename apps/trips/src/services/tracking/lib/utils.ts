@@ -104,7 +104,6 @@ function normalized(name: string) {
 	)
 }
 
-// The run's stop for a booked station: by station code, else by name.
 function stopFor(stops: VtStatus['fermate'], place: Place) {
 	return Option.orElse(
 		// "S08409" from Transitous' "it-trenitalia_08409:station", which ViaggiaTreno uses as its stop id.
@@ -119,7 +118,6 @@ function left(stop: VtStop) {
 	return Predicate.isNotNullish(stop.partenzaReale)
 }
 
-// Where the passenger stands: a train already running elsewhere is still to board at a later station.
 function trainState(from: Option.Option<VtStop>, to: Option.Option<VtStop>) {
 	if (Option.exists(to, stop => stop.actualFermataType === 1)) return 'arrived'
 	if (Option.exists(from, left)) return 'departed'
@@ -152,7 +150,6 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			departurePlatformPlanned: Option.flatMap(from, stop => text(stop.binarioProgrammatoPartenzaDescrizione))
 		}),
 		checkedAt,
-		// The delay it arrived with, else the train's running delay.
 		delayMinutes: Option.getOrElse(
 			Option.orElse(
 				Option.flatMap(

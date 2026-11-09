@@ -177,7 +177,6 @@ export type Page = typeof Page.Type
 export const Page = Schema.Struct({entries: Schema.Array(EntryItem), total: Schema.Int})
 
 export type Runtime = typeof Runtime.Type
-// Where a service runs: a page, a phone, a server, or CI such as GitHub Actions.
 export const Runtime = Schema.Literals(['web', 'mobile', 'server', 'ci', 'unknown'])
 
 export type Service = typeof Service.Type
@@ -225,11 +224,9 @@ export const TraceSummary = Schema.Struct({
 export type TracesPage = typeof TracesPage.Type
 export const TracesPage = Schema.Struct({entries: Schema.Array(TraceSummary), total: Schema.Int})
 
-// The live page: each app's operations with how often they ran, how long they typically take and how often they failed, and their slowest traces.
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
 	durationMs: Schema.Finite,
-	// The first span that failed and its message, when one did.
 	failure: Schema.optionalKey(Schema.Struct({message: Schema.String, span: Schema.String})),
 	id: TraceId,
 	time: Nano
@@ -246,7 +243,6 @@ export const Operation = Schema.Struct({
 	traces: Schema.Array(OperationTrace)
 })
 
-// Each app with its server, web and iOS operations together, named as `appName` reads a service, and the release each side runs.
 export type Overview = typeof Overview.Type
 export const Overview = Schema.Struct({
 	apps: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
@@ -282,7 +278,6 @@ export const Trace = Schema.Struct({
 	spans: Schema.Array(TraceSpan)
 })
 
-// The tools' inputs; `since` becomes the query's window when the tool runs.
 export type Filters = typeof Filters.Type
 export const Filters = Schema.Struct({
 	errors: pipe(

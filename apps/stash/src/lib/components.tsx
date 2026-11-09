@@ -10,7 +10,6 @@ import {kindOf, kinds, siteOf} from '#lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
 import {Brand} from '#services/notes/schema.ts'
 
-// "23 Oct" this year, "23 Oct 2025" before it.
 function savedOn(createdAt: number) {
 	const saved = DateTime.makeUnsafe(createdAt)
 	return DateTime.formatLocal(
@@ -37,7 +36,6 @@ function SourceIcon(props: {kind: Kind}) {
 	)
 }
 
-// The source's logo, who made the entry or the site it is on, and when it was saved.
 export function Byline(props: {note: NoteItem}) {
 	return (
 		<HStack spacing={space[1]} modifiers={[accessibilityElement('combine')]}>

@@ -11,7 +11,6 @@ import type {Connection, ConnectionInfo, ServerIcon} from '#services/connections
 
 export const gatewayUrl = Config.String('APP_URL')
 
-// The client every upstream server sees the gateway as.
 export function mcpClient() {
 	return new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
 }
@@ -89,7 +88,6 @@ export function serverIcons(implementation?: {icons?: {src: string; theme?: 'dar
 	) satisfies ServerIcon[]
 }
 
-// A server's line in the gateway's instructions: the first sentence of its own, short.
 export function summary(connection: Connection) {
 	return pipe(
 		Option.fromUndefinedOr(connection.instructions),
@@ -99,7 +97,6 @@ export function summary(connection: Connection) {
 	)
 }
 
-// Why a provider step failed, in the words the MCP page and tool results show: the innermost cause that names it.
 export function describe(cause: unknown): string {
 	if (Schema.is(AuthError)(cause)) return cause.message
 	if (Predicate.isTagged(cause, 'TimeoutError')) return 'It did not answer in time'

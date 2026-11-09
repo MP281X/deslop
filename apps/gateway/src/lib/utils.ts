@@ -34,7 +34,7 @@ export const serversAtom = Atom.keepAlive(
 	)
 )
 
-// Every tool call through the gateway, numbered, so a server called twice in a row lights twice.
+// Numbered, so a server called twice in a row lights twice.
 const callsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		Stream.zipWithIndex(
@@ -43,7 +43,7 @@ const callsAtom = Atom.keepAlive(
 	)
 )
 
-// The number of one server's latest call, or -1 before any; its dot dims each time it changes.
+// One server's latest call number, -1 before any, so its dot only blinks after a call.
 export const lastCallAtom = Atom.family((id: string) =>
 	Atom.make(get => {
 		const previous = Option.getOrElse(get.self<number>(), () => -1)
@@ -125,7 +125,6 @@ function periodRange(period: Period, now: number) {
 
 export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
 
-// One reader per period, its range taken when it runs, so a refresh moves the window to now.
 export const aiUsageAtom = Atom.family((period: Period) =>
 	pipe(
 		RpcClient.runtime.atom(
@@ -151,7 +150,6 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 	)
 )
 
-// One per provider, so a failure stays with the dialog that caused it.
 export const removeKeyAtom = Atom.family((provider: AiProvider) =>
 	RpcClient.runtime.fn(() =>
 		Reactivity.mutation(
@@ -161,7 +159,6 @@ export const removeKeyAtom = Atom.family((provider: AiProvider) =>
 	)
 )
 
-// A copy confirms in place for a moment, on touch too; a failure says why in a toast.
 export const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		pipe(

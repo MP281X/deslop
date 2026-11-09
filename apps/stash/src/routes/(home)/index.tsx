@@ -96,10 +96,9 @@ import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
 
-// Stash detects a link where Trips takes any text.
 const OFFERS = {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'} as const
 
-// The title and one line of where it is from; the summary waits in the note, so the list scans fast.
+// The summary waits in the note, so the list scans fast.
 function Lines(props: {note: NoteItem}) {
 	return (
 		<ItemContent>
@@ -145,7 +144,6 @@ function Thumbnail(props: {id: Note['id']}) {
 	)
 }
 
-// A source mark reserves the same square while a preview loads, fails or is absent.
 function NoteMedia(props: {note: NoteItem}) {
 	const kind = kindOf(props.note)
 	return (
@@ -298,7 +296,6 @@ function PasteSheet(props: {children: ReactNode}) {
 	)
 }
 
-// The list on screen stays through an outage; a dot above it marks what stopped updating.
 function Outages() {
 	const notes = useAtomValue(notesAtom)
 	const refresh = useAtomRefresh(notesAtom)
@@ -386,10 +383,8 @@ export function HomeRoute(props: {
 								</Empty>
 							),
 							onNonEmpty: () => (
-								// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
 								<Overlay>
 									<ItemGroup>
-										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
 										<ToggleGroup
 											value={props.tag ?? 'all'}
 											onValueChange={value =>

@@ -38,7 +38,6 @@ export const VtRun = Schema.Struct({
 
 export type VtStop = typeof VtStop.Type
 export const VtStop = Schema.Struct({
-	// 1 once the train reached the stop.
 	actualFermataType: Nullable(Schema.Finite),
 	binarioEffettivoArrivoDescrizione: Nullable(Schema.String),
 	binarioEffettivoPartenzaDescrizione: Nullable(Schema.String),
@@ -46,7 +45,6 @@ export const VtStop = Schema.Struct({
 	binarioProgrammatoPartenzaDescrizione: Nullable(Schema.String),
 	id: Schema.String,
 	partenzaReale: Nullable(Schema.Finite),
-	// The timetable's time at this stop.
 	programmata: Nullable(Schema.Finite),
 	ritardo: Nullable(Schema.Finite),
 	stazione: Schema.String
@@ -60,6 +58,5 @@ export const VtStatus = Schema.Struct({
 	stazioneUltimoRilevamento: Nullable(Schema.String)
 })
 
-// FlightAware calls this month, against the free allowance.
 export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({calls: Schema.Finite, month: Schema.String})

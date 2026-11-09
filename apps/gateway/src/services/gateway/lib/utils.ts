@@ -37,7 +37,6 @@ function quiet(property: Readonly<Record<string, unknown>> | boolean) {
 	)
 }
 
-// A tool as agents see it through the gateway: its inputs without noise, and no output schema.
 export function compact(tool: McpSchema.Tool) {
 	return {
 		...Struct.omit(tool, ['outputSchema']),

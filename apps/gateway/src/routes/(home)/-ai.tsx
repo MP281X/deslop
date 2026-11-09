@@ -114,13 +114,11 @@ function amount(metric: Metric, value: unknown) {
 	if (metric === 'cost') return cost(value)
 	return compact.format(value)
 }
-// A share bar's width, nothing when there is nothing to share.
 function share(part: number, whole: number) {
 	if (whole === 0) return 0
 	return part / whole
 }
 
-// Auth's client label maps to the same identity on the chart and its rows.
 const appKey = String.toLowerCase
 function appName(app: string) {
 	const identity = IDENTITIES[appKey(app)]
@@ -147,13 +145,11 @@ function measure(metric: Metric) {
 		return sum.tokens
 	}
 }
-// A sum whose every call had no known price shows a dash, not a zero.
 function costOf(sum: Sum) {
 	if (sum.costUsd === 0 && sum.unknownCostCalls > 0) return '—'
 	return cost(sum.costUsd)
 }
 
-// The axis names a few buckets; the last is the current one.
 function tickLabel(range: Range) {
 	return (bucket: string) =>
 		Option.match(Option.filter(Number.parse(bucket), Schema.is(Schema.Finite)), {
@@ -168,7 +164,6 @@ function tickLabel(range: Range) {
 			}
 		})
 }
-// Every day of a week; otherwise every sixth hour or seventh day, counted back from the current bucket.
 function tickStep(buckets: number) {
 	if (buckets <= 7) return 1
 	if (buckets === 24) return 6
@@ -179,7 +174,6 @@ function bucketLabel(bucket: Range['bucket'], at: number) {
 	return longDay.format(at)
 }
 
-// The page's two choices beside the view: which window, and whether bars measure cost or tokens.
 export function AiControls(props: {
 	metric: Metric
 	onMetric: (metric: Metric) => void
@@ -230,14 +224,12 @@ export function AiControls(props: {
 	)
 }
 
-// A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
 	return (
 		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
 	)
 }
 
-// The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
 function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
 	return (
 		<div role="listitem" className="list-row">
@@ -266,7 +258,6 @@ function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onCli
 	)
 }
 
-// Name, share of the shown total, tokens and cost: the same columns in both breakdowns.
 function ShareRow(props: {
 	color: string
 	label: string
@@ -302,7 +293,6 @@ function ShareRow(props: {
 	)
 }
 
-// A destructive question; it closes itself once the action commits, and a failure stays in it.
 function ConfirmDialog(props: {
 	action: string
 	description: string
@@ -344,7 +334,6 @@ function UsageChart(props: {
 			bucket => [bucket.at, HashMap.fromIterable(Array.map(bucket.byApp, sum => [sum.name, sum] as const))] as const
 		)
 	)
-	// Each bucket's start as text, so the axis and the tooltip get it back as their label.
 	const rows = Array.map(Array.range(0, props.range.count - 1), index => {
 		const bucket = HashMap.get(byTime, props.range.from + index * props.range.size)
 		return {
@@ -452,7 +441,6 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance; a desktop adds the daily average.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
 		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
@@ -549,7 +537,6 @@ function UsageReport(props: {
 	)
 	const appTotal = Number.sumAll(Array.map(appSums, value))
 	const modelTotal = Number.sumAll(Array.map(modelSums, value))
-	// Tapping what is already chosen shows everything again.
 	function toggle(next: Focus) {
 		const same =
 			(next.app !== undefined && next.app === props.focus.app) ||
@@ -629,7 +616,6 @@ function RemoveKeyDialog(props: {onOpenChange: (open: boolean) => void; open: bo
 	)
 }
 
-// A provider's key by its last four, what it cost in the period and its light: red once the provider refused it.
 function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provider: AiProvider; spent: string}) {
 	const [confirm, setConfirm] = useState(false)
 	const reset = useAtomSet(removeKeyAtom(props.provider))
@@ -753,7 +739,6 @@ export function AiPane(props: {
 	)
 }
 
-// One dialog adds or replaces a key: the provider, then the secret, which never comes back; it closes once saved.
 export function AddKeyDialog(props: {
 	onOpenChange: (open: boolean) => void
 	onProvider: (provider: AiProvider) => void

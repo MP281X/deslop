@@ -21,7 +21,6 @@ import type {
 const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
 const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
 
-// The short brand codes Trenitalia prints before a train number.
 const TRAIN_BRANDS: Record.ReadonlyRecord<string, string> = {
 	frecciabianca: 'FB',
 	frecciargento: 'FA',
@@ -37,14 +36,12 @@ export const MINUTE = 60_000
 export const HOUR = 60 * MINUTE
 export const DAY = 24 * HOUR
 
-// How long before departure to be at the airport or on the platform.
 const AIRPORT_LEAD = 2 * HOUR
 const STATION_LEAD = 15 * MINUTE
 
 // ActivityKit ends a Live Activity after eight hours; half an hour stays in reserve for delays.
 export const ACTIVITY_LIFETIME = 7.5 * HOUR
 
-// The name the app passes to createLiveActivity, which the pushes repeat.
 export const ACTIVITY_NAME = 'JourneyActivity'
 
 export function airportIndex(all: Record<string, unknown>, fetchedAt: number) {
@@ -107,9 +104,7 @@ export function stationMatch(name: string, matches: StopMatches) {
 	)
 }
 
-// Time
-
-// A local "2026-10-28T16:40" read in the place's zone; a time with an offset or Z stands for itself.
+// A time with an offset or Z stands for itself.
 export function instantOf(time: LocalTime, timeZone: string) {
 	if (Option.isSome(String.match(/(?:Z|[+-]\d{2}:?\d{2})$/u)(time))) {
 		return Option.map(DateTime.make(time), DateTime.toEpochMillis)
@@ -118,7 +113,6 @@ export function instantOf(time: LocalTime, timeZone: string) {
 	return pipe(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), Option.map(DateTime.toEpochMillis))
 }
 
-// "16:40" in the place's own time zone.
 function clockAt(time: number, timeZone?: string) {
 	return DateTime.format(DateTime.makeUnsafe(time), {
 		hour: '2-digit',
@@ -134,19 +128,13 @@ function clockAt(time: number, timeZone?: string) {
 	})
 }
 
-// Wording
-
-// "Seat 14A", or nothing when the booking does not know the seat.
 export function labelled(label: string, value?: string) {
 	return Option.map(Option.fromUndefinedOr(value), found => `${label} ${found}`)
 }
 
-// The parts a line knows, joined the way a departures board lists them.
 function line(parts: Option.Option<string>[]) {
 	return Array.join(Array.getSomes(parts), ' · ')
 }
-
-// Bookings
 
 export function departureOf(booking: Flight | Train) {
 	if (booking._tag === 'train') {
@@ -173,7 +161,6 @@ export function endOf(booking: Booking) {
 
 export const byStart = Order.mapInput(Order.Number, startOf)
 
-// "BA 553", "FR 9541" or the stay's name.
 export function titleOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
 	if (booking._tag === 'flight') return `${booking.airlineCode} ${booking.number}`
@@ -183,13 +170,11 @@ export function titleOf(booking: Booking) {
 	return `${brand} ${booking.number}`
 }
 
-// "Rome → London", or the stay's city.
 export function routeOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.place.city ?? booking.place.address ?? booking.name
 	return `${booking.from.city ?? booking.from.name} → ${booking.to.city ?? booking.to.name}`
 }
 
-// The stay that starts around a journey's arrival, for the ride from the airport or station.
 export function stayAfter(bookings: BookingList, journey: Flight | Train) {
 	const arrival = arrivalOf(journey)
 	const stays = Array.filter(
@@ -272,7 +257,6 @@ function combine(existing: Booking, incoming: Booking) {
 	return {...incoming, ...kept}
 }
 
-// Each incoming booking replaces the reservation it matches or joins the list; returns the list and the ids touched.
 export function upsert(current: BookingList, incoming: BookingList) {
 	return Array.reduce(incoming, {bookings: current, ids: Array.empty<BookingId>()}, (state, booking) =>
 		Option.match(
@@ -293,9 +277,6 @@ export function upsert(current: BookingList, incoming: BookingList) {
 	)
 }
 
-// Live checks
-
-// How often to ask the flight provider; none once it cannot answer yet or has nothing more to say.
 function flightInterval(flight: Flight, now: number) {
 	const departure = departureOf(flight)
 	const arrival = arrivalOf(flight)
@@ -327,7 +308,6 @@ function trainInterval(train: Train, now: number) {
 	return Option.some(MINUTE)
 }
 
-// How often a provider is asked about the journey now; none while it is not tracked.
 export function checkEvery(booking: Booking, now: number) {
 	if (booking._tag === 'stay') return Option.none<number>()
 	if (booking._tag === 'flight') return flightInterval(booking, now)
@@ -347,8 +327,6 @@ export function isStale(booking: Booking, now: number) {
 	const checkedAt = booking.live.checkedAt
 	return Option.exists(checkEvery(booking, checkedAt), every => now - checkedAt > 2 * every + 2 * MINUTE)
 }
-
-// Live Activities
 
 type ActivityWindow = {end: number; leg: Leg; start: number}
 
@@ -381,7 +359,6 @@ function flightPhase(flight: Flight, now: number) {
 	return 'leave'
 }
 
-// What the timer counts down to in each phase.
 function flightTarget(flight: Flight, phase: FlightPhase) {
 	if (phase === 'leave') return departureOf(flight) - AIRPORT_LEAD
 	if (phase === 'airport' || phase === 'gate') return flight.boardingAt ?? departureOf(flight)
@@ -474,7 +451,6 @@ function departureNote(phase: FlightPhase, delay: number) {
 	return 'On time'
 }
 
-// The timer runs only toward a time still ahead.
 function countdownOf(target: number, now: number, counting: boolean) {
 	if (!counting || target <= now) return {}
 	return {countdown: target}
@@ -550,7 +526,6 @@ function platformTone(train: Train) {
 	return 'plain'
 }
 
-// The platform to board from, then the one the train arrives at once it left.
 function trainChip(train: Train, phase: TrainPhase) {
 	if (phase === 'running' || phase === 'arrived') {
 		return Option.map(labelled('Bin', train.live?.arrivalPlatform), text => chipOf(text, 'plain'))
@@ -612,7 +587,6 @@ export function activityProps(journey: Flight | Train, bookings: BookingList, no
 	return ActivityProps.make(trainActivity(journey, now))
 }
 
-// What moves the island at once rather than on the next low-priority push.
 export function urgencyOf(props: ActivityProps) {
 	return `${props.phase}|${props.chip?.text ?? ''}|${Number.round(props.delay / 5, 0)}`
 }
@@ -630,8 +604,6 @@ export function startAlert(journey: Flight | Train) {
 		title: titleOf(journey)
 	}
 }
-
-// Alerts
 
 export type Alert = {
 	body: string
