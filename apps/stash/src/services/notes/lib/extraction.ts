@@ -27,15 +27,8 @@ import {isPublicIp} from '@deslop/runtime/net'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {pageText} from '#services/notes/lib/page.ts'
-import {
-	canonical,
-	conversationPlan,
-	conversationExtraction,
-	isYouTube,
-	plainText,
-	sourceFor,
-	tikTokExtraction
-} from '#services/notes/lib/utils.ts'
+import {canonical, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
+import {conversationPlan, conversationExtraction, tikTokExtraction} from '#services/notes/lib/x.ts'
 import type {Image} from '#services/notes/schema.ts'
 import {
 	Extraction,
