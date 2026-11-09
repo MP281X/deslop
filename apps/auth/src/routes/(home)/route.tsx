@@ -68,11 +68,10 @@ const SIGN_IN_READERS: StaleReaders = [appsAtom, catalogAtom]
 const PEOPLE_READERS: StaleReaders = [appsAtom, catalogAtom, peopleAtom]
 
 function PageProblem() {
-	const matchRoute = useMatchRoute()
 	return (
 		<StaleProblem
 			label="Out of date"
-			readers={Boolean.match(matchRoute({to: '/people'}) !== false, {
+			readers={Boolean.match(useMatchRoute()({to: '/people'}) !== false, {
 				onFalse: () => SIGN_IN_READERS,
 				onTrue: () => PEOPLE_READERS
 			})}

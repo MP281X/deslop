@@ -12,6 +12,7 @@ import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components
 
 // The page keeps this reader mounted even when its pane is offscreen.
 // judge-ignore no-silent-fallback -- now is when the problem began, not a stand-in for a failed read.
+// fallow-ignore-next-line unused-export -- the tests drive the age this atom keeps directly.
 export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>) =>
 	Atom.make(get => {
 		if (!AsyncResult.isFailure(get(source))) return Option.none<number>()
@@ -24,6 +25,7 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 export type StaleReaders = readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]
 
 // The oldest reader whose failure still shows its previous value; refreshing it refreshes every reader.
+// fallow-ignore-next-line unused-export -- the tests drive the age and retry protocol this atom exposes directly.
 export const staleSinceAtom = Atom.family((readers: StaleReaders) =>
 	Atom.readable(
 		get =>
@@ -65,7 +67,7 @@ const ageAtom = Atom.family((identity: number | string) =>
 )
 
 // The popup works with hover, keyboard and touch.
-export function Problem(props: {label: string; reset?: () => void; since?: number}) {
+function Problem(props: {label: string; reset?: () => void; since?: number}) {
 	const id = useId()
 	const age = useAtomValue(ageAtom(props.since ?? id))
 	const [open, setOpen] = useState(false)

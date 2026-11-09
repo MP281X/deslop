@@ -458,8 +458,8 @@ function CopyEndpoint() {
 
 // The four readers of each period, which the page's one stale mark ages from the oldest and retries together.
 const READERS: Record<Period, StaleReaders> = {
-	'24h': [serversAtom, mcpUsageAtom('24h'), aiKeysAtom, aiUsageAtom('24h')],
 	'7d': [serversAtom, mcpUsageAtom('7d'), aiKeysAtom, aiUsageAtom('7d')],
+	'24h': [serversAtom, mcpUsageAtom('24h'), aiKeysAtom, aiUsageAtom('24h')],
 	'30d': [serversAtom, mcpUsageAtom('30d'), aiKeysAtom, aiUsageAtom('30d')]
 }
 

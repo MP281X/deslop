@@ -15,6 +15,7 @@ import {T3Light} from '@deslop/components-web/ui/svgs/t3Light'
 import {TurborepoIconDark} from '@deslop/components-web/ui/svgs/turborepoIconDark'
 import {TurborepoIconLight} from '@deslop/components-web/ui/svgs/turborepoIconLight'
 import {Vite} from '@deslop/components-web/ui/svgs/vite'
+
 const brands = [
 	{dark: T3Light, light: T3Dark, pattern: /\bt3code\b/u},
 	{dark: Nodejs, light: Nodejs, pattern: /\b(?:node|nodejs)(?:-MainThread)?\b/iu},

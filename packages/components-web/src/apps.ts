@@ -18,15 +18,14 @@ const icons = import.meta.glob<string>('../../../apps/*/src/routes/icon.svg', {
 	query: '?url'
 })
 
-function appNameOf(path: string) {
-	return Option.flatMap(String.match(/\/(?<app>[^/]+)\/src\/routes\/icon\.svg$/u)(path), match =>
-		Option.fromUndefinedOr(match.groups?.['app'])
-	)
-}
-
 // Every app's canonical mark, keyed by the folder its routes' icon lives in.
 export const appMarks: Record<string, string> = Record.fromEntries(
-	Array.flatMap(Record.toEntries(icons), ([path, url]) =>
-		Option.match(appNameOf(path), {onNone: () => [], onSome: app => [[app, url] as const]})
+	Array.flatMap(Record.toEntries(icons), entry =>
+		Option.match(
+			Option.flatMap(String.match(/\/(?<app>[^/]+)\/src\/routes\/icon\.svg$/u)(entry[0]), match =>
+				Option.fromUndefinedOr(match.groups?.['app'])
+			),
+			{onNone: () => [], onSome: app => [[app, entry[1]] as const]}
+		)
 	)
 )

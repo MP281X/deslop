@@ -479,20 +479,19 @@ function Home() {
 	const pushed = Boolean.match(isPhone, {onFalse: () => false, onTrue: () => pane === 'process'})
 
 	// A phone's bar names the pushed app and backs out to the list; wider screens keep the wordmark.
-	const heading = Boolean.match(pushed, {
-		onFalse: () => undefined,
-		onTrue: () => ({
-			back: {label: 'Back', onClick: () => view({pane: 'apps'})},
-			title: Option.match(Option.fromUndefinedOr(selectedRow), {
-				onNone: () => 'Processes',
-				onSome: entry => workloadName(entry.item)
-			})
-		})
-	})
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				heading={heading}
+				heading={Boolean.match(pushed, {
+					onFalse: () => undefined,
+					onTrue: () => ({
+						back: {label: 'Back', onClick: () => view({pane: 'apps'})},
+						title: Option.match(Option.fromUndefinedOr(selectedRow), {
+							onNone: () => 'Processes',
+							onSome: entry => workloadName(entry.item)
+						})
+					})
+				})}
 				icon={icon}
 				name="deploy"
 				controls={
