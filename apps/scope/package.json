@@ -16,6 +16,7 @@
 	"type": "module",
 	"sideEffects": false,
 	"imports": {
+		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
 		"#routeTree.gen.ts": "./src/routeTree.gen.ts",
 		"#routes/*": "./src/routes/*",
