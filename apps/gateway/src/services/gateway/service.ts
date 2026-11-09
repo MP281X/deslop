@@ -29,7 +29,6 @@ import type {Headers} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {CurrentUser} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
@@ -186,9 +185,6 @@ export class Gateway extends Context.Service<
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
 						Effect.fromOption
 					)
-					if (Option.isNone(yield* Effect.serviceOption(CurrentUser))) {
-						yield* auth.user(request.headers)
-					}
 					yield* connections.called(server.id)
 					const args = yield* Schema.decodeUnknownEffect(ToolArguments)(input ?? {})
 					return yield* withClient(server, request.headers, client =>
