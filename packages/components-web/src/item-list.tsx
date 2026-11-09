@@ -5,10 +5,13 @@ import type {ReactNode} from 'react'
 import {Item, ItemContent, ItemMedia} from '#components/ui/item.tsx'
 import {Skeleton} from '#components/ui/skeleton.tsx'
 
-// A quiet heading over a group of rows, such as an app's operations or the scheduled jobs; its icon is the group's mark at row size.
-export function ItemListHeading(props: {children: ReactNode; icon?: ReactNode}) {
+// A quiet heading over a group of rows, such as the processes or the scheduled jobs: a row's height, with its 16px icon in the marks' column so its text lines up with the names.
+export function ItemListHeading(props: {children: ReactNode; icon: ReactNode}) {
 	return (
-		<div role="presentation" className="list-row text-muted-foreground flex h-6 items-center gap-2 px-4 text-xs">
+		<div
+			role="presentation"
+			className="list-row text-muted-foreground flex h-8 items-center gap-3 px-4 text-xs max-sm:h-11 [&_svg]:size-4 [&_svg]:shrink-0"
+		>
 			{props.icon}
 			{props.children}
 		</div>
