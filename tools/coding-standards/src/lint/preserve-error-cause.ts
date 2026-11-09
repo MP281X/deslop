@@ -140,18 +140,29 @@ function constructedClass(node?: ESTree.Node | null) {
 	return Option.none()
 }
 
-// `cause: Schema.Defect` takes any failure; a narrower field may reject the one being mapped.
+// `cause: Schema.Defect()` takes any failure; a narrower field may reject the one being mapped.
+function causeSchema(context: Context, node: ESTree.Node): boolean {
+	if (node.type === 'MemberExpression') {
+		return (
+			importedMember({context, importedName: 'Schema', node}) &&
+			Option.exists(memberName(node), name => name === 'Defect' || name === 'Unknown')
+		)
+	}
+	if (node.type !== 'CallExpression' || node.callee.type !== 'MemberExpression') return false
+	if (importedMember({context, importedName: 'Schema', node: node.callee, propertyName: 'Defect'})) return true
+	return (
+		(importedMember({context, importedName: 'Schema', node: node.callee, propertyName: 'optional'}) ||
+			importedMember({context, importedName: 'Schema', node: node.callee, propertyName: 'optionalKey'})) &&
+		Array.some(node.arguments, argument => argument.type !== 'SpreadElement' && causeSchema(context, argument))
+	)
+}
+
 function hasCauseField(context: Context, node: ESTree.Node): boolean {
 	if (
 		node.type === 'ObjectExpression' &&
 		Array.some(
 			node.properties,
-			property =>
-				causeKey(property) &&
-				property.type === 'Property' &&
-				property.value.type === 'MemberExpression' &&
-				importedMember({context, importedName: 'Schema', node: property.value}) &&
-				Option.exists(memberName(property.value), name => name === 'Defect' || name === 'Unknown')
+			property => causeKey(property) && property.type === 'Property' && causeSchema(context, property.value)
 		)
 	) {
 		return true
@@ -159,7 +170,7 @@ function hasCauseField(context: Context, node: ESTree.Node): boolean {
 	return Array.some(childNodes(context, node), child => hasCauseField(context, child))
 }
 
-// The error is declared in this file with a `cause: Schema.Defect` field; an imported one, or one with another field, is left to a person.
+// The error is declared in this file with a `cause: Schema.Defect()` field; an imported one, or one with another field, is left to a person.
 function declaresCause(context: Context, node?: ESTree.Node | null) {
 	return Option.exists(constructedClass(node), name =>
 		Option.exists(variableFor(context, name), variable =>

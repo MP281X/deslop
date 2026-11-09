@@ -825,7 +825,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'fixes.ts': Array.join(
 							[
 								"import {Array, Effect, Option as Maybe, Schema} from 'effect'",
-								"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
+								"class Failed extends Schema.TaggedError<Failed>()('Failed', {cause: Schema.Defect(), message: Schema.String}) {}",
 								'declare const work: Effect.Effect<number, string>',
 								'declare const value: object',
 								'declare const maybe: Maybe.Option<string>',
@@ -863,7 +863,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'kept.ts': Array.join(
 							[
 								"import {Array, Effect, Schema} from 'effect'",
-								"class Narrow extends Schema.TaggedErrorClass<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
+								"class Narrow extends Schema.TaggedError<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
 								'declare const loaded: string | undefined',
 								'declare function step(): <A>(self: A) => A',
 								"if (loaded === undefined) throw new Error('missing')",
@@ -888,7 +888,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						[
 							"import {Array, Effect, Option, Schema, pipe} from 'effect'",
 							'',
-							"class Failed extends Schema.TaggedErrorClass<Failed>()('Failed', {cause: Schema.Defect, message: Schema.String}) {}",
+							"class Failed extends Schema.TaggedError<Failed>()('Failed', {cause: Schema.Defect(), message: Schema.String}) {}",
 							'declare const work: Effect.Effect<number, string>',
 							'declare const value: object',
 							'declare const maybe: Option.Option<string>',
@@ -946,7 +946,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						[
 							"import {Array, Effect, Schema} from 'effect'",
 							'',
-							"class Narrow extends Schema.TaggedErrorClass<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
+							"class Narrow extends Schema.TaggedError<Narrow>()('Narrow', {cause: Schema.String, message: Schema.String}) {}",
 							'declare const loaded: string | undefined',
 							'declare function step(): <A>(self: A) => A',
 							"if (loaded === undefined) throw new Error('missing')",
@@ -1799,7 +1799,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'declare const options: {concurrency: number}',
 							'declare function load(id: number): Effect.Effect<number>',
 							'declare function download(): Promise<string>',
-							'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.Unknown, message: Schema.String}) {}',
+							'class Failed extends Schema.TaggedError<Failed>()("Failed", {cause: Schema.optional(Schema.Defect()), message: Schema.String}) {}',
 							'const countAtom = Atom.make(0)',
 							'export const sequential = Effect.forEach(items, load)',
 							'export const dataLast = Effect.forEach(load)',
