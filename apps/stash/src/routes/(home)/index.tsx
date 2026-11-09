@@ -4,6 +4,7 @@ import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} fr
 
 import {
 	Button,
+	ContextMenu,
 	Divider,
 	HStack,
 	Image,
@@ -69,15 +70,7 @@ import {
 	EmptyMedia,
 	EmptyTitle
 } from '@deslop/components-mobile/ui/empty'
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemGroup,
-	ItemMedia,
-	ItemTitle,
-	itemRow
-} from '@deslop/components-mobile/ui/item'
+import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
@@ -186,42 +179,6 @@ function DeleteButton(props: {onPress: () => void}) {
 	)
 }
 
-// One trash at the row's end; the rest of the note's actions sit behind the … menu.
-function NoteRowActions(props: {
-	note: NoteItem
-	onRegenerate: (id: Note['id']) => void
-	onRemove: (id: Note['id']) => void
-}) {
-	return (
-		<ItemActions>
-			<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-				{Option.match(Option.fromNullishOr(props.note.url), {
-					onNone: () => undefined,
-					onSome: url => (
-						<Button onPress={() => Linking.openURL(url)}>
-							<Label
-								title={Option.match(appOf(props.note), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})}
-								{...Option.match(brandOf(props.note), {
-									onNone: () => ({systemImage: 'arrow.up.right' as const}),
-									onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
-								})}
-							/>
-						</Button>
-					)
-				})}
-				<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(props.note.id)} />
-			</Menu>
-			<Button
-				label="Delete"
-				systemImage="trash"
-				role="destructive"
-				onPress={() => props.onRemove(props.note.id)}
-				modifiers={[labelStyle('iconOnly'), tint(colors.destructive)]}
-			/>
-		</ItemActions>
-	)
-}
-
 function NoteRow(props: {
 	note: NoteItem
 	onAppear: () => void
@@ -231,20 +188,44 @@ function NoteRow(props: {
 }) {
 	return (
 		<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
-			<Item
-				onPress={() => props.onOpen(props.note.id)}
-				modifiers={[
-					accessibilityAddTraits(['isButton']),
-					alignmentGuide('listRowSeparatorLeading', 0),
-					onAppear(props.onAppear)
-				]}
-			>
-				<ItemMedia>
-					<NoteMedia note={props.note} />
-				</ItemMedia>
-				<Lines note={props.note} />
-				<NoteRowActions note={props.note} onRegenerate={props.onRegenerate} onRemove={props.onRemove} />
-			</Item>
+			<ContextMenu>
+				<ContextMenu.Trigger>
+					<Item
+						onPress={() => props.onOpen(props.note.id)}
+						modifiers={[
+							accessibilityAddTraits(['isButton']),
+							alignmentGuide('listRowSeparatorLeading', 0),
+							onAppear(props.onAppear)
+						]}
+					>
+						<ItemMedia>
+							<NoteMedia note={props.note} />
+						</ItemMedia>
+						<Lines note={props.note} />
+					</Item>
+				</ContextMenu.Trigger>
+				<ContextMenu.Items>
+					{Option.match(Option.fromNullishOr(props.note.url), {
+						onNone: () => undefined,
+						onSome: url => (
+							<Button onPress={() => Linking.openURL(url)}>
+								<Label
+									title={Option.match(appOf(props.note), {
+										onNone: () => 'Open Link',
+										onSome: name => `Open in ${name}`
+									})}
+									{...Option.match(brandOf(props.note), {
+										onNone: () => ({systemImage: 'arrow.up.right' as const}),
+										onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
+									})}
+								/>
+							</Button>
+						)
+					})}
+					<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(props.note.id)} />
+					<DeleteButton onPress={() => props.onRemove(props.note.id)} />
+				</ContextMenu.Items>
+			</ContextMenu>
 			<SwipeActions.Actions edge="trailing">
 				<DeleteButton onPress={() => props.onRemove(props.note.id)} />
 			</SwipeActions.Actions>
