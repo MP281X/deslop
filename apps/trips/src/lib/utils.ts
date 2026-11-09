@@ -761,7 +761,6 @@ export const tones = {
 	warn: colors.warning
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
-// Where to go, the gate or platform, read beside the state and never in place of it.
 type Where = {text: string; tone: Tone}
 
 function statusLine(label: string, tone: Tone, where: Option.Option<Where>) {
@@ -859,8 +858,6 @@ export function problemOf(booking: Booking, status: {label: string; tone: Tone},
 	}
 	return Option.none<{label: string; status: 'error' | 'warning'; tone: 'bad' | 'warn'}>()
 }
-
-// Navigation
 
 function bookingIn(url?: string | null) {
 	return Option.flatMap(Option.fromNullishOr(url), link =>

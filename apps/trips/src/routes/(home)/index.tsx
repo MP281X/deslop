@@ -97,7 +97,6 @@ function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
 	return Array.join(Array.filter([scheduleOf(booking), where], String.isNonEmpty), ' · ')
 }
 
-// How far away a row is: now, today, or days until its day on its first row; blank for the rest of that day.
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
 
 function Gutter(props: {countdown: Countdown}) {
@@ -180,7 +179,6 @@ function PasteSheet(props: {children: ReactNode}) {
 	)
 }
 
-// What runs now, then the days ahead counted down in the gutter, then the last month folded away.
 function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)

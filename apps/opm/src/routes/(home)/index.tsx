@@ -156,7 +156,6 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 	}
 	const chapters = Array.filter(result.success, chapter => chapter.series === props.series)
 	const needle = String.toLowerCase(String.trim(props.searched))
-	// A query matches a chapter's number from its start, or any part of its name.
 	return Array.match(
 		pipe(
 			Array.sort(chapters, Order.flip(byNumber)),
