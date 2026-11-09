@@ -819,13 +819,7 @@ function OperationsPane(props: {
 							{app, offset}
 						])[1]
 						return Array.match(overview.apps, {
-							onEmpty: () => (
-								<EmptyState
-									label="No traces yet"
-									description="Send a request to any Deslop app; its operations appear here."
-									icon={<EmptyIcon />}
-								/>
-							),
+							onEmpty: () => <EmptyState label="No traces yet" icon={<EmptyIcon />} />,
 							onNonEmpty: () => (
 								<ScrollArea className="min-h-0 flex-1">
 									<div className="flex flex-col">

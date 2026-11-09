@@ -29,8 +29,7 @@ export const hues = {
 // The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
 export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
 
-// Concrete has no corner radius: rows, tiles and sheets keep their square edges.
-export const radius = 0
+// Concrete keeps square edges: rows, tiles and sheets have no corner radius.
 
 // System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
 export const text = {
