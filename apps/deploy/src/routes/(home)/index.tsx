@@ -1,11 +1,11 @@
 import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, HashSet, Number, Option, Order, Record, Schema, String} from 'effect'
+import {Array, Boolean, Cause, DateTime, HashSet, Number, Option, Order, Record, Schema, Stream, String} from 'effect'
 
 import {AppWindowIcon, ChartLineIcon, ClockIcon, PlayIcon, StackIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useDeferredValue, useEffect, useState} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {Suspense, useDeferredValue, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
@@ -180,7 +180,7 @@ function failedFor(
 	)
 }
 
-function middle(value: string) {
+function middleEllipsis(value: string) {
 	if (String.length(value) <= 28) return value
 	return `${String.slice(0, 7)(value)}…${String.slice(-7)(value)}`
 }
@@ -229,7 +229,6 @@ function MachineTabs(props: {
 	active?: string
 	histories: readonly MachineHistory[]
 	inventoryFailure: boolean
-	onChoose: () => void
 	sources: readonly {error: string; name: string}[]
 	workers: readonly string[]
 }) {
@@ -247,13 +246,7 @@ function MachineTabs(props: {
 					<AppBarTab
 						key={worker}
 						value={worker}
-						render={
-							<Link
-								to="/"
-								onClick={props.onChoose}
-								search={previous => ({...previous, app: undefined, machine: worker, pane: 'apps'})}
-							/>
-						}
+						render={<Link to="/" search={previous => ({...previous, app: undefined, machine: worker, pane: 'apps'})} />}
 					>
 						<MachineIcon worker={worker} />
 						<span className="max-w-32 truncate">{machineName(worker)}</span>
@@ -344,18 +337,14 @@ function runRequest(item: InventoryItem) {
 }
 
 // A running job's time: it starts counting when its row shows it, once a second, in the column that shows the next start.
-function Elapsed() {
-	const [clock, setClock] = useState(() => {
-		const at = Date.now()
-		return {now: at, started: at}
-	})
-	useEffect(() => {
-		const timer = setInterval(() => setClock(previous => ({...previous, now: Date.now()})), 1000)
-		return () => clearInterval(timer)
-	}, [])
+const elapsedAtom = Atom.family((_job: string) =>
+	Atom.make(Stream.map(Stream.zipWithIndex(Stream.tick('1 second')), tick => tick[1] * 1000))
+)
+
+function Elapsed(props: {job: string}) {
 	return (
 		<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-			{counted(clock.now - clock.started)}
+			{counted(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => 0))}
 		</span>
 	)
 }
@@ -522,7 +511,7 @@ function AppRow(props: {
 												</span>
 											)
 										}),
-									onTrue: () => <Elapsed />
+									onTrue: () => <Elapsed job={props.row.item.id} />
 								})
 						})}
 					</span>

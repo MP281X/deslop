@@ -19,7 +19,7 @@ type TreeStyle = CSSProperties & {'--tree-depth': number}
 // Each level indents 12px, and a parent's row is overdrawn while it pins itself above the rows scrolling under it.
 function Branch(props: {depth: number; row: TreeRow; stickyParents: boolean}) {
 	const children = props.row.children ?? []
-	const hasChildren = Array.isArrayNonEmpty(children)
+	const hasChildren = Array.isReadonlyArrayNonEmpty(children)
 	const sticky = props.stickyParents && hasChildren
 	const style: TreeStyle = {'--tree-depth': props.depth}
 	return (
