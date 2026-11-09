@@ -1,5 +1,6 @@
 import {Array, Boolean, Clock, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
 
+import {commandLabel} from '#services/inventory/lib/command.ts'
 import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
@@ -28,8 +29,11 @@ function commandArgs(cmdline: string) {
 		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0])) {
 			return `${String.split(arg, '=')[0]}=…`
 		}
-		if (index > 0 && SECRET.test(args[index - 1] ?? '') && String.startsWith('-')(args[index - 1] ?? '')) return '…'
-		if (!String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))) return '…'
+		// A secret flag's separate value, or a long opaque argument; the executable and flags themselves stay readable.
+		const previous = args[index - 1] ?? ''
+		const secretValue = String.startsWith('-')(previous) && !String.includes('=')(previous) && SECRET.test(previous)
+		const opaque = !String.startsWith('/')(arg) && Option.isSome(String.match(/^[\w+/=-]{32,}$/u)(arg))
+		if (index > 0 && !String.startsWith('-')(arg) && (secretValue || opaque)) return '…'
 		return String.slice(0, 200)(String.replaceAll(/:\/\/[^/@\s]+@/gu, '://…@')(arg))
 	})
 }
@@ -51,21 +55,26 @@ export const processes = Effect.gen(function* () {
 					Effect.gen(function* () {
 						const status = yield* fs.readFileString(`/proc/${pid}/status`)
 						const stat = yield* fs.readFileString(`/proc/${pid}/stat`)
+						const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
+						// A process whose arguments can't be read still counts, without its preview.
+						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), commandArgs)
 						const fields = String.split(
 							String.slice(Option.getOrElse(String.lastIndexOf(')')(stat), () => -1) + 2)(stat),
 							/\s+/u
 						)
+						const parsed = yield* Effect.try({
+							catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
+							try: () => processStatus(status)
+						})
 						return {
 							cgroup: yield* fs.readFileString(`/proc/${pid}/cgroup`),
 							process: {
-								...(yield* Effect.try({
-									catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
-									try: () => processStatus(status)
-								})),
-								// A process whose arguments can't be read still counts, without its preview.
-								...Option.match(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), {
-									onNone: () => ({}),
-									onSome: cmdline => ({command: commandArgs(cmdline)})
+								...parsed,
+								...Option.match(command, {onNone: () => ({}), onSome: args => ({command: args})}),
+								// The label reads the masked arguments; a kernel thread or a zombie has none, so its name stands alone.
+								label: Option.match(Option.filter(command, Array.isReadonlyArrayNonEmpty), {
+									onNone: () => ({detail: '', name: parsed.name}),
+									onSome: args => commandLabel(args, cwd)
 								})
 							},
 							start: yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[19] ?? ''),
