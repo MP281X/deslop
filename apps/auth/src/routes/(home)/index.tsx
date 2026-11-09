@@ -30,7 +30,7 @@ function Enter(props: {
 	return (
 		<section className="flex w-full flex-col gap-2">
 			<Field data-invalid={invalid}>
-				<InputGroup className="h-9">
+				<InputGroup className="h-9 max-sm:h-11">
 					<InputGroupAddon>
 						<KeyIcon />
 					</InputGroupAddon>
