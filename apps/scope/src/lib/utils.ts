@@ -39,6 +39,7 @@ export const Search = Schema.Struct({
 	operation: Schema.optionalKey(Schema.String),
 	pane: Schema.optionalKey(Pane),
 	side: Schema.optionalKey(Operation.fields.runtime),
+	source: Schema.optionalKey(Schema.String),
 	span: Schema.optionalKey(Schema.String),
 	trace: Schema.optionalKey(Schema.String)
 })
@@ -72,11 +73,19 @@ function select(selection: Selection, pane?: Pane) {
 	} satisfies Search
 }
 
+// The app filter is a view rather than a selection: choosing a row keeps it.
+function sourceOf(search: Search, next: Search) {
+	return Option.match(Option.fromUndefinedOr(search.source), {
+		onNone: () => next,
+		onSome: source => ({...next, source})
+	})
+}
+
 // Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
 export function nextSearch(search: Search, event: NavigationEvent) {
-	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
-	if (event._tag === 'Trace') return select(event.selection, 'Trace')
-	if (event._tag === 'Span') return select(event.selection, 'Span')
+	if (event._tag === 'Operation') return sourceOf(search, select({operation: event.operation}, 'Traces'))
+	if (event._tag === 'Trace') return sourceOf(search, select(event.selection, 'Trace'))
+	if (event._tag === 'Span') return sourceOf(search, select(event.selection, 'Span'))
 	return Option.match(
 		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
 		{onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})}

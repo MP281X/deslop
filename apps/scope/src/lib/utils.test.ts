@@ -40,3 +40,17 @@ it('a new operation or trace cannot inherit the previous span selection', () => 
 		{operation: {...OPERATION, name: 'Metrics.current'}}
 	)
 })
+
+it('keeps the bar’s app filter through a selection and Back', () => {
+	const selected = follow(
+		[
+			{_tag: 'Operation', operation: OPERATION},
+			{_tag: 'Trace', selection: {operation: OPERATION, traceId: 'second'}},
+			{_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}},
+			{_tag: 'Back'}
+		],
+		{source: 'deploy'}
+	)
+	assert.strictEqual(selected.source, 'deploy')
+	assert.strictEqual(navigationOf(selected).path, 'Trace')
+})

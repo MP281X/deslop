@@ -15,16 +15,17 @@ import {
 	Record,
 	Schema,
 	String,
+	Struct,
 	pipe
 } from 'effect'
 
-import {DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
-import {createFileRoute, getRouteApi} from '@tanstack/react-router'
+import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
+import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
@@ -32,6 +33,7 @@ import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
@@ -69,13 +71,14 @@ const HTTP_ATTRIBUTES = [
 	'url.scheme'
 ] as const
 
-// The device an operation starts on, as Auth marks a sign-in's; it is a shape, not a hue.
-const DEVICES: Record<Runtime, ReactElement> = {
-	ci: <FlowArrowIcon role="img" aria-label="CI" className="text-muted-foreground size-4 shrink-0" />,
-	mobile: <DeviceMobileIcon role="img" aria-label="iOS" className="text-muted-foreground size-4 shrink-0" />,
-	server: <HardDrivesIcon role="img" aria-label="server" className="text-muted-foreground size-4 shrink-0" />,
-	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-	web: <GlobeIcon role="img" aria-label="web" className="text-muted-foreground size-4 shrink-0" />
+// The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
+const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
+const KINDS: Record<Runtime, ReactElement> = {
+	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
+	mobile: <DeviceMobileIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
+	server: <HardDrivesIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
+	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
+	web: <GlobeIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />
 }
 
 const clock = new Intl.DateTimeFormat(undefined, {
@@ -110,7 +113,6 @@ const marks = WebRuntime.appIcons(
 )
 
 type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
-type OperationGroup = {app: Overview['apps'][number]; calls: number; operations: Operation[]}
 
 type WorkspaceProps = {
 	active?: ActiveOperation
@@ -121,6 +123,7 @@ type WorkspaceProps = {
 	onSelectOperation: (app: string, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
 	pickedSpan?: string
+	source?: string
 }
 
 // A pane with nothing selected keeps its mark alone, never a sentence that repeats the pane's name.
@@ -228,26 +231,71 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 	})
 }
 
-// The apps as groups: any app with a failure leads, then the busiest; inside a group failing operations lead, then the busiest.
-function groupedOperations(overview: Overview) {
-	const groups: OperationGroup[] = Array.map(overview.apps, app => ({
-		app,
-		calls: Array.reduce(app.operations, 0, (total, operation) => total + operation.count),
-		operations: Array.sort(
-			app.operations,
-			Order.combine(
-				Order.mapInput(Order.flip(Order.Boolean), (operation: Operation) => operation.failures > 0),
-				Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.count)
+// The waterfall's mark, and the trace list's until an operation is chosen.
+function WaterfallGlyph() {
+	return <ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
+}
+
+// The bar's app filter: All as text, then each app's mark; a chosen app is a view and keeps a selection it contains.
+function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
+	return (
+		<div className="overflow-x-auto max-sm:w-32">
+			<AppBarTabs value={props.source ?? 'all'}>
+				<AppBarTab value="all" render={<Link to="/" search={previous => Struct.omit(previous, ['source'])} />}>
+					All
+				</AppBarTab>
+				{Array.map(props.apps, app => (
+					<AppBarTab
+						key={app.name}
+						value={app.name}
+						render={
+							<Link
+								to="/"
+								aria-label={app.name}
+								search={previous =>
+									Boolean.match(previous.app === app.name, {
+										onFalse: () => ({
+											...Struct.omit(previous, ['app', 'operation', 'pane', 'side', 'span', 'trace']),
+											source: app.name
+										}),
+										onTrue: () => ({...previous, source: app.name})
+									})
+								}
+							/>
+						}
+					>
+						<AppMark app={app} />
+					</AppBarTab>
+				))}
+			</AppBarTabs>
+		</div>
+	)
+}
+
+// The most recent trace an operation started, which orders the list after failures.
+function latestOf(operation: Operation) {
+	return Array.match(operation.traces, {
+		onEmpty: () => 0n,
+		onNonEmpty: traces =>
+			BigInt(
+				Array.max(
+					traces,
+					Order.mapInput(Order.BigInt, (trace: OperationTrace) => BigInt(trace.time))
+				).time
 			)
-		)
-	}))
+	})
+}
+
+// One list of operations, narrowed to the chosen app: failing first, then most recent.
+function operationsOf(overview: Overview, source?: string) {
 	return Array.sort(
-		groups,
+		Array.flatMap(
+			Array.filter(overview.apps, (app: Overview['apps'][number]) => source === undefined || app.name === source),
+			(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
+		),
 		Order.combine(
-			Order.mapInput(Order.flip(Order.Boolean), (group: OperationGroup) =>
-				Array.some(group.operations, operation => operation.failures > 0)
-			),
-			Order.mapInput(Order.flip(Order.Number), (group: OperationGroup) => group.calls)
+			Order.mapInput(Order.flip(Order.Boolean), (row: ActiveOperation) => row.operation.failures > 0),
+			Order.mapInput(Order.flip(Order.BigInt), (row: ActiveOperation) => latestOf(row.operation))
 		)
 	)
 }
@@ -260,13 +308,15 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode}) {
 	})
 }
 
-// One operation in its app's group: the side it starts on, its name, then errors, runs and typical duration.
+// One operation: its app's mark, its name and side when two rows share it, then errors, runs and typical duration.
 function OperationRow(props: {
 	active: boolean
 	app: Overview['apps'][number]
+	duplicate: boolean
 	onSelect: () => void
 	operation: Operation
 }) {
+	const side = SIDES[props.operation.runtime]
 	return (
 		<div role="listitem">
 			<Item
@@ -278,6 +328,7 @@ function OperationRow(props: {
 						aria-label={Array.join(
 							[
 								`${props.app.name} ${props.operation.name}`,
+								...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
 								...Boolean.match(props.operation.failures > 0, {
 									onFalse: () => [],
 									onTrue: () => [`${count.format(props.operation.failures)} failed`]
@@ -292,10 +343,13 @@ function OperationRow(props: {
 					/>
 				}
 			>
-				<ItemMedia>{DEVICES[props.operation.runtime]}</ItemMedia>
+				<ItemMedia>
+					<AppMark app={props.app} />
+				</ItemMedia>
 				<ItemContent>
-					<ItemTitle className="w-full" title={props.operation.name}>
+					<ItemTitle title={props.operation.name}>
 						{props.operation.name}
+						{props.duplicate && KINDS[props.operation.runtime]}
 					</ItemTitle>
 				</ItemContent>
 				<ItemActions>
@@ -325,56 +379,44 @@ function OperationRow(props: {
 	)
 }
 
-// The operations under a heading per app; the first heading is the pane's 32px band, so rows line up across panes.
+// One operations list, narrowed to the bar's chosen app; no groups or headings.
 function OperationsPane(props: {
 	activeKey?: OperationKey
 	className?: string
 	onSelect: (app: string, operation: Operation) => void
+	source?: string
 }) {
 	return (
 		<section aria-label="Operations" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
-			<Suspense
-				fallback={
-					<>
-						<ItemListHeading>{null}</ItemListHeading>
-						<ItemListSkeleton label="Operations" media rows={8} />
-					</>
-				}
-			>
+			<Suspense fallback={<ItemListSkeleton label="Operations" media rows={8} />}>
 				<OverviewContent>
 					{overview =>
-						Array.match(groupedOperations(overview), {
-							onEmpty: () => (
-								<>
-									<ItemListHeading>{null}</ItemListHeading>
-									<EmptyState label="No traces yet" icon={<EmptyIcon />} />
-								</>
-							),
-							onNonEmpty: groups => (
-								<ScrollArea className="min-h-0 flex-1">
-									{Array.map(groups, group => (
-										<div key={group.app.name}>
-											<ItemListHeading icon={<AppMark app={group.app} />}>{group.app.name}</ItemListHeading>
-											<div role="list">
-												{Array.map(group.operations, operation => (
-													<OperationRow
-														key={`${group.app.name} ${operation.runtime} ${operation.name}`}
-														active={
-															props.activeKey !== undefined &&
-															props.activeKey.app === group.app.name &&
-															props.activeKey.runtime === operation.runtime &&
-															props.activeKey.name === operation.name
-														}
-														app={group.app}
-														onSelect={() => props.onSelect(group.app.name, operation)}
-														operation={operation}
-													/>
-												))}
-											</div>
+						Array.match(operationsOf(overview, props.source), {
+							onEmpty: () => <EmptyState label="No traces yet" icon={<EmptyIcon />} />,
+							onNonEmpty: rows => {
+								const names = Array.groupBy(rows, row => row.operation.name)
+								return (
+									<ScrollArea className="min-h-0 flex-1">
+										<div role="list">
+											{Array.map(rows, row => (
+												<OperationRow
+													key={`${row.app.name} ${row.operation.runtime} ${row.operation.name}`}
+													active={
+														props.activeKey !== undefined &&
+														props.activeKey.app === row.app.name &&
+														props.activeKey.runtime === row.operation.runtime &&
+														props.activeKey.name === row.operation.name
+													}
+													app={row.app}
+													duplicate={Option.exists(Record.get(names, row.operation.name), group => group.length > 1)}
+													onSelect={() => props.onSelect(row.app.name, row.operation)}
+													operation={row.operation}
+												/>
+											))}
 										</div>
-									))}
-								</ScrollArea>
-							)
+									</ScrollArea>
+								)
+							}
 						})
 					}
 				</OverviewContent>
@@ -383,7 +425,7 @@ function OperationsPane(props: {
 	)
 }
 
-// One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
+// One trace of the operation: its age, short id with its failure dot right after, and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
 		<div role="listitem">
@@ -410,7 +452,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 					/>
 				}
 			>
-				<ItemMedia className="w-10">
+				<ItemMedia className="w-8">
 					<span
 						className="text-muted-foreground tabular-nums"
 						title={Option.match(Number.parse(String.slice(0, -6)(props.trace.time)), {
@@ -422,16 +464,14 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 					</span>
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle className="w-full" title={props.trace.id}>
-						{String.slice(0, 8)(props.trace.id)}
-					</ItemTitle>
-				</ItemContent>
-				<ItemActions>
-					<span className="flex w-2 items-center justify-center">
+					<span className="flex min-w-0 items-center gap-1.5">
+						<span className="truncate" title={props.trace.id}>
+							{String.slice(0, 8)(props.trace.id)}
+						</span>
 						{props.trace.failure !== undefined && (
 							<span
 								role="img"
-								className="flex items-center justify-center"
+								className="flex shrink-0 items-center"
 								aria-label={`Failed in ${props.trace.failure.span}`}
 								title={`Failed in ${props.trace.failure.span}`}
 							>
@@ -439,7 +479,9 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 							</span>
 						)}
 					</span>
-					<span className="w-18 text-right tabular-nums">{durationOf(props.trace.durationMs)}</span>
+				</ItemContent>
+				<ItemActions>
+					<span className="w-12 text-right tabular-nums">{durationOf(props.trace.durationMs)}</span>
 				</ItemActions>
 			</Item>
 		</div>
@@ -458,7 +500,10 @@ function TracesPane(props: {
 	return (
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			<ItemListHeading
-				icon={Option.match(active, {onNone: () => undefined, onSome: current => <AppMark app={current.app} />})}
+				icon={Option.match(active, {
+					onNone: () => <WaterfallGlyph />,
+					onSome: current => <AppMark app={current.app} />
+				})}
 			>
 				{Option.match(active, {onNone: () => null, onSome: current => current.operation.name})}
 			</ItemListHeading>
@@ -494,7 +539,7 @@ function TracesPane(props: {
 	)
 }
 
-// One waterfall row: its app's hue on the bar, its name indented by depth, and its duration.
+// One waterfall row: a 24px line, its name indented by depth, a 6px bar, and its duration; no track or divider.
 function SpanRow(props: {
 	focus?: string
 	mark: Option.Option<string>
@@ -503,70 +548,74 @@ function SpanRow(props: {
 }) {
 	const interactive = hasDetail(props.span)
 	const open = interactive && props.focus === props.span.spanId
+	function content() {
+		return (
+			<>
+				<span
+					className="flex min-w-0 items-center gap-1.5 pl-(--indent)"
+					style={{'--indent': `${props.span.depth * 10}px`}}
+				>
+					{Option.match(props.mark, {
+						onNone: () => null,
+						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
+					})}
+					<span className={cn('truncate', props.span.status === 2 && 'text-destructive')} title={props.span.name}>
+						{props.span.name}
+					</span>
+				</span>
+				<span className="relative h-1.5 w-full">
+					<span
+						data-app={appName(props.span.service)}
+						className={cn(
+							'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+							Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'})
+						)}
+						style={{
+							'--length': `calc(${props.span.durationMs} / var(--trace-total) * 100%)`,
+							'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`
+						}}
+					/>
+				</span>
+				<span className="text-muted-foreground text-right tabular-nums">{durationOf(props.span.durationMs)}</span>
+			</>
+		)
+	}
+	const row = cn(
+		'grid-cols-spans sm:grid-cols-spans-wide grid h-6 items-center gap-2.5 px-4 text-xs',
+		Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'bg-muted'})
+	)
 	return (
 		<div role="listitem">
-			<Item
-				size="row"
-				data-selected={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
-				render={Boolean.match(interactive, {
-					onFalse: () => undefined,
-					onTrue: () => (
-						<button
-							type="button"
-							aria-label={Array.join(
-								[
-									`${appName(props.span.service)} ${props.span.name}`,
-									durationOf(props.span.durationMs),
-									...Boolean.match(props.span.status === 2, {onFalse: () => [], onTrue: () => ['failed']})
-								],
-								', '
-							)}
-							aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
-							onClick={() => props.onPick(props.span.spanId)}
-						/>
-					)
-				})}
-			>
-				<ItemMedia className="w-36 sm:w-60">
-					<span
-						className="flex w-full min-w-0 items-center gap-2 pl-(--indent)"
-						style={{'--indent': `${props.span.depth * 16}px`}}
+			{Boolean.match(interactive, {
+				onFalse: () => <div className={row}>{content()}</div>,
+				onTrue: () => (
+					<button
+						type="button"
+						aria-label={Array.join(
+							[
+								`${appName(props.span.service)} ${props.span.name}`,
+								durationOf(props.span.durationMs),
+								...Boolean.match(props.span.status === 2, {onFalse: () => [], onTrue: () => ['failed']})
+							],
+							', '
+						)}
+						aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+						className="group block w-full outline-none"
+						onClick={() => props.onPick(props.span.spanId)}
 					>
-						{Option.match(props.mark, {
-							onNone: () => null,
-							onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-						})}
-						<span className={cn('truncate', props.span.status === 2 && 'text-destructive')} title={props.span.name}>
-							{props.span.name}
-						</span>
-					</span>
-				</ItemMedia>
-				<ItemContent>
-					<span className="bg-muted relative h-2 w-full">
-						<span
-							data-app={appName(props.span.service)}
-							className={cn(
-								'absolute top-0 left-(--offset) h-2 w-(--length) min-w-0.5',
-								Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'})
-							)}
-							style={{
-								'--length': `calc(${props.span.durationMs} / var(--trace-total) * 100%)`,
-								'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`
-							}}
-						/>
-					</span>
-				</ItemContent>
-				<ItemActions>
-					<span className="text-muted-foreground w-18 text-right tabular-nums">
-						{durationOf(props.span.durationMs)}
-					</span>
-				</ItemActions>
-			</Item>
+						<div
+							className={cn(row, 'group-hover:bg-muted/30 group-focus-visible:ring-ring/50 group-focus-visible:ring-3')}
+						>
+							{content()}
+						</div>
+					</button>
+				)
+			})}
 		</div>
 	)
 }
 
-// The picked span's error, attributes and logs, as rows after its span row.
+// The picked span's error, attributes and logs, as 24px rows with no dividers between them.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
@@ -582,66 +631,56 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 			{Option.match(error, {
 				onNone: () => null,
 				onSome: message => (
-					<div role="listitem">
-						<Item size="row">
-							<ItemMedia className="w-36 sm:w-50">
-								<span className="text-muted-foreground w-full truncate">error</span>
-							</ItemMedia>
-							<ItemContent>
-								<span className="text-destructive block min-w-0 truncate" title={message}>
-									<ErrorText message={message} />
-								</span>
-							</ItemContent>
-						</Item>
+					<div role="listitem" className="grid-cols-detail grid h-6 items-center gap-2.5 px-4 text-xs">
+						<span className="text-muted-foreground truncate">error</span>
+						<span className="text-destructive min-w-0 truncate" title={message}>
+							<ErrorText message={message} />
+						</span>
 					</div>
 				)
 			})}
 			{Array.map(attributes, (attribute, index) => (
-				<div key={`${attribute.key}:${index}`} role="listitem">
-					<Item size="row">
-						<ItemMedia className="w-36 sm:w-50">
-							<span className="text-muted-foreground w-full truncate" title={attribute.key}>
-								{attribute.key}
-							</span>
-						</ItemMedia>
-						<ItemContent>
-							<span className="block min-w-0 truncate select-text" title={attribute.value}>
-								{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
-									onFalse: () => attribute.value,
-									onTrue: () => (
-										<a href={attribute.value} target="_blank" rel="noreferrer" className="text-primary">
-											{attribute.value}
-										</a>
-									)
-								})}
-							</span>
-						</ItemContent>
-					</Item>
+				<div
+					key={`${attribute.key}:${index}`}
+					role="listitem"
+					className="grid-cols-detail grid h-6 items-center gap-2.5 px-4 text-xs"
+				>
+					<span className="text-muted-foreground truncate" title={attribute.key}>
+						{attribute.key}
+					</span>
+					<span className="block min-w-0 truncate select-text" title={attribute.value}>
+						{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
+							onFalse: () => attribute.value,
+							onTrue: () => (
+								<a href={attribute.value} target="_blank" rel="noreferrer" className="text-primary">
+									{attribute.value}
+								</a>
+							)
+						})}
+					</span>
 				</div>
 			))}
 			{Array.map(props.span.logs, (log, index) => (
-				<div key={`${log.id}:${index}`} role="listitem">
-					<Item size="row">
-						<ItemMedia className="w-24">
-							<span className="text-muted-foreground w-full truncate tabular-nums">
-								{Option.match(Number.parse(String.slice(0, -6)(log.time)), {
-									onNone: () => '—',
-									onSome: timestamp => preciseClock.format(timestamp)
-								})}
-							</span>
-						</ItemMedia>
-						<ItemContent>
-							<span
-								className={cn(
-									'text-muted-foreground block min-w-0 truncate',
-									Boolean.match(log.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
-								)}
-								title={log.name}
-							>
-								{log.name}
-							</span>
-						</ItemContent>
-					</Item>
+				<div
+					key={`${log.id}:${index}`}
+					role="listitem"
+					className="grid-cols-log grid h-6 items-center gap-2.5 px-4 text-xs"
+				>
+					<span className="text-muted-foreground truncate tabular-nums">
+						{Option.match(Number.parse(String.slice(0, -6)(log.time)), {
+							onNone: () => '—',
+							onSome: timestamp => preciseClock.format(timestamp)
+						})}
+					</span>
+					<span
+						className={cn(
+							'text-muted-foreground block min-w-0 truncate',
+							Boolean.match(log.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+						)}
+						title={log.name}
+					>
+						{log.name}
+					</span>
 				</div>
 			))}
 		</div>
@@ -698,7 +737,11 @@ function SpansList(props: {
 				</div>
 				{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
 					onFalse: () => null,
-					onTrue: () => Option.match(props.focus, {onNone: () => null, onSome: span => <SpanDetail span={span} />})
+					onTrue: () => (
+						<div className="border-t">
+							{Option.match(props.focus, {onNone: () => null, onSome: span => <SpanDetail span={span} />})}
+						</div>
+					)
 				})}
 			</div>
 		</ScrollArea>
@@ -821,6 +864,39 @@ function Spans(props: {
 	})
 }
 
+// The waterfall's 24px rows while its trace loads.
+function SpansSkeleton(props: {label: string}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, 6), row => (
+				<div
+					key={row}
+					aria-hidden
+					className="grid-cols-spans sm:grid-cols-spans-wide grid h-6 items-center gap-2.5 px-4"
+				>
+					<Skeleton className="h-3 w-3/4" />
+					<Skeleton className="h-1.5 w-1/2" />
+					<Skeleton className="h-3 w-8 justify-self-end" />
+				</div>
+			))}
+		</div>
+	)
+}
+
+// The inspector's 24px rows while its span loads.
+function DetailSkeleton(props: {label: string}) {
+	return (
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, 6), row => (
+				<div key={row} aria-hidden className="grid-cols-detail grid h-6 items-center gap-2.5 px-4">
+					<Skeleton className="h-3 w-16" />
+					<Skeleton className="h-3 w-1/2" />
+				</div>
+			))}
+		</div>
+	)
+}
+
 // The open trace's waterfall: a band naming its short id and age, then, when inline, the picked span's details.
 function TracePane(props: {
 	className?: string
@@ -836,7 +912,7 @@ function TracePane(props: {
 		<section aria-label="Trace" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			{Boolean.match(props.detailOnly === true, {
 				onFalse: () => (
-					<ItemListHeading>
+					<ItemListHeading icon={<WaterfallGlyph />}>
 						{Option.match(trace, {
 							onNone: () => null,
 							onSome: current => `${String.slice(0, 8)(current.id)} · ${ageOf(current.time, props.now)}`
@@ -846,12 +922,10 @@ function TracePane(props: {
 				onTrue: () => null
 			})}
 			<Suspense
-				fallback={
-					<ItemListSkeleton
-						label={Boolean.match(props.detailOnly === true, {onFalse: () => 'Spans', onTrue: () => 'Span details'})}
-						rows={6}
-					/>
-				}
+				fallback={Boolean.match(props.detailOnly === true, {
+					onFalse: () => <SpansSkeleton label="Spans" />,
+					onTrue: () => <DetailSkeleton label="Span details" />
+				})}
 			>
 				<OverviewContent>
 					{() =>
@@ -867,15 +941,10 @@ function TracePane(props: {
 							),
 							onSome: current => (
 								<Suspense
-									fallback={
-										<ItemListSkeleton
-											label={Boolean.match(props.detailOnly === true, {
-												onFalse: () => 'Spans',
-												onTrue: () => 'Span details'
-											})}
-											rows={6}
-										/>
-									}
+									fallback={Boolean.match(props.detailOnly === true, {
+										onFalse: () => <SpansSkeleton label="Spans" />,
+										onTrue: () => <DetailSkeleton label="Span details" />
+									})}
 								>
 									<Spans
 										key={current.id}
@@ -900,7 +969,12 @@ function NarrowWorkspace(props: WorkspaceProps) {
 	return (
 		<div className="grid-cols-scope grid min-h-0 flex-1">
 			<div className="grid min-h-0 grid-rows-2 border-r">
-				<OperationsPane activeKey={props.activeKey} className="border-b" onSelect={props.onSelectOperation} />
+				<OperationsPane
+					activeKey={props.activeKey}
+					className="border-b"
+					onSelect={props.onSelectOperation}
+					source={props.source}
+				/>
 				<TracesPane
 					active={props.active}
 					now={props.now}
@@ -924,7 +998,7 @@ function WideWorkspace(props: WorkspaceProps) {
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
 			<ResizablePanel defaultSize={440} minSize={320} maxSize={560}>
-				<OperationsPane activeKey={props.activeKey} onSelect={props.onSelectOperation} />
+				<OperationsPane activeKey={props.activeKey} onSelect={props.onSelectOperation} source={props.source} />
 			</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel defaultSize={320} minSize={240} maxSize={480}>
@@ -955,7 +1029,12 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 			{pipe(
 				Match.value(props.pane),
 				Match.when('Operations', () => (
-					<OperationsPane activeKey={props.activeKey} className="min-h-0 flex-1" onSelect={props.onSelectOperation} />
+					<OperationsPane
+						activeKey={props.activeKey}
+						className="min-h-0 flex-1"
+						onSelect={props.onSelectOperation}
+						source={props.source}
+					/>
 				)),
 				Match.when('Traces', () => (
 					<TracesPane
@@ -1005,7 +1084,9 @@ function Home() {
 	// Below desktop width, the same selection navigates one screen at a time; from 1600px all panes stand together.
 	const isMobile = useMediaQuery('(width < 64rem)')
 	const isWide = useMediaQuery('(width >= 100rem)')
-	const navigation = navigationOf(route.useSearch())
+	const search = route.useSearch()
+	const navigation = navigationOf(search)
+	const source = search.source
 	const navigate = route.useNavigate()
 	function send(event: NavigationEvent) {
 		navigate({search: previous => nextSearch(previous, event)})
@@ -1026,9 +1107,7 @@ function Home() {
 			Boolean.match(isMobile, {
 				onFalse: () =>
 					Option.flatMap(value, current =>
-						Option.flatMap(Array.head(groupedOperations(current)), group =>
-							Option.map(Array.head(group.operations), operation => ({app: group.app, operation}))
-						)
+						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
 					),
 				onTrue: () => Option.none<ActiveOperation>()
 			})
@@ -1083,6 +1162,7 @@ function Home() {
 						onSelectOperation={selectOperation}
 						onSelectTrace={selectTrace}
 						pickedSpan={pickedSpan}
+						source={source}
 					/>
 				),
 				onTrue: () => (
@@ -1095,6 +1175,7 @@ function Home() {
 						onSelectOperation={selectOperation}
 						onSelectTrace={selectTrace}
 						pickedSpan={pickedSpan}
+						source={source}
 					/>
 				)
 			}),
@@ -1109,6 +1190,7 @@ function Home() {
 				onSelectTrace={selectTrace}
 				pane={pane}
 				pickedSpan={pickedSpan}
+				source={source}
 			/>
 		)
 	})
@@ -1143,6 +1225,14 @@ function Home() {
 					})
 				})}
 				controls={<StaleMark trace={Option.getOrUndefined(activeTrace)} />}
+				tabs={Option.match(value, {
+					onNone: () => undefined,
+					onSome: current =>
+						Boolean.match(isMobile && pane !== 'Operations', {
+							onFalse: () => <SourceTabs apps={current.apps} source={source} />,
+							onTrue: () => undefined
+						})
+				})}
 			/>
 			{Option.match(authFailure, {
 				onNone: () =>

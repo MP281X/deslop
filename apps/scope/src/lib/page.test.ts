@@ -44,7 +44,8 @@ const trace = traceView(
 
 function render(
 	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
-	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>
+	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>,
+	path = '/'
 ) {
 	return Effect.scoped(
 		Effect.gen(function* () {
@@ -83,7 +84,7 @@ function render(
 			registry.get(traceAtom(ID))
 			registry.ensureNode(traceAtom(ID)).setInitialValue(result)
 			if (overview !== undefined) registry.ensureNode(overviewAtom).setInitialValue(overview)
-			const router = createRouter({history: createMemoryHistory(), routeTree})
+			const router = createRouter({history: createMemoryHistory({initialEntries: [path]}), routeTree})
 			yield* Effect.promise(() => router.load())
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: registry}, createElement(RouterProvider, {router}))
@@ -192,7 +193,8 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
 		assert.include(html, 'list-row')
-		assert.include(html, 'h-12')
+		assert.include(html, 'h-8')
+		assert.include(html, 'max-sm:h-11')
 		assert.include(html, 'data-selected="true"')
 		assert.match(html, /aria-current="true"/u)
 		assert.include(html, 'data-[selected=true]:bg-muted')
@@ -241,7 +243,7 @@ it.effect(
 )
 
 it.effect(
-	'groups operations under their apps, failing groups and operations first',
+	'lists every app as one list, failing first then most recent, with a side glyph only for a shared name',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
@@ -249,19 +251,56 @@ it.effect(
 				apps: [
 					{
 						name: 'deploy',
-						operations: [{count: 99, failures: 0, name: 'deploy.idle', p50Ms: 4, runtime: 'server', traces: []}]
+						operations: [
+							{
+								count: 99,
+								failures: 0,
+								name: 'deploy.idle',
+								p50Ms: 4,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+							}
+						]
 					},
 					{
 						name: 'gateway',
 						operations: [
-							{count: 9, failures: 0, name: 'gateway.idle', p50Ms: 40, runtime: 'server', traces: []},
+							{
+								count: 9,
+								failures: 0,
+								name: 'gateway.idle',
+								p50Ms: 40,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
+							},
 							{
 								count: 2,
 								failures: 3,
 								name: 'gateway.fail',
 								p50Ms: 12,
 								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+								traces: [{durationMs: 10, id: ID, time: '1781850000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 5,
+								failures: 0,
+								name: 'notes.search',
+								p50Ms: 48,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781840000000000000'}]
+							},
+							{
+								count: 3,
+								failures: 0,
+								name: 'notes.search',
+								p50Ms: 60,
+								runtime: 'web',
+								traces: [{durationMs: 10, id: ID, time: '1781830000000000000'}]
 							}
 						]
 					}
@@ -269,18 +308,64 @@ it.effect(
 			})
 		)
 		for (const pair of [
-			{after: 'gateway.fail', before: '>gateway<'},
-			{after: 'gateway.idle', before: 'gateway.fail'},
-			{after: '>deploy<', before: 'gateway.idle'},
-			{after: 'deploy.idle', before: '>deploy<'}
+			{after: '>deploy.idle<', before: 'gateway.fail'},
+			{after: '>gateway.idle<', before: '>deploy.idle<'},
+			{after: 'notes.search', before: '>gateway.idle<'}
 		]) {
 			assert.isBelow(
 				Option.getOrThrow(String.indexOf(pair.before)(html)),
 				Option.getOrThrow(String.indexOf(pair.after)(html))
 			)
 		}
-		assert.match(html, /class="list-row[^"]*"[^>]*><img [^>]*>gateway\.fail<\/div>/u)
-		assert.include(html, 'aaaaaaaa · ')
+		assert.notInclude(html, '>deploy<')
+		assert.include(html, 'aria-label="deploy"')
+		assert.include(html, 'aria-label="stash"')
+		assert.include(html, 'stash notes.search, server')
+		assert.include(html, 'stash notes.search, web')
+		assert.include(html, 'size-3')
+	})
+)
+
+it.effect(
+	'narrows the operations list and its first selection to the URL’s app filter',
+	Effect.fnUntraced(function* () {
+		const html = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'deploy.only',
+								p50Ms: 4,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'stash.only',
+								p50Ms: 4,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
+							}
+						]
+					}
+				]
+			}),
+			'/?source=stash'
+		)
+		assert.notInclude(html, '>deploy.only<')
+		assert.include(html, '>stash.only<')
+		assert.include(html, 'aria-label="stash"')
 	})
 )
 
