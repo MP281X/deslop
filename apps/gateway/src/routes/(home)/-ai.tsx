@@ -233,16 +233,18 @@ export function AiControls(props: {
 // A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
 	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
+		<h2 className="tracking-label text-muted-foreground text-2xs px-1 pb-1.5 font-mono font-medium uppercase">
+			{props.children}
+		</h2>
 	)
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
 function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="hover:bg-accent/40 focus-within:bg-accent/40 mx-1 rounded-lg transition-colors">
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-14 min-w-0 items-center gap-3 px-2 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -367,7 +369,7 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
+		<ChartContainer config={config} className="h-64 w-full max-sm:h-44">
 			<BarChart
 				accessibilityLayer
 				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
@@ -455,7 +457,7 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 // The period at a glance; a desktop adds the daily average.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+		<div className="flex flex-wrap items-center gap-2">
 			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
 			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
 			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
@@ -484,16 +486,18 @@ function UsageReport(props: {
 		return (
 			<>
 				<Stats range={props.range} report={props.report} />
-				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
-					No AI calls in the{' '}
-					{Option.getOrElse(
-						Option.map(
-							Array.findFirst(PERIODS, entry => entry.value === props.period),
-							entry => entry.name
-						),
-						() => 'period'
-					)}
-				</p>
+				<div className="glass rounded-2xl py-16">
+					<p role="status" className="text-muted-foreground text-center text-sm">
+						No AI calls in the{' '}
+						{Option.getOrElse(
+							Option.map(
+								Array.findFirst(PERIODS, entry => entry.value === props.period),
+								entry => entry.name
+							),
+							() => 'period'
+						)}
+					</p>
+				</div>
 			</>
 		)
 	}
@@ -560,16 +564,18 @@ function UsageReport(props: {
 	return (
 		<>
 			<Stats range={props.range} report={props.report} />
-			<UsageChart
-				apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
-				metric={props.metric}
-				onBucket={at => toggle({bucket: at})}
-				range={props.range}
-				report={props.report}
-			/>
+			<div className="glass rounded-2xl p-3 sm:p-4">
+				<UsageChart
+					apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
+					metric={props.metric}
+					onBucket={at => toggle({bucket: at})}
+					range={props.range}
+					report={props.report}
+				/>
+			</div>
 			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
-			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
-				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
+			<div className="grid gap-3 md:grid-cols-2">
+				<section aria-label="By app" className="glass flex min-w-0 flex-col rounded-2xl p-2.5">
 					<GroupLabel>By app</GroupLabel>
 					<div role="list" aria-label="By app">
 						{Array.map(appSums, sum => (
@@ -585,7 +591,7 @@ function UsageReport(props: {
 						))}
 					</div>
 				</section>
-				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">
+				<section aria-label="By model" className="glass flex min-w-0 flex-col rounded-2xl p-2.5">
 					<GroupLabel>By model</GroupLabel>
 					<div role="list" aria-label="By model">
 						{Array.map(modelSums, sum => (
@@ -679,12 +685,7 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 				</span>
 				<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
 				<span className="flex size-3 shrink-0 items-center justify-center">
-					<StatusDot
-						status={Option.match(props.info, {
-							onNone: () => 'off' as const,
-							onSome: () => Boolean.match(rejected, {onFalse: () => 'live' as const, onTrue: () => 'error' as const})
-						})}
-					/>
+					{Boolean.match(rejected, {onFalse: () => null, onTrue: () => <StatusDot status="error" />})}
 				</span>
 			</Row>
 		</>
@@ -703,7 +704,7 @@ function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; peri
 		() => []
 	)
 	return (
-		<section aria-label="Keys" className="flex flex-col">
+		<section aria-label="Keys" className="glass flex flex-col rounded-2xl p-2.5">
 			<GroupLabel>Keys</GroupLabel>
 			<div role="list" aria-label="Keys">
 				{Array.match(result.value, {
@@ -742,14 +743,28 @@ export function AiPane(props: {
 	period: Period
 }) {
 	return (
-		<CatchBoundary getResetKey={() => `ai-${props.period}`} errorComponent={FailureContent}>
-			<Suspense fallback={<ItemListSkeleton label="AI usage" rows={6} />}>
-				<Usage focus={props.focus} metric={props.metric} onFocus={props.onFocus} period={props.period} />
-			</Suspense>
-			<Suspense fallback={<ItemListSkeleton label="Keys" rows={4} />}>
-				<Keys onAdd={props.onAdd} period={props.period} />
-			</Suspense>
-		</CatchBoundary>
+		<div className="flex flex-col gap-3">
+			<CatchBoundary getResetKey={() => `ai-${props.period}`} errorComponent={FailureContent}>
+				<Suspense
+					fallback={
+						<div className="glass rounded-2xl p-3">
+							<ItemListSkeleton label="AI usage" rows={6} />
+						</div>
+					}
+				>
+					<Usage focus={props.focus} metric={props.metric} onFocus={props.onFocus} period={props.period} />
+				</Suspense>
+				<Suspense
+					fallback={
+						<div className="glass rounded-2xl p-3">
+							<ItemListSkeleton label="Keys" rows={4} />
+						</div>
+					}
+				>
+					<Keys onAdd={props.onAdd} period={props.period} />
+				</Suspense>
+			</CatchBoundary>
+		</div>
 	)
 }
 

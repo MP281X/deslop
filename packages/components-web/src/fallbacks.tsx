@@ -16,12 +16,12 @@ export function EmptyState(props: {action?: ReactNode; description?: string; ico
 		)
 	}
 	return (
-		<Empty role="status" aria-label={props.label}>
+		<Empty role="status" aria-label={props.label} variant="surface">
 			<EmptyHeader>
 				<EmptyMedia variant="icon" className="mb-3">
 					{props.icon}
 				</EmptyMedia>
-				<h2 className="font-heading text-2xl leading-none tracking-tight">{props.label}</h2>
+				<h2 className="font-heading text-xl leading-none tracking-tight">{props.label}</h2>
 				{props.description !== undefined && <EmptyDescription>{props.description}</EmptyDescription>}
 			</EmptyHeader>
 			{props.action !== undefined && <EmptyContent>{props.action}</EmptyContent>}
@@ -31,12 +31,12 @@ export function EmptyState(props: {action?: ReactNode; description?: string; ico
 
 export function NotFound() {
 	return (
-		<Empty aria-label="Page not found">
+		<Empty aria-label="Page not found" variant="glass">
 			<EmptyHeader>
 				<EmptyMedia variant="icon">
 					<QuestionIcon className="size-5" weight="light" />
 				</EmptyMedia>
-				<h2 className="font-heading text-2xl leading-none tracking-tight">Page not found</h2>
+				<h2 className="font-heading text-xl leading-none tracking-tight">Page not found</h2>
 				<EmptyDescription>The link is old, or it never existed.</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>

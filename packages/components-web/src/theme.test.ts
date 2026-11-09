@@ -5,18 +5,11 @@ import {Array, Effect, FileSystem, Number, Option, String, pipe} from 'effect'
 
 const ROOT = `${import.meta.dirname}/../../..`
 
-// Relative OKLCH preserves its Kanagawa source exactly; Expo accepts that source at its native color boundary.
 function declarations(block: string) {
-	return Array.map(
-		Array.fromIterable(
-			String.matchAll(/--([a-z-]+): (?:#([0-9a-f]{6})|oklch\(from #([0-9a-f]{6}) l c h\)|var\(--([a-z-]+)\));/gu)(block)
-		),
-		match => {
-			if (match[2]) return [match[1] ?? '', `#${match[2]}`]
-			if (match[3]) return [match[1] ?? '', `#${match[3]}`]
-			return [match[1] ?? '', `var(--${match[4] ?? ''})`]
-		}
-	)
+	return Array.map(Array.fromIterable(String.matchAll(/--([a-z0-9-]+): ([^;]+);/gu)(block)), match => [
+		match[1] ?? '',
+		String.trim(match[2] ?? '')
+	])
 }
 
 function lookup(entries: string[][], name: string) {
@@ -36,7 +29,9 @@ function resolved(entries: string[][], name: string) {
 function pairs(source: string) {
 	return Array.map(
 		Array.fromIterable(
-			String.matchAll(/(\w+): DynamicColorIOS\(\{dark: '(#[0-9a-f]{6})', light: '(#[0-9a-f]{6})'\}\)/gu)(source)
+			String.matchAll(
+				/(\w+): DynamicColorIOS\(\{dark: '(#[0-9a-f]{6}|rgba\([0-9]+, [0-9]+, [0-9]+, [0-9.]+\))', light: '(#[0-9a-f]{6}|rgba\([0-9]+, [0-9]+, [0-9]+, [0-9.]+\))'\}\)/gu
+			)(source)
 		),
 		match => ({
 			dark: match[2],
@@ -94,7 +89,7 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps light surfaces neutral and app and status colours readable on white',
+		'keeps light surfaces cool and app and status colours readable on white',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const [light] = String.split(
@@ -103,17 +98,17 @@ it.layer(NodeServices.layer)(test => {
 			)
 			const entries = declarations(light)
 			for (const entry of [
-				['background', '#ffffff'],
+				['background', '#f2f6fb'],
 				['popover', '#ffffff'],
 				['primary-foreground', '#ffffff'],
-				['foreground', '#0a0a0a'],
-				['card', '#f8f7f4'],
-				['secondary', '#f1f0ec'],
-				['muted', '#f5f4f1'],
-				['muted-foreground', '#64625d'],
-				['accent', '#f0efea'],
-				['border', '#e6e4de'],
-				['input', '#d8d6cf']
+				['foreground', '#0b1523'],
+				['card', 'rgba(255, 255, 255, 0.75)'],
+				['secondary', '#e7eff8'],
+				['muted', '#edf3f9'],
+				['muted-foreground', '#5f7186'],
+				['accent', '#e2ebf5'],
+				['border', '#cfdae8'],
+				['input', '#d5e1ee']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}
@@ -140,27 +135,26 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps neutral selection, one radius and no green token in either appearance',
+		'keeps deep-ink tokens, a 16px card scale and no green token in either appearance',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const source = yield* fs.readFileString(`${import.meta.dirname}/theme.css`)
 			const [light, dark = ''] = String.split(source, '@media screen and (prefers-color-scheme: dark)')
 			const darkDeclarations = [...declarations(dark), ...declarations(light)]
-			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
-			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#e3e1db')
-			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#242323')
-			assert.strictEqual(resolved(darkDeclarations, 'border'), '#262523')
-			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
-			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
+			assert.strictEqual(resolved(darkDeclarations, 'background'), '#070b13')
+			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#eaf2ff')
+			assert.strictEqual(resolved(darkDeclarations, 'accent'), 'rgba(46, 70, 100, 0.55)')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), 'rgba(164, 194, 230, 0.18)')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#5eebff')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#a78bfa')
 			assert.notInclude(source, '--green')
-			assert.include(source, '--radius: 0px;')
+			assert.include(source, '--radius: 16px;')
+			assert.include(source, '--radius-md: 10px;')
+			assert.include(source, '--radius-xl: 16px;')
 			assert.include(
 				yield* fs.readFileString(`${ROOT}/packages/components-mobile/src/theme.ts`),
-				'export const radius = 12'
+				'export const radius = 16'
 			)
-			for (const size of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']) {
-				assert.include(source, `--radius-${size}: var(--radius);`)
-			}
 		})
 	)
 

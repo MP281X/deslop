@@ -10,6 +10,7 @@ import {toQR} from 'toqr'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
+import {StatusDot} from '@deslop/components-web/status-dot'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
 import {
@@ -161,7 +162,7 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<ContextMenu>
-			<div role="listitem" className="border-b">
+			<div role="listitem" className="hover:bg-accent/50 focus-within:bg-accent/50 mx-1 rounded-lg transition-colors">
 				<ContextMenuTrigger
 					render={
 						<div
@@ -169,13 +170,16 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="flex h-14 min-w-0 items-center gap-3 px-3 text-sm max-sm:h-12"
 						/>
 					}
 				>
 					<ClientIcon client={props.client.client} />
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					<span className="text-muted-foreground flex shrink-0 items-center gap-1.5 font-mono text-xs tabular-nums">
+						{Boolean.match(minutes < 1, {onFalse: () => null, onTrue: () => <StatusDot status="live" />})}
+						{active}
+					</span>
 					{Option.match(address, {
 						onNone: () => null,
 						onSome: value => (
@@ -205,9 +209,9 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="bg-secondary/50 border-border/70 flex flex-col gap-3 rounded-xl border p-4">
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
+				<h2 className="font-heading text-xl leading-none tracking-tight">A sign-in is waiting</h2>
 				<span className="text-muted-foreground font-mono text-xs tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>

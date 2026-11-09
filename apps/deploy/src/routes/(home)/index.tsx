@@ -328,6 +328,7 @@ function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Button
 			size="sm"
+			mono
 			className="min-w-port relative max-sm:h-11"
 			nativeButton={false}
 			render={
@@ -368,7 +369,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
-							<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
+							<Button key={listener.id} size="sm" variant="ghost" mono disabled className="min-w-port max-sm:h-11">
 								:{listener.port}
 							</Button>
 						),
@@ -377,6 +378,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								key={listener.id}
 								size="sm"
 								variant="secondary"
+								mono
 								className="min-w-port relative max-sm:h-11"
 								aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
 								onClick={() => expose(port)}
@@ -506,7 +508,10 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn(
+								'list-row relative mx-1 flex h-14 items-center gap-2 rounded-lg pr-3',
+								highlighted && 'bg-accent/50'
+							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -791,7 +796,7 @@ function AppsPane(props: {
 									{Array.map(props.rows, (row, index) => (
 										<Fragment key={row.item.id}>
 											{index === firstScheduled && (
-												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
+												<div className="bg-surface border-border tracking-label text-muted-foreground text-2xs sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 font-mono uppercase">
 													<span className="tracking-label font-semibold uppercase">Scheduled</span>
 													<Badge variant="secondary">{scheduled.length}</Badge>
 												</div>
@@ -1127,7 +1132,7 @@ function MachineTabs(props: {
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				<TabsList variant="line" aria-label="Machines" className="w-full max-sm:group-data-horizontal/tabs:h-auto">
+				<TabsList aria-label="Machines" className="w-full max-sm:h-auto">
 					{Array.map(workers, worker => {
 						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
@@ -1185,7 +1190,7 @@ function SourceProblems(props: {
 		{
 			onEmpty: () => null,
 			onNonEmpty: sources => (
-				<div className="flex shrink-0 flex-wrap items-center gap-3 border-b pb-2">
+				<div className="border-border/60 flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2">
 					{Array.map(sources, source => (
 						<div key={source.name} className="flex items-center gap-1.5">
 							<MachineIcon worker={source.name} />
@@ -1416,7 +1421,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="h-full min-h-0">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}
@@ -1440,7 +1445,7 @@ function Home() {
 						<SourceProblems onRetry={refreshInventory} sources={sources} workers={workers} />
 						<div
 							className={cn(
-								'machine flex min-h-0 flex-1 flex-col gap-4',
+								'machine flex min-h-0 flex-1 flex-col gap-3',
 								refreshing && 'opacity-60 transition-opacity'
 							)}
 							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
@@ -1449,11 +1454,11 @@ function Home() {
 								onFalse: () =>
 									Boolean.match(isWide, {
 										onFalse: () => (
-											<div className="grid-rows-split grid min-h-0 flex-1">
-												<div className="grid min-h-0 grid-cols-2">
+											<div className="grid-rows-split grid min-h-0 flex-1 gap-3">
+												<div className="grid min-h-0 grid-cols-2 gap-3">
 													<AppsPane
 														bandOf={bandOf}
-														className="min-w-0 border-r"
+														className="min-w-0"
 														compact={false}
 														free={free}
 														hovered={hovered}
@@ -1473,12 +1478,7 @@ function Home() {
 														worker={active}
 													/>
 												</div>
-												<ProcessPane
-													className="min-h-0 border-t"
-													now={now}
-													pending={inventoryPending}
-													row={selectedRow}
-												/>
+												<ProcessPane className="min-h-0" now={now} pending={inventoryPending} row={selectedRow} />
 											</div>
 										),
 										onTrue: () => (

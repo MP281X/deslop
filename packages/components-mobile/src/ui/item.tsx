@@ -7,9 +7,14 @@ import {
 	foregroundStyle,
 	frame,
 	lineLimit,
+	listRowBackground,
 	listRowInsets,
+	listRowSeparator,
+	listRowSpacing,
+	listSectionSpacing,
 	listStyle,
 	onTapGesture,
+	scrollContentBackground,
 	scrollEdgeEffectStyle,
 	shapes
 } from '@expo/ui/swift-ui/modifiers'
@@ -20,15 +25,26 @@ import {colors, space, text} from '#components/theme.ts'
 
 // shadcn's Item on iOS by the same names; a caller's modifiers come first, so they win over the defaults like a className.
 
-// Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
+// Row modifiers for an ItemGroup: a translucent card per row, 8pt of ink between rows, no separator rule.
 export const itemRow = [
 	frame({minHeight: 56}),
-	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
+	listRowBackground(colors.card),
+	listRowSeparator('hidden'),
+	listRowInsets({bottom: space[2], leading: space[3], top: space[2], trailing: space[3]})
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
 	return (
-		<List modifiers={[...(props.modifiers ?? []), scrollEdgeEffectStyle('soft'), listStyle('insetGrouped')]}>
+		<List
+			modifiers={[
+				...(props.modifiers ?? []),
+				scrollContentBackground('hidden'),
+				scrollEdgeEffectStyle('soft'),
+				listRowSpacing(space[2]),
+				listSectionSpacing(space[4]),
+				listStyle('insetGrouped')
+			]}
+		>
 			{props.children}
 		</List>
 	)

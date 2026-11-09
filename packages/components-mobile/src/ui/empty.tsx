@@ -1,7 +1,12 @@
+import {Boolean} from 'effect'
+
 import {Image, Text, VStack} from '@expo/ui/swift-ui'
 import type {ImageProps} from '@expo/ui/swift-ui'
 import {
 	accessibilityHidden,
+	background,
+	border,
+	clipShape,
 	font,
 	foregroundStyle,
 	frame,
@@ -12,16 +17,24 @@ import {
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import type {ReactNode} from 'react'
 
-import {colors, space} from '#components/theme.ts'
+import {colors, radius, space} from '#components/theme.ts'
 
-// shadcn's Empty on iOS, by the same names, laid out as SwiftUI's ContentUnavailableView: centered symbol, title, description, actions.
-export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
+// shadcn's Empty on iOS: standalone it is one translucent slab; inside a list section the row is the surface, so `surface` goes false.
+export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]; surface?: boolean}) {
 	return (
 		<VStack
 			spacing={space[4]}
 			modifiers={[
 				...(props.modifiers ?? []),
-				padding({all: space[8]}),
+				...Boolean.match(props.surface === false, {
+					onFalse: () => [
+						background(colors.card),
+						border({content: colors.border}),
+						clipShape('roundedRectangle', radius)
+					],
+					onTrue: () => []
+				}),
+				padding({all: space[6]}),
 				frame({maxHeight: Infinity, maxWidth: Infinity}),
 				multilineTextAlignment('center')
 			]}

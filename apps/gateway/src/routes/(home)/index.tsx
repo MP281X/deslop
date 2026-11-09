@@ -14,10 +14,9 @@ import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Page, Section, Stat} from '@deslop/components-web/page'
+import {Page, Stat} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
-import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	ContextMenu,
@@ -40,17 +39,7 @@ import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {
-	addAtom,
-	connectUrl,
-	copyAtom,
-	ENDPOINT,
-	lastCallAtom,
-	Period,
-	removeAtom,
-	serversAtom,
-	setKeyAtom
-} from '#lib/utils.ts'
+import {addAtom, connectUrl, copyAtom, ENDPOINT, Period, removeAtom, serversAtom, setKeyAtom} from '#lib/utils.ts'
 import {AddKeyDialog, AiControls, AiPane, PROVIDERS} from '#routes/(home)/-ai.tsx'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import icon from '#routes/icon.svg'
@@ -83,23 +72,6 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 		Match.orElse(() => 2)
 	)
 )
-
-// Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
-function Status(props: {server: ConnectionInfo}) {
-	const call = useAtomValue(lastCallAtom(props.server.id))
-	return (
-		<StatusDot
-			key={call}
-			className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'animate-port-blink'})}
-			status={pipe(
-				Match.value(props.server.status),
-				Match.when('Connected', () => 'live' as const),
-				Match.when('Expired', () => 'error' as const),
-				Match.orElse(() => 'off' as const)
-			)}
-		/>
-	)
-}
 
 // A server's own words for why it needs the user, or its host when it is fine.
 function reasonText(server: ConnectionInfo) {
@@ -183,10 +155,10 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	const connected = props.server.status === 'Connected'
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="glass rounded-xl">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-14 min-w-0 items-center gap-3 px-3 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -214,25 +186,18 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						)}
 					</div>
 					<div className="relative flex w-16 shrink-0 justify-end">
-						{connected && props.server.error === undefined && (
-							<span
-								role="img"
-								title={props.server.status}
-								aria-label={props.server.status}
-								className="flex size-3 shrink-0 items-center justify-center"
-							>
-								<Status server={props.server} />
-							</span>
-						)}
-						{(!connected || props.server.error !== undefined) && (
-							<Problem
-								label={Boolean.match(connected, {
-									onFalse: () => reasonText(props.server),
-									onTrue: () => 'Connection failed'
-								})}
-								reset={() => location.assign(connectUrl(props.server.id))}
-							/>
-						)}
+						{Boolean.match(connected && props.server.error === undefined, {
+							onFalse: () => (
+								<Problem
+									label={Boolean.match(connected, {
+										onFalse: () => reasonText(props.server),
+										onTrue: () => 'Connection failed'
+									})}
+									reset={() => location.assign(connectUrl(props.server.id))}
+								/>
+							),
+							onTrue: () => null
+						})}
 					</div>
 				</div>
 				<ContextMenuContent className="w-auto min-w-36">
@@ -272,19 +237,27 @@ function ServersContent(props: {onAdd: () => void}) {
 							/>
 						),
 						onNonEmpty: servers => (
-							<Section title="Servers" meta={`${servers.length} configured`}>
-								<div role="list" aria-label="MCP servers">
+							<div className="flex flex-col gap-2.5">
+								<div className="flex items-baseline justify-between gap-3 px-1">
+									<h2 className="tracking-label text-muted-foreground font-mono text-xs font-medium uppercase">
+										Servers
+									</h2>
+									<span className="text-muted-foreground/80 font-mono text-xs tabular-nums">
+										{servers.length} configured
+									</span>
+								</div>
+								<div role="list" aria-label="MCP servers" className="flex flex-col gap-2.5">
 									{Array.map(servers, server => (
 										<ServerRow key={server.id} server={server} />
 									))}
 								</div>
-							</Section>
+							</div>
 						)
 					})
 				)
 			)}
 			{AsyncResult.isFailure(result) && (
-				<div className="bg-background sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end">
+				<div className="bg-background/60 sticky bottom-0 z-20 mt-auto flex shrink-0 justify-end rounded-xl pb-2 backdrop-blur-md">
 					<Problem label="Servers out of date" warning reset={refresh} since={since} />
 				</div>
 			)}
@@ -295,7 +268,7 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+			<div className="flex flex-wrap items-baseline gap-2">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"
@@ -523,7 +496,7 @@ function Home() {
 				}
 			/>
 			{view === 'ai' && (
-				<div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-1 sm:hidden">
+				<div className="flex shrink-0 items-center justify-between gap-2 px-6 py-2 sm:hidden">
 					<AiControls
 						metric={metric}
 						period={period}

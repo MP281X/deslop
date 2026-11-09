@@ -23,6 +23,7 @@
 }
 
 @theme {
-	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
+	/* The floating operation column takes less of the viewport; the waterfall needs the ink between panes. */
+	--grid-template-columns-scope: minmax(20rem, 26rem) minmax(0, 1fr);
 	--grid-template-columns-attributes: repeat(auto-fill, minmax(14rem, 1fr));
 }

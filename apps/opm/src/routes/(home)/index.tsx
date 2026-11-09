@@ -23,6 +23,7 @@ import {
 	foregroundStyle,
 	frame,
 	labelStyle,
+	listRowBackground,
 	menuOrder,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
@@ -96,6 +97,7 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 			onPress={() => props.onOpen(props.chapter.number, props.page)}
 			modifiers={[
 				...itemRow,
+				listRowBackground(colors.surface),
 				accessibilityLabel(
 					Boolean.match(done, {
 						onFalse: () => `Continue reading Chapter ${props.chapter.number}, page ${page} of ${pages}`,
@@ -157,7 +159,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 				{/* Read rows recede as a whole, so the chapter number still leads the list. */}
 				<ItemContent modifiers={[opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.6}))]}>
 					<HStack spacing={space[2]}>
-						{props.fresh && <StatusDot status="live" tint={primary} />}
+						{props.fresh && <StatusDot status="live" label="New chapter" tint={primary} />}
 						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					</HStack>
 					<ItemDescription>

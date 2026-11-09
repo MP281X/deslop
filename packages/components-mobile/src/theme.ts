@@ -1,36 +1,37 @@
 import {font} from '@expo/ui/swift-ui/modifiers'
 import {DynamicColorIOS} from 'react-native'
 
-// Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
+// Expo's color boundary takes sRGB not OKLCH; these match theme.css, and translucent card, surface and border act as native glass.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
-	card: DynamicColorIOS({dark: '#141313', light: '#f8f7f4'}),
-	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
-	foreground: DynamicColorIOS({dark: '#e3e1db', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#a19e96', light: '#64625d'}),
-	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	surface: DynamicColorIOS({dark: '#191817', light: '#f2f1ed'}),
-	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
+	background: DynamicColorIOS({dark: '#070b13', light: '#f2f6fb'}),
+	border: DynamicColorIOS({dark: 'rgba(164, 194, 230, 0.18)', light: '#cfdae8'}),
+	card: DynamicColorIOS({dark: 'rgba(18, 28, 44, 0.62)', light: 'rgba(255, 255, 255, 0.75)'}),
+	destructive: DynamicColorIOS({dark: '#ff6b8a', light: '#c92b38'}),
+	foreground: DynamicColorIOS({dark: '#eaf2ff', light: '#0b1523'}),
+	mutedForeground: DynamicColorIOS({dark: '#8fa3be', light: '#5f7186'}),
+	primaryForeground: DynamicColorIOS({dark: '#041018', light: '#ffffff'}),
+	success: DynamicColorIOS({dark: '#34d399', light: '#157a55'}),
+	surface: DynamicColorIOS({dark: 'rgba(16, 24, 38, 0.72)', light: 'rgba(255, 255, 255, 0.6)'}),
+	warning: DynamicColorIOS({dark: '#ffc857', light: '#a3530b'})
 }
 
-// Each app's primary tints its controls, live states and icon.
+// Each app's primary tints its controls and icon; status keeps the spectral identity.
 export const hues = {
-	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
-	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),
-	cyan: DynamicColorIOS({dark: '#a3d4d5', light: '#25777a'}),
-	ivory: DynamicColorIOS({dark: '#dcd7ba', light: '#686868'}),
-	orange: DynamicColorIOS({dark: '#ffa066', light: '#b64b11'}),
-	pink: DynamicColorIOS({dark: '#d27e99', light: '#a63c69'}),
-	purple: DynamicColorIOS({dark: '#957fb8', light: '#74519b'}),
-	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
+	amber: DynamicColorIOS({dark: '#34d399', light: '#157a55'}),
+	blue: DynamicColorIOS({dark: '#a78bfa', light: '#2f66c9'}),
+	cyan: DynamicColorIOS({dark: '#5eebff', light: '#087f9c'}),
+	ivory: DynamicColorIOS({dark: '#c3d2e6', light: '#5c7089'}),
+	orange: DynamicColorIOS({dark: '#ffc857', light: '#a3530b'}),
+	pink: DynamicColorIOS({dark: '#f472b6', light: '#b0336c'}),
+	purple: DynamicColorIOS({dark: '#a78bfa', light: '#6d4fc4'}),
+	slate: DynamicColorIOS({dark: '#9fb3cc', light: '#526887'})
 }
 
 // The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
-export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
+export const space = {1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32, 16: 64}
 
-// Concentric with the system's list rows, sheets and icon tiles.
-export const radius = 12
+// Concentric with the system's sheets, floating rows and icon tiles: 16pt cards, 10pt controls.
+export const radius = 16
 
 // System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
 export const text = {

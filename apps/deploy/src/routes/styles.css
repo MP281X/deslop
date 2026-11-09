@@ -31,3 +31,8 @@
 @utility machine-metric {
 	--primary: var(--machine);
 }
+
+/* The one chart glow: the edge of the current reading, always in that machine's hue. */
+@utility current-edge {
+	filter: drop-shadow(0 0 4px var(--machine));
+}

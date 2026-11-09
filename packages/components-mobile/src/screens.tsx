@@ -6,6 +6,7 @@ import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo
 import {
 	buttonBorderShape,
 	buttonStyle,
+	background,
 	clipShape,
 	controlSize,
 	disabled,
@@ -57,7 +58,15 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	const denied = deniedBy(props.cause)
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
-			<VStack spacing={space[3]}>
+			<VStack
+				spacing={space[3]}
+				modifiers={[
+					background(colors.card),
+					clipShape('roundedRectangle', radius),
+					padding({all: space[6]}),
+					frame({maxWidth: 380})
+				]}
+			>
 				<Label
 					icon={
 						<Image
@@ -96,28 +105,38 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 		<Host style={{flex: 1}}>
 			<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
 				<Spacer />
-				<Image
-					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
-					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
-				/>
-				<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
-					Sign in with GitHub to keep this app in sync.
-				</Text>
-				<Spacer />
-				<Button
-					onPress={() => props.onSignIn()}
+				<VStack
+					spacing={space[4]}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
-						controlSize('large'),
-						tint(props.tint),
-						disabled(props.waiting)
+						background(colors.card),
+						clipShape('roundedRectangle', radius),
+						padding({all: space[6]}),
+						frame({maxWidth: 380})
 					]}
 				>
-					<Text modifiers={[text.title]}>
-						{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
+					<Image
+						uiImage={useAtomSuspense(assetAtom(props.logo)).value}
+						modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
+					/>
+					<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
+						Sign in with GitHub to keep this app in sync.
 					</Text>
-				</Button>
+					<Button
+						onPress={() => props.onSignIn()}
+						modifiers={[
+							buttonStyle('glassProminent'),
+							buttonBorderShape('capsule'),
+							controlSize('large'),
+							tint(props.tint),
+							disabled(props.waiting)
+						]}
+					>
+						<Text modifiers={[text.title]}>
+							{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
+						</Text>
+					</Button>
+				</VStack>
+				<Spacer />
 			</VStack>
 		</Host>
 	)

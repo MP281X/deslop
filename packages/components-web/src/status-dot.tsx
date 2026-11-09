@@ -8,7 +8,7 @@ const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
 	variants: {
 		status: {
 			error: 'bg-destructive',
-			live: 'bg-primary',
+			live: 'bg-primary shadow-(--glow-live)',
 			off: 'border-muted-foreground border',
 			quiet: 'bg-muted-foreground/50',
 			warning: 'bg-warning'
@@ -16,7 +16,7 @@ const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
 	}
 })
 
-// The status dot, beside a word that says the same: live in the app's hue, quiet muted, off hollow; a waiting one breathes.
+// The status dot, beside a word that says the same: live in the app's hue with the system's one glow, quiet muted, off hollow; a waiting one wears a ring.
 export function StatusDot(props: VariantProps<typeof statusDotVariants> & {className?: string; waiting?: boolean}) {
 	return (
 		<span
@@ -24,7 +24,7 @@ export function StatusDot(props: VariantProps<typeof statusDotVariants> & {class
 			aria-hidden="true"
 			className={cn(
 				statusDotVariants({status: props.status}),
-				props.waiting === true && 'motion-safe:animate-pulse',
+				props.waiting === true && 'outline-primary/25 outline outline-2 outline-offset-2',
 				props.className
 			)}
 		/>

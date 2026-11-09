@@ -36,6 +36,7 @@ import {
 	frame,
 	labelStyle,
 	lineLimit,
+	listRowBackground,
 	listRowInsets,
 	listRowSeparator,
 	menuOrder,
@@ -61,6 +62,7 @@ import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {
 	Empty,
@@ -111,6 +113,7 @@ function Lines(props: {note: NoteItem}) {
 						spacing={space[1]}
 						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
 					>
+						<StatusDot status="live" tint={primary} />
 						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
 						<Text modifiers={[text.detail, lineLimit(1)]}>Reading the source</Text>
 					</HStack>
@@ -189,7 +192,16 @@ function NoteRow(props: {
 	onRemove: (id: Note['id']) => void
 }) {
 	return (
-		<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
+		<SwipeActions
+			modifiers={[
+				...itemRow,
+				tag(props.note.id),
+				...Boolean.match(props.note.status === 'organizing', {
+					onFalse: () => [],
+					onTrue: () => [listRowBackground(colors.surface)]
+				})
+			]}
+		>
 			<ContextMenu>
 				<ContextMenu.Trigger>
 					<Item

@@ -6,39 +6,40 @@
 
 /* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
-	--red: oklch(from #c92b38 l c h);
-	--orange: oklch(from #b64b11 l c h);
-	--amber: oklch(from #91601d l c h);
-	--ivory: oklch(from #686868 l c h);
-	--cyan: oklch(from #25777a l c h);
-	--blue: oklch(from #345dad l c h);
-	--purple: oklch(from #74519b l c h);
-	--pink: oklch(from #a63c69 l c h);
-	--slate: oklch(from #526887 l c h);
-	--coral: oklch(from #bd4630 l c h);
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
+	/* Glass Signal light: cool white, translucent layers, spectral hues darkened for white, never Lotus paper. */
+	--red: #c92b38;
+	--orange: #a3530b;
+	--amber: #157a55;
+	--ivory: #5c7089;
+	--cyan: #087f9c;
+	--blue: #2f66c9;
+	--purple: #6d4fc4;
+	--pink: #b0336c;
+	--slate: #526887;
+	--coral: #c92b38;
+	--machine-dev: #087f9c;
+	--machine-desktop: #6d4fc4;
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
+	--background: #f2f6fb;
+	--foreground: #0b1523;
+	--card: rgba(255, 255, 255, 0.75);
 	--popover: #ffffff;
 	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--secondary: #e7eff8;
+	--muted: #edf3f9;
+	--muted-foreground: #5f7186;
+	--accent: #e2ebf5;
+	--border: #cfdae8;
+	--input: #d5e1ee;
+	--surface: rgba(255, 255, 255, 0.6);
+	--selection: rgba(8, 127, 156, 0.12);
+	--selection-foreground: #0b1523;
 
-	--primary: var(--slate);
+	--primary: #087f9c;
 	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
-	--ring: var(--primary);
+	--warning: #a3530b;
+	--success: #157a55;
+	--ring: #087f9c;
 
 	--card-foreground: var(--foreground);
 	--popover-foreground: var(--foreground);
@@ -46,12 +47,19 @@
 	--accent-foreground: var(--foreground);
 	--surface-foreground: var(--foreground);
 
+	/* The two restrained washes behind every page: cyan top left, violet bottom right. */
+	--wash-cyan: rgba(8, 127, 156, 0.07);
+	--wash-violet: rgba(109, 79, 196, 0.05);
+	--glass-highlight: rgba(255, 255, 255, 0.7);
+	--glow-live: 0 0 0 1px rgba(8, 127, 156, 0.25), 0 0 10px rgba(8, 127, 156, 0.45);
+
 	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
-	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	--chart-1: #087f9c;
+	--chart-2: #6d4fc4;
+	--chart-3: #b0336c;
+	--chart-4: #157a55;
+	--chart-5: #a3530b;
+	--chart-6: #5f7186;
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -61,41 +69,67 @@
 	--sidebar-border: var(--border);
 	--sidebar-ring: var(--ring);
 
-	--radius: 0px;
+	/* Glass Signal's radius scale: cards are 16px, controls 10px, chips 12px. */
+	--radius: 16px;
+	--radius-xs: 6px;
+	--radius-sm: 8px;
+	--radius-md: 10px;
+	--radius-lg: 12px;
+	--radius-xl: 16px;
+	--radius-2xl: 16px;
+	--radius-3xl: 16px;
+	--radius-4xl: 16px;
 }
 
 /* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
-		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
-		--amber: oklch(from #e6c384 l c h);
-		--ivory: oklch(from #dcd7ba l c h);
-		--cyan: oklch(from #a3d4d5 l c h);
-		--blue: oklch(from #7e9cd8 l c h);
-		--purple: oklch(from #957fb8 l c h);
-		--pink: oklch(from #d27e99 l c h);
-		--slate: oklch(from #9cabca l c h);
-		--coral: oklch(from #fd7357 l c h);
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		/* Deep ink with spectral cyan and violet; identity and status carry the hue. */
+		--red: #ff6b8a;
+		--orange: #ffc857;
+		--amber: #34d399;
+		--ivory: #c3d2e6;
+		--cyan: #5eebff;
+		--blue: #a78bfa;
+		--purple: #a78bfa;
+		--pink: #f472b6;
+		--slate: #9fb3cc;
+		--coral: #ff6b8a;
+		--machine-dev: #5eebff;
+		--machine-desktop: #a78bfa;
+		--warning: #ffc857;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #070b13;
+		--foreground: #eaf2ff;
+		--card: rgba(18, 28, 44, 0.62);
+		--popover: #0e1725;
+		--primary-foreground: #041018;
+		--secondary: rgba(32, 48, 70, 0.55);
+		--muted: rgba(24, 38, 58, 0.5);
+		--muted-foreground: #8fa3be;
+		--accent: rgba(46, 70, 100, 0.55);
+		--border: rgba(164, 194, 230, 0.18);
+		--input: rgba(140, 170, 210, 0.12);
+		--surface: rgba(16, 24, 38, 0.72);
+		--selection: rgba(94, 235, 255, 0.14);
+		--selection-foreground: #eaf2ff;
+
+		--primary: #5eebff;
+		--destructive: #ff6b8a;
+		--success: #34d399;
+		--ring: #5eebff;
+
+		--wash-cyan: rgba(94, 235, 255, 0.06);
+		--wash-violet: rgba(167, 139, 250, 0.04);
+		--glass-highlight: rgba(234, 242, 255, 0.04);
+		--glow-live: 0 0 0 1px rgba(94, 235, 255, 0.35), 0 0 12px rgba(94, 235, 255, 0.55);
+
+		--chart-1: #5eebff;
+		--chart-2: #a78bfa;
+		--chart-3: #f472b6;
+		--chart-4: #34d399;
+		--chart-5: #ffc857;
+		--chart-6: #8fa3be;
 	}
 }
 
@@ -103,12 +137,17 @@
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--tracking-label: 0.1em;
+	/* 13px body, 11px labels and data, 10px micro labels: the HUD's three sizes. */
+	--text-2xs: 0.625rem;
+	--text-xs: 0.6875rem;
+	--text-sm: 0.8125rem;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -132,6 +171,7 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -140,14 +180,16 @@
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
-	--radius-xs: var(--radius);
-	--radius-sm: var(--radius);
-	--radius-md: var(--radius);
-	--radius-lg: var(--radius);
-	--radius-xl: var(--radius);
-	--radius-2xl: var(--radius);
-	--radius-3xl: var(--radius);
-	--radius-4xl: var(--radius);
+	--radius-xs: 6px;
+	--radius-sm: 8px;
+	--radius-md: 10px;
+	--radius-lg: 12px;
+	--radius-xl: 16px;
+	--radius-2xl: 16px;
+	--radius-3xl: 16px;
+	--radius-4xl: 16px;
+	/* Panes settle in once; reduced motion keeps the state without the move. */
+	--animate-glass-in: glass-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 	/* The installed app's insets. The bottom is the home indicator's own inset, with nothing added. */
 	--spacing-safe-top: env(safe-area-inset-top);
 	--spacing-safe-right: env(safe-area-inset-right);
@@ -155,19 +197,48 @@
 	--spacing-safe-left: env(safe-area-inset-left);
 }
 
+@keyframes glass-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+
 /* Pixel art keeps its hard edges when scaled. */
 @utility pixelated {
 	image-rendering: pixelated;
 }
 
-/* Sera's display face, for the one heading that names a view. */
-/* A ruled row: the fill may meet the pane edge, the divider never does. */
+/* The translucent surface every pane, bar and floating section shares: one blur, one hairline, one inset light. */
+@utility glass {
+	background-color: var(--card);
+	border: 1px solid var(--border);
+	backdrop-filter: blur(16px) saturate(1.1);
+	-webkit-backdrop-filter: blur(16px) saturate(1.1);
+	box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+/* The floating masthead sits a layer above the panes, so it takes the higher-opacity surface. */
+@utility glass-bar {
+	background-color: var(--surface);
+	border: 1px solid var(--border);
+	backdrop-filter: blur(16px) saturate(1.2);
+	-webkit-backdrop-filter: blur(16px) saturate(1.2);
+	box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+/* The one glow in the system: a live state. Never on a card, a button or static chrome. */
+@utility live-glow {
+	box-shadow: var(--glow-live);
+}
+
+/* A glass row: the fill may meet the pane edge, the divider never does. */
 @utility list-row {
 	position: relative;
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 4);
+		inset-inline: calc(var(--spacing) * 3);
 		bottom: 0;
 		height: 1px;
 		background: var(--border);
@@ -189,6 +260,13 @@
 
 	body {
 		@apply bg-background text-foreground;
+		/* Two restrained washes, fixed so panes drift over still light. No animation. */
+		background-image:
+			radial-gradient(70rem 46rem at 0% 0%, var(--wash-cyan), transparent 68%),
+			radial-gradient(56rem 44rem at 100% 100%, var(--wash-violet), transparent 70%);
+		background-attachment: fixed;
+		font-size: 0.8125rem;
+		line-height: 1.55;
 	}
 
 	/* Every app is a full-height shell whose own panes scroll, so the document never does. */
@@ -250,6 +328,7 @@
 		body {
 			height: auto;
 			overflow: visible;
+			background-image: none;
 		}
 	}
 }
@@ -267,6 +346,9 @@
 	*,
 	*::before,
 	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
 		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
 	}
 }

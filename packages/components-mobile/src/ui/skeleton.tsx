@@ -8,10 +8,10 @@ import type {ReactNode} from 'react'
 import {colors, radius} from '#components/theme.ts'
 import {Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle, itemRow} from '#components/ui/item.tsx'
 
-// shadcn's Skeleton on iOS: a muted block the caller sizes with frame, standing in for content that is loading.
+// shadcn's Skeleton on iOS: a translucent block the caller sizes with frame, standing in for content that is loading.
 export function Skeleton(props: {modifiers?: ViewModifier[]}) {
 	return (
-		<RoundedRectangle cornerRadius={radius} modifiers={[...(props.modifiers ?? []), foregroundStyle(colors.card)]} />
+		<RoundedRectangle cornerRadius={radius} modifiers={[...(props.modifiers ?? []), foregroundStyle(colors.surface)]} />
 	)
 }
 

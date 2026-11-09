@@ -178,6 +178,17 @@ export function UsageChart(props: {
 							}
 						})}
 						<line x1="0" x2="100" y1={HEIGHT} y2={HEIGHT} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
+						{/* Only the current reading's edge glows; the history itself stays calm. */}
+						<line
+							x1="100"
+							x2="100"
+							y1="0"
+							y2={HEIGHT}
+							stroke="var(--machine)"
+							strokeOpacity="0.85"
+							vectorEffect="non-scaling-stroke"
+							className="current-edge"
+						/>
 					</svg>
 				</div>
 			</div>

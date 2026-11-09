@@ -32,7 +32,7 @@ function Enter(props: {
 	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex w-full flex-col gap-4">
+		<section className="glass flex w-full flex-col gap-3 rounded-2xl p-4 sm:p-5">
 			<Field data-invalid={invalid}>
 				<InputOTP
 					id="code"
@@ -111,7 +111,7 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+		<div className="m-auto flex w-full max-w-xl flex-col gap-3 py-2">
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>

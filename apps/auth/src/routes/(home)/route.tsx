@@ -140,7 +140,10 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
+		<section
+			className="glass m-auto flex w-full max-w-md flex-col gap-5 rounded-2xl p-6"
+			aria-labelledby="waiting-title"
+		>
 			<header className="flex flex-col gap-2">
 				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
 				<h1
@@ -154,7 +157,7 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			</header>
 			<div className="flex items-start gap-5">
 				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
+				<span className="bg-background/80 text-foreground border-border shrink-0 rounded-lg border p-2">
 					<QrCode text={approveLink(props.request.id)} className="size-32" />
 				</span>
 				<div className="flex min-w-0 flex-col gap-2">
@@ -203,7 +206,7 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 		Match.value,
 		Match.tagsExhaustive({
 			Decided: () => (
-				<Empty role="status">
+				<Empty role="status" variant="glass">
 					<EmptyHeader>
 						<EmptyTitle>Continuing…</EmptyTitle>
 					</EmptyHeader>
@@ -211,7 +214,7 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 			),
 			// The link stays expired on every reload, so the way out drops it: Auth's own sign-in, or its sign-ins when signed in.
 			Expired: () => (
-				<Empty role="status">
+				<Empty role="status" variant="glass">
 					<EmptyHeader>
 						<EmptyTitle>This sign-in expired</EmptyTitle>
 						<EmptyDescription>Start it again in the app or agent that asked.</EmptyDescription>
@@ -261,7 +264,7 @@ function Signed(props: {account: SignedAccount}) {
 	return pipe(
 		Match.value(props.account.role),
 		Match.when('Waiting', () => (
-			<Empty role="status">
+			<Empty role="status" variant="glass">
 				<EmptyHeader>
 					<EmptyMedia>
 						<StatusDot waiting />
@@ -397,7 +400,7 @@ function SignIn() {
 	return (
 		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
+			<div className="glass flex w-full flex-col gap-5 rounded-2xl p-6">
 				<div className="flex flex-col gap-2">
 					<Button
 						size="lg"
@@ -447,14 +450,14 @@ function SigningOut() {
 	useEffect(() => endSession(next), [endSession, next])
 	return Option.match(AsyncResult.error(signOut), {
 		onNone: () => (
-			<Empty role="status">
+			<Empty role="status" variant="glass">
 				<EmptyHeader>
 					<EmptyTitle>Signing out…</EmptyTitle>
 				</EmptyHeader>
 			</Empty>
 		),
 		onSome: failure => (
-			<Empty role="alert">
+			<Empty role="alert" variant="glass">
 				<EmptyHeader>
 					<EmptyTitle>Sign-out failed</EmptyTitle>
 					<EmptyDescription>{failure.message}</EmptyDescription>
@@ -578,7 +581,7 @@ function HomeLayout() {
 								<Skeleton className="h-7 w-52" />
 								<Skeleton className="h-4 w-44" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="glass flex w-full max-w-sm flex-col gap-2 rounded-2xl p-4">
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />

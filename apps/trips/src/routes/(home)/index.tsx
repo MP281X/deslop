@@ -9,6 +9,7 @@ import {
 	foregroundStyle,
 	frame,
 	labelStyle,
+	listRowBackground,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	padding,
@@ -106,7 +107,12 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	const remove = useAtomSet(removeAtom)
 	const status = statusOf(props.booking, props.now)
 	return (
-		<SwipeActions modifiers={itemRow}>
+		<SwipeActions
+			modifiers={Boolean.match(props.countdown._tag === 'Now', {
+				onFalse: () => itemRow,
+				onTrue: () => [...itemRow, listRowBackground(colors.surface)]
+			})}
+		>
 			<Item alignment="top" onPress={() => props.onOpen(props.booking.id)}>
 				<ItemMedia>
 					<Gutter countdown={props.countdown} />
@@ -229,7 +235,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 					)}
 					{Array.isReadonlyArrayEmpty(current) && Array.isReadonlyArrayEmpty(ahead) && (
 						<Section>
-							<Empty>
+							<Empty surface={false}>
 								<EmptyHeader>
 									<EmptyMedia systemImage="ticket" />
 									<EmptyTitle>Nothing coming up</EmptyTitle>

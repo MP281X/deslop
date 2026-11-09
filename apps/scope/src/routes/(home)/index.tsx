@@ -352,7 +352,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="bg-secondary/50 relative mx-2 h-1.5 flex-1">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
@@ -364,6 +364,17 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 						'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`
 					}}
 				/>
+				{/* The trace's head is the one live edge: cyan, and the only glow in the waterfall. */}
+				{Boolean.match(props.span.depth === 0, {
+					onFalse: () => null,
+					onTrue: () => (
+						<span
+							aria-hidden="true"
+							className="bg-primary live-glow absolute top-0 left-(--offset) h-1.5 w-0.5"
+							style={{'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`}}
+						/>
+					)
+				})}
 			</span>
 			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
 				{durationOf(props.span.durationMs)}
@@ -416,13 +427,13 @@ function SpanRow(props: {
 	const open = props.focus === props.span.spanId
 	if (!hasDetail(props.span)) {
 		return (
-			<div className="list-row flex h-8 w-full items-center gap-1 px-3 text-xs max-sm:h-12 pointer-coarse:h-12">
+			<div className="mx-1 flex h-8 w-full items-center gap-1 rounded-lg px-3 text-xs max-sm:h-12 pointer-coarse:h-12">
 				<SpanLine mark={props.mark(props.span)} span={props.span} />
 			</div>
 		)
 	}
 	return (
-		<div data-selected={open} className="list-row">
+		<div data-selected={open} className="hover:bg-accent/40 mx-1 rounded-lg transition-colors">
 			<Button
 				size="xs"
 				variant={Boolean.match(open, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -483,7 +494,7 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 	return (
 		<div
 			className={cn(
-				'grid min-h-0 flex-1',
+				'grid min-h-0 flex-1 gap-3',
 				Boolean.match(props.detailOnly === true, {
 					onFalse: () => 'grid-rows-2 max-lg:grid-rows-1',
 					onTrue: () => 'grid-rows-1'
@@ -492,7 +503,7 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 		>
 			<section
 				aria-label="Spans"
-				className={cn('flex min-h-0 min-w-0 flex-col', props.detailOnly === true && 'max-lg:hidden')}
+				className={cn('glass flex min-h-0 min-w-0 flex-col rounded-2xl', props.detailOnly === true && 'max-lg:hidden')}
 			>
 				{props.spans}
 				{props.problem !== undefined && <div className="flex shrink-0 justify-end px-3">{props.problem}</div>}
@@ -500,7 +511,7 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 			<section
 				aria-label="Span details"
 				className={cn(
-					'flex min-h-0 min-w-0 flex-col border-t',
+					'glass flex min-h-0 min-w-0 flex-col rounded-2xl',
 					Boolean.match(props.detailOnly === true, {onFalse: () => 'max-lg:hidden', onTrue: () => 'max-lg:border-t-0'})
 				)}
 			>
@@ -676,9 +687,9 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 // An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
+		<div className="bg-surface border-border sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
 			<AppMark app={props.app} />
-			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
+			<span className="tracking-label text-muted-foreground text-2xs min-w-0 truncate font-mono font-medium uppercase">
 				{props.app.name}
 			</span>
 		</div>
@@ -688,7 +699,7 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div role="listitem" className="hover:bg-accent/40 mx-1 rounded-lg transition-colors" data-selected={props.active}>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -804,7 +815,7 @@ function OperationsPane(props: {
 // One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div role="listitem" className="hover:bg-accent/40 mx-1 rounded-lg transition-colors" data-selected={props.active}>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
@@ -955,14 +966,14 @@ function WidePanels(props: {details: ReactNode; problem?: ReactNode; spans: Reac
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
 			<ResizablePanel defaultSize="62" minSize="30">
-				<section aria-label="Spans" className="flex h-full min-h-0 flex-col">
+				<section aria-label="Spans" className="glass flex h-full min-h-0 flex-col rounded-2xl">
 					{props.spans}
 					{props.problem !== undefined && <div className="flex shrink-0 justify-end px-3">{props.problem}</div>}
 				</section>
 			</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel defaultSize="38" minSize="20">
-				<section aria-label="Span details" className="flex h-full min-h-0 flex-col">
+				<section aria-label="Span details" className="glass flex h-full min-h-0 flex-col rounded-2xl">
 					{props.details}
 				</section>
 			</ResizablePanel>
@@ -1037,8 +1048,8 @@ function WideTracePane(props: {onPickSpan: (id: string) => void; pickedSpan?: st
 // From 1024px to 1599px: operations and traces beside the waterfall, with the inspector below it.
 function NarrowWorkspace(props: WorkspaceProps) {
 	return (
-		<div className="grid-cols-scope grid min-h-0 flex-1">
-			<div className="grid min-h-0 grid-rows-2 border-r">
+		<div className="grid-cols-scope grid min-h-0 flex-1 gap-3">
+			<div className="grid min-h-0 grid-rows-2 gap-3">
 				<OperationsPane activeKey={props.activeKey} onSelect={props.onSelectOperation} />
 				<TracesPane
 					active={props.active}
@@ -1121,7 +1132,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function renderPage(children: ReactNode) {
 	return (
-		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+		<Page width="full" className="h-full min-h-0">
 			<h1 className="sr-only">Scope</h1>
 			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
 		</Page>
