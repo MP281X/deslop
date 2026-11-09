@@ -658,7 +658,6 @@ export class Connections extends Context.Service<
 					manage(id, user, () => Option.none()),
 					Effect.ignore(usage.remove(usageKey(id)), {log: 'Warn', message: 'Cannot delete the MCP usage'})
 				),
-			// A discovery's outcome: its tools and instructions clear an earlier failure, a failure keeps the last ones.
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
 				yield* pipe(
 					update(id, generation, found =>

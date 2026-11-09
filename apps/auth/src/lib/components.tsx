@@ -323,7 +323,6 @@ function PendingRow(props: {
 	)
 }
 
-// Browser children contribute activity to their browser, never rows of their own.
 function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
 	const byName = Array.groupBy(catalog, app => String.toLowerCase(app.name))
 	return pipe(

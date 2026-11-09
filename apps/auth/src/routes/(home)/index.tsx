@@ -78,7 +78,6 @@ function Enter(props: {
 	)
 }
 
-// The code and signed-in clients share one centred column.
 function Content(props: {
 	answered: Option.Option<Answer>
 	onType: (code: string) => void

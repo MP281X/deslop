@@ -373,7 +373,6 @@ function SignInSkeleton() {
 	)
 }
 
-// Without an account: GitHub, or a code approved from another browser, a phone or an agent.
 function SignIn(props: {apps: readonly {name: string; origin: string}[]}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
@@ -428,7 +427,6 @@ function SignedOut() {
 	return <SignIn apps={AsyncResult.getOrElse(catalog, () => [])} />
 }
 
-// Arriving from another app's Sign out ends the session every app shares, then returns there.
 function SigningOut() {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(signOutAtom)

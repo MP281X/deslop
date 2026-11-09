@@ -81,7 +81,6 @@ function serverHue(server: ConnectionInfo) {
 	if (APP_ICONS[key] === undefined) return 'var(--muted-foreground)'
 	return IDENTITY_HUES[key] ?? 'var(--muted-foreground)'
 }
-// What needs the user first: an expired sign-in or a failure, then a server never connected, then the live ones.
 function urgency(server: ConnectionInfo) {
 	if (server.error !== undefined || server.status === 'Expired') return 0
 	if (server.status === 'Not connected') return 1
@@ -138,7 +137,6 @@ function RowsSkeleton(props: {label: string; rows: number; tool?: boolean}) {
 	)
 }
 
-// Each source in turn until one loads, drawn as the server ships it, without a tile behind it.
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (

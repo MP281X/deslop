@@ -181,7 +181,6 @@ export const pendingAtom = Atom.make(Option.none<PendingAuthorization>())
 // The row that carries focus, as the id of its element.
 export const selectedRowAtom = Atom.make(Option.none<string>())
 
-// Once answered, the page continues where the answer is delivered: the app's callback, or this browser's session.
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(

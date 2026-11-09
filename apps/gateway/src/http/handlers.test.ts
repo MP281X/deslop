@@ -480,7 +480,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 										refused
 									)
 								),
-								// The servers once every connected one has reported its tools.
 								HttpRouter.add(
 									'GET',
 									'/servers/discovered',
@@ -647,7 +646,6 @@ const listKeys = Effect.fnUntraced(function* (web: Web, session: string) {
 	)(yield* Effect.promise(() => response.text()))
 })
 
-// An MCP client's initialize, then the tool call with the session it got.
 const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: string, input: Record<string, unknown>) {
 	const headers = {
 		accept: 'application/json, text/event-stream',

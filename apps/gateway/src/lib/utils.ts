@@ -106,7 +106,6 @@ export const aiUsageAtom = Atom.family((period: Period) =>
 	)
 )
 
-// One reader per period, its range taken when it runs, so a refresh moves the window to now.
 export const mcpUsageAtom = Atom.family((period: Period) =>
 	pipe(
 		RpcClient.runtime.atom(
