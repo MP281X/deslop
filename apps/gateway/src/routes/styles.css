@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--pink);
+	--primary: var(--cyan);
 }
 
 /* Server cards carry no dot while connected; the only light is red, on a connection or key that failed. */
