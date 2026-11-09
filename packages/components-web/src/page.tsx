@@ -23,12 +23,3 @@ export function Page(props: {children: ReactNode; className?: string; width?: Wi
 		</main>
 	)
 }
-
-export function Stat(props: {label: string; value: ReactNode}) {
-	return (
-		<span className="flex items-baseline gap-1.5 text-xs whitespace-nowrap">
-			<span className="text-foreground tabular-nums">{props.value}</span>
-			<span className="text-muted-foreground">{props.label}</span>
-		</span>
-	)
-}

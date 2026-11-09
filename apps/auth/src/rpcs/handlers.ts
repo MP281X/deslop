@@ -37,18 +37,12 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'auth.apps': () => Stream.unwrap(Effect.map(CurrentOwner, tokens.apps)),
 			'auth.catalog': () => apps.catalog,
-			'auth.disconnect': Effect.fnUntraced(function* (input) {
-				return yield* tokens.disconnect(input.family, yield* CurrentOwner)
-			}),
 			'auth.lookup': input => signIns.lookup(input.code),
 			'auth.passkeyOptions': Effect.fnUntraced(function* (_, options) {
 				return yield* passkeys.registration(yield* CurrentOwner, yield* tokens.sessionVia(options.headers))
 			}),
 			'auth.passkeys': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
 			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
-			'auth.remove': Effect.fnUntraced(function* (input) {
-				return yield* people.remove(input.id, yield* CurrentUser)
-			}),
 			'auth.removePasskey': Effect.fnUntraced(function* (input) {
 				yield* passkeys.remove(input.id, yield* CurrentOwner)
 			}),

@@ -9,7 +9,6 @@ import {
 	Layer,
 	Match,
 	Option,
-	PubSub,
 	Record,
 	Schema,
 	Semaphore,
@@ -101,7 +100,6 @@ export class Connections extends Context.Service<
 		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionInfo, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
 		readonly called: (id: ServerId) => Effect.Effect<void>
-		readonly calls: (user: User) => Stream.Stream<ServerId, AuthError>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
@@ -161,8 +159,6 @@ export class Connections extends Context.Service<
 		const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('servers'), () => ({})))
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
-		// Only the latest calls matter to a light, so a slow page drops the oldest.
-		const traffic = yield* PubSub.sliding<ServerId>(64)
 		const admin = Effect.fnUntraced(function* (user: User) {
 			if (!isAdmin(admins, user.id)) {
 				return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage MCP servers'})
@@ -581,11 +577,7 @@ export class Connections extends Context.Service<
 				)
 			}, failed('Cannot connect this MCP')),
 			called: id =>
-				Effect.andThen(
-					Effect.catchCause(recordUsage(id), cause => Effect.logWarning('MCP usage could not be recorded', cause)),
-					Effect.asVoid(PubSub.publish(traffic, id))
-				),
-			calls: user => Stream.unwrap(Effect.as(admin(user), Stream.fromPubSub(traffic))),
+				Effect.catchCause(recordUsage(id), cause => Effect.logWarning('MCP usage could not be recorded', cause)),
 			complete: Effect.fn('Connections.complete')(function* (
 				params: Callback,
 				route: Option.Option<string>,

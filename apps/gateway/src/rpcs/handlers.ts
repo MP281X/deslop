@@ -14,9 +14,6 @@ export const RpcHandlers = RpcContracts.toLayer(
 			'ai.keys': Effect.fnUntraced(function* () {
 				return yield* ai.keys((yield* CurrentUser).id)
 			}),
-			'ai.removeKey': Effect.fnUntraced(function* (input) {
-				yield* ai.removeKey((yield* CurrentUser).id, input.provider)
-			}),
 			'ai.setKey': Effect.fnUntraced(function* (input) {
 				yield* ai.setKey((yield* CurrentUser).id, input.provider, input.secret)
 			}),
@@ -25,10 +22,6 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'gateway.add': Effect.fnUntraced(function* (input, options) {
 				return yield* connections.add(input.url, yield* CurrentUser, options.headers)
-			}),
-			'gateway.calls': () => Stream.unwrap(Effect.map(CurrentUser, connections.calls)),
-			'gateway.remove': Effect.fnUntraced(function* (input) {
-				return yield* connections.remove(input.id, yield* CurrentUser)
 			}),
 			'gateway.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch)),
 			'gateway.usage': Effect.fnUntraced(function* (input) {

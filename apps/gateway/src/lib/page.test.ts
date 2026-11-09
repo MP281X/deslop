@@ -36,12 +36,9 @@ const fixture = Effect.gen(function* () {
 	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionInfo[], AuthError>>()
 	const handlers = RpcContracts.toLayer({
 		'ai.keys': () => Effect.never,
-		'ai.removeKey': () => Effect.never,
 		'ai.setKey': () => Effect.never,
 		'ai.usage': () => Effect.never,
 		'gateway.add': () => Effect.never,
-		'gateway.calls': () => Stream.never,
-		'gateway.remove': () => Effect.void,
 		'gateway.servers': () =>
 			Stream.unwrap(
 				Effect.gen(function* () {

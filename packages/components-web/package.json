@@ -31,7 +31,6 @@
 		"@fontsource-variable/jetbrains-mono": "latest",
 		"@phosphor-icons/react": "latest",
 		"@shadcn/react": "latest",
-		"@typeonce/effect-machine": "latest",
 		"class-variance-authority": "latest",
 		"clsx": "latest",
 		"cmdk": "latest",

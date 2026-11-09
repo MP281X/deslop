@@ -9,7 +9,6 @@ import {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {RpcTest} from 'effect/rpc'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
 
@@ -138,12 +137,8 @@ it.layer(NodeCrypto.layer)(test => {
 			)
 			yield* fixture.people.admit({allow: true, id: member.user.id}, ADMIN)
 			yield* fixture.people.admit({allow: true, id: other.user.id}, ADMIN)
-			const signedIn = yield* first(client['auth.apps'](undefined, {headers}))
-			assert.strictEqual(signedIn.length, 1)
-			assert.instanceOf(
-				yield* Effect.flip(client['auth.disconnect']({family: signedIn[0]?.family ?? ''}, {headers: otherHeaders})),
-				AuthError
-			)
+			assert.strictEqual((yield* first(client['auth.apps'](undefined, {headers}))).length, 1)
+			assert.strictEqual((yield* first(client['auth.apps'](undefined, {headers: otherHeaders}))).length, 1)
 			const pending = yield* fixture.signIns.start({_tag: 'Browser'}, {})
 			yield* client['auth.answer']({accept: true, request: pending.code}, {headers})
 			yield* fixture.people.remove(member.user.id, ADMIN)
