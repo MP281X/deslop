@@ -56,6 +56,7 @@ export function layerWebTelemetry(applicationName: string) {
 				Effect.flatMap(HttpClientResponse.filterStatusOk),
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
 				Effect.timeout('3 seconds'),
+				Effect.tapError(error => Effect.logWarning('Telemetry is off: the runtime config did not load', error)),
 				Effect.option
 			)
 			return Option.match(config, {

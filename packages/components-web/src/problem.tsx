@@ -12,6 +12,7 @@ import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components
 import {cn} from '#lib/utils.ts'
 
 // The page keeps this reader mounted even when its pane is offscreen.
+// judge-ignore no-silent-fallback -- now is when the problem began, not a stand-in for a failed read.
 export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>) =>
 	Atom.make(get => {
 		if (!AsyncResult.isFailure(get(source))) return Option.none<number>()

@@ -1,8 +1,23 @@
-import {Array, DateTime, Number, Option, Order, Predicate, Record, Result, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	HashMap,
+	HashSet,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Result,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 
-import type {ChapterItem, ChapterList, CubariSeries, Post} from '#services/chapters/schema.ts'
+import type {Chapter, ChapterItem, ChapterList, CubariSeries, Post, Series} from '#services/chapters/schema.ts'
 import {ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
@@ -21,8 +36,58 @@ const CUBARI_LINKS = new RegExp(CUBARI.source, 'gu')
 
 export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem, 'number'>) => chapter.number)
 
+export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
+
+export function indexUrl(series: Series) {
+	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
+}
+
 export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
 	return `${chapter.series}:${chapter.number}`
+}
+
+export function mergeMissingChapters(current: Chapter[], chapters: Chapter[]) {
+	const numbers = HashSet.fromIterable(Array.map(current, keyOf))
+	return Array.sort(
+		[...current, ...Array.filter(chapters, chapter => !HashSet.has(numbers, keyOf(chapter)))],
+		Order.flip(byNumber)
+	)
+}
+
+export function revisionCandidates(posts: Post[], current: Chapter[]) {
+	const known = HashMap.fromIterable(Array.map(current, chapter => [keyOf(chapter), chapter] as const))
+	return Array.filterMap(
+		Array.sort(
+			posts,
+			Order.mapInput(Order.Number, (post: Post) => post.postedAt)
+		),
+		post =>
+			Array.match(
+				Array.filter(post.links, link =>
+					Option.match(HashMap.get(known, keyOf(post)), {
+						onNone: () => true,
+						onSome: item => post.revised && post.postedAt > (item.revisedAt ?? item.postedAt) && link !== item.source
+					})
+				),
+				{onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})}
+			)
+	)
+}
+
+export function reconcileChapters(current: Chapter[], found: Chapter[], now: number) {
+	const loaded = HashMap.fromIterable(Array.map(found, chapter => [keyOf(chapter), chapter] as const))
+	const revised = Array.map(current, item =>
+		Option.match(HashMap.get(loaded, keyOf(item)), {
+			onNone: () => item,
+			onSome: chapter => ({...item, pages: chapter.pages, revisedAt: chapter.postedAt, source: chapter.source})
+		})
+	)
+	const present = HashSet.fromIterable(Array.map(current, keyOf))
+	const added = Array.map(
+		Array.filter(Array.fromIterable(HashMap.values(loaded)), chapter => !HashSet.has(present, keyOf(chapter))),
+		chapter => ({...chapter, notified: now - chapter.postedAt > 86_400_000})
+	)
+	return Array.sort([...revised, ...added], Order.flip(byNumber))
 }
 
 export function notificationOf(data: unknown) {
@@ -96,8 +161,16 @@ export function pagesOf(series: CubariSeries, chapter: string) {
 export function resumeOf(chapters: ChapterList) {
 	return pipe(
 		Array.filter(chapters, chapter => (chapter.reading?.at ?? 0) > 0),
-		Array.sort(Order.flip(Order.mapInput(Order.Number, (chapter: ChapterItem) => chapter.reading?.at ?? 0))),
-		Array.head,
+		Array.match({
+			onEmpty: () => Option.none<ChapterItem>(),
+			onNonEmpty: items =>
+				Option.some(
+					Array.max(
+						items,
+						Order.mapInput(Order.Number, (chapter: ChapterItem) => chapter.reading?.at ?? 0)
+					)
+				)
+		}),
 		Option.map(chapter => ({number: chapter.number, page: chapter.reading?.page ?? 0}))
 	)
 }
@@ -109,4 +182,29 @@ export function nameOf(title: string) {
 		onNone: () => name,
 		onSome: () => ''
 	})
+}
+
+export function chaptersFromIndex(index: CubariSeries, kind: Series) {
+	return Array.filterMap(Record.toEntries(index.chapters), entry =>
+		pipe(
+			Option.all({
+				number: Number.parse(entry[0]),
+				pages: pagesOf(index, entry[0]),
+				postedAt: Option.some(
+					Boolean.match(kind === 'webcomic', {
+						onFalse: () => Option.getOrElse(Array.head(Record.values(entry[1].release_date ?? {})), () => 0) * 1000,
+						onTrue: () => 0
+					})
+				)
+			}),
+			Option.map(found => ({
+				...found,
+				notified: true,
+				series: kind,
+				source: `${indexUrl(kind)}${entry[0]}/1/`,
+				title: nameOf(entry[1].title ?? '')
+			})),
+			Result.fromOption(() => undefined)
+		)
+	)
 }

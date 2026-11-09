@@ -1,5 +1,5 @@
 import type {Stream} from 'effect'
-import {Array, Boolean, Config, Context, Effect, Layer, Option, Order, String, SubscriptionRef, pipe} from 'effect'
+import {Array, Boolean, Config, Context, Effect, Layer, Option, String, SubscriptionRef, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
@@ -8,6 +8,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {rejected} from '@deslop/runtime/auth/utils'
 import {MANIFEST_PATH, RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/schema'
 
+import {registerApp} from '#services/apps/lib/utils.ts'
 import {App, Catalog} from '#services/apps/schema.ts'
 
 export class Apps extends Context.Service<
@@ -56,10 +57,7 @@ export class Apps extends Context.Service<
 					})
 					yield* pipe(
 						SubscriptionRef.updateEffect(state, current => {
-							const next = Array.sort(
-								[...Array.filter(current, known => known.origin !== app.origin), app],
-								Order.mapInput(String.Order, (known: App) => known.name)
-							)
+							const next = registerApp(current, app)
 							return Effect.as(store.set('apps', next), next)
 						}),
 						Effect.uninterruptible,

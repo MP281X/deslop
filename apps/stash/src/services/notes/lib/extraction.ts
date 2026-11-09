@@ -7,13 +7,8 @@ import {
 	ByteSize,
 	Context,
 	Effect,
-	HashMap,
-	HashSet,
 	Layer,
-	Match,
 	Option,
-	Order,
-	Predicate,
 	Random,
 	Result,
 	Schema,
@@ -32,8 +27,16 @@ import {isPublicIp} from '@deslop/runtime/net'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {pageText} from '#services/notes/lib/page.ts'
-import {captureUrl, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
-import type {FxArticle, FxPost, Image} from '#services/notes/schema.ts'
+import {
+	captureUrl,
+	conversationPlan,
+	conversationExtraction,
+	isYouTube,
+	plainText,
+	sourceFor,
+	tikTokExtraction
+} from '#services/notes/lib/utils.ts'
+import type {Image} from '#services/notes/schema.ts'
 import {
 	Extraction,
 	FxConversation,
@@ -53,8 +56,6 @@ const CHALLENGE =
 	/Just a moment\.\.\.|Verify you are human|Attention Required! \| Cloudflare|Enable JavaScript and cookies to continue|Performing security verification/u
 
 const UNREACHABLE = 'The link could not be loaded.'
-
-const X_LINK = /^https?:\/\/(?:[\w-]+\.)?(?:x|twitter)\.com\//u
 
 // The proxy every request of a Sources method exits through.
 const Exit = Context.Reference<Option.Option<string>>('@deslop/stash/services/notes/lib/extraction/Exit', {
@@ -212,8 +213,7 @@ function whole(post: FxStatus['status']) {
 	}
 	return pipe(
 		fx(FxStatus, `status/${post.id}`),
-		Effect.map(found => found.status),
-		Effect.orElseSucceed(() => post)
+		Effect.map(found => found.status)
 	)
 }
 
@@ -261,43 +261,6 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 	})
 })
 
-// A block's entity ranges name entityMap entries by their key; links and code blocks live there.
-function articleText(article: FxArticle) {
-	// findFirst used the first entry when a source repeated a key.
-	const entities = HashMap.fromIterable(
-		Array.map(Array.reverse(article.content.entityMap), entity => [entity.key, entity] as const)
-	)
-	const lines = Array.filterMap(article.content.blocks, block => {
-		const attached = pipe(
-			block.entityRanges,
-			Array.filterMap(range =>
-				Result.fromOption(
-					pipe(
-						HashMap.get(entities, `${range.key}`),
-						Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url)
-					),
-					() => undefined
-				)
-			)
-		)
-		const text = pipe([String.trim(block.text), ...attached], Array.filter(String.isNonEmpty), Array.join(' '))
-		if (String.isEmpty(text)) return Result.failVoid
-		return Result.succeed(
-			pipe(
-				Match.value(block.type),
-				Match.when('header-one', () => `# ${text}`),
-				Match.when('header-two', () => `## ${text}`),
-				Match.when('header-three', () => `### ${text}`),
-				Match.when('unordered-list-item', () => `- ${text}`),
-				Match.when('ordered-list-item', () => `1. ${text}`),
-				Match.when('blockquote', () => `> ${text}`),
-				Match.orElse(() => text)
-			)
-		)
-	})
-	return `# ${article.title}\n\n${Array.join(lines, '\n\n')}`
-}
-
 // A photo post has no oEmbed and yt-dlp cannot read it, but its page under /video/ holds every slide.
 const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 	const html = yield* follow(new URL(String.replace('/photo/', '/video/')(url.href)), api, 0)
@@ -309,23 +272,7 @@ const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 			NotesError.make({cause, message: 'The TikTok photo post is unreadable.', reason: 'UnreadablePhoto'})
 		)
 	)).__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct
-	const images = Array.filterMap(item.imagePost.images, image =>
-		Result.fromOption(Array.head(image.imageURL.urlList), () => undefined)
-	)
-	return Extraction.make({
-		author: Option.some(item.author.nickname),
-		image: Array.head(images),
-		slides: Array.drop(images, 1),
-		text: pipe(
-			[item.imagePost.title, item.desc],
-			Array.filter(Predicate.isNotUndefined),
-			Array.map(plainText),
-			Array.filter(String.isNonEmpty),
-			Array.join('\n')
-		),
-		title: `${item.author.nickname} on TikTok`,
-		url: canonical(url)
-	})
+	return tikTokExtraction(item, url)
 })
 
 const issue = Effect.fnUntraced(function* (url: URL, repository: string, number: string) {
@@ -446,41 +393,6 @@ const readPage = Effect.fnUntraced(function* (url: URL) {
 	})
 })
 
-const byTime = Order.mapInput(Order.Number, (post: FxPost) => post.created_timestamp)
-
-const byLikes = Order.mapInput(Order.flip(Order.Number), (post: FxPost) => post.likes ?? 0)
-
-function said(post: FxPost) {
-	return pipe(
-		[
-			`**${post.author.name} (@${post.author.screen_name})**: ${plainText(post.text)}`,
-			Option.match(Option.fromNullishOr(post.article), {onNone: () => '', onSome: articleText})
-		],
-		Array.filter(String.isNonEmpty),
-		Array.join('\n\n')
-	)
-}
-
-function section(title: string, entries: string[]) {
-	if (Array.isReadonlyArrayEmpty(entries)) return ''
-	return `## ${title}\n\n${Array.join(entries, '\n\n')}`
-}
-
-function photosOf(post: FxPost) {
-	return [
-		...pipe(
-			post.media?.all ?? [],
-			Array.filter(item => item.type === 'photo'),
-			Array.map(item => item.url)
-		),
-		...Array.getSomes(
-			Array.map(post.article?.media_entities ?? [], entity =>
-				Option.fromUndefinedOr(entity.media_info.original_img_url)
-			)
-		)
-	]
-}
-
 // A linked article or repository often holds what the post only points at.
 function readLinked(url: URL) {
 	return pipe(
@@ -494,7 +406,7 @@ function readLinked(url: URL) {
 	)
 }
 
-// The saved post with the posts it answers, the author's follow-ups, the quoted post or article, linked posts and pages, and the most liked replies.
+// The saved post with its conversation and linked sources.
 const xThread = Effect.fnUntraced(function* (url: URL) {
 	const id = yield* pipe(
 		String.match(/\/status\/(\d+)/u)(url.pathname),
@@ -504,136 +416,24 @@ const xThread = Effect.fnUntraced(function* (url: URL) {
 	)
 	const conversation = yield* fx(FxConversation, `conversation/${id}`)
 	const status = yield* whole(conversation.status)
-	const quote = yield* Effect.transposeOption(Option.map(Option.fromNullishOr(status.quote), whole))
-	const replies = conversation.replies ?? []
-	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
-	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
-	const followUps = pipe(
-		Array.sort(
-			Array.filter(replies, post => post.author.id === status.author.id),
-			byTime
-		),
-		Array.mapAccum(HashSet.make(status.id), (chain, post) => {
-			if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
-			return [HashSet.add(chain, post.id), Option.some(post)] as const
-		}),
-		result => Array.getSomes(result[1])
-	)
-	const earlier = Array.sort(
-		Array.filter(conversation.thread ?? [], post => post.id !== status.id),
-		byTime
-	)
-	const shown = [status, ...followUps, ...Option.toArray(quote)]
-	// The posts above the saved one come after it, so its own links and photos lead.
-	const context = [...shown, ...earlier]
-	const contextIds = HashSet.fromIterable(Array.map(context, post => post.id))
-	const followUpIds = HashSet.fromIterable(Array.map(followUps, post => post.id))
-	const links = Array.dedupe(
-		Array.flatMap(context, post =>
-			Array.getSomes(Array.map(post.raw_text?.facets ?? [], facet => Option.fromUndefinedOr(facet.replacement)))
-		)
+
+	const plan = conversationPlan(
+		conversation,
+		status,
+		yield* Effect.transposeOption(Option.map(Option.fromNullishOr(status.quote), whole))
 	)
 	const linked = yield* Effect.all(
 		{
-			pages: Effect.forEach(
-				pipe(
-					links,
-					Array.filter(link => !X_LINK.test(link)),
-					Array.filterMap(link => Result.fromOption(Option.liftThrowable(() => new URL(link))(), () => undefined)),
-					Array.take(3)
-				),
-				readLinked,
-				{concurrency: 'unbounded'}
-			),
+			pages: Effect.forEach(plan.pages, readLinked, {concurrency: 'unbounded'}),
 			posts: Effect.forEach(
-				pipe(
-					links,
-					Array.filterMap(link =>
-						Result.fromOption(
-							pipe(
-								String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
-								Option.flatMap(match => Array.get(match, 1))
-							),
-							() => undefined
-						)
-					),
-					Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),
-					Array.dedupe,
-					Array.take(5)
-				),
+				plan.posts,
 				linkedId => Effect.option(Effect.map(fx(FxStatus, `status/${linkedId}`), found => found.status)),
 				{concurrency: 'unbounded'}
 			)
 		},
 		{concurrency: 'unbounded'}
 	)
-	const posts = Array.getSomes(linked.posts)
-	const media = Array.flatMap(shown, post => post.media?.all ?? [])
-	const photos = Array.dedupe(Array.flatMap([...context, ...posts], photosOf))
-	return Extraction.make({
-		author: Option.some(status.author.name),
-		image: Option.orElse(Array.head(photos), () =>
-			Option.map(Array.head(media), item => item.thumbnail_url ?? item.url)
-		),
-		slides: Array.take(Array.drop(photos, 1), 30),
-		text: pipe(
-			[
-				section('Earlier in the conversation', Array.map(earlier, said)),
-				said(status),
-				...Array.map(followUps, post => plainText(post.text)),
-				Option.match(quote, {onNone: () => '', onSome: post => `Quoting ${said(post)}`}),
-				section('Linked posts', Array.map(posts, said)),
-				section('Linked pages', Array.getSomes(linked.pages)),
-				section(
-					"The author's answers to readers",
-					pipe(
-						replies,
-						Array.filter(post => post.author.id === status.author.id && !HashSet.has(followUpIds, post.id)),
-						Array.sort(byTime),
-						Array.map(answer =>
-							Option.match(
-								Option.flatMap(Option.fromNullishOr(answer.replying_to?.status), parentId =>
-									HashMap.get(byId, parentId)
-								),
-								{
-									onNone: () => plainText(answer.text),
-									onSome: question =>
-										`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
-								}
-							)
-						)
-					)
-				),
-				section(
-					'Replies',
-					pipe(
-						replies,
-						Array.filter(post => post.author.id !== status.author.id),
-						Array.sort(byLikes),
-						Array.take(40),
-						// Likes tell the AI which replies readers agreed with.
-						Array.map(
-							post =>
-								`**${post.author.name} (@${post.author.screen_name})**${Option.match(
-									Option.fromUndefinedOr(post.likes),
-									{onNone: () => '', onSome: likes => `, ${likes} likes`}
-								)}: ${plainText(post.text)}`
-						)
-					)
-				)
-			],
-			Array.filter(String.isNonEmpty),
-			Array.join('\n\n')
-		),
-		title: `${status.author.name} on X`,
-		url: canonical(url),
-		...pipe(
-			// A clip with speech says more than a looping GIF beside it.
-			Array.findFirst(media, item => item.type === 'video'),
-			Option.orElse(() => Array.findFirst(media, item => item.type === 'gif')),
-			Option.match({onNone: () => ({}), onSome: item => ({video: item.url})})
-		)
-	})
+	return conversationExtraction(url, plan, linked)
 })
 
 export class Sources extends Context.Service<

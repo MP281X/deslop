@@ -134,8 +134,18 @@ export class Metrics extends Context.Service<
 								},
 								{concurrency: 'unbounded'}
 							),
-							Effect.map(stats => [path, {id: processOwner(path), ...cgroupUsage(stats.cpu, stats.memory)}] as const),
-							Effect.option
+							Effect.catchTag('PlatformError', cause => {
+								if (cause.reason._tag === 'NotFound') return Effect.undefined
+								return Effect.fail(cause)
+							}),
+							Effect.flatMap(stats => {
+								if (stats === undefined) return Effect.succeedNone
+								return Option.match(cgroupUsage(stats.cpu, stats.memory), {
+									onNone: () =>
+										Effect.fail(DeployError.make({message: `The cgroup counters for ${path} are missing or invalid.`})),
+									onSome: usage => Effect.succeedSome([path, {id: processOwner(path), ...usage}] as const)
+								})
+							})
 						),
 					{concurrency: 8}
 				)
@@ -193,7 +203,8 @@ export class Metrics extends Context.Service<
 								return [appShares(reading, Option.getOrUndefined(last)), Option.some(reading)]
 							})
 						),
-						Effect.option
+						Effect.asSome,
+						Effect.catchTag('TimeoutError', () => Effect.succeedNone)
 					)
 					const disks = yield* Ref.get(storage)
 					const value = yield* pipe(

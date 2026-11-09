@@ -10,7 +10,6 @@ import {
 	Match,
 	Number,
 	Option,
-	Order,
 	Record,
 	Redacted,
 	Ref,
@@ -40,6 +39,8 @@ import {
 	clientOf,
 	deviceLabel,
 	given,
+	live,
+	signedInApps,
 	matchingRedirect,
 	sameOwner
 } from '#services/tokens/lib/utils.ts'
@@ -75,17 +76,6 @@ function parts(token: string) {
 			generation: Option.getOrElse(Number.parse(found.groups?.['generation'] ?? ''), () => -1),
 			secret: found.groups?.['secret'] ?? ''
 		})
-	)
-}
-
-// A child cannot outlive the browser that started it.
-function live(grants: Grants, now: number) {
-	const current = Record.filter(grants, grant => grant.credential.expiresAt > now)
-	return Record.filter(
-		current,
-		grant =>
-			grant.parent === undefined ||
-			Option.exists(Record.get(current, grant.parent), parent => parent.credential._tag === 'Browser')
 	)
 }
 
@@ -457,28 +447,7 @@ export class Tokens extends Context.Service<
 			})
 			const listApps = Effect.fnUntraced(function* (owner: CredentialOwner) {
 				const now = yield* Clock.currentTimeMillis
-				return pipe(
-					Record.toEntries(live(yield* SubscriptionRef.get(grants), now)),
-					Array.filter(entry => sameOwner(entry[1], owner)),
-					Array.map(
-						entry =>
-							({
-								client: entry[1].client,
-								createdAt: entry[1].createdAt,
-								device: entry[1].device,
-								expiresAt: entry[1].credential.expiresAt,
-								family: entry[0],
-								kind: entry[1].credential._tag,
-								lastActive: entry[1].lastActive,
-								...Struct.pick(entry[1], ['parent']),
-								...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
-									onNone: () => ({}),
-									onSome: address => ({address})
-								})
-							}) satisfies SignedInApp
-					),
-					Array.sort(Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive)))
-				)
+				return signedInApps(yield* SubscriptionRef.get(grants), now, owner)
 			})
 
 			return Tokens.of({

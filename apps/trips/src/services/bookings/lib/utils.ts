@@ -1,6 +1,6 @@
-import {Array, Boolean, DateTime, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, Record, Result, Schema, String, Struct, pipe} from 'effect'
 
-import {ActivityProps} from '#services/bookings/schema.ts'
+import {ActivityProps, Airport} from '#services/bookings/schema.ts'
 import type {
 	Booking,
 	BookingId,
@@ -11,10 +11,15 @@ import type {
 	Leg,
 	LocalTime,
 	Stay,
+	Place,
+	StopMatches,
 	Tone,
 	Train,
 	TrainPhase
 } from '#services/bookings/schema.ts'
+
+const RAIL = ['HIGHSPEED_RAIL', 'LONG_DISTANCE', 'NIGHT_RAIL', 'REGIONAL_FAST_RAIL', 'REGIONAL_RAIL', 'SUBURBAN']
+const GENERIC = ['bahnhof', 'central', 'centraal', 'centrale', 'gare', 'hauptbahnhof', 'hbf', 'station', 'stazione']
 
 // The short brand codes Trenitalia prints before a train number.
 const TRAIN_BRANDS: Record.ReadonlyRecord<string, string> = {
@@ -41,6 +46,66 @@ export const ACTIVITY_LIFETIME = 7.5 * HOUR
 
 // The name the app passes to createLiveActivity, which the pushes repeat.
 export const ACTIVITY_NAME = 'JourneyActivity'
+
+export function airportIndex(all: Record<string, unknown>, fetchedAt: number) {
+	return {
+		airports: Record.fromEntries(
+			Array.filterMap(Record.values(all), entry =>
+				pipe(
+					Schema.decodeUnknownOption(Airport)(entry),
+					Option.filter(airport => String.isNonEmpty(airport.iata) && String.isNonEmpty(airport.tz)),
+					Option.map(airport => [airport.iata, airport] as const),
+					Option.match({onNone: () => Result.failVoid, onSome: Result.succeed})
+				)
+			)
+		),
+		fetchedAt
+	}
+}
+
+function words(text: string) {
+	return pipe(
+		text,
+		String.normalize('NFD'),
+		String.replaceAll(/[̀-ͯ]/gu, ''),
+		String.toLowerCase,
+		String.split(/[^a-z0-9]+/u)
+	)
+}
+
+export function stationMatch(name: string, matches: StopMatches) {
+	const named = Array.filter(matches, match => {
+		const own = words(
+			`${match.name} ${Array.join(
+				Array.map(match.areas ?? [], area => area.name),
+				' '
+			)}`
+		)
+		return Option.exists(
+			Array.findFirst(words(name), word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
+			word => Array.contains(own, word)
+		)
+	})
+	return Option.map(
+		Option.orElse(
+			Array.findFirst(named, match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
+			() => Array.head(named)
+		),
+		match =>
+			({
+				...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
+				code: match.id,
+				latitude: match.lat,
+				longitude: match.lon,
+				name: pipe(
+					String.toLowerCase(match.name),
+					String.split(' '),
+					Array.map(word => `${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}`),
+					Array.join(' ')
+				)
+			}) satisfies Place
+	)
+}
 
 // Time
 
@@ -127,13 +192,17 @@ export function routeOf(booking: Booking) {
 // The stay that starts around a journey's arrival, for the ride from the airport or station.
 export function stayAfter(bookings: BookingList, journey: Flight | Train) {
 	const arrival = arrivalOf(journey)
-	return Array.findFirst(
-		Array.sort(
-			Array.filter(bookings, (booking): booking is Stay => booking._tag === 'stay' && booking.status === 'confirmed'),
-			byStart
-		),
-		stay => stay.checkIn > arrival - 12 * HOUR && stay.checkIn < arrival + 36 * HOUR && stay.checkOut > arrival
+	const stays = Array.filter(
+		bookings,
+		(booking): booking is Stay =>
+			booking._tag === 'stay' &&
+			booking.status === 'confirmed' &&
+			booking.checkIn > arrival - 12 * HOUR &&
+			booking.checkIn < arrival + 36 * HOUR &&
+			booking.checkOut > arrival
 	)
+	if (Array.isReadonlyArrayNonEmpty(stays)) return Option.some(Array.min(stays, byStart))
+	return Option.none<Stay>()
 }
 
 function near(left: number, right: number) {
@@ -564,7 +633,12 @@ export function startAlert(journey: Flight | Train) {
 
 // Alerts
 
-export type Alert = {body: string; key: string; title: string}
+export type Alert = {
+	body: string
+	title: string
+	category: 'cancelled' | 'diverted' | 'boarding' | 'gate' | 'platform' | 'delay' | 'belt'
+	value?: string
+}
 
 function trainAlerts(train: Train) {
 	const title = titleOf(train)
@@ -573,7 +647,7 @@ function trainAlerts(train: Train) {
 		Option.filter(
 			Option.some<Alert>({
 				body: `${routeOf(train)} at ${clockAt(train.departs, train.from.timeZone ?? 'Europe/Rome')}`,
-				key: 'cancelled',
+				category: 'cancelled',
 				title: `${title} is cancelled`
 			}),
 			() => train.status === 'cancelled'
@@ -584,8 +658,9 @@ function trainAlerts(train: Train) {
 			platform =>
 				({
 					body: line([Option.some(`${train.from.name} at ${departure}`), labelled('coach', train.coach)]),
-					key: `platform:${platform}`,
-					title: `${title} · Platform ${platform}`
+					category: 'platform',
+					title: `${title} · Platform ${platform}`,
+					value: platform
 				}) satisfies Alert
 		),
 		Option.map(
@@ -593,8 +668,9 @@ function trainAlerts(train: Train) {
 			delay =>
 				({
 					body: `Now leaves ${train.from.name} at ${departure}`,
-					key: `delay:${Number.round(delay / 10, 0) * 10}`,
-					title: `${title} is ${delay} min late`
+					category: 'delay',
+					title: `${title} is ${delay} min late`,
+					value: `${Number.round(delay / 10, 0) * 10}`
 				}) satisfies Alert
 		)
 	])
@@ -609,13 +685,13 @@ function flightAlerts(flight: Flight, now: number) {
 		Option.filter(
 			Option.some<Alert>({
 				body: `${routeOf(flight)} at ${clockAt(flight.departs, flight.from.timeZone)}`,
-				key: 'cancelled',
+				category: 'cancelled',
 				title: `${title} is cancelled`
 			}),
 			() => cancelled
 		),
 		Option.filter(
-			Option.some<Alert>({body: routeOf(flight), key: 'diverted', title: `${title} is diverted`}),
+			Option.some<Alert>({body: routeOf(flight), category: 'diverted', title: `${title} is diverted`}),
 			() => flight.live?.state === 'diverted'
 		),
 		Option.map(
@@ -625,19 +701,21 @@ function flightAlerts(flight: Flight, now: number) {
 					body: Option.getOrElse(labelled('Changed from', flight.live?.previousGate), () =>
 						line([Option.some(`Departs ${departure}`), labelled('Terminal', flight.live?.departureTerminal)])
 					),
-					key: `gate:${gate}`,
-					title: `${title} · Gate ${gate}`
+					category: 'gate',
+					title: `${title} · Gate ${gate}`,
+					value: gate
 				}) satisfies Alert
 		),
 		Option.filter(
 			Option.some<Alert>({
 				body: `Now departs ${departure}`,
-				key: `delay:${Number.round(delay / 15, 0) * 15}`,
-				title: `${title} is ${delay} min late`
+				category: 'delay',
+				title: `${title} is ${delay} min late`,
+				value: `${Number.round(delay / 15, 0) * 15}`
 			}),
 			() => delay >= 15 && !cancelled
 		),
-		Option.map(
+		Option.map<number, Alert>(
 			Option.filter(
 				Option.fromUndefinedOr(flight.boardingAt),
 				at => now >= at - 10 * MINUTE && now < departureOf(flight)
@@ -648,13 +726,14 @@ function flightAlerts(flight: Flight, now: number) {
 						Option.orElseSome(labelled('Gate', flight.live?.departureGate), () => 'Check the gate'),
 						labelled('group', flight.boardingGroup)
 					]),
-					key: 'boarding',
+					category: 'boarding',
 					title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
 				}) satisfies Alert
 		),
 		Option.map(
 			Option.fromUndefinedOr(flight.live?.belt),
-			belt => ({body: flight.to.name, key: `belt:${belt}`, title: `${title} bags on belt ${belt}`}) satisfies Alert
+			belt =>
+				({body: flight.to.name, category: 'belt', title: `${title} bags on belt ${belt}`, value: belt}) satisfies Alert
 		)
 	])
 }

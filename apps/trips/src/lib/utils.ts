@@ -5,6 +5,7 @@ import {
 	Effect,
 	HashSet,
 	Layer,
+	MutableList,
 	Number,
 	Option,
 	Queue,
@@ -331,9 +332,16 @@ type Running = ActivityEntry & {activity: LiveActivity<ActivityProps>}
 type Started = [string, ActivityEntry]
 
 function savedIndex() {
-	return Option.getOrElse(
-		Option.flatMap(Option.liftThrowable(() => activitiesFile.textSync())(), Schema.decodeOption(ActivityIndexJson)),
-		() => Record.empty<string, ActivityEntry>()
+	return pipe(
+		Effect.try({
+			catch: cause => BookingsError.make({cause, message: 'The Live Activity index could not be read.'}),
+			try: () => {
+				if (!activitiesFile.exists) return '{}'
+				return activitiesFile.textSync()
+			}
+		}),
+		Effect.flatMap(Schema.decodeEffect(ActivityIndexJson)),
+		Effect.mapError(cause => BookingsError.make({cause, message: 'The Live Activity index could not be loaded.'}))
 	)
 }
 
@@ -353,28 +361,54 @@ function entryOf(bookingId: string, leg: Leg, token: Option.Option<string>) {
 	})
 }
 
+function activityPlan(bookings: BookingList, running: Running[], now: number) {
+	const runningByLeg = Record.map(
+		Array.groupBy(running, item => item.bookingId),
+		items => Array.groupBy(items, item => item.leg)
+	)
+	const show = Array.filterMap(bookings, booking => {
+		if (booking._tag === 'stay') return Result.failVoid
+		return Option.match(activeWindow(booking, now), {
+			onNone: () => Result.failVoid,
+			onSome: window =>
+				Result.succeed({
+					journey: booking,
+					leg: window.leg,
+					props: activityProps(booking, bookings, now),
+					running: Array.head(runningByLeg[booking.id]?.[window.leg] ?? [])
+				})
+		})
+	})
+	const bookingsById = Array.groupBy(bookings, booking => booking.id)
+	return {
+		end: Array.filter(
+			running,
+			item =>
+				!Array.some(bookingsById[item.bookingId] ?? [], booking =>
+					Option.exists(activeWindow(booking, now), window => window.leg === item.leg)
+				)
+		),
+		show
+	}
+}
+
 // While the app is open it starts, refreshes and ends the islands itself; the server takes over with pushes once it closes.
 export const activitiesAtom = RpcClient.runtime.atom(get =>
 	pipe(
 		Effect.gen(function* () {
 			const loaded = get(bookingsAtom)
 			if (!session.signedIn(get) || !AsyncResult.isSuccess(loaded)) return
-			const bookings = loaded.value
-			const bookingsById = Array.groupBy(bookings, booking => booking.id)
 			const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
 			const target = yield* apns
 			const client = yield* RpcClient
-			const index = savedIndex()
+			const index = yield* savedIndex()
 			const running: Running[] = Array.filterMap(JourneyActivity.getInstances(), activity =>
 				Option.match(Record.get(index, activity.getId()), {
 					onNone: () => Result.failVoid,
 					onSome: entry => Result.succeed({activity, ...entry})
 				})
 			)
-			const runningByLeg = Record.map(
-				Array.groupBy(running, item => item.bookingId),
-				items => Array.groupBy(items, item => item.leg)
-			)
+			const plan = activityPlan(loaded.value, running, now)
 
 			// Only a leg nobody started yet: the server may already show it from a push.
 			const begin = Effect.fnUntraced(function* (journey: Flight | Train, leg: Leg, props: ActivityProps) {
@@ -383,7 +417,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 				}
 				const activity = JourneyActivity.start(props, linkOf(journey.id))
 				// Indexed at once, so a refresh interrupted while it waits for the token still finds and registers it.
-				yield* writeIndex(Record.set(savedIndex(), activity.getId(), entryOf(journey.id, leg, Option.none())))
+				yield* writeIndex(Record.set(yield* savedIndex(), activity.getId(), entryOf(journey.id, leg, Option.none())))
 				// iOS hands a new activity its token shortly after it starts.
 				const token = yield* pipe(
 					Stream.merge(
@@ -433,37 +467,18 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 				return Option.some<Started>([mine.activity.getId(), entryOf(mine.bookingId, mine.leg, Option.some(token))])
 			})
 
-			const show = Effect.fnUntraced(function* (journey: Flight | Train, leg: Leg) {
-				const props = activityProps(journey, bookings, now)
-				return yield* Option.match(Array.head(runningByLeg[journey.id]?.[leg] ?? []), {
-					onNone: () => begin(journey, leg, props),
-					onSome: mine => refresh(mine, props)
-				})
-			})
-
 			const started = yield* Effect.forEach(
-				bookings,
-				booking => {
-					if (booking._tag === 'stay') return Effect.succeed(Option.none<Started>())
-					return Option.match(activeWindow(booking, now), {
-						onNone: () => Effect.succeed(Option.none<Started>()),
-						onSome: window => show(booking, window.leg)
-					})
-				},
+				plan.show,
+				item =>
+					Option.match(item.running, {
+						onNone: () => begin(item.journey, item.leg, item.props),
+						onSome: mine => refresh(mine, item.props)
+					}),
 				{concurrency: 1}
 			)
 			// An island whose leg is over or whose booking is gone ends with its last state.
 			yield* Effect.forEach(
-				Array.filter(
-					running,
-					item =>
-						!Array.some(
-							bookingsById[item.bookingId] ?? [],
-							booking =>
-								booking.id === item.bookingId &&
-								Option.exists(activeWindow(booking, now), window => window.leg === item.leg)
-						)
-				),
+				plan.end,
 				item =>
 					Effect.tryPromise({
 						catch: cause => BookingsError.make({cause, message: 'The Live Activity could not be ended.'}),
@@ -530,6 +545,43 @@ function sameTime(left: DateTime.DateTime.Input, right: DateTime.DateTime.Input)
 	)
 }
 
+function calendarPlan(all: BookingList, events: Awaited<ReturnType<Calendar.ExpoCalendar['listEvents']>>, now: number) {
+	const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
+	const bookings = Array.filter(all, booking => booking.status === 'confirmed' && endOf(booking) > now - 24 * HOUR)
+	const create = MutableList.make<ReturnType<typeof eventOf> & {url: string}>()
+	const update = MutableList.make<{event: Calendar.ExpoCalendarEvent; details: ReturnType<typeof eventOf>}>()
+	for (const booking of bookings) {
+		const details = {...eventOf(booking), url: linkOf(booking.id)}
+		Option.match(Array.head(eventsByUrl[details.url] ?? []), {
+			onNone: () => {
+				MutableList.append(create, details)
+			},
+			onSome: event => {
+				if (
+					!(
+						sameTime(event.startDate, details.startDate) &&
+						sameTime(event.endDate, details.endDate) &&
+						event.title === details.title &&
+						event.location === details.location &&
+						event.notes === details.notes
+					)
+				) {
+					MutableList.append(update, {details, event})
+				}
+			}
+		})
+	}
+	const kept = HashSet.fromIterable(Array.map(bookings, booking => linkOf(booking.id)))
+	return {
+		create: MutableList.toArray(create),
+		remove: Array.filter(
+			events,
+			event => event.url !== undefined && String.startsWith(linkOf(''))(event.url) && !HashSet.has(kept, event.url)
+		),
+		update: MutableList.toArray(update)
+	}
+}
+
 // The bookings mirror into one calendar; an event's URL names its booking, so a later sync finds it again.
 export const calendarAtom = Atom.make(get =>
 	pipe(
@@ -580,49 +632,30 @@ export const calendarAtom = Atom.make(get =>
 						DateTime.toDateUtc(DateTime.makeUnsafe(now + 400 * 24 * HOUR))
 					)
 			})
-			const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
-			const bookings = Array.filter(
-				loaded.value,
-				booking => booking.status === 'confirmed' && endOf(booking) > now - 24 * HOUR
-			)
+			const plan = calendarPlan(loaded.value, events, now)
 			yield* Effect.forEach(
-				bookings,
-				booking => {
-					const details = eventOf(booking)
-					return Option.match(Array.head(eventsByUrl[linkOf(booking.id)] ?? []), {
-						onNone: () =>
-							Effect.tryPromise({
-								catch: cause =>
-									BookingsError.make({cause, message: `${details.title} could not be added to the calendar.`}),
-								try: () => calendar.createEvent({...details, url: linkOf(booking.id)})
-							}),
-						onSome: event => {
-							if (
-								sameTime(event.startDate, details.startDate) &&
-								sameTime(event.endDate, details.endDate) &&
-								event.title === details.title &&
-								event.location === details.location &&
-								event.notes === details.notes
-							) {
-								return Effect.void
-							}
-							return Effect.tryPromise({
-								catch: cause =>
-									BookingsError.make({cause, message: `${details.title} could not be updated in the calendar.`}),
-								try: () => event.update(details)
-							})
-						}
-					})
-				},
+				plan.create,
+				details =>
+					Effect.tryPromise({
+						catch: cause =>
+							BookingsError.make({cause, message: `${details.title} could not be added to the calendar.`}),
+						try: () => calendar.createEvent(details)
+					}),
 				{concurrency: 1, discard: true}
 			)
-			const kept = HashSet.fromIterable(Array.map(bookings, booking => linkOf(booking.id)))
+			yield* Effect.forEach(
+				plan.update,
+				item =>
+					Effect.tryPromise({
+						catch: cause =>
+							BookingsError.make({cause, message: `${item.details.title} could not be updated in the calendar.`}),
+						try: () => item.event.update(item.details)
+					}),
+				{concurrency: 1, discard: true}
+			)
 			yield* Effect.forEach(
 				// Only events this mirror made: one the person added to the calendar stays.
-				Array.filter(
-					events,
-					event => event.url !== undefined && String.startsWith(linkOf(''))(event.url) && !HashSet.has(kept, event.url)
-				),
+				plan.remove,
 				event =>
 					Effect.tryPromise({
 						catch: cause =>

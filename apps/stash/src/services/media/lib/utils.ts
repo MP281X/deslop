@@ -1,9 +1,27 @@
-import {Array, Boolean, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
-import type {Metadata} from '#services/media/schema.ts'
+import type {Metadata, Comment} from '#services/media/schema.ts'
 
 const BLOCKED =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
+
+const byStanding = Order.combine(
+	Order.mapInput(Order.flip(Order.Boolean), (comment: Comment) => comment.is_pinned ?? false),
+	Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)
+)
+
+function commentLine(comment: Comment) {
+	return Array.join(
+		[
+			`**${comment.author ?? 'Someone'}**`,
+			Boolean.match(comment.author_is_uploader ?? false, {onFalse: () => '', onTrue: () => ' (the uploader)'}),
+			Boolean.match(comment.is_pinned ?? false, {onFalse: () => '', onTrue: () => ', pinned'}),
+			Option.match(Option.fromNullishOr(comment.like_count), {onNone: () => '', onSome: likes => `, ${likes} likes`}),
+			`: ${String.trim(comment.text)}`
+		],
+		''
+	)
+}
 
 export function captionTracks(media: Metadata) {
 	const automatic = Record.keys(media.automatic_captions ?? {})
@@ -59,6 +77,46 @@ export function clock(seconds: number) {
 	return `${pipe(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`, String.padStart(2, '0'))}:${pipe(`${parts.seconds}`, String.padStart(2, '0'))}`
 }
 
+export function mediaMarkdown(media: Metadata, link: string) {
+	const details = pipe(
+		[
+			Option.fromNullishOr(media.uploader),
+			Option.map(Option.fromNullishOr(media.upload_date), String.replace(/^(\d{4})(\d{2})(\d{2})$/u, '$1-$2-$3')),
+			Option.map(Option.fromNullishOr(media.duration), clock)
+		],
+		Array.getSomes,
+		Array.filter(String.isNonEmpty)
+	)
+	return Array.join(
+		Array.getSomes([
+			Option.some(`# ${media.title}\n\n${Array.join(details, ', ')}\n${link}`),
+			pipe(
+				Option.fromNullishOr(media.description),
+				Option.filter(String.isNonEmpty),
+				Option.map(description => `## Description\n\n${description}`)
+			),
+			Option.map(
+				Option.fromNullishOr(media.chapters),
+				chapters =>
+					`## Chapters\n\n${Array.join(
+						Array.map(chapters, chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`),
+						'\n'
+					)}`
+			),
+			pipe(
+				Option.fromNullishOr(media.comments),
+				Option.map(Array.filter(comment => (comment.parent ?? 'root') === 'root')),
+				Option.filter(comments => Array.isReadonlyArrayNonEmpty(comments)),
+				Option.map(
+					comments =>
+						`## Top comments\n\n${Array.join(Array.map(Array.take(Array.sort(comments, byStanding), 40), commentLine), '\n\n')}`
+				)
+			)
+		]),
+		'\n\n'
+	)
+}
+
 export function captionTranscript(input: {authored: boolean; vtt: string}) {
 	const cues = pipe(
 		input.vtt,
@@ -70,17 +128,15 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 				Array.findFirstIndex(lines, String.includes('-->')),
 				Option.map(index => {
 					const times = Array.map(pipe(Array.getUnsafe(lines, index), String.split(' --> ')), time =>
-						Array.reduce(
-							pipe(
-								time,
-								String.split(' '),
-								Array.headNonEmpty,
-								String.split(':'),
-								Array.map(Number.parse),
-								Array.getSomes
-							),
-							0,
-							(total, part) => total * 60 + part
+						pipe(
+							time,
+							String.split(' '),
+							Array.headNonEmpty,
+							String.split(':'),
+							Array.map(Number.parse),
+							Option.all,
+							Option.map(parts => Array.reduce(parts, 0, (total, part) => total * 60 + part)),
+							Option.filter(Schema.is(Schema.Finite))
 						)
 					)
 					return Array.map(Array.drop(lines, index + 1), line => ({
@@ -110,11 +166,18 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 					Array.get(cues, index - 1),
 					Option.match({
 						onNone: () => true,
-						onSome: previous => input.authored || previous.text !== cue.text || previous.end < cue.start
+						onSome: previous =>
+							input.authored ||
+							previous.text !== cue.text ||
+							Option.getOrElse(
+								Option.map(Option.all([previous.end, cue.start]), times => times[0] < times[1]),
+								() => true
+							)
 					})
 				)
 			),
-			cue => `[${clock(cue.start)}] ${cue.text}\n`
+			cue =>
+				`[${Option.match(Option.all([cue.start, cue.end]), {onNone: () => '—', onSome: times => clock(times[0])})}] ${cue.text}\n`
 		),
 		''
 	)

@@ -46,8 +46,11 @@ const create = Command.make(
 				pipe(
 					fs.readFileString(path.join(apps, app, 'package.json')),
 					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(AppPackage))),
-					Effect.map(found => found.config.port),
-					Effect.orElseSucceed(() => 5100)
+					Effect.map(found => Option.some(found.config.port)),
+					Effect.catchTag('PlatformError', cause => {
+						if (cause.reason._tag === 'NotFound') return Effect.succeedNone
+						return Effect.fail(cause)
+					})
 				),
 			{concurrency: 'unbounded'}
 		)
@@ -59,7 +62,7 @@ const create = Command.make(
 					`"directory": "apps/${input.name}"`,
 					`"directory": ${Formatter.formatJson(path.relative(workspace, root))}`
 				),
-				String.replaceAll('"port": 5100', `"port": ${Array.reduce(ports, 5100, Number.max) + 1}`)
+				String.replaceAll('"port": 5100', `"port": ${Array.max([5100, ...Array.getSomes(ports)], Number.Order) + 1}`)
 			),
 			to: root
 		})

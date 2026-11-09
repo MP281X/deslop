@@ -9,14 +9,11 @@ import {
 	DateTime,
 	Effect,
 	HashMap,
-	HashSet,
 	Layer,
-	Number,
 	Option,
 	Order,
 	Random,
 	Record,
-	Result,
 	Schedule,
 	Schema,
 	Stream,
@@ -30,7 +27,21 @@ import * as cheerio from 'cheerio'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {openStore} from '#services/chapters/lib/store.ts'
-import {byNumber, keyOf, nameOf, pagesOf, postFrom, seriesOf, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
+import {
+	byNumber,
+	chaptersFromIndex,
+	INDEXES,
+	indexUrl,
+	keyOf,
+	mergeMissingChapters,
+	nameOf,
+	pagesOf,
+	postFrom,
+	reconcileChapters,
+	revisionCandidates,
+	seriesOf,
+	SERIES_NAMES
+} from '#services/chapters/lib/utils.ts'
 import type {Chapter, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
 import {ChaptersError, CubariSeries, Post, PushTickets, Series} from '#services/chapters/schema.ts'
 
@@ -41,8 +52,6 @@ const FEEDS = [
 ]
 const BROWSER =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
-
-const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
 // Releases whose posts link only dead readers, with a translation that still loads: webcomic 158 from https://www.reddit.com/r/OPMFolk/comments/1sbfbrf/, manga 233 from its r/OPMFolk post, and 234 to 237 from @Floppysterino's gist, which numbers them two lower.
 const ARCHIVE_POSTS = Array.map(
@@ -65,10 +74,6 @@ const ARCHIVE_POSTS = Array.map(
 )
 
 const newestFirst = Order.flip(byNumber)
-
-function indexUrl(series: Series) {
-	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
-}
 
 function change(chapters: Chapter[], key: string, update: (chapter: Chapter) => Chapter) {
 	return Array.map(chapters, item =>
@@ -151,41 +156,12 @@ export class Chapters extends Context.Service<
 
 			// The community's back catalogues; Reddit supplies the newer releases.
 			const backfill = Effect.fnUntraced(function* (kind: Series) {
-				const index = yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`)
-				const chapters = pipe(
-					Record.toEntries(index.chapters),
-					Array.map(entry =>
-						pipe(
-							Option.all({
-								number: Number.parse(entry[0]),
-								pages: pagesOf(index, entry[0]),
-								postedAt: Option.some(
-									Boolean.match(kind === 'webcomic', {
-										onFalse: () =>
-											Option.getOrElse(Array.head(Record.values(entry[1].release_date ?? {})), () => 0) * 1000,
-										onTrue: () => 0
-									})
-								)
-							}),
-							Option.map(found => ({
-								...found,
-								notified: true,
-								series: kind,
-								source: `${indexUrl(kind)}${entry[0]}/1/`,
-								title: nameOf(entry[1].title ?? '')
-							}))
-						)
-					),
-					Array.getSomes
+				const chapters = chaptersFromIndex(
+					yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`),
+					kind
 				)
 				// Only the numbers still missing: a chapter Reddit already supplied keeps its pages.
-				yield* save(current => {
-					const numbers = HashSet.fromIterable(Array.map(current, keyOf))
-					return Array.sort(
-						[...current, ...Array.filter(chapters, chapter => !HashSet.has(numbers, keyOf(chapter)))],
-						newestFirst
-					)
-				})
+				yield* save(current => mergeMissingChapters(current, chapters))
 				yield* Effect.logInfo(`Backfilled ${chapters.length} ${kind} chapters from the community index`)
 			})
 
@@ -251,26 +227,11 @@ export class Chapters extends Context.Service<
 					{concurrency: 1}
 				)
 				if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
-				const posts = Array.sort(
-					[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
-					Order.mapInput(Order.Number, (post: Post) => post.postedAt)
-				)
-				const known = HashMap.fromIterable(
-					Array.map(yield* SubscriptionRef.get(state), chapter => [keyOf(chapter), chapter] as const)
-				)
 				const now = yield* Clock.currentTimeMillis
 				// A new chapter's posts, oldest first, or later explicit revisions of a known one, each with the links not already read.
-				const candidates = Array.filterMap(posts, post =>
-					Array.match(
-						Array.filter(post.links, link =>
-							Option.match(HashMap.get(known, keyOf(post)), {
-								onNone: () => true,
-								onSome: item =>
-									post.revised && post.postedAt > (item.revisedAt ?? item.postedAt) && link !== item.source
-							})
-						),
-						{onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})}
-					)
+				const candidates = revisionCandidates(
+					[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
+					yield* SubscriptionRef.get(state)
 				)
 				// The first link that loads wins: a release's best translation can be gone while another still reads.
 				const found = yield* Effect.forEach(
@@ -286,25 +247,8 @@ export class Chapters extends Context.Service<
 						),
 					{concurrency: 1}
 				)
-				const loaded = HashMap.fromIterable(
-					Array.map(Array.getSomes(found), chapter => [keyOf(chapter), chapter] as const)
-				)
 				// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
-				yield* save(current => {
-					const revised = Array.map(current, item =>
-						Option.match(HashMap.get(loaded, keyOf(item)), {
-							onNone: () => item,
-							onSome: chapter => ({...item, pages: chapter.pages, revisedAt: chapter.postedAt, source: chapter.source})
-						})
-					)
-					const present = HashSet.fromIterable(Array.map(current, keyOf))
-					// Only a post from the last day is news; the backlog and a link that loads late stay quiet.
-					const added = Array.map(
-						Array.filter(Array.fromIterable(HashMap.values(loaded)), chapter => !HashSet.has(present, keyOf(chapter))),
-						chapter => ({...chapter, notified: now - chapter.postedAt > 86_400_000})
-					)
-					return Array.sort([...revised, ...added], newestFirst)
-				})
+				yield* save(current => reconcileChapters(current, Array.getSomes(found), now))
 			})
 
 			const send = Effect.fnUntraced(function* (chapter: Chapter, tokens: string[]) {

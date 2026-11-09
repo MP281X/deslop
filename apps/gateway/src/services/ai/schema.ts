@@ -104,20 +104,22 @@ export const Usage = Schema.Struct({
 	),
 	model: Schema.optionalKey(Schema.String),
 	usage: Schema.optionalKey(
-		Schema.Struct({
-			cache_creation_input_tokens: Schema.optionalKey(Schema.Finite),
-			cache_read_input_tokens: Schema.optionalKey(Schema.Finite),
-			completion_tokens: Schema.optionalKey(Schema.Finite),
-			cost: Schema.optionalKey(Schema.Finite),
-			input_tokens: Schema.optionalKey(Schema.Finite),
-			output_tokens: Schema.optionalKey(Schema.Finite),
-			prompt_tokens: Schema.optionalKey(Schema.Finite),
-			prompt_tokens_details: Schema.optionalKey(
-				Schema.Struct({
-					cache_write_tokens: Schema.optionalKey(Schema.Finite),
-					cached_tokens: Schema.optionalKey(Schema.Finite)
-				})
-			)
-		})
+		Schema.NullOr(
+			Schema.Struct({
+				cache_creation_input_tokens: Schema.optionalKey(Schema.Finite),
+				cache_read_input_tokens: Schema.optionalKey(Schema.Finite),
+				completion_tokens: Schema.optionalKey(Schema.Finite),
+				cost: Schema.optionalKey(Schema.Finite),
+				input_tokens: Schema.optionalKey(Schema.Finite),
+				output_tokens: Schema.optionalKey(Schema.Finite),
+				prompt_tokens: Schema.optionalKey(Schema.Finite),
+				prompt_tokens_details: Schema.optionalKey(
+					Schema.Struct({
+						cache_write_tokens: Schema.optionalKey(Schema.Finite),
+						cached_tokens: Schema.optionalKey(Schema.Finite)
+					})
+				)
+			})
+		)
 	)
 })

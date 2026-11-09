@@ -6,6 +6,7 @@ import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
 
 const failed = Effect.mapError((cause: unknown) => ChaptersError.make({cause, message: 'The chapter storage failed.'}))
 
+// judge-ignore no-silent-fallback -- a missing key is no devices yet; a failed read or decode still fails openStore.
 export const openStore = Effect.fnUntraced(function* () {
 	const store = yield* KeyValueStore.KeyValueStore
 	const chapters = KeyValueStore.toSchemaStore(store, Schema.Array(Chapter))

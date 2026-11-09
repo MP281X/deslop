@@ -22,7 +22,7 @@ import {ChildProcessSpawner} from 'effect/process'
 import {execute} from '@deslop/runtime/cli/service'
 
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
-import {unitFailures} from '#services/inventory/lib/utils.ts'
+import {probeSocket, socketLine, socketProcess, socketUnit, unitFailures} from '#services/inventory/lib/utils.ts'
 import {
 	Container,
 	DeployError,
@@ -37,84 +37,66 @@ import type {RunRequest} from '#services/inventory/schema.ts'
 
 function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http: HttpClient.HttpClient) {
 	return Effect.forEach(
-		Array.filter(String.split(String.trim(text), '\n'), String.isNonEmpty),
-		Effect.fnUntraced(function* (line) {
-			const fields = String.split(String.trim(line), /\s+/u)
-			const address = fields[4] ?? ''
-			const port = Option.getOrElse(
-				Number.parse(Option.getOrElse(Array.last(String.split(address, ':')), () => '')),
-				() => 0
-			)
-			const cgroup = yield* Option.match(String.match(/pid=([0-9]+)/u)(line), {
+		Array.getSomes(Array.map(String.split(String.trim(text), '\n'), socketLine)),
+		Effect.fnUntraced(function* (socket) {
+			const cgroup = yield* Option.match(socket.pid, {
 				onNone: () => Effect.succeed(''),
-				onSome: Effect.fnUntraced(function* (match) {
-					return Option.getOrElse(yield* Effect.option(fs.readFileString(`/proc/${match[1]}/cgroup`)), () => '')
+				onSome: Effect.fnUntraced(function* (pid) {
+					return Option.getOrElse(yield* Effect.option(fs.readFileString(`/proc/${pid}/cgroup`)), () => '')
 				})
 			})
-			const unit =
-				Option.getOrElse(
-					Array.last(Array.fromIterable(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup))),
-					() => ['', '']
-				)[1] ?? ''
-			const process = yield* Option.match(String.match(/users:\(\("([^"]+)",pid=([0-9]+)/u)(line), {
+			const unit = socketUnit(cgroup)
+			const process = yield* Option.match(socket.process, {
 				onNone: () => Effect.succeed(''),
 				onSome: Effect.fnUntraced(function* (match) {
-					if (!String.startsWith('node')(match[1] ?? '')) return match[1] ?? ''
+					if (!String.startsWith('node')(match.name)) return match.name
 					return yield* pipe(
-						fs.readLink(`/proc/${match[2]}/cwd`),
-						Effect.map(cwd =>
-							Option.match(String.match(/\/apps\/([^/]+)(?:\/|$)/u)(cwd), {
-								onNone: () => match[1] ?? '',
-								onSome: app => app[1] ?? ''
-							})
-						),
-						Effect.orElseSucceed(() => match[1] ?? '')
+						fs.readLink(`/proc/${match.pid}/cwd`),
+						Effect.map(cwd => socketProcess(match.name, cwd)),
+						Effect.orElseSucceed(() => match.name)
 					)
 				})
 			})
-			const response = yield* Boolean.match(
-				fields[0] === 'tcp' &&
-					port >= 1024 &&
-					Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(address)) &&
-					Option.isNone(String.match(/^(?:postgres|redis|ssh|cloudflared|tailscaled|caddy)$/u)(process)),
-				{
-					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
-					onTrue: Effect.fnUntraced(function* () {
-						// The probed app still traces its side under this inventory, so its HEAD spans stay out of its own operations.
-						return yield* pipe(
-							Effect.option(Effect.currentSpan),
-							Effect.flatMap(parent =>
-								http.head(`http://127.0.0.1:${port}/`, {
-									headers: Option.match(parent, {onNone: () => ({}), onSome: HttpTraceContext.toHeaders})
-								})
-							),
-							Effect.map(value => ({
-								http: true,
-								ui:
-									value.status >= 200 &&
-									value.status < 400 &&
-									String.includes('text/html')(value.headers['content-type'] ?? '')
-							})),
-							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
-							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-							Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-							Effect.timeout('700 millis'),
-							Effect.option
-						)
-					})
-				}
-			)
+			const response = yield* Boolean.match(probeSocket(socket, process), {
+				onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
+				onTrue: Effect.fnUntraced(function* () {
+					// The probed app still traces its side under this inventory, so its HEAD spans stay out of its own operations.
+					return yield* pipe(
+						Effect.option(Effect.currentSpan),
+						Effect.flatMap(parent =>
+							http.head(`http://127.0.0.1:${socket.port}/`, {
+								headers: Option.match(parent, {onNone: () => ({}), onSome: HttpTraceContext.toHeaders})
+							})
+						),
+						Effect.map(value => ({
+							http: true,
+							ui:
+								value.status >= 200 &&
+								value.status < 400 &&
+								String.includes('text/html')(value.headers['content-type'] ?? '')
+						})),
+						Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+						// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
+						Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+						Effect.timeout('700 millis'),
+						Effect.option
+					)
+				})
+			})
 			return InventoryItem.make({
 				...Option.getOrElse(response, () => ({http: false, ui: false})),
-				address,
-				detail: `${address} · ${process || 'process unavailable'}`,
-				id: `${worker}:port:${fields[0]}:${address}`,
+				address: socket.address,
+				detail: `${socket.address} · ${process || 'process unavailable'}`,
+				id: `${worker}:port:${socket.protocol}:${socket.address}`,
 				kind: 'port',
-				name: address,
-				port,
+				name: socket.address,
+				port: socket.port,
 				process,
-				protocol: Boolean.match(fields[0] === 'udp', {onFalse: () => 'tcp' as const, onTrue: () => 'udp' as const}),
-				state: fields[1] ?? 'listening',
+				protocol: Boolean.match(socket.protocol === 'udp', {
+					onFalse: () => 'tcp' as const,
+					onTrue: () => 'udp' as const
+				}),
+				state: socket.state,
 				unit,
 				url: '',
 				worker

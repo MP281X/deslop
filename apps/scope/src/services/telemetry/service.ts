@@ -35,11 +35,12 @@ import {
 	newestVersions,
 	orderEntries,
 	overview,
+	reconcileReleases,
+	retentionOf,
 	serviceName,
 	serviceStatuses,
 	spanName,
 	summary,
-	superseded,
 	traceTiming,
 	traceView
 } from '#services/telemetry/lib/utils.ts'
@@ -91,34 +92,17 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
 			const receivedAt = yield* Clock.currentTimeMillis
-			const now = BigInt(receivedAt) * 1_000_000n
-			const cutoff = now - BigInt(Duration.toMillis(RETENTION)) * 1_000_000n
 			const newest = yield* Ref.get(releases)
 			yield* SynchronizedRef.updateEffect(
 				state,
 				Effect.fnUntraced(function* (current) {
-					// Stamp a previous-release future clock once, rather than deleting its data or renewing retention at every restart.
-					const repaired = Array.map(
-						Array.filter(
-							Array.fromIterable(HashMap.values(current)),
-							entry => entry.receivedAt === undefined && BigInt(entry.time) > now
-						),
-						entry => ({...entry, receivedAt})
-					)
-					yield* Effect.forEach(repaired, entry => store.set(entry.id, entry), {concurrency: 1, discard: true})
-					const expired = Array.filter(Array.fromIterable(HashMap.values(current)), entry => {
-						const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
-							onNone: () => BigInt(entry.time),
-							onSome: time => BigInt(time) * 1_000_000n
-						})
-						return received < cutoff || superseded(entry, newest)
+					const retention = retentionOf(current, newest, receivedAt, Duration.toMillis(RETENTION))
+					yield* Effect.forEach(retention.repaired, entry => store.set(entry.id, entry), {
+						concurrency: 1,
+						discard: true
 					})
-					yield* Effect.forEach(expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-					return Array.reduce(
-						expired,
-						Array.reduce(repaired, current, (all, entry) => HashMap.set(all, entry.id, entry)),
-						(all, entry) => HashMap.remove(all, entry.id)
-					)
+					yield* Effect.forEach(retention.expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
+					return retention.next
 				})
 			)
 			yield* SubscriptionRef.update(version, Number.increment)
@@ -142,25 +126,17 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				SynchronizedRef.updateEffect(
 					state,
 					Effect.fnUntraced(function* (current) {
-						const known = yield* Ref.get(releases)
-						const newest = newestVersions(entries, known)
-						const kept = Array.filter(entries, entry => !superseded(entry, newest))
-						// Only a release's first arrival scans what is kept.
-						const replaced = Array.filter(
-							Boolean.match(Record.isEmptyRecord(Record.filter(newest, (latest, name) => known[name] !== latest)), {
-								onFalse: () => Array.fromIterable(HashMap.values(current)),
-								onTrue: () => []
-							}),
-							entry => superseded(entry, newest)
-						)
-						yield* Effect.forEach(replaced, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-						yield* Effect.forEach(kept, entry => store.set(entry.id, entry), {concurrency: 1, discard: true})
-						yield* Ref.set(releases, newest)
-						return Array.reduce(
-							kept,
-							Array.reduce(replaced, current, (all, entry) => HashMap.remove(all, entry.id)),
-							(all, entry) => HashMap.set(all, entry.id, entry)
-						)
+						const reconciliation = reconcileReleases(current, entries, yield* Ref.get(releases))
+						yield* Effect.forEach(reconciliation.replaced, entry => store.remove(entry.id), {
+							concurrency: 1,
+							discard: true
+						})
+						yield* Effect.forEach(reconciliation.accepted, entry => store.set(entry.id, entry), {
+							concurrency: 1,
+							discard: true
+						})
+						yield* Ref.set(releases, reconciliation.newest)
+						return reconciliation.next
 					})
 				)
 			)
