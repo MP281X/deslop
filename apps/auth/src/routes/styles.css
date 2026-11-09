@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--slate);
+	--primary: var(--orange);
 }
 
 /* A code no sign-in has shakes once, as a lock refuses a wrong key. */

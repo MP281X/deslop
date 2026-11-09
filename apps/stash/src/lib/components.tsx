@@ -42,7 +42,7 @@ export function Byline(props: {note: NoteItem}) {
 	return (
 		<HStack spacing={space[1]} modifiers={[accessibilityElement('combine')]}>
 			<SourceIcon kind={kindOf(props.note)} />
-			<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+			<Text modifiers={[text.label, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 				{pipe(
 					[
 						Option.orElse(Option.fromUndefinedOr(props.note.author), () => siteOf(props.note)),

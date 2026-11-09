@@ -6,38 +6,39 @@
 
 /* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
-	--red: oklch(from #c92b38 l c h);
-	--orange: oklch(from #b64b11 l c h);
-	--amber: oklch(from #91601d l c h);
-	--ivory: oklch(from #686868 l c h);
-	--cyan: oklch(from #25777a l c h);
-	--blue: oklch(from #345dad l c h);
-	--purple: oklch(from #74519b l c h);
-	--pink: oklch(from #a63c69 l c h);
-	--slate: oklch(from #526887 l c h);
-	--coral: oklch(from #bd4630 l c h);
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
+	/* Oat ground and charcoal ink; identity and status hues warmed and darkened for it. */
+	--red: #a83224;
+	--orange: #c4530a;
+	--amber: #7d5510;
+	--ivory: #5f5545;
+	--cyan: #356b66;
+	--blue: #455d75;
+	--purple: #6b4f70;
+	--pink: #8f4740;
+	--slate: #6e5b43;
+	--coral: #963f2c;
+	--machine-dev: #3d6278;
+	--machine-desktop: #805a14;
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
-	--popover: #ffffff;
+	--background: #eee7da;
+	--foreground: #211c16;
+	--card: #f8f2e7;
+	--popover: #fbf6ec;
 	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--secondary: #e3dac9;
+	--muted: #e7ddcb;
+	--muted-foreground: #6f6355;
+	--accent: #ded3bf;
+	--border: #c7bba8;
+	--input: #c0b29c;
+	--surface: #e7ddcb;
+	--selection: #d9c8ae;
+	--selection-foreground: #211c16;
 
-	--primary: var(--slate);
-	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
+	--primary: #c4530a;
+	--destructive: #a83224;
+	--warning: #7d5510;
+	--success: #4f7045;
 	--ring: var(--primary);
 
 	--card-foreground: var(--foreground);
@@ -48,10 +49,11 @@
 
 	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
 	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	--chart-2: var(--ivory);
+	--chart-3: var(--success);
+	--chart-4: var(--warning);
+	--chart-5: var(--destructive);
+	--chart-6: var(--muted-foreground);
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -61,41 +63,54 @@
 	--sidebar-border: var(--border);
 	--sidebar-ring: var(--ring);
 
-	--radius: 0px;
+	/* Controls are 4px, cards and panels 8px. */
+	--radius: 4px;
+	--radius-xs: 2px;
+	--radius-sm: 4px;
+	--radius-md: 4px;
+	--radius-lg: 8px;
+	--radius-xl: 8px;
+	--radius-2xl: 8px;
+	--radius-3xl: 8px;
+	--radius-4xl: 8px;
 }
 
 /* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
-		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
-		--amber: oklch(from #e6c384 l c h);
-		--ivory: oklch(from #dcd7ba l c h);
-		--cyan: oklch(from #a3d4d5 l c h);
-		--blue: oklch(from #7e9cd8 l c h);
-		--purple: oklch(from #957fb8 l c h);
-		--pink: oklch(from #d27e99 l c h);
-		--slate: oklch(from #9cabca l c h);
-		--coral: oklch(from #fd7357 l c h);
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		--red: #e2684f;
+		--orange: #ff7a1a;
+		--amber: #e0a83c;
+		--ivory: #e8d9c1;
+		--cyan: #7fa9a0;
+		--blue: #8fa6bd;
+		--purple: #b292b8;
+		--pink: #d99a90;
+		--slate: #cbb399;
+		--coral: #e27a5e;
+		--machine-dev: #8fa6bd;
+		--machine-desktop: #d3a04a;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #171512;
+		--foreground: #f2e9db;
+		--card: #24201b;
+		--popover: #2a251f;
+		--primary-foreground: #1a1209;
+		/* A muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
+		--secondary: #2b261f;
+		--muted: #2b261f;
+		--muted-foreground: #b8ab99;
+		--accent: #342d24;
+		--border: #4a4238;
+		--input: #322c25;
+		--surface: #1e1b17;
+		--selection: #4a3825;
+		--selection-foreground: #f2e9db;
+
+		--primary: #ff7a1a;
+		--destructive: #e4572e;
+		--warning: #e0a83c;
+		--success: #8db580;
 	}
 }
 
@@ -103,12 +118,18 @@
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--tracking-label: 0.12em;
+	/* Stamped legends: 11px, micro keys 10px. */
+	--text-stamp: 0.6875rem;
+	--text-stamp--line-height: 1.2;
+	--text-micro: 0.625rem;
+	--text-micro--line-height: 1.2;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -140,14 +161,14 @@
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
-	--radius-xs: var(--radius);
-	--radius-sm: var(--radius);
-	--radius-md: var(--radius);
-	--radius-lg: var(--radius);
-	--radius-xl: var(--radius);
-	--radius-2xl: var(--radius);
-	--radius-3xl: var(--radius);
-	--radius-4xl: var(--radius);
+	--radius-xs: 2px;
+	--radius-sm: 4px;
+	--radius-md: 4px;
+	--radius-lg: 8px;
+	--radius-xl: 8px;
+	--radius-2xl: 8px;
+	--radius-3xl: 8px;
+	--radius-4xl: 8px;
 	/* The installed app's insets. The bottom is the home indicator's own inset, with nothing added. */
 	--spacing-safe-top: env(safe-area-inset-top);
 	--spacing-safe-right: env(safe-area-inset-right);
@@ -158,6 +179,87 @@
 /* Pixel art keeps its hard edges when scaled. */
 @utility pixelated {
 	image-rendering: pixelated;
+}
+
+/* A built panel: 2px frame, 8px corners, card surface. */
+@utility panel {
+	position: relative;
+	border: 2px solid var(--border);
+	border-radius: var(--radius-lg);
+	background-color: var(--card);
+}
+
+/* Small corner ticks, drawn in the frame's own colour so they read as machining, not decoration. */
+@utility panel-ticks {
+	position: relative;
+	&::before {
+		content: '';
+		position: absolute;
+		inset: 4px;
+		background:
+			linear-gradient(var(--border), var(--border)) left top / 10px 2px no-repeat,
+			linear-gradient(var(--border), var(--border)) left top / 2px 10px no-repeat,
+			linear-gradient(var(--border), var(--border)) right top / 10px 2px no-repeat,
+			linear-gradient(var(--border), var(--border)) right top / 2px 10px no-repeat,
+			linear-gradient(var(--border), var(--border)) left bottom / 10px 2px no-repeat,
+			linear-gradient(var(--border), var(--border)) left bottom / 2px 10px no-repeat,
+			linear-gradient(var(--border), var(--border)) right bottom / 10px 2px no-repeat,
+			linear-gradient(var(--border), var(--border)) right bottom / 2px 10px no-repeat;
+		pointer-events: none;
+	}
+}
+
+/* A stamped legend: Geist Mono, small, tracked, upper case. */
+@utility stamped {
+	font-family: var(--font-mono);
+	font-size: 0.6875rem;
+	line-height: 1.2;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	font-weight: 600;
+}
+
+/* A labelled socket: at least 7ch so ports line up, never truncated. */
+@utility port {
+	display: inline-flex;
+	min-width: 7ch;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	border: 2px solid var(--border);
+	border-radius: var(--radius-sm);
+	background-color: var(--input);
+	padding: 0.25rem 0.5rem;
+	color: var(--foreground);
+	font-family: var(--font-mono);
+	font-size: 0.6875rem;
+	line-height: 1;
+	letter-spacing: 0.08em;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* An inset field: the sunken slot a control panel reads against its raised plates. */
+@utility inset-field {
+	border: 2px solid var(--border);
+	border-radius: var(--radius-sm);
+	background-color: var(--background);
+}
+
+/* A hard, unmoving offset for the one primary action in a tray. */
+@utility hard-offset {
+	box-shadow: 2px 2px 0 var(--foreground);
+	&:active {
+		box-shadow: 1px 1px 0 var(--foreground);
+		translate: 1px 1px;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		&:active {
+			box-shadow: 2px 2px 0 var(--foreground);
+			translate: 0 0;
+		}
+	}
 }
 
 /* Sera's display face, for the one heading that names a view. */
@@ -189,6 +291,8 @@
 
 	body {
 		@apply bg-background text-foreground;
+		font-size: 15px;
+		line-height: 1.5;
 	}
 
 	/* Every app is a full-height shell whose own panes scroll, so the document never does. */
@@ -237,7 +341,7 @@
 
 	/* The display heading uses the app's sans at display weight, not a second typeface. */
 	.font-heading {
-		font-weight: 600;
+		font-weight: 650;
 	}
 
 	.cn-font-heading {

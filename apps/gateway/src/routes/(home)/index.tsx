@@ -90,7 +90,10 @@ function Status(props: {server: ConnectionInfo}) {
 	return (
 		<StatusDot
 			key={call}
-			className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'animate-port-blink'})}
+			className={Boolean.match(call >= 0, {
+				onFalse: () => undefined,
+				onTrue: () => 'animate-port-blink motion-reduce:animate-none'
+			})}
 			status={pipe(
 				Match.value(props.server.status),
 				Match.when('Connected', () => 'live' as const),
@@ -186,7 +189,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="hover:border-primary relative flex h-12 min-w-0 items-center gap-3 border-l-2 border-transparent px-3">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -199,16 +202,15 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						}
 					/>
 					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
-						<ServerIcon server={props.server} />
+						<span className="bg-surface border-border flex size-7 shrink-0 items-center justify-center rounded-sm border-2">
+							<ServerIcon server={props.server} />
+						</span>
 						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						<span className="text-muted-foreground text-stamp min-w-0 flex-1 truncate font-mono">
 							{new URL(props.server.url).hostname}
 						</span>{' '}
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
-								title="Tools"
-							>
+							<span className="port text-micro h-6 px-1.5" title="Tools">
 								{props.server.tools.length}
 							</span>
 						)}
@@ -278,6 +280,12 @@ function ServersContent(props: {onAdd: () => void}) {
 										<ServerRow key={server.id} server={server} />
 									))}
 								</div>
+								<div className="bg-surface flex justify-end border-t-2 p-3">
+									<Button onClick={props.onAdd}>
+										<PlusIcon />
+										Add server
+									</Button>
+								</div>
 							</Section>
 						)
 					})
@@ -295,7 +303,7 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+			<div className="flex flex-wrap items-center gap-2 border-b-2 pb-3">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"

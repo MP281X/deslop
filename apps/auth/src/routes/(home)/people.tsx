@@ -49,7 +49,7 @@ function Identity(props: {person: Person}) {
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
 		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12">
+			<div className="flex h-12 min-w-0 items-center gap-3 px-3 text-sm max-sm:h-12">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -112,7 +112,7 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-secondary/60 hover:border-primary flex h-12 min-w-0 items-center gap-3 border-l-2 border-transparent px-3 text-sm max-sm:h-12"
 						/>
 					}
 				>

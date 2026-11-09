@@ -169,17 +169,19 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-secondary/60 hover:border-primary flex h-12 min-w-0 items-center gap-3 border-l-2 border-transparent px-3 text-sm max-sm:h-12"
 						/>
 					}
 				>
-					<ClientIcon client={props.client.client} />
+					<span className="bg-surface border-border flex size-7 shrink-0 items-center justify-center rounded-sm border-2">
+						<ClientIcon client={props.client.client} />
+					</span>
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					<span className="port text-muted-foreground">{active}</span>
 					{Option.match(address, {
 						onNone: () => null,
 						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
+							<span className="text-muted-foreground text-stamp shrink-0 font-mono max-sm:hidden">{value}</span>
 						)
 					})}
 				</ContextMenuTrigger>
@@ -205,28 +207,35 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
-			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+		<div className="panel panel-ticks flex flex-col overflow-hidden">
+			<div className="bg-surface flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b-2 px-4 py-3">
+				<div className="flex items-center gap-2.5">
+					<span aria-hidden className="bg-primary h-3 w-0.5 shrink-0 rounded-xs" />
+					<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
+				</div>
+				<span className="text-muted-foreground text-stamp font-mono tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>
 			</div>
-			<FieldDescription>
-				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () =>
-						`Signs ${signInLabel(props.request.clientName, props.request.device)} in as you to every mp281x.xyz app for 30 days`,
-					onTrue: () =>
-						`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
-				})}
-				{Option.match(
-					Option.filter(Option.fromUndefinedOr(props.request.address), address => address !== props.request.device),
-					{onNone: () => '', onSome: address => ` · from ${address}`}
-				)}
-				. Approve only a code you started yourself.
-			</FieldDescription>
-			<ResultError result={consent} />
-			<div className="grid grid-cols-2 gap-2">
+			<div className="px-4 py-3">
+				<FieldDescription>
+					{Boolean.match(props.request.kind === 'Browser', {
+						onFalse: () =>
+							`Signs ${signInLabel(props.request.clientName, props.request.device)} in as you to every mp281x.xyz app for 30 days`,
+						onTrue: () =>
+							`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
+					})}
+					{Option.match(
+						Option.filter(Option.fromUndefinedOr(props.request.address), address => address !== props.request.device),
+						{onNone: () => '', onSome: address => ` · from ${address}`}
+					)}
+					. Approve only a code you started yourself.
+				</FieldDescription>
+				<div className="mt-2">
+					<ResultError result={consent} />
+				</div>
+			</div>
+			<div className="bg-surface grid grid-cols-2 gap-2 border-t-2 p-3">
 				<Button
 					size="lg"
 					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}

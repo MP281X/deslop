@@ -232,9 +232,7 @@ export function AiControls(props: {
 
 // A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
-	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
-	)
+	return <h2 className="stamped text-muted-foreground px-1 pb-1">{props.children}</h2>
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
@@ -242,7 +240,7 @@ function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onCli
 	return (
 		<div role="listitem" className="list-row">
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="hover:border-primary relative flex h-12 min-w-0 items-center gap-3 border-l-2 border-transparent px-3">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -279,7 +277,7 @@ function ShareRow(props: {
 	return (
 		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
 			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
+			<span className="bg-input border-border flex h-2 w-16 shrink-0 overflow-hidden rounded-sm border-2">
 				<span
 					className="h-full w-(--share) bg-(--share-color)"
 					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
@@ -455,7 +453,7 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 // The period at a glance; a desktop adds the daily average.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+		<div className="flex flex-wrap items-center gap-2 border-b-2 pb-3">
 			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
 			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
 			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
@@ -484,7 +482,7 @@ function UsageReport(props: {
 		return (
 			<>
 				<Stats range={props.range} report={props.report} />
-				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
+				<p role="status" className="panel text-muted-foreground p-8 text-center text-sm">
 					No AI calls in the{' '}
 					{Option.getOrElse(
 						Option.map(
@@ -560,13 +558,19 @@ function UsageReport(props: {
 	return (
 		<>
 			<Stats range={props.range} report={props.report} />
-			<UsageChart
-				apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
-				metric={props.metric}
-				onBucket={at => toggle({bucket: at})}
-				range={props.range}
-				report={props.report}
-			/>
+			<div className="panel p-3">
+				<div className="stamped text-muted-foreground mb-2 flex items-center gap-2 border-b pb-2">
+					<span aria-hidden className="bg-primary h-2.5 w-0.5 rounded-xs" />
+					AI usage · {Boolean.match(props.metric === 'cost', {onFalse: () => 'Tokens', onTrue: () => 'Cost'})}
+				</div>
+				<UsageChart
+					apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
+					metric={props.metric}
+					onBucket={at => toggle({bucket: at})}
+					range={props.range}
+					report={props.report}
+				/>
+			</div>
 			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
 			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
 				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
@@ -671,8 +675,11 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
 				<span
 					className={cn(
-						'min-w-0 flex-1 truncate font-mono text-xs',
-						Boolean.match(rejected, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-destructive'})
+						'port text-micro h-6 min-w-0 flex-1 justify-start px-1.5',
+						Boolean.match(rejected, {
+							onFalse: () => 'text-muted-foreground',
+							onTrue: () => 'border-destructive text-destructive'
+						})
 					)}
 				>
 					{detail}

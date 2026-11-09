@@ -46,6 +46,7 @@ import {
 	padding,
 	resizable,
 	searchable,
+	strokeBorder,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -152,8 +153,9 @@ function NoteMedia(props: {note: NoteItem}) {
 		<ZStack
 			modifiers={[
 				frame({height: 64, width: 64}),
-				background(colors.card),
+				background(colors.surface),
 				clipShape('roundedRectangle', radius),
+				strokeBorder({content: colors.border, cornerRadius: radius, shape: 'roundedRectangle', style: {lineWidth: 2}}),
 				accessibilityHidden(true)
 			]}
 		>

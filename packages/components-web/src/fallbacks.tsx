@@ -10,7 +10,7 @@ export function EmptyState(props: {action?: ReactNode; description?: string; ico
 	// A pane with nothing selected keeps the icon alone; a first-run or blocked list teaches with a title and a sentence.
 	if (props.action === undefined && props.description === undefined) {
 		return (
-			<Empty role="status" aria-label={props.label}>
+			<Empty variant="plain" role="status" aria-label={props.label}>
 				<EmptyMedia variant="icon">{props.icon}</EmptyMedia>
 			</Empty>
 		)

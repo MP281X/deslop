@@ -269,7 +269,7 @@ function RangeToggle(props: {
 					)
 				}}
 				size="sm"
-				spacing={0}
+				spacing={1}
 				value={[`${props.minutes}`]}
 				variant="outline"
 			>
@@ -328,6 +328,7 @@ function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Button
 			size="sm"
+			variant="port"
 			className="min-w-port relative max-sm:h-11"
 			nativeButton={false}
 			render={
@@ -340,7 +341,7 @@ function Endpoint(props: {item: InventoryItem}) {
 				/>
 			}
 		>
-			<span className="block max-w-48 truncate">
+			<span className="block max-w-48 truncate whitespace-nowrap">
 				{Boolean.match(props.item.publicAccess === true, {
 					onFalse: () => `:${props.item.port}`,
 					onTrue: () => String.replace(/^https:\/\//u, '')(props.item.url)
@@ -506,7 +507,10 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn(
+								'list-row data-[selected=true]:border-primary data-[selected=true]:bg-secondary/60 relative flex h-12 min-w-0 items-center gap-2 border-l-2 border-transparent pr-3',
+								highlighted && 'bg-secondary/50'
+							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -698,7 +702,7 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 				<div
 					key={row}
 					aria-hidden
-					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
+					className={cn('list-row flex h-12 items-center gap-3 px-4', props.indent === true && 'pl-8')}
 				>
 					<Skeleton className="size-5 shrink-0" />
 					<Skeleton className="h-3.5 w-1/3 max-w-40" />
@@ -1025,7 +1029,7 @@ function MachineContent(props: {
 					onFalse: () => null,
 					onTrue: () => (
 						// The bar alone says how full the disks are; the figures wait on hover, or sit beside them on a phone.
-						<div className="machine-metric" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
+						<div className="machine-metric panel p-2.5" title={`${bytes(storage.used)} of ${bytes(storage.total)}`}>
 							<Progress value={(storage.used / storage.total) * 100}>
 								<ProgressLabel>Disk</ProgressLabel>
 								<span className="text-muted-foreground ml-auto text-sm tabular-nums sm:hidden">
@@ -1133,7 +1137,7 @@ function MachineTabs(props: {
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
 						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-12">
+							<TabsTrigger key={worker} value={worker} className="h-12 min-w-0">
 								<MachineIcon worker={worker} />
 								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
 									<span className="flex min-w-0 items-center gap-1.5">
@@ -1416,7 +1420,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="h-full min-h-0 gap-4">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}
@@ -1449,11 +1453,11 @@ function Home() {
 								onFalse: () =>
 									Boolean.match(isWide, {
 										onFalse: () => (
-											<div className="grid-rows-split grid min-h-0 flex-1">
-												<div className="grid min-h-0 grid-cols-2">
+											<div className="grid-rows-split grid min-h-0 flex-1 gap-4">
+												<div className="grid min-h-0 grid-cols-2 gap-4">
 													<AppsPane
 														bandOf={bandOf}
-														className="min-w-0 border-r"
+														className="min-w-0"
 														compact={false}
 														free={free}
 														hovered={hovered}
@@ -1473,12 +1477,7 @@ function Home() {
 														worker={active}
 													/>
 												</div>
-												<ProcessPane
-													className="min-h-0 border-t"
-													now={now}
-													pending={inventoryPending}
-													row={selectedRow}
-												/>
+												<ProcessPane className="min-h-0" now={now} pending={inventoryPending} row={selectedRow} />
 											</div>
 										),
 										onTrue: () => (

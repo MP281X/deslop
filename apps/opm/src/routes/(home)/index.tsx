@@ -29,6 +29,7 @@ import {
 	opacity,
 	pickerStyle,
 	searchable,
+	strokeBorder,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -149,6 +150,12 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						modifiers={[
 							frame({height: 68, width: 48}),
 							clipShape('roundedRectangle', radius),
+							strokeBorder({
+								content: colors.border,
+								cornerRadius: radius,
+								shape: 'roundedRectangle',
+								style: {lineWidth: 2}
+							}),
 							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
 							accessibilityHidden(true)
 						]}

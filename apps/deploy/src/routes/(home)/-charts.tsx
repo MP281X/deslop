@@ -64,9 +64,12 @@ export function UsageChart(props: {
 		() => props.value ?? ''
 	)
 	return (
-		<figure className={cn('flex min-h-0 flex-col', props.className)} aria-label={props.label}>
-			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2 text-xs">
-				<span className="tracking-label font-semibold uppercase">{props.label}</span>
+		<figure className={cn('panel flex min-h-0 flex-col p-2.5', props.className)} aria-label={props.label}>
+			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2 border-b pb-1.5 text-xs">
+				<span className="stamped flex items-center gap-2">
+					<span aria-hidden className="bg-primary h-2.5 w-0.5 rounded-xs" />
+					{props.label}
+				</span>
 				<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tabular-nums" title={valueText}>
 					{valueText}
 				</span>
@@ -189,10 +192,8 @@ export function UsageChart(props: {
 export function Cores(props: {history: MachineHistory}) {
 	const samples = Array.map(props.history.samples, sample => Array.groupBy(sample.cores ?? [], core => core.id))
 	return (
-		<figure className="flex flex-col" aria-label="Cores">
-			<figcaption className="tracking-label text-muted-foreground mb-1.5 text-xs font-semibold uppercase">
-				Cores
-			</figcaption>
+		<figure className="panel flex flex-col p-2.5" aria-label="Cores">
+			<figcaption className="stamped text-muted-foreground mb-1.5 border-b pb-1.5">Cores</figcaption>
 			{Array.match(Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? [], {
 				onEmpty: () => <span className="text-muted-foreground text-xs">No readings</span>,
 				onNonEmpty: entries => (

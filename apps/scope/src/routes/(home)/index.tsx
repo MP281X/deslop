@@ -352,11 +352,11 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="bg-input border-border relative mx-2 h-2 flex-1 overflow-hidden rounded-xs border">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+						'absolute top-0 left-(--offset) h-full w-(--length) min-w-0.5',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -500,7 +500,7 @@ function TraceLayout(props: {detailOnly?: boolean; details: ReactNode; problem?:
 			<section
 				aria-label="Span details"
 				className={cn(
-					'flex min-h-0 min-w-0 flex-col border-t',
+					'bg-card flex min-h-0 min-w-0 flex-col border-t-2',
 					Boolean.match(props.detailOnly === true, {onFalse: () => 'max-lg:hidden', onTrue: () => 'max-lg:border-t-0'})
 				)}
 			>
@@ -624,7 +624,7 @@ function OperationsSkeleton() {
 				<Skeleton className="h-3 w-24" />
 			</div>
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-12 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
 					<Skeleton className="size-3.5 shrink-0" />
 					<Skeleton className="h-3.5 min-w-0 flex-1" />
 					<Skeleton className="h-3 w-6 shrink-0" />
@@ -641,7 +641,7 @@ function TracesSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Traces" className="flex flex-col">
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-12 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
 					<Skeleton className="h-3 w-8 shrink-0" />
 					<Skeleton className="h-3 min-w-0 flex-1" />
 					<Skeleton className="size-1.5 shrink-0" />
@@ -676,11 +676,11 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 // An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
-			<AppMark app={props.app} />
-			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
-				{props.app.name}
+		<div className="bg-surface sticky top-0 z-10 flex h-10 shrink-0 items-center gap-2 border-b-2 px-3">
+			<span className="bg-card border-border flex size-6 shrink-0 items-center justify-center rounded-sm border-2">
+				<AppMark app={props.app} />
 			</span>
+			<span className="text-muted-foreground stamped min-w-0 truncate">{props.app.name}</span>
 		</div>
 	)
 }
@@ -692,12 +692,14 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-12 w-full max-sm:h-12 pointer-coarse:h-12"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
 				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
-					{DEVICES[props.operation.runtime]}
+					<span className="bg-surface border-border flex size-7 shrink-0 items-center justify-center rounded-sm border-2">
+						{DEVICES[props.operation.runtime]}
+					</span>
 					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
 					{props.operation.failures > 0 && (
 						<span className="flex w-10 shrink-0 justify-end max-sm:w-8">
@@ -808,7 +810,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-12 w-full max-sm:h-12 pointer-coarse:h-12"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
@@ -919,7 +921,7 @@ function TracePane(props: {
 }) {
 	const trace = Option.fromUndefinedOr(props.trace)
 	return (
-		<section aria-label="Trace" className={cn('flex min-h-0 flex-col overflow-hidden', props.className)}>
+		<section aria-label="Trace" className={cn('panel flex min-h-0 flex-col overflow-hidden', props.className)}>
 			<Suspense fallback={<TraceLoading detailOnly={props.detailOnly} />}>
 				<OverviewContent>
 					{() =>
@@ -1015,7 +1017,7 @@ function WideSpans(props: {id: string; onPick: (id: string) => void; pickedSpan?
 function WideTracePane(props: {onPickSpan: (id: string) => void; pickedSpan?: string; trace?: OperationTrace}) {
 	const trace = Option.fromUndefinedOr(props.trace)
 	return (
-		<section aria-label="Trace" className="flex h-full min-h-0 flex-col overflow-hidden">
+		<section aria-label="Trace" className="panel flex h-full min-h-0 flex-col overflow-hidden">
 			<Suspense fallback={<WideTraceLoading />}>
 				<OverviewContent>
 					{() =>
@@ -1037,8 +1039,8 @@ function WideTracePane(props: {onPickSpan: (id: string) => void; pickedSpan?: st
 // From 1024px to 1599px: operations and traces beside the waterfall, with the inspector below it.
 function NarrowWorkspace(props: WorkspaceProps) {
 	return (
-		<div className="grid-cols-scope grid min-h-0 flex-1">
-			<div className="grid min-h-0 grid-rows-2 border-r">
+		<div className="grid-cols-scope grid min-h-0 flex-1 gap-4">
+			<div className="grid min-h-0 grid-rows-2 gap-4">
 				<OperationsPane activeKey={props.activeKey} onSelect={props.onSelectOperation} />
 				<TracesPane
 					active={props.active}
@@ -1057,7 +1059,7 @@ function WideWorkspace(props: WorkspaceProps) {
 	return (
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
 			<ResizablePanel defaultSize={320} minSize={240} maxSize={420}>
-				<div className="grid h-full min-h-0 grid-rows-2">
+				<div className="grid h-full min-h-0 grid-rows-2 gap-4 p-0.5">
 					<OperationsPane activeKey={props.activeKey} onSelect={props.onSelectOperation} />
 					<TracesPane
 						active={props.active}
@@ -1121,7 +1123,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function renderPage(children: ReactNode) {
 	return (
-		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+		<Page width="full" className="h-full min-h-0 gap-4">
 			<h1 className="sr-only">Scope</h1>
 			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
 		</Page>

@@ -1,7 +1,7 @@
 import {Array} from 'effect'
 
 import {RoundedRectangle} from '@expo/ui/swift-ui'
-import {accessibilityLabel, foregroundStyle, lineLimit, redacted} from '@expo/ui/swift-ui/modifiers'
+import {accessibilityLabel, foregroundStyle, lineLimit, redacted, strokeBorder} from '@expo/ui/swift-ui/modifiers'
 import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import type {ReactNode} from 'react'
 
@@ -11,7 +11,14 @@ import {Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle, ite
 // shadcn's Skeleton on iOS: a muted block the caller sizes with frame, standing in for content that is loading.
 export function Skeleton(props: {modifiers?: ViewModifier[]}) {
 	return (
-		<RoundedRectangle cornerRadius={radius} modifiers={[...(props.modifiers ?? []), foregroundStyle(colors.card)]} />
+		<RoundedRectangle
+			cornerRadius={radius}
+			modifiers={[
+				...(props.modifiers ?? []),
+				foregroundStyle(colors.surface),
+				strokeBorder({content: colors.border, cornerRadius: radius, shape: 'roundedRectangle', style: {lineWidth: 2}})
+			]}
+		/>
 	)
 }
 

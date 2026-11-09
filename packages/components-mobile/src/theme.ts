@@ -3,27 +3,27 @@ import {DynamicColorIOS} from 'react-native'
 
 // Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
-	card: DynamicColorIOS({dark: '#141313', light: '#f8f7f4'}),
-	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
-	foreground: DynamicColorIOS({dark: '#e3e1db', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#a19e96', light: '#64625d'}),
-	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	surface: DynamicColorIOS({dark: '#191817', light: '#f2f1ed'}),
-	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
+	background: DynamicColorIOS({dark: '#171512', light: '#eee7da'}),
+	border: DynamicColorIOS({dark: '#4a4238', light: '#c7bba8'}),
+	card: DynamicColorIOS({dark: '#24201b', light: '#f8f2e7'}),
+	destructive: DynamicColorIOS({dark: '#e4572e', light: '#a83224'}),
+	foreground: DynamicColorIOS({dark: '#f2e9db', light: '#211c16'}),
+	mutedForeground: DynamicColorIOS({dark: '#b8ab99', light: '#6f6355'}),
+	primaryForeground: DynamicColorIOS({dark: '#1a1209', light: '#ffffff'}),
+	surface: DynamicColorIOS({dark: '#1e1b17', light: '#e7ddcb'}),
+	warning: DynamicColorIOS({dark: '#e0a83c', light: '#7d5510'})
 }
 
 // Each app's primary tints its controls, live states and icon.
 export const hues = {
-	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
-	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),
-	cyan: DynamicColorIOS({dark: '#a3d4d5', light: '#25777a'}),
-	ivory: DynamicColorIOS({dark: '#dcd7ba', light: '#686868'}),
-	orange: DynamicColorIOS({dark: '#ffa066', light: '#b64b11'}),
-	pink: DynamicColorIOS({dark: '#d27e99', light: '#a63c69'}),
-	purple: DynamicColorIOS({dark: '#957fb8', light: '#74519b'}),
-	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
+	amber: DynamicColorIOS({dark: '#e0a83c', light: '#7d5510'}),
+	blue: DynamicColorIOS({dark: '#8fa6bd', light: '#455d75'}),
+	cyan: DynamicColorIOS({dark: '#7fa9a0', light: '#356b66'}),
+	ivory: DynamicColorIOS({dark: '#e8d9c1', light: '#5f5545'}),
+	orange: DynamicColorIOS({dark: '#ff7a1a', light: '#c4530a'}),
+	pink: DynamicColorIOS({dark: '#d99a90', light: '#8f4740'}),
+	purple: DynamicColorIOS({dark: '#b292b8', light: '#6b4f70'}),
+	slate: DynamicColorIOS({dark: '#cbb399', light: '#6e5b43'})
 }
 
 // The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
@@ -39,7 +39,7 @@ export const text = {
 	data: font({design: 'monospaced', textStyle: 'footnote'}),
 	detail: font({textStyle: 'footnote'}),
 	display: font({textStyle: 'largeTitle', weight: 'bold'}),
-	label: font({textStyle: 'caption2', weight: 'semibold'}),
+	label: font({design: 'monospaced', textStyle: 'caption2', weight: 'semibold'}),
 	row: font({textStyle: 'body', weight: 'semibold'}),
 	title: font({textStyle: 'headline'})
 }

@@ -4,6 +4,7 @@ import {Array, Boolean, Cause, Result} from 'effect'
 
 import {Button, Host, Image, Label, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
+	background,
 	buttonBorderShape,
 	buttonStyle,
 	clipShape,
@@ -15,6 +16,8 @@ import {
 	multilineTextAlignment,
 	padding,
 	resizable,
+	shapes,
+	strokeBorder,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
@@ -57,7 +60,15 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	const denied = deniedBy(props.cause)
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
-			<VStack spacing={space[3]}>
+			<VStack
+				spacing={space[3]}
+				modifiers={[
+					padding({all: space[6]}),
+					background(colors.card),
+					clipShape('roundedRectangle', radius),
+					strokeBorder({content: colors.border, cornerRadius: radius, shape: 'roundedRectangle', style: {lineWidth: 2}})
+				]}
+			>
 				<Label
 					icon={
 						<Image
@@ -79,9 +90,10 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					role="destructive"
 					onPress={props.onRetry}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonStyle('borderedProminent'),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('regular'),
+						frame({minHeight: 48}),
 						tint(colors.destructive)
 					]}
 				/>
@@ -98,8 +110,19 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 				<Spacer />
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
-					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
+					modifiers={[
+						resizable(),
+						frame({height: 64, width: 64}),
+						clipShape('roundedRectangle', radius),
+						strokeBorder({
+							content: colors.border,
+							cornerRadius: radius,
+							shape: 'roundedRectangle',
+							style: {lineWidth: 2}
+						})
+					]}
 				/>
+				<Text modifiers={[text.label, foregroundStyle(colors.mutedForeground)]}>DESLOP SESSION</Text>
 				<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground), multilineTextAlignment('center')]}>
 					Sign in with GitHub to keep this app in sync.
 				</Text>
@@ -107,14 +130,21 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 				<Button
 					onPress={() => props.onSignIn()}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
-						controlSize('large'),
-						tint(props.tint),
+						buttonStyle('plain'),
+						frame({minHeight: 48}),
+						padding({horizontal: space[6], vertical: space[3]}),
+						background(props.tint, shapes.roundedRectangle({cornerRadius: radius})),
+						clipShape('roundedRectangle', radius),
+						strokeBorder({
+							content: colors.border,
+							cornerRadius: radius,
+							shape: 'roundedRectangle',
+							style: {lineWidth: 2}
+						}),
 						disabled(props.waiting)
 					]}
 				>
-					<Text modifiers={[text.title]}>
+					<Text modifiers={[text.title, foregroundStyle(colors.primaryForeground)]}>
 						{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
 					</Text>
 				</Button>

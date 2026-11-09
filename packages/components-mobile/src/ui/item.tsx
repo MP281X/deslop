@@ -7,7 +7,9 @@ import {
 	foregroundStyle,
 	frame,
 	lineLimit,
+	listRowBackground,
 	listRowInsets,
+	listRowSeparatorTint,
 	listStyle,
 	onTapGesture,
 	scrollEdgeEffectStyle,
@@ -22,8 +24,10 @@ import {colors, space, text} from '#components/theme.ts'
 
 // Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
 export const itemRow = [
-	frame({minHeight: 56}),
-	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
+	frame({minHeight: 48}),
+	listRowInsets({bottom: space[2], leading: space[4], top: space[2], trailing: space[4]}),
+	listRowBackground(colors.card),
+	listRowSeparatorTint(colors.border)
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
@@ -86,7 +90,7 @@ export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]})
 
 export function ItemDescription(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
-		<Text modifiers={[...(props.modifiers ?? []), text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+		<Text modifiers={[...(props.modifiers ?? []), text.label, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
 			{props.children}
 		</Text>
 	)

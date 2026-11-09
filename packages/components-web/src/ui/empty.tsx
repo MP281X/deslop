@@ -1,12 +1,18 @@
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "#lib/utils.ts"
 
-function Empty({ className, ...props }: React.ComponentProps<"div">) {
+function Empty({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"div"> & { variant?: "default" | "plain" }) {
   return (
     <div
       data-slot="empty"
+      data-variant={variant}
       className={cn(
-        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 border-dashed p-12 text-center text-balance",
+        "flex w-full min-w-0 flex-1 flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-border bg-card/60 p-10 text-center text-balance",
+        variant === "plain" && "border-transparent bg-transparent p-0",
         className
       )}
       {...props}
@@ -30,7 +36,7 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        icon: "flex size-10 shrink-0 items-center justify-center rounded-none bg-muted text-foreground [&_svg:not([class*='size-'])]:size-5",
+        icon: "bg-secondary flex size-10 shrink-0 items-center justify-center rounded-sm border-2 border-border text-foreground [&_svg:not([class*='size-'])]:size-5",
       },
     },
     defaultVariants: {
@@ -59,7 +65,7 @@ function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="empty-title"
       className={cn(
-        "text-lg font-semibold tracking-wider uppercase",
+        "font-heading text-xl leading-tight font-semibold tracking-tight",
         className
       )}
       {...props}
