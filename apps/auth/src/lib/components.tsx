@@ -9,6 +9,7 @@ import type {KeyboardEvent} from 'react'
 import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
+import {moveRowFocus} from '@deslop/components-web/keyboard'
 import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
@@ -158,25 +159,7 @@ type SignedInClient = {
 
 // j and k move the focused client row; its context menu still holds the destructive action.
 function moveClientFocus(event: KeyboardEvent<HTMLElement>) {
-	if (event.key !== 'j' && event.key !== 'k') return
-	if (event.metaKey || event.ctrlKey || event.altKey) return
-	const list = event.currentTarget.closest('[data-client-list]')
-	if (list === null) return
-	const rows = Array.fromIterable(list.querySelectorAll<HTMLElement>('[data-client-row]'))
-	Option.map(
-		Option.map(
-			Array.findFirstIndex(rows, row => row === document.activeElement),
-			index =>
-				Number.clamp(index + Boolean.match(event.key === 'j', {onFalse: () => -1, onTrue: () => 1}), {
-					maximum: rows.length - 1,
-					minimum: 0
-				})
-		),
-		next => {
-			event.preventDefault()
-			Option.map(Array.get(rows, next), row => row.focus())
-		}
-	)
+	moveRowFocus(event, '[data-client-list]', '[data-client-row]')
 }
 
 function ClientRow(props: {client: SignedInClient; now: number}) {

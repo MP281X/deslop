@@ -27,6 +27,7 @@ import {AppBar} from '@deslop/components-web/app-bar'
 import {otherApps} from '@deslop/components-web/command-palette'
 import type {PaletteGroup} from '@deslop/components-web/command-palette'
 import {EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
+import {moveRowFocus} from '@deslop/components-web/keyboard'
 import {Page, Section} from '@deslop/components-web/page'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -688,25 +689,7 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 
 // j and k move the focused operation row; Enter opens it through the row's own button.
 function moveOperationFocus(event: KeyboardEvent<HTMLElement>) {
-	if (event.key !== 'j' && event.key !== 'k') return
-	if (event.metaKey || event.ctrlKey || event.altKey) return
-	const list = event.currentTarget.closest('[data-operation-list]')
-	if (list === null) return
-	const rows = Array.fromIterable(list.querySelectorAll<HTMLButtonElement>('[data-operation-row] button'))
-	Option.map(
-		Option.map(
-			Array.findFirstIndex(rows, row => row === document.activeElement),
-			index =>
-				Number.clamp(index + Boolean.match(event.key === 'j', {onFalse: () => -1, onTrue: () => 1}), {
-					maximum: rows.length - 1,
-					minimum: 0
-				})
-		),
-		next => {
-			event.preventDefault()
-			Option.map(Array.get(rows, next), row => row.focus())
-		}
-	)
+	moveRowFocus(event, '[data-operation-list]', '[data-operation-row] button')
 }
 
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.

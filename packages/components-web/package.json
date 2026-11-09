@@ -12,6 +12,7 @@
 		"./fallbacks": "./src/fallbacks.tsx",
 		"./icons": "./src/icons.tsx",
 		"./item-list": "./src/item-list.tsx",
+		"./keyboard": "./src/keyboard.ts",
 		"./page": "./src/page.tsx",
 		"./problem": "./src/problem.tsx",
 		"./result-error": "./src/result-error.tsx",
