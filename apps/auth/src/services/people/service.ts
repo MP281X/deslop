@@ -90,7 +90,7 @@ export class People extends Context.Service<
 					return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage people'})
 				}
 			})
-			// Admins first, then the accounts asking for access, then members, each newest first.
+			// The accounts asking for access first, then admins, then members, each newest first.
 			const list = Effect.fn('People.list')(function* (user: User) {
 				yield* admin(user)
 				return listPeople(yield* SubscriptionRef.get(state), admins)

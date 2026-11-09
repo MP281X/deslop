@@ -6,7 +6,7 @@ import {isAdmin} from '@deslop/runtime/auth/utils'
 import type {AdmitParams, GitHubUser, MemberRow, Members, Role} from '#services/people/schema.ts'
 import {Person} from '#services/people/schema.ts'
 
-const ROLE_ORDER = {Admin: 0, Member: 2, Waiting: 1} satisfies Record<Role, number>
+const ROLE_ORDER = {Admin: 1, Member: 2, Waiting: 0} satisfies Record<Role, number>
 
 export function ownerOf(row: MemberRow) {
 	return {incarnation: row.incarnation, user: {id: row.id, name: row.name}}

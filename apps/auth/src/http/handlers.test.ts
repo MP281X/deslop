@@ -1980,7 +1980,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				return yield* Effect.promise(() => response.text())
 			})
 			assert.deepStrictEqual([yield* status(stranger), yield* status(drifter)], [401, 401])
-			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin', 'drifter:Waiting', 'stranger:Waiting'])
+			assert.deepStrictEqual(yield* people(web.issuer, admin), ['drifter:Waiting', 'stranger:Waiting', 'octocat:Admin'])
 			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
 			yield* post(web.issuer, '/admit', admin, {allow: false, id: 'github:9'})
 			assert.deepStrictEqual([yield* status(stranger), yield* status(drifter)], [200, 401])

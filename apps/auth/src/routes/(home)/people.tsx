@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Order} from 'effect'
+import {Array, Boolean, Option} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -108,41 +108,35 @@ function Directory() {
 	return (
 		<>
 			<h1 className="sr-only">People</h1>
-			{Array.match(
-				Array.sort(
-					useAtomSuspense(peopleAtom).value,
-					Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
-				),
-				{
-					onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
-					onNonEmpty: rows => (
-						<Card size="list">
-							<div role="list" aria-label="People">
-								{Array.map(rows, person =>
-									Boolean.match(person.role === 'Waiting', {
-										onFalse: () => (
-											<MemberRow
-												key={person.id}
-												person={person}
-												selected={Option.contains(selected, `person-${person.id}`)}
-												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-											/>
-										),
-										onTrue: () => (
-											<AskingRow
-												key={person.id}
-												person={person}
-												selected={Option.contains(selected, `person-${person.id}`)}
-												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-											/>
-										)
-									})
-								)}
-							</div>
-						</Card>
-					)
-				}
-			)}
+			{Array.match(useAtomSuspense(peopleAtom).value, {
+				onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
+				onNonEmpty: rows => (
+					<Card size="list">
+						<div role="list" aria-label="People">
+							{Array.map(rows, person =>
+								Boolean.match(person.role === 'Waiting', {
+									onFalse: () => (
+										<MemberRow
+											key={person.id}
+											person={person}
+											selected={Option.contains(selected, `person-${person.id}`)}
+											onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+										/>
+									),
+									onTrue: () => (
+										<AskingRow
+											key={person.id}
+											person={person}
+											selected={Option.contains(selected, `person-${person.id}`)}
+											onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+										/>
+									)
+								})
+							)}
+						</div>
+					</Card>
+				)
+			})}
 		</>
 	)
 }
