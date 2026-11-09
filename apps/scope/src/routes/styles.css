@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--cyan);
+	--primary: var(--orange);
 	/* The selected operation and trace rule take Scope's own identity off the shared border. */
 	--app-rule: color-mix(in oklch, var(--primary) 40%, var(--border));
 }

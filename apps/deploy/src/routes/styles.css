@@ -15,7 +15,7 @@
 }
 
 :root {
-	--primary: var(--blue);
+	--primary: var(--orange);
 	/* The chart frames take Deploy's identity, a step stronger than the shared hairline. */
 	--app-rule: color-mix(in oklch, var(--primary) 40%, var(--border));
 }

@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--slate);
+	--primary: var(--orange);
 	/* The app rule darkens the shared border toward Auth's own identity without adding a second accent. */
 	--app-rule: color-mix(in oklch, var(--primary) 45%, var(--border));
 }

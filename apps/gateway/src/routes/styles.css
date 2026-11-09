@@ -2,7 +2,7 @@
 @source '../../../../packages/components-web/src/**/*.tsx';
 
 :root {
-	--primary: var(--pink);
+	--primary: var(--orange);
 	/* Key tags and the usage frame take Gateway's own rule, one step off the shared border. */
 	--app-rule: color-mix(in oklch, var(--primary) 40%, var(--border));
 }
