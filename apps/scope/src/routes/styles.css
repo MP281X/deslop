@@ -37,8 +37,6 @@
 @theme {
 	--grid-template-columns-scope: minmax(26rem, 28rem) minmax(0, 1fr);
 	--grid-template-columns-operation: 4ch 4ch 6ch;
-	--grid-template-columns-spans: 120px minmax(0, 1fr) 44px;
-	--grid-template-columns-spans-wide: 150px minmax(0, 1fr) 44px;
 	--grid-template-columns-detail: max-content minmax(0, 1fr);
 	--grid-template-columns-detail-phone: fit-content(50%) minmax(0, 1fr);
 	--grid-template-columns-log: 92px minmax(0, 1fr);

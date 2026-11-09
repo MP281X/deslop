@@ -22,7 +22,7 @@ import {
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense} from 'react'
+import {Suspense, useEffect, useLayoutEffect, useRef, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
@@ -73,6 +73,14 @@ const HTTP_ATTRIBUTES = [
 
 // The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
+
+// The icicle's lanes: a 22px box, 2px between lanes, 6px box padding and gap between its name and time, 4px after an outside label; 8px covers the 12px mono face's advance.
+const ICICLE_LANE = 24
+const ICICLE_BOX = 22
+const ICICLE_TEXT = 6
+const ICICLE_GAP = 4
+const ICICLE_CHAR = 8
+
 const KINDS: Record<Runtime, ReactElement> = {
 	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
 	mobile: <DeviceMobileIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
@@ -96,6 +104,12 @@ const preciseClock = new Intl.DateTimeFormat(undefined, {
 })
 const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 const compact = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1, notation: 'compact'})
+
+// The icicle measures its lane width before paint; a server render such as the page test has no window.
+const useIsomorphicLayoutEffect = Boolean.match(typeof window === 'undefined', {
+	onFalse: () => useLayoutEffect,
+	onTrue: () => useEffect
+})
 
 // One run or many, in the reader's words.
 function runsOf(n: number) {
@@ -179,24 +193,32 @@ function TracesSkeleton(props: {label: string}) {
 	)
 }
 
-// The waterfall's 24px rows while its trace loads: the 16px mark at the gutter, a name bar, the span's bar and its duration column.
+// The icicle's 22px lanes while its trace loads, including a lane with two sibling boxes; no axis, which the real pane draws only with data.
 function SpansSkeleton(props: {label: string}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 6), row => (
-				<div
-					key={row}
-					aria-hidden
-					className="grid-cols-spans sm:grid-cols-spans-wide grid h-6 items-center gap-2.5 px-4"
-				>
-					<span className="flex min-w-0 items-center gap-1.5">
-						<Skeleton className="size-4 shrink-0" />
-						<Skeleton className="h-3 w-12" />
-					</span>
-					<Skeleton className="h-1.5 w-1/2" />
-					<Skeleton className="h-3 w-8 justify-self-end" />
-				</div>
-			))}
+		<div aria-busy="true" aria-label={props.label} role="status" className="px-4 pt-1.5 pb-2">
+			<div
+				className="relative h-(--ice-height)"
+				style={{'--ice-height': `${4 * ICICLE_LANE - (ICICLE_LANE - ICICLE_BOX)}px`}}
+			>
+				{Array.map(
+					[
+						{left: 0, top: 0, width: 100},
+						{left: 2, top: 24, width: 97},
+						{left: 6, top: 48, width: 2.5},
+						{left: 10, top: 48, width: 89},
+						{left: 14, top: 72, width: 85}
+					],
+					(box, index) => (
+						<Skeleton
+							key={index}
+							aria-hidden
+							className="absolute top-(--ice-top) left-(--ice-left) h-5.5 w-(--ice-width)"
+							style={{'--ice-left': `${box.left}%`, '--ice-top': `${box.top}px`, '--ice-width': `${box.width}%`}}
+						/>
+					)
+				)}
+			</div>
 		</div>
 	)
 }
@@ -616,83 +638,154 @@ function TracesPane(props: {
 	)
 }
 
-// One waterfall row: a 24px line, its name indented by depth, a 6px bar, and its duration; no track or divider.
-function SpanRow(props: {
-	focus?: string
-	mark: Option.Option<string>
-	onPick: (id: string) => void
-	span: Trace['spans'][number]
-}) {
-	const interactive = hasDetail(props.span)
-	const open = interactive && props.focus === props.span.spanId
-	function content() {
-		return (
-			<>
-				<span
-					className="flex min-w-0 items-center gap-1.5 pl-(--indent)"
-					style={{'--indent': `${props.span.depth * 10}px`}}
-				>
-					{Option.match(props.mark, {
-						onNone: () => null,
-						onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-					})}
-					<span className={cn('truncate', props.span.status === 2 && 'text-destructive')} title={props.span.name}>
-						{props.span.name}
-					</span>
-				</span>
-				<span className="relative h-1.5 w-full">
-					<span
-						data-app={appName(props.span.service)}
-						className={cn(
-							'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
-							Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'})
-						)}
-						style={{
-							'--length': `calc(${props.span.durationMs} / var(--trace-total) * 100%)`,
-							'--offset': `calc(${props.span.offsetMs} / var(--trace-total) * 100%)`
-						}}
-					/>
-				</span>
-				<span className="text-muted-foreground text-right tabular-nums">{durationOf(props.span.durationMs)}</span>
-			</>
-		)
-	}
-	const row = cn(
-		'grid-cols-spans sm:grid-cols-spans-wide grid h-6 items-center gap-2.5 px-4 text-xs',
-		Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'bg-muted'})
-	)
+// The trace's time scale: start, quarters and total, in tabular figures.
+function TimeAxis(props: {totalMs: number}) {
+	const total = Number.max(props.totalMs, 1)
 	return (
-		<div role="listitem">
-			{Boolean.match(interactive, {
-				onFalse: () => <div className={row}>{content()}</div>,
-				onTrue: () => (
-					<button
-						type="button"
-						aria-label={Array.join(
-							[
-								`${appName(props.span.service)} ${props.span.name}`,
-								durationOf(props.span.durationMs),
-								...Boolean.match(props.span.status === 2, {onFalse: () => [], onTrue: () => ['failed']})
-							],
-							', '
+		<div className="text-muted-foreground h-6 shrink-0 border-b px-4 text-xs tabular-nums">
+			<div className="relative h-full">
+				{Array.map([0, 0.25, 0.5, 0.75, 1] as const, ratio => (
+					<span
+						key={ratio}
+						className={cn(
+							'absolute top-1/2 left-(--axis-left) -translate-y-1/2 whitespace-nowrap',
+							Boolean.match(ratio === 0, {
+								onFalse: () =>
+									Boolean.match(ratio === 1, {onFalse: () => '-translate-x-1/2', onTrue: () => '-translate-x-full'}),
+								onTrue: () => undefined
+							})
 						)}
-						aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
-						className="group block w-full outline-none"
-						onClick={() => props.onPick(props.span.spanId)}
+						style={{'--axis-left': `${ratio * 100}%`}}
 					>
-						<div
-							className={cn(row, 'group-hover:bg-muted/30 group-focus-visible:ring-ring/50 group-focus-visible:ring-3')}
-						>
-							{content()}
-						</div>
-					</button>
-				)
-			})}
+						{Boolean.match(ratio === 0, {onFalse: () => durationOf(total * ratio), onTrue: () => '0'})}
+					</span>
+				))}
+			</div>
 		</div>
 	)
 }
 
-// The picked span's error, attributes and logs, as 24px rows with no dividers between them.
+// One lane per span depth, each span a box on the trace's time scale; a short box borrows the free lane after it for its label.
+function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Trace}) {
+	const total = Number.max(props.trace.durationMs, 1)
+	const lanes = Array.reduce(props.trace.spans, 0, (deepest, span) => Number.max(deepest, span.depth)) + 1
+	const [width, setWidth] = useState(0)
+	const surface = useRef<HTMLDivElement>(null)
+	useIsomorphicLayoutEffect(() => {
+		const element = surface.current
+		if (element === null) return
+		setWidth(element.getBoundingClientRect().width)
+		const observer = new ResizeObserver(() => setWidth(element.getBoundingClientRect().width))
+		observer.observe(element)
+		return () => observer.disconnect()
+	}, [])
+	const rows = Array.map(props.trace.spans, span => {
+		const fraction = span.durationMs / total
+		const box = fraction * width
+		const time = durationOf(span.durationMs)
+		const label = `${span.name} ${time}`
+		const inline = width === 0 || box >= time.length * ICICLE_CHAR + ICICLE_TEXT * 2 + ICICLE_TEXT
+		const free = Number.max(
+			0,
+			((Number.min(
+				Array.reduce(
+					Array.filter(props.trace.spans, other => other.depth === span.depth && other.offsetMs > span.offsetMs),
+					Infinity,
+					(soonest, other) => Number.min(soonest, other.offsetMs)
+				),
+				total
+			) -
+				span.offsetMs -
+				span.durationMs) /
+				total) *
+				width
+		)
+		return {
+			box,
+			inline,
+			label,
+			left: (span.offsetMs / total) * 100,
+			outside: !inline && free >= label.length * ICICLE_CHAR + ICICLE_GAP,
+			outsideLeft: (span.offsetMs / total) * width + Number.max(box, 1) + ICICLE_GAP,
+			picked: span.spanId === props.focus,
+			span,
+			time,
+			top: span.depth * ICICLE_LANE,
+			width: fraction * 100
+		}
+	})
+	return (
+		<div className="mt-1.5 mb-2 px-4">
+			<div
+				ref={surface}
+				role="group"
+				aria-label="Spans"
+				className="relative h-(--ice-height) w-full"
+				style={{'--ice-height': `${lanes * ICICLE_LANE - (ICICLE_LANE - ICICLE_BOX)}px`}}
+			>
+				{Array.map(rows, row => (
+					<div
+						key={row.span.spanId}
+						data-icicle-box=""
+						data-span-id={row.span.spanId}
+						className="has-[:focus-visible]:outline-ring absolute top-(--span-top) left-(--span-left) h-5.5 w-(--span-width) min-w-px has-[:focus-visible]:outline-2"
+						style={{'--span-left': `${row.left}%`, '--span-top': `${row.top}px`, '--span-width': `${row.width}%`}}
+					>
+						<span
+							aria-hidden
+							data-app={appName(row.span.service)}
+							className={cn(
+								'text-background absolute inset-0 flex items-center overflow-hidden text-xs',
+								Boolean.match(row.inline, {onFalse: () => undefined, onTrue: () => 'px-1.5'}),
+								Boolean.match(row.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'}),
+								Boolean.match(row.picked, {
+									onFalse: () => undefined,
+									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'
+								})
+							)}
+						>
+							{Boolean.match(row.inline, {
+								onFalse: () => null,
+								onTrue: () => (
+									<span className="flex w-full min-w-0 items-center gap-1.5">
+										<span className="min-w-0 truncate">{row.span.name}</span>
+										<span className="shrink-0 opacity-70">{row.time}</span>
+									</span>
+								)
+							})}
+						</span>
+						<button
+							type="button"
+							aria-current={Boolean.match(row.picked, {onFalse: () => undefined, onTrue: () => 'true' as const})}
+							aria-label={row.label}
+							title={row.label}
+							onClick={() => props.onPick(row.span.spanId)}
+							className="absolute inset-0 h-full w-full border-0 bg-transparent p-0 outline-none"
+						/>
+					</div>
+				))}
+				{Array.map(rows, row =>
+					Boolean.match(row.outside, {
+						onFalse: () => null,
+						onTrue: () => (
+							<span
+								key={`label:${row.span.spanId}`}
+								aria-hidden
+								data-icicle-label=""
+								className="text-muted-foreground pointer-events-none absolute top-(--label-top) left-(--label-left) h-5.5 text-xs leading-5.5 whitespace-nowrap"
+								style={{'--label-left': `${row.outsideLeft}px`, '--label-top': `${row.top}px`}}
+							>
+								{row.label}
+							</span>
+						)
+					})
+				)}
+			</div>
+		</div>
+	)
+}
+
+// The picked span's error, attributes and logs, as 24px rows with no dividers between them; a span with none shows no rows.
 function SpanDetail(props: {span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
@@ -701,7 +794,7 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 		!Array.isReadonlyArrayNonEmpty(attributes) &&
 		!Array.isReadonlyArrayNonEmpty(props.span.logs)
 	) {
-		return <EmptyState label="Select a span" icon={<EmptyIcon />} />
+		return null
 	}
 	return (
 		<div
@@ -768,21 +861,25 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 	)
 }
 
-// The picked span's details alone, for the phone's pushed span screen.
+// The picked span's details alone, for the phone's pushed span screen; a picked span with none says so with the same symbol.
 function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	return Option.match(props.focus, {
 		onNone: () => <EmptyState label="Select a span" icon={<EmptyIcon />} />,
-		onSome: span => (
-			<ScrollArea className="min-h-0 flex-1">
-				<div className="flex flex-col">
-					<SpanDetail span={span} />
-				</div>
-			</ScrollArea>
-		)
+		onSome: span =>
+			Boolean.match(hasDetail(span), {
+				onFalse: () => <EmptyState label="No details" icon={<EmptyIcon />} />,
+				onTrue: () => (
+					<ScrollArea className="min-h-0 flex-1">
+						<div className="flex flex-col">
+							<SpanDetail span={span} />
+						</div>
+					</ScrollArea>
+				)
+			})
 	})
 }
 
-// The waterfall in trace order, independently scrolling; its time scale is the trace's own duration.
+// The trace's icicle under its time axis, then, when inline, the picked span's details after one hairline.
 function SpansList(props: {
 	focus: Option.Option<Trace['spans'][number]>
 	inlineDetails: boolean
@@ -792,39 +889,38 @@ function SpansList(props: {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
 		return <EmptyState label="No spans" icon={<EmptyIcon />} />
 	}
-	const root = Array.findFirst(props.trace.spans, span => span.depth === 0)
-	const below = Array.filter(props.trace.spans, span => !Option.exists(root, top => top.spanId === span.spanId))
-	const services = Record.fromEntries(Array.map(props.trace.spans, span => [span.spanId, span.service] as const))
-	function mark(span: Trace['spans'][number]) {
-		const parent =
-			services[span.parentSpanId] ?? Option.match(root, {onNone: () => span.service, onSome: top => top.service})
-		return Option.filter(
-			Option.fromUndefinedOr(marks[appName(span.service)]),
-			() => appName(span.service) !== appName(parent)
-		)
-	}
-	const focusId = Option.getOrUndefined(Option.map(props.focus, span => span.spanId))
+	const total = Number.max(props.trace.durationMs, 1)
+	const shortest = Array.reduce(props.trace.spans, Infinity, (min, span) =>
+		Number.min(min, Boolean.match(span.durationMs > 0, {onFalse: () => Infinity, onTrue: () => span.durationMs}))
+	)
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="flex flex-col" style={{'--trace-total': `${Number.max(props.trace.durationMs, 1)}`}}>
-				<div role="list">
-					{Option.match(root, {
-						onNone: () => null,
-						onSome: span => <SpanRow focus={focusId} mark={mark(span)} onPick={props.onPick} span={span} />
-					})}
-					{Array.map(below, span => (
-						<SpanRow key={span.spanId} focus={focusId} mark={mark(span)} onPick={props.onPick} span={span} />
-					))}
+			<div className="overflow-x-auto">
+				<div
+					className="w-full min-w-(--ice-width)"
+					style={{
+						'--ice-width': `${Boolean.match(shortest === Infinity, {
+							onFalse: () => total / shortest + 32,
+							onTrue: () => 0
+						})}px`
+					}}
+				>
+					<TimeAxis totalMs={props.trace.durationMs} />
+					<Icicle
+						focus={Option.getOrUndefined(Option.map(props.focus, span => span.spanId))}
+						onPick={props.onPick}
+						trace={props.trace}
+					/>
 				</div>
-				{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
-					onFalse: () => null,
-					onTrue: () => (
-						<div className="border-t">
-							{Option.match(props.focus, {onNone: () => null, onSome: span => <SpanDetail span={span} />})}
-						</div>
-					)
-				})}
 			</div>
+			{Boolean.match(props.inlineDetails && Option.exists(props.focus, hasDetail), {
+				onFalse: () => null,
+				onTrue: () => (
+					<div className="border-t">
+						{Option.match(props.focus, {onNone: () => null, onSome: span => <SpanDetail span={span} />})}
+					</div>
+				)
+			})}
 		</ScrollArea>
 	)
 }
@@ -842,10 +938,11 @@ function brokeAt(spans: Trace['spans']) {
 	return Array.findFirst(failed, span => !HashSet.has(parents, span.spanId))
 }
 
+// The span the URL picks, else where the failure broke, else the first span with details.
 function focusOf(trace: Trace, pickedSpan?: string) {
 	const root = Array.findFirst(trace.spans, span => span.depth === 0)
 	return Option.orElse(
-		Array.findFirst(trace.spans, span => span.spanId === pickedSpan && hasDetail(span)),
+		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
 		() =>
 			pipe(
 				brokeAt(trace.spans),
