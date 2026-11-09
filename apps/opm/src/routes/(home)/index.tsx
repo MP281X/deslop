@@ -110,7 +110,7 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 						onFalse: () => 'book.pages.fill' as const,
 						onTrue: () => 'arrow.counterclockwise' as const
 					})}
-					modifiers={[font({textStyle: 'title2'}), foregroundStyle(primary), accessibilityHidden(true)]}
+					modifiers={[font({textStyle: 'title3'}), foregroundStyle(primary), accessibilityHidden(true)]}
 				/>
 			</ItemMedia>
 			<ItemContent>
@@ -129,7 +129,7 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 					fraction={Boolean.match(done, {onFalse: () => props.page / pages, onTrue: () => 1})}
 					accent={primary}
 					read={colors.foreground}
-					modifiers={[frame({height: 18, width: 18})]}
+					modifiers={[frame({height: 16, width: 16})]}
 				/>
 			</ItemActions>
 		</Item>
@@ -147,7 +147,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 					<Cover
 						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
 						modifiers={[
-							frame({height: 68, width: 48}),
+							frame({height: 56, width: 40}),
 							clipShape('roundedRectangle', radius),
 							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
 							accessibilityHidden(true)
@@ -180,7 +180,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						})}
 						accent={primary}
 						read={colors.foreground}
-						modifiers={[frame({height: 14, width: 14})]}
+						modifiers={[frame({height: 12, width: 12})]}
 					/>
 				</ItemActions>
 			</Item>

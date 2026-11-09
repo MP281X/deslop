@@ -5,6 +5,7 @@ import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
+import type {KeyboardEvent} from 'react'
 import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
@@ -19,6 +20,7 @@ import {
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
 import {FieldDescription} from '@deslop/components-web/ui/field'
+import {Kbd} from '@deslop/components-web/ui/kbd'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 
@@ -154,6 +156,29 @@ type SignedInClient = {
 	lastActive: number
 }
 
+// j and k move the focused client row; its context menu still holds the destructive action.
+function moveClientFocus(event: KeyboardEvent<HTMLElement>) {
+	if (event.key !== 'j' && event.key !== 'k') return
+	if (event.metaKey || event.ctrlKey || event.altKey) return
+	const list = event.currentTarget.closest('[data-client-list]')
+	if (list === null) return
+	const rows = Array.fromIterable(list.querySelectorAll<HTMLElement>('[data-client-row]'))
+	Option.map(
+		Option.map(
+			Array.findFirstIndex(rows, row => row === document.activeElement),
+			index =>
+				Number.clamp(index + Boolean.match(event.key === 'j', {onFalse: () => -1, onTrue: () => 1}), {
+					maximum: rows.length - 1,
+					minimum: 0
+				})
+		),
+		next => {
+			event.preventDefault()
+			Option.map(Array.get(rows, next), row => row.focus())
+		}
+	)
+}
+
 function ClientRow(props: {client: SignedInClient; now: number}) {
 	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
 	const minutes = minutesSince(props.client.lastActive, props.now)
@@ -167,23 +192,31 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 						<div
 							role="button"
 							tabIndex={0}
+							data-client-row
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-secondary/50 focus-visible:bg-secondary/50 text-ui focus-visible:ring-ring/40 flex h-11 min-w-0 items-center gap-3 px-1 transition-colors duration-100 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset max-sm:h-12"
+							onKeyDown={moveClientFocus}
 						/>
 					}
 				>
-					<ClientIcon client={props.client.client} />
+					<span className="flex w-5 shrink-0 items-center justify-center">
+						<ClientIcon client={props.client.client} />
+					</span>
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					<span className="text-muted-foreground text-meta w-28 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+						{active}
+					</span>
 					{Option.match(address, {
 						onNone: () => null,
 						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
+							<span className="text-muted-foreground text-meta w-36 shrink-0 truncate text-right font-mono max-sm:hidden">
+								{value}
+							</span>
 						)
 					})}
 				</ContextMenuTrigger>
-				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
+				<ResultError result={disconnection} className="mr-1 mb-2 ml-9 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
@@ -205,10 +238,10 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="bg-card mb-2 flex flex-col gap-3 rounded-lg border p-4">
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+				<h2 className="font-heading text-lg leading-none tracking-tight">A sign-in is waiting</h2>
+				<span className="text-muted-foreground text-meta font-mono tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>
 			</div>
@@ -318,6 +351,13 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 			title="Signed in"
 			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
 			className="gap-0"
+			actions={
+				<span className="text-muted-foreground text-meta hidden items-center gap-1 font-mono sm:flex">
+					<Kbd>j</Kbd>
+					<Kbd>k</Kbd>
+					<span>move</span>
+				</span>
+			}
 		>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(clients, {
@@ -329,10 +369,18 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 					/>
 				),
 				onNonEmpty: rows => (
-					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
-						))}
+					<div>
+						<div aria-hidden className="text-muted-foreground text-meta flex h-8 items-end gap-3 border-b px-1 pb-1.5">
+							<span className="w-5 shrink-0" />
+							<span className="flex-1">Client</span>
+							<span className="w-28 shrink-0 text-right">Last active</span>
+							<span className="w-36 shrink-0 text-right max-sm:hidden">Address</span>
+						</div>
+						<div role="list" aria-label="Signed-in clients" data-client-list>
+							{Array.map(rows, client => (
+								<ClientRow key={client.label} client={client} now={data.now} />
+							))}
+						</div>
 					</div>
 				)
 			})}

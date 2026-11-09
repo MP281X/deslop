@@ -78,7 +78,7 @@ type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
-		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 34})]}>
+		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 30})]}>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
 			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>
@@ -87,7 +87,7 @@ function Gutter(props: {countdown: Countdown}) {
 				<>
 					<Text
 						modifiers={[
-							font({design: 'monospaced', textStyle: 'title3', weight: 'medium'}),
+							font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'}),
 							foregroundStyle(colors.foreground)
 						]}
 					>
@@ -114,12 +114,14 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 				<ItemContent>
 					<ItemTitle>{headingOf(props.booking)}</ItemTitle>
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{scheduleOf(props.booking)}</Text>
-					<HStack spacing={space[2]}>
+					<HStack spacing={space[1]}>
 						<StatusDot status={dots[status.tone]} tint={primary} />
-						<Text modifiers={[text.detail, foregroundStyle(colors.foreground)]}>{status.label}</Text>
+						<Text modifiers={[text.caption, foregroundStyle(colors.foreground)]}>{status.label}</Text>
 						{Option.match(status.where, {
 							onNone: () => undefined,
-							onSome: where => <Text modifiers={[text.detail, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
+							onSome: where => (
+								<Text modifiers={[text.caption, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
+							)
 						})}
 					</HStack>
 				</ItemContent>

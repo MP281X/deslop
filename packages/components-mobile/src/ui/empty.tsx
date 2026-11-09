@@ -21,7 +21,7 @@ export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) 
 			spacing={space[4]}
 			modifiers={[
 				...(props.modifiers ?? []),
-				padding({all: space[8]}),
+				padding({all: space[6]}),
 				frame({maxHeight: Infinity, maxWidth: Infinity}),
 				multilineTextAlignment('center')
 			]}
@@ -40,7 +40,7 @@ export function EmptyMedia(props: {systemImage: ImageProps['systemName']}) {
 		<Image
 			systemName={props.systemImage}
 			modifiers={[
-				font({textStyle: 'largeTitle'}),
+				font({textStyle: 'title'}),
 				imageScale('large'),
 				foregroundStyle(colors.mutedForeground),
 				accessibilityHidden(true)
@@ -51,14 +51,16 @@ export function EmptyMedia(props: {systemImage: ImageProps['systemName']}) {
 
 export function EmptyTitle(props: {children: string}) {
 	return (
-		<Text modifiers={[font({textStyle: 'title2', weight: 'semibold'}), foregroundStyle(colors.foreground)]}>
+		<Text modifiers={[font({textStyle: 'title3', weight: 'semibold'}), foregroundStyle(colors.foreground)]}>
 			{props.children}
 		</Text>
 	)
 }
 
 export function EmptyDescription(props: {children: string}) {
-	return <Text modifiers={[font({textStyle: 'body'}), foregroundStyle(colors.mutedForeground)]}>{props.children}</Text>
+	return (
+		<Text modifiers={[font({textStyle: 'footnote'}), foregroundStyle(colors.mutedForeground)]}>{props.children}</Text>
+	)
 }
 
 export function EmptyContent(props: {children: ReactNode}) {

@@ -1,10 +1,6 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
-:root {
-	--primary: var(--cyan);
-}
-
 /* Where a span ran, in its operation's device icon and its bar: server blue, browser pink, iOS amber, CI violet. */
 [data-side='server'] {
 	--side: var(--blue);
@@ -23,6 +19,6 @@
 }
 
 @theme {
-	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
+	--grid-template-columns-scope: minmax(20rem, 24rem) minmax(0, 1fr);
 	--grid-template-columns-attributes: repeat(auto-fill, minmax(14rem, 1fr));
 }

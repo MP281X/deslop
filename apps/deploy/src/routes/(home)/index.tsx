@@ -506,7 +506,10 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn(
+								'list-row relative flex h-10 items-center gap-2 pr-3 max-sm:h-12',
+								highlighted && 'bg-secondary/50'
+							)}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -522,7 +525,7 @@ function AppListRow(props: {
 						className="absolute inset-0 z-0 size-full"
 						onClick={props.onSelect}
 					/>
-					<Item className="pointer-events-none relative z-10 h-full min-w-0 flex-1">
+					<Item size="xs" className="pointer-events-none relative z-10 h-full min-w-0 flex-1">
 						<ItemMedia variant="icon">
 							<ApplicationIcon name={fullName} process={process} container={props.row.item.kind === 'container'} />
 						</ItemMedia>
@@ -698,7 +701,7 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 				<div
 					key={row}
 					aria-hidden
-					className={cn('list-row flex h-14 items-center gap-3 px-4', props.indent === true && 'pl-8')}
+					className={cn('list-row flex h-10 items-center gap-3 px-3 max-sm:h-12', props.indent === true && 'pl-8')}
 				>
 					<Skeleton className="size-5 shrink-0" />
 					<Skeleton className="h-3.5 w-1/3 max-w-40" />
@@ -715,15 +718,15 @@ function ChartSkeleton() {
 			aria-busy="true"
 			aria-label="Usage history"
 			role="status"
-			className="flex min-h-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+			className="flex min-h-0 flex-1 flex-col gap-3 px-3 pt-2 pb-3"
 		>
 			<div className="flex flex-wrap gap-3">
 				<Skeleton className="h-3 w-16" />
 				<Skeleton className="h-3 w-24" />
 				<Skeleton className="h-3 w-20" />
 			</div>
-			<Skeleton className="h-40 w-full" />
-			<Skeleton className="h-36 w-full" />
+			<Skeleton className="h-35 w-full" />
+			<Skeleton className="h-35 w-full" />
 			<Skeleton className="h-3 w-full" />
 			<Skeleton className="h-1 w-full" />
 			<Skeleton className="h-4 w-full" />
@@ -756,7 +759,7 @@ function AppsPane(props: {
 		<Section
 			title="Apps"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
-			headerClassName="px-4"
+			headerClassName="px-3"
 			actions={
 				<div className="flex items-center gap-2">
 					{Boolean.match(pending, {
@@ -792,7 +795,7 @@ function AppsPane(props: {
 										<Fragment key={row.item.id}>
 											{index === firstScheduled && (
 												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
-													<span className="tracking-label font-semibold uppercase">Scheduled</span>
+													<span className="tracking-label text-meta font-medium">Scheduled</span>
 													<Badge variant="secondary">{scheduled.length}</Badge>
 												</div>
 											)}
@@ -842,7 +845,7 @@ function ProcessPane(props: {
 		<Section
 			title="Processes"
 			className={cn('min-h-0 min-w-0 flex-1 gap-0', props.className)}
-			headerClassName="px-4"
+			headerClassName="px-3"
 			actions={
 				<div className="flex min-w-0 items-center gap-2">
 					{Option.match(Option.fromUndefinedOr(props.row), {
@@ -982,7 +985,7 @@ function MachineContent(props: {
 	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="flex flex-col gap-4 px-4 pt-3 pb-4">
+			<div className="flex flex-col gap-3 px-3 pt-2 pb-3">
 				<div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
 					{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
 						<span key={band.id} className="flex min-w-0 items-center gap-1.5">
@@ -997,7 +1000,7 @@ function MachineContent(props: {
 					))}
 				</div>
 				<UsageChart
-					className="h-40"
+					className="h-35"
 					history={props.history}
 					minutes={props.minutes}
 					hovered={props.hovered}
@@ -1009,7 +1012,7 @@ function MachineContent(props: {
 					value={Option.getOrUndefined(memory)}
 				/>
 				<UsageChart
-					className="h-36"
+					className="h-35"
 					history={props.history}
 					minutes={props.minutes}
 					hovered={props.hovered}
@@ -1054,7 +1057,7 @@ function MachinePane(props: {
 		<Section
 			title="Machine"
 			className={cn('min-h-0 flex-1 gap-0', props.className)}
-			headerClassName="px-4"
+			headerClassName="px-3"
 			actions={
 				<div className="flex items-center gap-2">
 					<MetricsProblem minutes={props.minutes} />
@@ -1114,7 +1117,7 @@ function MachineTabs(props: {
 			Boolean.match(props.pending, {
 				onFalse: () => null,
 				onTrue: () => (
-					<div aria-busy="true" aria-label="Machines" role="status" className="flex h-12 shrink-0 items-center gap-3">
+					<div aria-busy="true" aria-label="Machines" role="status" className="flex h-9 shrink-0 items-center gap-3">
 						<Skeleton className="size-4" />
 						<Skeleton className="h-4 w-24" />
 						<Skeleton className="h-3 w-32" />
@@ -1127,43 +1130,41 @@ function MachineTabs(props: {
 				value={props.active ?? workers[0]}
 				onValueChange={(worker: string) => props.onSelect(worker)}
 			>
-				<TabsList variant="line" aria-label="Machines" className="w-full max-sm:group-data-horizontal/tabs:h-auto">
+				<TabsList aria-label="Machines" className="w-fit max-sm:w-full">
 					{Array.map(workers, worker => {
 						const history = Array.findFirst(props.histories, machine => machine.worker === worker)
 						const latest = Option.getOrUndefined(Option.flatMap(history, machine => Array.last(machine.samples)))
 						const failed = failedFor(worker, props.inventoryFailure, props.sources, Option.getOrUndefined(history))
 						return (
-							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-12">
+							<TabsTrigger key={worker} value={worker} className="min-w-0 max-sm:h-11">
 								<MachineIcon worker={worker} />
-								<span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-									<span className="flex min-w-0 items-center gap-1.5">
-										<span className="min-w-0 truncate">{machineName(worker)}</span>
-										{/* Only an unreachable machine is marked; one that answers needs no dot. */}
-										{failed && (
-											<span
-												role="img"
-												aria-label="Unavailable"
-												className="flex size-3 shrink-0 items-center justify-center"
-											>
-												<StatusDot status="off" />
-											</span>
-										)}
-									</span>
-									<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tracking-normal normal-case tabular-nums">
-										{Array.join(
-											[
-												...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
-													onFalse: () => [],
-													onTrue: () => [`${latest?.cores?.length} cores`]
-												}),
-												...Boolean.match(latest === undefined, {
-													onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
-													onTrue: () => []
-												})
-											],
-											' · '
-										)}
-									</span>
+								<span className="flex min-w-0 items-center gap-1.5">
+									<span className="min-w-0 truncate">{machineName(worker)}</span>
+									{/* Only an unreachable machine is marked; one that answers needs no dot. */}
+									{failed && (
+										<span
+											role="img"
+											aria-label="Unavailable"
+											className="flex size-3 shrink-0 items-center justify-center"
+										>
+											<StatusDot status="off" />
+										</span>
+									)}
+								</span>
+								<span className="text-muted-foreground text-meta min-w-0 truncate font-mono tracking-normal tabular-nums">
+									{Array.join(
+										[
+											...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
+												onFalse: () => [],
+												onTrue: () => [`${latest?.cores?.length} cores`]
+											}),
+											...Boolean.match(latest === undefined, {
+												onFalse: () => [bytes(latest?.memoryTotal ?? 0)],
+												onTrue: () => []
+											})
+										],
+										' · '
+									)}
 								</span>
 							</TabsTrigger>
 						)
@@ -1416,7 +1417,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="h-full min-h-0 gap-3">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}

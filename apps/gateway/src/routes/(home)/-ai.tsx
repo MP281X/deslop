@@ -232,17 +232,15 @@ export function AiControls(props: {
 
 // A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
-	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
-	)
+	return <h2 className="text-muted-foreground tracking-label text-meta px-2 pb-1.5 font-medium">{props.children}</h2>
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
 function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="list-row" data-selected={props.selected}>
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-10 min-w-0 items-center gap-3 px-3 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -278,15 +276,15 @@ function ShareRow(props: {
 }) {
 	return (
 		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
-			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
+			<span className="text-ui min-w-0 flex-1 truncate font-medium">{props.label}</span>
+			<span className="bg-secondary flex h-1 w-14 shrink-0">
 				<span
 					className="h-full w-(--share) bg-(--share-color)"
 					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
 				/>
 			</span>
 			{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
-			<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-muted-foreground text-meta w-12 shrink-0 text-right font-mono tabular-nums">
 				{Option.getOrElse(
 					Option.map(
 						Option.filter(props.sum, sum => sum.tokens > 0),
@@ -295,7 +293,7 @@ function ShareRow(props: {
 					() => '—'
 				)}
 			</span>
-			<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-meta w-16 shrink-0 text-right font-mono tabular-nums">
 				{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
 			</span>
 		</Row>
@@ -367,13 +365,15 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
+		<ChartContainer config={config} className="h-40 w-full max-sm:h-36">
 			<BarChart
 				accessibilityLayer
+				barCategoryGap={1}
+				barGap={0}
 				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
 				className="[&_[tabindex]]:outline-hidden"
 				data={rows}
-				margin={{bottom: 0, left: 0, right: 0, top: 4}}
+				margin={{bottom: 0, left: 0, right: 0, top: 2}}
 				onClick={state =>
 					Option.map(
 						Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
@@ -452,22 +452,27 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance; a desktop adds the daily average.
+// The period's spend is the page's one large figure; its counts stay compact beside it.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
-			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
-			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
-			<span className="max-sm:hidden">
-				<Stat
-					label="Per day"
-					value={cost(
-						props.report.totals.costUsd /
-							Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
-					)}
-				/>
-			</span>
+		<div className="flex flex-wrap items-end gap-x-8 gap-y-3 border-b pb-3">
+			<div className="flex flex-col gap-1">
+				<span className="text-muted-foreground tracking-label text-meta font-medium">Spent</span>
+				<span className="font-mono text-4xl leading-none tabular-nums">{cost(props.report.totals.costUsd)}</span>
+			</div>
+			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+				<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
+				<Stat label="Calls" value={count.format(props.report.totals.calls)} />
+				<span className="max-sm:hidden">
+					<Stat
+						label="Per day"
+						value={cost(
+							props.report.totals.costUsd /
+								Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
+						)}
+					/>
+				</span>
+			</div>
 		</div>
 	)
 }
@@ -484,7 +489,7 @@ function UsageReport(props: {
 		return (
 			<>
 				<Stats range={props.range} report={props.report} />
-				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
+				<p role="status" className="text-muted-foreground text-ui py-12 text-center">
 					No AI calls in the{' '}
 					{Option.getOrElse(
 						Option.map(
@@ -568,7 +573,7 @@ function UsageReport(props: {
 				report={props.report}
 			/>
 			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
-			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
+			<div className="grid gap-5 md:grid-cols-2 md:gap-0 md:divide-x">
 				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
 					<GroupLabel>By app</GroupLabel>
 					<div role="list" aria-label="By app">
@@ -668,16 +673,16 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 					)
 				})}
 			>
-				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
+				<span className="text-ui w-28 min-w-0 shrink-0 truncate font-medium">{PROVIDER_NAMES[props.provider]}</span>
 				<span
 					className={cn(
-						'min-w-0 flex-1 truncate font-mono text-xs',
+						'text-meta min-w-0 flex-1 truncate font-mono',
 						Boolean.match(rejected, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-destructive'})
 					)}
 				>
 					{detail}
 				</span>
-				<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
+				<span className="text-meta w-16 shrink-0 text-right font-mono tabular-nums">{props.spent}</span>
 				<span className="flex size-3 shrink-0 items-center justify-center">
 					<StatusDot
 						status={Option.match(props.info, {

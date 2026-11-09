@@ -33,7 +33,7 @@ export function ToggleGroup(props: {
 }) {
 	return (
 		<ScrollView axes="horizontal" showsIndicators={false} modifiers={props.modifiers}>
-			<HStack spacing={space[2]}>
+			<HStack spacing={space[1]}>
 				<ToggleGroupContext value={{onValueChange: props.onValueChange, tint: props.tint, value: props.value}}>
 					{props.children}
 				</ToggleGroupContext>
@@ -58,8 +58,8 @@ export function ToggleGroupItem(props: {
 				buttonStyle(
 					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
 				),
-				buttonBorderShape('capsule'),
-				controlSize('large'),
+				buttonBorderShape('roundedRectangle'),
+				controlSize('regular'),
 				...Boolean.match(selected, {onFalse: () => [], onTrue: () => [tint(group.tint)]}),
 				labelStyle('titleAndIcon'),
 				text.detail,

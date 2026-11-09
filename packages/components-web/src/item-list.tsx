@@ -14,11 +14,15 @@ export function ItemListSkeleton(props: {
 	return (
 		<div aria-busy="true" aria-label={props.label} role="status">
 			{Array.map(Array.range(1, props.rows), row => (
-				<div key={row} aria-hidden className={cn('list-row flex h-14 items-center gap-3.5 px-4', props.rowClassName)}>
-					{props.media === true && <Skeleton className={cn('size-9 shrink-0', props.mediaClassName)} />}
-					<div className="flex min-w-0 flex-1 flex-col gap-2">
-						<Skeleton className="h-3.5 w-1/3" />
-						<Skeleton className="h-3 w-2/5" />
+				<div
+					key={row}
+					aria-hidden
+					className={cn('list-row flex h-10 items-center gap-3 px-3 max-sm:h-12', props.rowClassName)}
+				>
+					{props.media === true && <Skeleton className={cn('size-8 shrink-0', props.mediaClassName)} />}
+					<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+						<Skeleton className="h-3 w-1/3" />
+						<Skeleton className="h-2.5 w-2/5" />
 					</div>
 				</div>
 			))}

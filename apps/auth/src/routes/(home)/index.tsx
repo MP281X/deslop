@@ -32,7 +32,7 @@ function Enter(props: {
 	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex w-full flex-col gap-4">
+		<section className="bg-card flex w-full flex-col gap-4 rounded-lg border p-4">
 			<Field data-invalid={invalid}>
 				<InputOTP
 					id="code"
@@ -55,13 +55,13 @@ function Enter(props: {
 				>
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="flex-1" />
 						))}
 					</InputOTPGroup>
 					<InputOTPSeparator />
 					<InputOTPGroup className="flex-1">
 						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="flex-1" />
 						))}
 					</InputOTPGroup>
 				</InputOTP>
@@ -111,7 +111,7 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+		<div className="m-auto flex w-full max-w-xl flex-col gap-5 py-5">
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>

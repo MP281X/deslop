@@ -31,11 +31,11 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 					<div
 						className={cn('flex min-w-0 items-baseline gap-2 text-left', props.node.small && 'text-muted-foreground')}
 					>
-						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal normal-case max-sm:max-w-3/5">
+						<span className="max-w-2/5 shrink-0 truncate font-mono text-xs tracking-normal max-sm:max-w-3/5">
 							{props.node.name}
 						</span>
 						<span
-							className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs tracking-normal normal-case"
+							className="text-muted-foreground text-meta min-w-0 flex-1 truncate font-mono tracking-normal"
 							title={Array.join(props.node.command ?? [], ' ')}
 						>
 							{/* The arguments that tell a process apart: no executable, no variable assignments, and paths cut to their last part; hovering shows them whole. */}
@@ -53,11 +53,11 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 				</ItemContent>
 				<ItemActions className="shrink-0">
 					{Array.isArrayNonEmpty(props.node.children) && (
-						<span className="text-muted-foreground w-6 shrink-0 text-right font-mono text-xs tracking-normal normal-case max-sm:hidden">
+						<span className="text-muted-foreground text-meta w-6 shrink-0 text-right font-mono tracking-normal max-sm:hidden">
 							+{props.node.children.length}
 						</span>
 					)}
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tracking-normal normal-case tabular-nums">
+					<span className="text-muted-foreground text-meta shrink-0 font-mono tracking-normal tabular-nums">
 						{mib.format(props.node.memory / 1024 ** 2)} MiB
 					</span>
 					{Boolean.match(Array.isArrayNonEmpty(props.node.children), {
@@ -96,7 +96,7 @@ function Node(props: {depth: number; node: ProcessNode}) {
 
 export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
-		<div className="min-w-0 px-2 pb-2">
+		<div className="min-w-0 px-1 pb-1">
 			{Array.map(props.tree, node => (
 				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
 			))}

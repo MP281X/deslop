@@ -2,7 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
+import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -186,7 +186,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-10 min-w-0 items-center gap-3 px-3 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -199,21 +199,24 @@ function ServerRow(props: {server: ConnectionInfo}) {
 						}
 					/>
 					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
-						<ServerIcon server={props.server} />
-						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						<span className="flex w-5 shrink-0 items-center justify-center">
+							<ServerIcon server={props.server} />
+						</span>
+						<span className="text-ui w-48 min-w-0 shrink truncate font-medium">{props.server.name}</span>
+						<span className="text-muted-foreground text-meta min-w-0 flex-1 truncate font-mono">
 							{new URL(props.server.url).hostname}
 						</span>{' '}
-						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
-								title="Tools"
-							>
-								{props.server.tools.length}
-							</span>
-						)}
+						<span
+							className="text-muted-foreground text-meta w-10 shrink-0 text-right font-mono tabular-nums"
+							title="Tools"
+						>
+							{Boolean.match(Array.isReadonlyArrayNonEmpty(props.server.tools), {
+								onFalse: () => '—',
+								onTrue: () => props.server.tools.length
+							})}
+						</span>
 					</div>
-					<div className="relative flex w-16 shrink-0 justify-end">
+					<div className="relative flex w-20 shrink-0 justify-end">
 						{connected && props.server.error === undefined && (
 							<span
 								role="img"
@@ -273,6 +276,16 @@ function ServersContent(props: {onAdd: () => void}) {
 						),
 						onNonEmpty: servers => (
 							<Section title="Servers" meta={`${servers.length} configured`}>
+								<div
+									aria-hidden
+									className="text-muted-foreground text-meta flex h-8 items-end gap-3 border-b px-3 pb-1.5 max-sm:hidden"
+								>
+									<span className="w-5 shrink-0" />
+									<span className="w-48 shrink-0">Server</span>
+									<span className="flex-1">Host</span>
+									<span className="w-10 shrink-0 text-right">Tools</span>
+									<span className="w-20 shrink-0 text-right">State</span>
+								</div>
 								<div role="list" aria-label="MCP servers">
 									{Array.map(servers, server => (
 										<ServerRow key={server.id} server={server} />
@@ -295,7 +308,7 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-2.5">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"
@@ -321,8 +334,7 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 		<ToggleGroup
 			aria-label="View"
 			size="sm"
-			spacing={1}
-			variant="outline"
+			spacing={0}
 			value={[props.view]}
 			onValueChange={values =>
 				Option.map(Array.head(values), value =>
@@ -330,13 +342,11 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 				)
 			}
 		>
-			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
-				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
+			<ToggleGroupItem value="servers" aria-label="Servers">
+				Servers
 			</ToggleGroupItem>
-			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
-				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
+			<ToggleGroupItem value="ai" aria-label="AI">
+				AI
 			</ToggleGroupItem>
 		</ToggleGroup>
 	)

@@ -53,7 +53,7 @@ function ProgressIndicator({
 function ProgressLabel({ className, ...props }: ProgressPrimitive.Label.Props) {
   return (
     <ProgressPrimitive.Label
-      className={cn("text-xs font-semibold tracking-wide uppercase", className)}
+      className={cn("text-meta font-medium", className)}
       data-slot="progress-label"
       {...props}
     />

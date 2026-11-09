@@ -140,13 +140,16 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
-			<header className="flex flex-col gap-2">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
+		<section
+			className="bg-card m-auto flex w-full max-w-xl flex-col gap-4 rounded-lg border p-5"
+			aria-labelledby="waiting-title"
+		>
+			<header className="flex flex-col gap-1.5">
+				<p className="text-muted-foreground tracking-label text-meta font-medium">Waiting for approval</p>
 				<h1
 					id="waiting-title"
 					title={`Sign in ${props.request.clientName} on ${props.request.device}`}
-					className="font-heading text-3xl leading-none tracking-tight"
+					className="font-heading text-2xl leading-none tracking-tight"
 				>
 					{props.request.clientName}
 				</h1>
@@ -154,11 +157,11 @@ function CodeCard(props: {request: PendingAuthorization}) {
 			</header>
 			<div className="flex items-start gap-5">
 				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
+				<span className="bg-background text-foreground shrink-0 rounded-md border p-2">
 					<QrCode text={approveLink(props.request.id)} className="size-32" />
 				</span>
 				<div className="flex min-w-0 flex-col gap-2">
-					<span className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Code</span>
+					<span className="text-muted-foreground tracking-label text-meta font-medium">Code</span>
 					<Code id={props.request.id} />
 					<Countdown expiresAt={props.request.expiresAt} />
 					<p className="text-muted-foreground text-xs leading-relaxed">
@@ -376,7 +379,7 @@ function AccountMenu(props: {account: SignedAccount}) {
 // The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-2 border-t pt-4 sm:grid-cols-3">
 			{Array.map(props.apps, app => (
 				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
 					<AppIcon origin={app.origin} small />
@@ -395,9 +398,9 @@ function SignIn() {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
+		<section className="m-auto flex w-full max-w-sm flex-col gap-5 py-8" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
+			<div className="bg-card flex w-full flex-col gap-4 rounded-lg border p-5">
 				<div className="flex flex-col gap-2">
 					<Button
 						size="lg"
@@ -578,7 +581,7 @@ function HomeLayout() {
 								<Skeleton className="h-7 w-52" />
 								<Skeleton className="h-4 w-44" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="flex w-full max-w-sm flex-col gap-2 rounded-lg border p-4">
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />

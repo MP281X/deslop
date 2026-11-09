@@ -1,10 +1,6 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
-:root {
-	--primary: var(--slate);
-}
-
 /* A code no sign-in has shakes once, as a lock refuses a wrong key. */
 @theme {
 	--animate-refuse: refuse 300ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -21,13 +17,13 @@
 		}
 	}
 
-	/* An answer arrives out of a blur, so it reads as the approval it replaced rather than a new line. */
-	--animate-settle-in: settle-in 200ms ease;
+	/* An answer settles into the line it replaced: opacity and one pixel, never a blur. */
+	--animate-settle-in: settle-in 120ms ease-out;
 
 	@keyframes settle-in {
 		from {
 			opacity: 0;
-			filter: blur(2px);
+			translate: 0 1px;
 		}
 	}
 }

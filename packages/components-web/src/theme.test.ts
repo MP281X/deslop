@@ -66,12 +66,12 @@ it.layer(NodeServices.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const mobile = pairs(yield* fs.readFileString(`${ROOT}/packages/components-mobile/src/theme.ts`))
-			const [light, dark = ''] = String.split(
+			const [dark, light = ''] = String.split(
 				yield* fs.readFileString(`${import.meta.dirname}/theme.css`),
-				'@media screen and (prefers-color-scheme: dark)'
+				'@media screen and (prefers-color-scheme: light)'
 			)
-			const lightDeclarations = declarations(light)
-			const darkDeclarations = [...declarations(dark), ...lightDeclarations]
+			const darkDeclarations = declarations(dark)
+			const lightDeclarations = [...declarations(light), ...darkDeclarations]
 			assert.isNotEmpty(mobile)
 			assert.deepStrictEqual(
 				Array.map(mobile, color => ({
@@ -97,23 +97,23 @@ it.layer(NodeServices.layer)(test => {
 		'keeps light surfaces neutral and app and status colours readable on white',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
-			const [light] = String.split(
+			const [dark, light = ''] = String.split(
 				yield* fs.readFileString(`${import.meta.dirname}/theme.css`),
-				'@media screen and (prefers-color-scheme: dark)'
+				'@media screen and (prefers-color-scheme: light)'
 			)
-			const entries = declarations(light)
+			const entries = [...declarations(light), ...declarations(dark)]
 			for (const entry of [
-				['background', '#ffffff'],
+				['background', '#fbfbfc'],
 				['popover', '#ffffff'],
 				['primary-foreground', '#ffffff'],
-				['foreground', '#0a0a0a'],
-				['card', '#f8f7f4'],
-				['secondary', '#f1f0ec'],
-				['muted', '#f5f4f1'],
-				['muted-foreground', '#64625d'],
-				['accent', '#f0efea'],
-				['border', '#e6e4de'],
-				['input', '#d8d6cf']
+				['foreground', '#17181b'],
+				['card', '#ffffff'],
+				['secondary', '#f0f1f4'],
+				['muted', '#f4f5f7'],
+				['muted-foreground', '#6b7079'],
+				['accent', '#eceef1'],
+				['border', '#e7e8eb'],
+				['input', '#d5d7dd']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}
@@ -129,6 +129,8 @@ it.layer(NodeServices.layer)(test => {
 				'coral',
 				'destructive',
 				'warning',
+				'success',
+				'info',
 				'machine-dev',
 				'machine-desktop'
 			]) {
@@ -140,27 +142,33 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'keeps neutral selection, one radius and no green token in either appearance',
+		'keeps the dark ground, control and card radii, and no green token in either appearance',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const source = yield* fs.readFileString(`${import.meta.dirname}/theme.css`)
-			const [light, dark = ''] = String.split(source, '@media screen and (prefers-color-scheme: dark)')
-			const darkDeclarations = [...declarations(dark), ...declarations(light)]
-			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
-			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#e3e1db')
-			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#242323')
-			assert.strictEqual(resolved(darkDeclarations, 'border'), '#262523')
-			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
-			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
+			const [dark, light = ''] = String.split(source, '@media screen and (prefers-color-scheme: light)')
+			const darkDeclarations = declarations(dark)
+			assert.strictEqual(resolved(darkDeclarations, 'background'), '#08090a')
+			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#f7f8f8')
+			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#22262d')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), '#25282e')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#5e6ad2')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#f2c94c')
 			assert.notInclude(source, '--green')
-			assert.include(source, '--radius: 0px;')
+			assert.include(source, '--radius: 6px;')
+			assert.include(source, '--radius-card: 8px;')
 			assert.include(
 				yield* fs.readFileString(`${ROOT}/packages/components-mobile/src/theme.ts`),
-				'export const radius = 12'
+				'export const radius = 10'
 			)
-			for (const size of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']) {
-				assert.include(source, `--radius-${size}: var(--radius);`)
+			for (const size of ['xs', 'sm']) {
+				assert.include(source, `--radius-${size}: calc(var(--radius) -`)
 			}
+			assert.include(source, '--radius-md: var(--radius);')
+			for (const size of ['lg', 'xl', '2xl', '3xl', '4xl']) {
+				assert.include(source, `--radius-${size}: var(--radius-card);`)
+			}
+			assert.include(light, '--background: #fbfbfc;')
 		})
 	)
 
