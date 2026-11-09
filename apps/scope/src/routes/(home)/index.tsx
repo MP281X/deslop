@@ -167,22 +167,25 @@ function errorOf(span: Trace['spans'][number]) {
 
 // What a span says beyond its row: attributes, without anything that only repeats its name, such as code.function, or the status code the error line already carries.
 function attributesOf(span: Trace['spans'][number]) {
-	const failed = Option.isSome(errorOf(span))
-	const attributes = Array.map(
-		Array.filter(
-			Option.getOrElse(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), () => []),
-			attribute => attribute.key !== 'service.name'
-		),
-		attribute => ({key: attribute.key, value: valueOf(attribute.value)})
-	)
-	const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
-	return Array.filter(
-		attributes,
-		attribute =>
-			attribute.value !== span.name &&
-			!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
-			(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
-	)
+	if (span.payload['attributes'] === undefined) return []
+	return Option.match(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), {
+		onNone: () => [{key: 'attributes', value: 'Unreadable'}],
+		onSome: decoded => {
+			const failed = Option.isSome(errorOf(span))
+			const attributes = Array.map(
+				Array.filter(decoded, attribute => attribute.key !== 'service.name'),
+				attribute => ({key: attribute.key, value: valueOf(attribute.value)})
+			)
+			const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
+			return Array.filter(
+				attributes,
+				attribute =>
+					attribute.value !== span.name &&
+					!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
+					(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
+			)
+		}
+	})
 }
 
 // Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
@@ -812,7 +815,10 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 				<span className="flex w-full min-w-0 items-center gap-3 font-normal tracking-normal normal-case">
 					<span
 						className="text-muted-foreground w-10 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums"
-						title={clock.format(Option.getOrElse(Number.parse(String.slice(0, -6)(props.trace.time)), () => props.now))}
+						title={Option.match(Number.parse(String.slice(0, -6)(props.trace.time)), {
+							onNone: () => '—',
+							onSome: timestamp => clock.format(timestamp)
+						})}
 					>
 						{ageOf(props.trace.time, props.now)}
 					</span>
@@ -1070,7 +1076,7 @@ function WideWorkspace(props: WorkspaceProps) {
 }
 
 // On a phone the URL's pane fills the screen; Back moves up one level and keeps the selection.
-function MobileWorkspace(props: WorkspaceProps & {pane: string}) {
+function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof navigationOf>['path']}) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{pipe(

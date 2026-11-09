@@ -1,6 +1,20 @@
 import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, HashSet, Number, Option, Order, Predicate, Record, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Cause,
+	HashMap,
+	HashSet,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
 import {XIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -141,15 +155,18 @@ function costOf(sum: Sum) {
 
 // The axis names a few buckets; the last is the current one.
 function tickLabel(range: Range) {
-	return (bucket: string) => {
-		const at = Option.getOrElse(Number.parse(bucket), () => 0)
-		if (at === range.from + (range.count - 1) * range.size) {
-			return Boolean.match(range.bucket === 'hour', {onFalse: () => 'Today', onTrue: () => 'Now'})
-		}
-		if (range.bucket === 'hour') return hour.format(at)
-		if (range.count <= 7) return weekday.format(at)
-		return shortDay.format(at)
-	}
+	return (bucket: string) =>
+		Option.match(Option.filter(Number.parse(bucket), Schema.is(Schema.Finite)), {
+			onNone: () => '—',
+			onSome: at => {
+				if (at === range.from + (range.count - 1) * range.size) {
+					return Boolean.match(range.bucket === 'hour', {onFalse: () => 'Today', onTrue: () => 'Now'})
+				}
+				if (range.bucket === 'hour') return hour.format(at)
+				if (range.count <= 7) return weekday.format(at)
+				return shortDay.format(at)
+			}
+		})
 }
 // Every day of a week; otherwise every sixth hour or seventh day, counted back from the current bucket.
 function tickStep(buckets: number) {
@@ -321,12 +338,15 @@ function UsageChart(props: {
 	report: AiUsageReport
 }) {
 	const value = measure(props.metric)
+	const byTime = HashMap.fromIterable(
+		Array.map(
+			props.report.series,
+			bucket => [bucket.at, HashMap.fromIterable(Array.map(bucket.byApp, sum => [sum.name, sum] as const))] as const
+		)
+	)
 	// Each bucket's start as text, so the axis and the tooltip get it back as their label.
 	const rows = Array.map(Array.range(0, props.range.count - 1), index => {
-		const bucket = Array.findFirst(
-			props.report.series,
-			entry => entry.at === props.range.from + index * props.range.size
-		)
+		const bucket = HashMap.get(byTime, props.range.from + index * props.range.size)
 		return {
 			bucket: `${props.range.from + index * props.range.size}`,
 			...Record.fromEntries(
@@ -334,7 +354,7 @@ function UsageChart(props: {
 					app.key,
 					Option.getOrUndefined(
 						Option.map(
-							Option.flatMap(bucket, entry => Array.findFirst(entry.byApp, sum => sum.name === app.app)),
+							Option.flatMap(bucket, totals => HashMap.get(totals, app.app)),
 							value
 						)
 					)
@@ -586,6 +606,7 @@ function UsageReport(props: {
 	)
 }
 
+// judge-ignore no-dropped-content -- a period's usage loads once; only this failure's Retry reloads it, so nothing loaded can drop.
 function Usage(props: {focus: Focus; metric: Metric; onFocus: (focus: Focus) => void; period: Period}) {
 	const result = useAtomSuspense(aiUsageAtom(props.period), {includeFailure: true})
 	const refresh = useAtomRefresh(aiUsageAtom(props.period))

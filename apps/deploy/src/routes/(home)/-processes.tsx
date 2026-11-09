@@ -22,7 +22,7 @@ function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 			<Item
 				size="xs"
 				className="h-full min-w-0"
-				title={`${mib.format(props.node.memory / 1024 ** 2)} MiB including child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
+				title={`Memory includes child processes${Boolean.match(props.node.cpu === undefined, {onFalse: () => ` · ${props.node.cpu?.toFixed(1)}% CPU`, onTrue: () => ''})}`}
 			>
 				<ItemMedia variant="icon" className="ml-(--indent)">
 					<ApplicationIcon name={props.node.name} small />

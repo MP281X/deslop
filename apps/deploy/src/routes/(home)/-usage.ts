@@ -18,7 +18,7 @@ function peak(values: readonly number[]) {
 }
 
 function total(group: readonly {cpu: number[]; memory: number[]}[], index: number, key: 'cpu' | 'memory') {
-	return Array.reduce(group, 0, (sum, app) => sum + (app[key][index] ?? 0))
+	return Number.sumAll(Array.map(group, app => app[key][index] ?? 0))
 }
 
 // Every app the range recorded, stopped ones too, heaviest first, then the small ones as one band and the rest of the machine's use as another.
@@ -32,11 +32,7 @@ export function bands(history: MachineHistory) {
 	const fit = Array.map(history.samples, (sample, index) =>
 		Number.min(
 			1,
-			sample.memoryUsed /
-				Number.max(
-					1,
-					Array.reduce(ids, 0, (sum, id) => sum + (indexed[index]?.[id]?.memory ?? 0))
-				)
+			sample.memoryUsed / Number.max(1, Number.sumAll(Array.map(ids, id => indexed[index]?.[id]?.memory ?? 0)))
 		)
 	)
 	const apps = Array.map(ids, id => ({

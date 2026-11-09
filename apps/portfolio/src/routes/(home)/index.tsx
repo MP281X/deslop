@@ -891,14 +891,11 @@ function PortfolioRoute() {
 			onKeyDown={event => {
 				if (event.target !== event.currentTarget) return
 				const page = event.currentTarget.clientHeight * 0.9
-				if (event.key === 'Home') {
+				if (event.key === 'Home' || event.key === 'End') {
 					event.preventDefault()
-					event.currentTarget.scrollTo({top: 0})
-					return
-				}
-				if (event.key === 'End') {
-					event.preventDefault()
-					event.currentTarget.scrollTo({top: event.currentTarget.scrollHeight})
+					event.currentTarget.scrollTo({
+						top: Boolean.match(event.key === 'Home', {onFalse: () => event.currentTarget.scrollHeight, onTrue: () => 0})
+					})
 					return
 				}
 				if (event.key === ' ') {

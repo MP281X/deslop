@@ -111,15 +111,17 @@ export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () 
 
 // "now", "40s", "12m", "3h" or "2d" since a nanosecond timestamp.
 export function ageOf(time: string, now: number) {
-	const seconds = Number.max(
-		0,
-		(now - Option.getOrElse(Number.parse(pipe(time, String.slice(0, -6))), () => now)) / 1000
-	)
-	if (seconds < 10) return 'now'
-	if (seconds < 60) return `${Number.round(seconds, 0)}s`
-	if (seconds < 3600) return `${Number.round(seconds / 60, 0)}m`
-	if (seconds < 86_400) return `${Number.round(seconds / 3600, 0)}h`
-	return `${Number.round(seconds / 86_400, 0)}d`
+	return Option.match(Number.parse(pipe(time, String.slice(0, -6))), {
+		onNone: () => '—',
+		onSome: timestamp => {
+			const seconds = Number.max(0, (now - timestamp) / 1000)
+			if (seconds < 10) return 'now'
+			if (seconds < 60) return `${Number.round(seconds, 0)}s`
+			if (seconds < 3600) return `${Number.round(seconds / 60, 0)}m`
+			if (seconds < 86_400) return `${Number.round(seconds / 3600, 0)}h`
+			return `${Number.round(seconds / 86_400, 0)}d`
+		}
+	})
 }
 
 // "412 ms", "2.8 s", "28 s", "48 min" or "1.2 h": short enough to keep to its column.
