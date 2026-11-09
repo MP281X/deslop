@@ -211,9 +211,11 @@ function whole(post: FxStatus['status']) {
 	if (post.article === undefined || Array.isReadonlyArrayNonEmpty(post.article.content.blocks)) {
 		return Effect.succeed(post)
 	}
+	// Without its body the article still reads as its title among the posts already loaded around it.
 	return pipe(
 		fx(FxStatus, `status/${post.id}`),
-		Effect.map(found => found.status)
+		Effect.map(found => found.status),
+		Effect.catch(error => Effect.as(Effect.logWarning('The article body did not load', error), post))
 	)
 }
 
