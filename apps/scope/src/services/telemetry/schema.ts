@@ -318,8 +318,8 @@ export const Filters = Schema.Struct({
 	)
 })
 
-export type PageFilters = typeof PageFilters.Type
-export const PageFilters = Schema.Struct({
+export type SortFilters = typeof SortFilters.Type
+export const SortFilters = Schema.Struct({
 	...Filters.fields,
 	limit: pipe(
 		Query.fields.limit,
@@ -330,12 +330,7 @@ export const PageFilters = Schema.Struct({
 		Query.fields.offset,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed(0)),
 		Schema.annotateEncoded({description: 'Entries to skip, for the next page.'})
-	)
-})
-
-export type SortFilters = typeof SortFilters.Type
-export const SortFilters = Schema.Struct({
-	...PageFilters.fields,
+	),
 	sort: pipe(
 		Query.fields.sort,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed('recent' as const)),
