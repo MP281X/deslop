@@ -751,7 +751,7 @@ export const tones = {
 	warn: colors.warning
 } satisfies Record.ReadonlyRecord<Tone, unknown>
 
-type Where = {text: string; tone: Tone}
+export type Where = {text: string; tone: Tone}
 
 // Only a problem's dot carries its words; a healthy status shows where it leaves from.
 export type Status =
