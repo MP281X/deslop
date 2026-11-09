@@ -184,6 +184,11 @@ const labelCases = [
 		label: {detail: 'test handlers.test.ts', name: 'vp'}
 	},
 	{
+		argv: ['/bin/bash'],
+		cwd: Option.some('/home/mp281x/.t3/worktrees/deslop/t3-ac64c231-c6d7180228e68a5e (deleted)'),
+		label: {detail: 't3-ac64c231-c6d7180228e68a5e (deleted)', name: 'bash'}
+	},
+	{
 		argv: ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', 'macbook-pro', 'cat', '/etc/hosts'],
 		cwd: Option.none(),
 		label: {detail: 'macbook-pro → cat', name: 'ssh'}
@@ -214,7 +219,7 @@ const labelCases = [
 ]
 
 it('labels real process arguments by their program, app and subject flags', () => {
-	assert.lengthOf(labelCases, 9)
+	assert.lengthOf(labelCases, 10)
 	Array.forEach(labelCases, entry => assert.deepStrictEqual(commandLabel(entry.argv, entry.cwd), entry.label))
 })
 

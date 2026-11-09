@@ -223,6 +223,10 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 	const name = alias(basename(head))
 	const subject = Option.getOrElse(Record.get(SUBJECT, name), () => Array.empty<string>())
 	const scanned = scan(name, subject, args, [], {})
+	// An interactive shell, such as a terminal tab, runs no script: where it sits tells it apart.
+	if (Array.contains(SHELLS, name) && Array.isReadonlyArrayEmpty(scanned.words)) {
+		return {detail: Option.getOrElse(Option.map(cwd, basename), () => ''), name}
+	}
 	return Option.match(scanned.ssh, {
 		onNone: () => ({
 			detail: Array.join(

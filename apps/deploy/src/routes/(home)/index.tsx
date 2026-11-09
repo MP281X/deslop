@@ -2,15 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, DateTime, HashSet, Number, Option, Order, Record, Schema, String} from 'effect'
 
-import {
-	AppWindowIcon,
-	CaretRightIcon,
-	ChartLineIcon,
-	ClockIcon,
-	PlayIcon,
-	StackIcon,
-	TerminalWindowIcon
-} from '@phosphor-icons/react'
+import {AppWindowIcon, ChartLineIcon, ClockIcon, PlayIcon, StackIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue, useState} from 'react'
@@ -523,7 +515,7 @@ function AppRow(props: {
 						</span>
 						<span className="flex w-6 shrink-0 items-center justify-center">
 							{Boolean.match(scheduled, {
-								onFalse: () => <CaretRightIcon className="text-muted-foreground size-4" />,
+								onFalse: () => null,
 								onTrue: () =>
 									Boolean.match(running, {
 										onFalse: () => (

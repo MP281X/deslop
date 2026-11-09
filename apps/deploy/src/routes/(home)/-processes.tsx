@@ -87,7 +87,8 @@ function Node(props: {band?: string; depth: number; node: ProcessNode; onHover: 
 
 export function Processes(props: {band?: string; onHover: (id?: string) => void; tree: readonly ProcessNode[]}) {
 	return (
-		<div className="min-w-0">
+		// Its own stacking context keeps the pinned parents under the pane's scrollbar.
+		<div className="isolate min-w-0">
 			{Array.map(props.tree, node => (
 				<Node key={node.pid} band={props.band} depth={0} node={node} onHover={props.onHover} />
 			))}
