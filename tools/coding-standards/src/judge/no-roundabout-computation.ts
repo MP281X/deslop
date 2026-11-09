@@ -24,13 +24,13 @@ export const noRoundaboutComputation = question(
 		yes: {
 			cases: [
 				'Sorting only to take one smallest or largest item, where a min or max would do',
-				'Filtering a list, then taking its first item or its length, where a find or count would do',
+				'Filtering a list, then taking its first item, where a find would do',
 				'Building a collection only to test whether it is empty or how large it is',
 				'Two passes or nested loops over data one pass handles'
 			],
 			example: `
-				function hasPinned(notes: Note[]) {
-					return Array.filter(notes, note => note.pinned).length > 0
+				function smallestRank(notes: Note[]) {
+					return Array.head(Array.sort(notes, Order.mapInput(Order.Number, note => note.rank)))
 				}
 			`
 		}
