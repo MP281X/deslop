@@ -1,6 +1,6 @@
 import * as React from "react"
-import { cn } from "#lib/utils.ts"
 import { OTPInput, OTPInputContext } from "input-otp"
+import { cn } from "#lib/utils.ts"
 import { MinusIcon } from "@phosphor-icons/react"
 
 function InputOTP({
@@ -29,7 +29,7 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="input-otp-group"
       className={cn(
-        "flex items-center gap-1 rounded-none has-aria-invalid:border-b-destructive dark:has-aria-invalid:border-b-destructive/50",
+        "flex items-center gap-2 rounded-[18px] has-aria-invalid:border-destructive dark:has-aria-invalid:border-destructive/50",
         className
       )}
       {...props}
@@ -52,7 +52,7 @@ function InputOTPSlot({
       data-slot="input-otp-slot"
       data-active={isActive}
       className={cn(
-        "relative flex size-10 items-center justify-center border border-transparent border-b-input bg-transparent text-sm transition-[color,border-color] outline-none first:rounded-none last:rounded-none aria-invalid:border-b-destructive data-[active=true]:z-10 data-[active=true]:border-b-ring dark:aria-invalid:border-b-destructive/50",
+        "relative flex h-16 flex-1 items-center justify-center border-0 border-b border-input bg-transparent font-mono text-[32px] leading-none tabular-nums transition-[color,border-color] outline-none aria-invalid:border-b-destructive data-[active=true]:z-10 data-[active=true]:border-b-foreground dark:aria-invalid:border-b-destructive/50",
         className
       )}
       {...props}
@@ -60,7 +60,7 @@ function InputOTPSlot({
       {char}
       {hasFakeCaret && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
+          <div className="animate-caret-blink bg-foreground h-8 w-px duration-1000" />
         </div>
       )}
     </div>
@@ -71,12 +71,11 @@ function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-separator"
-      className="flex items-center [&_svg:not([class*='size-'])]:size-3.5"
+      className="text-muted-foreground flex items-center [&_svg:not([class*='size-'])]:size-4"
       role="separator"
       {...props}
     >
-      <MinusIcon
-      />
+      <MinusIcon />
     </div>
   )
 }

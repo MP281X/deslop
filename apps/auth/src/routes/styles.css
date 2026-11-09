@@ -1,10 +1,6 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
-:root {
-	--primary: var(--slate);
-}
-
 /* A code no sign-in has shakes once, as a lock refuses a wrong key. */
 @theme {
 	--animate-refuse: refuse 300ms cubic-bezier(0.23, 1, 0.32, 1);

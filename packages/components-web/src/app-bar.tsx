@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Effect, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {useRender} from '@base-ui/react/use-render'
 import {CaretLeftIcon, MagnifyingGlassIcon} from '@phosphor-icons/react'
@@ -73,14 +73,45 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
+// The signal at the centre of the bar: one 1px line at three amplitudes, still under reduced motion.
+function wave(amplitude: number) {
+	return Array.join(
+		Array.makeBy(8, index => {
+			const x = index * 20
+			return `M${x} 10 L${x + 4} 10 Q${x + 6} ${10 - amplitude} ${x + 8} 10 T${x + 12} 10 T${x + 16} 10 L${x + 20} 10`
+		}),
+		' '
+	)
+}
+
+function Signal() {
+	return (
+		<svg
+			aria-hidden="true"
+			viewBox="0 0 160 20"
+			width={160}
+			height={20}
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1"
+			vectorEffect="non-scaling-stroke"
+			className="text-muted-foreground hidden shrink-0 lg:block"
+		>
+			<path d={wave(4)} className="signal-low motion-reduce:animate-none" />
+			<path d={wave(9)} className="signal-mid opacity-0 motion-reduce:animate-none" />
+			<path d={wave(6)} className="signal-high opacity-0 motion-reduce:animate-none" />
+		</svg>
+	)
+}
+
+// A section of the app as a plain mono word in the bar's second line, the current one ruled with a hairline.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
 			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				'type-mono relative flex h-full shrink-0 items-center gap-2 whitespace-nowrap transition-colors duration-150',
 				Boolean.match(props.active, {
 					onFalse: () => 'text-muted-foreground hover:text-foreground',
 					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
@@ -91,35 +122,38 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
-function SearchTrigger(props: {label: string; onClick: () => void}) {
+// The command palette stays a word, not a box: the search text and its key sit at the end of the tab line.
+function SearchText(props: {label: string; onClick: () => void}) {
 	return (
-		<>
-			<Button
-				variant="search"
-				size="search"
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
-			>
-				<MagnifyingGlassIcon className="size-4 shrink-0" />
-				<span className="flex-1">Search or jump to…</span>
-				<Kbd>⌘K</Kbd>
-			</Button>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				aria-label={props.label}
-				onClick={props.onClick}
-				className="max-sm:size-11 xl:hidden"
-			>
-				<MagnifyingGlassIcon />
-			</Button>
-		</>
+		<Button
+			type="button"
+			variant="bare"
+			size="bare"
+			aria-label={props.label}
+			onClick={props.onClick}
+			className="hidden shrink-0 sm:inline-flex"
+		>
+			search
+			<Kbd>⌘K</Kbd>
+		</Button>
 	)
 }
 
-// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
+function SearchIcon(props: {label: string; onClick: () => void}) {
+	return (
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			aria-label={props.label}
+			onClick={props.onClick}
+			className="size-11 shrink-0 sm:hidden"
+		>
+			<MagnifyingGlassIcon />
+		</Button>
+	)
+}
+
+// The masthead: a 56px wordmark and signal line, then a 32px control line of words, tabs and search. Actions live in the palette.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}
@@ -141,62 +175,75 @@ export function AppBar(props: {
 		addEventListener('keydown', open)
 		return () => removeEventListener('keydown', open)
 	}, [props.palette])
+	const secondLine = props.tabs !== undefined || props.palette !== undefined
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
-				{Option.match(Option.fromUndefinedOr(props.title), {
-					onNone: () => (
-						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
-						</a>
-					),
-					// The leading slot keeps its width on every pane, so the title and the right controls never move.
-					onSome: title => (
-						<div className="flex min-w-0 shrink items-center gap-1.5">
-							{Option.match(Option.fromUndefinedOr(props.back), {
-								onNone: () => (
-									<a
-										href="/"
-										aria-label={props.name}
-										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
-									>
-										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-									</a>
-								),
-								onSome: back => (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										className="max-sm:size-11"
-										aria-label={back.label}
-										onClick={back.onClick}
-									>
-										<CaretLeftIcon className="size-4" />
-									</Button>
-								)
-							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
-								{title}
-							</span>
-						</div>
-					)
-				})}
-				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
-						{props.tabs}
-					</nav>
-				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
-					{Option.match(Option.fromUndefinedOr(props.palette), {
-						onNone: () => null,
-						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 shrink-0 border-b backdrop-blur-md">
+				<div className="relative flex h-16 items-center gap-3 px-6 sm:h-14 sm:px-8">
+					{Option.match(Option.fromUndefinedOr(props.title), {
+						onNone: () => (
+							<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
+								<img src={props.icon} alt="" className="pixelated size-5 opacity-90" />
+								<span className="type-body font-mono leading-none lowercase">{props.name}</span>
+							</a>
+						),
+						// The leading slot keeps its width on every pane, so the title and the right controls never move.
+						onSome: title => (
+							<div className="flex min-w-0 shrink items-center gap-1.5">
+								{Option.match(Option.fromUndefinedOr(props.back), {
+									onNone: () => (
+										<a
+											href="/"
+											aria-label={props.name}
+											className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
+										>
+											<img src={props.icon} alt="" className="pixelated size-5 opacity-90" />
+										</a>
+									),
+									onSome: back => (
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											className="max-sm:size-11"
+											aria-label={back.label}
+											onClick={back.onClick}
+										>
+											<CaretLeftIcon className="size-4" />
+										</Button>
+									)
+								})}
+								<span className="font-heading max-w-48 min-w-0 truncate text-2xl leading-none">{title}</span>
+							</div>
+						)
 					})}
+					<div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
+						<Signal />
+					</div>
+					<div className="ml-auto flex shrink-0 items-center gap-2">
+						{Option.match(Option.fromUndefinedOr(props.palette), {
+							onNone: () => null,
+							onSome: () => <SearchIcon label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+						})}
+						{props.controls}
+						{props.account ?? <AccountMenu />}
+					</div>
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					{props.controls}
-					{props.account ?? <AccountMenu />}
-				</div>
+				{secondLine && (
+					<div
+						className={cn(
+							'flex items-center gap-6 border-t px-6 sm:h-8 sm:px-8',
+							Boolean.match(props.tabs === undefined, {onFalse: () => 'h-11', onTrue: () => 'max-sm:hidden h-8'})
+						)}
+					>
+						<nav aria-label="Sections" className="flex min-w-0 flex-1 items-center gap-6 overflow-x-auto">
+							{props.tabs}
+						</nav>
+						{Option.match(Option.fromUndefinedOr(props.palette), {
+							onNone: () => null,
+							onSome: () => <SearchText label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
+						})}
+					</div>
+				)}
 			</header>
 			{Option.match(Option.fromUndefinedOr(props.palette), {
 				onNone: () => null,

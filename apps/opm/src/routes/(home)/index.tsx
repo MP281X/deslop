@@ -23,6 +23,7 @@ import {
 	foregroundStyle,
 	frame,
 	labelStyle,
+	listRowSeparator,
 	menuOrder,
 	navigationBarTitleDisplayMode,
 	navigationTitle,
@@ -96,6 +97,7 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 			onPress={() => props.onOpen(props.chapter.number, props.page)}
 			modifiers={[
 				...itemRow,
+				listRowSeparator('hidden'),
 				accessibilityLabel(
 					Boolean.match(done, {
 						onFalse: () => `Continue reading Chapter ${props.chapter.number}, page ${page} of ${pages}`,
@@ -117,7 +119,7 @@ function ContinueRow(props: {chapter: ChapterItem; onOpen: (number: number, page
 				<Text modifiers={[text.title, foregroundStyle(colors.foreground)]}>
 					{Boolean.match(done, {onFalse: () => 'Continue Reading', onTrue: () => 'Read Again'})}
 				</Text>
-				<Text modifiers={[text.detail, foregroundStyle(colors.mutedForeground)]}>
+				<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
 					{`Chapter ${props.chapter.number} · ${Boolean.match(done, {
 						onFalse: () => `Page ${page} of ${pages}`,
 						onTrue: () => 'Finished'
@@ -141,7 +143,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 	const read = useAtomSet(readAtom)
 	const done = props.chapter.reading?.done === true
 	return (
-		<SwipeActions modifiers={itemRow}>
+		<SwipeActions modifiers={[...itemRow, listRowSeparator('hidden')]}>
 			<Item onPress={() => props.onOpen(props.chapter.number)}>
 				<ItemMedia>
 					<Cover
@@ -160,12 +162,12 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 						{props.fresh && <StatusDot status="live" tint={primary} />}
 						<ItemTitle>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					</HStack>
-					<ItemDescription>
-						{Array.join(
-							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
-							' · '
-						)}
-					</ItemDescription>
+					{String.isNonEmpty(props.chapter.title) && <ItemDescription>{props.chapter.title}</ItemDescription>}
+					{String.isNonEmpty(postedOn(props.chapter.postedAt)) && (
+						<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
+							{postedOn(props.chapter.postedAt)}
+						</Text>
+					)}
 				</ItemContent>
 				<ItemActions>
 					{/* The pages before the one on screen are read, so a chapter marked unread at its first page is empty. */}

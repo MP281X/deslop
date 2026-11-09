@@ -93,7 +93,7 @@ function Gutter(props: {countdown: Countdown}) {
 					>
 						{props.countdown.days}
 					</Text>
-					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
+					<Text modifiers={[text.monoCaption, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(props.countdown.days === 1, {onFalse: () => 'days', onTrue: () => 'day'})}
 					</Text>
 				</>

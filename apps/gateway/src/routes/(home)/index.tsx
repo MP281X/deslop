@@ -2,7 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
+import {ArrowSquareOutIcon, CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -186,7 +186,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-16 min-w-0 items-center gap-3 px-1 max-sm:h-14">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -200,15 +200,22 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					/>
 					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
 						<ServerIcon server={props.server} />
-						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						<span className="type-body max-w-56 min-w-0 shrink truncate font-medium">{props.server.name}</span>
+						<span className="type-mono text-muted-foreground min-w-0 flex-1 truncate">
 							{new URL(props.server.url).hostname}
-						</span>{' '}
+						</span>
+						<a
+							href={props.server.url}
+							target="_blank"
+							rel="noreferrer"
+							aria-label={`Open ${props.server.name}`}
+							className="text-muted-foreground hover:text-foreground pointer-events-auto relative z-10 flex size-8 shrink-0 items-center justify-center max-sm:size-11"
+							onClick={event => event.stopPropagation()}
+						>
+							<ArrowSquareOutIcon className="size-3.5" />
+						</a>{' '}
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
-								title="Tools"
-							>
+							<span className="text-muted-foreground type-mono w-8 shrink-0 text-right tabular-nums" title="Tools">
 								{props.server.tools.length}
 							</span>
 						)}
@@ -321,8 +328,8 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 		<ToggleGroup
 			aria-label="View"
 			size="sm"
-			spacing={1}
-			variant="outline"
+			spacing={6}
+			variant="tab"
 			value={[props.view]}
 			onValueChange={values =>
 				Option.map(Array.head(values), value =>
@@ -330,13 +337,13 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 				)
 			}
 		>
-			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
+			<ToggleGroupItem value="servers" aria-label="Servers">
 				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
+				<span>Servers</span>
 			</ToggleGroupItem>
-			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
+			<ToggleGroupItem value="ai" aria-label="AI">
 				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
+				<span>AI</span>
 			</ToggleGroupItem>
 		</ToggleGroup>
 	)

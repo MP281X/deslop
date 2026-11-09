@@ -232,24 +232,19 @@ export function AiControls(props: {
 
 // A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
-	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
-	)
+	return <h2 className="type-label text-muted-foreground px-1 pb-2">{props.children}</h2>
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
 function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="list-row list-row-selected" data-selected={props.selected}>
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-14">
 					<ContextMenuTrigger
 						render={
 							<Button
-								variant={Boolean.match(props.selected === true, {
-									onFalse: () => 'ghost' as const,
-									onTrue: () => 'secondary' as const
-								})}
+								variant="row"
 								type="button"
 								aria-label={props.label}
 								aria-pressed={props.selected}
@@ -278,15 +273,15 @@ function ShareRow(props: {
 }) {
 	return (
 		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
-			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
+			<span className="type-body min-w-0 flex-1 truncate font-medium">{props.label}</span>
+			<span className="flex h-1 w-16 shrink-0 overflow-hidden rounded-full">
 				<span
 					className="h-full w-(--share) bg-(--share-color)"
 					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
 				/>
 			</span>
 			{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
-			<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-muted-foreground type-mono w-12 shrink-0 text-right tabular-nums">
 				{Option.getOrElse(
 					Option.map(
 						Option.filter(props.sum, sum => sum.tokens > 0),
@@ -295,7 +290,7 @@ function ShareRow(props: {
 					() => '—'
 				)}
 			</span>
-			<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="type-mono w-16 shrink-0 text-right tabular-nums">
 				{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
 			</span>
 		</Row>
@@ -389,7 +384,7 @@ function UsageChart(props: {
 					)}
 					interval={0}
 					tickLine={false}
-					axisLine={false}
+					axisLine={{stroke: 'var(--border)'}}
 					tickMargin={8}
 					tickFormatter={tickLabel(props.range)}
 				/>
@@ -452,11 +447,14 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance; a desktop adds the daily average.
+// The period at a glance; spend is the one figure at 48px, the rest keep the page's 32px scale.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
+		<div className="flex flex-wrap items-end gap-x-8 gap-y-4 border-b pb-4">
+			<span className="flex flex-col gap-1.5 whitespace-nowrap">
+				<span className="type-figure-lg">{cost(props.report.totals.costUsd)}</span>
+				<span className="type-label text-muted-foreground">Spent</span>
+			</span>
 			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
 			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
 			<span className="max-sm:hidden">
@@ -668,16 +666,16 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 					)
 				})}
 			>
-				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
+				<span className="type-body w-28 min-w-0 shrink-0 truncate font-medium">{PROVIDER_NAMES[props.provider]}</span>
 				<span
 					className={cn(
-						'min-w-0 flex-1 truncate font-mono text-xs',
+						'type-mono min-w-0 flex-1 truncate',
 						Boolean.match(rejected, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-destructive'})
 					)}
 				>
 					{detail}
 				</span>
-				<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
+				<span className="type-mono w-16 shrink-0 text-right tabular-nums">{props.spent}</span>
 				<span className="flex size-3 shrink-0 items-center justify-center">
 					<StatusDot
 						status={Option.match(props.info, {

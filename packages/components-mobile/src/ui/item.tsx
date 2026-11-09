@@ -20,10 +20,10 @@ import {colors, space, text} from '#components/theme.ts'
 
 // shadcn's Item on iOS by the same names; a caller's modifiers come first, so they win over the defaults like a className.
 
-// Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
+// Row modifiers for an ItemGroup; 48pt keeps the system's touch rhythm while larger Dynamic Type reads.
 export const itemRow = [
-	frame({minHeight: 56}),
-	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
+	frame({minHeight: 48}),
+	listRowInsets({bottom: space[3], leading: space[5], top: space[3], trailing: space[5]})
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {

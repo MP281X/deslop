@@ -1,10 +1,6 @@
 @import '@deslop/components-web/theme.css';
 @source '../../../../packages/components-web/src/**/*.tsx';
 
-:root {
-	--primary: var(--cyan);
-}
-
 /* Where a span ran, in its operation's device icon and its bar: server blue, browser pink, iOS amber, CI violet. */
 [data-side='server'] {
 	--side: var(--blue);

@@ -169,18 +169,16 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-accent/40 type-body flex h-16 min-w-0 items-center gap-3 px-1 max-sm:h-14"
 						/>
 					}
 				>
 					<ClientIcon client={props.client.client} />
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					<span className="type-mono text-muted-foreground shrink-0 tabular-nums">{active}</span>
 					{Option.match(address, {
 						onNone: () => null,
-						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
-						)
+						onSome: value => <span className="type-mono text-muted-foreground shrink-0 max-sm:hidden">{value}</span>
 					})}
 				</ContextMenuTrigger>
 				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
@@ -205,10 +203,10 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="bg-card border-border flex flex-col gap-5 rounded-xs border p-6">
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+				<h2 className="type-display-sm">A sign-in is waiting</h2>
+				<span className="type-mono text-muted-foreground tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>
 			</div>
@@ -314,28 +312,30 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 	const data = useAtomSuspense(signInListAtom).value
 	const clients = clientsOf(data.signIns, data.catalog)
 	return (
-		<Section
-			title="Signed in"
-			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
-			className="gap-0"
-		>
-			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
-			{Array.match(clients, {
-				onEmpty: () => (
-					<EmptyState
-						label="No sign-ins"
-						description="A browser, app or command appears here once it signs in."
-						icon={<HardDrivesIcon className="size-5" weight="light" />}
-					/>
-				),
-				onNonEmpty: rows => (
-					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
-						))}
-					</div>
-				)
-			})}
-		</Section>
+		<>
+			<div className="flex items-baseline gap-3 pb-1">
+				<span className="type-figure-lg">{clients.length}</span>
+				<span className="type-label text-muted-foreground">signed in</span>
+			</div>
+			<Section title="Clients" className="gap-3">
+				{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
+				{Array.match(clients, {
+					onEmpty: () => (
+						<EmptyState
+							label="No sign-ins"
+							description="A browser, app or command appears here once it signs in."
+							icon={<HardDrivesIcon className="size-5" weight="light" />}
+						/>
+					),
+					onNonEmpty: rows => (
+						<div role="list" aria-label="Signed-in clients">
+							{Array.map(rows, client => (
+								<ClientRow key={client.label} client={client} now={data.now} />
+							))}
+						</div>
+					)
+				})}
+			</Section>
+		</>
 	)
 }

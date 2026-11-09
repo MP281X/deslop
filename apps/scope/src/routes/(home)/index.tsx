@@ -223,7 +223,7 @@ type DetailLine = {failed: boolean; key: string; value: string}
 // A key over its value so a long key or URL never truncates; short pairs share a row, so the inspector fills its width before it scrolls.
 function DetailLines(props: {lines: readonly DetailLine[]}) {
 	return (
-		<dl className="grid-cols-attributes grid gap-x-6 pb-1 font-mono text-xs">
+		<dl className="grid-cols-attributes type-mono grid gap-x-6 pb-1">
 			{Array.map(props.lines, (line, index) => (
 				<div
 					key={`${line.key}:${index}`}
@@ -352,11 +352,11 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="bg-border/50 relative mx-2 h-2 flex-1 overflow-hidden rounded-full">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+						'absolute top-0 left-(--offset) h-2 w-(--length) min-w-0.5 rounded-full',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -365,7 +365,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					}}
 				/>
 			</span>
-			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+			<span className="text-muted-foreground type-mono w-14 shrink-0 text-right whitespace-nowrap tabular-nums">
 				{durationOf(props.span.durationMs)}
 			</span>
 			{Option.match(Option.fromUndefinedOr(props.open), {
@@ -416,19 +416,19 @@ function SpanRow(props: {
 	const open = props.focus === props.span.spanId
 	if (!hasDetail(props.span)) {
 		return (
-			<div className="list-row flex h-8 w-full items-center gap-1 px-3 text-xs max-sm:h-12 pointer-coarse:h-12">
+			<div className="list-row flex h-9 w-full items-center gap-1 px-3 max-sm:h-14 pointer-coarse:h-14">
 				<SpanLine mark={props.mark(props.span)} span={props.span} />
 			</div>
 		)
 	}
 	return (
-		<div data-selected={open} className="list-row">
+		<div data-selected={open} className="list-row list-row-selected">
 			<Button
 				size="xs"
-				variant={Boolean.match(open, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
+				variant="row"
 				aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={() => props.onPick(props.span.spanId)}
-				className="h-8 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-9 w-full max-sm:h-14 pointer-coarse:h-14"
 			>
 				<span className="flex w-full min-w-0 items-center gap-1 font-normal tracking-normal normal-case">
 					<SpanLine mark={props.mark(props.span)} span={props.span} open={open} />
@@ -457,7 +457,7 @@ function SpansList(props: {focus: Option.Option<Trace['spans'][number]>; onPick:
 	const focusId = Option.getOrUndefined(Option.map(props.focus, span => span.spanId))
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="flex flex-col pb-2" style={{'--trace-total': `${Number.max(props.trace.durationMs, 1)}`}}>
+			<div className="flex flex-col gap-0.5 pb-2" style={{'--trace-total': `${Number.max(props.trace.durationMs, 1)}`}}>
 				{Option.match(root, {
 					onNone: () => null,
 					onSome: span => <SpanRow focus={focusId} mark={mark} onPick={props.onPick} span={span} />
@@ -578,7 +578,7 @@ function SpansSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Spans" className="flex flex-col pb-2">
 			{Array.map(Array.range(1, 4), row => (
-				<div key={row} aria-hidden className="flex h-8 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-9 items-center gap-3 px-3 max-sm:h-14 pointer-coarse:h-14">
 					<span className="w-40 shrink-0 pl-3 xl:w-80">
 						<Skeleton className="h-3 w-28" />
 					</span>
@@ -624,7 +624,7 @@ function OperationsSkeleton() {
 				<Skeleton className="h-3 w-24" />
 			</div>
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-14 items-center gap-2 px-3 max-sm:h-14 pointer-coarse:h-14">
 					<Skeleton className="size-3.5 shrink-0" />
 					<Skeleton className="h-3.5 min-w-0 flex-1" />
 					<Skeleton className="h-3 w-6 shrink-0" />
@@ -641,7 +641,7 @@ function TracesSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Traces" className="flex flex-col">
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div key={row} aria-hidden className="flex h-14 items-center gap-3 px-3 max-sm:h-14 pointer-coarse:h-14">
 					<Skeleton className="h-3 w-8 shrink-0" />
 					<Skeleton className="h-3 min-w-0 flex-1" />
 					<Skeleton className="size-1.5 shrink-0" />
@@ -676,11 +676,9 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 // An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
+		<div className="bg-background sticky top-0 z-10 flex h-10 shrink-0 items-center gap-2 border-b px-3">
 			<AppMark app={props.app} />
-			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
-				{props.app.name}
-			</span>
+			<span className="type-label text-muted-foreground min-w-0 truncate">{props.app.name}</span>
 		</div>
 	)
 }
@@ -688,17 +686,17 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div role="listitem" className="list-row list-row-selected" data-selected={props.active}>
 			<Button
 				size="xs"
-				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				variant="row"
+				className="h-14 w-full max-sm:h-14 pointer-coarse:h-14"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
+				<span className="flex w-full min-w-0 items-center gap-2 font-sans font-normal tracking-normal normal-case">
 					{DEVICES[props.operation.runtime]}
-					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
+					<span className="type-body min-w-0 flex-1 truncate text-left font-mono">{props.operation.name}</span>
 					{props.operation.failures > 0 && (
 						<span className="flex w-10 shrink-0 justify-end max-sm:w-8">
 							<Badge variant="destructive" className="shrink-0" title={`${props.operation.failures} failed`}>
@@ -709,13 +707,13 @@ function OperationRow(props: {active: boolean; onSelect: () => void; operation: 
 						</span>
 					)}
 					<span
-						className="text-muted-foreground w-10 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-lg:hidden"
+						className="text-muted-foreground type-mono w-10 shrink-0 text-right whitespace-nowrap tabular-nums max-lg:hidden"
 						title="Runs"
 					>
 						{count.format(props.operation.count)}×<span className="sr-only"> runs</span>
 					</span>
 					<span
-						className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:w-12"
+						className="text-muted-foreground type-mono w-14 shrink-0 text-right whitespace-nowrap tabular-nums max-sm:w-12"
 						title="Typical"
 					>
 						<span className="sr-only">typical </span>
@@ -804,17 +802,17 @@ function OperationsPane(props: {
 // One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div role="listitem" className="list-row list-row-selected" data-selected={props.active}>
 			<Button
 				size="xs"
-				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				variant="row"
+				className="h-14 w-full max-sm:h-14 pointer-coarse:h-14"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="flex w-full min-w-0 items-center gap-3 font-normal tracking-normal normal-case">
+				<span className="flex w-full min-w-0 items-center gap-3 font-sans font-normal tracking-normal normal-case">
 					<span
-						className="text-muted-foreground w-10 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums"
+						className="text-muted-foreground type-mono w-10 shrink-0 whitespace-nowrap tabular-nums"
 						title={Option.match(Number.parse(String.slice(0, -6)(props.trace.time)), {
 							onNone: () => '—',
 							onSome: timestamp => clock.format(timestamp)
@@ -822,7 +820,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 					>
 						{ageOf(props.trace.time, props.now)}
 					</span>
-					<span className="text-muted-foreground min-w-0 flex-1 truncate text-left font-mono text-xs">
+					<span className="text-muted-foreground type-mono min-w-0 flex-1 truncate text-left">
 						{String.slice(0, 8)(props.trace.id)}
 					</span>
 					<span className="flex w-4 shrink-0 justify-end">
@@ -837,7 +835,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 							</span>
 						)}
 					</span>
-					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+					<span className="type-mono w-14 shrink-0 text-right whitespace-nowrap tabular-nums">
 						{durationOf(props.trace.durationMs)}
 					</span>
 					<CaretRightIcon className="text-muted-foreground size-3.5 shrink-0 lg:hidden" />
@@ -867,11 +865,25 @@ function TracesPane(props: {
 			actions={Option.match(active, {
 				onNone: () => undefined,
 				onSome: current => (
-					<span className="flex min-w-0 items-center gap-2 max-lg:hidden">
-						<AppMark app={current.app} />
-						<span className="text-muted-foreground max-w-40 truncate font-mono text-xs" title={current.operation.name}>
-							{current.operation.name}
+					<span className="flex min-w-0 items-center gap-8 max-lg:hidden">
+						<span className="flex min-w-0 items-center gap-2">
+							<AppMark app={current.app} />
+							<span className="type-mono text-muted-foreground max-w-40 truncate" title={current.operation.name}>
+								{current.operation.name}
+							</span>
 						</span>
+						{Option.match(
+							Option.orElse(Option.fromUndefinedOr(props.selectedTrace), () => Array.head(current.operation.traces)),
+							{
+								onNone: () => null,
+								onSome: trace => (
+									<span className="flex items-baseline gap-2">
+										<span className="type-label text-muted-foreground">duration</span>
+										<span className="type-figure-md">{durationOf(trace.durationMs)}</span>
+									</span>
+								)
+							}
+						)}
 					</span>
 				)
 			})}
@@ -1121,7 +1133,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function renderPage(children: ReactNode) {
 	return (
-		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+		<Page width="full" className="h-full min-h-0">
 			<h1 className="sr-only">Scope</h1>
 			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
 		</Page>

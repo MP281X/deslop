@@ -14,11 +14,7 @@
 	--color-machine-desktop: var(--machine-desktop);
 }
 
-:root {
-	--primary: var(--blue);
-}
-
-/* Each machine's charts and swatches draw in its own hue; the app's primary stays Deploy's blue. */
+/* Each machine's charts and swatches draw in its own hue; the app's controls stay monochrome. */
 @utility machine {
 	--machine: var(--machine-dev);
 

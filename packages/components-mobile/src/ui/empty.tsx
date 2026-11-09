@@ -21,7 +21,7 @@ export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) 
 			spacing={space[4]}
 			modifiers={[
 				...(props.modifiers ?? []),
-				padding({all: space[8]}),
+				padding({all: space[10]}),
 				frame({maxHeight: Infinity, maxWidth: Infinity}),
 				multilineTextAlignment('center')
 			]}

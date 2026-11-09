@@ -189,7 +189,7 @@ function NoteRow(props: {
 	onRemove: (id: Note['id']) => void
 }) {
 	return (
-		<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
+		<SwipeActions modifiers={[...itemRow, listRowSeparator('hidden'), tag(props.note.id)]}>
 			<ContextMenu>
 				<ContextMenu.Trigger>
 					<Item

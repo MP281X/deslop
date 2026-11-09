@@ -3,12 +3,13 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "#lib/utils.ts"
 
 const toggleVariants = cva(
-  "group/toggle inline-flex items-center justify-center gap-1.5 rounded-none text-xs font-semibold tracking-widest whitespace-nowrap uppercase transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 aria-pressed:bg-muted dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+  "group/toggle inline-flex items-center justify-center gap-1.5 rounded-full font-mono text-[11px] font-medium tracking-[0.12em] whitespace-nowrap transition-colors outline-none hover:bg-accent/60 hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 aria-pressed:bg-accent aria-pressed:text-foreground dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
   {
     variants: {
       variant: {
         default: "bg-transparent",
-        outline: "border border-input bg-transparent hover:bg-muted",
+        outline: "border border-border bg-transparent hover:bg-accent/50 aria-pressed:border-foreground",
+        tab: "relative h-8! rounded-none! border-0 bg-transparent px-0! hover:bg-transparent aria-pressed:bg-transparent aria-pressed:text-foreground max-sm:h-11! after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground after:opacity-0 after:transition-opacity aria-pressed:after:opacity-100"
       },
       size: {
         default:

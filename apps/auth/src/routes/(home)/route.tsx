@@ -99,9 +99,10 @@ function Code(props: {id: string}) {
 	const copied = AsyncResult.isWaiting(copy)
 	return (
 		<>
-			<Button
-				variant="ghost"
+			<button
+				type="button"
 				aria-label={`Copy the code ${requestCode(props.id)}`}
+				className="type-body tracking-label flex items-center gap-2.5 font-mono"
 				onClick={() => copyCode(requestCode(props.id))}
 			>
 				{requestCode(props.id)}
@@ -112,7 +113,7 @@ function Code(props: {id: string}) {
 				<span role="status" className="sr-only">
 					{copied && 'Copied'}
 				</span>
-			</Button>
+			</button>
 			<ResultError result={copy} />
 		</>
 	)
@@ -122,7 +123,7 @@ function Code(props: {id: string}) {
 function Countdown(props: {expiresAt: number}) {
 	const now = useAtomSuspense(secondAtom).value
 	return (
-		<span role="timer" className="text-muted-foreground flex items-center gap-1.5 text-xs">
+		<span role="timer" className="type-mono text-muted-foreground flex items-center gap-1.5">
 			<StatusDot
 				waiting
 				status={Boolean.match(props.expiresAt - now < 60_000, {onFalse: () => 'live', onTrue: () => 'warning'})}
@@ -140,28 +141,31 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
+		<section
+			className="bg-card border-border m-auto flex w-full max-w-3xl flex-col gap-6 rounded-xs border p-6"
+			aria-labelledby="waiting-title"
+		>
 			<header className="flex flex-col gap-2">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
+				<p className="type-label text-muted-foreground">Waiting for approval</p>
 				<h1
 					id="waiting-title"
 					title={`Sign in ${props.request.clientName} on ${props.request.device}`}
-					className="font-heading text-3xl leading-none tracking-tight"
+					className="type-display"
 				>
 					{props.request.clientName}
 				</h1>
-				<p className="text-muted-foreground text-sm">on {props.request.device} · asks to sign in to Deslop</p>
+				<p className="text-muted-foreground type-body">on {props.request.device} · asks to sign in to Deslop</p>
 			</header>
-			<div className="flex items-start gap-5">
+			<div className="flex items-start gap-6">
 				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
+				<span className="bg-background text-foreground border-border shrink-0 rounded-xs border p-2">
 					<QrCode text={approveLink(props.request.id)} className="size-32" />
 				</span>
 				<div className="flex min-w-0 flex-col gap-2">
-					<span className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Code</span>
+					<span className="type-label text-muted-foreground">Code</span>
 					<Code id={props.request.id} />
 					<Countdown expiresAt={props.request.expiresAt} />
-					<p className="text-muted-foreground text-xs leading-relaxed">
+					<p className="text-muted-foreground type-body leading-relaxed">
 						Scan the code from a signed-in phone, or enter this code there.
 					</p>
 				</div>
@@ -376,11 +380,11 @@ function AccountMenu(props: {account: SignedAccount}) {
 // The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-4 border-t pt-6 sm:grid-cols-3">
 			{Array.map(props.apps, app => (
 				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
 					<AppIcon origin={app.origin} small />
-					<span className="truncate text-sm">{app.name}</span>
+					<span className="type-body truncate">{app.name}</span>
 				</span>
 			))}
 		</div>
@@ -397,7 +401,7 @@ function SignIn() {
 	return (
 		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
+			<div className="bg-card border-border flex w-full flex-col gap-5 rounded-xs border p-6">
 				<div className="flex flex-col gap-2">
 					<Button
 						size="lg"
@@ -544,7 +548,7 @@ function Shell() {
 				palette={Option.match(account, {onNone: () => undefined, onSome: () => groups})}
 				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} waiting={waiting} />}
 			/>
-			<Page>
+			<Page width="reading">
 				{signingOut && <SigningOut />}
 				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 				{Option.match(account, {
@@ -567,7 +571,7 @@ function HomeLayout() {
 			fallback={
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
-					<Page>
+					<Page width="reading">
 						<section
 							aria-busy="true"
 							aria-label="Sign in"
@@ -578,7 +582,7 @@ function HomeLayout() {
 								<Skeleton className="h-7 w-52" />
 								<Skeleton className="h-4 w-44" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="border-border flex w-full max-w-sm flex-col gap-2 rounded-xs border p-4">
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />
