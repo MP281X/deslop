@@ -1,0 +1,37 @@
+import {question} from '#lib/question.ts'
+
+export const noMisleadingName = question(
+	'code',
+	'Does a name `code` declares promise something its own value or behavior visibly contradicts?',
+	{
+		message: 'Rename it to say what it is or does.',
+		no: {
+			cases: [
+				'Names that are vague but not wrong',
+				'Names a library or framework fixes, such as a `get` context in an atom or callback, even when it can also write',
+				'A lint check that reports diagnostics or fixes: reporting is part of checking',
+				'A noun-named atom, effect or service that performs the activity it names',
+				'Names inside source text used as test fixtures',
+				'Parameters of short callbacks'
+			],
+			example: `
+				function isExpired(session: Session, now: number) {
+					return session.expiresAt < now
+				}
+			`
+		},
+		yes: {
+			cases: [
+				'A get, find, is, has or to function `code` declares that changes domain state, or returns something other than its name says',
+				'An is, has, can or should name whose value is not a boolean',
+				'A plural name for one item, or a singular name for a collection',
+				'A name stating a unit, type or source the value does not have, such as seconds holding milliseconds'
+			],
+			example: `
+				function isExpired(session: Session, now: number) {
+					return session.expiresAt - now
+				}
+			`
+		}
+	}
+)

@@ -134,14 +134,19 @@ export default defineConfig({
 				cache: false,
 				command: [
 					'vp fmt',
-					// Jev's verdicts for units no cached verdict covers, which the judged lint rules then report; `check` skips it, so CI never calls Jev.
-					"node tools/coding-standards/src/main.cli.ts judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'",
-					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
-					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
-					'vp run fallow'
+					// A leftover autofix cannot clear, from lint or Fallow, ends with the tactics, for the agent fixing it.
+					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**" && vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off && vp run fallow || { node tools/coding-standards/src/main.cli.ts; exit 1; }'
 				]
 			},
-			test: 'vp run -r --parallel test'
+			// Jev's questions over the formatted, linted repository after `fix`; its answers live in the user's own cache, so `check` and CI never judge.
+			judge: {
+				cache: false,
+				command:
+					"node tools/coding-standards/src/main.cli.ts --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
+			},
+			test: 'vp run -r --parallel test',
+			// The gate before every commit: each step runs only once the one before it passes.
+			verify: {cache: false, command: ['vp run fix', 'vp run judge', 'vp run test']}
 		}
 	},
 	// Each package's test script runs Vitest with this config from its own directory; a package's config holds no test settings.

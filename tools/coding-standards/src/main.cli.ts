@@ -2,43 +2,20 @@
 
 import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Console, Effect, pipe} from 'effect'
+import {Boolean, Console, Effect, Layer, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
+import {judge, layerCache} from '#judge.ts'
 import packageJson from '#package.json' with {type: 'json'}
 
-import {examples, judge} from '#judge/service.ts'
-import {signIn} from '#judge/session.ts'
+import {signIn} from '#lib/session.ts'
 
-const INSTRUCTIONS = `# Lint tactics
-
-When \`vp run fix\` leaves a diagnostic, apply these before changing the design.
-
-**Converge.** Let autofix handle mechanical rewrites; batch the remaining diagnostics. Use these examples when the corresponding diagnostic fires.
-
-**Inline safely.** Preserve evaluation order and receiver binding:
-
-\`\`\`diff
--const value = store.get(key)
--return value
-+return store.get(key)
-\`\`\`
-
-**Order, not architecture.** A use-before-definition diagnostic needs the dependency moved, not a new module or a mutable placeholder:
-
-\`\`\`diff
--export function total(amount: number) { return fee(amount) + amount }
- export function fee(amount: number) { return amount * 0.2 }
-+export function total(amount: number) { return fee(amount) + amount }
-\`\`\`
-
-**Fix the cause.** If a diagnostic survives, inspect the applied diff and the rule's premise before changing the design. Delete a whole unused declaration, not just its header. Preserve resource lifetime.
-
-**No camouflage.** No casts, wrappers, spreads, suppressions or file splits merely to pass. Use documented exceptions with their required reason. If the intended form is rejected, show it beside a genuinely invalid counterexample before changing policy.
-
-**Judged rules.** A message ending in "Judged 0.87" is Jev's answer about that one function, component or test, read without the rest of the codebase. Fix what it names; when the judgement lacks context the code cannot carry, put \`// judge-ignore <rule> -- <reason>\` in the comment above it. \`deslop-coding-standards judge\` fills the verdicts before lint; without a sign-in it asks for one, which the agent approves with Auth's \`answer_request\`.
-`
+// Printed after lint leaves a diagnostic, for the agent fixing it; autofix has already run.
+const TACTICS = `Fix each diagnostic at the cause its message names:
+- No cast, wrapper, spread, suppression or file split just to pass; a documented exception carries its reason.
+- Inline in evaluation order; move a declaration used before its definition up, never into a new module.
+- Delete a whole unused declaration, never only its header.`
 
 const urls = {
 	auth: pipe(
@@ -54,44 +31,27 @@ const urls = {
 }
 
 const cli = pipe(
-	Command.make('deslop-coding-standards', {}, () => Console.log(INSTRUCTIONS)),
-	Command.withDescription('Lint tactics for a diagnostic `vp run fix` leaves, and the judge that fills judged rules.'),
-	Command.withSubcommands([
-		pipe(
-			Command.make(
-				'judge',
-				{
-					...urls,
-					all: pipe(
-						Flag.Boolean('all'),
-						Flag.withDescription('Judge every unit of the checkout, not only those changed since --base'),
-						Flag.withDefault(false)
-					),
-					base: pipe(
-						Flag.String('base'),
-						Flag.withDescription('The branch the change started from; units unchanged since it stay unjudged'),
-						Flag.withDefault('origin/HEAD')
-					),
-					examples: pipe(
-						Flag.Boolean('examples'),
-						Flag.withDescription('Ask each question about its own examples instead of judging the checkout'),
-						Flag.withDefault(false)
-					),
-					ignore: pipe(
-						Flag.String('ignore'),
-						Flag.withDescription('A glob of tracked files to leave unjudged, as lint ignores them'),
-						Flag.atLeast(0)
-					)
-				},
-				Effect.fnUntraced(function* (input) {
-					if (input.examples) return yield* examples(input)
-					return yield* judge(input, input.ignore, input)
-				})
+	Command.make(
+		'coding-standards',
+		{
+			...urls,
+			ignore: pipe(
+				Flag.String('ignore'),
+				Flag.withDescription('With --judge, a glob of files to leave unjudged, as lint ignores them'),
+				Flag.atLeast(0)
 			),
-			Command.withDescription(
-				'Judge each function, component and test case changed since --base that no cached verdict covers'
+			judge: pipe(
+				Flag.Boolean('judge'),
+				Flag.withDescription(
+					'Ask every function, component and test case the questions no cached answer covers, and report what breaks one'
+				),
+				Flag.withDefault(false)
 			)
-		),
+		},
+		input => Boolean.match(input.judge, {onFalse: () => Console.log(TACTICS), onTrue: () => judge(input, input.ignore)})
+	),
+	Command.withDescription('Lint tactics for a diagnostic lint leaves; `--judge` asks Jev what lint cannot see.'),
+	Command.withSubcommands([
 		pipe(
 			Command.make('sign-in', urls, signIn),
 			Command.withDescription('Sign the judge in to Gateway once per machine')
@@ -100,4 +60,9 @@ const cli = pipe(
 	Command.run({version: packageJson.version})
 )
 
-NodeRuntime.runMain(Effect.provide(cli, [NodeServices.layer, NodeHttpClient.layerNodeHttp, NodeCrypto.layer]))
+NodeRuntime.runMain(
+	Effect.provide(
+		cli,
+		Layer.provideMerge(layerCache, Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerNodeHttp, NodeCrypto.layer))
+	)
+)

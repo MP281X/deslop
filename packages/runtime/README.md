@@ -1,6 +1,6 @@
 # Deslop app runtime
 
-Every Deslop app is one npm package with the same command line.
+Every Deslop app uses the same command line.
 
 ```bash
 npm install --global @deslop/<app>
@@ -9,4 +9,4 @@ npm install --global @deslop/<app>
 <app> service status | update | uninstall
 ```
 
-`<app> --help` lists flags, environment names in brackets and defaults, including the app's own settings. Secrets go in `~/.deslop/<app>.env`, and data lives in `~/.deslop/<app>/`.
+Run `<app> --help` to list settings. Root `AGENTS.md` holds the repository's data and secrets policy.
