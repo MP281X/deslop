@@ -1,8 +1,8 @@
-import {Boolean, Clock, Effect, Option, Redacted, Schema, Stream, pipe} from 'effect'
+import {Boolean, Clock, Effect, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {AsyncResult, Atom, AtomRpc, Reactivity} from 'effect/reactivity'
+import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -30,15 +30,6 @@ export const serversAtom = Atom.keepAlive(
 			get,
 			Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))),
 			WebRuntime.reconnecting
-		)
-	)
-)
-
-// Every tool call through the gateway, numbered, so a server called twice in a row lights twice.
-const callsAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		Stream.zipWithIndex(
-			WebRuntime.reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.calls', undefined))))
 		)
 	)
 )
