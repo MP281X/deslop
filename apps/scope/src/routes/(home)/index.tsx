@@ -40,7 +40,17 @@ import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {ageOf, durationOf, navigationOf, nextSearch, nowAtom, overviewAtom, Search, traceAtom} from '#lib/utils.ts'
+import {
+	ageOf,
+	durationOf,
+	navigationOf,
+	nextSearch,
+	nowAtom,
+	openingApp,
+	overviewAtom,
+	Search,
+	traceAtom
+} from '#lib/utils.ts'
 import type {NavigationEvent, OperationKey} from '#lib/utils.ts'
 import icon from '#routes/icon.svg'
 import {appName} from '#services/telemetry/lib/utils.ts'
@@ -145,15 +155,12 @@ function EmptyIcon() {
 	return <img src={icon} alt="" className="pixelated size-8 opacity-50" />
 }
 
-// The operations rows' geometry while the overview loads: the 16px mark at the gutter, the name, then the same figure columns.
+// The operations rows' geometry while the overview loads: the name at the gutter, then the same figure columns.
 function OperationsSkeleton(props: {label: string}) {
 	return (
 		<div aria-busy="true" aria-label={props.label} role="status">
 			{Array.map(Array.range(1, 8), row => (
 				<Item key={row} aria-hidden size="row">
-					<ItemMedia>
-						<Skeleton className="size-4" />
-					</ItemMedia>
 					<ItemContent>
 						<Skeleton className="h-3 w-2/5" />
 					</ItemContent>
@@ -348,7 +355,7 @@ function WaterfallGlyph() {
 	return <ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
 }
 
-// The bar's app filter: one mark per app, no All; no tab is active while every app shows, and the active tab clears the filter.
+// The bar's app choice: one mark per app; one is always chosen, and choosing the chosen tab again does nothing.
 function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 	return (
 		<AppBarTabs value={props.source ?? ''}>
@@ -361,6 +368,9 @@ function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 							to="/"
 							aria-label={app.name}
 							search={previous => nextSearch(previous, {_tag: 'Source', app: app.name})}
+							onClick={event => {
+								if (app.name === props.source) event.preventDefault()
+							}}
 						/>
 					}
 				>
@@ -385,11 +395,11 @@ function latestOf(operation: Operation) {
 	})
 }
 
-// One list of operations, narrowed to the chosen app: failing first, then most recent.
+// One app's operations: failing first, then most recent.
 function operationsOf(overview: Overview, source?: string) {
 	return Array.sort(
 		Array.flatMap(
-			Array.filter(overview.apps, (app: Overview['apps'][number]) => source === undefined || app.name === source),
+			Array.filter(overview.apps, (app: Overview['apps'][number]) => app.name === source),
 			(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
 		),
 		Order.combine(
@@ -407,14 +417,8 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode}) {
 	})
 }
 
-// One operation: its app's mark, its name and side when two rows share it, then errors, runs and typical duration.
-function OperationRow(props: {
-	active: boolean
-	app: Overview['apps'][number]
-	duplicate: boolean
-	onSelect: () => void
-	operation: Operation
-}) {
+// One operation: its name and side when two rows share it, then errors, runs and typical duration.
+function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () => void; operation: Operation}) {
 	const side = SIDES[props.operation.runtime]
 	return (
 		<div role="listitem">
@@ -426,7 +430,7 @@ function OperationRow(props: {
 						type="button"
 						aria-label={Array.join(
 							[
-								`${props.app.name} ${props.operation.name}`,
+								props.operation.name,
 								...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
 								...Boolean.match(props.operation.failures > 0, {
 									onFalse: () => [],
@@ -442,9 +446,6 @@ function OperationRow(props: {
 					/>
 				}
 			>
-				<ItemMedia>
-					<AppMark app={props.app} />
-				</ItemMedia>
 				<ItemContent>
 					<ItemTitle title={props.operation.name}>
 						{props.operation.name}
@@ -506,7 +507,6 @@ function OperationsPane(props: {
 														props.activeKey.runtime === row.operation.runtime &&
 														props.activeKey.name === row.operation.name
 													}
-													app={row.app}
 													duplicate={Option.exists(Record.get(names, row.operation.name), group => group.length > 1)}
 													onSelect={() => props.onSelect(row.app.name, row.operation)}
 													operation={row.operation}
@@ -1231,7 +1231,6 @@ function Home() {
 	const isWide = useMediaQuery('(width >= 100rem)')
 	const search = route.useSearch()
 	const navigation = navigationOf(search)
-	const source = search.source
 	const navigate = route.useNavigate()
 	function send(event: NavigationEvent) {
 		navigate({search: previous => nextSearch(previous, event)})
@@ -1244,9 +1243,26 @@ function Home() {
 	const blockingFailure = Option.filter(AsyncResult.cause(overview), () => Option.isNone(value))
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 
+	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
+	const source = Option.getOrUndefined(
+		Option.orElse(
+			Option.filter(Option.fromUndefinedOr(search.source), name =>
+				Option.exists(value, current => Array.some(current.apps, app => app.name === name))
+			),
+			() => Option.flatMap(value, openingApp)
+		)
+	)
+	useEffect(() => {
+		if (source === undefined || search.source === source) return
+		navigate({replace: true, search: previous => nextSearch(previous, {_tag: 'Source', app: source})})
+	}, [navigate, search.source, source])
+
 	const activeOperation = Option.orElse(
-		Option.flatMap(Option.fromUndefinedOr(navigation.selection?.operation), key =>
-			Option.flatMap(value, current => findOperation(current, key))
+		Option.filter(
+			Option.flatMap(Option.fromUndefinedOr(navigation.selection?.operation), key =>
+				Option.flatMap(value, current => findOperation(current, key))
+			),
+			active => active.app.name === source
 		),
 		() =>
 			Boolean.match(isMobile, {

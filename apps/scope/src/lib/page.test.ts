@@ -243,7 +243,7 @@ it.effect(
 )
 
 it.effect(
-	'lists every app as one list, failing first then most recent, with a side glyph only for a shared name',
+	'lists the chosen app’s operations, failing first, with a side glyph only for a shared name',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
@@ -305,23 +305,21 @@ it.effect(
 						]
 					}
 				]
-			})
+			}),
+			'/?source=stash'
 		)
-		for (const pair of [
-			{after: '>deploy.idle<', before: 'gateway.fail'},
-			{after: '>gateway.idle<', before: '>deploy.idle<'},
-			{after: 'notes.search', before: '>gateway.idle<'}
-		]) {
-			assert.isBelow(
-				Option.getOrThrow(String.indexOf(pair.before)(html)),
-				Option.getOrThrow(String.indexOf(pair.after)(html))
-			)
-		}
-		assert.notInclude(html, '>deploy<')
+		assert.notInclude(html, '>deploy.idle<')
+		assert.notInclude(html, '>gateway.idle<')
+		assert.notInclude(html, '>gateway.fail<')
+		assert.isBelow(
+			Option.getOrThrow(String.indexOf('aria-label="notes.search, server')(html)),
+			Option.getOrThrow(String.indexOf('aria-label="notes.search, web')(html))
+		)
 		assert.include(html, 'aria-label="deploy"')
 		assert.include(html, 'aria-label="stash"')
-		assert.include(html, 'stash notes.search, server')
-		assert.include(html, 'stash notes.search, web')
+		assert.include(html, 'aria-label="notes.search, server')
+		assert.include(html, 'aria-label="notes.search, web')
+		assert.notInclude(html, 'aria-label="stash notes.search')
 		assert.include(html, 'size-3')
 	})
 )
@@ -366,6 +364,96 @@ it.effect(
 		assert.notInclude(html, '>deploy.only<')
 		assert.include(html, '>stash.only<')
 		assert.include(html, 'aria-label="stash"')
+	})
+)
+
+it.effect(
+	'opens the app with the newest failed trace, else the first tab',
+	Effect.fnUntraced(function* () {
+		const failing = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'stash.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 1,
+								name: 'deploy.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, failure: {message: 'old', span: 'run'}, id: ID, time: '1781850000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'gateway',
+						operations: [
+							{
+								count: 1,
+								failures: 1,
+								name: 'gateway.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, failure: {message: 'new', span: 'run'}, id: ID, time: '1781860000000000000'}]
+							}
+						]
+					}
+				]
+			})
+		)
+		assert.include(failing, '>gateway.only<')
+		assert.notInclude(failing, '>stash.only<')
+		assert.notInclude(failing, '>deploy.only<')
+		const quiet = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'stash.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'deploy.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, id: ID, time: '1781850000000000000'}]
+							}
+						]
+					}
+				]
+			})
+		)
+		assert.include(quiet, '>stash.only<')
+		assert.notInclude(quiet, '>deploy.only<')
 	})
 )
 
