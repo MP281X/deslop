@@ -42,7 +42,8 @@ import {
 	live,
 	signedInApps,
 	matchingRedirect,
-	sameOwner
+	sameOwner,
+	storedOrigin
 } from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
@@ -293,11 +294,10 @@ export class Tokens extends Context.Service<
 				)
 				const grant: Grant = {
 					client: clientLabel(request.clientName),
-					createdAt: now,
 					credential: {_tag: 'App', clientId: request.clientId, generation: 0, replaced: [], ...minted.refresh},
 					device: deviceLabel(origin),
 					lastActive: now,
-					origin,
+					origin: storedOrigin(origin),
 					...Struct.pick(request, ['parent']),
 					...owner
 				}
@@ -434,7 +434,7 @@ export class Tokens extends Context.Service<
 									// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
 									device: deviceLabel(origin),
 									lastActive: now,
-									origin
+									origin: storedOrigin(origin)
 								}
 							}
 						] as const
@@ -603,11 +603,10 @@ export class Tokens extends Context.Service<
 								...retained,
 								[family]: {
 									client: browserLabel(origin),
-									createdAt: now,
 									credential: {_tag: 'Browser' as const, expiresAt: now + seconds * 1000, hash: sessionHash, via},
 									device: deviceLabel(origin),
 									lastActive: now,
-									origin,
+									origin: storedOrigin(origin),
 									...owner
 								}
 							}

@@ -156,9 +156,7 @@ export class Passkeys extends Context.Service<
 								{
 									addedFrom: `${browserLabel(from)} · ${deviceLabel(from)}`,
 									counter: credential.counter,
-									createdAt: now,
 									id: credential.id,
-									lastUsed: now,
 									publicKey: Base64Url.encode(credential.publicKey),
 									synced: verified.registrationInfo.credentialDeviceType === 'multiDevice',
 									transports,
@@ -176,13 +174,7 @@ export class Passkeys extends Context.Service<
 					Stream.map(SubscriptionRef.changes(state), current =>
 						Array.map(
 							Array.filter(current, found => sameOwner(found, owner)),
-							found => ({
-								addedFrom: found.addedFrom,
-								createdAt: found.createdAt,
-								id: found.id,
-								lastUsed: found.lastUsed,
-								synced: found.synced
-							})
+							found => ({addedFrom: found.addedFrom, id: found.id, synced: found.synced})
 						)
 					),
 				registration: Effect.fn('Passkeys.registration')(function* (owner: CredentialOwner, via: SessionVia) {
@@ -269,11 +261,7 @@ export class Passkeys extends Context.Service<
 						Effect.succeed(
 							Array.map(current, stored => {
 								if (stored.id !== found.id) return stored
-								return {
-									...stored,
-									counter: Number.max(stored.counter, verified.authenticationInfo.newCounter),
-									lastUsed: now
-								}
+								return {...stored, counter: Number.max(stored.counter, verified.authenticationInfo.newCounter)}
 							})
 						)
 					)

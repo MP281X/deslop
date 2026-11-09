@@ -115,11 +115,14 @@ export const Origin = Schema.Struct({
 export type SessionVia = typeof SessionVia.Type
 export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
 
+// Only the address a sign-in came from is read again; the user agent labels it when it is made.
+export type StoredOrigin = typeof StoredOrigin.Type
+export const StoredOrigin = Schema.Struct({address: Schema.optionalKey(Schema.String)})
+
 export type Grant = typeof Grant.Type
 export const Grant = Schema.Struct({
 	...CredentialOwner.fields,
 	client: Schema.String,
-	createdAt: Schema.Finite,
 	credential: Schema.TaggedUnion({
 		// Keep every spent refresh token's hash until the family ends.
 		App: {
@@ -133,7 +136,7 @@ export const Grant = Schema.Struct({
 	}),
 	device: Schema.String,
 	lastActive: Schema.Finite,
-	origin: Origin,
+	origin: StoredOrigin,
 	parent: Schema.optionalKey(Schema.NonEmptyString)
 })
 
@@ -144,9 +147,7 @@ export type SignedInApp = typeof SignedInApp.Type
 export const SignedInApp = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
 	client: Schema.String,
-	createdAt: Schema.Finite,
 	device: Schema.String,
-	expiresAt: Schema.Finite,
 	family: Schema.NonEmptyString,
 	kind: Schema.Literals(['App', 'Browser']),
 	lastActive: Schema.Finite,

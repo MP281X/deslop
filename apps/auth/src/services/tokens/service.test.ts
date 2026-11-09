@@ -77,7 +77,6 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 			const grant = {
 				...USER,
 				client: 'Fixture',
-				createdAt: 0,
 				credential: {
 					_tag: 'App' as const,
 					clientId: 'fixture',

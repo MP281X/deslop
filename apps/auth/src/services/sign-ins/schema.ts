@@ -9,7 +9,6 @@ export type PendingAuthorization = typeof PendingAuthorization.Type
 export const PendingAuthorization = Schema.Struct({
 	address: Schema.optionalKey(Schema.String),
 	clientName: Schema.String,
-	createdAt: Schema.Finite,
 	device: Schema.String,
 	expiresAt: Schema.Finite,
 	id: Schema.NonEmptyString,

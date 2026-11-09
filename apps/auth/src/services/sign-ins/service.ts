@@ -360,7 +360,6 @@ export class SignIns extends Context.Service<
 									kind: 'App' as const
 								})
 							}),
-							createdAt: now,
 							// The machine's lifetime timer.
 							expiresAt: now + 10 * 60_000,
 							id: code
