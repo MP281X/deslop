@@ -8,6 +8,7 @@
 	},
 	"exports": {
 		"./app-bar": "./src/app-bar.tsx",
+		"./apps": "./src/apps.ts",
 		"./fallbacks": "./src/fallbacks.tsx",
 		"./icons": "./src/icons.tsx",
 		"./item-list": "./src/item-list.tsx",

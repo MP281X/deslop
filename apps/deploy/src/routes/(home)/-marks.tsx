@@ -2,6 +2,7 @@ import {Array, Boolean, Option, String} from 'effect'
 
 import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
+import {appMarks} from '@deslop/components-web/apps'
 import {Bun} from '@deslop/components-web/ui/svgs/bun'
 import {Cloudflare} from '@deslop/components-web/ui/svgs/cloudflare'
 import {Docker} from '@deslop/components-web/ui/svgs/docker'
@@ -14,17 +15,6 @@ import {T3Light} from '@deslop/components-web/ui/svgs/t3Light'
 import {TurborepoIconDark} from '@deslop/components-web/ui/svgs/turborepoIconDark'
 import {TurborepoIconLight} from '@deslop/components-web/ui/svgs/turborepoIconLight'
 import {Vite} from '@deslop/components-web/ui/svgs/vite'
-import * as WebRuntime from '@deslop/runtime/web'
-
-import icon from '#routes/icon.svg'
-
-// Vite names Deploy's own mark as a path inside this app, so it joins by name.
-const apps: Record<string, string> = {
-	...WebRuntime.appIcons(
-		import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-	),
-	deploy: icon
-}
 const brands = [
 	{dark: T3Light, light: T3Dark, pattern: /\bt3code\b/u},
 	{dark: Nodejs, light: Nodejs, pattern: /\b(?:node|nodejs)(?:-MainThread)?\b/iu},
@@ -40,7 +30,7 @@ const brands = [
 
 export function ApplicationIcon(props: {name: string; process?: string; container?: boolean; small?: boolean}) {
 	// An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`.
-	const own = apps[String.split(props.name, /[ -]/u)[0]]
+	const own = appMarks[String.split(props.name, /[ -]/u)[0]]
 	const brand = Option.getOrUndefined(
 		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
 	)

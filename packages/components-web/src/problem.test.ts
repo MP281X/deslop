@@ -84,8 +84,8 @@ it.layer(AtomRegistry.layer)(test => {
 			const registry = yield* AtomRegistry.AtomRegistry
 			const first = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(1))
 			const second = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(2))
-			registry.ensureNode(problemSinceAtom(first)).setInitialValue(Option.some(1000), true)
-			registry.ensureNode(problemSinceAtom(second)).setInitialValue(Option.some(2000), true)
+			registry.ensureNode(problemSinceAtom(first)).setInitialValue(Option.some(1000))
+			registry.ensureNode(problemSinceAtom(second)).setInitialValue(Option.some(2000))
 			const aggregate = staleSinceAtom([first, second])
 			const unmount = registry.mount(aggregate)
 			registry.set(

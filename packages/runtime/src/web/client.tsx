@@ -7,7 +7,6 @@ import {
 	MutableRef,
 	Option,
 	Predicate,
-	Record,
 	Schedule,
 	Schema,
 	Stream,
@@ -115,13 +114,6 @@ export function mount<TRouteTree extends AnyRoute & {types: {routerContext: AnyC
 export function searchOf<S extends Schema.Decoder<object>>(schema: S) {
 	return (search: Record<string, unknown>) =>
 		Option.getOrElse(Schema.decodeOption(schema)(search), () => Schema.decodeSync(schema)({}))
-}
-
-// Every app's icon by its folder, from the icon glob a page runs four levels above its own routes.
-export function appIcons(icons: Record<string, string>) {
-	return Record.fromEntries(
-		Array.map(Record.toEntries(icons), entry => [String.split(entry[0], '/')[4] ?? '', entry[1]] as const)
-	)
 }
 
 // A live stream recovers from transport and authorization outages, never a refusal or domain failure.

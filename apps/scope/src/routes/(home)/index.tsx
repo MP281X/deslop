@@ -9,6 +9,7 @@ import {Suspense, useEffect} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
+import {appMarks} from '@deslop/components-web/apps'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListHeading} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -37,7 +38,7 @@ import {
 } from '#lib/utils.ts'
 import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
 import {Icicle, SpansSkeleton, TimeAxis} from '#routes/(home)/-icicle.tsx'
-import {CiMark, DetailSkeleton, marks, SpanDetail} from '#routes/(home)/-span.tsx'
+import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
 
@@ -131,7 +132,7 @@ function TracesSkeleton(props: {label: string}) {
 
 // An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
 function AppMark(props: {app: Overview['apps'][number]}) {
-	return Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
+	return Option.match(Option.fromUndefinedOr(appMarks[props.app.name]), {
 		onNone: () =>
 			Boolean.match(
 				Array.every(props.app.operations, operation => operation.runtime === 'ci'),

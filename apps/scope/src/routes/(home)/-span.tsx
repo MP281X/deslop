@@ -2,11 +2,11 @@ import {Array, Boolean, Number, Option, Record, String} from 'effect'
 
 import {HardDrivesIcon} from '@phosphor-icons/react'
 
+import {appMarks} from '@deslop/components-web/apps'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
-import * as WebRuntime from '@deslop/runtime/web'
 
 import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
@@ -33,10 +33,6 @@ const preciseClock = new Intl.DateTimeFormat(undefined, {
 	minute: '2-digit',
 	second: '2-digit'
 })
-
-export const marks = WebRuntime.appIcons(
-	import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-)
 
 // Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
 function ErrorText(props: {message: string}) {
@@ -71,7 +67,7 @@ export function CiMark() {
 
 // The mark of the app that ran a span: its own icon, GitHub's for CI, else a server glyph.
 function SpanMark(props: {span: Trace['spans'][number]}) {
-	return Option.match(Option.fromUndefinedOr(marks[appName(props.span.service)]), {
+	return Option.match(Option.fromUndefinedOr(appMarks[appName(props.span.service)]), {
 		onNone: () =>
 			Boolean.match(props.span.runtime === 'ci', {
 				onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,

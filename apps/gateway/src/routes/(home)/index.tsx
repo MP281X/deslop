@@ -10,6 +10,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
+import {APP_HUES, appMarks} from '@deslop/components-web/apps'
 import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -46,17 +47,6 @@ import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-// Each app's identity hue; a server without one of these marks stays zinc grey.
-const IDENTITY_HUES: Record<string, string> = {
-	auth: 'var(--slate)',
-	deploy: 'var(--blue)',
-	gateway: 'var(--pink)',
-	opm: 'var(--ivory)',
-	portfolio: 'var(--coral)',
-	scope: 'var(--cyan)',
-	stash: 'var(--amber)',
-	trips: 'var(--orange)'
-}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 type Search = typeof Search.Type
@@ -64,20 +54,12 @@ type Search = typeof Search.Type
 const Search = Schema.Struct({period: Schema.optionalKey(Period)})
 const route = getRouteApi('/(home)/')
 
-// Every app's canonical mark by its folder; Gateway's own mark joins by name.
-const APP_ICONS: Record<string, string> = {
-	...WebRuntime.appIcons(
-		import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-	),
-	gateway: icon
-}
 const count = new Intl.NumberFormat('en')
-const appKey = String.toLowerCase
 
 function serverHue(server: ConnectionInfo) {
-	const key = appKey(server.id)
-	if (APP_ICONS[key] === undefined) return 'var(--muted-foreground)'
-	return IDENTITY_HUES[key] ?? 'var(--muted-foreground)'
+	const key = String.toLowerCase(server.id)
+	if (appMarks[key] === undefined) return 'var(--muted-foreground)'
+	return APP_HUES[key] ?? 'var(--muted-foreground)'
 }
 function urgency(server: ConnectionInfo) {
 	if (server.error !== undefined || server.status === 'Expired') return 0
