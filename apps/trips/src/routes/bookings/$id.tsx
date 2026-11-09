@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Hash, Option} from 'effect'
+import {Array, DateTime, Option} from 'effect'
 
 import {
 	Button,
@@ -16,9 +16,6 @@ import {
 	VStack
 } from '@expo/ui/swift-ui'
 import {
-	Animation,
-	animation,
-	contentTransition,
 	foregroundStyle,
 	frame,
 	labelStyle,
@@ -68,17 +65,7 @@ function Field(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
 		<LabeledContent label={props.label}>
-			<Text
-				modifiers={[
-					text.data,
-					foregroundStyle(colorOf(props.tone)),
-					textSelection(true),
-					contentTransition('numericText'),
-					animation(Animation.snappy(), Hash.string(props.value))
-				]}
-			>
-				{props.value}
-			</Text>
+			<Text modifiers={[text.data, foregroundStyle(colorOf(props.tone)), textSelection(true)]}>{props.value}</Text>
 		</LabeledContent>
 	)
 }
@@ -170,9 +157,7 @@ function Essential(props: {label: string; tone?: Tone; value?: string}) {
 			<Text
 				modifiers={[
 					font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'}),
-					foregroundStyle(colorOf(props.tone)),
-					contentTransition('numericText'),
-					animation(Animation.snappy(), Hash.string(props.value))
+					foregroundStyle(colorOf(props.tone))
 				]}
 			>
 				{props.value}
