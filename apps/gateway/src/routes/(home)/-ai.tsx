@@ -1,8 +1,22 @@
 import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, HashMap, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Cause,
+	HashMap,
+	Match,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schema,
+	String,
+	pipe
+} from 'effect'
 
-import {CubeIcon, KeyIcon, PlusIcon, SparkleIcon, SquaresFourIcon, XIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, CubeIcon, PlusIcon, SparkleIcon, SquaresFourIcon, XIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
@@ -29,13 +43,23 @@ import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
+import {AnthropicBlack} from '@deslop/components-web/ui/svgs/anthropicBlack'
+import {AnthropicWhite} from '@deslop/components-web/ui/svgs/anthropicWhite'
+import {Openai} from '@deslop/components-web/ui/svgs/openai'
+import {OpenaiDark} from '@deslop/components-web/ui/svgs/openaiDark'
+import {Opencode} from '@deslop/components-web/ui/svgs/opencode'
+import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
+import {OpenrouterDark} from '@deslop/components-web/ui/svgs/openrouterDark'
+import {OpenrouterLight} from '@deslop/components-web/ui/svgs/openrouterLight'
 import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {aiKeysAtom, aiUsageAtom, removeKeyAtom, setKeyAtom} from '#lib/utils.ts'
 import type {Period} from '#lib/utils.ts'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
+import icon from '#routes/icon.svg'
 import {AiProvider} from '#services/ai/schema.ts'
 import type {AiKeyInfo, AiUsageCell, AiUsageReport} from '#services/ai/schema.ts'
 
@@ -62,6 +86,13 @@ const PROVIDER_NAMES = {
 	openrouter: 'OpenRouter'
 } satisfies Record<AiProvider, string>
 export const PROVIDERS = AiProvider.literals
+// Every app's canonical mark by its client label; Vite names Gateway's own mark as a path inside this app, so it joins by name.
+const APP_ICONS: Record<string, string> = {
+	...WebRuntime.appIcons(
+		import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
+	),
+	gateway: icon
+}
 const usd = new Intl.NumberFormat('en', {
 	currency: 'USD',
 	maximumFractionDigits: 2,
@@ -90,10 +121,6 @@ function amount(metric: Metric, value: unknown) {
 	if (metric === 'cost') return cost(value)
 	return compact.format(value)
 }
-function share(part: number, whole: number) {
-	if (whole === 0) return 0
-	return part / whole
-}
 
 const appKey = String.toLowerCase
 function appName(app: string) {
@@ -101,8 +128,62 @@ function appName(app: string) {
 	if (identity !== undefined) return identity.name
 	return app
 }
-function colorOf(app: string) {
-	return IDENTITIES[appKey(app)]?.color ?? 'var(--muted-foreground)'
+
+// Each SVGL mark ships light and dark artwork; only the one the appearance calls for is drawn.
+function AnthropicMark() {
+	return (
+		<>
+			<AnthropicBlack aria-hidden className="size-4 dark:hidden" />
+			<AnthropicWhite aria-hidden className="hidden size-4 dark:block" />
+		</>
+	)
+}
+function OpenaiMark() {
+	return (
+		<>
+			<Openai aria-hidden className="size-4 dark:hidden" />
+			<OpenaiDark aria-hidden className="hidden size-4 dark:block" />
+		</>
+	)
+}
+function OpencodeMark() {
+	return (
+		<>
+			<Opencode aria-hidden className="size-4 dark:hidden" />
+			<OpencodeDark aria-hidden className="hidden size-4 dark:block" />
+		</>
+	)
+}
+function OpenrouterMark() {
+	return (
+		<>
+			<OpenrouterLight aria-hidden className="size-4 dark:hidden" />
+			<OpenrouterDark aria-hidden className="hidden size-4 dark:block" />
+		</>
+	)
+}
+function ProviderMark(props: {provider: AiProvider}) {
+	return pipe(
+		Match.value(props.provider),
+		Match.when('anthropic', () => <AnthropicMark />),
+		Match.whenOr('opencode-go', 'opencode-zen', () => <OpencodeMark />),
+		Match.when('openrouter', () => <OpenrouterMark />),
+		Match.exhaustive
+	)
+}
+// An app's own canonical mark, or a window until it loads and when the app has none; no tile behind either.
+function AppMark(props: {app: string}) {
+	const [failed, setFailed] = useState(false)
+	const src = APP_ICONS[appKey(props.app)]
+	if (src === undefined || failed) return <AppWindowIcon className="text-muted-foreground size-4" />
+	return <img src={src} alt="" className="pixelated size-4" onError={() => setFailed(true)} />
+}
+// A model's vendor mark by its family; a model from an unmarked vendor keeps the empty slot.
+function ModelMark(props: {model: string}) {
+	const name = String.toLowerCase(props.model)
+	if (String.startsWith('claude')(name)) return <AnthropicMark />
+	if (String.startsWith('gpt')(name) || Option.isSome(String.match(/^o[134](?:-|$)/u)(name))) return <OpenaiMark />
+	return null
 }
 
 function sums(cells: readonly AiUsageCell[], key: (cell: AiUsageCell) => string) {
@@ -229,14 +310,13 @@ function Row(props: {
 	)
 }
 
-// Swatch, name, share of the shown total, tokens and cost: the same columns in both breakdowns; models keep the slot but carry no swatch.
+// The row's own mark, name, tokens and cost in two tight right-aligned columns.
 function ShareRow(props: {
-	color?: string
 	label: string
+	mark: ReactNode
 	menu?: ReactNode
 	onClick: () => void
 	selected: boolean
-	share: number
 	sum: Option.Option<Sum>
 }) {
 	return (
@@ -247,9 +327,6 @@ function ShareRow(props: {
 			selected={props.selected}
 			trailing={
 				<>
-					<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-						{Number.round(props.share * 100, 0)}%
-					</span>
 					{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
 					<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
 						{Option.getOrElse(
@@ -260,18 +337,14 @@ function ShareRow(props: {
 							() => '—'
 						)}
 					</span>
-					<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
+					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
 						{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
 					</span>
 				</>
 			}
 		>
 			<ItemMedia>
-				<span className="flex w-4 items-center justify-center">
-					{props.color !== undefined && (
-						<span className="size-2.5 bg-(--swatch-color)" style={{'--swatch-color': props.color}} />
-					)}
-				</span>
+				<span className="flex w-4 items-center justify-center">{props.mark}</span>
 			</ItemMedia>
 			<ItemContent>
 				<ItemTitle>{props.label}</ItemTitle>
@@ -316,13 +389,13 @@ function UsageChart(props: {
 		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-40 w-full">
+		<ChartContainer config={config} className="h-30 w-full">
 			<BarChart
 				accessibilityLayer
 				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
 				className="[&_[tabindex]]:outline-hidden"
 				data={rows}
-				margin={{bottom: 0, left: 0, right: 0, top: 4}}
+				margin={{bottom: 0, left: 0, right: 0, top: 0}}
 				onClick={state =>
 					Option.map(
 						Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
@@ -389,7 +462,7 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 		{
 			onNone: () => null,
 			onSome: text => (
-				<div className="flex px-4 pt-3">
+				<div className="flex px-4 py-2">
 					<Button variant="secondary" size="xs" aria-label={`Show all, not only ${text}`} onClick={props.onClear}>
 						{text}
 						<XIcon data-icon="inline-end" />
@@ -400,11 +473,11 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance, with the measure it charts by.
+// The period at a glance on one row, at the rows' own size, with the measure it charts by.
 function Totals(props: {metric: Metric; onMetric: (metric: Metric) => void; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4">
-			<span className="text-2xl font-medium tabular-nums">{cost(props.report.totals.costUsd)}</span>
+		<div className="flex h-8 items-center gap-4 px-4 max-sm:h-11">
+			<span className="font-medium tabular-nums">{cost(props.report.totals.costUsd)}</span>
 			<Stat label="tokens" value={compact.format(props.report.totals.tokens)} />
 			<Stat label="calls" value={count.format(props.report.totals.calls)} />
 			<div className="ml-auto">
@@ -437,8 +510,7 @@ function UsageReport(props: {
 			/>
 		)
 	}
-	const value = measure(props.metric)
-	const byMetric = Order.flip(Order.mapInput(Order.Number, value))
+	const byMetric = Order.flip(Order.mapInput(Order.Number, measure(props.metric)))
 	const allApps = Array.sort(
 		sums(props.report.cells, cell => cell.app),
 		byMetric
@@ -461,8 +533,7 @@ function UsageReport(props: {
 		),
 		byMetric
 	)
-	const appTotal = Number.sumAll(Array.map(appSums, value))
-	const modelTotal = Number.sumAll(Array.map(modelSums, value))
+	// Tapping what is already chosen shows everything again.
 	function toggle(next: Focus) {
 		const same =
 			(next.app !== undefined && next.app === props.focus.app) ||
@@ -472,51 +543,52 @@ function UsageReport(props: {
 	}
 	return (
 		<Card size="list">
-			<div className="flex flex-col pt-4">
-				<Totals metric={props.metric} onMetric={props.onMetric} report={props.report} />
-				<div className="px-4 pt-3">
-					<UsageChart
-						apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
-						metric={props.metric}
-						onBucket={at => toggle({bucket: at})}
-						range={props.range}
-						report={props.report}
-					/>
+			<Totals metric={props.metric} onMetric={props.onMetric} report={props.report} />
+			<div className="px-4">
+				<UsageChart
+					apps={Array.map(allApps, (sum, index) => ({
+						app: sum.name,
+						color: IDENTITIES[appKey(sum.name)]?.color ?? 'var(--muted-foreground)',
+						key: `app${index}`
+					}))}
+					metric={props.metric}
+					onBucket={at => toggle({bucket: at})}
+					range={props.range}
+					report={props.report}
+				/>
+			</div>
+			<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
+			<div className="border-t">
+				<ItemListHeading icon={<SquaresFourIcon />}>Apps</ItemListHeading>
+				<div role="list" aria-label="By app">
+					{Array.map(appSums, sum => (
+						<ShareRow
+							key={sum.name}
+							mark={<AppMark app={sum.name} />}
+							label={appName(sum.name)}
+							onClick={() => toggle({app: sum.name})}
+							selected={props.focus.app === sum.name}
+							sum={Option.some(sum)}
+						/>
+					))}
 				</div>
-				<FocusChip focus={props.focus} bucket={props.range.bucket} onClear={() => props.onFocus({})} />
-				<div className="mt-3 border-t">
-					<ItemListHeading icon={<SquaresFourIcon />}>Apps</ItemListHeading>
-					<div role="list" aria-label="By app">
-						{Array.map(appSums, sum => (
-							<ShareRow
-								key={sum.name}
-								color={colorOf(sum.name)}
-								label={appName(sum.name)}
-								onClick={() => toggle({app: sum.name})}
-								selected={props.focus.app === sum.name}
-								share={share(value(sum), appTotal)}
-								sum={Option.some(sum)}
-							/>
-						))}
-					</div>
-					{Array.isReadonlyArrayNonEmpty(modelSums) && (
-						<>
-							<ItemListHeading icon={<CubeIcon />}>Models</ItemListHeading>
-							<div role="list" aria-label="By model">
-								{Array.map(modelSums, sum => (
-									<ShareRow
-										key={sum.name}
-										label={sum.name}
-										onClick={() => toggle({model: sum.name})}
-										selected={props.focus.model === sum.name}
-										share={share(value(sum), modelTotal)}
-										sum={Option.some(sum)}
-									/>
-								))}
-							</div>
-						</>
-					)}
-				</div>
+				{Array.isReadonlyArrayNonEmpty(modelSums) && (
+					<>
+						<ItemListHeading icon={<CubeIcon />}>Models</ItemListHeading>
+						<div role="list" aria-label="By model">
+							{Array.map(modelSums, sum => (
+								<ShareRow
+									key={sum.name}
+									mark={<ModelMark model={sum.name} />}
+									label={sum.name}
+									onClick={() => toggle({model: sum.name})}
+									selected={props.focus.model === sum.name}
+									sum={Option.some(sum)}
+								/>
+							))}
+						</div>
+					</>
+				)}
 			</div>
 		</Card>
 	)
@@ -582,13 +654,13 @@ function KeyRow(props: {
 				onSome: () => (
 					<>
 						{rejected && <StatusDot status="error" />}
-						<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
+						<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
 					</>
 				)
 			})}
 		>
 			<ItemMedia>
-				<KeyIcon className="text-muted-foreground size-4" />
+				<ProviderMark provider={props.provider} />
 			</ItemMedia>
 			<ItemContent>
 				<ItemTitle>
@@ -671,6 +743,15 @@ export function AiPane(props: {
 			<Suspense
 				fallback={
 					<Card size="list">
+						<ItemListSkeleton label="Keys" media rows={4} />
+					</Card>
+				}
+			>
+				<Keys onAdd={props.onAdd} period={props.period} />
+			</Suspense>
+			<Suspense
+				fallback={
+					<Card size="list">
 						<ItemListSkeleton label="AI usage" media rows={6} />
 					</Card>
 				}
@@ -682,15 +763,6 @@ export function AiPane(props: {
 					onMetric={props.onMetric}
 					period={props.period}
 				/>
-			</Suspense>
-			<Suspense
-				fallback={
-					<Card size="list">
-						<ItemListSkeleton label="Keys" media rows={4} />
-					</Card>
-				}
-			>
-				<Keys onAdd={props.onAdd} period={props.period} />
 			</Suspense>
 		</CatchBoundary>
 	)
