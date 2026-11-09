@@ -138,15 +138,15 @@ export default defineConfig({
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**" && vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off && vp run fallow || { node tools/coding-standards/src/main.cli.ts; exit 1; }'
 				]
 			},
-			// Jev's questions over the formatted, linted repository after `fix`; its answers live in the user's own cache, so `check` and CI never judge.
+			// Jev's questions over the repository after `fix`, run by hand: each costs a model call and its answers live in the user's own cache, so `verify` and CI never judge.
 			judge: {
 				cache: false,
 				command:
 					"node tools/coding-standards/src/main.cli.ts --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
 			},
 			test: 'vp run -r --parallel test',
-			// The gate before every commit: each step runs only once the one before it passes.
-			verify: {cache: false, command: ['vp run fix', 'vp run judge', 'vp run test']}
+			// The gate before every commit; it only reports, and `fix` writes what it can.
+			verify: {cache: false, command: ['vp run check', 'vp run test']}
 		}
 	},
 	// Each package's test script runs Vitest with this config from its own directory; a package's config holds no test settings.
