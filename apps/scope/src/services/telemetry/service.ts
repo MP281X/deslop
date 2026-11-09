@@ -151,7 +151,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Stream.fromEffect(
 						pipe(
 							Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'}),
-							Effect.map(current => overview(current.entries, 20, current.now))
+							Effect.map(current => overview(current.entries, current.now))
 						)
 					),
 					Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))

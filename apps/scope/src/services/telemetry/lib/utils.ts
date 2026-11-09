@@ -29,6 +29,9 @@ import type {
 	Trace
 } from '#services/telemetry/schema.ts'
 
+// Each operation lists this many traces, its newest failures among them.
+const KEEP = 20
+
 // Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
 const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
@@ -492,7 +495,7 @@ function traced(records: readonly Entry[], now: number) {
 	)
 }
 
-function operationsOf(group: readonly Traced[], keep: number) {
+function operationsOf(group: readonly Traced[]) {
 	return Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
 			const times = Array.sort(
 				Array.map(entry[1], item => item.trace.durationMs),
@@ -515,7 +518,7 @@ function operationsOf(group: readonly Traced[], keep: number) {
 											Array.filter(entry[1], item => item.trace.failure !== undefined),
 											Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
 										),
-										keep / 2
+										KEEP / 2
 									),
 									...Array.sort(
 										entry[1],
@@ -524,7 +527,7 @@ function operationsOf(group: readonly Traced[], keep: number) {
 								],
 								(first: Traced, second: Traced) => first.trace.id === second.trace.id
 							),
-							keep
+							KEEP
 						),
 						Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
 					),
@@ -535,7 +538,7 @@ function operationsOf(group: readonly Traced[], keep: number) {
 }
 
 // Apps with failures lead, then the busiest.
-export function overview(entries: readonly Entry[], keep: number, now: number) {
+export function overview(entries: readonly Entry[], now: number) {
 	return {
 		apps: Array.map(
 			Array.sort(
@@ -560,7 +563,7 @@ export function overview(entries: readonly Entry[], keep: number, now: number) {
 					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => group.length)
 				)
 			),
-			group => ({name: Array.headNonEmpty(group).app, operations: operationsOf(group, keep)})
+			group => ({name: Array.headNonEmpty(group).app, operations: operationsOf(group)})
 		)
 	} satisfies Overview
 }
