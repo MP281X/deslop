@@ -1,11 +1,12 @@
 # Auth intent
 
-- Signed in lists one row per client and device, most recently active first: its mark, label, last activity and address when it differs from the device, hidden on phones. Its context menu signs it out from every app at once, without confirmation; a failed sign-out stays under its row.
-- A waiting sign-in's Approve and Deny card leads the section. The code field, with no visible label, stays above the list in the same centred column; rows have edge-to-edge dividers.
-- Apps open from the palette. Rejected: apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
-- The bar's palette lists every app that announced itself, Sign-ins, People for an admin, and signing out of every app; typing filters them. Searching is how the page moves; the client list itself is never narrowed.
+- Signed in is one Card of 48px rows, most recently active first: each client's mark in one 16px slot, label, last activity and address when it differs from the device, hidden on phones. Its context menu signs it out from every app at once, without confirmation; a failed sign-out stays under its row.
+- A waiting sign-in leads that Card, tinted: its app mark, label over the muted code, then Deny and Approve. The code field, with no visible label and a key icon, stays above the Card.
+- Staleness shows once per page, in the bar's Problem: the oldest stale reader of the view and one retry that refreshes them all. Rows stay unmarked.
+- Rejected: apps that open on their sign-ins, devices first, a launcher, an activity feed, a page built around a big code field.
+- The bar switches between Sign-ins and People; signing out of every app stays in the account menu. Rows carry their own actions: a client's context menu signs it out, a member's removes them. The client list itself is never narrowed.
 - A browser's child app sign-ins contribute to its row's latest activity, never rows of their own; signing the browser out ends them all.
-- People are one line each: picture, name, GitHub handle; whoever asks for access leads with Allow and Decline on the row, an admin is marked, a member shows since when and is removed from the row's context menu.
+- People are one Card of 48px rows: square picture, name over the GitHub handle; whoever asks for access leads with Decline and Allow, an admin carries a shield in the app's hue, a member shows since when and is removed from the row's context menu after eight seconds with Undo; a failed removal keeps the row and its reason.
 
 ## Journeys
 

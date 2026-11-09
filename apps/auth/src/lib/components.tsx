@@ -1,25 +1,24 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {useState} from 'react'
+import {useEffect, useState} from 'react'
 import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
+import {Card} from '@deslop/components-web/ui/card'
 import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
-import {FieldDescription} from '@deslop/components-web/ui/field'
-import {Spinner} from '@deslop/components-web/ui/spinner'
+import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {cn} from '@deslop/components-web/utils'
 
 import android from '#lib/brands/android.svg'
@@ -40,6 +39,9 @@ import {
 	minuteAtom,
 	minutesSince,
 	newest,
+	pendingAtom,
+	requestCode,
+	selectedRowAtom,
 	signInLabel
 } from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -149,103 +151,124 @@ type SignedInClient = {
 	lastActive: number
 }
 
-function ClientRow(props: {client: SignedInClient; now: number}) {
-	const [disconnection, disconnect] = useAtom(disconnectAtom(props.client.label))
-	const minutes = minutesSince(props.client.lastActive, props.now)
-	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
+function ClientRow(props: {
+	client: SignedInClient
+	disconnecting: boolean
+	now: number
+	onDisconnect: () => void
+	onSelect: () => void
+	selected: boolean
+}) {
+	const active = ageLabel(minutesSince(props.client.lastActive, props.now))
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
-		<ContextMenu>
-			<div role="listitem" className="border-b">
+		<div role="listitem">
+			<ContextMenu>
 				<ContextMenuTrigger
 					render={
-						<div
-							role="button"
+						<Item
+							size="row"
+							id={`client-${props.client.label}`}
 							tabIndex={0}
-							aria-haspopup="menu"
-							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							data-selected={props.selected}
+							aria-label={`${props.client.label}, active ${active}${Option.match(address, {
+								onNone: () => '',
+								onSome: value => ` · ${value}`
+							})}`}
+							onFocus={props.onSelect}
 						/>
 					}
 				>
-					<ClientIcon client={props.client.client} />
-					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
-					{Option.match(address, {
-						onNone: () => null,
-						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
-						)
-					})}
+					<ItemMedia className="size-4">
+						<ClientIcon client={props.client.client} />
+					</ItemMedia>
+					<ItemContent>
+						<ItemTitle>{props.client.label}</ItemTitle>
+					</ItemContent>
+					<ItemActions>
+						<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
+						<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
+							{Option.getOrElse(address, () => '')}
+						</span>
+					</ItemActions>
 				</ContextMenuTrigger>
-				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
-			</div>
-			<ContextMenuContent className="w-auto min-w-36">
-				<ContextMenuItem
-					variant="destructive"
-					className="max-sm:h-11"
-					disabled={AsyncResult.isWaiting(disconnection)}
-					onClick={() => disconnect(props.client.families)}
-				>
-					Sign out
-				</ContextMenuItem>
-			</ContextMenuContent>
-		</ContextMenu>
+				<ContextMenuContent className="w-auto min-w-36">
+					<ContextMenuItem
+						variant="destructive"
+						className="max-sm:h-11"
+						disabled={props.disconnecting}
+						onClick={props.onDisconnect}
+					>
+						Sign out
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
+		</div>
 	)
 }
 
-function Answer(props: {request: PendingAuthorization}) {
+// The mark of the app or browser that is waiting, from the catalog when it is a Deslop app.
+function PendingMark(props: {catalog: readonly {name: string; origin: string}[]; request: PendingAuthorization}) {
+	return Option.match(
+		Option.map(
+			Array.findFirst(
+				props.catalog,
+				app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)
+			),
+			app => app.origin
+		),
+		{
+			onNone: () =>
+				Boolean.match(props.request.kind === 'Browser', {
+					onFalse: () => <HardDrivesIcon />,
+					onTrue: () => <GlobeIcon />
+				}),
+			onSome: origin => <AppIcon origin={origin} small />
+		}
+	)
+}
+
+// A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
+function PendingRow(props: {
+	catalog: readonly {name: string; origin: string}[]
+	onSelect: () => void
+	request: PendingAuthorization
+	selected: boolean
+}) {
 	const [consent, respond] = useAtom(consentAtom)
-	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
+	const label = signInLabel(props.request.clientName, props.request.device)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
-			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
-					{signInLabel(props.request.clientName, props.request.device)}
-				</span>
-			</div>
-			<FieldDescription>
-				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () =>
-						`Signs ${signInLabel(props.request.clientName, props.request.device)} in as you to every mp281x.xyz app for 30 days`,
-					onTrue: () =>
-						`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
-				})}
-				{Option.match(
-					Option.filter(Option.fromUndefinedOr(props.request.address), address => address !== props.request.device),
-					{onNone: () => '', onSome: address => ` · from ${address}`}
-				)}
-				. Approve only a code you started yourself.
-			</FieldDescription>
-			<ResultError result={consent} />
-			<div className="grid grid-cols-2 gap-2">
-				<Button
-					size="lg"
-					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
-					disabled={waiting}
-					onClick={() => {
-						setChoice(true)
-						respond({accept: true, request: props.request})
-					}}
-				>
-					{Boolean.match(waiting && choice === true, {onFalse: () => null, onTrue: () => <Spinner />})}
-					Approve
-				</Button>
-				<Button
-					size="lg"
-					variant="outline"
-					disabled={waiting}
-					onClick={() => {
-						setChoice(false)
-						respond({accept: false, request: props.request})
-					}}
-				>
-					{Boolean.match(waiting && choice === false, {onFalse: () => null, onTrue: () => <Spinner />})}
-					Deny
-				</Button>
-			</div>
+		<div role="listitem" className={cn('bg-primary/10', props.selected && 'bg-primary/20')}>
+			<Item size="row" id="pending-sign-in" tabIndex={0} onFocus={props.onSelect}>
+				<ItemMedia className="size-4">
+					<PendingMark catalog={props.catalog} request={props.request} />
+				</ItemMedia>
+				<ItemContent>
+					<ItemTitle>{label}</ItemTitle>
+					<ItemDescription>{requestCode(props.request.id)}</ItemDescription>
+				</ItemContent>
+				<ItemActions>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={waiting}
+						aria-label={`Deny ${label}`}
+						onClick={() => respond({accept: false, request: props.request})}
+					>
+						Deny
+					</Button>
+					<Button
+						size="sm"
+						disabled={waiting}
+						aria-label={`Approve ${label}`}
+						onClick={() => respond({accept: true, request: props.request})}
+					>
+						Approve
+					</Button>
+				</ItemActions>
+			</Item>
+			<ResultError result={consent} className="mb-2 ml-9" />
 		</div>
 	)
 }
@@ -305,24 +328,46 @@ const signInListAtom = Atom.make(get =>
 
 export function SignInList(props: {pending: Option.Option<PendingAuthorization>}) {
 	const data = useAtomSuspense(signInListAtom).value
-	const clients = clientsWithChildActivity(data.signIns, data.catalog)
+	const clients = clientsOf(data.signIns, data.catalog)
+	const selected = useAtomValue(selectedRowAtom)
+	const setSelected = useAtomSet(selectedRowAtom)
+	const setPending = useAtomSet(pendingAtom)
+	const [disconnection, disconnect] = useAtom(disconnectAtom)
+	useEffect(() => setPending(props.pending), [props.pending, setPending])
+	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending)) {
+		return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
+	}
 	return (
-		<Section
-			title="Signed in"
-			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
-			className="gap-0"
-		>
-			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
-			{Array.match(clients, {
-				onEmpty: () => <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />,
-				onNonEmpty: rows => (
-					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
-						))}
-					</div>
-				)
-			})}
-		</Section>
+		<>
+			<Card size="list">
+				<div role="list" aria-label="Signed-in clients">
+					{Option.match(props.pending, {
+						onNone: () => null,
+						onSome: request => (
+							<PendingRow
+								catalog={data.catalog}
+								request={request}
+								selected={Option.contains(selected, 'pending-sign-in')}
+								onSelect={() => setSelected(Option.some('pending-sign-in'))}
+							/>
+						)
+					})}
+					{Array.map(clients, client => (
+						<ClientRow
+							key={client.label}
+							client={client}
+							now={data.now}
+							selected={Option.contains(selected, `client-${client.label}`)}
+							onSelect={() => setSelected(Option.some(`client-${client.label}`))}
+							disconnecting={AsyncResult.isWaiting(disconnection)}
+							onDisconnect={() => disconnect(client.families)}
+						/>
+					))}
+				</div>
+			</Card>
+			<div className="px-4">
+				<ResultError result={disconnection} />
+			</div>
+		</>
 	)
 }

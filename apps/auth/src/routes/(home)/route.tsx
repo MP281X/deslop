@@ -1,22 +1,23 @@
-import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
+import {CheckIcon, CopyIcon, HourglassIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useEffect} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import type {PaletteGroup} from '@deslop/components-web/command-palette'
-import {WEB_APPS} from '@deslop/components-web/command-palette'
+import {EmptyState, Error} from '@deslop/components-web/fallbacks'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
+import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
+import {Card} from '@deslop/components-web/ui/card'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -29,14 +30,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle
-} from '@deslop/components-web/ui/empty'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Spinner} from '@deslop/components-web/ui/spinner'
@@ -47,6 +40,7 @@ import {
 	ADDING_PASSKEY,
 	CLIENT_ROWS,
 	accountAtom,
+	appsAtom,
 	approveLink,
 	addPasskeyAtom,
 	catalogAtom,
@@ -63,6 +57,7 @@ import {
 	Search,
 	secondAtom,
 	signInAtom,
+	signInLabel,
 	menuSignOutAtom,
 	signOutAtom
 } from '#lib/utils.ts'
@@ -117,15 +112,12 @@ function Code(props: {id: string}) {
 	)
 }
 
-// Its own component, so only the time re-renders each second; the dot alone turns yellow in the last minute, so the time stays legible.
+// Its own component, so only the time re-renders each second; only the last minute carries the warning dot.
 function Countdown(props: {expiresAt: number}) {
 	const now = useAtomSuspense(secondAtom).value
 	return (
 		<span role="timer" className="text-muted-foreground flex items-center gap-1.5 text-xs">
-			<StatusDot
-				waiting
-				status={Boolean.match(props.expiresAt - now < 60_000, {onFalse: () => 'live', onTrue: () => 'warning'})}
-			/>
+			{props.expiresAt - now < 60_000 && <StatusDot status="warning" />}
 			<span>
 				<span className="font-mono tabular-nums">{leftLabel(props.expiresAt, now)}</span> left
 			</span>
@@ -138,59 +130,49 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
-			<header className="flex flex-col gap-2">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
-				<h1
-					id="waiting-title"
-					title={`Sign in ${props.request.clientName} on ${props.request.device}`}
-					className="font-heading text-3xl leading-none tracking-tight"
-				>
-					{props.request.clientName}
+		<Card className="m-auto w-full" aria-labelledby="waiting-title">
+			<div className="flex flex-col gap-5 px-4">
+				<h1 id="waiting-title" className="font-heading text-3xl leading-none tracking-tight">
+					{signInLabel(props.request.clientName, props.request.device)}
 				</h1>
-				<p className="text-muted-foreground text-sm">on {props.request.device} · asks to sign in to Deslop</p>
-			</header>
-			<div className="flex items-start gap-5">
-				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
-					<QrCode text={approveLink(props.request.id)} className="size-32" />
-				</span>
-				<div className="flex min-w-0 flex-col gap-2">
-					<span className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Code</span>
-					<Code id={props.request.id} />
-					<Countdown expiresAt={props.request.expiresAt} />
-					<p className="text-muted-foreground text-xs leading-relaxed">
-						Scan the code from a signed-in phone, or enter this code there.
-					</p>
+				<div className="flex items-start gap-5">
+					{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
+					<span className="bg-background text-foreground shrink-0 border p-2">
+						<QrCode text={approveLink(props.request.id)} className="size-32" />
+					</span>
+					<div className="flex min-w-0 flex-col gap-2">
+						<Code id={props.request.id} />
+						<Countdown expiresAt={props.request.expiresAt} />
+					</div>
 				</div>
+				{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
+				{props.request.kind === 'App' && (
+					<div className="flex flex-col gap-2 border-t pt-4">
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(passkey)}
+							onClick={() => startPasskey(next)}
+						>
+							<KeyIcon />
+							Approve here with a passkey
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(signIn)}
+							onClick={() => startSignIn()}
+						>
+							<GitHubIcon />
+							Approve here with GitHub
+						</Button>
+					</div>
+				)}
+				<Failures />
 			</div>
-			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
-			{props.request.kind === 'App' && (
-				<div className="flex flex-col gap-2 border-t pt-4">
-					<Button
-						variant="outline"
-						size="sm"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(passkey)}
-						onClick={() => startPasskey(next)}
-					>
-						<KeyIcon />
-						Approve here with a passkey
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(signIn)}
-						onClick={() => startSignIn()}
-					>
-						<GitHubIcon />
-						Approve here with GitHub
-					</Button>
-				</div>
-			)}
-			<Failures />
-		</section>
+		</Card>
 	)
 }
 
@@ -200,26 +182,18 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 		useAtomSuspense(requestAtom(props.id)).value,
 		Match.value,
 		Match.tagsExhaustive({
-			Decided: () => (
-				<Empty role="status">
-					<EmptyHeader>
-						<EmptyTitle>Continuing…</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
-			),
+			Decided: () => <EmptyState label="Continuing" icon={<Spinner />} />,
 			// The link stays expired on every reload, so the way out drops it: Auth's own sign-in, or its sign-ins when signed in.
 			Expired: () => (
-				<Empty role="status">
-					<EmptyHeader>
-						<EmptyTitle>This sign-in expired</EmptyTitle>
-						<EmptyDescription>Start it again in the app or agent that asked.</EmptyDescription>
-					</EmptyHeader>
-					<EmptyContent>
+				<EmptyState
+					label="This sign-in expired"
+					icon={<HourglassIcon className="size-5" weight="light" />}
+					action={
 						<Button variant="outline" onClick={() => location.assign('/')}>
 							Back to Auth
 						</Button>
-					</EmptyContent>
-				</Empty>
+					}
+				/>
 			),
 			Waiting: value =>
 				Option.match(
@@ -227,7 +201,13 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 					{
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
-							<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>
+							<Suspense
+								fallback={
+									<Card>
+										<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />
+									</Card>
+								}
+							>
 								<SignInList pending={Option.some(value.request)} />
 							</Suspense>
 						)
@@ -264,14 +244,7 @@ function Signed(props: {account: SignedAccount}) {
 	return pipe(
 		Match.value(props.account.role),
 		Match.when('Waiting', () => (
-			<Empty role="status">
-				<EmptyHeader>
-					<EmptyMedia>
-						<StatusDot waiting />
-					</EmptyMedia>
-					<EmptyTitle>Waiting for an admin</EmptyTitle>
-				</EmptyHeader>
-			</Empty>
+			<EmptyState label="Waiting for an admin" icon={<HourglassIcon className="size-5" weight="light" />} />
 		)),
 		Match.orElse(() => <Outlet />)
 	)
@@ -374,9 +347,10 @@ function AccountMenu(props: {account: SignedAccount}) {
 	)
 }
 
+// The suite's marks, as its apps announced themselves to Auth.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<div className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
 			{Array.map(props.apps, app => (
 				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
 					<AppIcon origin={app.origin} small />
@@ -394,47 +368,44 @@ function SignIn() {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
+		<section className="flex w-full flex-col gap-4" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
-				<div className="flex flex-col gap-2">
-					<Button
-						size="lg"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(signIn)}
-						onClick={() => startSignIn()}
-					>
-						{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
-						Continue with GitHub
-					</Button>
-					<Button
-						size="lg"
-						variant="outline"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(passkey)}
-						onClick={() => startPasskey(next)}
-					>
-						{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
-						Continue with a passkey
-					</Button>
-					<Button
-						size="lg"
-						variant="ghost"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(codeSignIn)}
-						onClick={() => startCodeSignIn(next)}
-					>
-						Use a sign-in code
-					</Button>
-					<Failures />
+			<Card>
+				<div className="flex flex-col gap-5 px-4">
+					<div className="flex flex-col gap-2">
+						<Button
+							size="lg"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(signIn)}
+							onClick={() => startSignIn()}
+						>
+							{Boolean.match(AsyncResult.isWaiting(signIn), {onFalse: () => <GitHubIcon />, onTrue: () => <Spinner />})}
+							Continue with GitHub
+						</Button>
+						<Button
+							size="lg"
+							variant="outline"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(passkey)}
+							onClick={() => startPasskey(next)}
+						>
+							{Boolean.match(AsyncResult.isWaiting(passkey), {onFalse: () => <KeyIcon />, onTrue: () => <Spinner />})}
+							Continue with a passkey
+						</Button>
+						<Button
+							size="lg"
+							variant="ghost"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(codeSignIn)}
+							onClick={() => startCodeSignIn(next)}
+						>
+							Use a sign-in code
+						</Button>
+						<Failures />
+					</div>
 				</div>
-			</div>
-			<Suite
-				apps={Boolean.match(Array.isReadonlyArrayNonEmpty(apps), {
-					onFalse: () => Array.map(WEB_APPS, app => ({name: app.name, origin: app.url})),
-					onTrue: () => apps
-				})}
-			/>
+			</Card>
+			{Array.isReadonlyArrayNonEmpty(apps) && <Suite apps={apps} />}
 		</section>
 	)
 }
@@ -444,104 +415,63 @@ function SigningOut() {
 	const [signOut, endSession] = useAtom(signOutAtom)
 	useEffect(() => endSession(next), [endSession, next])
 	return Option.match(AsyncResult.error(signOut), {
-		onNone: () => (
-			<Empty role="status">
-				<EmptyHeader>
-					<EmptyTitle>Signing out…</EmptyTitle>
-				</EmptyHeader>
-			</Empty>
-		),
-		onSome: failure => (
-			<Empty role="alert">
-				<EmptyHeader>
-					<EmptyTitle>Sign-out failed</EmptyTitle>
-					<EmptyDescription>{failure.message}</EmptyDescription>
-				</EmptyHeader>
-				<EmptyContent>
-					<Button variant="outline" onClick={() => endSession(next)}>
-						Try again
-					</Button>
-				</EmptyContent>
-			</Empty>
-		)
+		onNone: () => <EmptyState label="Signing out" icon={<Spinner />} />,
+		onSome: failure => <Error error={failure} label="Sign-out failed" reset={() => endSession(next)} />
 	})
 }
 
+// The page shows staleness once, as the oldest stale reader; one retry refreshes them all.
+function PageProblem() {
+	const appsSince = useAtomValue(problemSinceAtom(appsAtom))
+	const catalogSince = useAtomValue(problemSinceAtom(catalogAtom))
+	const peopleSince = useAtomValue(problemSinceAtom(peopleAtom))
+	const refreshApps = useAtomRefresh(appsAtom)
+	const refreshCatalog = useAtomRefresh(catalogAtom)
+	const refreshPeople = useAtomRefresh(peopleAtom)
+	return Option.match(
+		Array.reduce(
+			Array.flatMap([appsSince, catalogSince, peopleSince], Option.toArray),
+			Option.none<number>(),
+			(oldest, value) =>
+				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
+		),
+		{
+			onNone: () => null,
+			onSome: value => (
+				<Problem
+					label="Out of date"
+					warning
+					since={value}
+					reset={() => {
+						refreshApps()
+						refreshCatalog()
+						refreshPeople()
+					}}
+				/>
+			)
+		}
+	)
+}
+
+// A signed-in account switches between its sign-ins and people from the bar; admins also see those waiting.
 function Shell() {
 	const search = route.useSearch()
 	const requestId = Option.fromUndefinedOr(search.request)
 	const signingOut = search['sign-out'] !== undefined
 	const account = useAtomSuspense(accountAtom).value
-	const catalog = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	const people = AsyncResult.getOrElse(useAtomValue(peopleAtom), () => [])
-	const endSession = useAtomSet(menuSignOutAtom)
 	const admin = Option.exists(account, signed => signed.role === 'Admin')
 	const waiting = Array.countBy(people, person => person.role === 'Waiting')
-	const groups: PaletteGroup[] = [
-		{
-			items: Array.map(catalog, app => ({
-				detail: new URL(app.origin).hostname,
-				icon: <AppIcon origin={app.origin} small />,
-				id: app.origin,
-				keywords: app.name,
-				label: app.name,
-				run: () => {
-					location.assign(app.open)
-				}
-			})),
-			label: 'Apps'
-		},
-		{
-			items: Boolean.match(admin, {
-				onFalse: () => [],
-				onTrue: () =>
-					Array.map(people, person => ({
-						detail: `@${person.name} · ${person.role}`,
-						icon: <AccountAvatar id={person.id} name={person.name} />,
-						id: person.id,
-						keywords: `${person.fullName ?? ''} ${person.name}`,
-						label: person.fullName ?? person.name,
-						run: () => {
-							location.assign(`/people#person-${person.id}`)
-						}
-					}))
-			}),
-			label: 'People'
-		},
-		{
-			items: [
-				{label: 'Sign-ins', run: () => location.assign('/')},
-				...Boolean.match(admin, {
-					onFalse: () => [],
-					onTrue: () => [
-						{
-							detail: Boolean.match(waiting > 0, {onFalse: () => undefined, onTrue: () => `${waiting} waiting`}),
-							label: 'People',
-							run: () => location.assign('/people')
-						}
-					]
-				})
-			],
-			label: 'Go to'
-		},
-		{
-			items: Option.match(account, {
-				onNone: () => [],
-				onSome: () => [{label: 'Sign out of every app', run: () => endSession(search.next)}]
-			}),
-			label: 'Account'
-		}
-	]
 	return (
 		<>
 			<AppBar
 				icon={icon}
 				name="auth"
 				account={Option.match(account, {onNone: () => false, onSome: signed => <AccountMenu account={signed} />})}
-				palette={Option.match(account, {onNone: () => undefined, onSome: () => groups})}
+				controls={<PageProblem />}
 				tabs={Option.exists(account, signed => signed.role !== 'Waiting') && <Tabs admin={admin} waiting={waiting} />}
 			/>
-			<Page>
+			<Page width="column">
 				{signingOut && <SigningOut />}
 				{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 				{Option.match(account, {
@@ -564,7 +494,7 @@ function HomeLayout() {
 			fallback={
 				<>
 					<AppBar icon={icon} name="auth" account={false} />
-					<Page>
+					<Page width="column">
 						<section
 							aria-busy="true"
 							aria-label="Sign in"
@@ -575,7 +505,7 @@ function HomeLayout() {
 								<Skeleton className="h-7 w-52" />
 								<Skeleton className="h-4 w-44" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="flex w-full flex-col gap-2 border p-4">
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />

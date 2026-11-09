@@ -1,181 +1,208 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Option, Order} from 'effect'
 
+import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
+import {useMachineResult} from '@typeonce/effect-machine-react'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
-import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
+import {Card} from '@deslop/components-web/ui/card'
 import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
 	ContextMenuTrigger
 } from '@deslop/components-web/ui/context-menu'
-import {
-	Dialog,
-	DialogClose,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogTitle
-} from '@deslop/components-web/ui/dialog'
+import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {UndoButton} from '@deslop/components-web/undo'
 
 import {AccountAvatar} from '#lib/components.tsx'
-import {accountAtom, admitAtom, dayLabel, peopleAtom, removeAtom} from '#lib/utils.ts'
+import {accountAtom, admitAtom, dayLabel, peopleAtom, removePersonAtom, selectedRowAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
-// Picture, name, then the GitHub handle, which stays since anyone can set the name before it.
-function Identity(props: {person: Person}) {
+// The row's own line, then its failed answer beneath it; a context menu, when given, holds the rest.
+function PersonRow(props: {
+	children?: ReactNode
+	failure: Option.Option<string>
+	footer?: ReactNode
+	menu?: ReactNode
+	onSelect: () => void
+	person: Person
+	removed: boolean
+	selected: boolean
+}) {
 	return (
-		<>
-			<AccountAvatar id={props.person.id} name={props.person.name} />
-			<span className="min-w-0 truncate font-medium">{props.person.fullName ?? props.person.name}</span>
-			<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
-				{props.person.fullName !== undefined && `@${props.person.name}`}
-			</span>
-		</>
-	)
-}
-
-function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
-	return (
-		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12">
-				<Identity person={props.person} />
-				{props.children}
-			</div>
-			{props.failure}
+		<div role="listitem">
+			<ContextMenu disabled={props.menu === undefined}>
+				<ContextMenuTrigger
+					render={
+						<Item
+							size="row"
+							id={`person-${props.person.id}`}
+							tabIndex={0}
+							data-removed={props.removed}
+							data-selected={props.selected}
+							onFocus={props.onSelect}
+						/>
+					}
+				>
+					<ItemMedia>
+						<AccountAvatar id={props.person.id} name={props.person.name} />
+					</ItemMedia>
+					<ItemContent>
+						<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
+						{Option.match(props.failure, {
+							onNone: () =>
+								props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>,
+							onSome: message => <ItemDescription>{message}</ItemDescription>
+						})}
+					</ItemContent>
+					{props.children}
+				</ContextMenuTrigger>
+				{props.menu !== undefined && <ContextMenuContent className="w-auto min-w-36">{props.menu}</ContextMenuContent>}
+			</ContextMenu>
+			{props.footer}
 		</div>
 	)
 }
 
 // judge-ignore no-repeated-text-action -- apps/auth/AGENTS.md requires Allow and Decline on each access-request row.
-function AskingRow(props: {person: Person}) {
+function AskingRow(props: {onSelect: () => void; person: Person; selected: boolean}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
-		<PersonRow person={props.person} failure={<ResultError result={admit} className="mr-1 mb-2 ml-10 wrap-anywhere" />}>
-			<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">
-				{dayLabel(props.person.since)}
-			</span>
-			<Button
-				size="sm"
-				className="shrink-0 max-sm:h-11"
-				disabled={AsyncResult.isWaiting(admit)}
-				onClick={() => answer(true)}
-			>
-				Allow
-			</Button>
-			<Button
-				size="sm"
-				variant="outline"
-				className="shrink-0 max-sm:h-11"
-				disabled={AsyncResult.isWaiting(admit)}
-				onClick={() => answer(false)}
-			>
-				Decline
-			</Button>
+		<PersonRow
+			person={props.person}
+			selected={props.selected}
+			onSelect={props.onSelect}
+			removed={false}
+			failure={Option.none()}
+			footer={<ResultError result={admit} className="mb-2 ml-9" />}
+		>
+			<ItemActions>
+				<Button variant="outline" size="sm" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(false)}>
+					Decline
+				</Button>
+				<Button size="sm" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(true)}>
+					Allow
+				</Button>
+			</ItemActions>
 		</PersonRow>
 	)
 }
 
-function MemberRow(props: {person: Person}) {
-	const [removal, remove] = useAtom(removeAtom(props.person.id))
-	const [confirm, setConfirm] = useState(false)
+// An admin is marked with a shield; a member shows since when, and right-click or long-press removes them.
+function MemberRow(props: {
+	failure: Option.Option<string>
+	onRemove: () => void
+	onSelect: () => void
+	person: Person
+	removed: boolean
+	selected: boolean
+	undo: () => void
+}) {
 	if (props.person.role === 'Admin') {
 		return (
-			<PersonRow person={props.person}>
-				<Badge variant="outline" className="shrink-0">
-					admin
-				</Badge>
+			<PersonRow
+				person={props.person}
+				selected={props.selected}
+				onSelect={props.onSelect}
+				removed={false}
+				failure={Option.none()}
+			>
+				<ItemActions>
+					<ShieldIcon className="text-primary size-4 shrink-0" />
+				</ItemActions>
 			</PersonRow>
 		)
 	}
-	const name = props.person.fullName ?? props.person.name
 	return (
-		<ContextMenu>
-			<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-				<ContextMenuTrigger
-					render={
-						<div
-							role="button"
-							tabIndex={0}
-							aria-haspopup="menu"
-							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
-						/>
-					}
-				>
-					<Identity person={props.person} />
-					<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
-				</ContextMenuTrigger>
-				<ResultError result={removal} className="mr-1 mb-2 ml-10 wrap-anywhere" />
-			</div>
-			<ContextMenuContent className="w-auto min-w-36">
-				<ContextMenuItem
-					variant="destructive"
-					className="max-sm:h-11"
-					disabled={AsyncResult.isWaiting(removal)}
-					onClick={() => setConfirm(true)}
-				>
+		<PersonRow
+			person={props.person}
+			selected={props.selected}
+			onSelect={props.onSelect}
+			removed={props.removed}
+			failure={props.failure}
+			menu={
+				<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={props.onRemove}>
 					Remove
 				</ContextMenuItem>
-			</ContextMenuContent>
-			<Dialog open={confirm} onOpenChange={setConfirm}>
-				<DialogContent>
-					<DialogTitle>Remove {name}?</DialogTitle>
-					<DialogDescription>
-						They will no longer be able to sign in to any Deslop app, and their sign-ins end.
-					</DialogDescription>
-					<ResultError result={removal} />
-					<DialogFooter>
-						<DialogClose render={<Button variant="ghost" disabled={AsyncResult.isWaiting(removal)} />}>
-							Cancel
-						</DialogClose>
-						<Button variant="destructive" disabled={AsyncResult.isWaiting(removal)} onClick={() => remove()}>
-							Remove
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</ContextMenu>
+			}
+		>
+			<ItemActions>
+				{Boolean.match(props.removed, {
+					onFalse: () => (
+						<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
+					),
+					onTrue: () => <UndoButton onClick={props.undo} />
+				})}
+			</ItemActions>
+		</PersonRow>
 	)
 }
 
+// One card: whoever is asking for access first, then everyone with it.
 function Directory() {
-	const people = Array.sort(
-		useAtomSuspense(peopleAtom).value,
-		Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
-	)
+	const selected = useAtomValue(selectedRowAtom)
+	const setSelected = useAtomSet(selectedRowAtom)
+	const send = useAtomSet(removePersonAtom.send)
+	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removePersonAtom, 'Waiting')), Option.none)
+	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removePersonAtom, 'Failed')), Option.none)
 	return (
 		<>
 			<h1 className="sr-only">People</h1>
-			<Section
-				title="Directory"
-				meta={`${people.length} people · ${Array.countBy(people, person => person.role === 'Waiting')} waiting`}
-				className="gap-0"
-			>
-				{Array.match(people, {
-					onEmpty: () => <EmptyState label="No one yet" icon={<AccountAvatar id="none" name="?" />} />,
+			{Array.match(
+				Array.sort(
+					useAtomSuspense(peopleAtom).value,
+					Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
+				),
+				{
+					onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
 					onNonEmpty: rows => (
-						<div role="list" aria-label="People">
-							{Array.map(rows, person =>
-								Boolean.match(person.role === 'Waiting', {
-									onFalse: () => <MemberRow key={person.id} person={person} />,
-									onTrue: () => <AskingRow key={person.id} person={person} />
-								})
-							)}
-						</div>
+						<Card size="list">
+							<div role="list" aria-label="People">
+								{Array.map(rows, person =>
+									Boolean.match(person.role === 'Waiting', {
+										onFalse: () => (
+											<MemberRow
+												key={person.id}
+												person={person}
+												failure={Option.map(
+													Option.filter(failed, state => state.id === person.id),
+													state => state.message
+												)}
+												removed={Option.exists(waiting, state => state.id === person.id)}
+												selected={Option.contains(selected, `person-${person.id}`)}
+												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+												undo={() => send({_tag: 'Undone'})}
+												onRemove={() => {
+													send({_tag: 'Dismissed'})
+													send({_tag: 'Removed', id: person.id})
+												}}
+											/>
+										),
+										onTrue: () => (
+											<AskingRow
+												key={person.id}
+												person={person}
+												selected={Option.contains(selected, `person-${person.id}`)}
+												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+											/>
+										)
+									})
+								)}
+							</div>
+						</Card>
 					)
-				})}
-			</Section>
+				}
+			)}
 		</>
 	)
 }
@@ -183,7 +210,13 @@ function Directory() {
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
-		<Suspense fallback={<ItemListSkeleton label="People" media rows={3} />}>
+		<Suspense
+			fallback={
+				<Card>
+					<ItemListSkeleton label="People" media rows={3} />
+				</Card>
+			}
+		>
 			<Directory />
 		</Suspense>
 	)
