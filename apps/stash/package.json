@@ -23,6 +23,7 @@
 	"sideEffects": false,
 	"main": "src/main.client.tsx",
 	"imports": {
+		"#http/*": "./src/http/*",
 		"#lib/*": "./src/lib/*",
 		"#modules/*": "./modules/*",
 		"#routes/*": "./src/routes/*",
