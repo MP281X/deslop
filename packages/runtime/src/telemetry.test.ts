@@ -16,7 +16,7 @@ it.effect(
 			const calls = yield* Ref.make(0)
 			const services = yield* Layer.build(
 				Layer.provide(
-					layerWebTelemetry,
+					layerWebTelemetry('fixture'),
 					Layer.succeed(
 						HttpClient.HttpClient,
 						HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
@@ -46,7 +46,7 @@ it.effect(
 			Effect.gen(function* () {
 				const services = yield* Layer.build(
 					Layer.provide(
-						layerWebTelemetry,
+						layerWebTelemetry('fixture'),
 						Layer.succeed(
 							HttpClient.HttpClient,
 							HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(

@@ -18,7 +18,7 @@ export const ENDPOINT = `${window.location.origin}/mcp`
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: WebRuntime.layer()
+	protocol: WebRuntime.layer('@deslop/gateway')
 }) {}
 
 export function connectUrl(id: string) {

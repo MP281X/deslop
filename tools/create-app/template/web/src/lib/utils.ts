@@ -6,5 +6,5 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/template-app/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: WebRuntime.layer()
+	protocol: WebRuntime.layer('@deslop/template-app')
 }) {}

@@ -16,7 +16,7 @@ import {
 } from 'effect'
 
 import {RouterProvider, createRouter} from '@tanstack/react-router'
-import type {AnyContext, AnyRoute} from '@tanstack/react-router'
+import type {AnyContext, AnyRoute, AnyRouter} from '@tanstack/react-router'
 import {FetchHttpClient} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
 import {Atom, AtomRegistry} from 'effect/reactivity'
@@ -90,9 +90,9 @@ export function mount<TRouteTree extends AnyRoute & {types: {routerContext: AnyC
 			stack
 		})
 	}
-	router.options.defaultOnCatch = (error, info) => {
-		report(error, 'route', info.componentStack)
-	}
+	// The typed router takes full options in `update`; this view merges the partial one the router has always accepted.
+	const anyRouter: AnyRouter = router
+	anyRouter.update({defaultOnCatch: (error, info) => report(error, 'route', info.componentStack)})
 	createRoot(root, {
 		onCaughtError: (error, info) => report(error, 'caught', info.componentStack),
 		onUncaughtError: (error, info) => report(error, 'uncaught', info.componentStack)
@@ -146,12 +146,10 @@ export const layerProtocol = pipe(
 	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
 )
 
-// Apps opt in, because Scope imports this module for its page layer alone and must never trace itself.
-// oxlint-disable-next-line effecttsgo/lazy-effect -- Calling it registers telemetry; returning the page's protocol layer is not deferred work.
-export function layer() {
+export function layer(applicationName: string) {
 	Atom.runtime.addGlobalLayer(
 		pipe(
-			layerWebTelemetry,
+			layerWebTelemetry(applicationName),
 			Layer.provide(FetchHttpClient.layer),
 			Layer.tap(services => {
 				if (Option.isNone(Context.getOption(services, OtlpExporter.Flusher))) return Effect.void

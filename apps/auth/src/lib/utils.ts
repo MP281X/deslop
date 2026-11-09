@@ -31,7 +31,7 @@ export const Search = Schema.Struct({
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: WebRuntime.layer()
+	protocol: WebRuntime.layer('@deslop/auth')
 }) {}
 
 // Live, so an account waiting for an admin moves on once allowed; a declined or removed account is signed out and reads None.

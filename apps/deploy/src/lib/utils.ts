@@ -11,7 +11,7 @@ import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: WebRuntime.layer()
+	protocol: WebRuntime.layer('@deslop/deploy')
 }) {}
 
 export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())

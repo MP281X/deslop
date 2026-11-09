@@ -48,23 +48,24 @@ export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mo
 	)
 }
 
-export const layerWebTelemetry = Layer.unwrap(
-	Effect.gen(function* () {
-		const config = yield* pipe(
-			(yield* HttpClient.HttpClient).get(RUNTIME_PATH),
-			Effect.flatMap(HttpClientResponse.filterStatusOk),
-			Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
-			Effect.timeout('3 seconds'),
-			Effect.tapError(error => Effect.logWarning('Telemetry is off: the runtime config did not load', error)),
-			Effect.option
-		)
-		return Option.match(config, {
-			onNone: () => Layer.empty,
-			onSome: settings => {
-				if (settings.traces === '') return Layer.empty
-				// RuntimeConfig carries the package name without its scope; Scope groups by the full one.
-				return layerOtlp(`@deslop/${settings.name}-client`, settings.traces, 'web', settings.version)
-			}
+export function layerWebTelemetry(applicationName: string) {
+	return Layer.unwrap(
+		Effect.gen(function* () {
+			const config = yield* pipe(
+				(yield* HttpClient.HttpClient).get(RUNTIME_PATH),
+				Effect.flatMap(HttpClientResponse.filterStatusOk),
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
+				Effect.timeout('3 seconds'),
+				Effect.tapError(error => Effect.logWarning('Telemetry is off: the runtime config did not load', error)),
+				Effect.option
+			)
+			return Option.match(config, {
+				onNone: () => Layer.empty,
+				onSome: settings => {
+					if (settings.traces === '') return Layer.empty
+					return layerOtlp(`${applicationName}-client`, settings.traces, 'web', settings.version)
+				}
+			})
 		})
-	})
-)
+	)
+}
