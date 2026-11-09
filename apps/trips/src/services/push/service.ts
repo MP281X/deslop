@@ -47,6 +47,20 @@ import type {Alert} from '#services/push/lib/utils.ts'
 import type {ActivityClaim, ActivityRecord, ActivityToken, Bundle, Device} from '#services/push/schema.ts'
 import {ActivityPropsJson, ApnsReason, JwtPart, PushError, PushState} from '#services/push/schema.ts'
 
+// The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
+const BUNDLES = {
+	'xyz.mp281x.trips': {
+		channels: 'https://api-manage-broadcast.push.apple.com:2196',
+		host: 'https://api.push.apple.com',
+		scheme: 'trips'
+	},
+	'xyz.mp281x.trips.dev': {
+		channels: 'https://api-manage-broadcast.sandbox.push.apple.com:2195',
+		host: 'https://api.sandbox.push.apple.com',
+		scheme: 'trips-dev'
+	}
+}
+
 type Apns = {bundle: Bundle}
 type Answer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
 type LegOf = Pick<ActivityRecord, 'bookingId' | 'bundle' | 'leg'>
@@ -64,17 +78,6 @@ export const layerApnsClient = Layer.effect(
 		return yield* Effect.provideService(NodeHttpClient.makeUndici, NodeHttpClient.Dispatcher, dispatcher)
 	})
 )
-
-// The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
-function host(bundle: Bundle) {
-	if (bundle === 'xyz.mp281x.trips') return 'https://api.push.apple.com'
-	return 'https://api.sandbox.push.apple.com'
-}
-
-function channels(bundle: Bundle) {
-	if (bundle === 'xyz.mp281x.trips') return 'https://api-manage-broadcast.push.apple.com:2196'
-	return 'https://api-manage-broadcast.sandbox.push.apple.com:2195'
-}
 
 // APNs drops a token whose app is gone or which belongs to the other environment.
 function deadToken(answer: Answer) {
@@ -241,7 +244,7 @@ export class Push extends Context.Service<
 			) {
 				return Effect.flatMap(
 					HttpClientRequest.bodyJson(
-						HttpClientRequest.post(`${host(target.bundle)}/3/device/${target.token}`, {
+						HttpClientRequest.post(`${BUNDLES[target.bundle].host}/3/device/${target.token}`, {
 							headers: {
 								'apns-priority': `${priority}`,
 								'apns-push-type': type,
@@ -262,7 +265,7 @@ export class Push extends Context.Service<
 				const answer = yield* send(
 					yield* failed('The channel request could not be written.')(
 						HttpClientRequest.bodyJson(
-							HttpClientRequest.post(`${channels(target.bundle)}/1/apps/${target.bundle}/channels`),
+							HttpClientRequest.post(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`),
 							{'message-storage-policy': 1, 'push-type': 'LiveActivity'}
 						)
 					)
@@ -275,7 +278,7 @@ export class Push extends Context.Service<
 			function deleteChannel(target: Apns & {channel: string}) {
 				return Effect.ignore(
 					send(
-						HttpClientRequest.delete(`${channels(target.bundle)}/1/apps/${target.bundle}/channels`, {
+						HttpClientRequest.delete(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`, {
 							headers: {'apns-channel-id': target.channel}
 						})
 					),
@@ -290,7 +293,7 @@ export class Push extends Context.Service<
 				if (record.channel !== undefined) {
 					return Effect.flatMap(
 						HttpClientRequest.bodyJson(
-							HttpClientRequest.post(`${host(record.bundle)}/4/broadcasts/apps/${record.bundle}`, {
+							HttpClientRequest.post(`${BUNDLES[record.bundle].host}/4/broadcasts/apps/${record.bundle}`, {
 								headers: {
 									'apns-channel-id': record.channel,
 									// The channel stores the latest message for a phone offline in flight, as long as an activity lives.
@@ -355,9 +358,7 @@ export class Push extends Context.Service<
 						{
 							aps: {
 								alert: startAlert(showing.journey),
-								attributes: {
-									url: `${{'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}[target.bundle]}://booking/${showing.journey.id}`
-								},
+								attributes: {url: `${BUNDLES[target.bundle].scheme}://booking/${showing.journey.id}`},
 								'attributes-type': 'LiveActivityAttributes',
 								'content-state': contentState(json),
 								event: 'start',
