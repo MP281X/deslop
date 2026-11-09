@@ -44,12 +44,6 @@ export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 	)
 )
 
-export const hideAtom = Atom.family((target: string) =>
-	Atom.family((name: string) =>
-		RpcClient.runtime.fn(() => Effect.flatMap(RpcClient, client => client('deploy.hide', {name, target})))
-	)
-)
-
 // Starts a timer's job now; keyed by the job's row, so its failure shows there.
 export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))

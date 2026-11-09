@@ -5,35 +5,28 @@ import {Array, Boolean, Cause, DateTime, HashSet, Number, Option, Order, Record,
 import {AppWindowIcon, ChartLineIcon, ClockIcon, PlayIcon, StackIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useDeferredValue, useState} from 'react'
+import {Suspense, useDeferredValue, useEffect, useState} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListHeading, ItemListSkeleton} from '@deslop/components-web/item-list'
+import {ItemListHeading} from '@deslop/components-web/item-list'
 import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Badge} from '@deslop/components-web/ui/badge'
 import {Button} from '@deslop/components-web/ui/button'
-import {
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuTrigger
-} from '@deslop/components-web/ui/context-menu'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {Spinner} from '@deslop/components-web/ui/spinner'
 import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {MachineIcon, machineName} from '#lib/components.tsx'
-import {hideAtom, inventoryAtom, metricsAtom, runAtom} from '#lib/utils.ts'
+import {inventoryAtom, metricsAtom, runAtom} from '#lib/utils.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {TimeAxis, UsageChart} from '#routes/(home)/-charts.tsx'
 import type {ChartLayer} from '#routes/(home)/-charts.tsx'
@@ -49,6 +42,8 @@ import type {InventoryItem, Process, RunRequest} from '#services/inventory/schem
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {HistoryQuery} from '#services/metrics/schema.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+
+const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
 
 // A phone shows the list with the machine's chart above it, or one app's processes full-screen.
 type Pane = typeof Pane.Type
@@ -96,6 +91,12 @@ function nextRun(next: number, now: number) {
 	const minutes = Number.max(0, Number.round((next - now) / 60_000, 0))
 	if (minutes < 60) return untilNext.format(minutes, 'minute')
 	return untilNext.format(Number.round(minutes / 60, 0), 'hour')
+}
+
+// A running job's time in its row's column, counting up from its start as m:ss.
+function counted(milliseconds: number) {
+	const seconds = Number.max(0, Math.floor(milliseconds / 1000))
+	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
 }
 
 function bytes(value: number) {
@@ -274,7 +275,7 @@ function MachineTabs(props: {
 	)
 }
 
-// Ports of one least size: exposed in an outline badge that opens its endpoint, exposable as a clickable ghost, the rest plain muted text.
+// Ports of one least size, all in one badge box so their digits end on one edge: exposed in an outline badge that opens its endpoint, exposable as a clickable ghost, the rest plain muted text.
 function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeof workloads>[number]}) {
 	const expose = useExpose()
 	const exposedPorts = HashSet.fromIterable(Array.map(props.row.exposures, exposure => exposure.port))
@@ -294,7 +295,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 						onNone: () => (
 							<span
 								key={listener.id}
-								className="text-muted-foreground shrink-0 font-mono text-xs leading-5 tabular-nums"
+								className="text-muted-foreground inline-flex h-5 w-fit shrink-0 items-center justify-center overflow-hidden border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap tabular-nums"
 							>
 								{listener.port}
 							</span>
@@ -345,13 +346,31 @@ function runRequest(item: InventoryItem) {
 	} satisfies RunRequest
 }
 
-// A timer's job, started now from where other rows keep their chevron.
-function RunNow(props: {item: InventoryItem; onRun: () => void}) {
+// A running job's time: it starts counting when its row shows it, once a second, in the column that shows the next start.
+function Elapsed() {
+	const [clock, setClock] = useState(() => {
+		const at = Date.now()
+		return {now: at, started: at}
+	})
+	useEffect(() => {
+		const timer = setInterval(() => setClock(previous => ({...previous, now: Date.now()})), 1000)
+		return () => clearInterval(timer)
+	}, [])
+	return (
+		<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
+			{counted(clock.now - clock.started)}
+		</span>
+	)
+}
+
+// A timer's job, started now at its row's end; it waits, disabled, while the job runs.
+function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => void}) {
 	return (
 		<Button
 			size="icon-xs"
 			variant="ghost"
 			className="pointer-events-auto"
+			disabled={props.disabled}
 			aria-label={`Run ${workloadName(props.item)} now`}
 			onClick={props.onRun}
 		>
@@ -364,35 +383,54 @@ function RunFailure(props: {item: InventoryItem}) {
 	return <ResultError result={useAtomValue(runAtom(props.item.id))} className="mx-4 wrap-anywhere" />
 }
 
-function hideTarget(item: InventoryItem) {
-	if (String.startsWith('remote:')(item.id)) return item.worker
-	return ''
-}
-
-function RemoveExposure(props: {item: InventoryItem}) {
-	const [result, hide] = useAtom(hideAtom(hideTarget(props.item))(props.item.name))
+// The list's loading rows: the real row's 16px mark at the 16px gutter, a name bar where names sit and a chip-sized box where its ports end.
+function AppRowsSkeleton(props: {label: string; rows: number}) {
 	return (
-		<ContextMenuItem
-			variant="destructive"
-			className="max-sm:h-11"
-			disabled={AsyncResult.isWaiting(result)}
-			onClick={() => hide()}
-		>
-			Remove {host(props.item.url)}
-		</ContextMenuItem>
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, props.rows), row => (
+				<Item key={row} aria-hidden size="row">
+					<ItemMedia>
+						<Skeleton className="size-4" />
+					</ItemMedia>
+					<ItemContent>
+						<Skeleton className="h-3 w-2/5" />
+					</ItemContent>
+					<ItemActions>
+						<Skeleton className="h-5 w-12" />
+					</ItemActions>
+				</Item>
+			))}
+		</div>
 	)
 }
 
-function RemoveFailure(props: {item: InventoryItem}) {
+// The processes' loading rows: the real mark and name and detail bars, and its memory figure right-aligned in the same column.
+function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 	return (
-		<ResultError
-			result={useAtomValue(hideAtom(hideTarget(props.item))(props.item.name))}
-			className="mx-4 wrap-anywhere"
-		/>
+		<div aria-busy="true" aria-label={props.label} role="status">
+			{Array.map(Array.range(1, props.rows), row => (
+				<Item key={row} aria-hidden size="row">
+					<ItemMedia>
+						<Skeleton className="size-4" />
+					</ItemMedia>
+					<ItemContent>
+						<div className="flex min-w-0 flex-1 items-baseline gap-2">
+							<Skeleton className="h-3 w-24" />
+							<Skeleton className="h-3 w-2/5" />
+						</div>
+					</ItemContent>
+					<ItemActions>
+						<div className="flex w-12 justify-end">
+							<Skeleton className="h-3 w-8" />
+						</div>
+					</ItemActions>
+				</Item>
+			))}
+		</div>
 	)
 }
 
-// One app or job: its mark, name, ports or reason, and its one end action; the whole row opens its processes.
+// One app or job: its mark, name, ports or reason, and the actions it has at the row's end; the whole row opens its processes.
 function AppRow(props: {
 	bandOf: Record<string, string>
 	compact: boolean
@@ -409,7 +447,6 @@ function AppRow(props: {
 	const state = status(props.row.item)
 	const light = dot(props.row.item, state)
 	const scheduled = props.row.item.scheduled === true
-	const owned = Array.filter(props.row.exposures, exposure => exposure.owned === true)
 	const reason = reasonOf(props.row)
 	const age = failureAge(props.row, props.now)
 	const running =
@@ -431,118 +468,101 @@ function AppRow(props: {
 	const reasonText = Boolean.match(scheduled, {onFalse: () => reasonLine(props.row, props.now), onTrue: () => reason})
 	return (
 		<>
-			<ContextMenu disabled={Array.isArrayEmpty(owned)}>
-				{/* Right-click or long-press removes an endpoint this app exposed. */}
-				<ContextMenuTrigger
-					render={
-						<Item
-							size="row"
-							variant={Boolean.match(linked, {onFalse: () => 'default', onTrue: () => 'muted'})}
-							role="listitem"
-							data-selected={props.selected}
-							className="relative"
-							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
-							onPointerLeave={() => props.onHover()}
-						/>
-					}
-				>
-					{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
-					<Button
-						aria-label={`Open ${fullName}`}
-						variant="ghost"
-						className="absolute inset-0 z-0 size-full"
-						onClick={props.onSelect}
+			<Item
+				size="row"
+				variant={Boolean.match(linked, {onFalse: () => 'default', onTrue: () => 'muted'})}
+				role="listitem"
+				data-selected={props.selected}
+				className="relative"
+				onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
+				onPointerLeave={() => props.onHover()}
+			>
+				{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring. */}
+				<Button
+					aria-label={`Open ${fullName}`}
+					variant="ghost"
+					className="absolute inset-0 z-0 size-full"
+					onClick={props.onSelect}
+				/>
+				<ItemMedia className="pointer-events-none relative z-10">
+					<ApplicationIcon
+						name={fullName}
+						process={Array.match(props.row.item.processes ?? [], {
+							onEmpty: () => undefined,
+							onNonEmpty: entries =>
+								Array.max(
+									entries,
+									Order.mapInput(Number.Order, (entry: Process) => entry.memory)
+								).name
+						})}
+						container={props.row.item.kind === 'container'}
 					/>
-					<ItemMedia className="pointer-events-none relative z-10">
-						<ApplicationIcon
-							name={fullName}
-							process={Array.match(props.row.item.processes ?? [], {
-								onEmpty: () => undefined,
-								onNonEmpty: entries =>
-									Array.max(
-										entries,
-										Order.mapInput(Number.Order, (entry: Process) => entry.memory)
-									).name
-							})}
-							container={props.row.item.kind === 'container'}
-						/>
-					</ItemMedia>
-					<ItemContent className="pointer-events-none relative z-10">
-						<ItemTitle
-							className={Boolean.match(failing, {onFalse: () => 'w-full', onTrue: () => 'max-w-1/2'})}
-							title={fullName}
-						>
-							<span className="min-w-0 truncate">{name}</span>
-						</ItemTitle>
+				</ItemMedia>
+				<ItemContent className="pointer-events-none relative z-10">
+					<ItemTitle
+						className={Boolean.match(failing, {onFalse: () => 'w-full', onTrue: () => 'max-w-1/2'})}
+						title={fullName}
+					>
+						<span className="min-w-0 truncate">{name}</span>
+					</ItemTitle>
+					{failing && (
+						<ItemDescription title={reasonText}>
+							<span className="block truncate">{reasonText}</span>
+						</ItemDescription>
+					)}
+				</ItemContent>
+				<ItemActions className="pointer-events-none relative z-10 shrink-0">
+					<span className="flex min-w-0 items-center justify-end gap-1.5">
 						{failing && (
-							<ItemDescription title={reasonText}>
-								<span className="block truncate">{reasonText}</span>
-							</ItemDescription>
+							<span
+								title={state}
+								aria-label={state}
+								role="img"
+								className="flex size-3 shrink-0 items-center justify-center"
+							>
+								<StatusDot status={light} />
+							</span>
 						)}
-					</ItemContent>
-					<ItemActions className="pointer-events-none relative z-10 shrink-0">
-						<span className="flex min-w-0 items-center justify-end gap-1.5">
-							{failing && (
-								<span
-									title={state}
-									aria-label={state}
-									role="img"
-									className="flex size-3 shrink-0 items-center justify-center"
-								>
-									<StatusDot status={light} />
-								</span>
-							)}
-							{Boolean.match(scheduled, {
-								onFalse: () => <Endpoints free={props.free} row={props.row} />,
-								onTrue: () =>
-									Boolean.match(running, {
-										onFalse: () =>
-											Boolean.match(failing, {
-												onFalse: () => (
-													<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-														{next}
-													</span>
-												),
-												onTrue: () => (
-													<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-														{Option.getOrElse(age, () => next)}
-													</span>
-												)
-											}),
-										onTrue: () => null
-									})
-							})}
-						</span>
-						<span className="flex w-6 shrink-0 items-center justify-center">
-							{Boolean.match(scheduled, {
-								onFalse: () => null,
-								onTrue: () =>
-									Boolean.match(running, {
-										onFalse: () => (
-											<RunNow
-												item={props.row.item}
-												onRun={() => {
-													setRequested(Option.some(props.now))
-													run(runRequest(props.row.item))
-												}}
-											/>
-										),
-										onTrue: () => <Spinner className="size-4" />
-									})
-							})}
-						</span>
-					</ItemActions>
-				</ContextMenuTrigger>
-				<ContextMenuContent className="w-auto min-w-36">
-					{Array.map(owned, exposure => (
-						<RemoveExposure key={exposure.id} item={exposure} />
-					))}
-				</ContextMenuContent>
-			</ContextMenu>
+						{Boolean.match(scheduled, {
+							onFalse: () => <Endpoints free={props.free} row={props.row} />,
+							onTrue: () =>
+								Boolean.match(running, {
+									onFalse: () =>
+										Boolean.match(failing, {
+											onFalse: () => (
+												<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
+													{next}
+												</span>
+											),
+											onTrue: () => (
+												<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
+													{Option.getOrElse(age, () => next)}
+												</span>
+											)
+										}),
+									onTrue: () => <Elapsed />
+								})
+						})}
+					</span>
+					{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
+					{Boolean.match(scheduled, {
+						onFalse: () => null,
+						onTrue: () => (
+							<span className="flex size-6 shrink-0 items-center justify-center">
+								<RunNow
+									disabled={running}
+									item={props.row.item}
+									onRun={() => {
+										setRequested(Option.some(props.now))
+										run(runRequest(props.row.item))
+									}}
+								/>
+							</span>
+						)
+					})}
+				</ItemActions>
+			</Item>
 			{scheduled && <RunFailure item={props.row.item} />}
-			{Array.map(owned, exposure => (
-				<RemoveFailure key={exposure.id} item={exposure} />
-			))}
 		</>
 	)
 }
@@ -604,6 +624,16 @@ function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
 	return <Problem label="Data out of date" warning reset={retry} since={oldest} />
 }
 
+// One loading chart title: its static name, with only the server's figure left to load.
+function ChartTitleSkeleton(props: {label: string}) {
+	return (
+		<div className="flex w-full items-center justify-between gap-2 text-xs">
+			<span>{props.label}</span>
+			<Skeleton className="h-4 w-10" />
+		</div>
+	)
+}
+
 function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes']}) {
 	const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
 	return (
@@ -611,25 +641,21 @@ function ChartSkeleton(props: {isPhone: boolean; minutes: HistoryQuery['minutes'
 			{Boolean.match(props.isPhone, {
 				onFalse: () => (
 					<div className="grid h-8 grid-cols-3 items-center gap-6 border-b px-4">
-						{Array.makeBy(3, index => (
-							<div key={index} className="flex items-baseline justify-between">
-								<Skeleton className="h-4 w-16" />
-								<Skeleton className="h-4 w-10" />
-							</div>
+						{Array.map(CHART_LABELS, label => (
+							<ChartTitleSkeleton key={label} label={label} />
 						))}
 					</div>
 				),
 				onTrue: () => null
 			})}
 			<div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-3 sm:gap-6">
-				{Array.makeBy(3, index => (
-					<div key={index} className="flex min-w-0 flex-col gap-1">
+				{Array.map(CHART_LABELS, (label, index) => (
+					<div key={label} className="flex min-w-0 flex-col gap-1">
 						{Boolean.match(props.isPhone, {
 							onFalse: () => null,
 							onTrue: () => (
-								<div className="flex h-8 items-center justify-between border-b">
-									<Skeleton className="h-4 w-16" />
-									<Skeleton className="h-4 w-10" />
+								<div className="flex h-8 items-center border-b">
+									<ChartTitleSkeleton label={label} />
 								</div>
 							)
 						})}
@@ -844,7 +870,7 @@ function SelectedProcesses(props: {
 						onFalse: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="Select an app" />,
 						onTrue: () => (
 							<div className="min-h-0 flex-1 overflow-hidden">
-								<ItemListSkeleton label="Processes loading" media rows={6} />
+								<ProcessRowsSkeleton label="Processes loading" rows={6} />
 							</div>
 						)
 					}),
@@ -852,7 +878,7 @@ function SelectedProcesses(props: {
 					<Suspense
 						fallback={
 							<div className="min-h-0 flex-1 overflow-hidden">
-								<ItemListSkeleton label="Processes loading" media rows={6} />
+								<ProcessRowsSkeleton label="Processes loading" rows={6} />
 							</div>
 						}
 					>
@@ -918,7 +944,7 @@ function ListPane(props: {
 			<Suspense
 				fallback={
 					<div className="min-h-0 flex-1 overflow-hidden">
-						<ItemListSkeleton label="Apps loading" media rows={8} />
+						<AppRowsSkeleton label="Apps loading" rows={8} />
 					</div>
 				}
 			>
