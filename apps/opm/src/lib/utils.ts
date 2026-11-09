@@ -19,7 +19,7 @@ import {ChapterItem, ChaptersError} from '#services/chapters/schema.ts'
 
 const SERVER = 'https://opm.mp281x.xyz'
 
-export const primary = hues.ivory
+export const primary = hues.acid
 
 // Auth
 

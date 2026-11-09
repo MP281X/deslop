@@ -110,6 +110,10 @@ const clock = new Intl.DateTimeFormat(undefined, {
 const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 const route = getRouteApi('/(home)/')
 
+function isTyping(target: EventTarget | null) {
+	return target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]') !== null
+}
+
 type Attributes = typeof Attributes.Type
 const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
 type Wrapped = typeof Wrapped.Type
@@ -228,7 +232,7 @@ function DetailLines(props: {lines: readonly DetailLine[]}) {
 				<div
 					key={`${line.key}:${index}`}
 					className={cn(
-						'flex min-w-0 flex-col gap-0.5 py-1',
+						'border-border/60 flex min-w-0 flex-col gap-0.5 border-b py-1 last:border-b-0',
 						(line.key === 'error' || line.key === 'log' || String.length(line.value) > 48) && 'col-span-full'
 					)}
 				>
@@ -301,38 +305,42 @@ function SpanDetail(props: {span: Trace['spans'][number]}) {
 	if (tabs.length === 1) {
 		return (
 			<ScrollArea className="h-full">
-				<div className="p-3">{only.content}</div>
+				<div className="p-2">
+					<div className="border-border bg-card border p-3">{only.content}</div>
+				</div>
 			</ScrollArea>
 		)
 	}
 	return (
-		<Tabs
-			key={props.span.spanId}
-			defaultValue={Option.match(error, {
-				onNone: () =>
-					Option.getOrElse(
-						Option.map(Array.head(tabs), tab => tab.value),
-						() => 'span'
-					),
-				onSome: () => 'error'
-			})}
-			className="min-h-0 flex-1"
-		>
-			<TabsList variant="line" className="w-full shrink-0 max-lg:group-data-horizontal/tabs:h-11">
+		<div className="border-border bg-card m-2 flex min-h-0 flex-1 border">
+			<Tabs
+				key={props.span.spanId}
+				defaultValue={Option.match(error, {
+					onNone: () =>
+						Option.getOrElse(
+							Option.map(Array.head(tabs), tab => tab.value),
+							() => 'span'
+						),
+					onSome: () => 'error'
+				})}
+				className="min-h-0 flex-1"
+			>
+				<TabsList variant="line" className="w-full shrink-0 max-lg:group-data-horizontal/tabs:h-11">
+					{Array.map(tabs, tab => (
+						<TabsTrigger key={tab.value} value={tab.value}>
+							{tab.label}
+						</TabsTrigger>
+					))}
+				</TabsList>
 				{Array.map(tabs, tab => (
-					<TabsTrigger key={tab.value} value={tab.value}>
-						{tab.label}
-					</TabsTrigger>
+					<TabsContent key={tab.value} value={tab.value} className="min-h-0 flex-1">
+						<ScrollArea className="h-full">
+							<div className="p-3">{tab.content}</div>
+						</ScrollArea>
+					</TabsContent>
 				))}
-			</TabsList>
-			{Array.map(tabs, tab => (
-				<TabsContent key={tab.value} value={tab.value} className="min-h-0 flex-1">
-					<ScrollArea className="h-full">
-						<div className="p-3">{tab.content}</div>
-					</ScrollArea>
-				</TabsContent>
-			))}
-		</Tabs>
+			</Tabs>
+		</div>
 	)
 }
 
@@ -352,11 +360,11 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					{props.span.name}
 				</span>
 			</span>
-			<span className="bg-muted relative mx-2 h-1.5 flex-1">
+			<span className="bg-muted relative mx-2 h-1 flex-1">
 				<span
 					data-side={props.span.runtime}
 					className={cn(
-						'absolute top-0 left-(--offset) h-1.5 w-(--length) min-w-0.5',
+						'absolute top-0 left-(--offset) h-1 w-(--length) min-w-0.5',
 						Boolean.match(props.span.status === 2, {onFalse: () => 'bg-(--side)', onTrue: () => 'bg-destructive'})
 					)}
 					style={{
@@ -365,7 +373,7 @@ function SpanLine(props: {mark: Option.Option<string>; open?: boolean; span: Tra
 					}}
 				/>
 			</span>
-			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
+			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
 				{durationOf(props.span.durationMs)}
 			</span>
 			{Option.match(Option.fromUndefinedOr(props.open), {
@@ -416,7 +424,7 @@ function SpanRow(props: {
 	const open = props.focus === props.span.spanId
 	if (!hasDetail(props.span)) {
 		return (
-			<div className="list-row flex h-8 w-full items-center gap-1 px-3 text-xs max-sm:h-12 pointer-coarse:h-12">
+			<div className="list-row flex h-6 w-full items-center gap-1 px-3 text-xs max-sm:h-12 pointer-coarse:h-12">
 				<SpanLine mark={props.mark(props.span)} span={props.span} />
 			</div>
 		)
@@ -428,7 +436,7 @@ function SpanRow(props: {
 				variant={Boolean.match(open, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
 				aria-current={Boolean.match(open, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={() => props.onPick(props.span.spanId)}
-				className="h-8 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-6 w-full max-sm:h-12 pointer-coarse:h-12"
 			>
 				<span className="flex w-full min-w-0 items-center gap-1 font-normal tracking-normal normal-case">
 					<SpanLine mark={props.mark(props.span)} span={props.span} open={open} />
@@ -578,7 +586,11 @@ function SpansSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Spans" className="flex flex-col pb-2">
 			{Array.map(Array.range(1, 4), row => (
-				<div key={row} aria-hidden className="flex h-8 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div
+					key={row}
+					aria-hidden
+					className="border-border flex h-6 items-center gap-3 border-b px-3 max-sm:h-11 pointer-coarse:h-11"
+				>
 					<span className="w-40 shrink-0 pl-3 xl:w-80">
 						<Skeleton className="h-3 w-28" />
 					</span>
@@ -624,7 +636,11 @@ function OperationsSkeleton() {
 				<Skeleton className="h-3 w-24" />
 			</div>
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-2 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div
+					key={row}
+					aria-hidden
+					className="border-border flex h-10 items-center gap-2 border-b px-3 max-sm:h-11 pointer-coarse:h-11"
+				>
 					<Skeleton className="size-3.5 shrink-0" />
 					<Skeleton className="h-3.5 min-w-0 flex-1" />
 					<Skeleton className="h-3 w-6 shrink-0" />
@@ -641,7 +657,11 @@ function TracesSkeleton() {
 	return (
 		<div aria-busy="true" role="status" aria-label="Traces" className="flex flex-col">
 			{Array.map(Array.range(1, 8), row => (
-				<div key={row} aria-hidden className="flex h-14 items-center gap-3 px-3 max-sm:h-12 pointer-coarse:h-12">
+				<div
+					key={row}
+					aria-hidden
+					className="border-border flex h-10 items-center gap-3 border-b px-3 max-sm:h-11 pointer-coarse:h-11"
+				>
 					<Skeleton className="h-3 w-8 shrink-0" />
 					<Skeleton className="h-3 min-w-0 flex-1" />
 					<Skeleton className="size-1.5 shrink-0" />
@@ -676,11 +696,9 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 // An app's mark and name at the top of its operations, sticky so the group stays named while its rows scroll.
 function AppHeading(props: {app: Overview['apps'][number]}) {
 	return (
-		<div className="bg-background sticky top-0 z-10 flex h-9 shrink-0 items-center gap-2 border-b px-3">
+		<div className="bg-strip text-strip-foreground sticky top-7 z-10 flex h-7 shrink-0 items-center gap-2 px-3">
 			<AppMark app={props.app} />
-			<span className="text-muted-foreground tracking-label min-w-0 truncate text-xs font-semibold uppercase">
-				{props.app.name}
-			</span>
+			<span className="terminal-label text-primary min-w-0 truncate">[{props.app.name}]</span>
 		</div>
 	)
 }
@@ -688,17 +706,17 @@ function AppHeading(props: {app: Overview['apps'][number]}) {
 // One operation in the list: its device, name, failures, runs and typical duration; the row selects it.
 function OperationRow(props: {active: boolean; onSelect: () => void; operation: Operation}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div role="listitem" className="ledger-row list-row" data-selected={props.active}>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-10 min-w-0 flex-1 max-sm:h-11 pointer-coarse:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="flex w-full min-w-0 items-center gap-2 font-normal tracking-normal normal-case">
+				<span className="flex min-w-0 flex-1 items-center gap-2 font-normal tracking-normal normal-case">
 					{DEVICES[props.operation.runtime]}
-					<span className="min-w-0 flex-1 truncate text-left font-mono text-sm">{props.operation.name}</span>
+					<span className="min-w-0 flex-1 truncate text-left font-mono text-xs">{props.operation.name}</span>
 					{props.operation.failures > 0 && (
 						<span className="flex w-10 shrink-0 justify-end max-sm:w-8">
 							<Badge variant="destructive" className="shrink-0" title={`${props.operation.failures} failed`}>
@@ -769,7 +787,15 @@ function OperationsPane(props: {
 							onEmpty: () => <EmptyState label="No traces yet" icon={<EmptyIcon />} />,
 							onNonEmpty: apps => (
 								<ScrollArea className="min-h-0 flex-1">
-									<div className="flex flex-col">
+									<div className="ledger-rows flex flex-col">
+										<div className="ledger-head" aria-hidden="true">
+											<span className="w-8 shrink-0" />
+											<span className="w-3 shrink-0" />
+											<span className="min-w-0 flex-1">Operation</span>
+											<span className="w-10 shrink-0 text-right">Fail</span>
+											<span className="w-10 shrink-0 text-right max-lg:hidden">Runs</span>
+											<span className="w-14 shrink-0 text-right">Typical</span>
+										</div>
 										{Array.map(apps, app => (
 											<section key={app.name} aria-label={app.name}>
 												<AppHeading app={app} />
@@ -804,15 +830,15 @@ function OperationsPane(props: {
 // One trace of the operation: its age, short id, where it broke and its duration; the row selects it.
 function TraceListRow(props: {active: boolean; now: number; onSelect: () => void; trace: OperationTrace}) {
 	return (
-		<div role="listitem" className="list-row" data-selected={props.active}>
+		<div role="listitem" className="ledger-row list-row" data-selected={props.active}>
 			<Button
 				size="xs"
 				variant={Boolean.match(props.active, {onFalse: () => 'ghost' as const, onTrue: () => 'secondary' as const})}
-				className="h-14 w-full max-sm:h-12 pointer-coarse:h-12"
+				className="h-10 min-w-0 flex-1 max-sm:h-11 pointer-coarse:h-11"
 				aria-current={Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'true' as const})}
 				onClick={props.onSelect}
 			>
-				<span className="flex w-full min-w-0 items-center gap-3 font-normal tracking-normal normal-case">
+				<span className="flex min-w-0 flex-1 items-center gap-3 font-normal tracking-normal normal-case">
 					<span
 						className="text-muted-foreground w-10 shrink-0 font-mono text-xs whitespace-nowrap tabular-nums"
 						title={Option.match(Number.parse(String.slice(0, -6)(props.trace.time)), {
@@ -825,16 +851,19 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 					<span className="text-muted-foreground min-w-0 flex-1 truncate text-left font-mono text-xs">
 						{String.slice(0, 8)(props.trace.id)}
 					</span>
-					<span className="flex w-4 shrink-0 justify-end">
+					<span className="flex w-10 shrink-0 items-center justify-end gap-1">
 						{props.trace.failure !== undefined && (
-							<span
-								role="img"
-								className="flex items-center justify-center"
-								aria-label={`Failed in ${props.trace.failure.span}`}
-								title={`Failed in ${props.trace.failure.span}`}
-							>
-								<StatusDot status="error" />
-							</span>
+							<>
+								<span
+									role="img"
+									className="flex items-center justify-center"
+									aria-label={`Failed in ${props.trace.failure.span}`}
+									title={`Failed in ${props.trace.failure.span}`}
+								>
+									<StatusDot status="error" />
+								</span>
+								<span className="terminal-label text-destructive">ERR</span>
+							</>
 						)}
 					</span>
 					<span className="w-14 shrink-0 text-right font-mono whitespace-nowrap tabular-nums">
@@ -887,7 +916,15 @@ function TracesPane(props: {
 									onFalse: () => <EmptyState label="No traces" icon={<EmptyIcon />} />,
 									onTrue: () => (
 										<ScrollArea className="min-h-0 flex-1">
-											<div role="list">
+											<div role="list" className="ledger-rows">
+												<div className="ledger-head" aria-hidden="true">
+													<span className="w-8 shrink-0" />
+													<span className="w-3 shrink-0" />
+													<span className="w-10 shrink-0">Age</span>
+													<span className="min-w-0 flex-1">Trace</span>
+													<span className="w-10 shrink-0 text-right">Status</span>
+													<span className="w-14 shrink-0 text-right">Duration</span>
+												</div>
 												{Array.map(current.operation.traces, trace => (
 													<TraceListRow
 														key={trace.id}
@@ -1121,7 +1158,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 
 function renderPage(children: ReactNode) {
 	return (
-		<Page width="full" className="h-full min-h-0 gap-4 px-2 sm:px-0">
+		<Page width="full" className="h-full min-h-0 gap-3">
 			<h1 className="sr-only">Scope</h1>
 			<div className="flex min-h-0 flex-1 flex-col">{children}</div>
 		</Page>
@@ -1240,6 +1277,66 @@ function Home() {
 			selected => Option.fromUndefinedOr(selected.spanId)
 		)
 	)
+
+	// j/k walk the primary operation list and Enter opens the chosen trace; a phone keeps its pane-by-pane touch path.
+	useEffect(() => {
+		if (isMobile) return
+		function onKey(event: KeyboardEvent) {
+			if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return
+			if (event.target instanceof HTMLElement && event.target.closest('[data-slot="dialog-content"]') !== null) return
+			const loaded = Option.getOrUndefined(value)
+			if (loaded === undefined) return
+			const rows = Array.flatMap(loaded.apps, app =>
+				Array.map(app.operations, operation => ({app: app.name, operation}))
+			)
+			const current = Option.getOrElse(
+				Option.flatMap(activeKey, key =>
+					Array.findFirstIndex(
+						rows,
+						row => row.app === key.app && row.operation.name === key.name && row.operation.runtime === key.runtime
+					)
+				),
+				() => 0
+			)
+			if (event.key === 'j' || event.key === 'k') {
+				if (Array.isArrayEmpty(rows)) return
+				event.preventDefault()
+				const row = Option.getOrUndefined(
+					Array.get(
+						rows,
+						(current + Boolean.match(event.key === 'j', {onFalse: () => -1, onTrue: () => 1}) + Array.length(rows)) %
+							Array.length(rows)
+					)
+				)
+				if (row === undefined) return
+				navigate({
+					search: previous =>
+						nextSearch(previous, {
+							_tag: 'Operation',
+							operation: {app: row.app, name: row.operation.name, runtime: row.operation.runtime}
+						})
+				})
+				return
+			}
+			if (event.key === 'Enter') {
+				Option.match(Option.all({operation: activeKey, trace: activeTrace}), {
+					onNone: () => undefined,
+					onSome: selected => {
+						event.preventDefault()
+						navigate({
+							search: previous =>
+								nextSearch(previous, {
+									_tag: 'Trace',
+									selection: {operation: selected.operation, traceId: selected.trace.id}
+								})
+						})
+					}
+				})
+			}
+		}
+		addEventListener('keydown', onKey)
+		return () => removeEventListener('keydown', onKey)
+	}, [activeKey, activeTrace, isMobile, navigate, value])
 
 	const operations: PaletteGroup = {
 		items: Option.match(value, {

@@ -22,7 +22,6 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '#components/ui/dropdown-menu.tsx'
-import {Kbd} from '#components/ui/kbd.tsx'
 import {cn} from '#lib/utils.ts'
 
 type Account = typeof Account.Type
@@ -73,17 +72,17 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
+// A section of the app as a numbered terminal tab; the current one takes the acid rule.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
 			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				'group/tab tab-index relative flex h-12 shrink-0 items-center gap-1.5 text-xs whitespace-nowrap uppercase transition-colors duration-100',
 				Boolean.match(props.active, {
 					onFalse: () => 'text-muted-foreground hover:text-foreground',
-					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
+					onTrue: () => 'tab-active'
 				})
 			)
 		},
@@ -91,27 +90,26 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
+// A compact terminal search trigger: `⌘K SEARCH` on a wide screen, a 44px icon on a phone.
 function SearchTrigger(props: {label: string; onClick: () => void}) {
 	return (
 		<>
 			<Button
-				variant="search"
-				size="search"
+				variant="terminal"
+				size="terminal"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
+				className="hidden md:flex"
 			>
-				<MagnifyingGlassIcon className="size-4 shrink-0" />
-				<span className="flex-1">Search or jump to…</span>
-				<Kbd>⌘K</Kbd>
+				<span className="terminal-label border-border border px-1 py-0.5">⌘K</span>
+				SEARCH
 			</Button>
 			<Button
 				variant="ghost"
 				size="icon-sm"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="max-sm:size-11 xl:hidden"
+				className="max-sm:size-11 md:hidden"
 			>
 				<MagnifyingGlassIcon />
 			</Button>
@@ -119,7 +117,11 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 	)
 }
 
-// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
+function isTyping(target: EventTarget | null) {
+	return target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]') !== null
+}
+
+// The masthead: mark, `[AUTH]` and name, numbered sections, the search trigger and the account; the key strip sits under the app.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}
@@ -134,7 +136,10 @@ export function AppBar(props: {
 	useEffect(() => {
 		if (props.palette === undefined) return
 		function open(event: KeyboardEvent) {
-			if (event.key !== 'k' || !(event.metaKey || event.ctrlKey)) return
+			if (event.defaultPrevented) return
+			const command = event.key === 'k' && (event.metaKey || event.ctrlKey)
+			const slash = event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !isTyping(event.target)
+			if (!command && !slash) return
 			event.preventDefault()
 			setPaletteOpen(true)
 		}
@@ -143,12 +148,13 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
+			<header className="bg-background scanlines sticky top-0 z-30 flex h-12 shrink-0 items-center gap-3 border-b border-dotted px-4">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
-							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
+						<a href="/" aria-label={props.name} className="flex h-11 shrink-0 items-center gap-2">
+							<img src={props.icon} alt="" className="pixelated size-4 opacity-80" />
+							<span className="text-primary text-xs leading-none">[{String.toUpperCase(props.name)}]</span>
+							<span className="text-foreground hidden font-mono text-base leading-none sm:inline">{props.name}</span>
 						</a>
 					),
 					// The leading slot keeps its width on every pane, so the title and the right controls never move.
@@ -159,9 +165,9 @@ export function AppBar(props: {
 									<a
 										href="/"
 										aria-label={props.name}
-										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
+										className="flex size-9 shrink-0 items-center justify-center max-sm:size-11"
 									>
-										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
+										<img src={props.icon} alt="" className="pixelated size-5 opacity-90" />
 									</a>
 								),
 								onSome: back => (
@@ -176,28 +182,32 @@ export function AppBar(props: {
 									</Button>
 								)
 							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
-								{title}
-							</span>
+							<span className="font-heading max-w-48 min-w-0 truncate text-lg leading-none">{title}</span>
 						</div>
 					)
 				})}
 				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
+					<nav aria-label="Sections" className="tab-list flex h-12 min-w-0 items-center gap-4 overflow-x-auto">
 						{props.tabs}
 					</nav>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
+				<div className="flex min-w-0 flex-1 items-center justify-end">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
 						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />
 					})}
 				</div>
-				<div className="flex shrink-0 items-center gap-2">
+				<div className="flex shrink-0 items-center gap-1">
 					{props.controls}
 					{props.account ?? <AccountMenu />}
 				</div>
 			</header>
+			{props.palette !== undefined && (
+				<footer aria-hidden="true" className="terminal-footer">
+					<span>DESLOP / {String.toUpperCase(props.name)}</span>
+					<span>j/k move · enter open · / search</span>
+				</footer>
+			)}
 			{Option.match(Option.fromUndefinedOr(props.palette), {
 				onNone: () => null,
 				onSome: groups => (

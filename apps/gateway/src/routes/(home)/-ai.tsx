@@ -1,20 +1,6 @@
 import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {
-	Array,
-	Boolean,
-	Cause,
-	HashMap,
-	HashSet,
-	Number,
-	Option,
-	Order,
-	Predicate,
-	Record,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, Cause, HashMap, Number, Option, Order, Predicate, Record, Schema, String, pipe} from 'effect'
 
 import {XIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -24,7 +10,7 @@ import type {ReactNode} from 'react'
 import {Bar, BarChart, XAxis} from 'recharts'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Stat} from '@deslop/components-web/page'
+import {Section} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
@@ -68,17 +54,16 @@ const PERIODS = [
 	{label: '7d', name: 'last 7 days', value: '7d'},
 	{label: '30d', name: 'last 30 days', value: '30d'}
 ] satisfies {label: string; name: string; value: Period}[]
-// Each app's identity hue; any other client takes a hue none of the shown apps holds.
-const IDENTITIES: Record<string, {color: string; name: string}> = {
-	auth: {color: 'var(--slate)', name: 'Auth'},
-	deploy: {color: 'var(--blue)', name: 'Deploy'},
-	gateway: {color: 'var(--pink)', name: 'Gateway'},
-	opm: {color: 'var(--ivory)', name: 'OPM'},
-	scope: {color: 'var(--cyan)', name: 'Scope'},
-	stash: {color: 'var(--amber)', name: 'Stash'},
-	trips: {color: 'var(--orange)', name: 'Trips'}
+// Each app's name; any other client keeps its own label.
+const IDENTITIES: Record<string, string> = {
+	auth: 'Auth',
+	deploy: 'Deploy',
+	gateway: 'Gateway',
+	opm: 'OPM',
+	scope: 'Scope',
+	stash: 'Stash',
+	trips: 'Trips'
 }
-const SPARE = ['var(--purple)', 'var(--cyan)', 'var(--blue)', 'var(--coral)', 'var(--machine-dev)', 'var(--ivory)']
 const PROVIDER_NAMES = {
 	anthropic: 'Anthropic',
 	'opencode-go': 'OpenCode Go',
@@ -123,9 +108,7 @@ function share(part: number, whole: number) {
 // Auth's client label maps to the same identity on the chart and its rows.
 const appKey = String.toLowerCase
 function appName(app: string) {
-	const identity = IDENTITIES[appKey(app)]
-	if (identity !== undefined) return identity.name
-	return app
+	return IDENTITIES[appKey(app)] ?? app
 }
 
 function sums(cells: readonly AiUsageCell[], key: (cell: AiUsageCell) => string) {
@@ -230,19 +213,41 @@ export function AiControls(props: {
 	)
 }
 
-// A muted label over a group of rows.
+// A black group strip with an acid index, inside the page's ledger.
 function GroupLabel(props: {children: ReactNode}) {
 	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
+		<h2 className="bg-strip text-strip-foreground terminal-label flex min-h-7 items-center px-3">
+			<span className="text-primary">[{props.children}]</span>
+		</h2>
+	)
+}
+
+// The shared columns of both breakdowns: name, share, tokens, cost.
+function TableHead() {
+	return (
+		<div className="ledger-head" aria-hidden="true">
+			<span className="w-8 shrink-0" />
+			<span className="min-w-0 flex-1">Name</span>
+			<span className="w-16 shrink-0 text-right">Share</span>
+			<span className="w-12 shrink-0 text-right">Tokens</span>
+			<span className="w-16 shrink-0 text-right">Cost</span>
+		</div>
 	)
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
-function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onClick: () => void; selected?: boolean}) {
+function Row(props: {
+	children: ReactNode
+	label: string
+	menu?: ReactNode
+	numbered?: boolean
+	onClick: () => void
+	selected?: boolean
+}) {
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className={cn('list-row', props.numbered === true && 'ledger-row')}>
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex min-h-10 min-w-0 flex-1 items-center gap-3 px-1">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -258,7 +263,9 @@ function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onCli
 							/>
 						}
 					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">{props.children}</div>
+					<div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
+						{props.children}
+					</div>
 				</div>
 				{props.menu !== undefined && <ContextMenuContent className="w-auto min-w-36">{props.menu}</ContextMenuContent>}
 			</ContextMenu>
@@ -268,7 +275,6 @@ function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onCli
 
 // Name, share of the shown total, tokens and cost: the same columns in both breakdowns.
 function ShareRow(props: {
-	color: string
 	label: string
 	menu?: ReactNode
 	onClick: () => void
@@ -277,13 +283,10 @@ function ShareRow(props: {
 	sum: Option.Option<Sum>
 }) {
 	return (
-		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected}>
-			<span className="min-w-0 flex-1 truncate text-sm font-medium">{props.label}</span>
-			<span className="flex h-1 w-16 shrink-0">
-				<span
-					className="h-full w-(--share) bg-(--share-color)"
-					style={{'--share': `${props.share * 100}%`, '--share-color': props.color}}
-				/>
+		<Row label={props.label} menu={props.menu} onClick={props.onClick} selected={props.selected} numbered>
+			<span className="min-w-0 flex-1 truncate text-xs font-semibold">{props.label}</span>
+			<span className="border-border flex h-1 w-16 shrink-0 border">
+				<span className="bg-primary h-full w-(--share)" style={{'--share': `${props.share * 100}%`}} />
 			</span>
 			{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
 			<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
@@ -331,7 +334,7 @@ function ConfirmDialog(props: {
 }
 
 function UsageChart(props: {
-	apps: readonly {app: string; color: string; key: string}[]
+	apps: readonly {app: string; key: string}[]
 	metric: Metric
 	onBucket: (at: number) => void
 	range: Range
@@ -364,70 +367,77 @@ function UsageChart(props: {
 	})
 	const step = tickStep(props.range.count)
 	const config = Record.fromEntries(
-		Array.map(props.apps, app => [app.key, {color: app.color, label: appName(app.app)}])
+		Array.map(props.apps, app => [app.key, {color: 'var(--primary)', label: appName(app.app)}])
 	) satisfies ChartConfig
 	return (
-		<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
-			<BarChart
-				accessibilityLayer
-				// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
-				className="[&_[tabindex]]:outline-hidden"
-				data={rows}
-				margin={{bottom: 0, left: 0, right: 0, top: 4}}
-				onClick={state =>
-					Option.map(
-						Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
-						props.onBucket
-					)
-				}
-			>
-				<XAxis
-					dataKey="bucket"
-					ticks={Array.filter(
-						Array.map(rows, row => row.bucket),
-						(_, index) => (props.range.count - 1 - index) % step === 0
-					)}
-					interval={0}
-					tickLine={false}
-					axisLine={false}
-					tickMargin={8}
-					tickFormatter={tickLabel(props.range)}
-				/>
-				<ChartTooltip
-					content={
-						<ChartTooltipContent
-							labelFormatter={label =>
-								Option.getOrElse(
-									Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
-										bucketLabel(props.range.bucket, at)
-									),
-									() => ''
-								)
-							}
-							formatter={(shown, name, item) => (
-								<>
-									<span className="size-2.5 shrink-0 bg-(--swatch)" style={{'--swatch': item.color ?? ''}} />
-									<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
-									<span className="text-foreground font-mono font-medium tabular-nums">
-										{amount(props.metric, shown)}
-									</span>
-								</>
-							)}
-						/>
+		<div className="border-border bg-card border p-2">
+			<ChartContainer config={config} className="h-48 w-full max-sm:h-40">
+				<BarChart
+					accessibilityLayer
+					// Recharts 3 focuses a layer chart.tsx doesn't cover when a bar is clicked; the tooltip already shows what is chosen.
+					className="[&_[tabindex]]:outline-hidden"
+					data={rows}
+					margin={{bottom: 0, left: 0, right: 0, top: 4}}
+					onClick={state =>
+						Option.map(
+							Option.flatMap(Option.liftPredicate(state.activeLabel, Predicate.isString), Number.parse),
+							props.onBucket
+						)
 					}
-				/>
-				{Array.map(props.apps, app => (
-					<Bar
-						key={app.key}
-						dataKey={app.key}
-						stackId="usage"
-						fill={`var(--color-${app.key})`}
-						isAnimationActive={false}
+				>
+					<XAxis
+						dataKey="bucket"
+						ticks={Array.filter(
+							Array.map(rows, row => row.bucket),
+							(_, index) => (props.range.count - 1 - index) % step === 0
+						)}
+						interval={0}
+						tickLine={false}
+						axisLine={false}
+						tickMargin={8}
+						tickFormatter={tickLabel(props.range)}
 					/>
-				))}
-				<ChartLegend content={<ChartLegendContent />} />
-			</BarChart>
-		</ChartContainer>
+					<ChartTooltip
+						content={
+							<ChartTooltipContent
+								labelFormatter={label =>
+									Option.getOrElse(
+										Option.map(Option.flatMap(Option.liftPredicate(label, Predicate.isString), Number.parse), at =>
+											bucketLabel(props.range.bucket, at)
+										),
+										() => ''
+									)
+								}
+								formatter={(shown, name, item) => (
+									<>
+										<span
+											className="border-border bg-primary size-2.5 shrink-0 border"
+											style={{'--swatch': item.color ?? ''}}
+										/>
+										<span className="text-muted-foreground flex-1">{config[`${name}`]?.label}</span>
+										<span className="text-foreground font-mono font-medium tabular-nums">
+											{amount(props.metric, shown)}
+										</span>
+									</>
+								)}
+							/>
+						}
+					/>
+					{Array.map(props.apps, (app, index) => (
+						<Bar
+							key={app.key}
+							dataKey={app.key}
+							stackId="usage"
+							fill="var(--primary)"
+							fillOpacity={Number.max(0.32, 1 - index * 0.12)}
+							radius={0}
+							isAnimationActive={false}
+						/>
+					))}
+					<ChartLegend content={<ChartLegendContent />} />
+				</BarChart>
+			</ChartContainer>
+		</div>
 	)
 }
 
@@ -452,22 +462,32 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance; a desktop adds the daily average.
+// The period as an invoice: four hard cells, label over an acid figure.
 function Stats(props: {range: Range; report: AiUsageReport}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
-			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
-			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
-			<span className="max-sm:hidden">
-				<Stat
-					label="Per day"
-					value={cost(
-						props.report.totals.costUsd /
-							Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
-					)}
-				/>
-			</span>
+		<div className="border-border bg-border grid grid-cols-2 gap-px border sm:grid-cols-4">
+			{Array.map(
+				[
+					{label: 'Spent', value: cost(props.report.totals.costUsd)},
+					{label: 'Tokens', value: compact.format(props.report.totals.tokens)},
+					{label: 'Calls', value: count.format(props.report.totals.calls)},
+					{
+						label: 'Per day',
+						value: cost(
+							props.report.totals.costUsd /
+								Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
+						)
+					}
+				],
+				fact => (
+					<div key={fact.label} className="bg-card flex min-w-0 flex-col gap-1 p-3">
+						<span className="text-muted-foreground terminal-label">{fact.label}</span>
+						<span className="text-primary font-mono text-base leading-none font-semibold tabular-nums">
+							{fact.value}
+						</span>
+					</div>
+				)
+			)}
 		</div>
 	)
 }
@@ -503,32 +523,6 @@ function UsageReport(props: {
 		sums(props.report.cells, cell => cell.app),
 		byMetric
 	)
-	const taken = HashSet.fromIterable(
-		Array.filter(
-			Array.map(allApps, sum => IDENTITIES[appKey(sum.name)]?.color),
-			Predicate.isNotUndefined
-		)
-	)
-	const spare = Array.filter(SPARE, color => !HashSet.has(taken, color))
-	const unnamed = Array.filter(
-		Array.map(allApps, sum => sum.name),
-		app => IDENTITIES[appKey(app)] === undefined
-	)
-	function colorOf(app: string) {
-		return (
-			IDENTITIES[appKey(app)]?.color ??
-			Option.getOrElse(
-				Array.get(
-					spare,
-					Option.getOrElse(
-						Array.findFirstIndex(unnamed, name => name === app),
-						() => 0
-					) % Number.max(1, spare.length)
-				),
-				() => 'var(--chart-3)'
-			)
-		)
-	}
 	const inBucket = Array.filter(
 		props.report.cells,
 		cell => props.focus.bucket === undefined || cell.at === props.focus.bucket
@@ -561,7 +555,7 @@ function UsageReport(props: {
 		<>
 			<Stats range={props.range} report={props.report} />
 			<UsageChart
-				apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
+				apps={Array.map(allApps, (sum, index) => ({app: sum.name, key: `app${index}`}))}
 				metric={props.metric}
 				onBucket={at => toggle({bucket: at})}
 				range={props.range}
@@ -571,12 +565,12 @@ function UsageReport(props: {
 			<div className="grid gap-6 md:grid-cols-2 md:gap-0 md:divide-x">
 				<section aria-label="By app" className="flex min-w-0 flex-col md:pr-4">
 					<GroupLabel>By app</GroupLabel>
-					<div role="list" aria-label="By app">
+					<TableHead />
+					<div role="list" aria-label="By app" className="ledger-rows">
 						{Array.map(appSums, sum => (
 							<ShareRow
 								key={sum.name}
 								label={appName(sum.name)}
-								color={colorOf(sum.name)}
 								onClick={() => toggle({app: sum.name})}
 								selected={props.focus.app === sum.name}
 								share={share(value(sum), appTotal)}
@@ -587,11 +581,11 @@ function UsageReport(props: {
 				</section>
 				<section aria-label="By model" className="flex min-w-0 flex-col md:pl-4">
 					<GroupLabel>By model</GroupLabel>
-					<div role="list" aria-label="By model">
+					<TableHead />
+					<div role="list" aria-label="By model" className="ledger-rows">
 						{Array.map(modelSums, sum => (
 							<ShareRow
 								key={sum.name}
-								color="var(--primary)"
 								label={sum.name}
 								onClick={() => toggle({model: sum.name})}
 								selected={props.focus.model === sum.name}
@@ -630,7 +624,13 @@ function RemoveKeyDialog(props: {onOpenChange: (open: boolean) => void; open: bo
 }
 
 // A provider's key by its last four, what it cost in the period and its light: red once the provider refused it.
-function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provider: AiProvider; spent: string}) {
+function KeyRow(props: {
+	index: number
+	info: Option.Option<AiKeyInfo>
+	onAdd: () => void
+	provider: AiProvider
+	spent: string
+}) {
 	const [confirm, setConfirm] = useState(false)
 	const reset = useAtomSet(removeKeyAtom(props.provider))
 	const rejected = Option.exists(props.info, info => info.lastStatus === 401 || info.lastStatus === 403)
@@ -668,7 +668,10 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 					)
 				})}
 			>
-				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
+				<span className="terminal-label text-muted-foreground w-14 shrink-0">
+					{`KEY-${String.padStart(2, '0')(`${props.index + 1}`)}`}
+				</span>
+				<span className="w-28 min-w-0 shrink-0 truncate text-xs font-semibold">{PROVIDER_NAMES[props.provider]}</span>
 				<span
 					className={cn(
 						'min-w-0 flex-1 truncate font-mono text-xs',
@@ -703,19 +706,27 @@ function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; peri
 		() => []
 	)
 	return (
-		<section aria-label="Keys" className="flex flex-col">
-			<GroupLabel>Keys</GroupLabel>
+		<div aria-label="Keys" className="flex flex-col">
+			<div className="ledger-head" aria-hidden="true">
+				<span className="w-8 shrink-0" />
+				<span className="w-14 shrink-0">Key</span>
+				<span className="w-28 shrink-0">Provider</span>
+				<span className="min-w-0 flex-1">Detail</span>
+				<span className="w-16 shrink-0 text-right">Spent</span>
+				<span className="w-3 shrink-0" />
+			</div>
 			<div role="list" aria-label="Keys">
 				{Array.match(result.value, {
 					onEmpty: () => (
 						<Row label="Add a provider key" onClick={() => props.onAdd(Option.none())}>
-							<span className="text-muted-foreground text-sm">Add a provider key</span>
+							<span className="text-muted-foreground text-xs">Add a provider key</span>
 						</Row>
 					),
 					onNonEmpty: keys =>
-						Array.map(PROVIDERS, provider => (
+						Array.map(PROVIDERS, (provider, index) => (
 							<KeyRow
 								key={provider}
+								index={index}
 								provider={provider}
 								info={Array.findFirst(keys, key => key.provider === provider)}
 								onAdd={() => props.onAdd(Option.some(provider))}
@@ -730,7 +741,7 @@ function Keys(props: {onAdd: (provider: Option.Option<AiProvider>) => void; peri
 						))
 				})}
 			</div>
-		</section>
+		</div>
 	)
 }
 
@@ -743,12 +754,16 @@ export function AiPane(props: {
 }) {
 	return (
 		<CatchBoundary getResetKey={() => `ai-${props.period}`} errorComponent={FailureContent}>
-			<Suspense fallback={<ItemListSkeleton label="AI usage" rows={6} />}>
-				<Usage focus={props.focus} metric={props.metric} onFocus={props.onFocus} period={props.period} />
-			</Suspense>
-			<Suspense fallback={<ItemListSkeleton label="Keys" rows={4} />}>
-				<Keys onAdd={props.onAdd} period={props.period} />
-			</Suspense>
+			<Section title="AI usage" meta={String.toUpperCase(props.period)} className="gap-0">
+				<Suspense fallback={<ItemListSkeleton label="AI usage" rows={6} />}>
+					<Usage focus={props.focus} metric={props.metric} onFocus={props.onFocus} period={props.period} />
+				</Suspense>
+			</Section>
+			<Section title="Keys" meta={`${PROVIDERS.length} providers`} className="gap-0">
+				<Suspense fallback={<ItemListSkeleton label="Keys" rows={4} />}>
+					<Keys onAdd={props.onAdd} period={props.period} />
+				</Suspense>
+			</Section>
 		</CatchBoundary>
 	)
 }

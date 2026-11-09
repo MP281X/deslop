@@ -160,42 +160,49 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 	const active = `active ${Boolean.match(minutes < 1, {onFalse: () => `${ageLabel(minutes)} ago`, onTrue: () => 'now'})}`
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
-		<ContextMenu>
-			<div role="listitem" className="border-b">
-				<ContextMenuTrigger
-					render={
-						<div
-							role="button"
-							tabIndex={0}
-							aria-haspopup="menu"
-							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
-						/>
-					}
-				>
-					<ClientIcon client={props.client.client} />
-					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
-					{Option.match(address, {
-						onNone: () => null,
-						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
-						)
-					})}
-				</ContextMenuTrigger>
-				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
-			</div>
-			<ContextMenuContent className="w-auto min-w-36">
-				<ContextMenuItem
-					variant="destructive"
-					className="max-sm:h-11"
-					disabled={AsyncResult.isWaiting(disconnection)}
-					onClick={() => disconnect(props.client.families)}
-				>
-					Sign out
-				</ContextMenuItem>
-			</ContextMenuContent>
-		</ContextMenu>
+		<div role="listitem">
+			<ContextMenu>
+				<div className="ledger-row list-row relative">
+					<ContextMenuTrigger
+						render={
+							<div
+								role="button"
+								tabIndex={0}
+								aria-haspopup="menu"
+								aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
+								className="absolute inset-0 z-0"
+							/>
+						}
+					/>
+					<div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
+						<ClientIcon client={props.client.client} />
+						<span className="min-w-0 flex-1 truncate text-xs font-semibold">{props.client.label}</span>
+						<span className="text-muted-foreground w-28 shrink-0 text-right font-mono text-xs tabular-nums max-sm:w-20">
+							{active}
+						</span>
+						{Option.match(address, {
+							onNone: () => null,
+							onSome: value => (
+								<span className="text-muted-foreground w-40 shrink-0 truncate text-right font-mono text-xs max-lg:hidden">
+									{value}
+								</span>
+							)
+						})}
+					</div>
+				</div>
+				<ContextMenuContent className="w-auto min-w-36">
+					<ContextMenuItem
+						variant="destructive"
+						className="max-sm:h-11"
+						disabled={AsyncResult.isWaiting(disconnection)}
+						onClick={() => disconnect(props.client.families)}
+					>
+						Sign out
+					</ContextMenuItem>
+				</ContextMenuContent>
+			</ContextMenu>
+			<ResultError result={disconnection} className="mr-1 mb-2 ml-11 wrap-anywhere" />
+		</div>
 	)
 }
 
@@ -205,52 +212,57 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
-			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
-					{signInLabel(props.request.clientName, props.request.device)}
-				</span>
+		<div className="border-primary flex flex-col border">
+			<div className="bg-strip text-strip-foreground flex min-h-7 items-center gap-2 px-3">
+				<span className="text-primary terminal-label">[APPROVAL REQUIRED]</span>
 			</div>
-			<FieldDescription>
-				{Boolean.match(props.request.kind === 'Browser', {
-					onFalse: () =>
-						`Signs ${signInLabel(props.request.clientName, props.request.device)} in as you to every mp281x.xyz app for 30 days`,
-					onTrue: () =>
-						`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
-				})}
-				{Option.match(
-					Option.filter(Option.fromUndefinedOr(props.request.address), address => address !== props.request.device),
-					{onNone: () => '', onSome: address => ` · from ${address}`}
-				)}
-				. Approve only a code you started yourself.
-			</FieldDescription>
-			<ResultError result={consent} />
-			<div className="grid grid-cols-2 gap-2">
-				<Button
-					size="lg"
-					aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
-					disabled={waiting}
-					onClick={() => {
-						setChoice(true)
-						respond({accept: true, request: props.request})
-					}}
-				>
-					{Boolean.match(waiting && choice === true, {onFalse: () => null, onTrue: () => <Spinner />})}
-					Approve
-				</Button>
-				<Button
-					size="lg"
-					variant="outline"
-					disabled={waiting}
-					onClick={() => {
-						setChoice(false)
-						respond({accept: false, request: props.request})
-					}}
-				>
-					{Boolean.match(waiting && choice === false, {onFalse: () => null, onTrue: () => <Spinner />})}
-					Deny
-				</Button>
+			<div className="flex flex-col gap-3 p-4">
+				<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+					<h2 className="font-heading text-lg leading-none">A sign-in is waiting</h2>
+					<span className="text-muted-foreground font-mono text-xs tabular-nums">
+						{signInLabel(props.request.clientName, props.request.device)}
+					</span>
+				</div>
+				<FieldDescription>
+					{Boolean.match(props.request.kind === 'Browser', {
+						onFalse: () =>
+							`Signs ${signInLabel(props.request.clientName, props.request.device)} in as you to every mp281x.xyz app for 30 days`,
+						onTrue: () =>
+							`Signs in ${signInLabel(props.request.clientName, props.request.device)} as you to every mp281x.xyz app for 30 days, including approving sign-ins`
+					})}
+					{Option.match(
+						Option.filter(Option.fromUndefinedOr(props.request.address), address => address !== props.request.device),
+						{onNone: () => '', onSome: address => ` · from ${address}`}
+					)}
+					. Approve only a code you started yourself.
+				</FieldDescription>
+				<ResultError result={consent} />
+				<div className="grid grid-cols-2 gap-2">
+					<Button
+						size="lg"
+						aria-label={`Approve ${signInLabel(props.request.clientName, props.request.device)}`}
+						disabled={waiting}
+						onClick={() => {
+							setChoice(true)
+							respond({accept: true, request: props.request})
+						}}
+					>
+						{Boolean.match(waiting && choice === true, {onFalse: () => null, onTrue: () => <Spinner />})}
+						Approve
+					</Button>
+					<Button
+						size="lg"
+						variant="outline"
+						disabled={waiting}
+						onClick={() => {
+							setChoice(false)
+							respond({accept: false, request: props.request})
+						}}
+					>
+						{Boolean.match(waiting && choice === false, {onFalse: () => null, onTrue: () => <Spinner />})}
+						Deny
+					</Button>
+				</div>
 			</div>
 		</div>
 	)
@@ -329,10 +341,18 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 					/>
 				),
 				onNonEmpty: rows => (
-					<div role="list" aria-label="Signed-in clients">
-						{Array.map(rows, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
-						))}
+					<div className="ledger-rows">
+						<div className="ledger-head" aria-hidden="true">
+							<span className="w-8 shrink-0" />
+							<span className="min-w-0 flex-1">Client</span>
+							<span className="w-28 shrink-0 text-right max-sm:w-20">Last active</span>
+							<span className="w-40 shrink-0 text-right max-lg:hidden">Address</span>
+						</div>
+						<div role="list" aria-label="Signed-in clients">
+							{Array.map(rows, client => (
+								<ClientRow key={client.label} client={client} now={data.now} />
+							))}
+						</div>
 					</div>
 				)
 			})}

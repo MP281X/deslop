@@ -4,40 +4,45 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
-/* theme.ts mirrors these values; theme.test.ts fails when they drift. An app points --primary at its hue in its styles.css. */
+/* theme.ts mirrors these values; theme.test.ts fails when they drift. Terminal Brutalist: black CRT, acid green, bone, zero radius and no glow. */
 :root {
-	/* White and neutral grey surfaces; app/status hues darkened for white, never Lotus paper or khaki. */
-	--red: oklch(from #c92b38 l c h);
-	--orange: oklch(from #b64b11 l c h);
-	--amber: oklch(from #91601d l c h);
-	--ivory: oklch(from #686868 l c h);
-	--cyan: oklch(from #25777a l c h);
-	--blue: oklch(from #345dad l c h);
-	--purple: oklch(from #74519b l c h);
-	--pink: oklch(from #a63c69 l c h);
-	--slate: oklch(from #526887 l c h);
-	--coral: oklch(from #bd4630 l c h);
-	--machine-dev: oklch(from #2c718b l c h);
-	--machine-desktop: oklch(from #98601f l c h);
+	/* Bone printout; identity hues darkened for the light sheet, never Lotus paper or khaki. */
+	--red: #b3261e;
+	--orange: #8a5a00;
+	--amber: #6f5200;
+	--ivory: #4f5347;
+	--acid: #2f5d0b;
+	--cyan: var(--acid);
+	--blue: #1f5f7a;
+	--purple: #4f5347;
+	--pink: #6f5200;
+	--slate: #4f5347;
+	--coral: #b3261e;
+	--machine-dev: #1f5f7a;
+	--machine-desktop: #6f5200;
 
-	--background: #ffffff;
-	--foreground: #0a0a0a;
-	--card: #f8f7f4;
-	--popover: #ffffff;
-	--primary-foreground: #ffffff;
-	--secondary: #f1f0ec;
-	--muted: #f5f4f1;
-	--muted-foreground: #64625d;
-	--accent: #f0efea;
-	--border: #e6e4de;
-	--input: #d8d6cf;
-	--surface: #f2f1ed;
-	--selection: #e8e6df;
-	--selection-foreground: #0a0a0a;
+	--background: #f2f0e8;
+	--foreground: #11150f;
+	--card: #fbfaf4;
+	--popover: #fbfaf4;
+	--primary: #2f5d0b;
+	--primary-foreground: #f2f0e8;
+	--secondary: #e7e7dc;
+	--muted: #e7e7dc;
+	--muted-foreground: #62685c;
+	--accent: #dfe2d4;
+	--border: #c7c9bc;
+	--input: #b9bdaf;
+	--surface: #eceade;
+	--selection: #d9e8c6;
+	--selection-foreground: #11150f;
+	--strip: #11150f;
+	--strip-foreground: #f2f0e8;
 
-	--primary: var(--slate);
 	--destructive: var(--red);
-	--warning: oklch(from #a3530b l c h);
+	--warning: var(--amber);
+	--success: var(--cyan);
+	--info: var(--blue);
 	--ring: var(--primary);
 
 	--card-foreground: var(--foreground);
@@ -47,11 +52,12 @@
 	--surface-foreground: var(--foreground);
 
 	/* shadcn's names, so a component added with the CLI works: they point at the tokens above. */
-	--chart-1: var(--orange);
-	--chart-2: var(--cyan);
-	--chart-3: var(--purple);
-	--chart-4: var(--pink);
-	--chart-5: var(--amber);
+	--chart-1: var(--cyan);
+	--chart-2: var(--ivory);
+	--chart-3: var(--blue);
+	--chart-4: var(--amber);
+	--chart-5: var(--red);
+	--chart-6: var(--muted-foreground);
 	--sidebar: var(--card);
 	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
@@ -64,51 +70,65 @@
 	--radius: 0px;
 }
 
-/* Paper stays light: printing a page in a dark-mode browser keeps dark text on white. */
+/* The CRT: near-black ground, bone type, one acid signal, no glow. */
 @media screen and (prefers-color-scheme: dark) {
 	:root {
-		--red: oklch(from #ff5d62 l c h);
-		--orange: oklch(from #ffa066 l c h);
-		--amber: oklch(from #e6c384 l c h);
-		--ivory: oklch(from #dcd7ba l c h);
-		--cyan: oklch(from #a3d4d5 l c h);
-		--blue: oklch(from #7e9cd8 l c h);
-		--purple: oklch(from #957fb8 l c h);
-		--pink: oklch(from #d27e99 l c h);
-		--slate: oklch(from #9cabca l c h);
-		--coral: oklch(from #fd7357 l c h);
-		--machine-dev: oklch(from #7fb4ca l c h);
-		--machine-desktop: oklch(from #dca561 l c h);
-		--warning: oklch(from #ff9e3b l c h);
+		--red: #ff5c5c;
+		--orange: #ffd166;
+		--amber: #ffd166;
+		--ivory: #d9e2ce;
+		--acid: #b6ff3b;
+		--cyan: var(--acid);
+		--blue: #8fd3ff;
+		--purple: #d9e2ce;
+		--pink: #ffd166;
+		--slate: #d9e2ce;
+		--coral: #ff5c5c;
+		--machine-dev: #8fd3ff;
+		--machine-desktop: #ffd166;
 
-		--background: #0d0c0c;
-		--foreground: #e3e1db;
-		--card: #141313;
-		--popover: #141313;
-		--primary-foreground: #0d0c0c;
-		/* As in shadcn's own dark theme, a muted fill stands a step above cards and popovers, so a tab list, a hover or a selected row shows on them. */
-		--secondary: #242323;
-		--muted: #242323;
-		--muted-foreground: #a19e96;
-		--accent: #242323;
-		--border: #262523;
-		--input: #2c2a27;
-		--surface: #191817;
-		--selection: #3a3833;
-		--selection-foreground: #f5f3ec;
+		--background: #050706;
+		--foreground: #d9e2ce;
+		--card: #0d120e;
+		--popover: #111711;
+		--primary: #b6ff3b;
+		--primary-foreground: #071005;
+		--secondary: #121a13;
+		--muted: #121a13;
+		--muted-foreground: #7f8b78;
+		--accent: #1b271c;
+		--border: #283329;
+		--input: #1a241b;
+		--surface: #0a0d0b;
+		--selection: #2b3b22;
+		--selection-foreground: #d9e2ce;
+		--strip: #000000;
+		--strip-foreground: #d9e2ce;
+		--ring: var(--primary);
 	}
 }
 
 @theme inline {
-	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	/* Every control is Geist Mono; Geist is kept for the one 18px heading naming a view. */
+	--font-sans: 'Geist Mono Variable', ui-monospace, monospace;
 	--font-heading: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-	--tracking-label: 0.14em;
+	--tracking-label: 0.12em;
+	--text-xs: 0.6875rem;
+	--text-xs--line-height: 1.45;
+	--text-sm: 0.75rem;
+	--text-sm--line-height: 1.45;
+	--text-base: 0.8125rem;
+	--text-base--line-height: 1.4;
 	--color-ring: var(--ring);
 	--color-input: var(--input);
 	--color-border: var(--border);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
+	--color-success: var(--success);
+	--color-info: var(--info);
+	--color-strip-foreground: var(--strip-foreground);
+	--color-strip: var(--strip);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-accent: var(--accent);
 	--color-muted-foreground: var(--muted-foreground);
@@ -132,6 +152,7 @@
 	--color-chart-3: var(--chart-3);
 	--color-chart-4: var(--chart-4);
 	--color-chart-5: var(--chart-5);
+	--color-chart-6: var(--chart-6);
 	--color-sidebar: var(--sidebar);
 	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -160,25 +181,246 @@
 	image-rendering: pixelated;
 }
 
-/* Sera's display face, for the one heading that names a view. */
-/* A ruled row: the fill may meet the pane edge, the divider never does. */
-@utility list-row {
+/* A 10px uppercase mono label, the ledger's column and section voice. */
+@utility terminal-label {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	line-height: 1;
+	text-transform: uppercase;
+}
+
+/* The page's ledger: one counter for its section strips and one for its numbered rows. */
+@utility ledger {
+	counter-reset: ledger-section ledger-row;
+	width: 100%;
+}
+
+@utility ledger-section {
+	counter-increment: ledger-section;
+}
+
+/* A list restarts its row gutter at 01. */
+@utility ledger-rows {
+	counter-reset: ledger-row;
+}
+
+/* A black full-bleed section strip with its acid index. */
+@utility ledger-strip {
+	display: flex;
+	min-height: 28px;
+	align-items: center;
+	gap: 12px;
+	padding-inline: 12px;
+	background: var(--strip);
+	color: var(--strip-foreground);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	line-height: 1;
+	text-transform: uppercase;
+
+	&::before {
+		content: counter(ledger-section, decimal-leading-zero);
+		color: var(--primary);
+		font-size: 10px;
+	}
+}
+
+/* A 28px acid table head, sticky at the top of its scroll pane. */
+@utility ledger-head {
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	display: flex;
+	min-height: 28px;
+	align-items: center;
+	gap: 12px;
+	padding-inline: 12px;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	line-height: 1;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+/* A 40px numbered row; a touch pointer grows it to 44px. */
+@utility ledger-row {
 	position: relative;
+	display: flex;
+	min-width: 0;
+	min-height: 40px;
+	align-items: center;
+	gap: 12px;
+	padding-inline: 12px;
+	border-bottom: 1px solid var(--border);
+	font-family: var(--font-mono);
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+
+	&:hover {
+		background: var(--secondary);
+	}
+
+	&::before {
+		content: counter(ledger-row, decimal-leading-zero);
+		counter-increment: ledger-row;
+		position: relative;
+		z-index: 10;
+		width: 32px;
+		flex: none;
+		color: var(--muted-foreground);
+		font-size: 10px;
+		pointer-events: none;
+	}
+
+	@media (pointer: coarse) {
+		min-height: 44px;
+	}
+}
+
+@utility ledger-num {
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+	white-space: nowrap;
+}
+
+/* A numbered masthead tab and its acid selected rule. */
+@utility tab-list {
+	counter-reset: tab;
+}
+
+@utility tab-index {
+	counter-increment: tab;
+
+	&::before {
+		content: counter(tab, decimal-leading-zero);
+		font-size: 10px;
+		color: var(--muted-foreground);
+	}
+}
+
+@utility tab-active {
+	color: var(--primary);
+
 	&::after {
 		content: '';
 		position: absolute;
-		inset-inline: calc(var(--spacing) * 4);
+		inset-inline: 0;
 		bottom: 0;
-		height: 1px;
-		background: var(--border);
+		height: 2px;
+		background: var(--primary);
+	}
+}
+
+/* A ruled row: fixed hairline, acid-tinted selection and a 2px acid edge that survives reduced motion. */
+@utility list-row {
+	position: relative;
+	border-bottom: 1px solid var(--border);
+
+	&[data-selected='true'] {
+		background: color-mix(in oklab, var(--primary) 10%, transparent);
+
+		&::after {
+			content: '';
+			position: absolute;
+			inset-block: 0;
+			inset-inline-start: 0;
+			width: 2px;
+			background: var(--primary);
+			pointer-events: none;
+		}
+	}
+}
+
+/* One 1px scanline every 3px, in the masthead only; reduced motion removes the pattern. */
+@utility scanlines {
+	position: relative;
+
+	&::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		background-image: repeating-linear-gradient(
+			to bottom,
+			var(--foreground) 0,
+			var(--foreground) 1px,
+			transparent 1px,
+			transparent 3px
+		);
+		opacity: 0.03;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		&::after {
+			display: none;
+		}
+	}
+}
+
+/* A square focus rule plus literal brackets, so the focused control reads as a field in a terminal. */
+@utility bracket-focus {
+	&:focus-visible {
+		outline: none;
+	}
+
+	&:focus-visible::before,
+	&:focus-visible::after {
+		position: absolute;
+		top: 50%;
+		translate: 0 -50%;
+		color: var(--primary);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		line-height: 1;
 		pointer-events: none;
 	}
-	&:hover::after,
-	&:focus-within::after,
-	&[data-selected='true']::after,
-	&:has(+ :hover)::after,
-	&:has(+ [data-selected='true'])::after {
-		opacity: 0;
+
+	&:focus-visible::before {
+		content: '[';
+		inset-inline-start: 2px;
+	}
+
+	&:focus-visible::after {
+		content: ']';
+		inset-inline-end: 2px;
+	}
+}
+
+/* The page's bottom air, leaving room for the 24px key strip. */
+@utility page-bottom {
+	padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+}
+
+/* The persistent desktop key strip, 24px high. */
+@utility terminal-footer {
+	position: fixed;
+	inset-inline: 0;
+	bottom: 0;
+	z-index: 40;
+	display: flex;
+	height: 24px;
+	align-items: center;
+	justify-content: space-between;
+	padding-inline: 16px;
+	border-top: 1px solid var(--border);
+	background: var(--background);
+	color: var(--muted-foreground);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	line-height: 1;
+	text-transform: uppercase;
+
+	@media (max-width: 40rem) {
+		display: none;
 	}
 }
 
@@ -188,7 +430,15 @@
 	}
 
 	body {
-		@apply bg-background text-foreground;
+		@apply bg-background text-foreground font-mono;
+		font-size: 13px;
+		line-height: 1.4;
+	}
+
+	/* Focus is immediate and square: a 1px acid rule, never a glow. */
+	:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+		outline: 1px solid var(--primary);
+		outline-offset: 1px;
 	}
 
 	/* Every app is a full-height shell whose own panes scroll, so the document never does. */
@@ -235,9 +485,12 @@
 		-webkit-user-select: none;
 	}
 
-	/* The display heading uses the app's sans at display weight, not a second typeface. */
+	/* The one heading naming a view: 18px Geist semibold, never mono. */
 	.font-heading {
+		font-family: var(--font-heading);
+		font-size: 1.125rem;
 		font-weight: 600;
+		letter-spacing: -0.01em;
 	}
 
 	.cn-font-heading {
@@ -268,5 +521,7 @@
 	*::before,
 	*::after {
 		scroll-behavior: auto !important;
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
 	}
 }

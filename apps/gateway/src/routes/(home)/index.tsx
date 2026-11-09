@@ -2,7 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from
 
 import {Array, Boolean, Cause, Match, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon, SparkleIcon} from '@phosphor-icons/react'
+import {CopyIcon, HardDrivesIcon, KeyIcon, PlusIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -40,17 +40,7 @@ import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {
-	addAtom,
-	connectUrl,
-	copyAtom,
-	ENDPOINT,
-	lastCallAtom,
-	Period,
-	removeAtom,
-	serversAtom,
-	setKeyAtom
-} from '#lib/utils.ts'
+import {addAtom, connectUrl, copyAtom, ENDPOINT, Period, removeAtom, serversAtom, setKeyAtom} from '#lib/utils.ts'
 import {AddKeyDialog, AiControls, AiPane, PROVIDERS} from '#routes/(home)/-ai.tsx'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
 import icon from '#routes/icon.svg'
@@ -84,13 +74,10 @@ const urgency = Order.mapInput(Order.Number, (server: ConnectionInfo) =>
 	)
 )
 
-// Live in the primary, expired red, not connected hollow; like a port light it dims per tool call, a new key replaying it.
+// Live in the primary, expired red, not connected hollow.
 function Status(props: {server: ConnectionInfo}) {
-	const call = useAtomValue(lastCallAtom(props.server.id))
 	return (
 		<StatusDot
-			key={call}
-			className={Boolean.match(call >= 0, {onFalse: () => undefined, onTrue: () => 'animate-port-blink'})}
 			status={pipe(
 				Match.value(props.server.status),
 				Match.when('Connected', () => 'live' as const),
@@ -183,10 +170,10 @@ function ServerRow(props: {server: ConnectionInfo}) {
 	const [confirm, setConfirm] = useState(false)
 	const connected = props.server.status === 'Connected'
 	return (
-		<div role="listitem" className="list-row">
+		<div role="listitem" className="ledger-row list-row relative">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex min-w-0 flex-1 items-center gap-3">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -194,13 +181,13 @@ function ServerRow(props: {server: ConnectionInfo}) {
 								id={`server-${props.server.id}`}
 								type="button"
 								aria-label={`${props.server.name}, ${reasonText(props.server)}`}
-								className="absolute inset-0 h-full w-full"
+								className="absolute inset-0 z-0 h-full w-full"
 							/>
 						}
 					/>
-					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
+					<div className="pointer-events-none relative z-10 flex min-w-0 flex-1 items-center gap-3">
 						<ServerIcon server={props.server} />
-						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
+						<span className="max-w-56 min-w-0 shrink truncate text-xs font-semibold">{props.server.name}</span>
 						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
 							{new URL(props.server.url).hostname}
 						</span>{' '}
@@ -213,7 +200,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 							</span>
 						)}
 					</div>
-					<div className="relative flex w-16 shrink-0 justify-end">
+					<div className="relative z-10 flex w-16 shrink-0 justify-end">
 						{connected && props.server.error === undefined && (
 							<span
 								role="img"
@@ -273,7 +260,13 @@ function ServersContent(props: {onAdd: () => void}) {
 						),
 						onNonEmpty: servers => (
 							<Section title="Servers" meta={`${servers.length} configured`}>
-								<div role="list" aria-label="MCP servers">
+								<div role="list" aria-label="MCP servers" className="ledger-rows">
+									<div className="ledger-head" aria-hidden="true">
+										<span className="w-8 shrink-0" />
+										<span className="min-w-0 flex-1">Server</span>
+										<span className="w-8 shrink-0 text-right">Tools</span>
+										<span className="w-16 shrink-0 text-right">State</span>
+									</div>
 									{Array.map(servers, server => (
 										<ServerRow key={server.id} server={server} />
 									))}
@@ -331,12 +324,10 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 			}
 		>
 			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
-				<HardDrivesIcon />
-				<span className="max-sm:sr-only">Servers</span>
+				<span>[Servers]</span>
 			</ToggleGroupItem>
 			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
-				<SparkleIcon />
-				<span className="max-sm:sr-only">AI</span>
+				<span>[AI]</span>
 			</ToggleGroupItem>
 		</ToggleGroup>
 	)

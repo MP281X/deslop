@@ -63,6 +63,7 @@ import {
 	Search,
 	secondAtom,
 	signInAtom,
+	signInLabel,
 	menuSignOutAtom,
 	signOutAtom
 } from '#lib/utils.ts'
@@ -140,58 +141,70 @@ function CodeCard(props: {request: PendingAuthorization}) {
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
-		<section className="bg-card m-auto flex w-full max-w-md flex-col gap-5 border p-6" aria-labelledby="waiting-title">
-			<header className="flex flex-col gap-2">
-				<p className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Waiting for approval</p>
-				<h1
-					id="waiting-title"
-					title={`Sign in ${props.request.clientName} on ${props.request.device}`}
-					className="font-heading text-3xl leading-none tracking-tight"
-				>
-					{props.request.clientName}
-				</h1>
-				<p className="text-muted-foreground text-sm">on {props.request.device} · asks to sign in to Deslop</p>
-			</header>
-			<div className="flex items-start gap-5">
-				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-				<span className="bg-background text-foreground shrink-0 border p-2">
-					<QrCode text={approveLink(props.request.id)} className="size-32" />
-				</span>
-				<div className="flex min-w-0 flex-col gap-2">
-					<span className="text-muted-foreground tracking-label text-xs font-semibold uppercase">Code</span>
-					<Code id={props.request.id} />
-					<Countdown expiresAt={props.request.expiresAt} />
-					<p className="text-muted-foreground text-xs leading-relaxed">
-						Scan the code from a signed-in phone, or enter this code there.
-					</p>
-				</div>
+		<section
+			className="border-border bg-card m-auto flex w-full max-w-md flex-col border"
+			aria-labelledby="waiting-title"
+		>
+			<div className="bg-strip text-strip-foreground flex min-h-7 items-center px-3">
+				<span className="text-primary terminal-label">[WAITING FOR APPROVAL]</span>
 			</div>
-			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
-			{props.request.kind === 'App' && (
-				<div className="flex flex-col gap-2 border-t pt-4">
-					<Button
-						variant="outline"
-						size="sm"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(passkey)}
-						onClick={() => startPasskey(next)}
+			<div className="flex flex-col gap-4 p-4">
+				<header className="flex flex-col gap-1">
+					<p className="text-muted-foreground terminal-label">
+						{signInLabel(props.request.clientName, props.request.device)}
+					</p>
+					<h1
+						id="waiting-title"
+						title={`Sign in ${props.request.clientName} on ${props.request.device}`}
+						className="font-heading text-lg leading-none"
 					>
-						<KeyIcon />
-						Approve here with a passkey
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						className="w-full max-sm:h-11"
-						disabled={AsyncResult.isWaiting(signIn)}
-						onClick={() => startSignIn()}
-					>
-						<GitHubIcon />
-						Approve here with GitHub
-					</Button>
+						{props.request.clientName}
+					</h1>
+					<p className="text-muted-foreground font-mono text-xs">
+						on {props.request.device} · asks to sign in to Deslop
+					</p>
+				</header>
+				<div className="flex items-start gap-4">
+					{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
+					<span className="bg-background text-foreground border-border shrink-0 border p-2">
+						<QrCode text={approveLink(props.request.id)} className="size-32" />
+					</span>
+					<div className="flex min-w-0 flex-col gap-2">
+						<span className="text-muted-foreground terminal-label">Code</span>
+						<Code id={props.request.id} />
+						<Countdown expiresAt={props.request.expiresAt} />
+						<p className="text-muted-foreground font-mono text-xs leading-relaxed">
+							Scan the code from a signed-in phone, or enter this code there.
+						</p>
+					</div>
 				</div>
-			)}
-			<Failures />
+				{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
+				{props.request.kind === 'App' && (
+					<div className="border-border flex flex-col gap-2 border-t pt-4">
+						<Button
+							variant="outline"
+							size="sm"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(passkey)}
+							onClick={() => startPasskey(next)}
+						>
+							<KeyIcon />
+							Approve here with a passkey
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="w-full max-sm:h-11"
+							disabled={AsyncResult.isWaiting(signIn)}
+							onClick={() => startSignIn()}
+						>
+							<GitHubIcon />
+							Approve here with GitHub
+						</Button>
+					</div>
+				)}
+				<Failures />
+			</div>
 		</section>
 	)
 }
@@ -376,11 +389,11 @@ function AccountMenu(props: {account: SignedAccount}) {
 // The suite's marks, announced apps first; a signed-out catalog falls back to the web tools every worker runs.
 function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	return (
-		<div className="grid max-w-lg grid-cols-2 gap-x-8 gap-y-3 border-t pt-5 sm:grid-cols-3">
+		<div className="border-border bg-border grid grid-cols-2 gap-px border sm:grid-cols-3">
 			{Array.map(props.apps, app => (
-				<span key={app.origin} className="flex min-w-0 items-center gap-2.5">
+				<span key={app.origin} className="bg-card flex min-w-0 items-center gap-2 px-3 py-2.5">
 					<AppIcon origin={app.origin} small />
-					<span className="truncate text-sm">{app.name}</span>
+					<span className="truncate font-mono text-xs uppercase">{app.name}</span>
 				</span>
 			))}
 		</div>
@@ -395,10 +408,13 @@ function SignIn() {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	const apps = AsyncResult.getOrElse(useAtomValue(catalogAtom), () => [])
 	return (
-		<section className="m-auto flex w-full max-w-sm flex-col gap-6 py-10" aria-label="Sign in">
+		<section className="mx-auto flex w-full max-w-sm flex-col gap-4 pt-8" aria-label="Sign in">
 			<h1 className="sr-only">Sign in</h1>
-			<div className="bg-card flex w-full flex-col gap-5 border p-6">
-				<div className="flex flex-col gap-2">
+			<div className="border-border bg-card flex w-full flex-col border">
+				<div className="bg-strip text-strip-foreground flex min-h-7 items-center px-3">
+					<span className="text-primary terminal-label">[SIGN IN]</span>
+				</div>
+				<div className="flex flex-col gap-2 p-4">
 					<Button
 						size="lg"
 						className="w-full max-sm:h-11"
@@ -572,15 +588,14 @@ function HomeLayout() {
 							aria-busy="true"
 							aria-label="Sign in"
 							role="status"
-							className="flex flex-1 flex-col items-center justify-center gap-6 pb-12"
+							className="mx-auto flex w-full max-w-sm flex-col gap-3 pt-8"
 						>
-							<div className="flex flex-col items-center gap-2">
-								<Skeleton className="h-7 w-52" />
-								<Skeleton className="h-4 w-44" />
+							<div className="flex flex-col gap-2">
+								<Skeleton className="h-5 w-28" />
+								<Skeleton className="h-3 w-40" />
 							</div>
-							<div className="flex w-full max-w-sm flex-col gap-2 rounded-xl border p-4">
+							<div className="border-border bg-card flex w-full flex-col gap-2 border p-4">
 								<Skeleton className="h-11 w-full" />
-								<Skeleton className="h-4 w-8 self-center" />
 								<Skeleton className="h-11 w-full" />
 								<Skeleton className="h-11 w-full" />
 							</div>

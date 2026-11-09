@@ -27,7 +27,16 @@ import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle} from '@deslop/components-mobile/ui/empty'
-import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemGroup,
+	ItemMedia,
+	ItemMeta,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {Spinner} from '@deslop/components-mobile/ui/spinner'
 
@@ -44,7 +53,6 @@ import {
 	session,
 	statusOf,
 	timeAt,
-	tones,
 	undoAtom
 } from '#lib/utils.ts'
 import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
@@ -116,13 +124,15 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{scheduleOf(props.booking)}</Text>
 					<HStack spacing={space[2]}>
 						<StatusDot status={dots[status.tone]} tint={primary} />
-						<Text modifiers={[text.detail, foregroundStyle(colors.foreground)]}>{status.label}</Text>
-						{Option.match(status.where, {
-							onNone: () => undefined,
-							onSome: where => <Text modifiers={[text.detail, foregroundStyle(tones[where.tone])]}>· {where.text}</Text>
-						})}
+						<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>{status.label}</Text>
 					</HStack>
 				</ItemContent>
+				<ItemActions>
+					{Option.match(status.where, {
+						onNone: () => undefined,
+						onSome: where => <ItemMeta width={56}>{where.text}</ItemMeta>
+					})}
+				</ItemActions>
 			</Item>
 			<SwipeActions.Actions edge="trailing">
 				<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking)} />

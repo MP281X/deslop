@@ -22,13 +22,13 @@ import {colors, space, text} from '#components/theme.ts'
 
 // Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
 export const itemRow = [
-	frame({minHeight: 56}),
-	listRowInsets({bottom: space[3], leading: space[4], top: space[3], trailing: space[4]})
+	frame({minHeight: 48}),
+	listRowInsets({bottom: space[2], leading: space[4], top: space[2], trailing: space[4]})
 ]
 
 export function ItemGroup(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
 	return (
-		<List modifiers={[...(props.modifiers ?? []), scrollEdgeEffectStyle('soft'), listStyle('insetGrouped')]}>
+		<List modifiers={[...(props.modifiers ?? []), scrollEdgeEffectStyle('soft'), listStyle('plain')]}>
 			{props.children}
 		</List>
 	)
@@ -87,6 +87,22 @@ export function ItemTitle(props: {children: string; modifiers?: ViewModifier[]})
 export function ItemDescription(props: {children: string; modifiers?: ViewModifier[]}) {
 	return (
 		<Text modifiers={[...(props.modifiers ?? []), text.detail, foregroundStyle(colors.mutedForeground), lineLimit(1)]}>
+			{props.children}
+		</Text>
+	)
+}
+
+// A fixed trailing metadata column, the native counterpart of a ledger's mono figures.
+export function ItemMeta(props: {children: string; width?: number}) {
+	return (
+		<Text
+			modifiers={[
+				text.data,
+				foregroundStyle(colors.mutedForeground),
+				frame({alignment: 'trailing', minWidth: props.width ?? 48}),
+				lineLimit(1)
+			]}
+		>
 			{props.children}
 		</Text>
 	)

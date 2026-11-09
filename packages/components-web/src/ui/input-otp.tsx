@@ -14,7 +14,7 @@ function InputOTP({
     <OTPInput
       data-slot="input-otp"
       containerClassName={cn(
-        "cn-input-otp flex items-center has-disabled:opacity-50",
+        "cn-input-otp flex items-center gap-2 has-disabled:opacity-50",
         containerClassName
       )}
       spellCheck={false}
@@ -29,7 +29,7 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="input-otp-group"
       className={cn(
-        "flex items-center gap-1 rounded-none has-aria-invalid:border-b-destructive dark:has-aria-invalid:border-b-destructive/50",
+        "flex items-center gap-1 rounded-none has-aria-invalid:border-destructive",
         className
       )}
       {...props}
@@ -52,7 +52,7 @@ function InputOTPSlot({
       data-slot="input-otp-slot"
       data-active={isActive}
       className={cn(
-        "relative flex size-10 items-center justify-center border border-transparent border-b-input bg-transparent text-sm transition-[color,border-color] outline-none first:rounded-none last:rounded-none aria-invalid:border-b-destructive data-[active=true]:z-10 data-[active=true]:border-b-ring dark:aria-invalid:border-b-destructive/50",
+        "relative flex size-10 items-center justify-center rounded-none border border-input bg-transparent font-mono text-sm text-foreground transition-[color,border-color] outline-none aria-invalid:border-destructive data-[active=true]:z-10 data-[active=true]:border-primary",
         className
       )}
       {...props}
@@ -60,7 +60,7 @@ function InputOTPSlot({
       {char}
       {hasFakeCaret && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
+          <div className="h-4 w-0.5 bg-primary" />
         </div>
       )}
     </div>
@@ -71,7 +71,7 @@ function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-separator"
-      className="flex items-center [&_svg:not([class*='size-'])]:size-3.5"
+      className="flex items-center text-muted-foreground [&_svg:not([class*='size-'])]:size-3.5"
       role="separator"
       {...props}
     >

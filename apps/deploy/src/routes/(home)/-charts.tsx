@@ -64,10 +64,13 @@ export function UsageChart(props: {
 		() => props.value ?? ''
 	)
 	return (
-		<figure className={cn('flex min-h-0 flex-col', props.className)} aria-label={props.label}>
-			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2 text-xs">
-				<span className="tracking-label font-semibold uppercase">{props.label}</span>
-				<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tabular-nums" title={valueText}>
+		<figure
+			className={cn('border-border bg-card flex min-h-0 flex-col border p-2', props.className)}
+			aria-label={props.label}
+		>
+			<figcaption className="mb-1.5 flex items-baseline justify-between gap-2">
+				<span className="terminal-label">{props.label}</span>
+				<span className="text-muted-foreground min-w-0 truncate text-xs tabular-nums" title={valueText}>
 					{valueText}
 				</span>
 			</figcaption>
@@ -99,65 +102,67 @@ export function UsageChart(props: {
 								y1="0"
 								y2={HEIGHT}
 								stroke="var(--border)"
-								strokeOpacity="0.5"
+								strokeDasharray="1 3"
 								vectorEffect="non-scaling-stroke"
 							/>
 						))}
-						<line
-							x1="0"
-							x2="100"
-							y1={HEIGHT / 2}
-							y2={HEIGHT / 2}
-							stroke="var(--border)"
-							strokeDasharray="3 3"
-							vectorEffect="non-scaling-stroke"
-						/>
+						{Array.map([25, 50, 75], percent => (
+							<line
+								key={percent}
+								x1="0"
+								x2="100"
+								y1={y(percent, HEIGHT)}
+								y2={y(percent, HEIGHT)}
+								stroke="var(--border)"
+								strokeDasharray="1 4"
+								vectorEffect="non-scaling-stroke"
+							/>
+						))}
 						{Array.map(
-							// Each band sits on the ones before it.
+							// Each band's top edge sits on the ones before it; one hard 1px line and its sample dots, never a filled area.
 							Array.mapAccum(
 								props.layers,
 								Array.map(props.history.samples, () => 0),
 								(bottom, band) => {
 									const top = Array.map(bottom, (value, index) => value + (band.values[index] ?? 0))
-									return [top, {band, bottom, top}]
+									return [top, {band, top}]
 								}
 							)[1],
 							layer => {
 								const lit = props.hovered === undefined || props.hovered === layer.band.id
-								return Array.map(Array.map(runs(props.history, props.minutes, props.recorded), widen), run => (
-									<polygon
-										key={`${layer.band.id}:${run[0]?.x}`}
-										points={Array.join(
-											[
-												...Array.map(run, point => `${point.x},${y(layer.top[point.index] ?? 0, HEIGHT)}`),
-												...Array.map(
-													Array.reverse(run),
-													point => `${point.x},${y(layer.bottom[point.index] ?? 0, HEIGHT)}`
-												)
-											],
-											' '
-										)}
-										fill={Boolean.match(layer.band.kind === 'app', {
-											onFalse: () => 'var(--muted-foreground)',
-											onTrue: () => 'var(--machine)'
-										})}
-										fillOpacity={Boolean.match(lit, {
-											onFalse: () => layer.band.opacity * 0.25,
-											onTrue: () =>
-												Boolean.match(props.hovered === undefined, {
-													onFalse: () => Number.max(0.85, layer.band.opacity),
-													onTrue: () => layer.band.opacity
-												})
-										})}
-										stroke="var(--background)"
-										strokeWidth="0.6"
-										vectorEffect="non-scaling-stroke"
-										onPointerEnter={() => props.onHover(layer.band.id)}
-										onPointerLeave={() => props.onHover()}
-									>
-										<title>{props.names(layer.band.id)}</title>
-									</polygon>
-								))
+								const color = Boolean.match(layer.band.kind === 'app', {
+									onFalse: () => 'var(--muted-foreground)',
+									onTrue: () => 'var(--machine)'
+								})
+								return Array.map(Array.map(runs(props.history, props.minutes, props.recorded), widen), run => {
+									const points = Array.map(run, point => ({x: point.x, y: y(layer.top[point.index] ?? 0, HEIGHT)}))
+									return (
+										<g
+											key={`${layer.band.id}:${run[0]?.x}`}
+											opacity={Boolean.match(lit, {onFalse: () => 0.3, onTrue: () => 1})}
+											onPointerEnter={() => props.onHover(layer.band.id)}
+											onPointerLeave={() => props.onHover()}
+										>
+											<polyline
+												points={Array.join(
+													Array.map(points, point => `${point.x},${point.y}`),
+													' '
+												)}
+												fill="none"
+												stroke={color}
+												strokeWidth={Boolean.match(props.hovered === layer.band.id, {
+													onFalse: () => 1,
+													onTrue: () => 1.5
+												})}
+												vectorEffect="non-scaling-stroke"
+											/>
+											{Array.map(points, point => (
+												<circle key={`${point.x}`} cx={point.x} cy={point.y} r="0.7" fill={color} />
+											))}
+											<title>{props.names(layer.band.id)}</title>
+										</g>
+									)
+								})
 							}
 						)}
 						{Option.match(pointerSample, {
@@ -171,7 +176,7 @@ export function UsageChart(props: {
 										y1="0"
 										y2={HEIGHT}
 										stroke="var(--foreground)"
-										strokeOpacity="0.35"
+										strokeOpacity="0.5"
 										vectorEffect="non-scaling-stroke"
 									/>
 								)
@@ -190,9 +195,7 @@ export function Cores(props: {history: MachineHistory}) {
 	const samples = Array.map(props.history.samples, sample => Array.groupBy(sample.cores ?? [], core => core.id))
 	return (
 		<figure className="flex flex-col" aria-label="Cores">
-			<figcaption className="tracking-label text-muted-foreground mb-1.5 text-xs font-semibold uppercase">
-				Cores
-			</figcaption>
+			<figcaption className="terminal-label text-muted-foreground mb-1.5">Cores</figcaption>
 			{Array.match(Option.getOrUndefined(Array.last(props.history.samples))?.cores ?? [], {
 				onEmpty: () => <span className="text-muted-foreground text-xs">No readings</span>,
 				onNonEmpty: entries => (
@@ -226,7 +229,7 @@ export function Cores(props: {history: MachineHistory}) {
 										points={Array.join(points, ' ')}
 										fill="none"
 										stroke="currentColor"
-										strokeWidth="1.5"
+										strokeWidth="1"
 										vectorEffect="non-scaling-stroke"
 									/>
 								</svg>

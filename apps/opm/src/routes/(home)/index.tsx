@@ -48,6 +48,7 @@ import {
 	ItemDescription,
 	ItemGroup,
 	ItemMedia,
+	ItemMeta,
 	ItemTitle,
 	itemRow
 } from '@deslop/components-mobile/ui/item'
@@ -168,6 +169,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 					</ItemDescription>
 				</ItemContent>
 				<ItemActions>
+					<ItemMeta width={40}>{`${props.chapter.pages.length}p`}</ItemMeta>
 					{/* The pages before the one on screen are read, so a chapter marked unread at its first page is empty. */}
 					<ChapterProgress
 						fraction={Option.match(Option.fromUndefinedOr(props.chapter.reading), {

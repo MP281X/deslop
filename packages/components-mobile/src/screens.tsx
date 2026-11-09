@@ -56,7 +56,10 @@ export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Su
 export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
 	const denied = deniedBy(props.cause)
 	return (
-		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
+		<VStack spacing={space[4]} modifiers={FULL_SCREEN}>
+			<Text modifiers={[text.label, foregroundStyle(colors.destructive)]}>
+				{Boolean.match(denied, {onFalse: () => '[ UNAVAILABLE ]', onTrue: () => '[ ACCESS DENIED ]'})}
+			</Text>
 			<VStack spacing={space[3]}>
 				<Label
 					icon={
@@ -75,12 +78,12 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					</Text>
 				</Label>
 				<Button
-					label="Retry"
+					label="[ Retry ]"
 					role="destructive"
 					onPress={props.onRetry}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonStyle('borderedProminent'),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('regular'),
 						tint(colors.destructive)
 					]}
@@ -96,6 +99,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 		<Host style={{flex: 1}}>
 			<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
 				<Spacer />
+				<Text modifiers={[text.label, foregroundStyle(colors.mutedForeground)]}>[ DESLOP ]</Text>
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
 					modifiers={[resizable(), frame({height: 64, width: 64}), clipShape('roundedRectangle', radius)]}
@@ -107,15 +111,15 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 				<Button
 					onPress={() => props.onSignIn()}
 					modifiers={[
-						buttonStyle('glassProminent'),
-						buttonBorderShape('capsule'),
+						buttonStyle('borderedProminent'),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('large'),
 						tint(props.tint),
 						disabled(props.waiting)
 					]}
 				>
 					<Text modifiers={[text.title]}>
-						{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
+						{Boolean.match(props.waiting, {onFalse: () => '[ Sign in with GitHub ]', onTrue: () => '[ Signing In… ]'})}
 					</Text>
 				</Button>
 			</VStack>

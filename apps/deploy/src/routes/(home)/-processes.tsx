@@ -16,9 +16,10 @@ const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 function Line(props: {depth: number; node: ProcessNode; padded?: boolean}) {
 	return (
 		<div
-			className={cn('list-row h-10 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-4')}
+			className={cn('list-row relative h-8 w-full min-w-0 max-sm:h-12', props.padded === true && 'px-3')}
 			style={{'--indent': `calc(var(--spacing) * ${props.depth * 4})`}}
 		>
+			{props.depth > 0 && <span aria-hidden="true" className="bg-border absolute inset-y-0 left-(--indent) w-px" />}
 			<Item
 				size="xs"
 				className="h-full min-w-0"
@@ -96,7 +97,13 @@ function Node(props: {depth: number; node: ProcessNode}) {
 
 export function Processes(props: {tree: readonly ProcessNode[]}) {
 	return (
-		<div className="min-w-0 px-2 pb-2">
+		<div className="min-w-0 pb-2">
+			<div className="ledger-head" aria-hidden="true">
+				<span className="w-8 shrink-0" />
+				<span className="min-w-0 flex-1">Process</span>
+				<span className="w-16 shrink-0 text-right">Memory</span>
+				<span className="w-3.5 shrink-0" />
+			</div>
 			{Array.map(props.tree, node => (
 				<Node key={`${node.pid}:${node.name}`} depth={0} node={node} />
 			))}

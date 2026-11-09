@@ -70,7 +70,16 @@ import {
 	EmptyMedia,
 	EmptyTitle
 } from '@deslop/components-mobile/ui/empty'
-import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemGroup,
+	ItemMedia,
+	ItemMeta,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
@@ -137,7 +146,7 @@ function Thumbnail(props: {id: Note['id']}) {
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fill'}),
-				frame({height: 64, width: 64}),
+				frame({height: 48, width: 48}),
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
@@ -151,7 +160,7 @@ function NoteMedia(props: {note: NoteItem}) {
 	return (
 		<ZStack
 			modifiers={[
-				frame({height: 64, width: 64}),
+				frame({height: 48, width: 48}),
 				background(colors.card),
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
@@ -159,9 +168,9 @@ function NoteMedia(props: {note: NoteItem}) {
 		>
 			{pipe(
 				Match.value(kind),
-				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={24} />),
+				Match.when(Schema.is(Brand), brand => <BrandLogo brand={kinds[brand].logo} size={20} />),
 				Match.orElse(other => (
-					<Image systemName={kinds[other].symbol} size={24} modifiers={[foregroundStyle(colors.mutedForeground)]} />
+					<Image systemName={kinds[other].symbol} size={20} modifiers={[foregroundStyle(colors.mutedForeground)]} />
 				))
 			)}
 			{props.note.image !== undefined && <Thumbnail id={props.note.id} />}
@@ -204,6 +213,9 @@ function NoteRow(props: {
 							<NoteMedia note={props.note} />
 						</ItemMedia>
 						<Lines note={props.note} />
+						<ItemActions>
+							<ItemMeta width={56}>{String.toUpperCase(kindOf(props.note))}</ItemMeta>
+						</ItemActions>
 					</Item>
 				</ContextMenu.Trigger>
 				<ContextMenu.Items>

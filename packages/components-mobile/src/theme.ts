@@ -3,34 +3,36 @@ import {DynamicColorIOS} from 'react-native'
 
 // Expo's native color boundary accepts sRGB, not OKLCH. These equivalents match theme.css in both appearances.
 export const colors = {
-	background: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	border: DynamicColorIOS({dark: '#262523', light: '#e6e4de'}),
-	card: DynamicColorIOS({dark: '#141313', light: '#f8f7f4'}),
-	destructive: DynamicColorIOS({dark: '#ff5d62', light: '#c92b38'}),
-	foreground: DynamicColorIOS({dark: '#e3e1db', light: '#0a0a0a'}),
-	mutedForeground: DynamicColorIOS({dark: '#a19e96', light: '#64625d'}),
-	primaryForeground: DynamicColorIOS({dark: '#0d0c0c', light: '#ffffff'}),
-	surface: DynamicColorIOS({dark: '#191817', light: '#f2f1ed'}),
-	warning: DynamicColorIOS({dark: '#ff9e3b', light: '#a3530b'})
+	background: DynamicColorIOS({dark: '#050706', light: '#f2f0e8'}),
+	border: DynamicColorIOS({dark: '#283329', light: '#c7c9bc'}),
+	card: DynamicColorIOS({dark: '#0d120e', light: '#fbfaf4'}),
+	destructive: DynamicColorIOS({dark: '#ff5c5c', light: '#b3261e'}),
+	foreground: DynamicColorIOS({dark: '#d9e2ce', light: '#11150f'}),
+	mutedForeground: DynamicColorIOS({dark: '#7f8b78', light: '#62685c'}),
+	primary: DynamicColorIOS({dark: '#b6ff3b', light: '#2f5d0b'}),
+	primaryForeground: DynamicColorIOS({dark: '#071005', light: '#f2f0e8'}),
+	surface: DynamicColorIOS({dark: '#0a0d0b', light: '#eceade'}),
+	warning: DynamicColorIOS({dark: '#ffd166', light: '#6f5200'})
 }
 
-// Each app's primary tints its controls, live states and icon.
+// Each app's primary tints its controls, live states and icon. Terminal Brutalist gives the suite one acid signal.
 export const hues = {
-	amber: DynamicColorIOS({dark: '#e6c384', light: '#91601d'}),
-	blue: DynamicColorIOS({dark: '#7e9cd8', light: '#345dad'}),
-	cyan: DynamicColorIOS({dark: '#a3d4d5', light: '#25777a'}),
-	ivory: DynamicColorIOS({dark: '#dcd7ba', light: '#686868'}),
-	orange: DynamicColorIOS({dark: '#ffa066', light: '#b64b11'}),
-	pink: DynamicColorIOS({dark: '#d27e99', light: '#a63c69'}),
-	purple: DynamicColorIOS({dark: '#957fb8', light: '#74519b'}),
-	slate: DynamicColorIOS({dark: '#9cabca', light: '#526887'})
+	acid: DynamicColorIOS({dark: '#b6ff3b', light: '#2f5d0b'}),
+	amber: DynamicColorIOS({dark: '#ffd166', light: '#6f5200'}),
+	blue: DynamicColorIOS({dark: '#8fd3ff', light: '#1f5f7a'}),
+	cyan: DynamicColorIOS({dark: '#b6ff3b', light: '#2f5d0b'}),
+	ivory: DynamicColorIOS({dark: '#d9e2ce', light: '#4f5347'}),
+	orange: DynamicColorIOS({dark: '#ffd166', light: '#8a5a00'}),
+	pink: DynamicColorIOS({dark: '#ffd166', light: '#6f5200'}),
+	purple: DynamicColorIOS({dark: '#d9e2ce', light: '#4f5347'}),
+	slate: DynamicColorIOS({dark: '#d9e2ce', light: '#4f5347'})
 }
 
 // The 4px spacing steps, named as Tailwind names them on the web: `space[3]` is `gap-3`, 12pt.
 export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
 
-// Concentric with the system's list rows, sheets and icon tiles.
-export const radius = 12
+// A terminal is square: no row, sheet or tile is rounded.
+export const radius = 0
 
 // System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
 export const text = {

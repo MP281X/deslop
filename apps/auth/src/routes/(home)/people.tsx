@@ -37,7 +37,9 @@ function Identity(props: {person: Person}) {
 	return (
 		<>
 			<AccountAvatar id={props.person.id} name={props.person.name} />
-			<span className="min-w-0 truncate font-medium">{props.person.fullName ?? props.person.name}</span>
+			<span className="min-w-0 truncate font-mono text-xs font-semibold">
+				{props.person.fullName ?? props.person.name}
+			</span>
 			<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
 				{props.person.fullName !== undefined && `@${props.person.name}`}
 			</span>
@@ -48,8 +50,8 @@ function Identity(props: {person: Person}) {
 // The row's own line, then its failed answer or removal beneath it.
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
-		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12">
+		<div role="listitem" id={`person-${props.person.id}`} className="ledger-row list-row">
+			<div className="flex min-w-0 flex-1 items-center gap-3">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -104,7 +106,7 @@ function MemberRow(props: {person: Person}) {
 	const name = props.person.fullName ?? props.person.name
 	return (
 		<ContextMenu>
-			<div role="listitem" id={`person-${props.person.id}`} className="border-b">
+			<div role="listitem" id={`person-${props.person.id}`}>
 				<ContextMenuTrigger
 					render={
 						<div
@@ -112,14 +114,14 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="ledger-row list-row flex w-full text-xs"
 						/>
 					}
 				>
 					<Identity person={props.person} />
 					<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
 				</ContextMenuTrigger>
-				<ResultError result={removal} className="mr-1 mb-2 ml-10 wrap-anywhere" />
+				<ResultError result={removal} className="mr-1 mb-2 ml-11 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
