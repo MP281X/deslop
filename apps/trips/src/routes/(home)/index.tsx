@@ -48,7 +48,6 @@ import {
 	itemRow
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {Spinner} from '@deslop/components-mobile/ui/spinner'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {
@@ -216,7 +215,10 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 					<Problem label="Bookings not updating" onRetry={refresh} />
 				</HStack>
 			)}
-			{Array.isReadonlyArrayEmpty(shown.success) && (
+			{adding && (
+				<ItemGroupSkeleton rows={1} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
+			)}
+			{Array.isReadonlyArrayEmpty(shown.success) && !adding && (
 				<Empty>
 					<EmptyAction
 						label="Paste Booking"
@@ -315,15 +317,6 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
 				</ToolbarItem>
-				<MachineState machine={clipboardAtom} path="Answering">
-					{answering =>
-						answering.value.save && (
-							<ToolbarItem placement="bottomBar">
-								<Spinner label="Reading booking…" />
-							</ToolbarItem>
-						)
-					}
-				</MachineState>
 				<MachineState machine={undoAtom} path="Offered">
 					{offered => (
 						<ToolbarItem placement="bottomBar">
