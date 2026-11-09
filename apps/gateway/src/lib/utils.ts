@@ -1,8 +1,8 @@
-import {Boolean, Clock, Effect, Option, Redacted, Schema, Stream, pipe} from 'effect'
+import {Boolean, Clock, Effect, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {AsyncResult, Atom, AtomRpc, Reactivity} from 'effect/reactivity'
+import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -32,28 +32,6 @@ export const serversAtom = Atom.keepAlive(
 			WebRuntime.reconnecting
 		)
 	)
-)
-
-// Numbered, so a server called twice in a row lights twice.
-const callsAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		Stream.zipWithIndex(
-			WebRuntime.reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('gateway.calls', undefined))))
-		)
-	)
-)
-
-// One server's latest call number, -1 before any, so its dot only blinks after a call.
-export const lastCallAtom = Atom.family((id: string) =>
-	Atom.make(get => {
-		const previous = Option.getOrElse(get.self<number>(), () => -1)
-		return AsyncResult.match(get(callsAtom), {
-			onFailure: () => previous,
-			onInitial: () => previous,
-			onSuccess: latest =>
-				Boolean.match(latest.value[0] === id, {onFalse: () => previous, onTrue: () => latest.value[1]})
-		})
-	})
 )
 
 export const removeAtom = Atom.family((id: string) =>

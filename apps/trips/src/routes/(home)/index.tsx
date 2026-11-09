@@ -156,7 +156,7 @@ function Bookings(props: {onOpen: (id: string) => void}) {
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const adding = Option.exists(
 		pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Answering')), AsyncResult.getOrElse(Option.none)),
-		current => current.value.save
+		current => current.save
 	)
 	const shown = shownOf(loaded)
 	if (Result.isFailure(shown)) {

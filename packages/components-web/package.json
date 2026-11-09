@@ -43,8 +43,7 @@
 		"shadcn": "latest",
 		"shiki": "latest",
 		"tailwind-merge": "latest",
-		"tailwindcss": "latest",
-		"tw-animate-css": "latest"
+		"tailwindcss": "latest"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "latest"
