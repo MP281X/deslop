@@ -329,7 +329,7 @@ function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo
 // Two numbered views in the masthead's section slot: the servers, then what AI calls through the gateway cost.
 function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 	return (
-		<>
+		<div role="group" aria-label="View" className="flex items-center gap-6 max-sm:gap-4">
 			<AppBarTab
 				active={props.view === 'servers'}
 				render={
@@ -346,7 +346,7 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 				AI
 				<Kbd className="ml-1 max-sm:hidden">2</Kbd>
 			</AppBarTab>
-		</>
+		</div>
 	)
 }
 
