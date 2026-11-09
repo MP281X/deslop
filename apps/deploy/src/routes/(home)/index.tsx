@@ -564,7 +564,7 @@ function AppListRow(props: {
 							</span>
 						</ItemContent>
 					</Item>
-					<div className="pointer-events-auto relative z-10 flex w-56 min-w-0 shrink-0 items-center justify-end gap-1 overflow-hidden max-sm:w-auto max-sm:max-w-1/2">
+					<div className="pointer-events-auto relative z-10 flex w-56 min-w-0 shrink-0 items-center justify-end gap-1 overflow-hidden max-sm:w-auto max-sm:max-w-3/5">
 						{Boolean.match(failing, {
 							onFalse: () =>
 								Boolean.match(scheduled, {
