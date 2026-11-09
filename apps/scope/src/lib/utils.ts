@@ -92,7 +92,6 @@ function sourceSearch(search: Search, app: string) {
 	return {...search, source: app}
 }
 
-// Back keeps the selection and moves up one level; a new operation or trace drops the selection below it.
 export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
 	if (event._tag === 'Operation') return sourceOf(search, select({operation: event.operation}, 'Traces'))
@@ -133,7 +132,6 @@ export function openingApp(overview: Overview) {
 	)
 }
 
-// Every app's operations and their slowest traces, pushed again whenever a trace arrives.
 export const overviewAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
 		withoutDeniedData(
