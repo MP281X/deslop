@@ -194,12 +194,12 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 					{failed && <StatusDot status="error" />}
 					{Boolean.match(needsUser, {
 						onFalse: () =>
-							Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+							props.server.tools > 0 && (
 								<span
 									className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
 									title="Tools"
 								>
-									{props.server.tools.length}
+									{props.server.tools}
 									<WrenchIcon className="size-3.5" />
 								</span>
 							),

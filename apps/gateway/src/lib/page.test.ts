@@ -26,7 +26,7 @@ const sample = ConnectionInfo.make({
 	id: 'private',
 	name: 'Private MCP server',
 	status: 'Connected',
-	tools: [],
+	tools: 0,
 	url: 'https://private.example.invalid/mcp'
 })
 

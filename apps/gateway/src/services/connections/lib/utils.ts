@@ -9,7 +9,6 @@ import {
 	Option,
 	Order,
 	Predicate,
-	Record,
 	Schema,
 	String,
 	Struct,
@@ -83,15 +82,7 @@ export function connectionInfo(connection: Connection, now: number) {
 		...Struct.pick(connection, ['id', 'name', 'url']),
 		icons: connection.icons ?? [],
 		status: connectionStatus(connection, now),
-		tools: Array.map(connection.tools, name => ({
-			name,
-			...Option.match(
-				Option.flatMap(Option.fromUndefinedOr(connection.toolDescriptions), descriptions =>
-					Record.get(descriptions, name)
-				),
-				{onNone: () => ({}), onSome: description => ({description})}
-			)
-		}))
+		tools: Array.length(connection.tools)
 	} satisfies ConnectionInfo
 }
 

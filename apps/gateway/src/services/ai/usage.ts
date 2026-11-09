@@ -41,11 +41,8 @@ function totals(rows: AiUsageEntry[]) {
 			sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
 	}))
 }
-function grouped(rows: AiUsageEntry[]) {
-	return Array.map(Record.toEntries(Array.groupBy(rows, entry => entry.provider)), entry => ({
-		name: entry[0],
-		...totals(entry[1])
-	}))
+function grouped(rows: AiUsageEntry[], key: (entry: AiUsageEntry) => string) {
+	return Array.map(Record.toEntries(Array.groupBy(rows, key)), entry => ({name: entry[0], ...totals(entry[1])}))
 }
 export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
 	const selected = Array.filter(entries, entry => entry.at >= query.from && entry.at < query.to)
@@ -54,11 +51,11 @@ export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
 		return Math.floor(entry.at / size) * size
 	}
 	return {
-		byProvider: grouped(selected),
+		byProvider: grouped(selected, entry => entry.provider),
 		series: Array.sort(
 			Array.map(Record.values(Array.groupBy(selected, entry => `${bucket(entry)}`)), group => ({
 				at: bucket(group[0]),
-				byProvider: grouped(group)
+				byProvider: grouped(group, entry => entry.provider)
 			})),
 			Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
 		)

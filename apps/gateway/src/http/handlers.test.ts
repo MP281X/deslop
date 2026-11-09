@@ -520,10 +520,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 											yield* Effect.flatMap(
 												Stream.runHead(
 													Stream.filter((yield* Connections).watch(yield* CurrentUser), rows =>
-														Array.every(
-															rows,
-															row => row.status !== 'Connected' || Array.isReadonlyArrayNonEmpty(row.tools)
-														)
+														Array.every(rows, row => row.status !== 'Connected' || row.tools > 0)
 													)
 												),
 												Effect.fromOption
@@ -957,7 +954,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
 			assert.strictEqual(publicServer.name, 'Public')
 			assert.strictEqual(publicServer.status, 'Connected')
-			assert.deepStrictEqual(publicServer.tools, [{description: 'Search example', name: 'search'}])
+			assert.strictEqual(publicServer.tools, 1)
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
 			const external = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
 			const collision = yield* addMcp(gateway.web, 'https://mcp.example.net/mcp')
@@ -1283,7 +1280,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			assert.deepStrictEqual(
 				Array.map(yield* listServers(gateway.web), server => [server.status, server.tools]),
-				[['Connected', [{description: 'Search example', name: 'search'}]]]
+				[['Connected', 1]]
 			)
 			yield* Ref.set(gateway.stall, true)
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
@@ -1305,8 +1302,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					server => [server.id, server.tools]
 				),
 				[
-					['mobbin', [{description: 'Search example', name: 'search'}]],
-					[other.id, [{description: 'Search example', name: 'search'}]]
+					['mobbin', 1],
+					[other.id, 1]
 				]
 			)
 		})
