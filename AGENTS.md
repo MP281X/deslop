@@ -55,4 +55,4 @@ Personal tools for a power user: compact, keyboard-first, fast once learned. Ico
 
 ## Documents
 
-Each fact has one home: code, then lint and the judge's questions; this file for repository operation, the user's choices and design, an app's `AGENTS.md` for product intent, the web and mobile themes for tokens, `.github/releasing.md` for releases, a published package's `README.md` for its contract, skills for procedures and the PR template for reviewer-facing sections. Comments explain only what a name cannot say.
+Each fact has one home: code, then lint and the judge's questions; this file for repository operation, the user's choices and design, an app's `AGENTS.md` for product intent, the web and mobile themes for tokens, `.github/releasing.md` for releases, a published package's `README.md` for its contract, skills for procedures and the PR template for reviewer-facing sections. Comments are a rare fallback: names and structure explain the code, and a comment gives only a reason they cannot show, in one short sentence.
