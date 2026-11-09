@@ -183,9 +183,6 @@ export function appName(service: string) {
 function runtime(resource: Resource) {
 	const value = resourceString(resource, 'scope.runtime')
 	if (Schema.is(Runtime)(value)) return value
-	const language = resourceString(resource, 'telemetry.sdk.language')
-	if (language === 'webjs') return 'web' as const
-	if (language === 'nodejs') return 'server' as const
 	return 'unknown' as const
 }
 
