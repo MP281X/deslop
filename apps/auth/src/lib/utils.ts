@@ -1,7 +1,6 @@
 import {
 	Array,
 	Clock,
-	Context,
 	DateTime,
 	Duration,
 	Effect,
@@ -22,7 +21,6 @@ import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from
 import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
-import {removalMachine} from '@deslop/components-web/undo'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -172,25 +170,9 @@ function failedWith(title: string) {
 		)
 }
 
-// Signing a client out ends all its families.
-export const disconnectAtom = RpcClient.runtime.fn((families: string[]) =>
-	Effect.flatMap(RpcClient, client =>
-		Effect.forEach(families, family => client('auth.disconnect', {family}), {concurrency: 'unbounded', discard: true})
-	)
-)
-
 // One per person, so a failed answer shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
-)
-
-// A removal waits eight seconds with Undo before the server hears it; the commit takes the client from the atom runtime.
-export const removePersonAtom = AtomMachine.bind(RpcClient.runtime).make(
-	removalMachine(id =>
-		Effect.gen(function* () {
-			return yield* Context.get(yield* Atom.getResult(RpcClient.runtime), RpcClient)('auth.remove', {id})
-		})
-	)
 )
 
 // The waiting sign-in the list leads with, approved on its own row.

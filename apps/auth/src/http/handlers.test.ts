@@ -522,6 +522,13 @@ const callTool = Effect.fnUntraced(function* (
 	})
 })
 
+// The structured answer of a tool call that succeeded.
+const toolResult = Effect.fnUntraced(function* (response: Response) {
+	return (yield* Schema.decodeEffect(
+		Schema.fromJsonString(Schema.Struct({result: Schema.Struct({structuredContent: Schema.Unknown})}))
+	)(yield* Effect.promise(() => response.text()))).result.structuredContent
+})
+
 const exchange = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
@@ -2229,6 +2236,78 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				'Coding-standards'
 			)
 			assert.isTrue(String.includes('"expired_token"')((yield* poll(client)).text))
+		})
+	)
+
+	test.effect(
+		'lists and signs out sessions through the MCP tools',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const first = cookie(yield* signIn(web.issuer, 'octocat'))
+			const second = cookie(yield* signIn(web.issuer, 'octocat'))
+			const agent = yield* agentToken(web.issuer, first)
+			assert.strictEqual((yield* callTool(web.issuer, '', 'list_sessions', {})).status, 401)
+			const listed = yield* Schema.decodeUnknownEffect(
+				Schema.Struct({
+					sessions: Schema.Array(
+						Schema.Struct({
+							address: Schema.optionalKey(Schema.String),
+							client: Schema.String,
+							device: Schema.String,
+							id: Schema.NonEmptyString,
+							lastActive: Schema.Finite
+						})
+					)
+				})
+			)(yield* toolResult(yield* callTool(web.issuer, agent, 'list_sessions', {})))
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(listed.sessions, session => session.client),
+					String.Order
+				),
+				['Browser', 'Browser', 'Opencode']
+			)
+			const browser = yield* Effect.fromOption(
+				Array.findFirst(listed.sessions, session => session.client === 'Browser')
+			)
+			assert.strictEqual((yield* callTool(web.issuer, agent, 'sign_out_session', {id: browser.id})).status, 200)
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(
+						[
+							yield* send(web.issuer, '/me', {headers: {cookie: first}}),
+							yield* send(web.issuer, '/me', {headers: {cookie: second}})
+						],
+						response => response.status
+					),
+					Order.Number
+				),
+				[200, 401]
+			)
+			const unknown = yield* callTool(web.issuer, agent, 'sign_out_session', {id: 'aaaaaaaaaaaaaaaa'})
+			assert.include(yield* Effect.promise(() => unknown.text()), 'This sign-in has already ended')
+		})
+	)
+
+	test.effect(
+		'removes a member through the MCP tool as an admin only',
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			const agent = yield* agentToken(web.issuer, admin)
+			const denied = yield* callTool(web.issuer, yield* agentToken(web.issuer, stranger), 'remove_person', {
+				login: 'octocat'
+			})
+			assert.include(yield* Effect.promise(() => denied.text()), 'Only an admin can manage people')
+			assert.strictEqual((yield* callTool(web.issuer, agent, 'remove_person', {login: 'stranger'})).status, 200)
+			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin'])
+			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: stranger}})).status, 401)
+			const unknown = yield* callTool(web.issuer, agent, 'remove_person', {login: 'nobody'})
+			assert.include(yield* Effect.promise(() => unknown.text()), 'is listed in Auth')
+			const adminRow = yield* callTool(web.issuer, agent, 'remove_person', {login: 'octocat'})
+			assert.include(yield* Effect.promise(() => adminRow.text()), 'cannot be removed here')
 		})
 	)
 })

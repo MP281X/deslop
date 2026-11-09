@@ -1,11 +1,15 @@
 import {Array, Clock, Effect, Option, Struct} from 'effect'
 
+import {CurrentUser} from '@deslop/runtime/auth/utils'
+
+import {AiProxy} from '#services/ai/service.ts'
 import {connectionStatus} from '#services/connections/lib/utils.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Tools} from '#tools/contracts.ts'
 
 export const ToolHandlers = Tools.toLayer(
 	Effect.gen(function* () {
+		const ai = yield* AiProxy
 		const connections = yield* Connections
 		return Tools.of({
 			list_mcp_connections: Effect.fnUntraced(function* (input) {
@@ -21,6 +25,12 @@ export const ToolHandlers = Tools.toLayer(
 						tools: Array.length(server.tools)
 					}))
 				}
+			}),
+			remove_ai_key: Effect.fnUntraced(function* (input) {
+				yield* ai.removeKey((yield* CurrentUser).id, input.provider)
+			}),
+			remove_mcp_server: Effect.fnUntraced(function* (input) {
+				yield* connections.remove(input.server, yield* CurrentUser)
 			})
 		})
 	})

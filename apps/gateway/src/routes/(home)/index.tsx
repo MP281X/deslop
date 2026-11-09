@@ -2,7 +2,7 @@ import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect
 
 import {Array, Boolean, Cause, Number, Option, Order, Schema, String, type Record} from 'effect'
 
-import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, TrashIcon, WrenchIcon} from '@phosphor-icons/react'
+import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -20,7 +20,6 @@ import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
-import {UndoButton} from '@deslop/components-web/undo'
 import {cn} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -35,8 +34,6 @@ import {
 	ENDPOINT,
 	mcpUsageAtom,
 	Period,
-	removeKeyAtom,
-	removeServerAtom,
 	serversAtom,
 	setKeyAtom
 } from '#lib/utils.ts'
@@ -134,19 +131,10 @@ function RowsSkeleton(props: {label: string; rows: number; tool?: boolean}) {
 						{props.tool === true && <Bone className="h-3.5 w-7" />}
 						<Bone className="h-3.5 w-16" />
 						<Bone className="h-3 w-12" />
-						<Bone className="size-7 max-sm:size-11" />
 					</ItemActions>
 				</Item>
 			))}
 		</div>
-	)
-}
-
-function RemoveButton(props: {label: string; onClick: () => void}) {
-	return (
-		<Button variant="ghost" size="icon-sm" className="max-sm:size-11" aria-label={props.label} onClick={props.onClick}>
-			<TrashIcon />
-		</Button>
 	)
 }
 
@@ -182,16 +170,8 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 	return <FirstImage key={Array.join(sources, ' ')} sources={sources} />
 }
 
-// One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period and the trash.
-function ServerRow(props: {
-	failure: Option.Option<string>
-	period: Range
-	onRemove: () => void
-	removed: boolean
-	report: readonly McpUsageServer[]
-	server: ConnectionInfo
-	undo: () => void
-}) {
+// One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period.
+function ServerRow(props: {period: Range; report: readonly McpUsageServer[]; server: ConnectionInfo}) {
 	const [connecting, setConnecting] = useState(false)
 	const connected = props.server.status === 'Connected'
 	const needsUser = !connected || props.server.error !== undefined
@@ -203,71 +183,55 @@ function ServerRow(props: {
 	}
 	return (
 		<div role="listitem">
-			<Item size="row" data-removed={props.removed}>
+			<Item size="row">
 				<ItemMedia>
 					<ServerIcon server={props.server} />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{props.server.name}</ItemTitle>
-					<ItemDescription>{Option.getOrElse(props.failure, () => new URL(props.server.url).hostname)}</ItemDescription>
+					<ItemDescription>{new URL(props.server.url).hostname}</ItemDescription>
 				</ItemContent>
-				{Boolean.match(props.removed, {
-					onFalse: () => (
-						<ItemActions>
-							{failed && <StatusDot status="error" />}
-							{Boolean.match(needsUser, {
-								onFalse: () =>
-									Array.isReadonlyArrayNonEmpty(props.server.tools) && (
-										<span
-											className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
-											title="Tools"
-										>
-											{props.server.tools.length}
-											<WrenchIcon className="size-3.5" />
-										</span>
-									),
-								onTrue: () => (
-									<Button
-										size="xs"
-										className="max-sm:h-11"
-										disabled={connecting}
-										aria-label={`${action} ${props.server.name}`}
-										onClick={connect}
-									>
-										{action}
-									</Button>
-								)
-							})}
-							<Sparkline
-								color={serverHue(props.server)}
-								values={serverSeries(props.report, props.server.id, props.period)}
-							/>
-							<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-								{count.format(serverCalls(props.report, props.server.id))}
-							</span>
-							<RemoveButton label={`Remove ${props.server.name}`} onClick={props.onRemove} />
-						</ItemActions>
-					),
-					onTrue: () => (
-						<ItemActions>
-							<UndoButton onClick={props.undo} />
-						</ItemActions>
-					)
-				})}
+				<ItemActions>
+					{failed && <StatusDot status="error" />}
+					{Boolean.match(needsUser, {
+						onFalse: () =>
+							Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+								<span
+									className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
+									title="Tools"
+								>
+									{props.server.tools.length}
+									<WrenchIcon className="size-3.5" />
+								</span>
+							),
+						onTrue: () => (
+							<Button
+								size="xs"
+								className="max-sm:h-11"
+								disabled={connecting}
+								aria-label={`${action} ${props.server.name}`}
+								onClick={connect}
+							>
+								{action}
+							</Button>
+						)
+					})}
+					<Sparkline
+						color={serverHue(props.server)}
+						values={serverSeries(props.report, props.server.id, props.period)}
+					/>
+					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+						{count.format(serverCalls(props.report, props.server.id))}
+					</span>
+				</ItemActions>
 			</Item>
 		</div>
 	)
 }
 
-function ServerUsage(props: {
-	failed: Option.Option<{id: string; message: string}>
-	period: Period
-	servers: readonly ConnectionInfo[]
-	waiting: Option.Option<{id: string}>
-}) {
+function ServerUsage(props: {period: Period; servers: readonly ConnectionInfo[]}) {
 	const result = useAtomSuspense(mcpUsageAtom(props.period), {includeFailure: true})
 	const refresh = useAtomRefresh(mcpUsageAtom(props.period))
-	const send = useAtomSet(removeServerAtom.send)
 	if (
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
@@ -277,22 +241,7 @@ function ServerUsage(props: {
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
 			Array.map(props.servers, server => (
-				<ServerRow
-					key={server.id}
-					server={server}
-					period={current.range}
-					report={current.report}
-					failure={Option.map(
-						Option.filter(props.failed, state => state.id === server.id),
-						state => state.message
-					)}
-					removed={Option.exists(props.waiting, state => state.id === server.id)}
-					undo={() => send({_tag: 'Undone'})}
-					onRemove={() => {
-						send({_tag: 'Dismissed'})
-						send({_tag: 'Removed', id: server.id})
-					}}
-				/>
+				<ServerRow key={server.id} server={server} period={current.range} report={current.report} />
 			))
 		)
 	)
@@ -302,8 +251,6 @@ function ServerUsage(props: {
 function ServerRows(props: {period: Period}) {
 	const result = useAtomSuspense(serversAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(serversAtom)
-	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Waiting')), Option.none)
-	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeServerAtom, 'Failed')), Option.none)
 	if (
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
@@ -315,27 +262,16 @@ function ServerRows(props: {period: Period}) {
 	const ordered = Array.sort(servers, byUrgency)
 	return (
 		<Suspense fallback={<RowsSkeleton label="MCP servers" rows={ordered.length} tool />}>
-			<ServerUsage failed={failed} period={props.period} servers={ordered} waiting={waiting} />
+			<ServerUsage period={props.period} servers={ordered} />
 		</Suspense>
 	)
 }
 
-// One key: its provider's mark and name, the secret's last four, its cost over the period and the trash.
-function KeyRow(props: {
-	cost: string
-	failure: Option.Option<string>
-	info: AiKeyInfo
-	onRemove: () => void
-	period: Range
-	provider: AiProvider
-	removed: boolean
-	report: AiUsageReport
-	undo: () => void
-}) {
-	const rejected = props.info.lastStatus === 401 || props.info.lastStatus === 403
+// One key: its provider's mark and name, the secret's last four, then its cost over the period.
+function KeyRow(props: {cost: string; info: AiKeyInfo; period: Range; provider: AiProvider; report: AiUsageReport}) {
 	return (
 		<div role="listitem">
-			<Item size="row" data-removed={props.removed}>
+			<Item size="row">
 				<ItemMedia>
 					<span className="flex size-5 items-center justify-center">
 						<ProviderMark provider={props.provider} />
@@ -343,37 +279,21 @@ function KeyRow(props: {
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{PROVIDER_NAMES[props.provider]}</ItemTitle>
-					<ItemDescription>{Option.getOrElse(props.failure, () => `…${props.info.last4}`)}</ItemDescription>
+					<ItemDescription>{`…${props.info.last4}`}</ItemDescription>
 				</ItemContent>
-				{Boolean.match(props.removed, {
-					onFalse: () => (
-						<ItemActions>
-							{rejected && <StatusDot status="error" />}
-							<Sparkline color="var(--primary)" values={providerSeries(props.report, props.provider, props.period)} />
-							<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
-							<RemoveButton label={`Remove ${PROVIDER_NAMES[props.provider]}`} onClick={props.onRemove} />
-						</ItemActions>
-					),
-					onTrue: () => (
-						<ItemActions>
-							<UndoButton onClick={props.undo} />
-						</ItemActions>
-					)
-				})}
+				<ItemActions>
+					{(props.info.lastStatus === 401 || props.info.lastStatus === 403) && <StatusDot status="error" />}
+					<Sparkline color="var(--primary)" values={providerSeries(props.report, props.provider, props.period)} />
+					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
+				</ItemActions>
 			</Item>
 		</div>
 	)
 }
 
-function KeyUsage(props: {
-	failed: Option.Option<{id: string; message: string}>
-	keys: readonly AiKeyInfo[]
-	period: Period
-	waiting: Option.Option<{id: string}>
-}) {
+function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
 	const result = useAtomSuspense(aiUsageAtom(props.period), {includeFailure: true})
 	const refresh = useAtomRefresh(aiUsageAtom(props.period))
-	const send = useAtomSet(removeKeyAtom.send)
 	if (
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
@@ -395,16 +315,6 @@ function KeyUsage(props: {
 								report={current.report}
 								period={current.range}
 								cost={providerCost(current.report, provider)}
-								failure={Option.map(
-									Option.filter(props.failed, state => state.id === provider),
-									state => state.message
-								)}
-								removed={Option.exists(props.waiting, state => state.id === provider)}
-								undo={() => send({_tag: 'Undone'})}
-								onRemove={() => {
-									send({_tag: 'Dismissed'})
-									send({_tag: 'Removed', id: provider})
-								}}
 							/>
 						]
 					}
@@ -418,8 +328,6 @@ function KeyUsage(props: {
 function KeyRows(props: {period: Period}) {
 	const result = useAtomSuspense(aiKeysAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(aiKeysAtom)
-	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeKeyAtom, 'Waiting')), Option.none)
-	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removeKeyAtom, 'Failed')), Option.none)
 	if (
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
@@ -433,7 +341,7 @@ function KeyRows(props: {period: Period}) {
 	if (Array.isReadonlyArrayEmpty(keys)) return null
 	return (
 		<Suspense fallback={<RowsSkeleton label="AI keys" rows={keys.length} />}>
-			<KeyUsage failed={failed} keys={keys} period={props.period} waiting={waiting} />
+			<KeyUsage keys={keys} period={props.period} />
 		</Suspense>
 	)
 }
@@ -490,7 +398,6 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 	}
 	return (
 		<form
-			className="px-4"
 			onSubmit={event => {
 				event.preventDefault()
 				submit()

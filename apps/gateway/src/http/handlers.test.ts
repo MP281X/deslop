@@ -40,6 +40,8 @@ import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {HttpHandlers} from '#http/handlers.ts'
+import {AiKeyInfo, AiSetKey} from '#services/ai/schema.ts'
+import {AiProxy} from '#services/ai/service.ts'
 import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
 import {AddServer, ConnectionInfo, McpUsageQuery, McpUsageReport, ServerParams} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
@@ -512,6 +514,31 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 										}),
 										refused
 									)
+								),
+								// The keys page's reader and writer, which the MCP tools remove from.
+								HttpRouter.add(
+									'GET',
+									'/ai/keys',
+									pipe(
+										Effect.gen(function* () {
+											return yield* HttpServerResponse.schemaJson(Schema.Array(AiKeyInfo))(
+												yield* (yield* AiProxy).keys((yield* CurrentUser).id)
+											)
+										}),
+										refused
+									)
+								),
+								HttpRouter.add(
+									'POST',
+									'/ai/keys',
+									pipe(
+										Effect.gen(function* () {
+											const input = yield* HttpServerRequest.schemaBodyJson(AiSetKey)
+											yield* (yield* AiProxy).setKey((yield* CurrentUser).id, input.provider, input.secret)
+											return HttpServerResponse.empty()
+										}),
+										refused
+									)
 								)
 							),
 							Layer.provide(HttpAuth.layer)
@@ -519,6 +546,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					),
 					Layer.provideMerge(Layer.provide(Gateway.layer, McpServer.McpServer.layer)),
 					Layer.provideMerge(Connections.layer),
+					Layer.provideMerge(AiProxy.layer),
 					Layer.provide(ServerRuntime.layerKeyValueStore(directory)),
 					Layer.provide(
 						Layer.mergeAll(
@@ -610,6 +638,13 @@ const listServers = Effect.fnUntraced(function* (web: Web) {
 const listUsage = Effect.fnUntraced(function* (web: Web, query: McpUsageQuery) {
 	const response = yield* post(web, '/servers/usage', SESSION, query)
 	return yield* Schema.decodeEffect(Schema.fromJsonString(McpUsageReport))(yield* Effect.promise(() => response.text()))
+})
+
+const listKeys = Effect.fnUntraced(function* (web: Web, session: string) {
+	const response = yield* send(web, '/ai/keys', {headers: {cookie: session}})
+	return yield* Schema.decodeEffect(
+		Schema.fromJsonString(Schema.Array(Schema.Struct({last4: Schema.String, provider: Schema.String})))
+	)(yield* Effect.promise(() => response.text()))
 })
 
 // An MCP client's initialize, then the tool call with the session it got.
@@ -1301,6 +1336,46 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// A provider cannot redirect metadata discovery to a different issuer.
 			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: PROVIDERS.dual.url})).status, 400)
 			assert.strictEqual((yield* post(gateway.web, '/servers/remove', 'session=stranger', {id: 'mobbin'})).status, 400)
+		})
+	)
+	test.effect(
+		'removes a shared MCP server through the MCP tool only as an admin',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			const first = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			const second = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
+			const denied = yield* callTool(gateway.web, 'agent.stranger.signature', 'remove_mcp_server', {server: first.id})
+			assert.include(yield* Effect.promise(() => denied.text()), 'Only an admin can manage MCP servers')
+			assert.deepStrictEqual(
+				Array.map(yield* listServers(gateway.web), server => server.id),
+				[first.id, second.id]
+			)
+			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_mcp_server', {server: first.id})).status, 200)
+			assert.deepStrictEqual(
+				Array.map(yield* listServers(gateway.web), server => server.id),
+				[second.id]
+			)
+			const unknown = yield* callTool(gateway.web, TOKEN, 'remove_mcp_server', {server: 'ghost'})
+			assert.include(yield* Effect.promise(() => unknown.text()), 'This MCP was removed')
+		})
+	)
+	test.effect(
+		'removes only the caller’s own AI key through the MCP tool',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* post(gateway.web, '/ai/keys', SESSION, {provider: 'anthropic', secret: 'sk-octocat'})
+			yield* post(gateway.web, '/ai/keys', 'session=stranger', {provider: 'anthropic', secret: 'sk-stranger'})
+			assert.deepStrictEqual(
+				Array.map(yield* listKeys(gateway.web, SESSION), key => key.last4),
+				['ocat']
+			)
+			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_ai_key', {provider: 'anthropic'})).status, 200)
+			assert.deepStrictEqual(yield* listKeys(gateway.web, SESSION), [])
+			assert.deepStrictEqual(
+				Array.map(yield* listKeys(gateway.web, 'session=stranger'), key => key.last4),
+				['nger']
+			)
+			assert.strictEqual((yield* callTool(gateway.web, '', 'remove_ai_key', {provider: 'anthropic'})).status, 401)
 		})
 	)
 })

@@ -1,17 +1,16 @@
-import {Boolean, Clock, Context, Effect, Redacted, Schema, Stream, pipe} from 'effect'
+import {Boolean, Clock, Effect, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {Atom, AtomRegistry, AtomRpc, Reactivity} from 'effect/reactivity'
+import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
-import {removalMachine} from '@deslop/components-web/undo'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {AiProvider} from '#services/ai/schema.ts'
+import type {AiProvider} from '#services/ai/schema.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 
 export const ENDPOINT = `${window.location.origin}/mcp`
@@ -32,15 +31,6 @@ export const serversAtom = Atom.keepAlive(
 			Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))),
 			WebRuntime.reconnecting
 		)
-	)
-)
-
-// A removal waits eight seconds with Undo before the server hears it; the commit takes the client from the atom runtime.
-export const removeServerAtom = AtomMachine.bind(RpcClient.runtime).make(
-	removalMachine(id =>
-		Effect.gen(function* () {
-			return yield* Context.get(yield* Atom.getResult(RpcClient.runtime), RpcClient)('gateway.remove', {id})
-		})
 	)
 )
 
@@ -139,19 +129,6 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 			client('ai.setKey', {provider: input.provider, secret: Redacted.make(input.secret)})
 		),
 		['ai-keys']
-	)
-)
-
-// A key removal waits eight seconds with Undo; once it commits the keys reader is refreshed.
-export const removeKeyAtom = AtomMachine.bind(RpcClient.runtime).make(
-	removalMachine(id =>
-		Effect.gen(function* () {
-			yield* Context.get(yield* Atom.getResult(RpcClient.runtime), RpcClient)('ai.removeKey', {
-				provider: yield* Schema.decodeUnknownEffect(AiProvider)(id)
-			})
-			const registry = yield* AtomRegistry.AtomRegistry
-			yield* Effect.sync(() => registry.refresh(aiKeysAtom))
-		})
 	)
 )
 

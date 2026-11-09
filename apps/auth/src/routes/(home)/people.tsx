@@ -2,10 +2,8 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 
 import {Array, Boolean, Option, Order} from 'effect'
 
-import {ShieldIcon, TrashIcon, UsersIcon} from '@phosphor-icons/react'
+import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
-import {useMachineResult} from '@typeonce/effect-machine-react'
-import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
@@ -15,10 +13,9 @@ import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {UndoButton} from '@deslop/components-web/undo'
 
 import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
-import {accountAtom, admitAtom, dayLabel, peopleAtom, removePersonAtom, selectedRowAtom} from '#lib/utils.ts'
+import {accountAtom, admitAtom, dayLabel, peopleAtom, selectedRowAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
 // The row's own line, then its failed answer beneath it; its actions sit at its end.
@@ -28,7 +25,6 @@ function PersonRow(props: {
 	footer?: ReactNode
 	onSelect: () => void
 	person: Person
-	removed: boolean
 	selected: boolean
 }) {
 	return (
@@ -37,7 +33,6 @@ function PersonRow(props: {
 				size="row"
 				id={`person-${props.person.id}`}
 				tabIndex={0}
-				data-removed={props.removed}
 				data-selected={props.selected}
 				onFocus={props.onSelect}
 			>
@@ -45,7 +40,12 @@ function PersonRow(props: {
 					<AccountAvatar id={props.person.id} name={props.person.name} small />
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
+					<ItemTitle>
+						{props.person.fullName ?? props.person.name}
+						{props.person.role === 'Admin' && (
+							<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0" />
+						)}
+					</ItemTitle>
 					{Option.match(props.failure, {
 						onNone: () =>
 							props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>,
@@ -67,7 +67,6 @@ function AskingRow(props: {onSelect: () => void; person: Person; selected: boole
 			person={props.person}
 			selected={props.selected}
 			onSelect={props.onSelect}
-			removed={false}
 			failure={Option.none()}
 			footer={<ResultError result={admit} className="mb-2 ml-9" />}
 		>
@@ -83,88 +82,29 @@ function AskingRow(props: {onSelect: () => void; person: Person; selected: boole
 	)
 }
 
-// Every person row ends with the same since-date column and one 24px slot, so a shield and a trash share their centre.
-function PersonEnd(props: {children?: ReactNode; since: number}) {
+// Every row ends with the same since-date column, wide enough for "Nov 2026" on one line.
+function Since(props: {since: number}) {
 	return (
 		<ItemActions>
-			<span className="text-muted-foreground w-14 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
 				{dayLabel(props.since)}
 			</span>
-			<span className="flex size-6 shrink-0 items-center justify-center max-sm:size-11">{props.children}</span>
 		</ItemActions>
 	)
 }
 
-// An admin is marked with a shield in the end slot; a member's trash removes them unless the row is yours.
-function MemberRow(props: {
-	failure: Option.Option<string>
-	onRemove: () => void
-	onSelect: () => void
-	person: Person
-	removable: boolean
-	removed: boolean
-	selected: boolean
-	undo: () => void
-}) {
-	const name = props.person.fullName ?? props.person.name
-	if (props.person.role === 'Admin') {
-		return (
-			<PersonRow
-				person={props.person}
-				selected={props.selected}
-				onSelect={props.onSelect}
-				removed={false}
-				failure={Option.none()}
-			>
-				<PersonEnd since={props.person.since}>
-					<ShieldIcon className="text-primary size-4 shrink-0" />
-				</PersonEnd>
-			</PersonRow>
-		)
-	}
+function MemberRow(props: {onSelect: () => void; person: Person; selected: boolean}) {
 	return (
-		<PersonRow
-			person={props.person}
-			selected={props.selected}
-			onSelect={props.onSelect}
-			removed={props.removed}
-			failure={props.failure}
-		>
-			{Boolean.match(props.removed, {
-				onFalse: () => (
-					<PersonEnd since={props.person.since}>
-						{props.removable && (
-							<Button
-								variant="ghost"
-								size="icon-xs"
-								className="max-sm:size-11"
-								aria-label={`Remove ${name}`}
-								title="Remove"
-								onClick={props.onRemove}
-							>
-								<TrashIcon className="size-4" />
-							</Button>
-						)}
-					</PersonEnd>
-				),
-				onTrue: () => (
-					<ItemActions>
-						<UndoButton onClick={props.undo} />
-					</ItemActions>
-				)
-			})}
+		<PersonRow person={props.person} selected={props.selected} onSelect={props.onSelect} failure={Option.none()}>
+			<Since since={props.person.since} />
 		</PersonRow>
 	)
 }
 
 // One card: whoever is asking for access first, then everyone with it.
 function Directory() {
-	const signed = useAtomSuspense(accountAtom).value
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
-	const send = useAtomSet(removePersonAtom.send)
-	const waiting = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removePersonAtom, 'Waiting')), Option.none)
-	const failed = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(removePersonAtom, 'Failed')), Option.none)
 	return (
 		<>
 			<h1 className="sr-only">People</h1>
@@ -184,19 +124,8 @@ function Directory() {
 											<MemberRow
 												key={person.id}
 												person={person}
-												failure={Option.map(
-													Option.filter(failed, state => state.id === person.id),
-													state => state.message
-												)}
-												removed={Option.exists(waiting, state => state.id === person.id)}
-												removable={!Option.exists(signed, account => account.id === person.id)}
 												selected={Option.contains(selected, `person-${person.id}`)}
 												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-												undo={() => send({_tag: 'Undone'})}
-												onRemove={() => {
-													send({_tag: 'Dismissed'})
-													send({_tag: 'Removed', id: person.id})
-												}}
 											/>
 										),
 										onTrue: () => (

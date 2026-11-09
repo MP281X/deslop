@@ -2,7 +2,7 @@ import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-r
 
 import {Array, Boolean, Match, Number, Option, Order, Record, String, pipe} from 'effect'
 
-import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon, TrashIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useEffect, useState} from 'react'
 import {toQR} from 'toqr'
@@ -30,7 +30,6 @@ import {
 	avatarUrl,
 	catalogAtom,
 	consentAtom,
-	disconnectAtom,
 	minuteAtom,
 	minutesSince,
 	newest,
@@ -116,7 +115,6 @@ function ClientRowSkeleton() {
 			<ItemActions>
 				<Skeleton className="h-3 w-12 shrink-0" />
 				<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
-				<Skeleton className="size-7 shrink-0 max-sm:size-11" />
 			</ItemActions>
 		</Item>
 	)
@@ -143,7 +141,7 @@ function PendingRowSkeleton() {
 	)
 }
 
-// The sign-in rows a card will hold while its data loads, at the loaded rows' geometry: 16px mark at the gutter, name at 44px, figures right-aligned.
+// The signed-in rows a card will hold while its data loads, at the loaded rows' geometry: 16px mark at the gutter, name at 44px, figures right-aligned.
 export function SignInRowsSkeleton(props: {label: string; pending?: boolean; rows: number}) {
 	return (
 		<Card size="list">
@@ -159,7 +157,7 @@ export function SignInRowsSkeleton(props: {label: string; pending?: boolean; row
 	)
 }
 
-// The people rows a card will hold while the list loads, with the mark, name, handle, since date and its trash's column.
+// The people rows a card will hold while the list loads, with the mark, name, handle and since date.
 export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
 	return (
 		<Card size="list">
@@ -175,8 +173,7 @@ export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
 								<Skeleton className="h-3 w-16" />
 							</ItemContent>
 							<ItemActions>
-								<Skeleton className="h-3 w-14 shrink-0" />
-								<Skeleton className="size-6 shrink-0 max-sm:size-11" />
+								<Skeleton className="h-3 w-16 shrink-0" />
 							</ItemActions>
 						</Item>
 					))}
@@ -224,22 +221,9 @@ function ClientIcon(props: {client: Client}) {
 	})
 }
 
-type SignedInClient = {
-	address: Option.Option<string>
-	client: Client
-	families: string[]
-	label: string
-	lastActive: number
-}
+type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: number}
 
-function ClientRow(props: {
-	client: SignedInClient
-	disconnecting: boolean
-	now: number
-	onDisconnect: () => void
-	onSelect: () => void
-	selected: boolean
-}) {
+function ClientRow(props: {client: SignedInClient; now: number; onSelect: () => void; selected: boolean}) {
 	const active = ageLabel(minutesSince(props.client.lastActive, props.now))
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
@@ -267,17 +251,6 @@ function ClientRow(props: {
 					<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
 						{Option.getOrElse(address, () => '')}
 					</span>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						className="max-sm:size-11"
-						aria-label={`Sign out ${props.client.client.device}`}
-						title="Sign out"
-						disabled={props.disconnecting}
-						onClick={props.onDisconnect}
-					>
-						<TrashIcon />
-					</Button>
 				</ItemActions>
 			</Item>
 		</div>
@@ -390,7 +363,6 @@ function clientsWithChildActivity(signIns: readonly SignedInApp[], catalog: read
 					kind: group[0].kind,
 					name: group[0].client
 				},
-				families: Array.map(group, signIn => signIn.family),
 				label: signInLabel(group[0].client, group[0].device),
 				lastActive
 			}
@@ -409,50 +381,42 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
 	const setPending = useAtomSet(pendingAtom)
-	const [disconnection, disconnect] = useAtom(disconnectAtom)
 	useEffect(() => setPending(props.pending), [props.pending, setPending])
 	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 		return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
 	}
 	return (
-		<>
-			<Card size="list">
-				<div role="list" aria-label="Signed-in clients">
-					{Boolean.match(checking, {
-						onFalse: () =>
-							Option.match(props.pending, {
-								onNone: () => null,
-								onSome: request => (
-									<PendingRow
-										catalog={data.catalog}
-										request={request}
-										selected={Option.contains(selected, 'pending-sign-in')}
-										onSelect={() => setSelected(Option.some('pending-sign-in'))}
-									/>
-								)
-							}),
-						onTrue: () => (
-							<div role="status" aria-label="Checking the code">
-								<PendingRowSkeleton />
-							</div>
-						)
-					})}
-					{Array.map(clients, client => (
-						<ClientRow
-							key={client.label}
-							client={client}
-							now={data.now}
-							selected={Option.contains(selected, `client-${client.label}`)}
-							onSelect={() => setSelected(Option.some(`client-${client.label}`))}
-							disconnecting={AsyncResult.isWaiting(disconnection)}
-							onDisconnect={() => disconnect(client.families)}
-						/>
-					))}
-				</div>
-			</Card>
-			<div className="px-4">
-				<ResultError result={disconnection} />
+		<Card size="list">
+			<div role="list" aria-label="Signed-in clients">
+				{Boolean.match(checking, {
+					onFalse: () =>
+						Option.match(props.pending, {
+							onNone: () => null,
+							onSome: request => (
+								<PendingRow
+									catalog={data.catalog}
+									request={request}
+									selected={Option.contains(selected, 'pending-sign-in')}
+									onSelect={() => setSelected(Option.some('pending-sign-in'))}
+								/>
+							)
+						}),
+					onTrue: () => (
+						<div role="status" aria-label="Checking the code">
+							<PendingRowSkeleton />
+						</div>
+					)
+				})}
+				{Array.map(clients, client => (
+					<ClientRow
+						key={client.label}
+						client={client}
+						now={data.now}
+						selected={Option.contains(selected, `client-${client.label}`)}
+						onSelect={() => setSelected(Option.some(`client-${client.label}`))}
+					/>
+				))}
 			</div>
-		</>
+		</Card>
 	)
 }

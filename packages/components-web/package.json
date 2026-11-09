@@ -17,7 +17,6 @@
 		"./result-error": "./src/result-error.tsx",
 		"./status-dot": "./src/status-dot.tsx",
 		"./tree": "./src/tree.tsx",
-		"./undo": "./src/undo.tsx",
 		"./ui/*": "./src/ui/*.tsx",
 		"./ui/hooks/*": "./src/ui/hooks/*.ts",
 		"./utils": "./src/lib/utils.ts",
