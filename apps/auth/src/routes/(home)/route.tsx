@@ -35,7 +35,6 @@ import * as WebRuntime from '@deslop/runtime/web'
 import {AccountAvatar, AppIcon, SignInList, SignInRowsSkeleton, QrCode} from '#lib/components.tsx'
 import {
 	ADDING_PASSKEY,
-	CLIENT_ROWS,
 	accountAtom,
 	appsAtom,
 	approveLink,
@@ -198,7 +197,7 @@ function Waiting(props: {account: Option.Option<SignedAccount>; id: string}) {
 					{
 						onNone: () => <CodeCard request={value.request} />,
 						onSome: () => (
-							<Suspense fallback={<SignInRowsSkeleton label="Signed in" pending rows={CLIENT_ROWS} />}>
+							<Suspense fallback={<SignInRowsSkeleton pending />}>
 								<SignInList pending={Option.some(value.request)} />
 							</Suspense>
 						)
@@ -339,7 +338,7 @@ function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 					href={app.origin}
 					className="text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-2.5 max-sm:h-11"
 				>
-					<AppIcon origin={app.origin} small />
+					<AppIcon origin={app.origin} />
 					<span className="truncate">{app.name}</span>
 				</a>
 			))}

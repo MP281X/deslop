@@ -175,9 +175,6 @@ export const admitAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
 )
 
-// The waiting sign-in the list leads with, approved on its own row.
-export const pendingAtom = Atom.make(Option.none<PendingAuthorization>())
-
 // The row that carries focus, as the id of its element.
 export const selectedRowAtom = Atom.make(Option.none<string>())
 
@@ -222,8 +219,6 @@ export const catalogAtom = Atom.keepAlive(
 		)
 	)
 )
-
-export const CLIENT_ROWS = 9
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(

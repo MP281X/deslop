@@ -4,7 +4,7 @@ import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {useEffect, useState} from 'react'
+import {useState} from 'react'
 import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
@@ -33,7 +33,6 @@ import {
 	minuteAtom,
 	minutesSince,
 	newest,
-	pendingAtom,
 	requestCode,
 	selectedRowAtom,
 	signInLabel
@@ -81,15 +80,10 @@ export function AccountAvatar(props: {id: string; name: string; small?: boolean}
 }
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-export function AppIcon(props: {origin: string; small?: boolean}) {
+export function AppIcon(props: {origin: string}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
-		<span
-			className={cn(
-				'text-muted-foreground relative flex shrink-0 items-center justify-center',
-				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
-			)}
-		>
+		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
 			{state !== 'loaded' && <AppWindowIcon className="size-4" />}
 			{state !== 'failed' && (
 				<img
@@ -143,13 +137,13 @@ function PendingRowSkeleton() {
 }
 
 // The signed-in rows a card will hold while its data loads, at the loaded rows' geometry: 16px mark at the gutter, name at 44px, figures right-aligned.
-export function SignInRowsSkeleton(props: {label: string; pending?: boolean; rows: number}) {
+export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label={props.label} role="status">
+			<div aria-busy="true" aria-label="Signed in" role="status">
 				<div role="list" aria-label="Signed-in clients">
 					{props.pending === true && <PendingRowSkeleton />}
-					{Array.map(Array.range(1, props.rows), row => (
+					{Array.map(Array.range(1, 9), row => (
 						<ClientRowSkeleton key={row} />
 					))}
 				</div>
@@ -159,12 +153,12 @@ export function SignInRowsSkeleton(props: {label: string; pending?: boolean; row
 }
 
 // The people rows a card will hold while the list loads, with the mark, name, handle and since date.
-export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
+export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label={props.label} role="status">
+			<div aria-busy="true" aria-label="People" role="status">
 				<div role="list" aria-label="People">
-					{Array.map(Array.range(1, props.rows), row => (
+					{Array.map(Array.range(1, 3), row => (
 						<Item key={row} aria-hidden size="row">
 							<ItemMedia className="size-4">
 								<Skeleton className="size-4" />
@@ -218,7 +212,7 @@ function Brand(props: {client: Client}) {
 function ClientIcon(props: {client: Client}) {
 	return Option.match(props.client.app, {
 		onNone: () => <Brand client={props.client} />,
-		onSome: origin => <AppIcon origin={origin} small />
+		onSome: origin => <AppIcon origin={origin} />
 	})
 }
 
@@ -274,7 +268,7 @@ function PendingMark(props: {catalog: readonly {name: string; origin: string}[];
 					onFalse: () => <HardDrivesIcon />,
 					onTrue: () => <GlobeIcon />
 				}),
-			onSome: origin => <AppIcon origin={origin} small />
+			onSome: origin => <AppIcon origin={origin} />
 		}
 	)
 }
@@ -363,8 +357,6 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 	const checking = props.checking === true && Option.isNone(props.pending)
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
-	const setPending = useAtomSet(pendingAtom)
-	useEffect(() => setPending(props.pending), [props.pending, setPending])
 	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 		return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
 	}

@@ -11,7 +11,7 @@ import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
 import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
-import {CLIENT_ROWS, codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
+import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 
@@ -90,15 +90,7 @@ function Content(props: {
 		<>
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
-			<Suspense
-				fallback={
-					<SignInRowsSkeleton
-						label="Signed in"
-						pending={props.state === 'Checking' || Option.isSome(props.pending)}
-						rows={CLIENT_ROWS}
-					/>
-				}
-			>
+			<Suspense fallback={<SignInRowsSkeleton pending={props.state === 'Checking' || Option.isSome(props.pending)} />}>
 				<SignInList checking={props.state === 'Checking'} pending={props.pending} />
 			</Suspense>
 		</>
