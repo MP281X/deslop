@@ -24,7 +24,6 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore, UserDirectories} from 'effect/persistence'
 import {ChildProcess} from 'effect/process'
 
-import {noBarAction} from '#judge/no-bar-action.ts'
 import {noControlForWrongJob} from '#judge/no-control-for-wrong-job.ts'
 import {noDetachedActionError} from '#judge/no-detached-action-error.ts'
 import {noDroppedContent} from '#judge/no-dropped-content.ts'
@@ -75,7 +74,6 @@ const TACTICS =
 	'Each finding is Jev reading that one unit alone. Fix what it names; when the unit cannot show the context that makes it right, put `// judge-ignore <question> -- <reason>` in the comment above it.'
 
 const QUESTIONS = {
-	'no-bar-action': noBarAction,
 	'no-control-for-wrong-job': noControlForWrongJob,
 	'no-detached-action-error': noDetachedActionError,
 	'no-dropped-content': noDroppedContent,

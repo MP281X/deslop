@@ -246,9 +246,9 @@ describe('coding-standards --judge', () => {
 		test.effect(
 			'fails the judge when a question misjudges its own example',
 			Effect.fnUntraced(function* () {
-				const f = yield* fixture('no-bar-action')
+				const f = yield* fixture('no-control-for-wrong-job')
 				const result = yield* f.judge(yield* f.checkout({'README.md': ['# Empty']}))
-				assert.deepStrictEqual(result.findings, ['no-bar-action misjudges 0.1'])
+				assert.deepStrictEqual(result.findings, ['no-control-for-wrong-job misjudges 0.1'])
 				assert.strictEqual(result.exitCode, ChildProcessSpawner.ExitCode(1))
 			}, Effect.scoped)
 		)
