@@ -4,7 +4,7 @@ import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
 import {CurrentUser} from '@deslop/runtime/auth/utils'
 
-import {Capture, FileType, Note, NoteId} from '#services/notes/schema.ts'
+import {Capture, FileType, NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 const noteIdParam = HttpRouter.schemaPathParams(Schema.Struct({id: NoteId}))
@@ -17,9 +17,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 			'POST',
 			'/api/capture',
 			Effect.gen(function* () {
-				return yield* HttpServerResponse.schemaJson(Note)(
-					yield* notes.capture((yield* CurrentUser).id, yield* HttpServerRequest.schemaBodyJson(Capture))
-				)
+				yield* notes.capture((yield* CurrentUser).id, yield* HttpServerRequest.schemaBodyJson(Capture))
+				return HttpServerResponse.empty({status: 204})
 			})
 		)
 		yield* router.add(
@@ -30,9 +29,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 				const type = yield* Schema.decodeUnknownEffect(FileType)(
 					pipe(request.headers['content-type'] ?? '', String.split(';'), Array.headNonEmpty, String.trim)
 				)
-				return yield* HttpServerResponse.schemaJson(Note)(
-					yield* notes.captureFile((yield* CurrentUser).id, {body: request.stream, id: (yield* noteIdParam).id, type})
-				)
+				yield* notes.captureFile((yield* CurrentUser).id, {body: request.stream, id: (yield* noteIdParam).id, type})
+				return HttpServerResponse.empty({status: 204})
 			})
 		)
 		yield* router.add(
