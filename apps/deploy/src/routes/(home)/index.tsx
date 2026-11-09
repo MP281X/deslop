@@ -1055,7 +1055,7 @@ function Workspace(props: {
 		onNone: () => (
 			<div className="flex min-h-0 flex-1 flex-col">
 				<h1 className="sr-only">Deploy</h1>
-				<div className={cn('flex min-h-0 flex-1 flex-col', props.refreshing && 'opacity-60 transition-opacity')}>
+				<div className={cn('flex min-h-0 flex-1 flex-col', props.refreshing && 'opacity-60')}>
 					{Boolean.match(props.isPhone, {
 						onFalse: () => (
 							<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
