@@ -33,6 +33,8 @@
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
+		"@fontsource-variable/geist": "latest",
+		"@fontsource-variable/geist-mono": "latest",
 		"@fontsource-variable/ibm-plex-sans": "latest",
 		"@phosphor-icons/react": "latest",
 		"@tanstack/react-hotkeys": "latest",
