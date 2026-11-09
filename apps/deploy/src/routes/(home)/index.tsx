@@ -2,7 +2,15 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, DateTime, HashSet, Number, Option, Order, Record, Schema, String} from 'effect'
 
-import {AppWindowIcon, CaretRightIcon, ChartLineIcon, PlayIcon, TerminalWindowIcon} from '@phosphor-icons/react'
+import {
+	AppWindowIcon,
+	CaretRightIcon,
+	ChartLineIcon,
+	ClockIcon,
+	PlayIcon,
+	StackIcon,
+	TerminalWindowIcon
+} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue, useState} from 'react'
@@ -349,7 +357,7 @@ function runRequest(item: InventoryItem) {
 function RunNow(props: {item: InventoryItem; onRun: () => void}) {
 	return (
 		<Button
-			size="icon-sm"
+			size="icon-xs"
 			variant="ghost"
 			className="pointer-events-auto"
 			aria-label={`Run ${workloadName(props.item)} now`}
@@ -465,7 +473,10 @@ function AppRow(props: {
 						/>
 					</ItemMedia>
 					<ItemContent className="pointer-events-none relative z-10">
-						<ItemTitle className="w-full" title={fullName}>
+						<ItemTitle
+							className={Boolean.match(failing, {onFalse: () => 'w-full', onTrue: () => 'max-w-1/2'})}
+							title={fullName}
+						>
 							<span className="min-w-0 truncate">{name}</span>
 						</ItemTitle>
 						{failing && (
@@ -507,7 +518,7 @@ function AppRow(props: {
 									})
 							})}
 						</span>
-						<span className="flex w-7 shrink-0 items-center justify-center">
+						<span className="flex w-6 shrink-0 items-center justify-center">
 							{Boolean.match(scheduled, {
 								onFalse: () => <CaretRightIcon className="text-muted-foreground size-3.5" />,
 								onTrue: () =>
@@ -916,7 +927,7 @@ function ListPane(props: {
 	const jobs = Array.filter(props.rows, row => row.item.scheduled === true)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
-			<ItemListHeading>Processes</ItemListHeading>
+			<ItemListHeading icon={<StackIcon />}>Processes</ItemListHeading>
 			<Suspense
 				fallback={
 					<div className="min-h-0 flex-1 overflow-hidden">
@@ -949,7 +960,7 @@ function ListPane(props: {
 									onFalse: () => null,
 									onTrue: () => (
 										<>
-											<ItemListHeading>Scheduled</ItemListHeading>
+											<ItemListHeading icon={<ClockIcon />}>Scheduled</ItemListHeading>
 											<ListRows
 												bandOf={props.bandOf}
 												compact={props.compact}
