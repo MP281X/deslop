@@ -14,7 +14,6 @@ import type {ReactNode} from 'react'
 
 import {colors, space} from '#components/theme.ts'
 
-// shadcn's Empty on iOS, by the same names, laid out as SwiftUI's ContentUnavailableView: centered symbol, title, description, actions.
 export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
 	return (
 		<VStack

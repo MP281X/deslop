@@ -86,7 +86,6 @@ function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	)
 }
 
-// One search field over the caller's records and actions; the bar opens it with ⌘K.
 export function CommandPalette(props: {
 	current?: string
 	groups: readonly PaletteGroup[]

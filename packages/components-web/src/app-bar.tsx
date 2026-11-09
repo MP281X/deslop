@@ -73,7 +73,6 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
@@ -119,7 +118,6 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 	)
 }
 
-// The masthead: mark and name, sections, the page-wide search, then the controls that choose what the page shows. Actions live in the palette.
 export function AppBar(props: {
 	account?: ReactNode
 	back?: {label: string; onClick: () => void}

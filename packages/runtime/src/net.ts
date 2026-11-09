@@ -39,7 +39,6 @@ function isHome(ip: NetAddress.IpAddress) {
 	return NetAddress.isUniqueLocal(ip)
 }
 
-// An address the internet routes to, unlike the ranges a network keeps for itself.
 export function isPublicIp(ip: NetAddress.IpAddress) {
 	return (
 		!NetAddress.isUnspecified(ip) &&

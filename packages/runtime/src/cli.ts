@@ -70,7 +70,6 @@ const SETTINGS = {
 	OTEL_URL: {description: 'Scope origin to export traces and logs to', flag: 'traces', schema: Origin}
 } satisfies Record<string, Setting>
 
-// Auth's and the gateway's admins, by GitHub user id.
 export const ADMINS = {
 	description: 'GitHub user ids, comma-separated, who admit people and manage shared settings',
 	flag: 'admins',

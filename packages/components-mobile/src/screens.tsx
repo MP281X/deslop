@@ -90,7 +90,6 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	)
 }
 
-// The app's icon and a short statement in the middle of the screen, with GitHub sign-in at the bottom.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
@@ -123,7 +122,6 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 	)
 }
 
-// The app once its saved session exists, its sign-in screen until then.
 export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session; tint: ColorValue}) {
 	const send = useAtomSet(props.session.send)
 	return (

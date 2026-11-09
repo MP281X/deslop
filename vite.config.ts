@@ -113,7 +113,7 @@ export default defineConfig({
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.
 		cache: true,
 		tasks: {
-			// Oxfmt, the typed lint pass on tsrs (Effect rules and TypeScript diagnostics), a syntax-only pass for the templates, then Fallow. `fix` writes the fixes instead of only reporting them. TSRS_FAST checks each tsconfig's whole program, including files lint ignores.
+			// TSRS_FAST checks each tsconfig's whole program, including files lint ignores; the templates get a syntax-only pass.
 			check: [
 				'vp fmt --list-different',
 				'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --type-aware --type-check --ignore-pattern "tools/*/template/**"',

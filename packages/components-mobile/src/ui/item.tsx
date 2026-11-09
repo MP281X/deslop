@@ -18,7 +18,7 @@ import type {ReactNode} from 'react'
 
 import {colors, space, text} from '#components/theme.ts'
 
-// shadcn's Item on iOS by the same names; a caller's modifiers come first, so they win over the defaults like a className.
+// A caller's modifiers come first, so they win over the defaults like a className.
 
 // Row modifiers for an ItemGroup, put on the row's outermost view such as its SwipeActions.
 export const itemRow = [

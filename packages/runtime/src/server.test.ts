@@ -73,7 +73,6 @@ const handler = Effect.fnUntraced(function* (
 	)
 })
 
-// The `name=value` part of each cookie a response sets.
 function cookies(response: Response) {
 	return Array.map(response.headers.getSetCookie(), header => Array.headNonEmpty(String.split(header, ';')))
 }

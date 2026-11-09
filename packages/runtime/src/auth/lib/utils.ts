@@ -24,7 +24,6 @@ import {RpcMiddleware} from 'effect/rpc'
 import type {User} from '#auth/schema.ts'
 import {AuthError, ClientInfo} from '#auth/schema.ts'
 
-// The Auth iOS apps sign in through.
 export const AUTH_URL = 'https://auth.mp281x.xyz'
 
 // Auth serves and advertises its OAuth endpoints under this path, which its clients call.
@@ -95,7 +94,6 @@ export function isAdmin(admins: readonly string[], id: string) {
 	return Array.contains(admins, String.replace('github:', '')(id))
 }
 
-// The app's own server starts the sign-in through Auth and returns to `next`.
 export function signInUrl(next: string) {
 	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }

@@ -58,7 +58,6 @@ export const AppVersion = Schema.String.check(Schema.isPattern(/^0\.1\.\d+$/u))
 export const RUNTIME_PATH = '/api/runtime'
 
 export type RuntimeConfig = typeof RuntimeConfig.Type
-// What it tells them: the app's name, the Auth it signs in through, where it exports traces and its release.
 export const RuntimeConfig = Schema.Struct({
 	auth: Schema.optionalKey(Origin),
 	name: Schema.String,
@@ -82,7 +81,6 @@ export const MANIFEST_PATH = '/manifest.webmanifest'
 export type Account = typeof Account.Type
 export const Account = Schema.Struct({...User.fields, signOut: Schema.Boolean})
 
-// The app's package: its name, release and the port it listens on by default.
 export type PackageMetadata = typeof PackageMetadata.Type
 export const PackageMetadata = Schema.Struct({
 	config: Schema.Struct({port: Schema.Int}),

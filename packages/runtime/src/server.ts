@@ -112,7 +112,6 @@ const checkoutRoot = Effect.fnUntraced(function* (
 	return yield* checkoutRoot(path.dirname(directory))
 })
 
-// An installed app keeps its data in ~/.deslop/<app>; one run from a checkout, such as a preview, in that checkout's .deslop/<app>.
 export const dataDirectory = Effect.gen(function* () {
 	const path = yield* Path.Path
 	const name = yield* appName
@@ -229,7 +228,6 @@ export function layerKeyValueStore(directory: string) {
 	)
 }
 
-// The app's KeyValueStore, in its data directory.
 export const layerDataStore = Layer.unwrap(Effect.map(dataDirectory, layerKeyValueStore))
 
 // A live list as the events its clients apply: the whole list once, then the items each update added or replaced by identity and the ids it removed.
@@ -289,7 +287,6 @@ export const layerTelemetry = Layer.unwrap(
 	})
 )
 
-// Pages and assets are public; the account menu and the runtime settings.
 export const layerRoutes = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
@@ -338,7 +335,6 @@ const CallbackParams = Schema.Struct({
 	state: Schema.optionalKey(Schema.String)
 })
 
-// A sign-in Auth refused or this browser did not start returns to its page signed out.
 function signedOut(next: string, cause: unknown) {
 	return Effect.as(
 		Effect.logWarning('The sign-in did not complete', cause),
@@ -507,7 +503,6 @@ function layerSignIn(issuer: string) {
 // Without an issuer every request is the developer, so there is nothing to sign in to.
 const notConfigured = HttpServerResponse.text('Sign-in is not configured for this app', {status: 503})
 
-// Started from a page through `/auth/sign-in?next=` and ended through `/auth/sign-out?next=`; an iOS app posts its code to `/auth/session`.
 export const layerSessionRoutes = Layer.unwrap(
 	Effect.gen(function* () {
 		return Option.match(yield* Config.option(Config.String('AUTH_URL')), {

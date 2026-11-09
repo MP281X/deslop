@@ -88,7 +88,6 @@ export function searchOf<S extends Schema.Decoder<object>>(schema: S) {
 		Option.getOrElse(Schema.decodeOption(schema)(search), () => Schema.decodeSync(schema)({}))
 }
 
-// The page's router under StrictMode, mounted where makeRouter found #root.
 export function mount(app: {root: Element; router: AnyRouter}) {
 	const errors = AtomRegistry.make()
 	function report(error: unknown, source: 'route' | 'caught' | 'uncaught', stack?: string | null) {

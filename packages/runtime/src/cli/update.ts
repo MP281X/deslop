@@ -13,7 +13,6 @@ const serviceDirectory = Effect.fnUntraced(function* (name: string) {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', name)
 })
 
-// Points the service's `current` link at a package directory, replacing it atomically.
 export const activate = Effect.fnUntraced(function* (name: string, target: string) {
 	const fs = yield* FileSystem.FileSystem
 	const directory = yield* serviceDirectory(name)

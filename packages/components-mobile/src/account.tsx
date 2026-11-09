@@ -28,7 +28,7 @@ function Avatar(props: {id: string}) {
 	)
 }
 
-// The account in the navigation bar, as in the web app bar: its GitHub picture, and its handle above Sign Out. Signing out also ends this app's sign-in at Auth.
+// Signing out also ends this app's sign-in at Auth, as in the web app bar.
 export function AccountMenu(props: {session: AppSession}) {
 	const send = useAtomSet(props.session.machine.send)
 	const account = AsyncResult.value(useAtomValue(props.session.account))

@@ -160,7 +160,6 @@
 	image-rendering: pixelated;
 }
 
-/* Sera's display face, for the one heading that names a view. */
 /* A ruled row: the fill may meet the pane edge, the divider never does. */
 @utility list-row {
 	position: relative;
