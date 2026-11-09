@@ -21,7 +21,7 @@ import {
 import {DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useEffect, useRef} from 'react'
+import {Suspense} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar} from '@deslop/components-web/app-bar'
@@ -71,11 +71,11 @@ const HTTP_ATTRIBUTES = [
 
 // The device an operation starts on, as Auth marks a sign-in's; it is a shape, not a hue.
 const DEVICES: Record<Runtime, ReactElement> = {
-	ci: <FlowArrowIcon role="img" aria-label="CI" className="text-muted-foreground size-3.5 shrink-0" />,
-	mobile: <DeviceMobileIcon role="img" aria-label="iOS" className="text-muted-foreground size-3.5 shrink-0" />,
-	server: <HardDrivesIcon role="img" aria-label="server" className="text-muted-foreground size-3.5 shrink-0" />,
-	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />,
-	web: <GlobeIcon role="img" aria-label="web" className="text-muted-foreground size-3.5 shrink-0" />
+	ci: <FlowArrowIcon role="img" aria-label="CI" className="text-muted-foreground size-4 shrink-0" />,
+	mobile: <DeviceMobileIcon role="img" aria-label="iOS" className="text-muted-foreground size-4 shrink-0" />,
+	server: <HardDrivesIcon role="img" aria-label="server" className="text-muted-foreground size-4 shrink-0" />,
+	unknown: <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
+	web: <GlobeIcon role="img" aria-label="web" className="text-muted-foreground size-4 shrink-0" />
 }
 
 const clock = new Intl.DateTimeFormat(undefined, {
@@ -1011,47 +1011,6 @@ function Home() {
 		navigate({search: previous => nextSearch(previous, event)})
 	}
 	const pane = navigation.path
-	const root = useRef<HTMLDivElement>(null)
-	useEffect(() => {
-		const container = root.current
-		if (!isMobile || container === null) return
-		const selector = pipe(
-			Match.value(pane),
-			Match.when('Span', () => 'header button'),
-			Match.when('Trace', () => 'section[aria-label="Trace"] button[aria-current="true"]'),
-			Match.when('Traces', () => 'section[aria-label="Traces"] button[aria-current="true"]'),
-			Match.orElse(() => 'section[aria-label="Operations"] button[aria-current="true"]')
-		)
-		const target = container.querySelector<HTMLButtonElement>(selector)
-		if (target !== null && target.getClientRects().item(0) !== null) {
-			target.focus()
-			return
-		}
-		const fallback = container.querySelector<HTMLButtonElement>('header button')
-		fallback?.focus()
-		// A push can reach its Suspense fallback before its selected row mounts.
-		const pending = new MutationObserver(() => {
-			if (
-				container.ownerDocument.activeElement !== container.ownerDocument.body &&
-				container.ownerDocument.activeElement !== fallback
-			) {
-				pending.disconnect()
-				return
-			}
-			const ready = container.querySelector<HTMLButtonElement>(selector)
-			if (ready !== null && ready.getClientRects().item(0) !== null) {
-				pending.disconnect()
-				ready.focus()
-			}
-		})
-		pending.observe(container, {
-			attributeFilter: ['aria-current', 'hidden', 'style'],
-			attributes: true,
-			childList: true,
-			subtree: true
-		})
-		return () => pending.disconnect()
-	}, [isMobile, pane, root])
 	const overview = useAtomValue(overviewAtom)
 	const refresh = useAtomRefresh(overviewAtom)
 	const value = AsyncResult.value(overview)
@@ -1064,11 +1023,15 @@ function Home() {
 			Option.flatMap(value, current => findOperation(current, key))
 		),
 		() =>
-			Option.flatMap(value, current =>
-				Option.flatMap(Array.head(groupedOperations(current)), group =>
-					Option.map(Array.head(group.operations), operation => ({app: group.app, operation}))
-				)
-			)
+			Boolean.match(isMobile, {
+				onFalse: () =>
+					Option.flatMap(value, current =>
+						Option.flatMap(Array.head(groupedOperations(current)), group =>
+							Option.map(Array.head(group.operations), operation => ({app: group.app, operation}))
+						)
+					),
+				onTrue: () => Option.none<ActiveOperation>()
+			})
 	)
 	const activeKey = Option.map(activeOperation, active => ({
 		app: active.app.name,
@@ -1150,7 +1113,7 @@ function Home() {
 		)
 	})
 	return (
-		<div ref={root} className="flex min-h-0 flex-1 flex-col">
+		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
 				icon={icon}
 				name="scope"
@@ -1159,7 +1122,7 @@ function Home() {
 					onTrue: () =>
 						pipe(
 							Match.value(pane),
-							Match.when('Operations', () => 'Operations'),
+							Match.when('Operations', () => 'Scope'),
 							Match.when('Traces', () =>
 								Option.match(activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
 							),
