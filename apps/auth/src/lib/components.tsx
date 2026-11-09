@@ -325,8 +325,13 @@ function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: str
 	)
 }
 
-const signInListAtom = Atom.make(get =>
-	AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)})
+// A retry restarts the two live readers, which refreshing their combination alone would not.
+const signInListAtom = Atom.readable(
+	get => AsyncResult.all({catalog: get(catalogAtom), now: get(minuteAtom), signIns: get(appsAtom)}),
+	refresh => {
+		refresh(appsAtom)
+		refresh(catalogAtom)
+	}
 )
 
 export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {

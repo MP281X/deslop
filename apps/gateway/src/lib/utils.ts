@@ -72,7 +72,13 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
-export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
+// Read like the live streams, so a refusal clears the keys too; saving a key rereads them.
+export const aiKeysAtom = pipe(
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai.keys', undefined))))
+	),
+	RpcClient.runtime.factory.withReactivity(['ai-keys'])
+)
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: Period) =>
