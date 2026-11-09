@@ -65,7 +65,7 @@ export function Error(props: {error: unknown; label?: string; reset: () => void}
 				<AlertTitle>{props.label ?? 'Can’t load this view'}</AlertTitle>
 				<AlertDescription>The server did not answer. Nothing was lost; try the same view again.</AlertDescription>
 				<AlertAction>
-					<Button variant="destructive" size="sm" className="max-sm:h-11" onClick={props.reset}>
+					<Button variant="destructive" size="sm" className="max-sm:h-12" onClick={props.reset}>
 						Retry
 					</Button>
 				</AlertAction>

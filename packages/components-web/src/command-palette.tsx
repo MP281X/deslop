@@ -73,7 +73,7 @@ function Item(props: {group: string; item: PaletteItem; onSelect: () => void}) {
 	return (
 		<CommandItem
 			value={`${props.group}:${props.item.id ?? props.item.label}`}
-			className="max-sm:min-h-11"
+			className="max-sm:min-h-12"
 			onSelect={props.onSelect}
 		>
 			{props.item.icon ?? <ArrowRightIcon />}

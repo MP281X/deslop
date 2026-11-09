@@ -274,7 +274,7 @@ function RangeToggle(props: {
 				variant="outline"
 			>
 				{Array.map(RANGES, range => (
-					<ToggleGroupItem key={range.minutes} className="max-sm:h-11" value={`${range.minutes}`}>
+					<ToggleGroupItem key={range.minutes} className="max-sm:h-12" value={`${range.minutes}`}>
 						{range.label}
 					</ToggleGroupItem>
 				))}
@@ -297,7 +297,7 @@ function RangeMenu(props: {
 					onNone: () => 'History range',
 					onSome: range => `History range: ${range.name}`
 				})}
-				render={<Button variant="ghost" size="sm" className="max-lg:h-11" />}
+				render={<Button variant="ghost" size="sm" className="max-lg:h-12" />}
 			>
 				{Option.match(current, {onNone: () => '—', onSome: range => range.label})}
 				{Boolean.match(props.pending, {onFalse: () => <CaretDownIcon />, onTrue: () => <Spinner />})}
@@ -313,7 +313,7 @@ function RangeMenu(props: {
 					}}
 				>
 					{Array.map(RANGES, range => (
-						<DropdownMenuRadioItem key={range.minutes} className="max-lg:h-11" value={`${range.minutes}`}>
+						<DropdownMenuRadioItem key={range.minutes} className="max-lg:h-12" value={`${range.minutes}`}>
 							{range.name}
 						</DropdownMenuRadioItem>
 					))}
@@ -328,7 +328,7 @@ function Endpoint(props: {item: InventoryItem}) {
 	return (
 		<Button
 			size="sm"
-			className="min-w-port relative max-sm:h-11"
+			className="min-w-port relative max-sm:h-12"
 			nativeButton={false}
 			render={
 				<a
@@ -368,7 +368,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (
-							<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-11">
+							<Button key={listener.id} size="sm" variant="ghost" disabled className="min-w-port max-sm:h-12">
 								:{listener.port}
 							</Button>
 						),
@@ -377,7 +377,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: ReturnType<typeo
 								key={listener.id}
 								size="sm"
 								variant="secondary"
-								className="min-w-port relative max-sm:h-11"
+								className="min-w-port relative max-sm:h-12"
 								aria-label={`Expose ${workloadName(props.row.item)} :${listener.port}`}
 								onClick={() => expose(port)}
 							>
@@ -401,7 +401,7 @@ function RunNow(props: {busy: boolean; item: InventoryItem; onRun: () => void}) 
 		<Button
 			size="icon-xs"
 			variant="ghost"
-			className="relative shrink-0 max-sm:size-11"
+			className="relative shrink-0 max-sm:size-12"
 			aria-label={Boolean.match(working, {
 				onFalse: () => `Run ${workloadName(props.item)} now`,
 				onTrue: () => `${workloadName(props.item)} is running`
@@ -439,7 +439,7 @@ function RemoveExposure(props: {item: InventoryItem}) {
 	return (
 		<ContextMenuItem
 			variant="destructive"
-			className="max-sm:h-11"
+			className="max-sm:h-12"
 			disabled={AsyncResult.isWaiting(result)}
 			onClick={() => hide()}
 		>
@@ -506,7 +506,7 @@ function AppListRow(props: {
 						<div
 							role="listitem"
 							data-selected={props.selected}
-							className={cn('list-row relative flex h-14 items-center gap-2 pr-3', highlighted && 'bg-muted/50')}
+							className={cn('list-row relative flex h-14 items-center gap-2 pr-2', highlighted && 'bg-muted/40')}
 							onPointerEnter={() => props.onHover(Option.getOrUndefined(band))}
 							onPointerLeave={() => props.onHover()}
 						/>
@@ -517,7 +517,7 @@ function AppListRow(props: {
 						aria-label={`Open ${fullName}`}
 						variant={Boolean.match(props.selected, {
 							onFalse: () => 'ghost' as const,
-							onTrue: () => 'secondary' as const
+							onTrue: () => 'selected' as const
 						})}
 						className="absolute inset-0 z-0 size-full"
 						onClick={props.onSelect}
@@ -534,7 +534,7 @@ function AppListRow(props: {
 								{name}
 							</span>
 							{/* A phone reads the memory, and why a row needs a look, under its name; wider screens keep them in their columns. */}
-							<span className="flex min-w-0 items-center gap-1.5 font-mono text-xs tracking-normal normal-case tabular-nums sm:hidden">
+							<span className="text-meta flex min-w-0 items-center gap-1.5 font-mono tabular-nums sm:hidden">
 								<span className="text-muted-foreground shrink-0">{bytes(memory)}</span>
 								{Boolean.match(failing, {
 									onFalse: () =>
@@ -570,7 +570,7 @@ function AppListRow(props: {
 								Boolean.match(scheduled, {
 									onFalse: () => <Endpoints free={props.free} row={props.row} />,
 									onTrue: () => (
-										<span className="text-muted-foreground flex shrink-0 items-center gap-1 font-mono text-xs max-sm:hidden">
+										<span className="text-muted-foreground text-meta flex shrink-0 items-center gap-1 font-mono max-sm:hidden">
 											<ClockIcon className="size-3" />
 											{next}
 										</span>
@@ -592,7 +592,7 @@ function AppListRow(props: {
 					<div className="pointer-events-none relative z-10 flex shrink-0 items-center gap-2">
 						<span
 							className={cn(
-								'w-20 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums max-sm:hidden',
+								'text-meta w-20 shrink-0 text-right font-mono whitespace-nowrap tabular-nums max-sm:hidden',
 								scheduled && 'text-muted-foreground'
 							)}
 						>
@@ -612,7 +612,7 @@ function AppListRow(props: {
 						<span
 							className={cn(
 								'pointer-events-auto flex shrink-0 items-center justify-center',
-								Boolean.match(scheduled, {onFalse: () => 'size-4', onTrue: () => 'size-7 max-sm:size-11'})
+								Boolean.match(scheduled, {onFalse: () => 'size-4', onTrue: () => 'size-7 max-sm:size-12'})
 							)}
 						>
 							{Boolean.match(scheduled, {
@@ -709,13 +709,18 @@ function ListSkeleton(props: {indent?: boolean; label: string; rows: number}) {
 	)
 }
 
+// A wide screen's resizable columns sit in quiet trays, one per pane.
+function Tray(props: {children: ReactNode}) {
+	return <div className="bg-tray h-full overflow-hidden rounded-lg border">{props.children}</div>
+}
+
 function ChartSkeleton() {
 	return (
 		<div
 			aria-busy="true"
 			aria-label="Usage history"
 			role="status"
-			className="flex min-h-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+			className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-4"
 		>
 			<div className="flex flex-wrap gap-3">
 				<Skeleton className="h-3 w-16" />
@@ -792,7 +797,7 @@ function AppsPane(props: {
 										<Fragment key={row.item.id}>
 											{index === firstScheduled && (
 												<div className="bg-background text-muted-foreground sticky top-0 z-20 flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
-													<span className="tracking-label font-semibold uppercase">Scheduled</span>
+													<span className="font-medium">Scheduled</span>
 													<Badge variant="secondary">{scheduled.length}</Badge>
 												</div>
 											)}
@@ -854,9 +859,7 @@ function ProcessPane(props: {
 									process={process}
 									container={current.item.kind === 'container'}
 								/>
-								<span className="max-w-40 min-w-0 truncate text-sm font-medium tracking-normal normal-case">
-									{workloadName(current.item)}
-								</span>
+								<span className="max-w-40 min-w-0 truncate text-sm font-medium">{workloadName(current.item)}</span>
 							</span>
 						)
 					})}
@@ -873,7 +876,7 @@ function ProcessPane(props: {
 					{Boolean.match(props.row?.item.scheduled === true, {
 						onFalse: () => null,
 						onTrue: () => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs whitespace-nowrap">
+							<span className="text-muted-foreground text-meta shrink-0 font-mono whitespace-nowrap">
 								{nextRun(props.row?.item.next ?? props.now, props.now)}
 							</span>
 						)
@@ -982,7 +985,7 @@ function MachineContent(props: {
 	}
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="flex flex-col gap-4 px-4 pt-3 pb-4">
+			<div className="flex flex-col gap-3 px-4 pt-3 pb-4">
 				<div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
 					{Array.map([...memoryTop, ...Array.filter(all, band => band.kind !== 'app')], band => (
 						<span key={band.id} className="flex min-w-0 items-center gap-1.5">
@@ -1149,7 +1152,7 @@ function MachineTabs(props: {
 											</span>
 										)}
 									</span>
-									<span className="text-muted-foreground min-w-0 truncate font-mono text-xs tracking-normal normal-case tabular-nums">
+									<span className="text-muted-foreground text-meta min-w-0 truncate font-mono tabular-nums">
 										{Array.join(
 											[
 												...Boolean.match(Array.isReadonlyArrayNonEmpty(latest?.cores ?? []), {
@@ -1416,7 +1419,7 @@ function Home() {
 			/>
 			{Option.match(authFailure, {
 				onNone: () => (
-					<Page width="full" className="h-full min-h-0 gap-4 max-sm:px-2">
+					<Page width="full" className="h-full min-h-0 gap-3 max-sm:px-3">
 						<h1 className="sr-only">Deploy</h1>
 						<MachineTabs
 							active={active}
@@ -1440,7 +1443,7 @@ function Home() {
 						<SourceProblems onRetry={refreshInventory} sources={sources} workers={workers} />
 						<div
 							className={cn(
-								'machine flex min-h-0 flex-1 flex-col gap-4',
+								'machine gap-pane flex min-h-0 flex-1 flex-col',
 								refreshing && 'opacity-60 transition-opacity'
 							)}
 							data-machine={Option.match(Option.fromUndefinedOr(active), {onNone: () => '', onSome: machineName})}
@@ -1449,11 +1452,11 @@ function Home() {
 								onFalse: () =>
 									Boolean.match(isWide, {
 										onFalse: () => (
-											<div className="grid-rows-split grid min-h-0 flex-1">
-												<div className="grid min-h-0 grid-cols-2">
+											<div className="grid-rows-split gap-pane grid min-h-0 flex-1">
+												<div className="gap-pane grid min-h-0 grid-cols-2">
 													<AppsPane
 														bandOf={bandOf}
-														className="min-w-0 border-r"
+														className="bg-tray min-w-0 overflow-hidden rounded-lg border"
 														compact={false}
 														free={free}
 														hovered={hovered}
@@ -1464,7 +1467,7 @@ function Home() {
 														selectedId={selectedRow?.item.id}
 													/>
 													<MachinePane
-														className="min-w-0"
+														className="bg-tray min-w-0 overflow-hidden rounded-lg border"
 														history={Option.getOrUndefined(history)}
 														hovered={hovered}
 														labels={bandNames}
@@ -1474,7 +1477,7 @@ function Home() {
 													/>
 												</div>
 												<ProcessPane
-													className="min-h-0 border-t"
+													className="bg-tray min-h-0 overflow-hidden rounded-lg border"
 													now={now}
 													pending={inventoryPending}
 													row={selectedRow}
@@ -1484,39 +1487,45 @@ function Home() {
 										onTrue: () => (
 											<ResizablePanelGroup className="min-h-0 flex-1" orientation="horizontal">
 												<ResizablePanel className="min-h-0" defaultSize="30%" minSize="20%">
-													<AppsPane
-														bandOf={bandOf}
-														className="h-full min-w-0"
-														compact={false}
-														free={free}
-														hovered={hovered}
-														now={now}
-														onHover={setHovered}
-														onSelect={selectRow}
-														rows={sorted}
-														selectedId={selectedRow?.item.id}
-													/>
+													<Tray>
+														<AppsPane
+															bandOf={bandOf}
+															className="h-full min-w-0"
+															compact={false}
+															free={free}
+															hovered={hovered}
+															now={now}
+															onHover={setHovered}
+															onSelect={selectRow}
+															rows={sorted}
+															selectedId={selectedRow?.item.id}
+														/>
+													</Tray>
 												</ResizablePanel>
 												<ResizableHandle />
 												<ResizablePanel className="min-h-0" defaultSize="36%" minSize="22%">
-													<ProcessPane
-														className="h-full min-h-0"
-														now={now}
-														pending={inventoryPending}
-														row={selectedRow}
-													/>
+													<Tray>
+														<ProcessPane
+															className="h-full min-h-0"
+															now={now}
+															pending={inventoryPending}
+															row={selectedRow}
+														/>
+													</Tray>
 												</ResizablePanel>
 												<ResizableHandle />
 												<ResizablePanel className="min-h-0" defaultSize="34%" minSize="22%">
-													<MachinePane
-														className="h-full min-h-0"
-														history={Option.getOrUndefined(history)}
-														hovered={hovered}
-														labels={bandNames}
-														minutes={shownMinutes}
-														onHover={setHovered}
-														worker={active}
-													/>
+													<Tray>
+														<MachinePane
+															className="h-full min-h-0"
+															history={Option.getOrUndefined(history)}
+															hovered={hovered}
+															labels={bandNames}
+															minutes={shownMinutes}
+															onHover={setHovered}
+															worker={active}
+														/>
+													</Tray>
 												</ResizablePanel>
 											</ResizablePanelGroup>
 										)

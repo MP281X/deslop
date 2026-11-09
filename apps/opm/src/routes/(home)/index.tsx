@@ -147,7 +147,7 @@ function ChapterRow(props: {chapter: ChapterItem; fresh: boolean; onOpen: (numbe
 					<Cover
 						url={Option.getOrElse(Array.head(props.chapter.pages), () => '')}
 						modifiers={[
-							frame({height: 68, width: 48}),
+							frame({height: 48, width: 36}),
 							clipShape('roundedRectangle', radius),
 							opacity(Boolean.match(done, {onFalse: () => 1, onTrue: () => 0.45})),
 							accessibilityHidden(true)

@@ -9,7 +9,7 @@ import {Suspense} from 'react'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
-import {InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
+import {InputOTP, InputOTPGroup, InputOTPSlot} from '@deslop/components-web/ui/input-otp'
 import {Spinner} from '@deslop/components-web/ui/spinner'
 import {cn} from '@deslop/components-web/utils'
 
@@ -32,7 +32,7 @@ function Enter(props: {
 	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
 	return (
-		<section className="flex w-full flex-col gap-4">
+		<section className="mx-auto flex w-full max-w-md flex-col gap-4">
 			<Field data-invalid={invalid}>
 				<InputOTP
 					id="code"
@@ -51,17 +51,12 @@ function Enter(props: {
 					disabled={props.state === 'Checking'}
 					aria-invalid={invalid}
 					aria-describedby="code-error"
-					containerClassName={cn('gap-2', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
+					containerClassName={cn('w-full', props.state === 'Missing' && 'animate-refuse motion-reduce:animate-none')}
+					className="w-full"
 				>
-					<InputOTPGroup className="flex-1">
-						{Array.map(Array.range(0, 3), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
-						))}
-					</InputOTPGroup>
-					<InputOTPSeparator />
-					<InputOTPGroup className="flex-1">
-						{Array.map(Array.range(4, 7), index => (
-							<InputOTPSlot key={index} index={index} aria-invalid={invalid} className="h-11 flex-1" />
+					<InputOTPGroup>
+						{Array.map(Array.range(0, CODE_LENGTH - 1), index => (
+							<InputOTPSlot key={index} index={index} aria-invalid={invalid} />
 						))}
 					</InputOTPGroup>
 				</InputOTP>
@@ -111,7 +106,7 @@ function Page(props: {
 	typed: string
 }) {
 	return (
-		<div className="m-auto flex w-full max-w-xl flex-col gap-6 py-6">
+		<div className="m-auto flex w-full max-w-3xl flex-col gap-8 py-8">
 			<h1 className="sr-only">Auth</h1>
 			<Enter answered={props.answered} onType={props.onType} state={props.state} typed={props.typed} />
 			<Suspense fallback={<ItemListSkeleton label="Signed in" media rows={CLIENT_ROWS} />}>

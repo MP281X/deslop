@@ -3,6 +3,8 @@
 
 :root {
 	--primary: var(--cyan);
+	/* The waterfall's one live head is the suite's muted blue; span bars keep their side's hue. */
+	--trace-head: var(--blue);
 }
 
 /* Where a span ran, in its operation's device icon and its bar: server blue, browser pink, iOS amber, CI violet. */

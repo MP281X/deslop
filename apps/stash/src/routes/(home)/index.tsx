@@ -137,7 +137,7 @@ function Thumbnail(props: {id: Note['id']}) {
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fill'}),
-				frame({height: 64, width: 64}),
+				frame({height: 48, width: 48}),
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
@@ -151,8 +151,8 @@ function NoteMedia(props: {note: NoteItem}) {
 	return (
 		<ZStack
 			modifiers={[
-				frame({height: 64, width: 64}),
-				background(colors.card),
+				frame({height: 48, width: 48}),
+				background(colors.surface),
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}

@@ -78,7 +78,7 @@ export function Problem(props: {
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className={cn('h-8 w-16 max-sm:h-11', props.className)}
+				className={cn('h-8 w-16 max-sm:h-12', props.className)}
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false
@@ -108,7 +108,7 @@ export function Problem(props: {
 							ref={retry}
 							variant="ghost"
 							size="icon"
-							className="max-sm:size-11"
+							className="max-sm:size-12"
 							aria-label="Try again"
 							title="Try again"
 							onClick={props.reset}

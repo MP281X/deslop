@@ -26,7 +26,6 @@ import {
 	navigationBarTitleDisplayMode,
 	navigationTitle,
 	refreshable,
-	textCase,
 	textSelection,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
@@ -212,9 +211,7 @@ function Essential(props: {label: string; tone?: Tone; value?: string}) {
 	if (props.value === undefined) return undefined
 	return (
 		<VStack alignment="leading" spacing={space[1]} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-			<Text modifiers={[text.label, textCase('uppercase'), foregroundStyle(colors.mutedForeground)]}>
-				{props.label}
-			</Text>
+			<Text modifiers={[text.label, foregroundStyle(colors.mutedForeground)]}>{props.label}</Text>
 			<Text
 				modifiers={[
 					font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'}),

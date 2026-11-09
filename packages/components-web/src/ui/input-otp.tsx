@@ -14,7 +14,7 @@ function InputOTP({
     <OTPInput
       data-slot="input-otp"
       containerClassName={cn(
-        "cn-input-otp flex items-center has-disabled:opacity-50",
+        "cn-input-otp flex items-center rounded-sm focus-within:ring-2 focus-within:ring-ring/40 focus-within:ring-offset-2 focus-within:ring-offset-background has-disabled:opacity-50",
         containerClassName
       )}
       spellCheck={false}
@@ -29,7 +29,7 @@ function InputOTPGroup({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="input-otp-group"
       className={cn(
-        "flex items-center gap-1 rounded-none has-aria-invalid:border-b-destructive dark:has-aria-invalid:border-b-destructive/50",
+        "flex flex-1 items-center gap-0 rounded-sm border border-input bg-surface/60 px-1 has-aria-invalid:border-destructive",
         className
       )}
       {...props}
@@ -52,7 +52,7 @@ function InputOTPSlot({
       data-slot="input-otp-slot"
       data-active={isActive}
       className={cn(
-        "relative flex size-10 items-center justify-center border border-transparent border-b-input bg-transparent text-sm transition-[color,border-color] outline-none first:rounded-none last:rounded-none aria-invalid:border-b-destructive data-[active=true]:z-10 data-[active=true]:border-b-ring dark:aria-invalid:border-b-destructive/50",
+        "relative flex h-11 min-w-0 flex-1 items-center justify-center rounded-xs bg-transparent font-mono text-base outline-none transition-none aria-invalid:text-destructive data-[active=true]:bg-muted/70 max-sm:h-12",
         className
       )}
       {...props}
@@ -71,7 +71,7 @@ function InputOTPSeparator({ ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="input-otp-separator"
-      className="flex items-center [&_svg:not([class*='size-'])]:size-3.5"
+      className="text-muted-foreground flex h-6 items-center px-1 [&_svg:not([class*='size-'])]:size-3"
       role="separator"
       {...props}
     >

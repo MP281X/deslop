@@ -78,7 +78,7 @@ type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'
 
 function Gutter(props: {countdown: Countdown}) {
 	return (
-		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 34})]}>
+		<VStack spacing={0} modifiers={[fixedSize({horizontal: true, vertical: false}), frame({minWidth: 40})]}>
 			{props.countdown._tag === 'Now' && <Text modifiers={[text.data, foregroundStyle(primary)]}>now</Text>}
 			{props.countdown._tag === 'Days' && props.countdown.days < 1 && (
 				<Text modifiers={[text.data, foregroundStyle(colors.foreground)]}>today</Text>

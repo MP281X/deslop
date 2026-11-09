@@ -103,17 +103,17 @@ it.layer(NodeServices.layer)(test => {
 			)
 			const entries = declarations(light)
 			for (const entry of [
-				['background', '#ffffff'],
+				['background', '#f7fafb'],
 				['popover', '#ffffff'],
 				['primary-foreground', '#ffffff'],
-				['foreground', '#0a0a0a'],
-				['card', '#f8f7f4'],
-				['secondary', '#f1f0ec'],
-				['muted', '#f5f4f1'],
-				['muted-foreground', '#64625d'],
-				['accent', '#f0efea'],
-				['border', '#e6e4de'],
-				['input', '#d8d6cf']
+				['foreground', '#122027'],
+				['card', '#ffffff'],
+				['secondary', '#eef3f5'],
+				['muted', '#f1f5f6'],
+				['muted-foreground', '#5e707a'],
+				['accent', '#e8eff2'],
+				['border', '#d9e3e8'],
+				['input', '#c9d6dd']
 			] as const) {
 				assert.strictEqual(resolved(entries, entry[0]), entry[1], entry[0])
 			}
@@ -129,6 +129,8 @@ it.layer(NodeServices.layer)(test => {
 				'coral',
 				'destructive',
 				'warning',
+				'success',
+				'info',
 				'machine-dev',
 				'machine-desktop'
 			]) {
@@ -136,31 +138,33 @@ it.layer(NodeServices.layer)(test => {
 				assert.match(value, /^#[0-9a-f]{6}$/u, name)
 				assert.isAtLeast(1.05 / (luminance(value) + 0.05), 4.5, name)
 			}
+			// Muted metadata still reads on the ice-white ground.
+			assert.isAtLeast(1.05 / (luminance(resolved(entries, 'muted-foreground') ?? '') + 0.05), 4.5, 'muted-foreground')
 		})
 	)
 
 	test.effect(
-		'keeps neutral selection, one radius and no green token in either appearance',
+		'keeps the Nordic ice palette, a calm radius scale and no green token in either appearance',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const source = yield* fs.readFileString(`${import.meta.dirname}/theme.css`)
 			const [light, dark = ''] = String.split(source, '@media screen and (prefers-color-scheme: dark)')
 			const darkDeclarations = [...declarations(dark), ...declarations(light)]
-			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0d0c0c')
-			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#e3e1db')
-			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#242323')
-			assert.strictEqual(resolved(darkDeclarations, 'border'), '#262523')
-			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#7fb4ca')
-			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#dca561')
+			assert.strictEqual(resolved(darkDeclarations, 'background'), '#0f1519')
+			assert.strictEqual(resolved(darkDeclarations, 'foreground'), '#e6eef2')
+			assert.strictEqual(resolved(darkDeclarations, 'accent'), '#24323a')
+			assert.strictEqual(resolved(darkDeclarations, 'border'), '#2a373f')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-dev'), '#8fb9cb')
+			assert.strictEqual(resolved(darkDeclarations, 'machine-desktop'), '#d9b26e')
 			assert.notInclude(source, '--green')
-			assert.include(source, '--radius: 0px;')
+			assert.include(source, '--radius: 12px;')
 			assert.include(
 				yield* fs.readFileString(`${ROOT}/packages/components-mobile/src/theme.ts`),
-				'export const radius = 12'
+				'export const radius = 14'
 			)
-			for (const size of ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl']) {
-				assert.include(source, `--radius-${size}: var(--radius);`)
-			}
+			for (const size of ['sm', 'md']) assert.include(source, `--radius-${size}: 12px;`)
+			for (const size of ['lg', 'xl', '2xl', '3xl', '4xl']) assert.include(source, `--radius-${size}: 16px;`)
+			assert.include(source, '--radius-xs: 8px;')
 		})
 	)
 

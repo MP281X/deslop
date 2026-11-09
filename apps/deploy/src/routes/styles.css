@@ -6,6 +6,8 @@
 	--grid-template-rows-split: 3fr 2fr;
 	/* A port chip's least width, so single ports line up while a hostname keeps its full name. */
 	--spacing-port: 7ch;
+	/* The quiet gap between the machine's trays, on the 12px control rhythm. */
+	--spacing-pane: 12px;
 }
 
 /* Each machine's identity, used by machine labels and icons. */

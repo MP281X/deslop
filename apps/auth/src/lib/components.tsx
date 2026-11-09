@@ -161,7 +161,7 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<ContextMenu>
-			<div role="listitem" className="border-b">
+			<div role="listitem" className="border-b last:border-b-0">
 				<ContextMenuTrigger
 					render={
 						<div
@@ -169,26 +169,26 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${props.client.label}, ${Array.join([active, ...Option.toArray(address)], ' · ')}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-muted/60 focus-visible:ring-ring/50 focus-visible:ring-offset-background flex h-14 min-w-0 items-center gap-3 px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2 max-sm:h-12"
 						/>
 					}
 				>
 					<ClientIcon client={props.client.client} />
 					<span className="min-w-0 flex-1 truncate font-medium">{props.client.label}</span>
-					<span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">{active}</span>
+					<span className="text-muted-foreground text-meta shrink-0 font-mono tabular-nums">{active}</span>
 					{Option.match(address, {
 						onNone: () => null,
 						onSome: value => (
-							<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">{value}</span>
+							<span className="text-muted-foreground text-meta shrink-0 font-mono max-sm:hidden">{value}</span>
 						)
 					})}
 				</ContextMenuTrigger>
-				<ResultError result={disconnection} className="mr-1 mb-2 ml-10 wrap-anywhere" />
+				<ResultError result={disconnection} className="mr-2 mb-3 ml-11 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
 					variant="destructive"
-					className="max-sm:h-11"
+					className="max-sm:h-12"
 					disabled={AsyncResult.isWaiting(disconnection)}
 					onClick={() => disconnect(props.client.families)}
 				>
@@ -205,10 +205,10 @@ function Answer(props: {request: PendingAuthorization}) {
 	const [choice, setChoice] = useState<boolean>()
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div className="bg-card flex flex-col gap-3 border p-5">
+		<div className="bg-card flex flex-col gap-4 rounded-lg border p-6">
 			<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<h2 className="font-heading text-2xl leading-none tracking-tight">A sign-in is waiting</h2>
-				<span className="text-muted-foreground font-mono text-xs tabular-nums">
+				<h2 className="font-heading text-2xl leading-tight tracking-tight">A sign-in is waiting</h2>
+				<span className="text-muted-foreground text-meta font-mono tabular-nums">
 					{signInLabel(props.request.clientName, props.request.device)}
 				</span>
 			</div>
@@ -318,6 +318,7 @@ export function SignInList(props: {pending: Option.Option<PendingAuthorization>}
 			title="Signed in"
 			meta={`${clients.length} ${Boolean.match(clients.length === 1, {onFalse: () => 'clients', onTrue: () => 'client'})}`}
 			className="gap-0"
+			headerClassName="px-4"
 		>
 			{Option.match(props.pending, {onNone: () => null, onSome: request => <Answer request={request} />})}
 			{Array.match(clients, {

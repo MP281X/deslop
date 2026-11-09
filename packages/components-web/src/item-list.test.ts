@@ -14,7 +14,7 @@ it('owns the loading status and shape of shared rows', () => {
 	assert.include(html, 'role="status"')
 	assert.strictEqual(String.split(html, 'aria-hidden="true"').length - 1, 3)
 	assert.include(html, 'h-14')
-	assert.include(html, 'gap-3.5')
+	assert.include(html, 'gap-3')
 	assert.include(html, 'px-4')
 	assert.include(html, 'shrink-0')
 })

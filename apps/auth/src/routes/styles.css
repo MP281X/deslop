@@ -21,13 +21,12 @@
 		}
 	}
 
-	/* An answer arrives out of a blur, so it reads as the approval it replaced rather than a new line. */
+	/* An answer fades in, so it reads as the approval it replaced rather than a new line. */
 	--animate-settle-in: settle-in 200ms ease;
 
 	@keyframes settle-in {
 		from {
 			opacity: 0;
-			filter: blur(2px);
 		}
 	}
 }

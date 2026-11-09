@@ -49,7 +49,7 @@ function Identity(props: {person: Person}) {
 function PersonRow(props: {children: ReactNode; failure?: ReactNode; person: Person}) {
 	return (
 		<div role="listitem" id={`person-${props.person.id}`} className="border-b">
-			<div className="flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12">
+			<div className="flex h-14 min-w-0 items-center gap-3 px-4 text-sm max-sm:h-12">
 				<Identity person={props.person} />
 				{props.children}
 			</div>
@@ -64,12 +64,12 @@ function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
 		<PersonRow person={props.person} failure={<ResultError result={admit} className="mr-1 mb-2 ml-10 wrap-anywhere" />}>
-			<span className="text-muted-foreground shrink-0 font-mono text-xs max-sm:hidden">
+			<span className="text-muted-foreground text-meta shrink-0 font-mono max-sm:hidden">
 				{dayLabel(props.person.since)}
 			</span>
 			<Button
 				size="sm"
-				className="shrink-0 max-sm:h-11"
+				className="shrink-0 max-sm:h-12"
 				disabled={AsyncResult.isWaiting(admit)}
 				onClick={() => answer(true)}
 			>
@@ -78,7 +78,7 @@ function AskingRow(props: {person: Person}) {
 			<Button
 				size="sm"
 				variant="outline"
-				className="shrink-0 max-sm:h-11"
+				className="shrink-0 max-sm:h-12"
 				disabled={AsyncResult.isWaiting(admit)}
 				onClick={() => answer(false)}
 			>
@@ -112,19 +112,19 @@ function MemberRow(props: {person: Person}) {
 							tabIndex={0}
 							aria-haspopup="menu"
 							aria-label={`${name}, member since ${dayLabel(props.person.since)}`}
-							className="hover:bg-muted/50 flex h-14 min-w-0 items-center gap-3 px-1 text-sm max-sm:h-12"
+							className="hover:bg-muted/50 focus-visible:ring-ring/50 focus-visible:ring-offset-background flex h-14 min-w-0 items-center gap-3 px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-offset-2 max-sm:h-12"
 						/>
 					}
 				>
 					<Identity person={props.person} />
-					<span className="text-muted-foreground shrink-0 font-mono text-xs">{dayLabel(props.person.since)}</span>
+					<span className="text-muted-foreground text-meta shrink-0 font-mono">{dayLabel(props.person.since)}</span>
 				</ContextMenuTrigger>
 				<ResultError result={removal} className="mr-1 mb-2 ml-10 wrap-anywhere" />
 			</div>
 			<ContextMenuContent className="w-auto min-w-36">
 				<ContextMenuItem
 					variant="destructive"
-					className="max-sm:h-11"
+					className="max-sm:h-12"
 					disabled={AsyncResult.isWaiting(removal)}
 					onClick={() => setConfirm(true)}
 				>

@@ -18,7 +18,7 @@ import {colors, space} from '#components/theme.ts'
 export function Empty(props: {children: ReactNode; modifiers?: ViewModifier[]}) {
 	return (
 		<VStack
-			spacing={space[4]}
+			spacing={space[6]}
 			modifiers={[
 				...(props.modifiers ?? []),
 				padding({all: space[8]}),

@@ -24,7 +24,6 @@ import type {ReactNode} from 'react'
 import {Bar, BarChart, XAxis} from 'recharts'
 
 import {ItemListSkeleton} from '@deslop/components-web/item-list'
-import {Stat} from '@deslop/components-web/page'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
@@ -202,7 +201,7 @@ export function AiControls(props: {
 				}
 			>
 				{Array.map(PERIODS, entry => (
-					<ToggleGroupItem key={entry.value} value={entry.value} className="max-sm:h-11">
+					<ToggleGroupItem key={entry.value} value={entry.value} className="max-sm:h-12">
 						{entry.label}
 					</ToggleGroupItem>
 				))}
@@ -219,10 +218,10 @@ export function AiControls(props: {
 					)
 				}
 			>
-				<ToggleGroupItem value="cost" className="max-sm:h-11">
+				<ToggleGroupItem value="cost" className="max-sm:h-12">
 					Cost
 				</ToggleGroupItem>
-				<ToggleGroupItem value="tokens" className="max-sm:h-11">
+				<ToggleGroupItem value="tokens" className="max-sm:h-12">
 					Tokens
 				</ToggleGroupItem>
 			</ToggleGroup>
@@ -232,9 +231,7 @@ export function AiControls(props: {
 
 // A muted label over a group of rows.
 function GroupLabel(props: {children: ReactNode}) {
-	return (
-		<h2 className="text-muted-foreground tracking-label px-1 pb-1 text-xs font-semibold uppercase">{props.children}</h2>
-	)
+	return <h2 className="text-muted-foreground px-4 pb-2 text-xs font-medium">{props.children}</h2>
 }
 
 // The whole row is one button: it narrows the page or runs its action; a context menu, when given, holds the rest.
@@ -242,13 +239,13 @@ function Row(props: {children: ReactNode; label: string; menu?: ReactNode; onCli
 	return (
 		<div role="listitem" className="list-row">
 			<ContextMenu disabled={props.menu === undefined}>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-14 min-w-0 items-center gap-3 px-4 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
 								variant={Boolean.match(props.selected === true, {
 									onFalse: () => 'ghost' as const,
-									onTrue: () => 'secondary' as const
+									onTrue: () => 'selected' as const
 								})}
 								type="button"
 								aria-label={props.label}
@@ -286,7 +283,7 @@ function ShareRow(props: {
 				/>
 			</span>
 			{/* Audio models are billed by the minute, which the ledger doesn't hold, so they show no tokens rather than zero. */}
-			<span className="text-muted-foreground w-12 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-muted-foreground text-meta w-12 shrink-0 text-right font-mono tabular-nums">
 				{Option.getOrElse(
 					Option.map(
 						Option.filter(props.sum, sum => sum.tokens > 0),
@@ -295,7 +292,7 @@ function ShareRow(props: {
 					() => '—'
 				)}
 			</span>
-			<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">
+			<span className="text-meta w-16 shrink-0 text-right font-mono tabular-nums">
 				{Option.match(props.sum, {onNone: () => '—', onSome: costOf})}
 			</span>
 		</Row>
@@ -452,22 +449,22 @@ function FocusChip(props: {bucket: Range['bucket']; focus: Focus; onClear: () =>
 	)
 }
 
-// The period at a glance; a desktop adds the daily average.
-function Stats(props: {range: Range; report: AiUsageReport}) {
+// The period in three quiet figures: what it cost, how many tokens, how many calls.
+function Figure(props: {label: string; value: string}) {
 	return (
-		<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
-			<Stat label="Spent" value={cost(props.report.totals.costUsd)} />
-			<Stat label="Tokens" value={compact.format(props.report.totals.tokens)} />
-			<Stat label="Calls" value={count.format(props.report.totals.calls)} />
-			<span className="max-sm:hidden">
-				<Stat
-					label="Per day"
-					value={cost(
-						props.report.totals.costUsd /
-							Boolean.match(props.range.bucket === 'hour', {onFalse: () => props.range.count, onTrue: () => 1})
-					)}
-				/>
-			</span>
+		<div className="flex min-w-0 flex-col gap-1">
+			<span className="text-muted-foreground text-xs">{props.label}</span>
+			<span className="font-mono text-2xl leading-none tracking-tight tabular-nums">{props.value}</span>
+		</div>
+	)
+}
+
+function Stats(props: {report: AiUsageReport}) {
+	return (
+		<div className="grid grid-cols-3 gap-4 border-b pb-5">
+			<Figure label="Spent" value={cost(props.report.totals.costUsd)} />
+			<Figure label="Tokens" value={compact.format(props.report.totals.tokens)} />
+			<Figure label="Calls" value={count.format(props.report.totals.calls)} />
 		</div>
 	)
 }
@@ -483,7 +480,7 @@ function UsageReport(props: {
 	if (Array.isReadonlyArrayEmpty(props.report.cells)) {
 		return (
 			<>
-				<Stats range={props.range} report={props.report} />
+				<Stats report={props.report} />
 				<p role="status" className="text-muted-foreground py-16 text-center text-sm">
 					No AI calls in the{' '}
 					{Option.getOrElse(
@@ -559,7 +556,7 @@ function UsageReport(props: {
 	}
 	return (
 		<>
-			<Stats range={props.range} report={props.report} />
+			<Stats report={props.report} />
 			<UsageChart
 				apps={Array.map(allApps, (sum, index) => ({app: sum.name, color: colorOf(sum.name), key: `app${index}`}))}
 				metric={props.metric}
@@ -651,12 +648,12 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 					onNone: () => undefined,
 					onSome: () => (
 						<>
-							<ContextMenuItem className="max-sm:h-11" onClick={props.onAdd}>
+							<ContextMenuItem className="max-sm:h-12" onClick={props.onAdd}>
 								Replace key
 							</ContextMenuItem>
 							<ContextMenuItem
 								variant="destructive"
-								className="max-sm:h-11"
+								className="max-sm:h-12"
 								onClick={() => {
 									reset(Atom.Reset)
 									setConfirm(true)
@@ -671,13 +668,13 @@ function KeyRow(props: {info: Option.Option<AiKeyInfo>; onAdd: () => void; provi
 				<span className="w-28 min-w-0 shrink-0 truncate text-sm font-medium">{PROVIDER_NAMES[props.provider]}</span>
 				<span
 					className={cn(
-						'min-w-0 flex-1 truncate font-mono text-xs',
+						'text-meta min-w-0 flex-1 truncate font-mono',
 						Boolean.match(rejected, {onFalse: () => 'text-muted-foreground', onTrue: () => 'text-destructive'})
 					)}
 				>
 					{detail}
 				</span>
-				<span className="w-16 shrink-0 text-right font-mono text-xs tabular-nums">{props.spent}</span>
+				<span className="text-meta w-16 shrink-0 text-right font-mono tabular-nums">{props.spent}</span>
 				<span className="flex size-3 shrink-0 items-center justify-center">
 					<StatusDot
 						status={Option.match(props.info, {

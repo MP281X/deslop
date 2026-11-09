@@ -45,7 +45,7 @@ function AccountMenu() {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				aria-label="Account"
-				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
+				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-12" />}
 			>
 				<Avatar size="sm">
 					<AvatarImage
@@ -62,7 +62,7 @@ function AccountMenu() {
 				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					variant="destructive"
-					className="max-sm:h-11"
+					className="max-sm:h-12"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
@@ -73,17 +73,17 @@ function AccountMenu() {
 	)
 }
 
-// A section of the app as an underlined tab in the masthead, the current one ruled.
+// A section of the app as a sentence-case tab in the masthead, the current one ruled in muted blue.
 export function AppBarTab(props: {active: boolean; children: ReactNode; render: ReactElement}) {
 	return useRender({
 		props: {
 			'aria-current': Boolean.match(props.active, {onFalse: () => undefined, onTrue: () => 'page' as const}),
 			children: props.children,
 			className: cn(
-				'tracking-label relative flex h-14 shrink-0 items-center px-0.5 text-xs font-semibold uppercase transition-colors duration-150',
+				'text-nav text-muted-foreground focus-visible:ring-ring/50 focus-visible:ring-offset-background relative flex h-14 shrink-0 items-center gap-2 rounded-sm px-1 font-medium outline-none after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-(--nav-underline) after:opacity-0 focus-visible:ring-2 focus-visible:ring-offset-2 sm:h-16',
 				Boolean.match(props.active, {
-					onFalse: () => 'text-muted-foreground hover:text-foreground',
-					onTrue: () => 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-foreground'
+					onFalse: () => 'hover:text-foreground',
+					onTrue: () => 'text-foreground after:opacity-100'
 				})
 			)
 		},
@@ -91,7 +91,7 @@ export function AppBarTab(props: {active: boolean; children: ReactNode; render: 
 	})
 }
 
-// Sera's search is a ruled field, not a boxed input: it reads as part of the masthead until it is used.
+// A visible search field on wide screens, its icon alone on a phone; either opens the same palette.
 function SearchTrigger(props: {label: string; onClick: () => void}) {
 	return (
 		<>
@@ -103,7 +103,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				className="absolute left-1/2 hidden w-80 -translate-x-1/2 xl:flex"
 			>
 				<MagnifyingGlassIcon className="size-4 shrink-0" />
-				<span className="flex-1">Search or jump to…</span>
+				<span className="text-muted-foreground flex-1 truncate text-left">Search or jump to…</span>
 				<Kbd>⌘K</Kbd>
 			</Button>
 			<Button
@@ -111,7 +111,7 @@ function SearchTrigger(props: {label: string; onClick: () => void}) {
 				size="icon-sm"
 				aria-label={props.label}
 				onClick={props.onClick}
-				className="max-sm:size-11 xl:hidden"
+				className="max-sm:size-12 xl:hidden"
 			>
 				<MagnifyingGlassIcon />
 			</Button>
@@ -143,12 +143,12 @@ export function AppBar(props: {
 	}, [props.palette])
 	return (
 		<>
-			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md sm:px-6">
+			<header className="bg-background/90 supports-backdrop-filter:bg-background/80 relative sticky top-0 z-30 flex h-14 shrink-0 items-center gap-5 border-b px-5 backdrop-blur-md sm:h-16 sm:px-8">
 				{Option.match(Option.fromUndefinedOr(props.title), {
 					onNone: () => (
-						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
+						<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-12">
 							<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
-							<span className="font-heading text-xl leading-none tracking-tight capitalize">{props.name}</span>
+							<span className="font-heading text-app-name leading-none tracking-tight">{props.name}</span>
 						</a>
 					),
 					// The leading slot keeps its width on every pane, so the title and the right controls never move.
@@ -159,7 +159,7 @@ export function AppBar(props: {
 									<a
 										href="/"
 										aria-label={props.name}
-										className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
+										className="flex size-8 shrink-0 items-center justify-center max-sm:size-12"
 									>
 										<img src={props.icon} alt="" className="pixelated size-7 opacity-90" />
 									</a>
@@ -168,7 +168,7 @@ export function AppBar(props: {
 									<Button
 										variant="ghost"
 										size="icon-sm"
-										className="max-sm:size-11"
+										className="max-sm:size-12"
 										aria-label={back.label}
 										onClick={back.onClick}
 									>
@@ -176,18 +176,21 @@ export function AppBar(props: {
 									</Button>
 								)
 							})}
-							<span className="font-heading max-w-48 min-w-0 truncate text-xl leading-none tracking-tight">
+							<span className="font-heading text-app-name max-w-48 min-w-0 truncate leading-none tracking-tight">
 								{title}
 							</span>
 						</div>
 					)
 				})}
 				{props.tabs !== undefined && (
-					<nav aria-label="Sections" className="flex h-14 items-center gap-5">
+					<nav
+						aria-label="Sections"
+						className="no-scrollbar flex h-14 min-w-0 items-center gap-6 overflow-x-auto sm:h-16"
+					>
 						{props.tabs}
 					</nav>
 				)}
-				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-11">
+				<div className="flex min-w-0 flex-1 items-center justify-end max-xl:min-w-12">
 					{Option.match(Option.fromUndefinedOr(props.palette), {
 						onNone: () => null,
 						onSome: () => <SearchTrigger label={`Search ${props.name}`} onClick={() => setPaletteOpen(true)} />

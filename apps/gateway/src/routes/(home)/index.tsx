@@ -186,7 +186,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 		<div role="listitem" className="list-row">
 			<RemoveDialog open={confirm} onOpenChange={setConfirm} server={props.server} />
 			<ContextMenu>
-				<div className="relative flex h-14 min-w-0 items-center gap-3 px-1 max-sm:h-12">
+				<div className="relative flex h-14 min-w-0 items-center gap-3 px-4 max-sm:h-12">
 					<ContextMenuTrigger
 						render={
 							<Button
@@ -201,12 +201,12 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					<div className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3">
 						<ServerIcon server={props.server} />
 						<span className="max-w-56 min-w-0 shrink truncate text-sm font-medium">{props.server.name}</span>
-						<span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-xs">
+						<span className="text-muted-foreground text-meta min-w-0 flex-1 truncate font-mono">
 							{new URL(props.server.url).hostname}
 						</span>{' '}
 						{Array.isReadonlyArrayNonEmpty(props.server.tools) && (
 							<span
-								className="text-muted-foreground w-8 shrink-0 text-right font-mono text-xs tabular-nums"
+								className="text-muted-foreground text-meta w-8 shrink-0 text-right font-mono tabular-nums"
 								title="Tools"
 							>
 								{props.server.tools.length}
@@ -236,7 +236,7 @@ function ServerRow(props: {server: ConnectionInfo}) {
 					</div>
 				</div>
 				<ContextMenuContent className="w-auto min-w-36">
-					<ContextMenuItem variant="destructive" className="max-sm:h-11" onClick={() => setConfirm(true)}>
+					<ContextMenuItem variant="destructive" className="max-sm:h-12" onClick={() => setConfirm(true)}>
 						Remove
 					</ContextMenuItem>
 				</ContextMenuContent>
@@ -272,7 +272,7 @@ function ServersContent(props: {onAdd: () => void}) {
 							/>
 						),
 						onNonEmpty: servers => (
-							<Section title="Servers" meta={`${servers.length} configured`}>
+							<Section title="Servers" meta={`${servers.length} configured`} headerClassName="px-4">
 								<div role="list" aria-label="MCP servers">
 									{Array.map(servers, server => (
 										<ServerRow key={server.id} server={server} />
@@ -295,7 +295,7 @@ function ServersContent(props: {onAdd: () => void}) {
 function ServersPane(props: {onAdd: () => void; servers: readonly ConnectionInfo[]}) {
 	return (
 		<>
-			<div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 border-b pb-3">
+			<div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 border-b pb-4">
 				<Stat label="Configured" value={props.servers.length} />
 				<Stat
 					label="Connected"
@@ -330,11 +330,11 @@ function ViewToggle(props: {onView: (view: View) => void; view: View}) {
 				)
 			}
 		>
-			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-11">
+			<ToggleGroupItem value="servers" aria-label="Servers" className="max-sm:h-12">
 				<HardDrivesIcon />
 				<span className="max-sm:sr-only">Servers</span>
 			</ToggleGroupItem>
-			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-11">
+			<ToggleGroupItem value="ai" aria-label="AI" className="max-sm:h-12">
 				<SparkleIcon />
 				<span className="max-sm:sr-only">AI</span>
 			</ToggleGroupItem>
@@ -523,7 +523,7 @@ function Home() {
 				}
 			/>
 			{view === 'ai' && (
-				<div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-1 sm:hidden">
+				<div className="flex shrink-0 items-center justify-between gap-2 border-b px-5 py-2 sm:hidden">
 					<AiControls
 						metric={metric}
 						period={period}

@@ -30,7 +30,7 @@ import {colors, radius, space, text} from './theme.ts'
 import {assetAtom} from '#lib/utils.ts'
 
 // The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
-const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
+const FULL_SCREEN = [padding({all: space[8]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
 
 // Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
 export function BlankScreen() {
