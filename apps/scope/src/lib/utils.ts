@@ -1,4 +1,4 @@
-import {Clock, Effect, Number, Option, Record, Schema, Stream, String, Struct, pipe} from 'effect'
+import {Array, Clock, Effect, Number, Option, Order, Record, Schema, Stream, String, Struct, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -7,6 +7,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Operation} from '#services/telemetry/schema.ts'
+import type {Overview} from '#services/telemetry/schema.ts'
 
 // The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
 const UP: Record<string, Pane> = {Span: 'Trace', Trace: 'Traces'}
@@ -30,6 +31,7 @@ const Selection = Schema.Struct({
 export type NavigationEvent =
 	| {readonly _tag: 'Back'}
 	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
+	| {readonly _tag: 'Source'; readonly app: string}
 	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: string; traceId: string}}
 	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
 
@@ -39,6 +41,7 @@ export const Search = Schema.Struct({
 	operation: Schema.optionalKey(Schema.String),
 	pane: Schema.optionalKey(Pane),
 	side: Schema.optionalKey(Operation.fields.runtime),
+	source: Schema.optionalKey(Schema.String),
 	span: Schema.optionalKey(Schema.String),
 	trace: Schema.optionalKey(Schema.String)
 })
@@ -60,24 +63,73 @@ export function navigationOf(search: Search) {
 	}
 }
 
-export function nextSearch(search: Search, event: NavigationEvent) {
-	function select(selection: Selection, pane: Pane) {
-		return {
-			app: selection.operation.app,
-			operation: selection.operation.name,
-			pane,
-			side: selection.operation.runtime,
-			...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})}),
-			...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})})
-		} satisfies Search
+// The URL a selection produces in the given pane; a pick keeps the pane it was made in.
+function select(selection: Selection, pane?: Pane) {
+	return {
+		app: selection.operation.app,
+		operation: selection.operation.name,
+		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
+		side: selection.operation.runtime,
+		...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})}),
+		...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})})
+	} satisfies Search
+}
+
+// The chosen app is a view rather than a selection: choosing a row keeps it.
+function sourceOf(search: Search, next: Search) {
+	return Option.match(Option.fromUndefinedOr(search.source), {
+		onNone: () => next,
+		onSome: source => ({...next, source})
+	})
+}
+
+// The bar chooses one app at a time and keeps a selection it contains; choosing the chosen app again changes nothing.
+function sourceSearch(search: Search, app: string) {
+	if (search.source === app) return search
+	if (search.app !== app) {
+		return {...Struct.omit(search, ['app', 'operation', 'pane', 'side', 'span', 'trace']), source: app}
 	}
-	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
-	if (event._tag === 'Trace') return select(event.selection, 'Trace')
-	if (event._tag === 'Span') return select(event.selection, 'Span')
+	return {...search, source: app}
+}
+
+export function nextSearch(search: Search, event: NavigationEvent) {
+	if (event._tag === 'Source') return sourceSearch(search, event.app)
+	if (event._tag === 'Operation') return sourceOf(search, select({operation: event.operation}, 'Traces'))
+	if (event._tag === 'Trace') return sourceOf(search, select(event.selection, 'Trace'))
+	if (event._tag === 'Span') return sourceOf(search, select(event.selection, 'Span'))
 	return Option.match(
 		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
 		{onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})}
 	) satisfies Search
+}
+
+// The app a plain open lands on: the one whose newest failed trace is newest, else the first tab.
+export function openingApp(overview: Overview) {
+	const failed = Array.flatMap(overview.apps, app =>
+		Array.flatMap(app.operations, operation =>
+			Array.getSomes(
+				Array.map(operation.traces, trace =>
+					Option.map(Option.fromUndefinedOr(trace.failure), () => ({app: app.name, time: BigInt(trace.time)}))
+				)
+			)
+		)
+	)
+	return Option.orElse(
+		Option.map(
+			Array.match(failed, {
+				onEmpty: () => Option.none<{app: string; time: bigint}>(),
+				onNonEmpty: entries =>
+					Option.some(
+						Array.max(
+							entries,
+							Order.mapInput(Order.BigInt, entry => entry.time)
+						)
+					)
+			}),
+			entry => entry.app
+		),
+		() => Option.map(Array.head(overview.apps), app => app.name)
+	)
 }
 
 export const overviewAtom = Atom.keepAlive(

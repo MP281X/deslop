@@ -5,23 +5,44 @@
 	--primary: var(--cyan);
 }
 
-[data-side='server'] {
-	--side: var(--blue);
+/* An app's icon hue marks it wherever another app lists it: a span's bar takes the hue of the app that ran it. A source without a Deslop mark stays zinc. */
+[data-app] {
+	--app: var(--muted-foreground);
 }
-[data-side='web'] {
-	--side: var(--pink);
+[data-app='auth'] {
+	--app: var(--slate);
 }
-[data-side='mobile'] {
-	--side: var(--amber);
+[data-app='deploy'] {
+	--app: var(--blue);
 }
-[data-side='ci'] {
-	--side: var(--purple);
+[data-app='gateway'] {
+	--app: var(--pink);
 }
-[data-side='unknown'] {
-	--side: var(--muted-foreground);
+[data-app='opm'] {
+	--app: var(--ivory);
+}
+[data-app='portfolio'] {
+	--app: var(--coral);
+}
+[data-app='scope'] {
+	--app: var(--cyan);
+}
+[data-app='stash'] {
+	--app: var(--amber);
+}
+[data-app='trips'] {
+	--app: var(--orange);
+}
+
+/* A box keeps 1px of the page at its right edge, so touching siblings stay distinguishable without moving. */
+[data-icicle-box] > span {
+	box-shadow: inset -1px 0 0 var(--background);
 }
 
 @theme {
-	--grid-template-columns-scope: minmax(22rem, 28rem) minmax(0, 1fr);
-	--grid-template-columns-attributes: repeat(auto-fill, minmax(14rem, 1fr));
+	--grid-template-columns-scope: minmax(26rem, 28rem) minmax(0, 1fr);
+	--grid-template-columns-operation: 4ch 4ch 6ch;
+	--grid-template-columns-detail: max-content minmax(0, 1fr);
+	--grid-template-columns-detail-phone: fit-content(50%) minmax(0, 1fr);
+	--grid-template-columns-log: 92px minmax(0, 1fr);
 }

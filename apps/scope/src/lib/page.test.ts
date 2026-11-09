@@ -44,7 +44,8 @@ const trace = traceView(
 
 function render(
 	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
-	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>
+	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>,
+	path = '/'
 ) {
 	return Effect.scoped(
 		Effect.gen(function* () {
@@ -83,7 +84,7 @@ function render(
 			registry.get(traceAtom(ID))
 			registry.ensureNode(traceAtom(ID)).setInitialValue(result)
 			if (overview !== undefined) registry.ensureNode(overviewAtom).setInitialValue(overview)
-			const router = createRouter({history: createMemoryHistory(), routeTree})
+			const router = createRouter({history: createMemoryHistory({initialEntries: [path]}), routeTree})
 			yield* Effect.promise(() => router.load())
 			return renderToString(
 				createElement(RegistryContext.Provider, {value: registry}, createElement(RouterProvider, {router}))
@@ -101,7 +102,9 @@ it.effect(
 			})
 		)
 		assert.include(html, 'Private retained span')
-		assert.include(html, 'aria-label="Trace out of date"')
+		assert.include(html, 'aria-label="Out of date"')
+		assert.notInclude(html, 'Trace out of date')
+		assert.notInclude(html, 'Operations out of date')
 		assert.notInclude(html, 'Trace unavailable')
 	})
 )
@@ -113,7 +116,9 @@ it.effect(
 			AsyncResult.failureWithPrevious(Cause.die('Decode failed'), {previous: Option.some(AsyncResult.success(trace))})
 		)
 		assert.include(html, 'Private retained span')
-		assert.include(html, 'aria-label="Trace out of date"')
+		assert.include(html, 'aria-label="Out of date"')
+		assert.notInclude(html, 'Trace out of date')
+		assert.notInclude(html, 'Operations out of date')
 		assert.notInclude(html, 'Decode failed')
 	})
 )
@@ -184,11 +189,15 @@ it.effect(
 )
 
 it.effect(
-	'marks the selected row with independent inset row dividers',
+	'marks the selected rows with the stock row surface and edge-to-edge dividers',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
-		assert.include(html, 'class="list-row" data-selected="true"')
-		assert.match(html, /aria-current="true" class="[^"]*bg-secondary/u)
+		assert.include(html, 'list-row')
+		assert.include(html, 'h-8')
+		assert.include(html, 'max-sm:h-11')
+		assert.include(html, 'data-selected="true"')
+		assert.match(html, /aria-current="true"/u)
+		assert.include(html, 'data-[selected=true]:bg-muted')
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
 	})
@@ -215,7 +224,7 @@ it.effect(
 )
 
 it.effect(
-	'wraps unbroken attribute keys as well as their values',
+	'keeps unbroken attribute keys and values whole on a one-line detail row',
 	Effect.fnUntraced(function* () {
 		const key = String.repeat(240)('k')
 		const html = yield* render(
@@ -227,8 +236,238 @@ it.effect(
 				}))
 			})
 		)
-		assert.include(html, `<dt class="text-muted-foreground wrap-anywhere">${key}</dt>`)
+		assert.include(html, `title="${key}"`)
 		assert.include(html, String.repeat(4000)('v'))
+		assert.include(html, 'truncate')
+	})
+)
+
+it.effect(
+	'lists the chosen app’s operations, failing first, with a side glyph only for a shared name',
+	Effect.fnUntraced(function* () {
+		const html = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 99,
+								failures: 0,
+								name: 'deploy.idle',
+								p50Ms: 4,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'gateway',
+						operations: [
+							{
+								count: 9,
+								failures: 0,
+								name: 'gateway.idle',
+								p50Ms: 40,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
+							},
+							{
+								count: 2,
+								failures: 3,
+								name: 'gateway.fail',
+								p50Ms: 12,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781850000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 5,
+								failures: 0,
+								name: 'notes.search',
+								p50Ms: 48,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781840000000000000'}]
+							},
+							{
+								count: 3,
+								failures: 0,
+								name: 'notes.search',
+								p50Ms: 60,
+								runtime: 'web',
+								traces: [{durationMs: 10, id: ID, time: '1781830000000000000'}]
+							}
+						]
+					}
+				]
+			}),
+			'/?source=stash'
+		)
+		assert.notInclude(html, '>deploy.idle<')
+		assert.notInclude(html, '>gateway.idle<')
+		assert.notInclude(html, '>gateway.fail<')
+		assert.isBelow(
+			Option.getOrThrow(String.indexOf('aria-label="notes.search, server')(html)),
+			Option.getOrThrow(String.indexOf('aria-label="notes.search, web')(html))
+		)
+		assert.include(html, 'aria-label="deploy"')
+		assert.include(html, 'aria-label="stash"')
+		assert.include(html, 'aria-label="notes.search, server')
+		assert.include(html, 'aria-label="notes.search, web')
+		assert.notInclude(html, 'aria-label="stash notes.search')
+		assert.include(html, 'size-3')
+	})
+)
+
+it.effect(
+	'narrows the operations list and its first selection to the URL’s app filter',
+	Effect.fnUntraced(function* () {
+		const html = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'deploy.only',
+								p50Ms: 4,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'stash.only',
+								p50Ms: 4,
+								runtime: 'server',
+								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
+							}
+						]
+					}
+				]
+			}),
+			'/?source=stash'
+		)
+		assert.notInclude(html, '>deploy.only<')
+		assert.include(html, '>stash.only<')
+		assert.include(html, 'aria-label="stash"')
+	})
+)
+
+it.effect(
+	'opens the app with the newest failed trace, else the first tab',
+	Effect.fnUntraced(function* () {
+		const failing = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'stash.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 1,
+								name: 'deploy.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, failure: {message: 'old', span: 'run'}, id: ID, time: '1781850000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'gateway',
+						operations: [
+							{
+								count: 1,
+								failures: 1,
+								name: 'gateway.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, failure: {message: 'new', span: 'run'}, id: ID, time: '1781860000000000000'}]
+							}
+						]
+					}
+				]
+			})
+		)
+		assert.include(failing, '>gateway.only<')
+		assert.notInclude(failing, '>stash.only<')
+		assert.notInclude(failing, '>deploy.only<')
+		const quiet = yield* render(
+			AsyncResult.success(trace),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'stash',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'stash.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
+							}
+						]
+					},
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 1,
+								failures: 0,
+								name: 'deploy.only',
+								p50Ms: 1,
+								runtime: 'server',
+								traces: [{durationMs: 1, id: ID, time: '1781850000000000000'}]
+							}
+						]
+					}
+				]
+			})
+		)
+		assert.include(quiet, '>stash.only<')
+		assert.notInclude(quiet, '>deploy.only<')
+	})
+)
+
+it.effect(
+	'shows the picked span’s identity even when it has no detail rows',
+	Effect.fnUntraced(function* () {
+		const html = yield* render(
+			AsyncResult.success(trace),
+			undefined,
+			`/?source=deploy&app=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
+		)
+		assert.include(html, 'aria-label="Span details"')
+		assert.include(html, 'deploy · at 0 ms')
+		assert.include(html, 'Private retained span')
 	})
 )
 
