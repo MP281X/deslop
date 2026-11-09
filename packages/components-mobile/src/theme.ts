@@ -30,6 +30,7 @@ export const hues = {
 export const space = {1: 4, 2: 8, 3: 12, 4: 16, 6: 24, 8: 32, 16: 64}
 
 // Concrete keeps square edges: rows, tiles and sheets have no corner radius.
+export const radius = 0
 
 // System fonts at Dynamic Type sizes: SF Pro for text, SF Mono for times, codes and counts.
 export const text = {

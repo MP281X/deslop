@@ -26,7 +26,7 @@ import type {ColorValue} from 'react-native'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {colors, space, text} from './theme.ts'
+import {colors, radius, space, text} from './theme.ts'
 
 import {assetAtom} from '#lib/utils.ts'
 
@@ -81,7 +81,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 					onPress={props.onRetry}
 					modifiers={[
 						buttonStyle('borderedProminent'),
-						buttonBorderShape('roundedRectangle', 0),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('regular'),
 						border({content: colors.destructive, width: 2}),
 						tint(colors.destructive)
@@ -100,7 +100,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 				<Spacer />
 				<Image
 					uiImage={useAtomSuspense(assetAtom(props.logo)).value}
-					modifiers={[resizable(), frame({height: 72, width: 72}), clipShape('rectangle')]}
+					modifiers={[resizable(), frame({height: 72, width: 72}), clipShape('roundedRectangle', radius)]}
 				/>
 				<VStack spacing={space[2]}>
 					<Text modifiers={[text.display, foregroundStyle(colors.foreground)]}>Sign in</Text>
@@ -113,7 +113,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 					onPress={() => props.onSignIn()}
 					modifiers={[
 						buttonStyle('borderedProminent'),
-						buttonBorderShape('roundedRectangle', 0),
+						buttonBorderShape('roundedRectangle', radius),
 						controlSize('large'),
 						border({content: colors.foreground, width: 2}),
 						frame({maxWidth: Infinity}),
