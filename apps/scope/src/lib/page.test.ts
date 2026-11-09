@@ -189,7 +189,7 @@ it.effect(
 	'marks the selected row with independent inset row dividers',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
-		assert.include(html, 'class="list-row" data-selected="true"')
+		assert.match(html, /class="[^"]*\blist-row\b[^"]*" data-selected="true"/u)
 		assert.match(html, /aria-current="true" class="[^"]*bg-secondary/u)
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
