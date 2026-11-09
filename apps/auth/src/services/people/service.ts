@@ -1,7 +1,6 @@
 import {Array, Boolean, Clock, Context, Effect, Layer, Option, Stream, Struct, SubscriptionRef, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
-import {Base64Url} from 'effect/encoding'
 import type {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
@@ -16,6 +15,7 @@ import {Passkeys} from '#services/passkeys/service.ts'
 import {admission, listPeople, ownerOf, personOf, registerMember, roleOf} from '#services/people/lib/utils.ts'
 import type {AdmitParams, GitHubUser, Person} from '#services/people/schema.ts'
 import {Members, SignedAccount} from '#services/people/schema.ts'
+import {randomTokenOf} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 import type {CredentialOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
@@ -45,8 +45,8 @@ export class People extends Context.Service<
 			const passkeys = yield* Passkeys
 			const github = yield* GitHub
 			const admins = yield* adminIds
-			const random = yield* SecureRandom.SecureRandom
 			const local = yield* localAuth
+			const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
 			const developer = {incarnation: 'local', user: DEVELOPER}
 			// Every change saves the next members before memory and the live views see them.
 			const transact = Effect.fnUntraced(function* <A, E>(
@@ -185,7 +185,7 @@ export class People extends Context.Service<
 								yield* Option.match(member(`github:${profile.id}`, current), {
 									onNone: () => {
 										if (local && profile.id === 0) return Effect.succeed('local')
-										return Effect.map(random.randomBytes(32), Base64Url.encode)
+										return randomToken(32)
 									},
 									onSome: row => Effect.succeed(row.incarnation)
 								})

@@ -1,7 +1,6 @@
 import {Cache, Config, Context, Effect, Layer, Redacted, Struct, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
-import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
@@ -10,6 +9,7 @@ import {AUTH_URL, DEVELOPER, localAuth, rejected} from '@deslop/runtime/auth/uti
 import {GitHubToken} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
 import {GitHubUser} from '#services/people/schema.ts'
+import {hashOf, randomTokenOf} from '#services/tokens/lib/utils.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
 const CALLBACK = `${AUTH_URL}/auth/github/callback`
@@ -31,13 +31,12 @@ export class GitHub extends Context.Service<
 	static readonly layer = Layer.effect(
 		GitHub,
 		Effect.gen(function* () {
-			const random = yield* SecureRandom.SecureRandom
 			const flows = yield* Cache.make<string, SignInParams & {verifier: string}, AuthError>({
 				capacity: 256,
 				lookup: () => Effect.fail(AuthError.make({message: 'The sign-in expired'})),
 				timeToLive: '10 minutes'
 			})
-			const nonce = Effect.map(random.randomBytes(32), Base64Url.encode)
+			const nonce = randomTokenOf(yield* SecureRandom.SecureRandom)(32)
 			const take = Effect.fnUntraced(function* (state: string) {
 				const flow = yield* Cache.get(flows, state)
 				yield* Cache.invalidate(flows, state)
@@ -59,7 +58,7 @@ export class GitHub extends Context.Service<
 				})
 			}
 			const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
-			const digest = yield* Digest.Digest
+			const hash = hashOf(yield* Digest.Digest)
 			const provider = yield* Config.all({
 				clientId: Config.String('GITHUB_CLIENT_ID'),
 				secret: Config.Redacted('GITHUB_CLIENT_SECRET')
@@ -105,7 +104,7 @@ export class GitHub extends Context.Service<
 					url.search = UrlParams.toString(
 						UrlParams.fromInput({
 							client_id: provider.clientId,
-							code_challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(verifier))),
+							code_challenge: yield* hash(verifier),
 							code_challenge_method: 'S256',
 							redirect_uri: CALLBACK,
 							state

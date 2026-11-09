@@ -19,7 +19,6 @@ import {
 
 import {Machine} from '@typeonce/effect-machine'
 import {Digest, SecureRandom} from 'effect/crypto'
-import {Base64Url} from 'effect/encoding'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 
@@ -36,7 +35,9 @@ import {
 	browserToken,
 	callbackUrl,
 	clientLabel,
-	deviceLabel
+	deviceLabel,
+	hashOf,
+	randomTokenOf
 } from '#services/tokens/lib/utils.ts'
 import {CredentialOwner} from '#services/tokens/schema.ts'
 import type {DeviceTokenParams, Origin, TokenResponse} from '#services/tokens/schema.ts'
@@ -207,13 +208,11 @@ export class SignIns extends Context.Service<
 			const tokens = yield* Tokens
 			const people = yield* People
 			const random = yield* SecureRandom.SecureRandom
-			const digest = yield* Digest.Digest
+			const randomToken = randomTokenOf(random)
+			const hash = hashOf(yield* Digest.Digest)
 			const scope = yield* Effect.scope
 			const open = yield* SubscriptionRef.make(HashMap.empty<string, Open>())
 			const answering = yield* Semaphore.make(1)
-			const hash = Effect.fnUntraced(function* (value: string) {
-				return Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(value)))
-			})
 			function find(code: string) {
 				return Effect.map(SubscriptionRef.get(open), HashMap.get(typedCode(code)))
 			}
@@ -329,7 +328,7 @@ export class SignIns extends Context.Service<
 				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, origin: Origin) {
 					const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
 					const now = yield* Clock.currentTimeMillis
-					const receiver = Base64Url.encode(yield* random.randomBytes(32))
+					const receiver = yield* randomToken(32)
 					const owned = yield* Scope.fork(scope)
 					const ref = yield* pipe(
 						run({delivery, origin}),
