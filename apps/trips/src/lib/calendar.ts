@@ -3,8 +3,6 @@ import {Array, DateTime, Effect, HashSet, MutableList, Option, String, pipe} fro
 import {AsyncResult, Atom} from 'effect/reactivity'
 import * as Calendar from 'expo-calendar'
 
-import {palette} from '@deslop/components-mobile/palette'
-
 import {bookingsAtom} from '#lib/bookings.ts'
 import {linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
@@ -13,6 +11,8 @@ import type {Booking, BookingList, Flight, Train} from '#services/bookings/schem
 import {BookingsError} from '#services/bookings/schema.ts'
 
 const CALENDAR = 'Trips'
+// The calendar takes one hex, so it copies the dark value of the app's orange.
+const COLOR = '#ffa066'
 
 function notesOf(journey: Flight | Train) {
 	const known = [labelled('Confirmation', journey.confirmation), labelled('Seat', journey.seat)]
@@ -116,7 +116,7 @@ export const calendarAtom = Atom.make(get =>
 							try: () => {
 								const source = Calendar.getDefaultCalendarSync().source
 								return Calendar.createCalendar({
-									color: palette.orange,
+									color: COLOR,
 									entityType: Calendar.EntityTypes.EVENT,
 									name: CALENDAR,
 									source,
@@ -127,10 +127,10 @@ export const calendarAtom = Atom.make(get =>
 						}),
 					onSome: found =>
 						Effect.gen(function* () {
-							if (String.toLowerCase(found.color ?? '') !== String.toLowerCase(palette.orange)) {
+							if (String.toLowerCase(found.color ?? '') !== COLOR) {
 								yield* Effect.tryPromise({
 									catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
-									try: () => found.update({color: palette.orange})
+									try: () => found.update({color: COLOR})
 								})
 							}
 							return found
