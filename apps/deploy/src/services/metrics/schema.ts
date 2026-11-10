@@ -4,6 +4,45 @@ export type HistoryQuery = typeof HistoryQuery.Type
 // The range back from now, in minutes: a minute, ten, an hour, a day or a week.
 export const HistoryQuery = Schema.Struct({minutes: Schema.Literals([1, 10, 60, 1440, 10_080])})
 
+export type HistoryToolInput = typeof HistoryToolInput.Type
+export const HistoryToolInput = Schema.Struct({
+	...HistoryQuery.fields,
+	worker: Schema.optionalKey(Schema.String.annotate({description: 'A configured worker name.'}))
+})
+
+export type Series = typeof Series.Type
+export const Series = Schema.Array(Schema.OptionFromNullOr(Schema.Finite))
+
+export type AppUsage = typeof AppUsage.Type
+export const AppUsage = Schema.Struct({cpu: Schema.optionalKey(Schema.Finite), mib: Schema.Int, name: Schema.String})
+
+export type MachineNow = typeof MachineNow.Type
+export const MachineNow = Schema.Struct({
+	cpuPct: Schema.optionalKey(Schema.Finite),
+	diskGiB: Schema.optionalKey(Schema.Finite),
+	diskTotalGiB: Schema.optionalKey(Schema.Finite),
+	load: Schema.optionalKey(Schema.Array(Schema.Finite)),
+	memoryGiB: Schema.Finite,
+	memoryTotalGiB: Schema.Finite
+})
+
+export type WorkerHistory = typeof WorkerHistory.Type
+export const WorkerHistory = Schema.Struct({
+	apps: Schema.Array(AppUsage),
+	cpuPct: Series,
+	diskPct: Series,
+	error: Schema.optionalKey(Schema.String),
+	from: Schema.String,
+	memoryPct: Series,
+	now: Schema.optionalKey(MachineNow),
+	stale: Schema.optionalKey(Schema.Literal(true)),
+	stepSeconds: Schema.Finite,
+	worker: Schema.String
+})
+
+export type ResourceHistory = typeof ResourceHistory.Type
+export const ResourceHistory = Schema.Array(WorkerHistory)
+
 export type Counters = typeof Counters.Type
 export const Counters = Schema.Struct({
 	cores: Schema.optionalKey(
@@ -52,29 +91,6 @@ export const MachineHistory = Schema.Struct({
 	cpuModel: Schema.optionalKey(Schema.String),
 	error: Schema.String,
 	samples: Schema.Array(Sample),
-	stale: Schema.Boolean,
-	time: Schema.Finite,
-	worker: Schema.String
-})
-
-export type MachineSummary = typeof MachineSummary.Type
-export const MachineSummary = Schema.Struct({
-	cpuModel: Schema.optionalKey(Schema.String),
-	current: Schema.optionalKey(Sample),
-	error: Schema.String,
-	intervalSeconds: Schema.Finite,
-	recordedSince: Schema.optionalKey(Schema.Finite),
-	series: Schema.Struct({
-		cpu: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		diskRead: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		diskWrite: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		memoryUsed: Schema.Array(Schema.Finite),
-		networkReceive: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		networkSend: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		storageUsed: Schema.Array(Schema.Finite),
-		swapUsed: Schema.Array(Schema.Finite),
-		time: Schema.Array(Schema.Finite)
-	}),
 	stale: Schema.Boolean,
 	time: Schema.Finite,
 	worker: Schema.String

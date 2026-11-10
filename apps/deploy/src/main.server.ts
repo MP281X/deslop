@@ -34,7 +34,8 @@ CliRuntime.runApp({
 		Layer.mergeAll(
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
-				instructions: 'Deploy observes services, containers and ports and manages explicitly owned HTTPS exposure.',
+				instructions:
+					'Start with list_apps to see what runs on the workers; Deploy also shows resource history, manages explicitly owned HTTPS exposure and starts scheduled jobs.',
 				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			})
 		),

@@ -135,6 +135,74 @@ export const RunRequest = Schema.Struct({
 	target: Schema.optionalKey(Schema.String)
 })
 
+export type RunJobInput = typeof RunJobInput.Type
+export const RunJobInput = Schema.Struct({
+	job: Schema.String.annotate({description: 'A scheduled job name as list_apps shows it.'}),
+	worker: Schema.optionalKey(Schema.String.annotate({description: 'The worker running the job, when both do.'}))
+})
+
+export type ListAppsInput = typeof ListAppsInput.Type
+export const ListAppsInput = Schema.Struct({
+	app: Schema.optionalKey(
+		Schema.String.annotate({description: "A substring of an app or unit name; returns that app's process tree."})
+	),
+	failing: Schema.optionalKey(Schema.Boolean.annotate({description: 'Only failed or warning items.'})),
+	worker: Schema.optionalKey(Schema.String.annotate({description: 'A configured worker name.'}))
+})
+
+export type ProcessSummary = {
+	children?: readonly ProcessSummary[]
+	cpu?: number
+	detail?: string
+	mib: number
+	name: string
+}
+export const ProcessSummary = Schema.Struct({
+	children: Schema.optionalKey(Schema.Array(Schema.suspend((): Schema.Codec<ProcessSummary> => ProcessSummary))),
+	cpu: Schema.optionalKey(Schema.Finite),
+	detail: Schema.optionalKey(Schema.String),
+	mib: Schema.Int,
+	name: Schema.String
+})
+
+export type ListApp = typeof ListApp.Type
+export const ListApp = Schema.Struct({
+	failure: Schema.optionalKey(Schema.String),
+	name: Schema.String,
+	ports: Schema.optionalKey(Schema.Array(Schema.Int)),
+	processes: Schema.optionalKey(Schema.Array(ProcessSummary)),
+	since: Schema.optionalKey(Schema.String),
+	state: Schema.String,
+	url: Schema.optionalKey(Schema.String)
+})
+
+export type ListJob = typeof ListJob.Type
+export const ListJob = Schema.Struct({
+	failure: Schema.optionalKey(Schema.String),
+	name: Schema.String,
+	next: Schema.optionalKey(Schema.String),
+	since: Schema.optionalKey(Schema.String)
+})
+
+export type ListExposure = typeof ListExposure.Type
+export const ListExposure = Schema.Struct({
+	access: Schema.Literals(['tailnet', 'public']),
+	port: Schema.optionalKey(Schema.Int),
+	url: Schema.String
+})
+
+export type WorkerApps = typeof WorkerApps.Type
+export const WorkerApps = Schema.Struct({
+	apps: Schema.Array(ListApp),
+	errors: Schema.optionalKey(Schema.Array(Schema.String)),
+	exposures: Schema.optionalKey(Schema.Array(ListExposure)),
+	jobs: Schema.optionalKey(Schema.Array(ListJob)),
+	worker: Schema.String
+})
+
+export type ListApps = typeof ListApps.Type
+export const ListApps = Schema.Array(WorkerApps)
+
 export type Timer = typeof Timer.Type
 // `next` is in epoch microseconds.
 export const Timer = Schema.Struct({activates: Schema.NullOr(Schema.String), next: Schema.NullOr(Schema.Finite)})

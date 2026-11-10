@@ -2,8 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Order} from 'effect'
 
-import {appUsage, processTree} from '#routes/(home)/-process-tree.ts'
-import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
+import {appUsage, type ProcessNode, processTree} from '#services/inventory/lib/utils.ts'
 import type {Process} from '#services/inventory/schema.ts'
 
 function label(name: string, detail = '') {

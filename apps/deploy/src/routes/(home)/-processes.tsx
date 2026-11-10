@@ -5,7 +5,7 @@ import type {TreeRow} from '@deslop/components-web/tree'
 import {cn} from '@deslop/components-web/utils'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import type {ProcessNode} from '#routes/(home)/-process-tree.ts'
+import type {ProcessNode} from '#services/inventory/lib/utils.ts'
 
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 const percent = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})

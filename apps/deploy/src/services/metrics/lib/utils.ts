@@ -1,6 +1,6 @@
 import {Array, Number, Option, Order, Predicate, Record, Schema, String, Struct, pipe} from 'effect'
 
-import type {Counters, MachineHistory, MachineSummary, Sample} from '#services/metrics/schema.ts'
+import type {Counters, Sample} from '#services/metrics/schema.ts'
 
 // How long samples stay at each spacing: seconds for a minute, ten seconds for ten minutes, minutes for an hour, quarter-hours for a day, hours for a week.
 const TIERS = [
@@ -301,37 +301,13 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 	})
 }
 
-export function compactHistory(machine: MachineHistory, minutes: number) {
-	const summary: MachineSummary = {
-		...Record.getSomes({cpuModel: Option.fromUndefinedOr(machine.cpuModel)}),
-		...Record.getSomes({current: Array.last(machine.samples)}),
-		error: machine.error,
-		intervalSeconds: resolution(minutes) / 1000,
-		...Record.getSomes({recordedSince: Option.fromUndefinedOr(machine.samples[0]?.since ?? machine.samples[0]?.time)}),
-		series: {
-			cpu: Array.map(machine.samples, value => Option.map(Option.fromUndefinedOr(value.cpu), Number.round(1))),
-			diskRead: Array.map(machine.samples, value =>
-				Option.map(Option.fromUndefinedOr(value.diskRead), Number.round(0))
-			),
-			diskWrite: Array.map(machine.samples, value =>
-				Option.map(Option.fromUndefinedOr(value.diskWrite), Number.round(0))
-			),
-			memoryUsed: Array.map(machine.samples, value => value.memoryUsed),
-			networkReceive: Array.map(machine.samples, value =>
-				Option.map(Option.fromUndefinedOr(value.networkReceive), Number.round(0))
-			),
-			networkSend: Array.map(machine.samples, value =>
-				Option.map(Option.fromUndefinedOr(value.networkSend), Number.round(0))
-			),
-			storageUsed: Array.map(machine.samples, usedStorage),
-			swapUsed: Array.map(machine.samples, value => value.swapUsed),
-			time: Array.map(machine.samples, value => value.time)
-		},
-		stale: machine.stale,
-		time: machine.time,
-		worker: machine.worker
-	}
-	return summary
+// A band's label: the page's name for the app when it has a row, else the unit or container the id names.
+export function bandName(id: string, labels: Record<string, string>) {
+	if (id === 'other') return 'Low impact'
+	if (id === 'system') return 'System'
+	return Option.getOrElse(Record.get(labels, id), () =>
+		String.replaceAll(/^service:[a-z]+:(?:deslop-)?|\.service$/gu, '')(String.replace(/^container:/u, 'container ')(id))
+	)
 }
 
 // A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or the slice a user manager names `app-<name>.slice` for what its sibling `<name>.service` starts, like T3 Code's agents; a template's instances share such a slice without that sibling, so it's walked into.
