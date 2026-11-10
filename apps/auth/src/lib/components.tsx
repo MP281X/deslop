@@ -45,6 +45,7 @@ export function AccountAvatar(props: {id: string; name: string; small?: boolean}
 	return (
 		<Avatar
 			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
+			variant="plain"
 			className={cn(props.small === true && 'size-4')}
 		>
 			<AvatarImage

@@ -181,7 +181,7 @@ it.layer(NodeServices.layer)(test => {
 			assert.notInclude(html, '>Servers</h2>')
 			assert.notInclude(html, 'aria-label="Add server"')
 			assert.include(html, 'aria-label="Copy MCP URL"')
-			assert.include(html, 'Paste an MCP server URL or a provider key')
+			assert.include(html, 'Paste an MCP URL or a key')
 			assert.include(html, 'aria-busy="true"')
 			assert.notInclude(html, 'aria-label="No servers yet"')
 		})

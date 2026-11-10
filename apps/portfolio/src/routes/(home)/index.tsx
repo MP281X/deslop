@@ -558,11 +558,9 @@ function PresenceHud(input: {
 						onTrue: () => <VisitorCount visitors={input.visitors ?? []} />
 					})}
 				</span>
-				<span className="text-muted-foreground absolute top-1/2 left-1/2 hidden -translate-x-1/2 -translate-y-1/2 whitespace-nowrap sm:inline">
-					{LEGAL_LINE}
-				</span>
-				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap sm:hidden">
-					{LEGAL_LINE_NARROW}
+				<span className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap pointer-coarse:static pointer-coarse:translate-x-0 pointer-coarse:translate-y-0">
+					<span className="hidden sm:inline">{LEGAL_LINE}</span>
+					<span className="sm:hidden">{LEGAL_LINE_NARROW}</span>
 				</span>
 				{Predicate.isNotUndefined(input.onToggleShortcuts) && (
 					<Button

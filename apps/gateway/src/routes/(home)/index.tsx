@@ -408,7 +408,7 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 						aria-label="MCP server URL or provider key"
 						aria-invalid={error !== ''}
 						aria-describedby="gateway-add-error"
-						placeholder="Paste an MCP server URL or a provider key"
+						placeholder="Paste an MCP URL or a key"
 						autoComplete="off"
 						spellCheck={false}
 						value={typed}
@@ -448,7 +448,7 @@ function CopyEndpoint() {
 		<Button
 			variant={Boolean.match(failed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
 			size="icon-sm"
-			className="max-sm:size-11"
+			className="ms-2.5 max-sm:size-11"
 			aria-label={Boolean.match(failed, {
 				onFalse: () => Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'}),
 				onTrue: () => 'Cannot copy'
