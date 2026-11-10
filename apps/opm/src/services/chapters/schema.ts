@@ -5,9 +5,9 @@ export class ChaptersError extends Schema.TaggedError<ChaptersError>()('Chapters
 	message: Schema.String
 }) {}
 
-// How far the one reader got in a chapter; `at` orders chapters by when they were last read.
+// How far the one reader got in a chapter.
 export type Reading = typeof Reading.Type
-export const Reading = Schema.Struct({at: Schema.Finite, done: Schema.Boolean, page: Schema.Finite})
+export const Reading = Schema.Struct({done: Schema.Boolean, page: Schema.Finite})
 
 export type Series = typeof Series.Type
 export const Series = Schema.Literals(['manga', 'webcomic'])
@@ -33,7 +33,7 @@ export const Chapter = Schema.Struct({
 
 // A chapter as the iPhone sees it; the whole list with its page links is a few hundred kilobytes.
 export type ChapterItem = typeof ChapterItem.Type
-export const ChapterItem = Chapter.mapFields(Struct.omit(['notified']))
+export const ChapterItem = Chapter.mapFields(Struct.omit(['notified', 'revisedAt', 'source']))
 
 export type ChapterList = typeof ChapterList.Type
 export const ChapterList = Schema.Array(ChapterItem)
@@ -46,7 +46,6 @@ export type ReadingUpdate = typeof ReadingUpdate.Type
 export const ReadingUpdate = Schema.Struct({
 	done: Schema.Boolean,
 	number: Schema.Finite,
-	opened: Schema.Boolean,
 	page: Schema.Finite,
 	series: Series
 })

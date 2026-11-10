@@ -105,13 +105,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 										onNone: () => undefined,
 										onSome: before => {
 											finished.current = HashSet.add(finished.current, before.number)
-											read({
-												done: true,
-												number: before.number,
-												opened: true,
-												page: before.pages.length - 1,
-												series: before.series
-											})
+											read({done: true, number: before.number, page: before.pages.length - 1, series: before.series})
 										}
 									}
 								)
@@ -123,7 +117,6 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 								read({
 									done: HashSet.has(finished.current, chapter.number),
 									number: chapter.number,
-									opened: true,
 									page,
 									series: chapter.series
 								})

@@ -132,7 +132,6 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 						read({
 							done: !done,
 							number: props.chapter.number,
-							opened: false,
 							page: Boolean.match(done, {
 								onFalse: () => Number.max(props.chapter.pages.length - 1, 0),
 								onTrue: () => 0

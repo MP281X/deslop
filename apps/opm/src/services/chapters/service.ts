@@ -343,13 +343,17 @@ export class Chapters extends Context.Service<
 							[
 								Option.some(current),
 								Option.match(previous, {
-									onNone: () => [{reset: true, upserted: Array.map(current, Struct.omit(['notified']))}],
+									onNone: () => [
+										{reset: true, upserted: Array.map(current, Struct.omit(['notified', 'revisedAt', 'source']))}
+									],
 									onSome: before =>
 										pipe(
 											changed(current, before),
 											Array.match({
 												onEmpty: () => Array.empty<ChaptersEvent>(),
-												onNonEmpty: updates => [{reset: false, upserted: Array.map(updates, Struct.omit(['notified']))}]
+												onNonEmpty: updates => [
+													{reset: false, upserted: Array.map(updates, Struct.omit(['notified', 'revisedAt', 'source']))}
+												]
 											})
 										)
 								})
@@ -357,16 +361,8 @@ export class Chapters extends Context.Service<
 					)
 				),
 				read: Effect.fn('Chapters.read')(function* (update) {
-					const at = yield* Clock.currentTimeMillis
 					yield* save(chapters =>
-						change(chapters, keyOf(update), item => ({
-							...item,
-							reading: {
-								at: Boolean.match(update.opened, {onFalse: () => item.reading?.at ?? 0, onTrue: () => at}),
-								done: update.done,
-								page: update.page
-							}
-						}))
+						change(chapters, keyOf(update), item => ({...item, reading: {done: update.done, page: update.page}}))
 					)
 				}),
 				register: Effect.fn('Chapters.register')(function* (token) {
