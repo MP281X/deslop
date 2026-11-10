@@ -19,7 +19,6 @@ import type {ActivityProps} from '#services/bookings/schema.ts'
 // The widget runtime runs only this body, so the palette and helpers live inside it; the server words every line, and the layout only places them.
 function JourneyLayout(props: ActivityProps) {
 	'widget'
-	// The widget evaluates only this body, so it copies the dark palette's hex values.
 	const tones = {bad: '#ff5d62', good: '#ffa066', info: '#ffa066', plain: '#fafafa', warn: '#ff9e3b'}
 	const gray = '#9f9fa9'
 
