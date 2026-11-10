@@ -33,7 +33,7 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 						buildNumber: `${release}`,
 						bundleIdentifier: variant.bundleIdentifier,
 						config: {usesNonExemptEncryption: false},
-						deploymentTarget: '18.0',
+						deploymentTarget: '26.0',
 						// An Icon Composer package: the object over a light tile or the system's dark one, and iOS renders tinted and clear.
 						icon: './src/routes/app.icon',
 						supportsTablet: false

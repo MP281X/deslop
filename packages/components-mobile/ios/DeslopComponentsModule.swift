@@ -26,16 +26,11 @@ public class DeslopComponentsModule: Module {
 
 // The search field between the bottom bar's buttons, where iOS 26 would otherwise fold it into a button of its own.
 struct BottomBarSearch: ViewModifier, Record {
-  @ViewBuilder
   func body(content: Content) -> some View {
-    if #available(iOS 26.0, *) {
-      content.toolbar {
-        ToolbarSpacer(.fixed, placement: .bottomBar)
-        DefaultToolbarItem(kind: .search, placement: .bottomBar)
-        ToolbarSpacer(.fixed, placement: .bottomBar)
-      }
-    } else {
-      content
+    content.toolbar {
+      ToolbarSpacer(.fixed, placement: .bottomBar)
+      DefaultToolbarItem(kind: .search, placement: .bottomBar)
+      ToolbarSpacer(.fixed, placement: .bottomBar)
     }
   }
 }
