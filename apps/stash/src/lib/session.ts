@@ -15,7 +15,7 @@ export const primary = hues.amber
 
 export const session = MobileSession.make(SERVER, keychain)
 
-export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
+export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/session/RpcClient', {
 	group: RpcContracts,
 	protocol: session.protocol
 }) {}
