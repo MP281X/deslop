@@ -58,16 +58,19 @@ const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foregrou
 
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
 
+const coverFrame = [frame({maxHeight: 280, maxWidth: Infinity})]
+
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
-	if (!AsyncResult.isSuccess(image)) return undefined
+	if (AsyncResult.isFailure(image)) return <VStack modifiers={coverFrame}>{null}</VStack>
+	if (!AsyncResult.isSuccess(image)) return <Skeleton modifiers={coverFrame} />
 	return (
 		<Image
 			uiImage={image.value}
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fit'}),
-				frame({maxHeight: 280, maxWidth: Infinity}),
+				...coverFrame,
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
