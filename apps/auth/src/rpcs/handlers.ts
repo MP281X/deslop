@@ -19,8 +19,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		return RpcContracts.of({
-			'auth.account': (_, options) =>
-				Stream.onStart(people.account(options.headers), Effect.annotateCurrentSpan('rpc.stream', true)),
+			'auth.account': (_, options) => people.account(options.headers),
 			'auth.addPasskey': Effect.fnUntraced(function* (input, options) {
 				yield* passkeys.add(input.response, {
 					from: originFrom(options.headers, Option.none()),
@@ -43,8 +42,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'auth.passkeys': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
 			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
-			'auth.wait': (input, options) =>
-				Stream.onStart(signIns.status(input.request, options.headers), Effect.annotateCurrentSpan('rpc.stream', true))
+			'auth.wait': (input, options) => signIns.status(input.request, options.headers)
 		})
 	})
 )

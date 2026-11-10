@@ -13,6 +13,7 @@ import {
 	Ref,
 	Schema,
 	String,
+	Tracer,
 	pipe
 } from 'effect'
 
@@ -61,14 +62,21 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 			const response = yield* Boolean.match(probeSocket(socket, process), {
 				onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
 				onTrue: Effect.fnUntraced(function* () {
-					// The probed app still traces its side under this inventory, so its HEAD spans stay out of its own operations.
+					// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
 					return yield* pipe(
-						Effect.option(Effect.currentSpan),
-						Effect.flatMap(parent =>
-							http.head(`http://127.0.0.1:${socket.port}/`, {
-								headers: Option.match(parent, {onNone: () => ({}), onSome: HttpTraceContext.toHeaders})
-							})
-						),
+						http.head(`http://127.0.0.1:${socket.port}/`, {
+							headers: HttpTraceContext.toHeaders(
+								new Tracer.NativeSpan({
+									annotations: Context.empty(),
+									kind: 'internal',
+									links: [],
+									name: 'Deploy.probe',
+									parent: Option.none(),
+									sampled: false,
+									startTime: 0n
+								})
+							)
+						}),
 						Effect.map(value => ({
 							http: true,
 							ui:

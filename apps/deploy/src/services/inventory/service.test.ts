@@ -10,6 +10,8 @@ import {
 	FileSystem,
 	Layer,
 	Match,
+	MutableList,
+	Option,
 	Sink,
 	Stream,
 	String,
@@ -17,6 +19,7 @@ import {
 } from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
+import type {Headers} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {DeployError} from '#services/inventory/schema.ts'
@@ -69,6 +72,7 @@ it.layer(NodeServices.layer)('Inventory', test => {
 					})
 				})
 			)
+			const probes = MutableList.make<Headers.Headers>()
 			const inventory = Context.get(
 				yield* Layer.build(
 					pipe(
@@ -76,14 +80,15 @@ it.layer(NodeServices.layer)('Inventory', test => {
 						Layer.provide(
 							Layer.succeed(
 								HttpClient.HttpClient,
-								HttpClient.make(request =>
-									Effect.succeed(
+								HttpClient.make(request => {
+									MutableList.append(probes, request.headers)
+									return Effect.succeed(
 										HttpClientResponse.fromWeb(
 											request,
 											new Response(undefined, {headers: {'content-type': 'text/html'}})
 										)
 									)
-								)
+								})
 							)
 						),
 						Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
@@ -106,6 +111,13 @@ it.layer(NodeServices.layer)('Inventory', test => {
 				Inventory
 			)
 			const snapshot = yield* inventory.snapshot
+			const probed = MutableList.toArray(probes)
+			assert.isNotEmpty(probed)
+			assert.isTrue(
+				Array.every(probed, headers =>
+					Option.isSome(String.match(/^00-[\da-f]{32}-[\da-f]{16}-00$/u)(headers['traceparent'] ?? ''))
+				)
+			)
 			assert.deepStrictEqual(
 				Array.map(
 					Array.filter(snapshot.items, item => item.kind === 'port'),

@@ -42,7 +42,7 @@ import {
 	HttpStaticServer
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
-import {RpcSerialization, RpcServer} from 'effect/rpc'
+import {RpcMiddleware, RpcSchema, RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
 import {
@@ -376,6 +376,16 @@ export const layerWeb = Layer.unwrap(
 	})
 )
 
+class RpcStream extends RpcMiddleware.Service<RpcStream>()('@deslop/runtime/server/RpcStream') {}
+
+const layerRpcStream = Layer.succeed(
+	RpcStream,
+	RpcStream.of((effect, options) => {
+		if (!RpcSchema.isStreamSchema(options.rpc.successSchema)) return effect
+		return Effect.andThen(Effect.annotateCurrentSpan('rpc.stream', true), effect)
+	})
+)
+
 export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 	disableTracing?: boolean
 	group: RpcGroup.RpcGroup<Rpcs>
@@ -384,11 +394,13 @@ export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 	return pipe(
 		RpcServer.layerHttp({
 			disableTracing: options.disableTracing,
-			group: options.group,
+			// Marked for every server before its handler or auth check runs, so a subscription is never read as a failed call.
+			group: options.group.middleware(RpcStream),
 			path: RPC_PATH,
 			protocol: 'websocket'
 		}),
-		Layer.provide(options.handlers)
+		Layer.provide(options.handlers),
+		Layer.provide(layerRpcStream)
 	)
 }
 

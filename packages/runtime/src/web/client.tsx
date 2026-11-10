@@ -29,7 +29,7 @@ import {Denied, Error, NotFound, SignIn} from '@deslop/components-web/fallbacks'
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
 
-import {isDenied, needsSignIn, signInUrl, withoutDeniedData} from '#auth/lib/utils.ts'
+import {isDenied, layerRpcStreamClient, needsSignIn, signInUrl, withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
@@ -148,7 +148,8 @@ export const layerProtocol = pipe(
 			Layer.provide(Socket.layerWebSocketConstructorGlobal)
 		)
 	),
-	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
+	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary()),
+	Layer.provideMerge(layerRpcStreamClient)
 )
 
 export function layer(applicationName: string) {
