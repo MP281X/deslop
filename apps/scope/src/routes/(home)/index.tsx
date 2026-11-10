@@ -200,8 +200,8 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 				}
 			>
 				<ItemContent>
-					<ItemTitle title={props.operation.name}>
-						{props.operation.name}
+					<ItemTitle className="w-full" title={props.operation.name}>
+						<span className="min-w-0 truncate">{props.operation.name}</span>
 						{props.duplicate && KINDS[props.operation.runtime]}
 					</ItemTitle>
 				</ItemContent>
