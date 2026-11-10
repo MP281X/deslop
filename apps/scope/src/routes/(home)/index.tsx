@@ -746,6 +746,7 @@ function Home() {
 	// Once a frame's operations arrive, the URL drops a selection the page no longer shows; a frame that still shows it changes nothing.
 	useEffect(() => {
 		if (Option.isNone(value)) return
+		if (search.link === 1 && Option.exists(selection.activeTrace, trace => trace.id === search.trace)) return
 		const staleOperation =
 			search.operation !== undefined &&
 			!Option.exists(
@@ -768,6 +769,7 @@ function Home() {
 		})
 	}, [
 		navigate,
+		search.link,
 		search.operation,
 		search.side,
 		search.source,
@@ -786,10 +788,7 @@ function Home() {
 	}
 
 	function selectLinkedTrace(link: TraceLink) {
-		send({
-			_tag: 'Trace',
-			selection: {operation: {app: link.app, name: link.name, runtime: link.runtime}, traceId: link.trace}
-		})
+		send({_tag: 'Link', operation: {app: link.app, name: link.name, runtime: link.runtime}, traceId: link.trace})
 	}
 
 	function selectSpan(id: string) {

@@ -8,8 +8,8 @@ import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
 
-import {attributesOf, durationOf, errorOf, failed} from '#lib/utils.ts'
-import {appName} from '#services/telemetry/lib/utils.ts'
+import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
+import {appName, failedEntry} from '#services/telemetry/lib/utils.ts'
 import type {Trace, TraceLink} from '#services/telemetry/schema.ts'
 
 const STATUS: Record<string, string> = {
@@ -85,7 +85,7 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(failed(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+					Boolean.match(failedEntry(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
 				)}
 			>
 				{props.span.name}
@@ -127,7 +127,7 @@ export function SpanDetail(props: {onLink: (link: TraceLink) => void; span: Trac
 						<span
 							className={cn(
 								'block min-w-0 truncate',
-								Boolean.match(failed(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+								Boolean.match(failedEntry(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
 							)}
 							title={message}
 						>

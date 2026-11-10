@@ -136,12 +136,17 @@ export const LogsRequest = Schema.Struct({
 	)
 })
 
+export type SpanLink = typeof SpanLink.Type
+export const SpanLink = Schema.Struct({spanId: Schema.String, traceId: Schema.String})
+
 export type Entry = typeof Entry.Type
 export const Entry = Schema.Struct({
 	// A failed span whose only failures are a denied sign-in: not a failure for any count or marker.
 	denied: Schema.optionalKey(Schema.Boolean),
 	durationMs: Schema.Finite,
 	id: Schema.NonEmptyString,
+	// The span's OTLP links, judged once when the entry arrives rather than on every trace view.
+	links: Schema.optionalKey(Schema.Array(SpanLink)),
 	name: Schema.String,
 	payload: Schema.JsonObject,
 	// Absent on the immediately previous release's stored entries.
@@ -229,15 +234,12 @@ export const Overview = Schema.Struct({
 	)
 })
 
-export type SpanLink = typeof SpanLink.Type
-export const SpanLink = Schema.Struct({spanId: Schema.String, traceId: Schema.String})
-
 export type TraceLink = typeof TraceLink.Type
 export const TraceLink = Schema.Struct({app: Schema.String, name: Schema.String, runtime: Runtime, trace: TraceId})
 
 type TraceSpan = typeof TraceSpan.Type
 const TraceSpan = Schema.Struct({
-	...EntryItem.fields,
+	...Struct.omit(EntryItem.fields, ['links']),
 	depth: Schema.Natural,
 	followedBy: Schema.optionalKey(Schema.Array(TraceLink)),
 	links: Schema.optionalKey(Schema.Array(TraceLink)),

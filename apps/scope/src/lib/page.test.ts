@@ -43,7 +43,8 @@ const trace = traceView(
 function render(
 	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
 	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>,
-	path = '/'
+	path = '/',
+	traceId = ID
 ) {
 	return Effect.scoped(
 		Effect.gen(function* () {
@@ -74,14 +75,14 @@ function render(
 									}),
 								{skipInitialRun: true}
 							],
-							[traceAtom(RANGE, ID), result, {skipInitialRun: true}]
+							[traceAtom(RANGE, traceId), result, {skipInitialRun: true}]
 						]
 					})
 				),
 				value => Effect.sync(() => value.dispose())
 			)
-			registry.get(traceAtom(RANGE, ID))
-			registry.ensureNode(traceAtom(RANGE, ID)).setInitialValue(result)
+			registry.get(traceAtom(RANGE, traceId))
+			registry.ensureNode(traceAtom(RANGE, traceId)).setInitialValue(result)
 			if (overview !== undefined) registry.ensureNode(overviewAtom(RANGE)).setInitialValue(overview)
 			const router = createRouter({history: createMemoryHistory({initialEntries: [path]}), routeTree})
 			yield* Effect.promise(() => router.load())
@@ -492,6 +493,59 @@ it.effect(
 		assert.include(html, 'POST /api/capture')
 		assert.include(html, '>then<')
 		assert.include(html, 'Notes.organize')
+	})
+)
+
+it.effect(
+	'opens a linked trace outside the operation’s listed traces',
+	Effect.fnUntraced(function* () {
+		const outside = String.repeat(32)('c')
+		const linked = traceView(
+			[
+				Entry.make({
+					durationMs: 4,
+					id: 'outside-span',
+					name: 'Outside trace span',
+					payload: {},
+					resource: {},
+					service: '@deslop/deploy-server',
+					signal: 'trace',
+					spanId: 'bbbbbbbbbbbbbbbb',
+					status: 0,
+					time: '1781870000000000000',
+					traceId: outside
+				})
+			],
+			outside
+		)
+		const html = yield* render(
+			AsyncResult.success(linked),
+			AsyncResult.success({
+				apps: [
+					{
+						name: 'deploy',
+						operations: [
+							{
+								count: 20,
+								failures: 0,
+								name: 'Inventory.snapshot',
+								p50Ms: 1,
+								p95Ms: 1,
+								runtime: 'server',
+								traces: Array.makeBy(20, index => ({
+									durationMs: 1,
+									id: String.padStart(32, '0')((index + 1).toString(16)),
+									time: '1781870000000000000'
+								}))
+							}
+						]
+					}
+				]
+			}),
+			`/?link=1&source=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${outside}`,
+			outside
+		)
+		assert.include(html, 'Outside trace span')
 	})
 )
 

@@ -245,13 +245,7 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 	const attrs = attributesFlat(span.payload, span.name, failedSpan)
 	const side = sideOf(span.service, span.resource)
 	const logs = Array.map(span.logs, compactLog)
-	const links = Array.dedupeWith(
-		Array.map(
-			Array.filter(readLinks(span.payload), link => link.traceId !== span.traceId),
-			link => link.traceId
-		),
-		(left, right) => left === right
-	)
+	const links = Array.dedupe(Array.map(span.links ?? [], link => link.trace))
 	return {
 		app: appName(span.service),
 		at: rounded(span.offsetMs),
@@ -439,9 +433,67 @@ function ingestionAnswer(entries: readonly Entry[], rejections: readonly Rejecti
 
 // Stored spans are named and judged as new ones are, so the previous release's files read the same.
 function deriveEntry(entry: Entry) {
-	const derived = {...entry, denied: deniedSpan(entry.payload)}
+	const links = readLinks(entry.payload)
+	const derived = {
+		...entry,
+		denied: deniedSpan(entry.payload),
+		...Boolean.match(Array.isReadonlyArrayNonEmpty(links), {onFalse: () => ({}), onTrue: () => ({links})})
+	}
 	if (entry.signal === 'log') return derived
 	return {...derived, name: spanName(entry.payload)}
+}
+
+type State = {
+	entries: HashMap.HashMap<string, Entry>
+	// Entry ids by service and by trace, so a save reads only the traces it touches and current reads stay whole-store scans.
+	services: HashMap.HashMap<string, HashSet.HashSet<string>>
+	traces: HashMap.HashMap<string, HashSet.HashSet<string>>
+}
+
+function attach(index: HashMap.HashMap<string, HashSet.HashSet<string>>, key: string, id: string) {
+	return HashMap.set(
+		index,
+		key,
+		HashSet.add(
+			Option.getOrElse(HashMap.get(index, key), () => HashSet.empty<string>()),
+			id
+		)
+	)
+}
+
+function detach(index: HashMap.HashMap<string, HashSet.HashSet<string>>, key: string, id: string) {
+	const remaining = HashSet.remove(
+		Option.getOrElse(HashMap.get(index, key), () => HashSet.empty<string>()),
+		id
+	)
+	if (HashSet.size(remaining) === 0) return HashMap.remove(index, key)
+	return HashMap.set(index, key, remaining)
+}
+
+function removeEntry(state: State, entry: Pick<Entry, 'id' | 'service' | 'traceId'>) {
+	return {
+		entries: HashMap.remove(state.entries, entry.id),
+		services: detach(state.services, entry.service, entry.id),
+		traces: Boolean.match(entry.traceId === '', {
+			onFalse: () => detach(state.traces, entry.traceId, entry.id),
+			onTrue: () => state.traces
+		})
+	}
+}
+
+function addEntry(state: State, entry: Entry) {
+	const base = Option.match(HashMap.get(state.entries, entry.id), {
+		onNone: () => state,
+		onSome: existing => removeEntry(state, existing)
+	})
+	return {
+		entries: HashMap.set(base.entries, entry.id, entry),
+		services: attach(base.services, entry.service, entry.id),
+		traces: Boolean.match(entry.traceId === '', {
+			onFalse: () => attach(base.traces, entry.traceId, entry.id),
+			onTrue: () => base.traces
+		})
+	}
 }
 
 export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/services/telemetry/service/Telemetry', {
@@ -457,20 +509,29 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const loaded = yield* Deferred.make<void>()
 		// Each service's newest release seen: what an older one sent may describe a bug since fixed, so it goes.
 		const releases = yield* Ref.make(Record.empty<string, string>())
-		const state = yield* SynchronizedRef.make<HashMap.HashMap<string, Entry>>(HashMap.empty())
+		const state = yield* SynchronizedRef.make<State>({
+			entries: HashMap.empty(),
+			services: HashMap.empty(),
+			traces: HashMap.empty()
+		})
 		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
 			const receivedAt = yield* Clock.currentTimeMillis
 			yield* SynchronizedRef.updateEffect(
 				state,
 				Effect.fnUntraced(function* (current) {
-					const retention = retentionOf(current, yield* Ref.get(releases), receivedAt, Duration.toMillis(RETENTION))
+					const retention = retentionOf(
+						current.entries,
+						yield* Ref.get(releases),
+						receivedAt,
+						Duration.toMillis(RETENTION)
+					)
 					yield* Effect.forEach(retention.repaired, entry => store.set(entry.id, entry), {
 						concurrency: 1,
 						discard: true
 					})
 					yield* Effect.forEach(retention.expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-					return retention.next
+					return Array.reduce(retention.expired, Array.reduce(retention.repaired, current, addEntry), removeEntry)
 				})
 			)
 			yield* SubscriptionRef.update(version, Number.increment)
@@ -499,8 +560,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				yield* SynchronizedRef.update(state, current =>
 					Array.reduce(entries, current, (all, entry) => {
 						const derived = deriveEntry(entry)
-						if (HashMap.has(all, derived.id)) return all
-						return HashMap.set(all, derived.id, derived)
+						if (HashMap.has(all.entries, derived.id)) return all
+						return addEntry(all, derived)
 					})
 				)
 				yield* Ref.update(releases, known => newestVersions(entries, known))
@@ -520,14 +581,35 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			),
 			Effect.forkScoped
 		)
-		const read = Effect.map(SynchronizedRef.get(state), entries => Array.fromIterable(HashMap.values(entries)))
+		const read = Effect.map(SynchronizedRef.get(state), current => Array.fromIterable(HashMap.values(current.entries)))
 		// What an older release sends is dropped; a newer release's first entries delete everything its service's older ones sent.
 		const save = Effect.fnUntraced(function* (entries: Entry[]) {
 			yield* Effect.uninterruptible(
 				SynchronizedRef.updateEffect(
 					state,
 					Effect.fnUntraced(function* (current) {
-						const reconciliation = reconcileReleases(current, entries, yield* Ref.get(releases))
+						const reconciliation = reconcileReleases(
+							traceId =>
+								Array.getSomes(
+									Array.map(
+										Array.fromIterable(
+											Option.getOrElse(HashMap.get(current.traces, traceId), () => HashSet.empty<string>())
+										),
+										id => HashMap.get(current.entries, id)
+									)
+								),
+							service =>
+								Array.getSomes(
+									Array.map(
+										Array.fromIterable(
+											Option.getOrElse(HashMap.get(current.services, service), () => HashSet.empty<string>())
+										),
+										id => HashMap.get(current.entries, id)
+									)
+								),
+							entries,
+							yield* Ref.get(releases)
+						)
 						yield* Effect.forEach(reconciliation.replaced, entry => store.remove(entry.id), {
 							concurrency: 1,
 							discard: true
@@ -537,7 +619,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							discard: true
 						})
 						yield* Ref.set(releases, reconciliation.newest)
-						return reconciliation.next
+						return Array.reduce(
+							reconciliation.accepted,
+							Array.reduce(reconciliation.replaced, current, removeEntry),
+							addEntry
+						)
 					})
 				)
 			)
@@ -573,24 +659,25 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							)
 						),
 						item =>
-							Effect.map(random.uuidV4(), id => ({
-								denied: false,
-								durationMs: 0,
-								id,
-								name: logMessage(item.log.body ?? {}),
-								payload: item.log,
-								receivedAt,
-								resource: item.group.resource ?? {},
-								service: serviceName(item.group.resource ?? {}),
-								signal: 'log' as const,
-								spanId: String.toLowerCase(item.log.spanId ?? ''),
-								status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {
-									onFalse: () => 0 as const,
-									onTrue: () => 2 as const
-								}),
-								time: item.log.timeUnixNano,
-								traceId: String.toLowerCase(item.log.traceId ?? '')
-							})),
+							Effect.map(random.uuidV4(), id =>
+								deriveEntry({
+									durationMs: 0,
+									id,
+									name: logMessage(item.log.body ?? {}),
+									payload: item.log,
+									receivedAt,
+									resource: item.group.resource ?? {},
+									service: serviceName(item.group.resource ?? {}),
+									signal: 'log' as const,
+									spanId: String.toLowerCase(item.log.spanId ?? ''),
+									status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {
+										onFalse: () => 0 as const,
+										onTrue: () => 2 as const
+									}),
+									time: item.log.timeUnixNano,
+									traceId: String.toLowerCase(item.log.traceId ?? '')
+								})
+							),
 						{concurrency: 1}
 					)
 				)
@@ -600,21 +687,22 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				yield* save(
 					Array.flatMap(payload.resourceSpans ?? [], group =>
 						Array.flatMap(group.scopeSpans ?? [], scope =>
-							Array.map(scope.spans ?? [], span => ({
-								denied: deniedSpan(span),
-								durationMs: durationMs(span.startTimeUnixNano, span.endTimeUnixNano ?? '0'),
-								id: `${String.toLowerCase(span.traceId)}:${String.toLowerCase(span.spanId)}`,
-								name: spanName(span),
-								payload: span,
-								receivedAt,
-								resource: group.resource ?? {},
-								service: serviceName(group.resource ?? {}),
-								signal: 'trace' as const,
-								spanId: String.toLowerCase(span.spanId),
-								status: span.status?.code ?? 0,
-								time: span.startTimeUnixNano,
-								traceId: String.toLowerCase(span.traceId)
-							}))
+							Array.map(scope.spans ?? [], span =>
+								deriveEntry({
+									durationMs: durationMs(span.startTimeUnixNano, span.endTimeUnixNano ?? '0'),
+									id: `${String.toLowerCase(span.traceId)}:${String.toLowerCase(span.spanId)}`,
+									name: '',
+									payload: span,
+									receivedAt,
+									resource: group.resource ?? {},
+									service: serviceName(group.resource ?? {}),
+									signal: 'trace' as const,
+									spanId: String.toLowerCase(span.spanId),
+									status: span.status?.code ?? 0,
+									time: span.startTimeUnixNano,
+									traceId: String.toLowerCase(span.traceId)
+								})
+							)
 						)
 					)
 				)

@@ -216,7 +216,7 @@ function log(
 	}
 }
 
-function logs(service: string, records: readonly ReturnType<typeof log>[], runtime?: string) {
+function logs(service: string, records: readonly ReturnType<typeof log>[], runtime?: string, version?: string) {
 	return LogsRequest.make({
 		resourceLogs: [
 			{
@@ -226,6 +226,10 @@ function logs(service: string, records: readonly ReturnType<typeof log>[], runti
 						...Option.match(Option.fromUndefinedOr(runtime), {
 							onNone: () => [],
 							onSome: value => [{key: 'scope.runtime', value: {stringValue: value}}]
+						}),
+						...Option.match(Option.fromUndefinedOr(version), {
+							onNone: () => [],
+							onSome: value => [{key: 'service.version', value: {stringValue: value}}]
 						})
 					]
 				},
@@ -710,12 +714,17 @@ it.layer(platform)(test => {
 				Effect.gen(function* () {
 					const telemetry = yield* loaded(directory)
 					yield* telemetry.ingestTraces(release('0.1.999', 'a'))
+					yield* telemetry.ingestLogs(
+						logs('@deslop/stash-server', [log('old release log', START)], undefined, '0.1.999')
+					)
 					yield* telemetry.ingestTraces(release('', 'b'))
 					yield* telemetry.ingestTraces(release('0.1.998', 'c'))
 					assert.deepStrictEqual(yield* kept(telemetry), ['a', 'b'])
-					// Parts compare as numbers: 0.1.1000 is newer than 0.1.999, whose trace goes; the local build's stays.
+					assert.strictEqual((yield* telemetry.searchLogs({limit: 10, since: '3d', text: 'old release log'})).total, 1)
+					// Parts compare as numbers: 0.1.1000 is newer than 0.1.999, whose trace and log go; the local build's stays.
 					yield* telemetry.ingestTraces(release('0.1.1000', 'd'))
 					assert.deepStrictEqual(yield* kept(telemetry), ['b', 'd'])
+					assert.strictEqual((yield* telemetry.searchLogs({limit: 10, since: '3d', text: 'old release log'})).total, 0)
 					assert.containsSubset((yield* telemetry.checkIngestion()).services, [{release: '0.1.1000'}])
 					// OTel's version is free text: one that isn't dot-separated numbers, such as a commit, has no order and is kept.
 					yield* telemetry.ingestTraces(release('a3f9c21', 'e'))

@@ -32,6 +32,8 @@ import type {
 // Each operation lists this many traces, its newest failures among them.
 const KEEP = 20
 
+const EMPTY_ENTRIES = Array.empty<Entry>()
+
 // Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
 const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
@@ -135,29 +137,12 @@ function isSuperseded(entry: Entry, newest: Record<string, string>) {
 	)
 }
 
-// A release is whole-trace too: keep the trace while any versioned entry is current or an unversioned sibling is present.
-function supersededTraces(entries: readonly Entry[], newest: Record<string, string>) {
-	return HashSet.fromIterable(
-		Array.flatMap(
-			Array.fromIterable(
-				HashMap.values(
-					Array.reduce(
-						Array.filter(entries, entry => entry.traceId !== ''),
-						HashMap.empty<string, Entry[]>(),
-						(all, entry) =>
-							HashMap.set(all, entry.traceId, [...Option.getOrElse(HashMap.get(all, entry.traceId), () => []), entry])
-					)
-				)
-			),
-			group => {
-				if (Array.some(group, entry => releaseOf(entry) === '')) return []
-				const versioned = Array.filter(group, entry => releaseOf(entry) !== '')
-				if (Array.isReadonlyArrayEmpty(versioned)) return []
-				if (Array.some(versioned, entry => !isSuperseded(entry, newest))) return []
-				return [Option.getOrThrow(Array.head(group)).traceId]
-			}
-		)
-	)
+// A trace is dropped only when it has versioned entries and every one of them is old.
+function groupSuperseded(group: readonly Entry[], newest: Record<string, string>) {
+	if (Array.some(group, entry => releaseOf(entry) === '')) return false
+	const versioned = Array.filter(group, entry => releaseOf(entry) !== '')
+	if (Array.isReadonlyArrayEmpty(versioned)) return false
+	return Array.every(versioned, entry => isSuperseded(entry, newest))
 }
 
 function pruned(entry: Entry, traces: HashSet.HashSet<string>, prune: (entry: Entry) => boolean) {
@@ -185,7 +170,7 @@ export function retentionOf(
 		})
 		return received < cutoff
 	}
-	// Expiry is whole-trace: when one entry outlives retention, its siblings go too.
+	// Expiry is whole-trace: when one entry outlives retention, its siblings go too. A release is too: keep the trace while any versioned entry is current or an unversioned sibling is present.
 	const traces = HashSet.union(
 		HashSet.fromIterable(
 			Array.map(
@@ -193,7 +178,23 @@ export function retentionOf(
 				entry => entry.traceId
 			)
 		),
-		supersededTraces(entries, newest)
+		HashSet.fromIterable(
+			Array.getSomes(
+				Array.map(
+					Record.values(
+						Array.groupBy(
+							Array.filter(entries, entry => entry.traceId !== ''),
+							entry => entry.traceId
+						)
+					),
+					group =>
+						Boolean.match(groupSuperseded(group, newest), {
+							onFalse: () => Option.none<string>(),
+							onTrue: () => Option.some(Array.headNonEmpty(group).traceId)
+						})
+				)
+			)
+		)
 	)
 	const expired = Array.filter(entries, entry =>
 		pruned(entry, traces, candidate => expiredOne(candidate) || isSuperseded(candidate, newest))
@@ -209,25 +210,50 @@ export function retentionOf(
 	}
 }
 
+// Save touches the traces it receives and, when a service's newest release moved, only that service's stored entries.
 export function reconcileReleases(
-	current: HashMap.HashMap<string, Entry>,
-	entries: Entry[],
+	entriesOf: (traceId: string) => readonly Entry[],
+	entriesOfService: (service: string) => readonly Entry[],
+	incoming: Entry[],
 	known: Record<string, string>
 ) {
-	const newest = newestVersions(entries, known)
-	const stored = Array.fromIterable(HashMap.values(current))
-	const traces = supersededTraces([...stored, ...entries], newest)
-	const accepted = Array.filter(entries, entry => !pruned(entry, traces, candidate => isSuperseded(candidate, newest)))
-	const replaced = Array.filter(stored, entry => pruned(entry, traces, candidate => isSuperseded(candidate, newest)))
-	return {
-		accepted,
-		newest,
-		next: Array.reduce(
-			accepted,
-			Array.reduce(replaced, current, (all, entry) => HashMap.remove(all, entry.id)),
-			(all, entry) => HashMap.set(all, entry.id, entry)
+	const newest = newestVersions(incoming, known)
+	const groups = Array.groupBy(
+		Array.filter(incoming, entry => entry.traceId !== ''),
+		entry => entry.traceId
+	)
+	const changedEntries = Array.flatMap(
+		Array.filter(
+			Array.dedupe(Array.map(incoming, entry => entry.service)),
+			service =>
+				Option.getOrUndefined(Record.get(known, service)) !== Option.getOrUndefined(Record.get(newest, service))
 		),
-		replaced
+		(service: string) => entriesOfService(service)
+	)
+	const touched = HashSet.union(
+		HashSet.fromIterable(Record.keys(groups)),
+		HashSet.fromIterable(
+			Array.flatMap(changedEntries, entry =>
+				Boolean.match(entry.traceId === '', {onFalse: () => [entry.traceId], onTrue: () => []})
+			)
+		)
+	)
+	const outcomes = Array.map(Array.fromIterable(touched), traceId => {
+		const current = entriesOf(traceId)
+		const batch = Option.getOrElse(Record.get(groups, traceId), () => EMPTY_ENTRIES)
+		if (groupSuperseded([...current, ...batch], newest)) return {accepted: EMPTY_ENTRIES, replaced: current}
+		return {accepted: batch, replaced: EMPTY_ENTRIES}
+	})
+	return {
+		accepted: [
+			...Array.filter(incoming, entry => entry.traceId === '' && !isSuperseded(entry, newest)),
+			...Array.flatMap(outcomes, outcome => outcome.accepted)
+		],
+		newest,
+		replaced: [
+			...Array.filter(changedEntries, entry => entry.traceId === '' && isSuperseded(entry, newest)),
+			...Array.flatMap(outcomes, outcome => outcome.replaced)
+		]
 	}
 }
 
@@ -528,7 +554,7 @@ function traceLinks(entries: readonly Entry[]) {
 					`${entry.traceId}:${entry.spanId}`,
 					Array.dedupeWith(
 						Array.getSomes(
-							Array.map(readLinks(entry.payload), link =>
+							Array.map(entry.links ?? [], link =>
 								Boolean.match(link.traceId === entry.traceId, {
 									onFalse: () => Record.get(roots, link.traceId),
 									onTrue: () => Option.none<TraceLink>()
@@ -547,7 +573,7 @@ function traceLinks(entries: readonly Entry[]) {
 			Option.match(Record.get(roots, entry.traceId), {
 				onNone: () => all,
 				onSome: follower =>
-					Array.reduce(readLinks(entry.payload), all, (maps, link) => {
+					Array.reduce(entry.links ?? [], all, (maps, link) => {
 						if (link.traceId === entry.traceId) return maps
 						const spanKey = `${link.traceId}:${link.spanId}`
 						return {
@@ -591,7 +617,7 @@ export function traceView(entries: Entry[], id: string) {
 			return {
 				path: [...Array.map(ancestors, parent => parent.index), span.index],
 				value: {
-					...span.entry,
+					...Struct.omit(span.entry, ['links']),
 					depth: ancestors.length,
 					...Option.match(Record.get(links.followers.bySpan, key), {
 						onNone: () => ({}),
