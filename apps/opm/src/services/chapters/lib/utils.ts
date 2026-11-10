@@ -17,7 +17,7 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 
-import type {Chapter, ChapterItem, CubariSeries, Post, Series} from '#services/chapters/schema.ts'
+import type {Chapter, ChapterItem, CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
 import {ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
@@ -37,10 +37,6 @@ export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem,
 
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-export function indexUrl(series: Series) {
-	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
-}
-
 export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
 	return `${chapter.series}:${chapter.number}`
 }
@@ -53,8 +49,9 @@ export function mergeMissingChapters(current: Chapter[], chapters: Chapter[]) {
 	)
 }
 
-export function revisionCandidates(posts: Post[], current: Chapter[]) {
+export function revisionCandidates(posts: Post[], current: Chapter[], deadLinks: readonly DeadLink[]) {
 	const known = HashMap.fromIterable(Array.map(current, chapter => [keyOf(chapter), chapter] as const))
+	const dead = HashSet.fromIterable(Array.map(deadLinks, item => `${item.key}\u0000${item.link}`))
 	return Array.filterMap(
 		Array.sort(
 			posts,
@@ -62,14 +59,53 @@ export function revisionCandidates(posts: Post[], current: Chapter[]) {
 		),
 		post =>
 			Array.match(
-				Array.filter(post.links, link =>
-					Option.match(HashMap.get(known, keyOf(post)), {
-						onNone: () => true,
-						onSome: item => post.revised && post.postedAt > (item.revisedAt ?? item.postedAt) && link !== item.source
-					})
+				Array.filter(
+					post.links,
+					link =>
+						!HashSet.has(dead, `${keyOf(post)}\u0000${link}`) &&
+						Option.match(HashMap.get(known, keyOf(post)), {
+							onNone: () => true,
+							onSome: item => post.revised && post.postedAt > (item.revisedAt ?? item.postedAt) && link !== item.source
+						})
 				),
 				{onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})}
 			)
+	)
+}
+
+// The whole numbers between a series' lowest and highest known chapter that no chapter fills, such as 231 and 232 before a source exists.
+export function missingNumbers(chapters: Chapter[], kind: Series) {
+	const numbers = Array.filterMap(chapters, chapter =>
+		Boolean.match(chapter.series === kind, {
+			onFalse: () => Result.failVoid,
+			onTrue: () => Result.succeed(chapter.number)
+		})
+	)
+	if (!Array.isReadonlyArrayNonEmpty(numbers)) return Array.empty<number>()
+	const known = HashSet.fromIterable(numbers)
+	return Array.filter(
+		Array.range(Math.ceil(Array.min(numbers, Order.Number)), Math.floor(Array.max(numbers, Order.Number))),
+		number => !HashSet.has(known, number)
+	)
+}
+
+// Every index chapter on a series' first read; later reads fill only the gaps between its lowest and highest known chapter.
+export function indexChapters(current: Chapter[], chapters: Chapter[], kind: Series) {
+	const known = HashSet.fromIterable(Array.map(current, keyOf))
+	const numbers = Array.filterMap(current, chapter =>
+		Boolean.match(chapter.series === kind, {
+			onFalse: () => Result.failVoid,
+			onTrue: () => Result.succeed(chapter.number)
+		})
+	)
+	if (!Array.isReadonlyArrayNonEmpty(numbers)) {
+		return Array.filter(chapters, chapter => !HashSet.has(known, keyOf(chapter)))
+	}
+	const low = Array.min(numbers, Order.Number)
+	const high = Array.max(numbers, Order.Number)
+	return Array.filter(
+		chapters,
+		chapter => !HashSet.has(known, keyOf(chapter)) && chapter.number > low && chapter.number < high
 	)
 }
 
@@ -180,7 +216,7 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 				...found,
 				notified: true,
 				series: kind,
-				source: `${indexUrl(kind)}${entry[0]}/1/`,
+				source: `https://cubari.moe/read/gist/${INDEXES[kind]}/${entry[0]}/1/`,
 				title: nameOf(entry[1].title ?? '')
 			})),
 			Result.fromOption(() => undefined)

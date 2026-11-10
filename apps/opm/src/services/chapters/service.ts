@@ -14,6 +14,8 @@ import {
 	Order,
 	Random,
 	Record,
+	Ref,
+	Result,
 	Schedule,
 	Schema,
 	Stream,
@@ -24,16 +26,17 @@ import {
 } from 'effect'
 
 import * as cheerio from 'cheerio'
-import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {openStore} from '#services/chapters/lib/store.ts'
 import {
 	byNumber,
 	chaptersFromIndex,
 	INDEXES,
-	indexUrl,
+	indexChapters,
 	keyOf,
 	mergeMissingChapters,
+	missingNumbers,
 	nameOf,
 	pagesOf,
 	postFrom,
@@ -43,7 +46,7 @@ import {
 	SERIES_NAMES
 } from '#services/chapters/lib/utils.ts'
 import type {Chapter, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChaptersError, CubariSeries, Post, PushTickets, Series} from '#services/chapters/schema.ts'
+import {ChaptersError, CubariSeries, DeadLink, Post, PushTickets, Series} from '#services/chapters/schema.ts'
 
 // Reddit's JSON answers 403 to servers even through the proxy; its Atom search feed answers. A release can be posted on either subreddit only.
 const FEEDS = [
@@ -159,29 +162,19 @@ export class Chapters extends Context.Service<
 					yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`),
 					kind
 				)
-				// Only the numbers still missing: a chapter Reddit already supplied keeps its pages.
-				yield* save(current => mergeMissingChapters(current, chapters))
-				yield* Effect.logInfo(`Backfilled ${chapters.length} ${kind} chapters from the community index`)
+				// A chapter Reddit already supplied keeps its pages; later rounds fill only the gaps the index now covers.
+				const missing = indexChapters(yield* SubscriptionRef.get(state), chapters, kind)
+				if (Array.isReadonlyArrayEmpty(missing)) return
+				yield* save(current => mergeMissingChapters(current, missing))
+				yield* Effect.logInfo(`Backfilled ${missing.length} ${kind} chapters from the community index`)
 			})
 
 			const sync = Effect.gen(function* () {
-				// The index fills the back catalogue once; a failed read is tried again next round.
+				// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
 				yield* Effect.forEach(
 					Series.literals,
 					kind =>
-						Effect.gen(function* () {
-							if (
-								!Array.some(
-									yield* SubscriptionRef.get(state),
-									chapter => chapter.series === kind && String.startsWith(indexUrl(kind))(chapter.source)
-								)
-							) {
-								yield* pipe(
-									backfill(kind),
-									Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})
-								)
-							}
-						}),
+						pipe(backfill(kind), Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})),
 					{concurrency: 1, discard: true}
 				)
 				// One subreddit that does not answer leaves the other's releases for this round.
@@ -189,64 +182,104 @@ export class Chapters extends Context.Service<
 					FEEDS,
 					url =>
 						pipe(
-							// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
-							Effect.gen(function* () {
-								const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
-								return yield* pipe(
-									HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
-									Effect.flatMap(HttpClientResponse.filterStatusOk),
-									Effect.flatMap(response => response.text),
-									Effect.timeout('20 seconds'),
-									// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each try owns an agent pinned to one proxy session.
-									Effect.provide(
-										Option.match(exit, {
-											onNone: () => Layer.succeed(HttpClient.HttpClient, client),
-											onSome: proxy =>
-												pipe(
-													NodeHttpClient.layerNodeHttpNoAgent,
-													Layer.provide(
-														NodeHttpClient.layerAgentOptions({
-															proxyEnv: {
-																HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
-																HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
-																NODE_ENV: 'production'
-															}
-														})
+							Effect.scoped(
+								Effect.gen(function* () {
+									const feedClient = yield* Option.match(exit, {
+										onNone: () => Effect.succeed(client),
+										// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
+										onSome: proxy =>
+											Effect.gen(function* () {
+												const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+												const context = yield* Layer.build(
+													pipe(
+														NodeHttpClient.layerNodeHttpNoAgent,
+														Layer.provide(
+															NodeHttpClient.layerAgentOptions({
+																proxyEnv: {
+																	HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
+																	HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
+																	NODE_ENV: 'production'
+																}
+															})
+														)
 													)
 												)
-										})
+												return Context.get(context, HttpClient.HttpClient)
+											})
+									})
+									return yield* pipe(
+										HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
+										Effect.flatMap(HttpClientResponse.filterStatusOk),
+										Effect.flatMap(response => response.text),
+										Effect.timeout('20 seconds'),
+										Effect.provideService(HttpClient.HttpClient, feedClient)
 									)
-								)
-							}),
+								})
+							),
 							Effect.retry({times: 3}),
 							Effect.map(postsOf),
 							Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
 							Effect.option
 						),
-					{concurrency: 1}
+					{concurrency: 'unbounded'}
 				)
 				if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
 				const now = yield* Clock.currentTimeMillis
+				const deadLinks = yield* store.deadLinks
 				const candidates = revisionCandidates(
 					[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
-					yield* SubscriptionRef.get(state)
+					yield* SubscriptionRef.get(state),
+					deadLinks
 				)
+				const newlyDead = yield* Ref.make(Array.empty<DeadLink>())
+				const groups = Record.toEntries(Array.groupBy(candidates, candidate => keyOf(candidate.post)))
 				// The first link that loads wins: a release's best translation can be gone while another still reads.
 				const found = yield* Effect.forEach(
-					Record.toEntries(Array.groupBy(candidates, candidate => keyOf(candidate.post))),
+					groups,
 					entry =>
 						pipe(
 							Effect.firstSuccessOf(
-								Array.flatMap(entry[1], candidate => Array.map(candidate.links, link => resolve(candidate.post, link)))
+								Array.flatMap(entry[1], candidate =>
+									Array.map(candidate.links, link =>
+										pipe(
+											resolve(candidate.post, link),
+											Effect.tapError(error =>
+												Boolean.match(HttpClientError.isHttpClientError(error) && error.response?.status === 404, {
+													onFalse: () => Effect.void,
+													onTrue: () =>
+														Ref.update(newlyDead, links =>
+															Boolean.match(
+																Array.some(links, item => item.key === entry[0] && item.link === link),
+																{onFalse: () => [...links, DeadLink.make({key: entry[0], link})], onTrue: () => links}
+															)
+														)
+												})
+											)
+										)
+									)
+								)
 							),
 							Effect.asSome,
-							Effect.tapError(error => Effect.logWarning(`Chapter ${entry[0]} has no readable pages`, error)),
 							Effect.orElseSucceed(Option.none<Chapter>)
 						),
 					{concurrency: 1}
 				)
+				const recorded = yield* Ref.get(newlyDead)
+				if (Array.isReadonlyArrayNonEmpty(recorded)) yield* store.saveDeadLinks([...deadLinks, ...recorded])
 				// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
 				yield* save(current => reconcileChapters(current, Array.getSomes(found), now))
+				const current = yield* SubscriptionRef.get(state)
+				const unreadable = Array.dedupe([
+					...Array.flatMap(Series.literals, kind =>
+						Array.map(missingNumbers(current, kind), number => keyOf({number, series: kind}))
+					),
+					...Array.filterMap(Array.zip(groups, found), pair =>
+						Option.match(pair[1], {onNone: () => Result.succeed(pair[0][0]), onSome: () => Result.failVoid})
+					)
+				])
+				if (Array.isReadonlyArrayNonEmpty(unreadable)) {
+					yield* Effect.logWarning(`No readable source for ${Array.join(unreadable, ', ')}`)
+				}
 			})
 
 			const send = Effect.fnUntraced(function* (chapter: Chapter, tokens: string[]) {

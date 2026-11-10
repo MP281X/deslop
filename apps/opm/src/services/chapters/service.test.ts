@@ -4,14 +4,20 @@ import {assert, it} from '@effect/vitest'
 import {
 	Array,
 	Boolean,
+	Clock,
+	ConfigProvider,
 	Context,
 	Effect,
 	Fiber,
 	FileSystem,
 	Layer,
 	Logger,
+	MutableRef,
 	Option,
+	Predicate,
 	Queue,
+	Random,
+	Record,
 	Ref,
 	Schema,
 	Stream,
@@ -27,9 +33,40 @@ import {TestClock} from 'effect/testing'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {openStore} from '#services/chapters/lib/store.ts'
-import {keyOf} from '#services/chapters/lib/utils.ts'
+import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
+
+function chapterAt(series: Series, number: number) {
+	return Chapter.make({
+		notified: true,
+		number,
+		pages: [`https://example.test/${series}-${number}.png`],
+		postedAt: 0,
+		series,
+		source: `https://cubari.moe/read/gist/${INDEXES[series]}/${number}/1/`,
+		title: ''
+	})
+}
+
+function index(links: Record<string, string>) {
+	return Response.json({chapters: Record.map(links, link => ({groups: {english: [link]}}))})
+}
+
+function warningLayer(queue: Queue.Queue<void>, prefix: string) {
+	return Logger.layer([
+		Logger.make(options => {
+			for (const message of Option.getOrElse(
+				Schema.decodeUnknownOption(Schema.Array(Schema.Unknown))(options.message),
+				() => []
+			)) {
+				if (Predicate.isString(message) && String.startsWith(prefix)(message)) {
+					Queue.offerUnsafe(queue, undefined)
+				}
+			}
+		})
+	])
+}
 
 it.layer(NodeServices.layer)(test => {
 	test.effect(
@@ -258,6 +295,247 @@ it.layer(NodeServices.layer)(test => {
 				]
 			)
 			assert.isTrue(Array.every(saved, chapter => chapter.notified))
+		})
+	)
+
+	test.effect(
+		'fills a chapter gap from the community index on a later sync',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			yield* store.save([
+				...Array.map([228, 233, 234, 235, 236, 237], number => chapterAt('manga', number)),
+				chapterAt('webcomic', 158)
+			])
+			const later = yield* Ref.make(false)
+			const reads = yield* Ref.make(0)
+			const reported = yield* Queue.unbounded<void>()
+			const client = HttpClient.make(request =>
+				Effect.gen(function* () {
+					if (String.endsWith('/gist/series/OPM/')(request.url)) {
+						yield* Ref.update(reads, count => count + 1)
+						const links = Boolean.match(yield* Ref.get(later), {
+							onFalse: () => ({'228': 'https://example.test/228.png', '233': 'https://example.test/233.png'}),
+							onTrue: () => ({
+								'228': 'https://example.test/228.png',
+								'229': 'https://example.test/229.png',
+								'230': 'https://example.test/230.png',
+								'233': 'https://example.test/233.png'
+							})
+						})
+						return HttpClientResponse.fromWeb(request, index(links))
+					}
+					if (String.endsWith('/gist/series/JYHJU/')(request.url)) {
+						return HttpClientResponse.fromWeb(request, index({'158': 'https://example.test/158.png'}))
+					}
+					if (String.includes('search.rss')(request.url)) {
+						return HttpClientResponse.fromWeb(request, new Response('<feed></feed>'))
+					}
+					return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+				})
+			)
+			yield* Layer.build(
+				pipe(
+					Chapters.layer,
+					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+					Layer.provide(warningLayer(reported, 'No readable source for'))
+				)
+			)
+			yield* Queue.take(reported)
+			assert.isFalse(Array.some(yield* store.load, item => item.number === 229))
+			yield* Ref.set(later, true)
+			yield* TestClock.adjust('6 hours')
+			yield* Queue.take(reported)
+			const saved = yield* store.load
+			assert.deepStrictEqual(
+				Array.map(
+					Array.sort(
+						Array.filter(saved, item => item.series === 'manga' && item.number >= 229 && item.number <= 230),
+						byNumber
+					),
+					item => [item.number, item.pages]
+				),
+				[
+					[229, ['https://example.test/229.png']],
+					[230, ['https://example.test/230.png']]
+				]
+			)
+			assert.isFalse(Array.some(saved, item => item.series === 'manga' && (item.number === 231 || item.number === 232)))
+			assert.strictEqual(yield* Ref.get(reads), 2)
+		})
+	)
+
+	test.effect(
+		'fetches a dead reader link once across two syncs',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			yield* store.save([
+				...Array.map([228, 233, 234, 235, 236, 237], number => chapterAt('manga', number)),
+				chapterAt('webcomic', 158)
+			])
+			const fetches = yield* Ref.make(0)
+			const reported = yield* Queue.unbounded<void>()
+			const client = HttpClient.make(request =>
+				Effect.gen(function* () {
+					if (String.includes('/read/api/gist/series/dead/')(request.url)) {
+						yield* Ref.update(fetches, count => count + 1)
+						return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+					}
+					if (String.endsWith('/gist/series/OPM/')(request.url)) {
+						return HttpClientResponse.fromWeb(
+							request,
+							index({'228': 'https://example.test/228.png', '233': 'https://example.test/233.png'})
+						)
+					}
+					if (String.endsWith('/gist/series/JYHJU/')(request.url)) {
+						return HttpClientResponse.fromWeb(request, index({'158': 'https://example.test/158.png'}))
+					}
+					if (String.includes('/r/OnePunchMan/search.rss')(request.url)) {
+						return HttpClientResponse.fromWeb(
+							request,
+							new Response(
+								`<feed><entry><title>Chapter 229 [English]</title><published>1969-12-30T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/gist/dead/1/1/"&gt;Read&lt;/a&gt;</content></entry></feed>`
+							)
+						)
+					}
+					if (String.includes('search.rss')(request.url)) {
+						return HttpClientResponse.fromWeb(request, new Response('<feed></feed>'))
+					}
+					return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+				})
+			)
+			yield* Layer.build(
+				pipe(
+					Chapters.layer,
+					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+					Layer.provide(warningLayer(reported, 'No readable source for'))
+				)
+			)
+			yield* Queue.take(reported)
+			assert.strictEqual(yield* Ref.get(fetches), 1)
+			yield* TestClock.adjust('6 hours')
+			yield* Queue.take(reported)
+			assert.strictEqual(yield* Ref.get(fetches), 1)
+			assert.isFalse(Array.some(yield* store.load, item => keyOf(item) === 'manga:229'))
+		})
+	)
+
+	test.effect(
+		'fetches both subreddit feeds concurrently',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const starts = yield* Ref.make(Array.empty<number>())
+			const arrivals = yield* Queue.unbounded<void>()
+			const client = HttpClient.make(request =>
+				Effect.gen(function* () {
+					if (String.includes('/r/OnePunchMan/search.rss')(request.url)) {
+						const started = yield* Clock.currentTimeMillis
+						yield* Ref.update(starts, times => [...times, started])
+						yield* Queue.offer(arrivals, undefined)
+						yield* Effect.sleep('1 second')
+						return HttpClientResponse.fromWeb(
+							request,
+							new Response(
+								`<feed><entry><title>Chapter 100 [English]</title><published>1969-12-30T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/first/1/1/"&gt;Read&lt;/a&gt;</content></entry></feed>`
+							)
+						)
+					}
+					if (String.includes('/r/OPMFolk/search.rss')(request.url)) {
+						const started = yield* Clock.currentTimeMillis
+						yield* Ref.update(starts, times => [...times, started])
+						yield* Queue.offer(arrivals, undefined)
+						yield* Effect.sleep('1 second')
+						return HttpClientResponse.fromWeb(
+							request,
+							new Response(
+								`<feed><entry><title>Chapter 101 [English]</title><published>1969-12-30T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/second/1/1/"&gt;Read&lt;/a&gt;</content></entry></feed>`
+							)
+						)
+					}
+					if (
+						String.endsWith('/gist/series/OPM/')(request.url) ||
+						String.endsWith('/gist/series/JYHJU/')(request.url)
+					) {
+						return HttpClientResponse.fromWeb(request, index({'1': 'https://example.test/index.png'}))
+					}
+					return HttpClientResponse.fromWeb(
+						request,
+						Response.json({chapters: {'1': {groups: {english: ['https://example.test/page.png']}}}})
+					)
+				})
+			)
+			const chapters = Context.get(
+				yield* Layer.build(
+					pipe(
+						Chapters.layer,
+						Layer.provide(layerKeyValueStore(directory)),
+						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+					)
+				),
+				Chapters
+			)
+			yield* Queue.take(arrivals)
+			yield* Queue.take(arrivals)
+			yield* TestClock.adjust('10 seconds')
+			yield* pipe(
+				chapters.changes,
+				Stream.filter(event =>
+					Array.every(['manga:100', 'manga:101'], key => Array.some(event.upserted, item => keyOf(item) === key))
+				),
+				Stream.runHead
+			)
+			const startedAt = yield* Ref.get(starts)
+			assert.strictEqual(Array.length(startedAt), 2)
+			assert.strictEqual(Option.getOrThrow(Array.head(startedAt)), Option.getOrThrow(Array.last(startedAt)))
+		})
+	)
+
+	test.effect(
+		'leaves from a fresh proxy session on every feed try',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const sessions = MutableRef.make(Array.empty<number>())
+			const failed = yield* Queue.unbounded<void>()
+			const client = HttpClient.make(request =>
+				Effect.sync(() =>
+					Boolean.match(
+						String.endsWith('/gist/series/OPM/')(request.url) || String.endsWith('/gist/series/JYHJU/')(request.url),
+						{
+							onFalse: () => HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404})),
+							onTrue: () => HttpClientResponse.fromWeb(request, index({'1': 'https://example.test/index.png'}))
+						}
+					)
+				)
+			)
+			yield* Layer.build(
+				pipe(
+					Chapters.layer,
+					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
+					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({OPM_PROXY: 'http://127.0.0.1:9'}))),
+					Layer.provide(warningLayer(failed, 'The chapter sync failed')),
+					Layer.provide(
+						Layer.succeed(Random.Random, {
+							nextDoubleUnsafe: () => {
+								const session = Array.length(sessions.current) + 1
+								sessions.current = [...sessions.current, session]
+								return session / 100
+							},
+							nextIntUnsafe: () => 0
+						})
+					)
+				)
+			)
+			yield* Queue.take(failed)
+			assert.strictEqual(Array.length(sessions.current), 8)
+			assert.strictEqual(Array.length(Array.dedupe(sessions.current)), 8)
+			yield* TestClock.adjust('6 hours')
+			yield* Queue.take(failed)
+			assert.strictEqual(Array.length(sessions.current), 16)
+			assert.strictEqual(Array.length(Array.dedupe(sessions.current)), 16)
 		})
 	)
 

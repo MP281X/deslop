@@ -82,6 +82,10 @@ export const Post = Schema.Struct({
 	series: Series
 })
 
+// A reader link that answered 404 for its chapter; the sync skips it until the chapter gains another link.
+export type DeadLink = typeof DeadLink.Type
+export const DeadLink = Schema.Struct({key: Schema.String, link: Schema.String})
+
 // Expo's answer to a push batch, one ticket per message in order.
 export type PushTickets = typeof PushTickets.Type
 export const PushTickets = Schema.Struct({
