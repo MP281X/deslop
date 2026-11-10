@@ -201,9 +201,15 @@ export class Notes extends Context.Service<
 
 				// One note at a time, so two notes read together cannot create rival tags for the same topic.
 				function tag(userId: string, id: Note['id'], stills: Picture[]) {
-					return Effect.flatMap(
-						findNote(id),
-						Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})
+					return pipe(
+						Effect.flatMap(
+							findNote(id),
+							Option.match({
+								onNone: () => Effect.void,
+								onSome: note => tagging.withPermit(tagNote(userId, note, stills))
+							})
+						),
+						Effect.withSpan('Notes.tag', {attributes: {'note.id': id}})
 					)
 				}
 
@@ -236,30 +242,32 @@ export class Notes extends Context.Service<
 					note: Note,
 					input: {slides: Picture[]; url: string; useInfo: boolean; video: string}
 				) {
-					const read = yield* pipe(
-						media.read(userId, input.url, input.video),
-						Effect.asSome,
-						optional('The video could not be read', Option.none)
-					)
 					// The transcript and the stills each run yt-dlp, so they run side by side; the note shows its transcript before the stills finish.
 					const [, frames] = yield* Effect.all(
 						[
 							pipe(
-								Option.filter(read, () => note.transcript === undefined),
-								Option.map(details => pipe(details.transcript, optional('No transcript', Option.none<string>))),
-								Effect.transposeOption,
-								Effect.map(Option.flatten),
-								Effect.flatMap(transcript =>
-									updateNote(note.id, item => ({
-										...Option.match(
-											Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
-											{
-												onNone: () => item,
-												onSome: details => ({...Struct.omit(item, ['issue']), content: details.info})
-											}
-										),
-										...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
-									}))
+								media.read(userId, input.url, input.video),
+								Effect.asSome,
+								optional('The video could not be read', Option.none),
+								Effect.flatMap(read =>
+									pipe(
+										Option.filter(read, () => note.transcript === undefined),
+										Option.map(details => pipe(details.transcript, optional('No transcript', Option.none<string>))),
+										Effect.transposeOption,
+										Effect.map(Option.flatten),
+										Effect.flatMap(transcript =>
+											updateNote(note.id, item => ({
+												...Option.match(
+													Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
+													{
+														onNone: () => item,
+														onSome: details => ({...Struct.omit(item, ['issue']), content: details.info})
+													}
+												),
+												...Option.match(transcript, {onNone: () => ({}), onSome: text => ({transcript: text})})
+											}))
+										)
+									)
 								)
 							),
 							pipe(media.frames(input.video), optional('No video frames', Array.empty<Still>))
@@ -338,38 +346,51 @@ export class Notes extends Context.Service<
 
 				function start(userId: string, note: Note) {
 					return pipe(
-						updateNote(note.id, item => ({...item, requester: userId})),
-						Effect.andThen(
-							Option.match(Option.fromNullishOr(note.file), {
-								onNone: () =>
-									Option.match(Option.fromNullishOr(note.url), {
-										onNone: () => tag(userId, note.id, []),
-										onSome: link => reading.withPermit(organizeLink(userId, note, link))
-									}),
-								onSome: type => reading.withPermit(organizeFile(userId, note, type))
-							})
-						),
-						Effect.tapCause(cause =>
-							Boolean.match(Cause.hasInterruptsOnly(cause), {
-								onFalse: () =>
-									pipe(
-										updateNote(note.id, item =>
-											Boolean.match(item.status === 'organizing', {
-												onFalse: () => item,
-												onTrue: () => ({
-													...item,
-													issue: 'Tagging stopped before it finished.',
-													status: 'failed' as const
-												})
-											})
-										),
-										Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
+						Effect.option(Effect.currentSpan),
+						Effect.flatMap(request =>
+							pipe(
+								updateNote(note.id, item => ({...item, requester: userId})),
+								Effect.andThen(
+									Option.match(Option.fromNullishOr(note.file), {
+										onNone: () =>
+											Option.match(Option.fromNullishOr(note.url), {
+												onNone: () => tag(userId, note.id, []),
+												onSome: link => reading.withPermit(organizeLink(userId, note, link))
+											}),
+										onSome: type => reading.withPermit(organizeFile(userId, note, type))
+									})
+								),
+								Effect.tapCause(cause =>
+									Boolean.match(Cause.hasInterruptsOnly(cause), {
+										onFalse: () =>
+											pipe(
+												updateNote(note.id, item =>
+													Boolean.match(item.status === 'organizing', {
+														onFalse: () => item,
+														onTrue: () => ({
+															...item,
+															issue: 'Tagging stopped before it finished.',
+															status: 'failed' as const
+														})
+													})
+												),
+												Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
+											),
+										onTrue: () => Effect.void
+									})
+								),
+								// A finished or cancelled capture must not keep its request's trace open; the pipeline links back to it instead.
+								Effect.withSpan('Notes.organize', {
+									attributes: {'note.id': note.id},
+									links: Option.toArray(
+										Option.map(request, span => ({attributes: {'link.type': 'follows-from'}, span}))
 									),
-								onTrue: () => Effect.void
-							})
-						),
-						effect => FiberMap.run(runs, note.id, effect),
-						Effect.asVoid
+									root: true
+								}),
+								effect => FiberMap.run(runs, note.id, effect),
+								Effect.asVoid
+							)
+						)
 					)
 				}
 

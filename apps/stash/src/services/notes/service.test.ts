@@ -8,8 +8,10 @@ import {
 	Effect,
 	Fiber,
 	FileSystem,
+	Function,
 	Latch,
 	Layer,
+	MutableList,
 	Number,
 	Option,
 	PlatformError,
@@ -19,6 +21,7 @@ import {
 	Schema,
 	Stream,
 	String,
+	Tracer,
 	pipe
 } from 'effect'
 
@@ -110,6 +113,19 @@ function counting(calls: Ref.Ref<number>) {
 				}
 			)
 	})
+}
+
+function recordingTracer(onSpan?: (span: Tracer.NativeSpan) => void) {
+	const collected = MutableList.make<Tracer.NativeSpan>()
+	const tracer = Tracer.make({
+		span(options) {
+			const span = new Tracer.NativeSpan(options)
+			MutableList.append(collected, span)
+			onSpan?.(span)
+			return span
+		}
+	})
+	return {spans: () => MutableList.toArray(collected), tracer}
 }
 
 it.layer(NodeServices.layer)('Notes', test => {
@@ -410,6 +426,123 @@ it.layer(NodeServices.layer)('Notes', test => {
 				'https://x.com/cook/status/1 | https://video.twimg.com/clip.mp4',
 				'https://video.twimg.com/clip.mp4'
 			])
+		})
+	)
+
+	test.effect(
+		'gives the background pipeline its own trace, linked to the capture that started it',
+		Effect.fnUntraced(function* () {
+			const recording = recordingTracer()
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: counting(yield* Ref.make(0)),
+				sources: recipe
+			})
+			yield* Effect.withTracer(notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'}), recording.tracer)
+			yield* settled(notes, isReady)
+			const request = Option.getOrThrow(Array.findFirst(recording.spans(), span => span.name === 'Notes.capture'))
+			const pipeline = Option.getOrThrow(Array.findFirst(recording.spans(), span => span.name === 'Notes.organize'))
+			assert.isTrue(Option.isNone(pipeline.parent))
+			assert.notStrictEqual(pipeline.traceId, request.traceId)
+			assert.strictEqual(pipeline.attributes.get('note.id'), IDS[0])
+			assert.isTrue(Array.some(pipeline.links, link => link.span.spanId === request.spanId))
+		})
+	)
+
+	test.effect(
+		'shows a note waiting for the tagging permit inside its own span',
+		Effect.fnUntraced(function* () {
+			const tagged = MutableList.make<Tracer.NativeSpan>()
+			const tagSpans = Latch.makeUnsafe(false)
+			const recording = recordingTracer(span => {
+				if (span.name !== 'Notes.tag') return
+				MutableList.append(tagged, span)
+				if (tagged.length === 2) tagSpans.openUnsafe()
+			})
+			const firstOrganizer = yield* Latch.make()
+			const release = yield* Latch.make()
+			const answer = counting(yield* Ref.make(0))
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					organize: (userId, input) =>
+						Boolean.match(input.note.id === IDS[0], {
+							onFalse: () => answer.organize(userId, input),
+							onTrue: () =>
+								Effect.andThen(firstOrganizer.open, Effect.andThen(release.await, answer.organize(userId, input)))
+						})
+				}),
+				sources: recipe
+			})
+			yield* Effect.withTracer(
+				Effect.gen(function* () {
+					yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
+					yield* notes.capture(USER, {id: IDS[1], text: 'https://example.com/stew'})
+				}),
+				recording.tracer
+			)
+			yield* firstOrganizer.await
+			yield* tagSpans.await
+			const tagList = MutableList.toArray(tagged)
+			assert.strictEqual(tagList.length, 2)
+			yield* TestClock.adjust('1 second')
+			yield* release.open
+			yield* settled(notes, current => Array.every(current, note => note.status === 'ready'))
+			yield* Effect.forEach(
+				Array.makeBy(5, () => Effect.yieldNow),
+				Function.identity,
+				{concurrency: 1, discard: true}
+			)
+			const [first, second] = tagList
+			assert.isDefined(first)
+			assert.isDefined(second)
+			assert.strictEqual(first.status._tag, 'Ended')
+			assert.strictEqual(second.status._tag, 'Ended')
+			if (first.status._tag !== 'Ended' || second.status._tag !== 'Ended') return
+			assert.isTrue(first.startTime <= second.startTime)
+			assert.isTrue(second.startTime < first.status.endTime)
+		})
+	)
+
+	test.effect(
+		'runs the video transcript and stills at the same time',
+		Effect.fnUntraced(function* () {
+			const recording = recordingTracer()
+			const readStarted = yield* Latch.make()
+			const framesStarted = yield* Latch.make()
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				media: Media.of({
+					...noVideo,
+					frames: Effect.fn('Media.frames')(function* () {
+						yield* framesStarted.open
+						yield* Effect.sleep('10 seconds')
+						return []
+					}),
+					read: Effect.fn('Media.read')(function* () {
+						yield* readStarted.open
+						yield* Effect.sleep('10 seconds')
+						return {info: 'Video metadata', transcript: Effect.succeedSome('[00:01] Soak the lentils.\n')}
+					})
+				}),
+				organizer: counting(yield* Ref.make(0)),
+				sources: recipe
+			})
+			yield* Effect.withTracer(
+				notes.capture(USER, {id: IDS[0], text: 'https://www.youtube.com/watch?v=USeyDcWyVCc'}),
+				recording.tracer
+			)
+			yield* readStarted.await
+			yield* framesStarted.await
+			yield* TestClock.adjust('10 seconds')
+			yield* settled(notes, isReady)
+			const read = Option.getOrThrow(Array.findFirst(recording.spans(), span => span.name === 'Media.read'))
+			const frames = Option.getOrThrow(Array.findFirst(recording.spans(), span => span.name === 'Media.frames'))
+			assert.strictEqual(read.status._tag, 'Ended')
+			assert.strictEqual(frames.status._tag, 'Ended')
+			if (read.status._tag !== 'Ended' || frames.status._tag !== 'Ended') return
+			assert.isTrue(frames.startTime < read.status.endTime)
+			assert.isTrue(read.startTime < frames.status.endTime)
 		})
 	)
 
