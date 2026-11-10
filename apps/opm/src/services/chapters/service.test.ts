@@ -33,7 +33,7 @@ import {TestClock} from 'effect/testing'
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {openStore} from '#services/chapters/lib/store.ts'
-import {byNumber, indexUrl, keyOf} from '#services/chapters/lib/utils.ts'
+import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
@@ -44,7 +44,7 @@ function chapterAt(series: Series, number: number) {
 		pages: [`https://example.test/${series}-${number}.png`],
 		postedAt: 0,
 		series,
-		source: `${indexUrl(series)}${number}/1/`,
+		source: `https://cubari.moe/read/gist/${INDEXES[series]}/${number}/1/`,
 		title: ''
 	})
 }

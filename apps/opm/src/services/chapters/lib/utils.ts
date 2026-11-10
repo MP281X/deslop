@@ -37,7 +37,7 @@ export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem,
 
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-export function indexUrl(series: Series) {
+function indexUrl(series: Series) {
 	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
 }
 
