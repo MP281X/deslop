@@ -545,7 +545,6 @@ const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: str
 	})
 })
 
-
 const modern = Effect.fnUntraced(function* (
 	web: Web,
 	token: string,
@@ -780,9 +779,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Effect.flatMap(
 				Stream.runHead(
-					Stream.filter(
-						gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}),
-						rows => Array.some(rows, row => row.id === added.id && row.tools === 1)
+					Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+						Array.some(rows, row => row.id === added.id && row.tools === 1)
 					)
 				),
 				Effect.fromOption
@@ -810,7 +808,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			}
 			assert.isBelow(Option.getOrThrow(Array.get(Array.sort(MutableList.toArray(timings), Order.Number), 2)), 100)
 			assert.isTrue(
-				Array.some(Option.getOrThrow(Array.last(MutableList.toArray(listings))), tool => tool.name === `${added.id}__search`)
+				Array.some(
+					Option.getOrThrow(Array.last(MutableList.toArray(listings))),
+					tool => tool.name === `${added.id}__search`
+				)
 			)
 		})
 	)
@@ -1254,9 +1255,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Effect.forkScoped(gateway.add('https://mcp.example.com/mcp'))
 			yield* Effect.flatMap(
 				Stream.runHead(
-					Stream.filter(
-						gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}),
-						rows => Array.some(rows, server => server.id === 'example')
+					Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+						Array.some(rows, server => server.id === 'example')
 					)
 				),
 				Effect.fromOption

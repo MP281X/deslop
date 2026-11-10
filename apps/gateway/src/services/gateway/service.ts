@@ -30,7 +30,7 @@ import type {Headers} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {bearerOf} from '@deslop/runtime/auth/utils'
+import {bearerOf, isJwt} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
@@ -143,8 +143,11 @@ export class Gateway extends Context.Service<
 				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
 				if (current.mode === 'deslop') {
-					// Every request that reaches here already verified its bearer, so it is forwarded without a second check.
-					return {token: Option.getOrUndefined(bearerOf(headers)) ?? (yield* auth.token(headers)), url: current.url}
+					// Every request that reaches here already verified its bearer, so an access token is forwarded without a second check; a session id still becomes its token.
+					return {
+						token: Option.getOrUndefined(Option.filter(bearerOf(headers), isJwt)) ?? (yield* auth.token(headers)),
+						url: current.url
+					}
 				}
 				return {token: yield* connections.token(server.id, server.generation), url: current.url}
 			})
