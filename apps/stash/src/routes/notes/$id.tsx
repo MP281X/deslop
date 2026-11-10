@@ -50,7 +50,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
-import {imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/notes.ts'
+import {imageAtom, noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
 import {primary} from '#lib/session.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
@@ -317,7 +317,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 }
 
 export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
-	const remove = useAtomSet(removeAtom)
+	const remove = useAtomSet(removal(props.id).send)
 	const regenerate = useAtomSet(regenerateAtom)
 	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(notesAtom)
@@ -374,7 +374,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 									systemImage="trash"
 									role="destructive"
 									onPress={() => {
-										remove(item.id)
+										remove({_tag: 'Removed'})
 										props.onClose()
 									}}
 									modifiers={[tint(colors.destructive)]}

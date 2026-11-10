@@ -44,6 +44,7 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
+import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import {Linking} from 'react-native'
@@ -54,7 +55,15 @@ import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, Loaded, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
-import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
@@ -64,17 +73,24 @@ import {clipboard} from '#lib/clipboard.ts'
 import {Byline} from '#lib/components.tsx'
 import {BrandIcon, BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kindOf, kinds, subjectOf} from '#lib/kinds.ts'
-import {imageAtom, notesAtom, queryAtom, regenerateAtom, removeAtom, searchAtom} from '#lib/notes.ts'
+import {imageAtom, notesAtom, queryAtom, regenerateAtom, removal, searchAtom} from '#lib/notes.ts'
 import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
 
 // The summary waits in the note, so the list scans fast.
-function Lines(props: {note: NoteItem}) {
+function Lines(props: {muted?: boolean; note: NoteItem}) {
 	return (
 		<ItemContent>
-			<ItemTitle>{props.note.title}</ItemTitle>
+			<ItemTitle
+				modifiers={Boolean.match(props.muted === true, {
+					onFalse: () => [],
+					onTrue: () => [foregroundStyle(colors.mutedForeground)]
+				})}
+			>
+				{props.note.title}
+			</ItemTitle>
 			{pipe(
 				Match.value(props.note.status),
 				Match.when('organizing', () => (
@@ -87,7 +103,16 @@ function Lines(props: {note: NoteItem}) {
 					</HStack>
 				)),
 				Match.when('failed', () => (
-					<HStack spacing={space[1]} modifiers={[accessibilityElement('combine'), foregroundStyle(colors.destructive)]}>
+					<HStack
+						spacing={space[1]}
+						modifiers={[
+							accessibilityElement('combine'),
+							Boolean.match(props.muted === true, {
+								onFalse: () => foregroundStyle(colors.destructive),
+								onTrue: () => foregroundStyle(colors.mutedForeground)
+							})
+						]}
+					>
 						<Image systemName="exclamationmark.triangle.fill" modifiers={[text.caption, accessibilityHidden(true)]} />
 						<Text modifiers={[text.detail, lineLimit(1)]}>{`Couldn’t read this ${subjectOf(props.note)}`}</Text>
 					</HStack>
@@ -156,48 +181,77 @@ function NoteRow(props: {
 	onAppear: () => void
 	onOpen: (id: Note['id']) => void
 	onRegenerate: (id: Note['id']) => void
-	onRemove: (id: Note['id']) => void
 }) {
+	const machine = removal(props.note.id)
+	const send = useAtomSet(machine.send)
 	return (
-		<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
-			<ContextMenu>
-				<ContextMenu.Trigger>
-					<Item
-						onPress={() => props.onOpen(props.note.id)}
-						modifiers={[accessibilityAddTraits(['isButton']), onAppear(props.onAppear)]}
-					>
+		<>
+			<MachineState machine={machine} path="Idle">
+				{() => (
+					<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
+						<ContextMenu>
+							<ContextMenu.Trigger>
+								<Item
+									onPress={() => props.onOpen(props.note.id)}
+									modifiers={[accessibilityAddTraits(['isButton']), onAppear(props.onAppear)]}
+								>
+									<ItemMedia>
+										<NoteMedia note={props.note} />
+									</ItemMedia>
+									<Lines note={props.note} />
+								</Item>
+							</ContextMenu.Trigger>
+							<ContextMenu.Items>
+								{Option.match(Option.fromNullishOr(props.note.url), {
+									onNone: () => undefined,
+									onSome: url => (
+										<Button onPress={() => Linking.openURL(url)}>
+											<Label
+												title={Option.match(appOf(props.note), {
+													onNone: () => 'Open Link',
+													onSome: name => `Open in ${name}`
+												})}
+												{...Option.match(brandOf(props.note), {
+													onNone: () => ({systemImage: 'arrow.up.right' as const}),
+													onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
+												})}
+											/>
+										</Button>
+									)
+								})}
+								<Button
+									label="Regenerate"
+									systemImage="arrow.clockwise"
+									onPress={() => props.onRegenerate(props.note.id)}
+								/>
+								<DeleteButton onPress={() => send({_tag: 'Removed'})} />
+							</ContextMenu.Items>
+						</ContextMenu>
+						<SwipeActions.Actions edge="trailing">
+							<DeleteButton onPress={() => send({_tag: 'Removed'})} />
+						</SwipeActions.Actions>
+					</SwipeActions>
+				)}
+			</MachineState>
+			<MachineState machine={machine} path="Pending">
+				{() => (
+					<Item modifiers={itemRow}>
 						<ItemMedia>
 							<NoteMedia note={props.note} />
 						</ItemMedia>
-						<Lines note={props.note} />
+						<Lines muted note={props.note} />
+						<ItemActions>
+							<Button
+								label="Undo"
+								systemImage="arrow.uturn.backward"
+								onPress={() => send({_tag: 'Restored'})}
+								modifiers={[labelStyle('iconOnly')]}
+							/>
+						</ItemActions>
 					</Item>
-				</ContextMenu.Trigger>
-				<ContextMenu.Items>
-					{Option.match(Option.fromNullishOr(props.note.url), {
-						onNone: () => undefined,
-						onSome: url => (
-							<Button onPress={() => Linking.openURL(url)}>
-								<Label
-									title={Option.match(appOf(props.note), {
-										onNone: () => 'Open Link',
-										onSome: name => `Open in ${name}`
-									})}
-									{...Option.match(brandOf(props.note), {
-										onNone: () => ({systemImage: 'arrow.up.right' as const}),
-										onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
-									})}
-								/>
-							</Button>
-						)
-					})}
-					<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(props.note.id)} />
-					<DeleteButton onPress={() => props.onRemove(props.note.id)} />
-				</ContextMenu.Items>
-			</ContextMenu>
-			<SwipeActions.Actions edge="trailing">
-				<DeleteButton onPress={() => props.onRemove(props.note.id)} />
-			</SwipeActions.Actions>
-		</SwipeActions>
+				)}
+			</MachineState>
+		</>
 	)
 }
 
@@ -248,7 +302,6 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 }
 
 function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: string) => void; tag?: string}) {
-	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
 	const paste = useAtomSet(clipboard.atom.send)
 	const query = String.trim(useAtomValue(queryAtom))
@@ -322,7 +375,6 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 												}}
 												onOpen={props.onOpen}
 												onRegenerate={id => regenerate(id)}
-												onRemove={id => remove(id)}
 											/>
 										))}
 									</ItemGroup>

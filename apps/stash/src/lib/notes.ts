@@ -4,6 +4,7 @@ import {Atom} from 'effect/reactivity'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
+import {makeRemoval} from '@deslop/components-mobile/removal'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
@@ -96,17 +97,14 @@ export const regenerateAtom = Atom.keepAlive(
 	)
 )
 
-export const removeAtom = Atom.keepAlive(
-	Atom.fn((id: Note['id'], get) =>
-		pipe(
-			withClient(
-				get,
-				Effect.flatMap(RpcClient, client => client('notes.remove', {id}))
-			),
-			alert('Not Deleted')
+export const removal = makeRemoval({
+	notRemoved: 'Not Deleted',
+	remove: (id, get) =>
+		withClient(
+			get,
+			Effect.flatMap(RpcClient, client => client('notes.remove', {id}))
 		)
-	)
-)
+})
 
 export function capture(text: string) {
 	return Effect.flatMap(RpcClient, client => client('notes.capture', {id: Crypto.randomUUID(), text}))
