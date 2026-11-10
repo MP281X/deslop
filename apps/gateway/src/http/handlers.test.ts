@@ -7,6 +7,8 @@ import {
 	Clock,
 	ConfigProvider,
 	Context,
+	Deferred,
+	Duration,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -14,6 +16,7 @@ import {
 	MutableHashMap,
 	MutableList,
 	Option,
+	Order,
 	Queue,
 	Redacted,
 	Ref,
@@ -23,8 +26,10 @@ import {
 	pipe
 } from 'effect'
 
+import {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {McpSchema, McpServer} from 'effect/ai'
 import {Cookies, FetchHttpClient, HttpClient, HttpClientResponse, HttpRouter} from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 import {RpcTest} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
@@ -39,6 +44,7 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {AiProvider, AiUsageReport} from '#services/ai/schema.ts'
 import {AiProxy} from '#services/ai/service.ts'
+import {mcpClient} from '#services/connections/lib/utils.ts'
 import {ConnectionInfo} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
@@ -75,10 +81,10 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 		})
 	}
 	if (!String.includes('/.well-known/')(url)) return undefined
-	if (url === 'https://stash.mp281x.xyz/.well-known/oauth-protected-resource/mcp') {
+	if (String.endsWith('.mp281x.xyz')(new URL(url).hostname) && String.includes('oauth-protected-resource')(url)) {
 		return Response.json({
 			authorization_servers: [`${AUTH_URL}/api/auth`],
-			resource: 'https://stash.mp281x.xyz/mcp',
+			resource: `${new URL(url).origin}/mcp`,
 			scopes_supported: ['deslop']
 		})
 	}
@@ -208,11 +214,14 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const rejectReady = yield* Queue.make<true>()
 	const rejectContinue = yield* Queue.make<true>()
 	const toolNames = yield* Ref.make(['search'])
+	const discoveryDelay = yield* Ref.make(0)
 	const providerName = yield* Ref.make('legacy-provider')
 	const challengeMethods = yield* Ref.make(Option.some(['S256']))
 	const metadataUnavailable = yield* Ref.make(false)
 	const stall = yield* Ref.make(false)
 	const stallReady = yield* Queue.make<true>()
+	const tokenGrants = yield* Queue.unbounded<void>()
+	const upstreamTools = yield* Queue.unbounded<void>()
 	const upstreamRequests = MutableList.make<{url: string; method: string; authorization: string; body: unknown}>()
 	const grants = MutableList.make<{client: string; grant: string; refresh: string; resource: string}>()
 	const registrations = MutableList.make<{redirect: string; url: string}>()
@@ -223,6 +232,22 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			yield* Queue.take(rejectContinue)
 		}
 		return new Response(undefined, {status: 401})
+	})
+	const listedTools = Effect.fnUntraced(function* (id?: number | string) {
+		yield* Effect.sleep(`${yield* Ref.get(discoveryDelay)} millis`)
+		yield* Queue.offer(upstreamTools, undefined)
+		return Response.json({
+			id,
+			jsonrpc: '2.0',
+			result: {
+				tools: Array.map(yield* Ref.get(toolNames), name => ({
+					annotations: {readOnlyHint: true},
+					description: 'Search example',
+					inputSchema: {properties: {query: {type: 'string'}}, required: ['query'], type: 'object'},
+					name
+				}))
+			}
+		})
 	})
 	function fetchUpstream(input: RequestInfo | URL, init?: RequestInit) {
 		const request = new Request(input, init)
@@ -286,20 +311,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					return new Response(undefined, {status: 404})
 				}
 				if (message.method === 'notifications/initialized') return new Response(undefined, {status: 202})
-				if (message.method === 'tools/list') {
-					return Response.json({
-						id: message.id,
-						jsonrpc: '2.0',
-						result: {
-							tools: Array.map(yield* Ref.get(toolNames), name => ({
-								annotations: {readOnlyHint: true},
-								description: 'Search example',
-								inputSchema: {properties: {query: {type: 'string'}}, required: ['query'], type: 'object'},
-								name
-							}))
-						}
-					})
-				}
+				if (message.method === 'tools/list') return yield* listedTools(message.id)
 				return Response.json({
 					id: message.id,
 					jsonrpc: '2.0',
@@ -361,6 +373,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					refresh: form.get('refresh_token') ?? '',
 					resource: form.get('resource') ?? ''
 				})
+				yield* Queue.offer(tokenGrants, undefined)
 				if (form.get('code') === 'no-refresh') {
 					return HttpClientResponse.fromWeb(
 						request,
@@ -380,7 +393,26 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 		})
 	)
-	const store = ServerRuntime.layerKeyValueStore(directory)
+	const storageFails = yield* Ref.make(false)
+	const store = pipe(
+		Layer.effect(
+			KeyValueStore.KeyValueStore,
+			Effect.gen(function* () {
+				const base = yield* KeyValueStore.KeyValueStore
+				return KeyValueStore.KeyValueStore.of({
+					...base,
+					get: key =>
+						Effect.gen(function* () {
+							if (yield* Ref.get(storageFails)) {
+								return yield* new KeyValueStore.KeyValueStoreError({key, message: 'Storage unavailable', method: 'get'})
+							}
+							return yield* base.get(key)
+						})
+				})
+			})
+		),
+		Layer.provide(ServerRuntime.layerKeyValueStore(directory))
+	)
 	const platform = Layer.mergeAll(
 		NodeCrypto.layer,
 		NodeServices.layer,
@@ -395,17 +427,22 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	)
 	const auth = layerAuth(verified)
 	const clockLayer = Layer.succeed(Clock.Clock, clock)
-	// The RPC client reads the same services the route handlers write, so a recorded call reaches both.
-	const rpc = yield* Layer.buildWithMemoMap(
+	// One set of services for both transports: an RPC add and the MCP endpoint share the same registry.
+	const services = yield* Layer.buildWithMemoMap(
 		pipe(
-			RpcHandlers,
-			Layer.provideMerge(Connections.layer),
-			Layer.provideMerge(AiProxy.layer),
+			Gateway.layer,
+			Layer.provideMerge(Layer.mergeAll(Connections.layer, AiProxy.layer)),
+			Layer.provide(McpServer.McpServer.layer),
 			Layer.provide(store),
 			Layer.provide(platform),
 			Layer.provideMerge(auth),
 			Layer.provideMerge(clockLayer)
 		),
+		memoMap,
+		scope
+	)
+	const rpc = yield* Layer.buildWithMemoMap(
+		pipe(RpcHandlers, Layer.provideMerge(Layer.succeedContext(services))),
 		memoMap,
 		scope
 	)
@@ -415,9 +452,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			HttpRouter.toWebHandler(
 				pipe(
 					Layer.mergeAll(AiHttpHandlers, HttpHandlers, GatewayMcp),
-					Layer.provideMerge(Layer.provide(Gateway.layer, McpServer.McpServer.layer)),
-					Layer.provideMerge(Connections.layer),
-					Layer.provideMerge(AiProxy.layer),
+					Layer.provideMerge(Layer.succeedContext(services)),
 					Layer.provide(store),
 					Layer.provide(platform),
 					Layer.provideMerge(auth),
@@ -443,6 +478,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 				),
 				Effect.fromOption
 			),
+		discoveryDelay,
 		grants,
 		keys: (session: string) => client('ai.keys', undefined, {headers: {cookie: session}}),
 		list: (session: string = SESSION) =>
@@ -467,8 +503,11 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			client('ai.setKey', {provider: aiProvider, secret: Redacted.make(secret)}, {headers: {cookie: session}}),
 		stall,
 		stallReady,
+		storageFails,
+		tokenGrants,
 		toolNames,
 		upstreamRequests,
+		upstreamTools,
 		verified,
 		web
 	}
@@ -560,6 +599,13 @@ const modern = Effect.fnUntraced(function* (
 		},
 		method: 'POST'
 	})
+})
+
+const toolsOf = Effect.fnUntraced(function* (web: Web, token: string) {
+	const response = yield* modern(web, token, 'tools/list')
+	return (yield* Schema.decodeEffect(
+		Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
+	)(yield* Effect.promise(() => response.text()))).result.tools
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
@@ -674,7 +720,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.strictEqual(called.status, 200)
 			assert.include(yield* Effect.promise(() => called.text()), 'alternate-origin')
-			assert.strictEqual((yield* Ref.get(gateway.verified)) - verifiedBefore, 2)
+			assert.strictEqual((yield* Ref.get(gateway.verified)) - verifiedBefore, 1)
 		})
 	)
 	test.effect(
@@ -716,8 +762,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'encodes unsafe tool names and keeps vanished and removed tools out of lists and calls',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			const added = yield* gateway.add('https://public.example.com/mcp')
 			yield* Ref.set(gateway.toolNames, ['search.docs', 'search_docs', 'search__encoded_literal'])
+			const added = yield* gateway.add('https://public.example.com/mcp')
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
 				return Array.filter(
@@ -749,13 +795,145 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				)
 			)
 			yield* Ref.set(gateway.toolNames, ['search_docs'])
+			yield* TestClock.adjust('30 seconds')
+			// The list is answered from the current registry; the changed set arrives behind it.
 			yield* modern(gateway.web, TOKEN, 'tools/list')
+			yield* Effect.flatMap(
+				Stream.runHead(
+					Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+						Array.some(rows, row => row.id === added.id && row.tools === 1)
+					)
+				),
+				Effect.fromOption
+			)
 			assert.deepStrictEqual(yield* listed(), [`${added.id}__search_docs`])
 			const vanished = yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'gone'}, name: encoded})
 			assert.isTrue(String.includes('error')(yield* Effect.promise(() => vanished.text())))
 			yield* gateway.remove(added.id)
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			assert.deepStrictEqual(yield* listed(), [])
+		})
+	)
+	test.effect(
+		'answers tools/list from the registry without awaiting a slow discovery',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* Ref.set(gateway.discoveryDelay, 1500)
+			const added = yield* gateway.add('https://public.example.com/mcp')
+			const timings = MutableList.make<number>()
+			const listings = MutableList.make<readonly McpSchema.Tool[]>()
+			for (const _ of Array.range(1, 5)) {
+				const [duration, tools] = yield* TestClock.withLive(Effect.timed(toolsOf(gateway.web, TOKEN)))
+				MutableList.append(timings, Duration.toMillis(duration))
+				MutableList.append(listings, tools)
+			}
+			assert.isBelow(Option.getOrThrow(Array.get(Array.sort(MutableList.toArray(timings), Order.Number), 2)), 100)
+			assert.isTrue(
+				Array.some(
+					Option.getOrThrow(Array.last(MutableList.toArray(listings))),
+					tool => tool.name === `${added.id}__search`
+				)
+			)
+		})
+	)
+	test.effect(
+		'lists a stored connection’s tools on the first request after a restart',
+		Effect.fnUntraced(function* () {
+			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const gateway = yield* servers(home)
+					yield* gateway.add('https://public.example.com/mcp')
+				})
+			)
+			assert.isTrue(
+				Array.some(yield* toolsOf((yield* servers(home)).web, TOKEN), tool => tool.name === 'public__search')
+			)
+		})
+	)
+	test.effect(
+		'reports a storage failure as temporarily unavailable',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* Ref.set(gateway.storageFails, true)
+			const failure = yield* Effect.flip(gateway.keys(SESSION))
+			assert.isTrue(Schema.is(AuthError)(failure))
+			assert.strictEqual(failure.error, 'temporarily_unavailable')
+		})
+	)
+	test.effect(
+		'reports an upstream failure as temporarily unavailable',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* Ref.set(gateway.metadataUnavailable, true)
+			const failure = yield* gateway.addFailure('https://public.example.com/mcp')
+			assert.isTrue(Schema.is(AuthError)(failure))
+			assert.strictEqual(failure.error, 'temporarily_unavailable')
+		})
+	)
+	test.effect(
+		'refreshes a changed upstream tool set in the background and notifies its clients',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			const added = yield* gateway.add('https://public.example.com/mcp')
+			const client = mcpClient()
+			const changed = yield* Deferred.make<void>()
+			client.setNotificationHandler('notifications/tools/list_changed', () => {
+				Deferred.doneUnsafe(changed, Effect.void)
+			})
+			const transport = new StreamableHTTPClientTransport(new URL(`${GATEWAY_URL}/mcp`), {
+				fetch: (input, init) => gateway.web.handler(new Request(input, init)),
+				requestInit: {headers: {authorization: `Bearer ${TOKEN}`}}
+			})
+			yield* Effect.acquireRelease(
+				Effect.promise(() => client.connect(transport)),
+				() => Effect.promise(() => client.close())
+			)
+			yield* Effect.acquireRelease(
+				Effect.promise(() => client.listen({toolsListChanged: true})),
+				subscription => Effect.promise(() => subscription.close())
+			)
+			yield* Ref.set(gateway.toolNames, ['search_docs', 'create_doc'])
+			yield* TestClock.adjust('30 seconds')
+			assert.deepStrictEqual(
+				Array.filter(
+					Array.map(
+						(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+						tool => tool.name
+					),
+					String.startsWith(`${added.id}__`)
+				),
+				[`${added.id}__search`]
+			)
+			yield* Deferred.await(changed)
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.filter(
+						Array.map(
+							(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+							tool => tool.name
+						),
+						String.startsWith(`${added.id}__`)
+					),
+					Order.String
+				),
+				[`${added.id}__create_doc`, `${added.id}__search_docs`]
+			)
+		})
+	)
+	test.effect(
+		'verifies the bearer once for a request that reads several upstreams',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* gateway.add('https://stash.mp281x.xyz/mcp')
+			yield* gateway.add('https://notes.mp281x.xyz/mcp')
+			yield* TestClock.adjust('30 seconds')
+			yield* Queue.takeAll(gateway.upstreamTools)
+			const verified = yield* Ref.get(gateway.verified)
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			yield* Queue.take(gateway.upstreamTools)
+			yield* Queue.take(gateway.upstreamTools)
+			assert.strictEqual((yield* Ref.get(gateway.verified)) - verified, 1)
 		})
 	)
 	test.effect(
@@ -808,16 +986,15 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const beforeText = yield* Effect.promise(() => before.text())
 			assert.isTrue(String.includes(`${publicServer.id}__search`)(beforeText))
 			assert.isFalse(String.includes('example__search')(beforeText))
-			yield* gateway.remove(publicServer.id)
-			assert.strictEqual((yield* gateway.add(publicServer.url)).id, publicServer.id)
 			const previousRequests = MutableList.toArray(gateway.upstreamRequests)
+			yield* gateway.remove(publicServer.id)
 			const stale = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'stale definition'},
 				name: `${publicServer.id}__search`
 			})
 			assert.isTrue(String.includes('error')(yield* Effect.promise(() => stale.text())))
 			assert.deepStrictEqual(MutableList.toArray(gateway.upstreamRequests), previousRequests)
-			yield* modern(gateway.web, TOKEN, 'tools/list')
+			assert.strictEqual((yield* gateway.add(publicServer.url)).id, publicServer.id)
 			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'new definition'},
 				name: `${publicServer.id}__search`
@@ -1027,14 +1204,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				}
 			])
 			yield* Ref.set(gateway.rejectAccess, 'Bearer upstream-refresh_token-1')
+			yield* Queue.takeAll(gateway.tokenGrants)
 			yield* Effect.all([modern(gateway.web, TOKEN, 'tools/list'), modern(gateway.web, second, 'tools/list')], {
 				concurrency: 'unbounded'
 			})
+			yield* Queue.take(gateway.tokenGrants)
 			assert.deepStrictEqual(
 				Array.map(MutableList.toArray(gateway.grants), grant => grant.refresh),
 				['refresh-authorization_code-1', 'refresh-refresh_token-1']
 			)
 			yield* Ref.set(gateway.stall, true)
+			yield* TestClock.adjust('30 seconds')
 			const slowList = yield* Effect.forkScoped(modern(gateway.web, second, 'tools/list'))
 			yield* Queue.take(gateway.stallReady)
 			yield* TestClock.adjust('2 seconds')
@@ -1125,11 +1305,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				[['Connected', 1]]
 			)
 			yield* Ref.set(gateway.stall, true)
+			yield* TestClock.adjust('30 seconds')
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
 			yield* Queue.take(gateway.stallReady)
-			const other = yield* gateway.add('https://mcp.example.com/mcp')
+			yield* Effect.forkScoped(gateway.add('https://mcp.example.com/mcp'))
+			yield* Effect.flatMap(
+				Stream.runHead(
+					Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+						Array.some(rows, server => server.id === 'example')
+					)
+				),
+				Effect.fromOption
+			)
 			const connecting = yield* Effect.forkScoped(
-				connect(gateway.web, other.id, {code: 'approved', iss: PROVIDERS.mobbin.issuer})
+				connect(gateway.web, 'example', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			)
 			yield* Ref.set(gateway.stall, false)
 			yield* TestClock.adjust('21 seconds')
@@ -1139,7 +1328,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* gateway.discovered(), server => [server.id, server.tools]),
 				[
 					['mobbin', 1],
-					[other.id, 1]
+					['example', 1]
 				]
 			)
 		})
