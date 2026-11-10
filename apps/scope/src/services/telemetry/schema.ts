@@ -322,8 +322,8 @@ export const ReadTraceParams = Schema.Struct({
 	limit: pipe(
 		Schema.Int,
 		Schema.check(Schema.isBetween({maximum: 1000, minimum: 1})),
-		Schema.withDecodingDefaultTypeKey(Effect.succeed(200)),
-		Schema.annotateEncoded({description: 'Spans to return, 1 to 1000; default 200.'})
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(100)),
+		Schema.annotateEncoded({description: 'Spans to return, 1 to 1000; default 100.'})
 	)
 })
 

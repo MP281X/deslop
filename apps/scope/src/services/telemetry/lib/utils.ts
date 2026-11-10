@@ -334,11 +334,17 @@ export function attributesFlat(payload: Schema.JsonObject, name: string, failedS
 			attribute.key === 'service.name' ||
 			attribute.key === 'rpc.system.name' ||
 			attribute.key === 'url.scheme' ||
-			attribute.key === 'server.port'
+			attribute.key === 'server.port' ||
+			// `url.full` already holds the path, query and host.
+			attribute.key === 'url.path' ||
+			attribute.key === 'url.query' ||
+			attribute.key === 'server.address'
 		) {
 			return []
 		}
 		if (String.startsWith('code.')(attribute.key)) return []
+		if (attribute.key === 'http.request.method' && String.startsWith(`${value}`)(name)) return []
+		if (attribute.key === 'client.address' && (value === '127.0.0.1' || value === '::1')) return []
 		if (attribute.key === 'rpc.method' && value === name) return []
 		if (attribute.key === 'user_agent.original' && !failedSpan) return []
 		if (value === name) return []
