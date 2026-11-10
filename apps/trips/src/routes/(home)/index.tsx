@@ -49,21 +49,9 @@ import {
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {
-	clipboard,
-	bookingsAtom,
-	daysUntil,
-	nowAtom,
-	primary,
-	problemOf,
-	removeAtom,
-	restoreAtom,
-	session,
-	statusOf,
-	timeAt,
-	tones,
-	undoAtom
-} from '#lib/utils.ts'
+import {bookingsAtom, clipboard, nowAtom, removeAtom, restoreAtom, undoAtom} from '#lib/bookings.ts'
+import {session} from '#lib/session.ts'
+import {daysUntil, primary, problemOf, statusOf, timeAt, tones} from '#lib/status.ts'
 import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 
