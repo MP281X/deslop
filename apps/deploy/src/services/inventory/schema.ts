@@ -171,15 +171,17 @@ export const ListApp = Schema.Struct({
 	name: Schema.String,
 	ports: Schema.optionalKey(Schema.Array(Schema.Int)),
 	processes: Schema.optionalKey(Schema.Array(ProcessSummary)),
+	since: Schema.optionalKey(Schema.String),
 	state: Schema.String,
 	url: Schema.optionalKey(Schema.String)
 })
 
 export type ListJob = typeof ListJob.Type
 export const ListJob = Schema.Struct({
-	failed: Schema.optionalKey(Schema.String),
+	failure: Schema.optionalKey(Schema.String),
 	name: Schema.String,
-	next: Schema.optionalKey(Schema.String)
+	next: Schema.optionalKey(Schema.String),
+	since: Schema.optionalKey(Schema.String)
 })
 
 export type ListExposure = typeof ListExposure.Type

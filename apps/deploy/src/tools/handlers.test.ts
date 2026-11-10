@@ -136,6 +136,17 @@ function fixture() {
 		worker: workers[index % 2] ?? 'dev'
 	}))
 	const services = Array.flatMap(workers, worker => Array.makeBy(105, index => appItem(worker, index)))
+	const crashed = Array.map(workers, worker => ({
+		detail: 'user · crashed fixture',
+		failure: {at: NOW - 2 * 3_600_000, reason: 'Exited with code 1'},
+		id: `${worker}:user:crash.service`,
+		kind: 'service' as const,
+		name: 'crash.service',
+		scope: 'user' as const,
+		state: 'failed',
+		url: '',
+		worker
+	}))
 	const jobs = Array.flatMap(workers, worker => Array.makeBy(6, index => jobItem(worker, index)))
 	const containers = Array.flatMap(workers, worker => Array.makeBy(31, index => containerItem(worker, index)))
 	const noise = Array.flatMap(workers, worker =>
@@ -162,7 +173,7 @@ function fixture() {
 		...Array.makeBy(7, index => exposureItem(workers[index % 2] ?? 'dev', index + 10, false))
 	]
 	return Snapshot.make({
-		items: [...peers, ...services, ...jobs, ...containers, ...noise, ...listeners, ...exposures],
+		items: [...peers, ...services, ...crashed, ...jobs, ...containers, ...noise, ...listeners, ...exposures],
 		sources: [
 			{error: '', name: 'User services'},
 			{error: 'docker unavailable', name: 'Docker'},
@@ -186,7 +197,7 @@ function historyFixture() {
 	})
 }
 
-function machineOf(worker: string) {
+function machineOf(worker: string, options?: {error?: string; stale?: boolean}) {
 	const start = chartWindow(60, NOW).start
 	const apps = [
 		{cpu: 12.34, id: `container:${String.slice(0, 12)(hex(0))}`, memory: 3 * GIB},
@@ -215,7 +226,13 @@ function machineOf(worker: string) {
 				time: start + index * 60_000 + 30_000
 			}) satisfies Sample
 	)
-	return {error: '', samples, stale: false, time: NOW, worker} satisfies MachineHistory
+	return {
+		error: options?.error ?? '',
+		samples,
+		stale: options?.stale === true,
+		time: NOW,
+		worker
+	} satisfies MachineHistory
 }
 
 function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
@@ -267,8 +284,19 @@ it.effect('answers list_apps with the page’s apps in under 20 KB and no tailne
 				'cron-0'
 			)
 			assert.isFalse(Array.some(dev.apps, app => Array.contains(app.ports ?? [], 7000)))
+			const crashed = Option.getOrThrow(Array.findFirst(dev.apps, app => app.name === 'crash'))
+			assert.strictEqual(crashed.failure, 'Exited with code 1')
+			assert.strictEqual(crashed.since, DateTime.formatIso(DateTime.makeUnsafe(NOW - 2 * 3_600_000)))
+			assert.notInclude(text, ' ago')
+			assert.strictEqual(
+				Option.getOrThrow(Array.findFirst(dev.jobs ?? [], job => job.name === 'backup-1')).next,
+				DateTime.formatIso(DateTime.makeUnsafe(NOW + 2 * 60_000))
+			)
+			const failedJob = Option.getOrThrow(Array.findFirst(dev.jobs ?? [], job => job.name === 'backup-0'))
+			assert.strictEqual(failedJob.failure, 'Exited with code 1')
+			assert.strictEqual(failedJob.since, DateTime.formatIso(DateTime.makeUnsafe(NOW - 3_600_000)))
+			assert.isUndefined(failedJob.next)
 			assert.deepStrictEqual(dev.errors, ['Docker: docker unavailable'])
-			assert.isTrue(Array.isReadonlyArrayNonEmpty(dev.jobs ?? []))
 			assert.isTrue(Array.isReadonlyArrayNonEmpty(dev.exposures ?? []))
 			assert.strictEqual(
 				Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'desktop')).errors?.[0],
@@ -311,7 +339,8 @@ it.effect('answers resource_history for 60 points and two workers in under 6 KB 
 		Effect.gen(function* () {
 			const toolkit = yield* toolkitFor(
 				fleetOf({
-					metrics: () => Effect.succeed([machineOf('dev'), machineOf('desktop')]),
+					metrics: () =>
+						Effect.succeed([machineOf('dev'), machineOf('desktop', {error: 'Worker unavailable', stale: true})]),
 					snapshot: Effect.succeed(historyFixture())
 				})
 			)
@@ -339,6 +368,12 @@ it.effect('answers resource_history for 60 points and two workers in under 6 KB 
 				assert.strictEqual(machine.now?.memoryTotalGiB, 16)
 				assert.deepStrictEqual(machine.now?.load, [1.5, 1.2, 0.9])
 			}
+			const devMachine = Option.getOrThrow(Array.findFirst(machines, machine => machine.worker === 'dev'))
+			assert.isUndefined(devMachine.error)
+			assert.isUndefined(devMachine.stale)
+			const desktopMachine = Option.getOrThrow(Array.findFirst(machines, machine => machine.worker === 'desktop'))
+			assert.strictEqual(desktopMachine.error, 'Worker unavailable')
+			assert.strictEqual(desktopMachine.stale, true)
 			const one = Option.getOrThrow(
 				Array.last(
 					Array.fromIterable(

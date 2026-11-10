@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Number, Option, Order, Record, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {bandName, chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 import type {AppUsage, HistoryToolInput, MachineHistory, Sample} from '#services/metrics/schema.ts'
@@ -81,6 +81,7 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 		diskPct: series(machine, minutes, sample =>
 			Option.flatMap(diskUsed(sample), used => Option.map(storageTotal, total => (used / total) * 100))
 		),
+		...Boolean.match(String.isNonEmpty(machine.error), {onFalse: () => ({}), onTrue: () => ({error: machine.error})}),
 		from: DateTime.formatIso(DateTime.makeUnsafe(chartWindow(minutes, machine.time).start)),
 		memoryPct: series(machine, minutes, sample => Option.some((sample.memoryUsed / sample.memoryTotal) * 100)),
 		...Option.match(latest, {
@@ -98,6 +99,7 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 				}
 			})
 		}),
+		...Boolean.match(machine.stale, {onFalse: () => ({}), onTrue: () => ({stale: true as const})}),
 		stepSeconds: resolution(minutes) / 1000,
 		worker: machine.worker
 	}

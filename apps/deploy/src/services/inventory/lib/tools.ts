@@ -1,13 +1,11 @@
-import {Array, Boolean, Effect, Function, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, Function, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {
 	appUsage,
 	dot,
 	itemOwner,
-	nextRun,
 	type ProcessNode,
 	processTree,
-	reasonLine,
 	type Row,
 	status,
 	workloadName,
@@ -60,12 +58,19 @@ function portsOf(row: Row) {
 	)
 }
 
-function failureOf(item: InventoryItem, now: number) {
-	if (dot(item, status(item)) === 'quiet') return undefined
-	return Option.match(Option.fromUndefinedOr(item.failure), {
-		onNone: () => status(item),
-		onSome: () => reasonLine(item, now)
-	})
+function iso(milliseconds: number) {
+	return DateTime.formatIso(DateTime.makeUnsafe(milliseconds))
+}
+
+function failureOf(item: InventoryItem) {
+	if (dot(item, status(item)) === 'quiet') return {}
+	return {
+		failure: Option.match(Option.fromUndefinedOr(item.failure), {
+			onNone: () => status(item),
+			onSome: stop => stop.reason
+		}),
+		...Option.match(Option.fromUndefinedOr(item.failure?.at), {onNone: () => ({}), onSome: at => ({since: iso(at)})})
+	}
 }
 
 function summaryOf(node: ProcessNode): ProcessSummary {
@@ -84,11 +89,11 @@ function summaryOf(node: ProcessNode): ProcessSummary {
 	}
 }
 
-function appOf(row: Row, now: number, withProcesses: boolean) {
+function appOf(row: Row, withProcesses: boolean) {
 	const ports = portsOf(row)
 	const url = Option.map(Array.head(row.exposures), exposure => exposure.url)
 	return {
-		...Record.getSomes({failure: Option.fromUndefinedOr(failureOf(row.item, now))}),
+		...failureOf(row.item),
 		name: workloadName(row.item),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(ports), {onFalse: () => ({}), onTrue: () => ({ports})}),
 		...Boolean.match(withProcesses && Array.isReadonlyArrayNonEmpty(row.item.processes ?? []), {
@@ -100,11 +105,11 @@ function appOf(row: Row, now: number, withProcesses: boolean) {
 	} satisfies ListApp
 }
 
-function jobOf(row: Row, now: number) {
+function jobOf(row: Row) {
 	return {
-		...Record.getSomes({failed: Option.fromUndefinedOr(failureOf(row.item, now))}),
+		...failureOf(row.item),
 		name: workloadName(row.item),
-		...Record.getSomes({next: Option.map(Option.fromUndefinedOr(row.item.next), next => nextRun(next, now))})
+		...Record.getSomes({next: Option.map(Option.fromUndefinedOr(row.item.next), iso)})
 	} satisfies ListJob
 }
 
@@ -161,7 +166,7 @@ export function listApps(snapshot: Snapshot, input: ListAppsInput) {
 						(!onlyFailing || dot(row.item, status(row.item)) !== 'quiet')
 				),
 				Array.sort(appOrder),
-				Array.map(row => appOf(row, snapshot.time, app !== undefined))
+				Array.map(row => appOf(row, app !== undefined))
 			)
 			const jobs = pipe(
 				Array.filter(
@@ -169,7 +174,7 @@ export function listApps(snapshot: Snapshot, input: ListAppsInput) {
 					row => row.item.scheduled === true && (!onlyFailing || dot(row.item, status(row.item)) !== 'quiet')
 				),
 				Array.sort(jobOrder),
-				Array.map(row => jobOf(row, snapshot.time))
+				Array.map(row => jobOf(row))
 			)
 			const exposures = pipe(
 				Array.filter(own, row => row.item.kind === 'exposure' && !onlyFailing),

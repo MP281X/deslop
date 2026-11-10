@@ -31,9 +31,11 @@ export const WorkerHistory = Schema.Struct({
 	apps: Schema.Array(AppUsage),
 	cpuPct: Series,
 	diskPct: Series,
+	error: Schema.optionalKey(Schema.String),
 	from: Schema.String,
 	memoryPct: Series,
 	now: Schema.optionalKey(MachineNow),
+	stale: Schema.optionalKey(Schema.Literal(true)),
 	stepSeconds: Schema.Finite,
 	worker: Schema.String
 })
