@@ -33,7 +33,7 @@ import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 
-import {nowAtom, refreshAtom, removeAtom} from '#lib/bookings.ts'
+import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesFor, uberAtom} from '#lib/rides.ts'
 import {dayAt, primary, problemOf, statusOf, timeAt, tones} from '#lib/status.ts'
 import {arrivalOf, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
@@ -238,7 +238,7 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
 }
 
 export function BookingRoute(props: {bookings: BookingList; id: string; onClose: () => void}) {
-	const remove = useAtomSet(removeAtom)
+	const remove = useAtomSet(removal(props.id).send)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	return Option.match(
@@ -303,7 +303,7 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 										systemImage="trash"
 										role="destructive"
 										onPress={() => {
-											remove(booking)
+											remove({_tag: 'Removed'})
 											props.onClose()
 										}}
 									/>

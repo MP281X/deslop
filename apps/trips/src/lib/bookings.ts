@@ -1,13 +1,12 @@
 import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
-import {Machine} from '@typeonce/effect-machine'
-import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 
 import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipboard'
+import {makeRemoval} from '@deslop/components-mobile/removal'
 import {alert, cachedList} from '@deslop/components-mobile/utils'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {listReducer} from '@deslop/runtime/schema'
@@ -94,54 +93,14 @@ export const clipboard = makeClipboard({
 		})
 })
 
-export const undoAtom = AtomMachine.make(
-	Machine.make({
-		events: Machine.events({Deleted: {booking: Booking}, Restored: {id: Schema.String}}),
-		root: Machine.state({states: {Idle: {}, Offered: {fields: {booking: Booking}}}}),
-		timers: {expire: '8 seconds'}
-	}).handle({
-		initial: {target: 'Idle'},
-		states: {
-			Idle: {on: {Deleted: {data: transition => ({booking: transition.event.booking}), target: 'Offered'}}},
-			Offered: {
-				invoke: {onDone: {target: 'Idle'}, src: 'expire'},
-				on: {
-					Deleted: {data: transition => ({booking: transition.event.booking}), reenter: true, target: 'Offered'},
-					Restored: {guard: transition => transition.state.booking.id === transition.event.id, target: 'Idle'}
-				}
-			}
-		}
-	})
-)
-
-export const removeAtom = Atom.keepAlive(
-	Atom.fn(
-		(booking: Booking, get) =>
-			pipe(
-				withClient(
-					get,
-					Effect.flatMap(RpcClient, client => client('bookings.remove', {id: booking.id}))
-				),
-				Effect.tap(() => Effect.sync(() => get.set(undoAtom.send, {_tag: 'Deleted', booking}))),
-				alert('Not Deleted')
-			),
-		// A second swipe deletes its booking too instead of interrupting the first.
-		{concurrent: true}
-	)
-)
-
-export const restoreAtom = Atom.keepAlive(
-	Atom.fn((booking: Booking, get) =>
-		pipe(
-			withClient(
-				get,
-				Effect.flatMap(RpcClient, client => client('bookings.restore', booking))
-			),
-			Effect.tap(() => Effect.sync(() => get.set(undoAtom.send, {_tag: 'Restored', id: booking.id}))),
-			alert('Not Restored')
+export const removal = makeRemoval({
+	notRemoved: 'Not Deleted',
+	remove: (id, get) =>
+		withClient(
+			get,
+			Effect.flatMap(RpcClient, client => client('bookings.remove', {id}))
 		)
-	)
-)
+})
 
 export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 	pipe(

@@ -26,7 +26,6 @@ export class Bookings extends Context.Service<
 		readonly events: Stream.Stream<BookingsEvent>
 		readonly list: Effect.Effect<BookingList>
 		readonly remove: (id: Booking['id']) => Effect.Effect<void, BookingsError>
-		readonly restore: (booking: Booking) => Effect.Effect<void, BookingsError>
 		readonly save: (userId: string, source: BookingSource) => Effect.Effect<BookingList, BookingsError>
 		readonly update: (id: Booking['id'], change: (booking: Booking) => Booking) => Effect.Effect<void, BookingsError>
 	}
@@ -140,12 +139,6 @@ export class Bookings extends Context.Service<
 							undefined,
 							Array.filter(current, booking => booking.id !== bookingId)
 						)
-					})
-				}),
-				restore: Effect.fn('Bookings.restore')(function* (booking) {
-					yield* transact(current => {
-						if (Array.some(current, found => found.id === booking.id)) return Tuple.make(undefined, current)
-						return Tuple.make(undefined, [...current, booking])
 					})
 				}),
 				save: Effect.fn('Bookings.save')(function* (userId, source) {

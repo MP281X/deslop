@@ -10,7 +10,8 @@
 		"./*": "./src/*.tsx",
 		"./theme": "./src/theme.ts",
 		"./utils": "./src/lib/utils.ts",
-		"./clipboard": "./src/lib/clipboard.ts"
+		"./clipboard": "./src/lib/clipboard.ts",
+		"./removal": "./src/lib/removal.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"
