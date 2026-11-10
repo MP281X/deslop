@@ -32,7 +32,7 @@ export const primary = hues.amber
 const listFile = new File(Paths.document, 'list.json')
 
 // The share extension shares this Keychain item.
-export const session = MobileSession.make('Stash', SERVER, {
+export const session = MobileSession.make(SERVER, {
 	clear: Effect.try({
 		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),
 		try: () => native.clearSession()
@@ -50,7 +50,7 @@ export const session = MobileSession.make('Stash', SERVER, {
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layerSignedIn('@deslop/stash', session.bearer)(SERVER)
+	protocol: session.protocol
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.

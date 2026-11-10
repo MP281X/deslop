@@ -1,1 +1,3 @@
-export {sourceSkips} from '@deslop/runtime/mobile/fingerprint'
+import {sourceSkips} from '@deslop/runtime/mobile/fingerprint'
+
+export {sourceSkips}

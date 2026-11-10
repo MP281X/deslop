@@ -7,7 +7,6 @@ import * as Notifications from 'expo-notifications'
 
 import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
-import * as MobileRuntime from '@deslop/runtime/mobile'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 
@@ -17,15 +16,13 @@ import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
 import type {ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters/schema.ts'
 import {ChapterItem, ChaptersError} from '#services/chapters/schema.ts'
 
-const SERVER = 'https://opm.mp281x.xyz'
-
 export const primary = hues.ivory
 
-export const session = MobileSession.make('opm', SERVER, keychain)
+export const session = MobileSession.make('https://opm.mp281x.xyz', keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layerSignedIn('@deslop/opm', session.bearer)(SERVER)
+	protocol: session.protocol
 }) {}
 
 const chaptersFile = new File(Paths.document, 'chapters.json')

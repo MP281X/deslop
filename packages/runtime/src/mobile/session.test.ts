@@ -26,14 +26,16 @@ vi.mock('expo-auth-session', () => ({
 	},
 	makeRedirectUri: () => 'fixture://auth/callback'
 }))
-vi.mock('expo-constants', () => ({default: {expoConfig: {extra: {scheme: 'fixture'}, version: '0.1.0'}}}))
+vi.mock('expo-constants', () => ({
+	default: {expoConfig: {extra: {scheme: 'fixture'}, slug: 'fixture', version: '0.1.0'}}
+}))
 vi.mock('expo-updates', () => ({}))
 vi.mock('react-native', () => ({Alert: {alert: () => {}}, AppState: {addEventListener: () => ({remove: () => {}})}}))
 
 class DataError extends Schema.TaggedError<DataError>()('DataError', {message: Schema.String}) {}
 
 function session(cleared: Ref.Ref<boolean>) {
-	return make('Fixture', 'https://fixture.example', {
+	return make('https://fixture.example', {
 		clear: Ref.set(cleared, true),
 		read: Effect.succeed('{"session":"fixture-session"}'),
 		write: () => Effect.void
@@ -108,7 +110,7 @@ it.layer(AtomRegistry.layer)(test => {
 	test.effect(
 		'leaves signing-in after the server stalls exchanging the code for ten seconds',
 		Effect.fnUntraced(function* () {
-			const current = make('Fixture', 'https://fixture.example', {
+			const current = make('https://fixture.example', {
 				clear: Effect.void,
 				read: Effect.succeed(''),
 				write: () => Effect.void

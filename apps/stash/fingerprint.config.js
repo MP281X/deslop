@@ -1,4 +1,6 @@
-export {sourceSkips} from '@deslop/runtime/mobile/fingerprint'
+import {sourceSkips} from '@deslop/runtime/mobile/fingerprint'
+
+export {sourceSkips}
 
 // File by file, because prebuild writes the share extension's generated Assets.xcassets into targets/share.
 export const extraSources = [

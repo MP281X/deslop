@@ -93,8 +93,6 @@
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
-		// The generated mobile template opens the unsigned socket before an app adds sign-in.
-		{"exports": ["layer"], "file": "packages/runtime/src/mobile/client.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
 	],
 	"overrides": [

@@ -1,21 +1,54 @@
-import {Effect, Option, Schedule, Schema, Stream, String, pipe} from 'effect'
+import {Effect, Layer, Option, Schedule, Schema, Stream, String, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {RpcClientError} from 'effect/rpc'
+import {RpcClient, RpcClientError, RpcSerialization} from 'effect/rpc'
+import {Socket} from 'effect/socket'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
+import Constants from 'expo-constants'
 import {Alert} from 'react-native'
 
-import {Account} from '#schema.ts'
+import {Account, RPC_PATH} from '#schema.ts'
+import {layerOtlp} from '#telemetry.ts'
 
-import {AUTHORIZE_PATH, AUTH_URL, ISSUER, clientIdOf, needsSignIn, rejected} from '#auth/lib/utils.ts'
+import {
+	AUTHORIZE_PATH,
+	AUTH_URL,
+	ISSUER,
+	clientIdOf,
+	layerRpcAuthClient,
+	needsSignIn,
+	rejected
+} from '#auth/lib/utils.ts'
 import {AuthError, SessionHandle} from '#auth/schema.ts'
 import {activationsAtom, extra} from '#mobile/client.ts'
 
 type SessionJson = typeof SessionJson.Type
 const SessionJson = Schema.fromJsonString(SessionHandle)
+
+const slug = Schema.decodeUnknownSync(Schema.String)(Constants.expoConfig?.slug)
+const applicationName = `@deslop/${slug}`
+const name = String.capitalize(slug)
+
+// Scope's public receiver takes traces and logs from anywhere; the version is the release running, a build's or an over-the-air update's.
+Atom.runtime.addGlobalLayer(
+	layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile', Constants.expoConfig?.version ?? '0.1.0')
+)
+
+function signedInProtocol<R>(token: Effect.Effect<string, AuthError, R>) {
+	return (server: string) =>
+		pipe(
+			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
+			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
+			Layer.provide(Socket.layerWebSocket(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws')))),
+			Layer.provide(Socket.layerWebSocketConstructorGlobal),
+			Layer.provide(RpcSerialization.layerJson),
+			Layer.provideMerge(layerRpcAuthClient(token)),
+			Layer.provide(FetchHttpClient.layer)
+		)
+}
 
 // An empty text means signed out.
 export type Storage = {
@@ -24,7 +57,7 @@ export type Storage = {
 	write: (text: string) => Effect.Effect<void, AuthError>
 }
 
-export function make(name: string, server: string, storage: Storage) {
+export function make(server: string, storage: Storage) {
 	const runtime = Atom.runtime(FetchHttpClient.layer)
 
 	// Unreadable JSON signs out rather than failing every launch.
@@ -175,6 +208,7 @@ export function make(name: string, server: string, storage: Storage) {
 		account,
 		bearer,
 		machine,
+		protocol: signedInProtocol(bearer)(server),
 		// An outage reopens a live stream; a session the server refused signs the app out.
 		reopening: <A, E, R>(live: Stream.Stream<A, E, R>) =>
 			pipe(

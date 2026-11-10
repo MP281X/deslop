@@ -70,14 +70,13 @@ import {Booking, BookingsError, IMAGE_BYTES, Leg} from '#services/bookings/schem
 import {Bundle} from '#services/push/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
 
-const SERVER = 'https://trips.mp281x.xyz'
 const CALENDAR = 'Trips'
 
-export const session = MobileSession.make('Trips', SERVER, keychain)
+export const session = MobileSession.make('https://trips.mp281x.xyz', keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/utils/RpcClient', {
 	group: RpcContracts,
-	protocol: MobileRuntime.layerSignedIn('@deslop/trips', session.bearer)(SERVER)
+	protocol: session.protocol
 }) {}
 
 // Actions read the client once rather than rerunning their last write when it reconnects.
