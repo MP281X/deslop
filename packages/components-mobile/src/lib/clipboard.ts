@@ -5,7 +5,7 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
 import {File, Paths} from 'expo-file-system'
 
-import {activationsAtom} from '@deslop/runtime/mobile'
+import {activationsAtom} from '@deslop/runtime/mobile/activations'
 
 import {alert, clipboardChangeCount, writeAtomically} from '#lib/utils.ts'
 

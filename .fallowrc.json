@@ -33,7 +33,7 @@
 					"apps/*/modules/native/index.ts",
 					"packages/components-*/src/**",
 					"packages/runtime/src/{web,mobile}/client.{ts,tsx}",
-					"packages/runtime/src/mobile/{session,keychain}.ts"
+					"packages/runtime/src/mobile/{activations,session,keychain}.ts"
 				]
 			},
 			{

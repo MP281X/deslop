@@ -23,7 +23,8 @@ import {
 	rejected
 } from '#auth/lib/utils.ts'
 import {AuthError, SessionHandle} from '#auth/schema.ts'
-import {activationsAtom, extra} from '#mobile/client.ts'
+import {activationsAtom} from '#mobile/activations.ts'
+import {extra} from '#mobile/client.ts'
 
 type SessionJson = typeof SessionJson.Type
 const SessionJson = Schema.fromJsonString(SessionHandle)

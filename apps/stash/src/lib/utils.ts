@@ -14,7 +14,7 @@ import {hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {withoutDeniedData} from '@deslop/runtime/auth/utils'
-import * as MobileRuntime from '@deslop/runtime/mobile'
+import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/schema'
 
@@ -141,7 +141,7 @@ const images = new Directory(Paths.cache, 'downloads')
 // SwiftUI images read local files, so each preview is downloaded into the cache.
 export const imageAtom = Atom.family((id: Note['id']) =>
 	session.runtime.atom(get => {
-		get(MobileRuntime.activationsAtom)
+		get(activationsAtom)
 		return Effect.gen(function* () {
 			const file = new File(images, id)
 			if (file.exists) return file.uri

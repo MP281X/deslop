@@ -16,6 +16,7 @@
 		"./auth/sessions": "./src/auth/sessions.ts",
 		"./auth/utils": "./src/auth/lib/utils.ts",
 		"./mobile": "./src/mobile/client.ts",
+		"./mobile/activations": "./src/mobile/activations.ts",
 		"./mobile/session": "./src/mobile/session.ts",
 		"./mobile/keychain": "./src/mobile/keychain.ts",
 		"./mobile/expo": "./src/mobile/expo.ts",

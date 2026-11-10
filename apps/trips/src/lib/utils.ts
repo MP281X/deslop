@@ -35,6 +35,7 @@ import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipb
 import {colors, hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
+import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/schema'
@@ -229,7 +230,7 @@ export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 )
 
 export const nowAtom = Atom.make(get => {
-	get(MobileRuntime.activationsAtom)
+	get(activationsAtom)
 	return Stream.map(Stream.tick('1 minute'), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 })
 
