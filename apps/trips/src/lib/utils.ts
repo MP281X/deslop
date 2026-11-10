@@ -5,7 +5,6 @@ import {
 	Duration,
 	Effect,
 	HashSet,
-	Layer,
 	MutableList,
 	Number,
 	Option,
@@ -31,8 +30,8 @@ import {addPushToStartTokenListener} from 'expo-widgets'
 import type {LiveActivity} from 'expo-widgets'
 import {Linking} from 'react-native'
 
-import {ClipboardOffer, clipboardMachine, readClipboard} from '@deslop/components-mobile/clipboard'
-import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
+import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
+import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {colors, hues} from '@deslop/components-mobile/theme'
 import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import * as MobileRuntime from '@deslop/runtime/mobile'
@@ -110,10 +109,7 @@ export const bookingsAtom = Atom.keepAlive(
 	})
 )
 
-const clipboardFile = new File(Paths.document, 'clipboard.txt')
-type Offer = {count: string; kind: ClipboardKind}
-
-const bookingFromClipboard = Effect.fnUntraced(function* (offer: Offer) {
+const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) {
 	if (offer.kind === 'image') {
 		const copied = yield* Effect.tryPromise({
 			catch: cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}),
@@ -141,46 +137,31 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: Offer) {
 	return {text} satisfies BookingSource
 })
 
-export const clipboardAtom = AtomMachine.bind(
-	Atom.runtime(get =>
-		Layer.succeed(
-			ClipboardOffer,
-			ClipboardOffer.of({
-				answer: Effect.fnUntraced(function* (answer: Offer & {save: boolean}) {
-					const handled = Effect.try({
-						catch: cause => BookingsError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
-						try: () => writeAtomically(clipboardFile, answer.count)
-					})
-					yield* pipe(
-						Effect.gen(function* () {
-							if (!answer.save) return
-							const source = yield* readClipboard(answer.count, bookingFromClipboard(answer))
-							yield* Effect.provideContext(
-								Effect.flatMap(RpcClient, client => client('bookings.save', source)),
-								yield* get.result(RpcClient.runtime)
-							)
-						}),
-						// A refused booking is handled, but a lost connection offers the same copy on the next return.
-						Effect.tapErrorTag('BookingsError', () => handled),
-						Effect.andThen(handled),
-						alert('Not saved'),
-						Effect.ignore({log: 'Warn', message: 'The clipboard booking was not saved'})
-					)
-				}),
-				detect: Effect.gen(function* () {
-					if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
-					if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<ClipboardKind>('text')
-					return Option.none<ClipboardKind>()
-				}),
-				file: clipboardFile
-			})
-		)
-	)
-).make(clipboardMachine)
-
-export const clipboardReturnsAtom = Atom.make(get => {
-	get(MobileRuntime.activationsAtom)
-	get.set(clipboardAtom.send, {_tag: 'Returned'})
+export const clipboard = makeClipboard({
+	detect: Effect.gen(function* () {
+		if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
+		if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<ClipboardKind>('text')
+		return Option.none<ClipboardKind>()
+	}),
+	labels: {
+		confirm: 'Add',
+		notSaved: 'Not saved',
+		questions: {
+			image: 'Add a booking from the copied screenshot?',
+			link: 'Add a booking from the copied text?',
+			text: 'Add a booking from the copied text?'
+		}
+	},
+	// A refused booking is handled, but a lost connection offers the same copy on the next return.
+	once: {_tag: 'After', keep: error => error._tag === 'BookingsError'},
+	save: (copy, get) =>
+		Effect.gen(function* () {
+			const source = yield* readClipboard(copy.count, bookingFromClipboard(copy))
+			yield* Effect.provideContext(
+				Effect.flatMap(RpcClient, client => client('bookings.save', source)),
+				yield* get.result(RpcClient.runtime)
+			)
+		})
 })
 
 export const undoAtom = AtomMachine.make(

@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Result, String, pipe} from 'effect'
 
@@ -29,10 +29,9 @@ import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
-import type {ReactNode} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
+import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
@@ -51,8 +50,7 @@ import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {
-	clipboardAtom,
-	clipboardReturnsAtom,
+	clipboard,
 	bookingsAtom,
 	daysUntil,
 	nowAtom,
@@ -156,36 +154,14 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	)
 }
 
-function PasteSheet(props: {children: ReactNode}) {
-	useAtomMount(clipboardReturnsAtom)
-	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
-	const send = useAtomSet(clipboardAtom.send)
-	return (
-		<ClipboardDialog
-			confirm="Add"
-			onAnswer={save => send({_tag: 'Answered', save})}
-			open={Option.isSome(offer)}
-			question={Boolean.match(
-				Option.exists(offer, current => current.kind === 'image'),
-				{
-					onFalse: () => 'Add a booking from the copied text?',
-					onTrue: () => 'Add a booking from the copied screenshot?'
-				}
-			)}
-		>
-			{props.children}
-		</ClipboardDialog>
-	)
-}
-
 function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
-	const paste = useAtomSet(clipboardAtom.send)
+	const paste = useAtomSet(clipboard.atom.send)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const adding = Option.exists(
-		pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Answering')), AsyncResult.getOrElse(Option.none)),
+		pipe(useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')), AsyncResult.getOrElse(Option.none)),
 		current => current.save
 	)
 	const shown = shownOf(loaded)
@@ -304,7 +280,7 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 				bottomBarSearch
 			]}
 		>
-			<PasteSheet>
+			<PasteSheet clipboard={clipboard}>
 				<Suspense
 					fallback={
 						<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />

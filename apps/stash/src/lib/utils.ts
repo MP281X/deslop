@@ -1,14 +1,13 @@
 import type {Record} from 'effect'
-import {Array, Boolean, Effect, Layer, HashSet, Option, Order, Predicate, Schema, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Effect, HashSet, Option, Order, Predicate, Schema, Stream, String, pipe} from 'effect'
 
-import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient} from 'effect/http'
 import {AtomRpc, Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
 import * as Crypto from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
-import {ClipboardOffer, clipboardMachine, readClipboard} from '@deslop/components-mobile/clipboard'
+import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {brands} from '@deslop/components-mobile/icons'
 import {hues} from '@deslop/components-mobile/theme'
@@ -216,10 +215,6 @@ export const writeAtom = Atom.keepAlive(
 	)
 )
 
-const clipboardFile = new File(Paths.document, 'clipboard.txt')
-
-type Offer = {count: string; kind: ClipboardKind}
-
 const saveImage = Effect.fnUntraced(function* (count: string) {
 	const image = yield* readClipboard(
 		count,
@@ -271,48 +266,24 @@ const saveLink = Effect.fnUntraced(function* (count: string) {
 	yield* capture(link)
 })
 
-// A copy is offered once: the count it was answered at is kept, so only a newer copy returns.
-export const clipboardAtom = AtomMachine.bind(
-	Atom.runtime(get =>
-		Layer.succeed(
-			ClipboardOffer,
-			ClipboardOffer.of({
-				answer: Effect.fnUntraced(function* (answer: Offer & {save: boolean}) {
-					yield* pipe(
-						Effect.try({
-							catch: cause => NotesError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
-							try: () => writeAtomically(clipboardFile, answer.count)
-						}),
-						Effect.andThen(
-							Boolean.match(answer.save, {
-								onFalse: () => Effect.void,
-								onTrue: () =>
-									Boolean.match(answer.kind === 'image', {
-										onFalse: () =>
-											Effect.flatMap(get.result(RpcClient.runtime), context =>
-												Effect.provideContext(saveLink(answer.count), context)
-											),
-										// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
-										onTrue: () => Effect.provide(saveImage(answer.count), FetchHttpClient.layer)
-									})
-							})
-						),
-						alert('Not Saved'),
-						Effect.ignore({log: 'Warn', message: 'The clipboard note was not saved'})
-					)
-				}),
-				detect: Effect.gen(function* () {
-					if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
-					if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')
-					return Option.none<ClipboardKind>()
-				}),
-				file: clipboardFile
-			})
-		)
-	)
-).make(clipboardMachine)
-
-export const clipboardReturnsAtom = Atom.make(get => {
-	get(MobileRuntime.activationsAtom)
-	get.set(clipboardAtom.send, {_tag: 'Returned'})
+export const clipboard = makeClipboard({
+	detect: Effect.gen(function* () {
+		if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
+		if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')
+		return Option.none<ClipboardKind>()
+	}),
+	labels: {
+		confirm: 'Save',
+		notSaved: 'Not Saved',
+		questions: {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'}
+	},
+	// The count is kept before the save, so a copy that failed to save is never offered again.
+	once: {_tag: 'Before'},
+	save: (copy, get) =>
+		Boolean.match(copy.kind === 'image', {
+			onFalse: () =>
+				Effect.flatMap(get.result(RpcClient.runtime), context => Effect.provideContext(saveLink(copy.count), context)),
+			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
+			onTrue: () => Effect.provide(saveImage(copy.count), FetchHttpClient.layer)
+		})
 })

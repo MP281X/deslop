@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} from 'effect'
 
@@ -45,16 +45,13 @@ import {
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {useMachineResult} from '@typeonce/effect-machine-react'
-import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
-import type {ReactNode} from 'react'
 import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
 import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
+import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
@@ -68,8 +65,7 @@ import {Byline} from '#lib/components.tsx'
 import {
 	appOf,
 	brandOf,
-	clipboardAtom,
-	clipboardReturnsAtom,
+	clipboard,
 	imageAtom,
 	kindOf,
 	kinds,
@@ -84,8 +80,6 @@ import {
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
-
-const OFFERS = {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'} as const
 
 // The summary waits in the note, so the list scans fast.
 function Lines(props: {note: NoteItem}) {
@@ -264,23 +258,6 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
-function PasteSheet(props: {children: ReactNode}) {
-	useAtomMount(clipboardReturnsAtom)
-	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
-	const send = useAtomSet(clipboardAtom.send)
-	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
-	return (
-		<ClipboardDialog
-			confirm="Save"
-			onAnswer={save => send({_tag: 'Answered', save})}
-			open={Option.isSome(offer)}
-			question={OFFERS[kind]}
-		>
-			{props.children}
-		</ClipboardDialog>
-	)
-}
-
 function Outages() {
 	const notes = useAtomValue(notesAtom)
 	const refresh = useAtomRefresh(notesAtom)
@@ -315,7 +292,7 @@ export function HomeRoute(props: {
 	const refresh = useAtomRefresh(notesAtom)
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	const paste = useAtomSet(clipboardAtom.send)
+	const paste = useAtomSet(clipboard.atom.send)
 	const query = String.trim(useAtomValue(queryAtom))
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
@@ -347,7 +324,7 @@ export function HomeRoute(props: {
 				bottomBarSearch
 			]}
 		>
-			<PasteSheet>
+			<PasteSheet clipboard={clipboard}>
 				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
 					<Outages />
 					{Array.match(shown.success, {
