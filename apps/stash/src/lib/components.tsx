@@ -3,9 +3,9 @@ import {Array, Boolean, DateTime, Match, Option, Schema, pipe} from 'effect'
 import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
-import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 
+import {BrandLogo} from '#lib/icons.tsx'
 import {kindOf, kinds, siteOf} from '#lib/kinds.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
 import {Brand} from '#services/notes/schema.ts'

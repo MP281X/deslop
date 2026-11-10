@@ -1,8 +1,7 @@
 import type {Record} from 'effect'
 import {Option, Schema, String, pipe} from 'effect'
 
-import {brands} from '@deslop/components-mobile/icons'
-
+import {brands} from '#lib/icons.tsx'
 import {isYouTube} from '#services/notes/lib/utils.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
 import {Brand} from '#services/notes/schema.ts'

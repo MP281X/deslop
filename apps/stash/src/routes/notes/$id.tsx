@@ -39,7 +39,6 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
@@ -49,6 +48,7 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-
 import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {Byline} from '#lib/components.tsx'
+import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds} from '#lib/kinds.ts'
 import {imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/notes.ts'
 import {primary} from '#lib/session.ts'

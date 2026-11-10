@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import ExpoUI
 import UIKit
 
 public class StashNativeModule: Module {
@@ -19,5 +20,6 @@ public class StashNativeModule: Module {
       }
     }
 
+    ExpoUIView(Logo.self)
   }
 }
