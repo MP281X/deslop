@@ -45,8 +45,8 @@ One chain per trigger; no data means report it and investigate further, not veri
 
 | Missing fact                             | First call                                                                                                                                                        |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime error, trace or latency          | Call Scope's `list_services`, then `find`, then `read_trace` or `measure_latency`.                                                                                |
-| Runtime service, port or container state | Call Deploy's `inventory` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`; check unit health with the maintenance check's `systemctl --failed`. |
+| Runtime error, trace or latency          | Call Scope's `list_operations`, then `find_traces`, then `read_trace` or `measure_latency`.                                                                       |
+| Runtime service, port or container state | Call Deploy's `list_apps` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`; check unit health with the maintenance check's `systemctl --failed`. |
 | Sign-in blocked                          | Call Auth's `answer_request`.                                                                                                                                     |
 | Saved article, video or post             | Call Stash's `search_notes` or `read_note`.                                                                                                                       |
 | Design reference                         | Call Mobbin's `search_screens`, `search_flows` or `save_content`.                                                                                                 |
