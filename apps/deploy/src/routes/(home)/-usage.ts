@@ -101,6 +101,15 @@ export function bands(history: MachineHistory) {
 	] satisfies Band[]
 }
 
+// The band a selected app focuses: its own when the chart draws it, the small apps' block when it shares that, or none when the range never recorded it.
+export function focusedBand(history: MachineHistory, selected: string) {
+	const drawn = Array.some(bands(history), band => band.id === selected)
+	const recorded = Array.some(history.samples, sample => Array.some(sample.apps ?? [], app => app.id === selected))
+	if (drawn) return Option.some(selected)
+	if (recorded) return Option.some('other')
+	return Option.none()
+}
+
 // Each sample's place on the range's 0–100 time axis, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading, so a gap stays blank.
 export function runs(history: MachineHistory, minutes: number, recorded: (sample: Sample) => boolean) {
 	const window = chartWindow(minutes, history.time)

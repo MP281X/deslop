@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Function, Option} from 'effect'
 
-import {appHue, bands, runs} from '#routes/(home)/-usage.ts'
+import {appHue, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
@@ -67,6 +67,21 @@ it('tints a Deslop app with its icon hue and leaves a service without one grey',
 	assert.deepStrictEqual(appHue('preview gateway'), Option.some('var(--pink)'))
 	assert.isTrue(Option.isNone(appHue('t3code')))
 	assert.isTrue(Option.isNone(appHue('postgres')))
+})
+
+it('focuses the selected app, the small apps’ block when it shares that, and nothing when the range never recorded it', () => {
+	const history = machine([
+		sample(60_000, [
+			{cpu: 10, id: 'service:user:t3code.service', memory: 3 * GIB},
+			{cpu: 0, id: 'service:system:tiny.service', memory: 1024}
+		])
+	])
+	assert.deepStrictEqual(
+		focusedBand(history, 'service:user:t3code.service'),
+		Option.some('service:user:t3code.service')
+	)
+	assert.deepStrictEqual(focusedBand(history, 'service:system:tiny.service'), Option.some('other'))
+	assert.deepStrictEqual(focusedBand(history, 'service:user:gone.service'), Option.none())
 })
 
 it('breaks the time axis where the recording misses a slot or a sample lacks the reading', () => {
