@@ -43,7 +43,7 @@ import {
 	traceTiming,
 	traceView
 } from '#services/telemetry/lib/utils.ts'
-import type {LogsRequest, Query, Rejection, TraceSummary, TracesRequest} from '#services/telemetry/schema.ts'
+import type {LogsRequest, Query, Range, Rejection, TraceSummary, TracesRequest} from '#services/telemetry/schema.ts'
 import {Entry, TelemetryError} from '#services/telemetry/schema.ts'
 
 const RETENTION = Duration.days(3)
@@ -141,18 +141,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			)
 			yield* SubscriptionRef.update(version, Number.increment)
 		}, failed)
-		// Open pages share one recompute; without a viewer there is no scan. Changes coalesce during the one-second pause.
+		// Open pages share one scan; without a viewer there is no scan. Changes coalesce during the one-second pause.
 		const live = yield* pipe(
 			SubscriptionRef.changes(version),
 			Stream.buffer({capacity: 1, strategy: 'sliding'}),
 			Stream.flatMap(() =>
 				Stream.concat(
-					Stream.fromEffect(
-						pipe(
-							Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'}),
-							Effect.map(current => overview(current.entries, current.now))
-						)
-					),
+					Stream.fromEffect(Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'})),
 					Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
 				)
 			),
@@ -217,7 +212,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			logs: Effect.fn('Telemetry.logs')(function* (query: Query) {
 				return yield* page(query, 'log')
 			}),
-			overview: live,
+			// The same snapshot for every viewer; each time frame maps it to its own operations and traces.
+			overview: (range: Range) => Stream.map(live, current => overview(current.entries, current.now, range)),
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis
 				const key = `${input.route}:${input.status}:${input.credential}`

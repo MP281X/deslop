@@ -16,7 +16,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Attribute, Nano, Runtime} from '#services/telemetry/schema.ts'
+import {Attribute, Nano, rangeStart, Runtime} from '#services/telemetry/schema.ts'
 import type {
 	Entry,
 	Filters,
@@ -24,6 +24,7 @@ import type {
 	OperationTrace,
 	Overview,
 	Query,
+	Range,
 	Resource,
 	Stats,
 	Trace
@@ -476,6 +477,13 @@ function traced(records: readonly Entry[], now: number) {
 					durationMs: timing.durationMs,
 					...Option.match(brokeAt(spans), {onNone: () => ({}), onSome: span => ({failure: {span: span.name}})}),
 					id: root.traceId,
+					...Option.match(
+						Option.flatMap(
+							Array.findFirst(spanAttributes(root), attribute => attribute.key === 'trace.label'),
+							attribute => Option.liftPredicate(attribute.value['stringValue'], String.isString)
+						),
+						{onNone: () => ({}), onSome: label => ({label})}
+					),
 					time: timing.time
 				}
 			} satisfies Traced)
@@ -484,49 +492,54 @@ function traced(records: readonly Entry[], now: number) {
 }
 
 function operationsOf(group: readonly Traced[]) {
-	return Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
-		const times = Array.sort(
-			Array.map(entry[1], item => item.trace.durationMs),
-			Order.Number
-		)
-		return {
-			count: entry[1].length,
-			failures: failureCount(entry[1]),
-			name: Array.headNonEmpty(entry[1]).name,
-			p50Ms: percentile(times, 0.5),
-			runtime: Array.headNonEmpty(entry[1]).runtime,
-			// The slowest first, with the newest failures always among them, since those are the traces worth opening.
-			traces: Array.map(
-				Array.sort(
-					Array.take(
-						Array.dedupeWith(
-							[
-								...Array.take(
-									Array.sort(
-										Array.filter(entry[1], item => item.trace.failure !== undefined),
-										Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
-									),
-									KEEP / 2
+	return Array.match(group, {
+		onEmpty: () => [],
+		onNonEmpty: rows =>
+			Array.map(Record.toEntries(Array.groupBy(rows, item => `${item.runtime} ${item.name}`)), entry => {
+				const times = Array.sort(
+					Array.map(entry[1], item => item.trace.durationMs),
+					Order.Number
+				)
+				return {
+					count: entry[1].length,
+					failures: failureCount(entry[1]),
+					name: Array.headNonEmpty(entry[1]).name,
+					p50Ms: percentile(times, 0.5),
+					runtime: Array.headNonEmpty(entry[1]).runtime,
+					// The slowest first, with the newest failures always among them, since those are the traces worth opening.
+					traces: Array.map(
+						Array.sort(
+							Array.take(
+								Array.dedupeWith(
+									[
+										...Array.take(
+											Array.sort(
+												Array.filter(entry[1], item => item.trace.failure !== undefined),
+												Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
+											),
+											KEEP / 2
+										),
+										...Array.sort(
+											entry[1],
+											Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+										)
+									],
+									(first: Traced, second: Traced) => first.trace.id === second.trace.id
 								),
-								...Array.sort(
-									entry[1],
-									Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
-								)
-							],
-							(first: Traced, second: Traced) => first.trace.id === second.trace.id
+								KEEP
+							),
+							Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
 						),
-						KEEP
-					),
-					Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
-				),
-				item => item.trace
-			)
-		} satisfies Operation
+						item => item.trace
+					)
+				} satisfies Operation
+			})
 	})
 }
 
-// Apps with failures lead, then the busiest.
-export function overview(entries: readonly Entry[], now: number) {
+// Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
+export function overview(entries: readonly Entry[], now: number, range: Range) {
+	const cutoff = rangeStart(range, now)
 	return {
 		apps: Array.map(
 			Array.sort(
@@ -551,7 +564,11 @@ export function overview(entries: readonly Entry[], now: number) {
 					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => group.length)
 				)
 			),
-			group => ({name: Array.headNonEmpty(group).app, operations: operationsOf(group)})
+			group => ({
+				ci: Array.every(group, item => item.runtime === 'ci'),
+				name: Array.headNonEmpty(group).app,
+				operations: operationsOf(Array.filter(group, item => BigInt(item.trace.time) >= cutoff))
+			})
 		)
 	} satisfies Overview
 }

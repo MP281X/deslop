@@ -51,6 +51,28 @@ it('a new operation or trace cannot inherit the previous span selection', () => 
 	)
 })
 
+it('a new frame keeps a trace it still holds and clears one outside it', () => {
+	const selected = follow(
+		[
+			{_tag: 'Operation', operation: OPERATION},
+			{_tag: 'Trace', selection: {operation: OPERATION, traceId: 'second'}},
+			{_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}}
+		],
+		{range: '1h', source: 'deploy'}
+	)
+	assert.deepStrictEqual(nextSearch(selected, {_tag: 'Range', keepTrace: true, range: '24h'}), {
+		...selected,
+		range: '24h'
+	})
+	assert.deepStrictEqual(nextSearch(selected, {_tag: 'Range', keepTrace: false, range: '10m'}), {
+		operation: 'Inventory.snapshot',
+		pane: 'Span',
+		range: '10m',
+		side: 'server',
+		source: 'deploy'
+	} satisfies Search)
+})
+
 it('chooses one app at a time and leaves the chosen tab alone', () => {
 	const chosen = nextSearch({}, {_tag: 'Source', app: 'deploy'})
 	assert.deepStrictEqual(chosen, {source: 'deploy'})
