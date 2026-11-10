@@ -164,9 +164,6 @@ export const admitAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
 )
 
-// The row that carries focus, as the id of its element.
-export const selectedRowAtom = Atom.make(Option.none<string>())
-
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(

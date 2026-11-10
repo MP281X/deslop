@@ -1,4 +1,4 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, DateTime, Option, pipe} from 'effect'
 
@@ -16,26 +16,14 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
-import {accountAtom, admitAtom, peopleAtom, selectedRowAtom} from '#lib/utils.ts'
+import {accountAtom, admitAtom, peopleAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
 // The row's own line, then its failed answer beneath it; its actions sit at its end.
-function PersonRow(props: {
-	children?: ReactNode
-	footer?: ReactNode
-	onSelect: () => void
-	person: Person
-	selected: boolean
-}) {
+function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Person}) {
 	return (
 		<div role="listitem">
-			<Item
-				size="row"
-				id={`person-${props.person.id}`}
-				tabIndex={0}
-				data-selected={props.selected}
-				onFocus={props.onSelect}
-			>
+			<Item size="row">
 				<ItemMedia>
 					<AccountAvatar id={props.person.id} name={props.person.name} small />
 				</ItemMedia>
@@ -56,15 +44,10 @@ function PersonRow(props: {
 }
 
 // judge-ignore no-repeated-text-action -- apps/auth/AGENTS.md requires Allow and Decline on each access-request row.
-function AskingRow(props: {onSelect: () => void; person: Person; selected: boolean}) {
+function AskingRow(props: {person: Person}) {
 	const [admit, answer] = useAtom(admitAtom(props.person.id))
 	return (
-		<PersonRow
-			person={props.person}
-			selected={props.selected}
-			onSelect={props.onSelect}
-			footer={<ResultError result={admit} className="mb-2 ml-9" />}
-		>
+		<PersonRow person={props.person} footer={<ResultError result={admit} className="mb-2 ml-9" />}>
 			<ItemActions>
 				<Button variant="outline" size="xs" disabled={AsyncResult.isWaiting(admit)} onClick={() => answer(false)}>
 					Decline
@@ -88,9 +71,9 @@ function Since(props: {since: number}) {
 	)
 }
 
-function MemberRow(props: {onSelect: () => void; person: Person; selected: boolean}) {
+function MemberRow(props: {person: Person}) {
 	return (
-		<PersonRow person={props.person} selected={props.selected} onSelect={props.onSelect}>
+		<PersonRow person={props.person}>
 			<Since since={props.person.since} />
 		</PersonRow>
 	)
@@ -100,8 +83,6 @@ function MemberRow(props: {onSelect: () => void; person: Person; selected: boole
 function Directory() {
 	const result = useAtomSuspense(peopleAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(peopleAtom)
-	const selected = useAtomValue(selectedRowAtom)
-	const setSelected = useAtomSet(selectedRowAtom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
 		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
@@ -119,22 +100,8 @@ function Directory() {
 								<div role="list" aria-label="People">
 									{Array.map(entries, person =>
 										Boolean.match(person.role === 'Waiting', {
-											onFalse: () => (
-												<MemberRow
-													key={person.id}
-													person={person}
-													selected={Option.contains(selected, `person-${person.id}`)}
-													onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-												/>
-											),
-											onTrue: () => (
-												<AskingRow
-													key={person.id}
-													person={person}
-													selected={Option.contains(selected, `person-${person.id}`)}
-													onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-												/>
-											)
+											onFalse: () => <MemberRow key={person.id} person={person} />,
+											onTrue: () => <AskingRow key={person.id} person={person} />
 										})
 									)}
 								</div>

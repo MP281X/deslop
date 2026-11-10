@@ -1,4 +1,4 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
 
@@ -24,7 +24,7 @@ import codex from '#lib/brands/codex.svg'
 import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
-import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, selectedRowAtom, signInLabel} from '#lib/utils.ts'
+import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, signInLabel} from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
@@ -190,7 +190,7 @@ function ClientIcon(props: {client: Client}) {
 
 type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: number}
 
-function ClientRow(props: {client: SignedInClient; now: number; onSelect: () => void; selected: boolean}) {
+function ClientRow(props: {client: SignedInClient; now: number}) {
 	const active = ageLabel(
 		Math.floor(
 			Duration.toMinutes(
@@ -203,14 +203,10 @@ function ClientRow(props: {client: SignedInClient; now: number; onSelect: () => 
 		<div role="listitem">
 			<Item
 				size="row"
-				id={`client-${props.client.label}`}
-				tabIndex={0}
-				data-selected={props.selected}
 				aria-label={`${props.client.client.device}, active ${active}${Option.match(address, {
 					onNone: () => '',
 					onSome: value => ` · ${value}`
 				})}`}
-				onFocus={props.onSelect}
 			>
 				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
 				<ItemMedia className="size-4" role="img" aria-label={props.client.client.name} title={props.client.client.name}>
@@ -252,17 +248,12 @@ function PendingMark(props: {catalog: readonly {name: string; origin: string}[];
 }
 
 // A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
-function PendingRow(props: {
-	catalog: readonly {name: string; origin: string}[]
-	onSelect: () => void
-	request: PendingAuthorization
-	selected: boolean
-}) {
+function PendingRow(props: {catalog: readonly {name: string; origin: string}[]; request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
-		<div role="listitem" className={cn('bg-primary/10', props.selected && 'bg-primary/20')}>
-			<Item size="row" id="pending-sign-in" tabIndex={0} onFocus={props.onSelect}>
+		<div role="listitem" className="bg-primary/10">
+			<Item size="row">
 				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
 					<PendingMark catalog={props.catalog} request={props.request} />
 				</ItemMedia>
@@ -337,8 +328,6 @@ const signInListAtom = Atom.readable(
 export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {
 	const result = useAtomSuspense(signInListAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(signInListAtom)
-	const selected = useAtomValue(selectedRowAtom)
-	const setSelected = useAtomSet(selectedRowAtom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
 		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
@@ -358,14 +347,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 							onFalse: () =>
 								Option.match(props.pending, {
 									onNone: () => null,
-									onSome: request => (
-										<PendingRow
-											catalog={data.catalog}
-											request={request}
-											selected={Option.contains(selected, 'pending-sign-in')}
-											onSelect={() => setSelected(Option.some('pending-sign-in'))}
-										/>
-									)
+									onSome: request => <PendingRow catalog={data.catalog} request={request} />
 								}),
 							onTrue: () => (
 								<div role="status" aria-label="Checking the code">
@@ -374,13 +356,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 							)
 						})}
 						{Array.map(clients, client => (
-							<ClientRow
-								key={client.label}
-								client={client}
-								now={data.now}
-								selected={Option.contains(selected, `client-${client.label}`)}
-								onSelect={() => setSelected(Option.some(`client-${client.label}`))}
-							/>
+							<ClientRow key={client.label} client={client} now={data.now} />
 						))}
 					</div>
 				</Card>
