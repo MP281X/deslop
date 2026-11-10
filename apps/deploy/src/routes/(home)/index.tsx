@@ -168,7 +168,6 @@ function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
 	return <StaleProblem label="Data out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
 }
 
-// The selected app's processes.
 function ProcessList(props: {row: Row}) {
 	const processes = props.row.item.processes ?? []
 	const tree = processTree(processes)

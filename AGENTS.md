@@ -42,7 +42,7 @@ Decisions only the whole codebase can check, so review weighs them; lint and the
 
 ## Design
 
-Personal tools for a power user: compact, few clicks, fast once learned. Icons, position and colour lead; explanation appears on hover or focus; anything adding little goes.
+Personal tools for a power user: compact, few clicks, fast once learned. Icons, position and colour lead; explanation appears on hover or focus; anything adding little goes. Portfolio, the public page, is exempt and keeps its own fonts, hotkeys and presence text.
 
 - **Targets.** The 3440×1440 ultrawide (multi-pane tools fill it; a list keeps a centred column), 1920×1080 and the ~1512×982 MacBook; iPhone Air at 420×912pt with safe areas and Dynamic Type. Neutrals are shadcn's zinc in both appearances; app and status hues are Kanagawa's in P3, chroma unboosted; check the appearance actually shown.
 - **Colour.** Only app identity and status carry hue. Each app's primary is its icon's hue, and that hue marks the app wherever another app charts or lists it; a service without a Deslop icon stays zinc grey. Every view updates in real time, so nothing says it is live, connected, running normally or up to date; only staleness shows, as a dot and its age. Dots mark problems, never healthy state or a kind, which takes a tinted icon; magnitude steps the opacity of one hue. Static chrome stays low-luminance against burn-in.
