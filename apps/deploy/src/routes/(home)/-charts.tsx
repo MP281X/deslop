@@ -10,10 +10,10 @@ import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/
 import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
-import {bandName, bytes, rate} from '#routes/(home)/-rows.ts'
+import {bytes, rate} from '#routes/(home)/-rows.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
-import {chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
+import {bandName, chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const HEIGHT = 64

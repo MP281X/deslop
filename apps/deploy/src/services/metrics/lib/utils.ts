@@ -301,6 +301,15 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 	})
 }
 
+// A band's label: the page's name for the app when it has a row, else the unit or container the id names.
+export function bandName(id: string, labels: Record<string, string>) {
+	if (id === 'other') return 'Low impact'
+	if (id === 'system') return 'System'
+	return Option.getOrElse(Record.get(labels, id), () =>
+		String.replaceAll(/^service:[a-z]+:(?:deslop-)?|\.service$/gu, '')(String.replace(/^container:/u, 'container ')(id))
+	)
+}
+
 export function compactHistory(machine: MachineHistory, minutes: number) {
 	const summary: MachineSummary = {
 		...Record.getSomes({cpuModel: Option.fromUndefinedOr(machine.cpuModel)}),

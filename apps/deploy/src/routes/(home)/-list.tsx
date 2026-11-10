@@ -23,21 +23,9 @@ import {Failure} from '@deslop/runtime/web'
 import {inventoryAtom, runAtom} from '#lib/utils.ts'
 import {useExpose} from '#routes/(home)/-expose.tsx'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import {
-	type Row,
-	counted,
-	dot,
-	failureAge,
-	host,
-	impactGroups,
-	middleEllipsis,
-	nextRun,
-	reasonLine,
-	reasonOf,
-	runRequest,
-	status
-} from '#routes/(home)/-rows.ts'
-import {workloadName} from '#services/inventory/lib/utils.ts'
+import {counted, host, impactGroups, middleEllipsis, runRequest} from '#routes/(home)/-rows.ts'
+import {dot, failureAge, nextRun, reasonLine, reasonOf, status} from '#services/inventory/lib/state.ts'
+import {type Row, workloadName} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
@@ -180,8 +168,8 @@ function AppRow(props: {
 	const state = status(props.row.item)
 	const light = dot(props.row.item, state)
 	const scheduled = props.row.item.scheduled === true
-	const reason = reasonOf(props.row)
-	const age = failureAge(props.row, props.now)
+	const reason = reasonOf(props.row.item)
+	const age = failureAge(props.row.item, props.now)
 	const running =
 		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
 		Option.exists(requested, at => props.now - at < 10_000) ||
@@ -193,7 +181,10 @@ function AppRow(props: {
 		onFalse: () => nextRun(props.row.item.next ?? props.now, props.now),
 		onTrue: () => ''
 	})
-	const reasonText = Boolean.match(scheduled, {onFalse: () => reasonLine(props.row, props.now), onTrue: () => reason})
+	const reasonText = Boolean.match(scheduled, {
+		onFalse: () => reasonLine(props.row.item, props.now),
+		onTrue: () => reason
+	})
 	return (
 		<>
 			<Item size="row" role="listitem" data-selected={props.selected} className="relative">

@@ -238,6 +238,8 @@ export function workloads(items: readonly InventoryItem[]) {
 	)
 }
 
+export type Row = ReturnType<typeof workloads>[number]
+
 export function availablePorts(rows: ReturnType<typeof workloads>) {
 	return ports(
 		Array.flatMap(rows, row =>

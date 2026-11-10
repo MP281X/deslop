@@ -1,47 +1,14 @@
-import {Array, Boolean, HashSet, Number, Option, Order, Record, String} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, Order, String} from 'effect'
 
-import {appUsage} from '#routes/(home)/-process-tree.ts'
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
-import {itemOwner, type workloads} from '#services/inventory/lib/utils.ts'
+import {appUsage} from '#services/inventory/lib/process-tree.ts'
+import {dot, status} from '#services/inventory/lib/state.ts'
+import {itemOwner, type Row} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
-export type Row = ReturnType<typeof workloads>[number]
-
-const untilNext = new Intl.RelativeTimeFormat('en', {numeric: 'auto', style: 'narrow'})
 const size = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1})
-
-export function status(item: InventoryItem) {
-	if (String.startsWith('stale')(item.state)) return 'stale'
-	if (String.includes('unhealthy')(item.detail)) return 'unhealthy'
-	if (item.kind === 'port') return 'listening'
-	if (item.kind === 'exposure' && item.owned === true) return 'configured'
-	if (item.kind === 'exposure' && item.publicAccess === true) return 'public permission'
-	return String.replace(/^active · /u, '')(String.toLowerCase(item.state))
-}
-
-// Only a problem is marked: a service that runs needs no dot to say so.
-export function dot(item: InventoryItem, state: string) {
-	if (Option.isSome(String.match(/failed|unhealthy|Exited \([1-9]/u)(item.state + item.detail))) return 'error'
-	if (state === 'stale' || state === 'public permission' || state === 'restarting') return 'warning'
-	return 'quiet'
-}
-
-// How long ago a service stopped: minutes within the hour, hours within two days, then days.
-function since(at: number, now: number) {
-	const minutes = Number.max(0, Number.round((now - at) / 60_000, 0))
-	if (minutes < 60) return untilNext.format(-minutes, 'minute')
-	if (minutes < 2880) return untilNext.format(-Number.round(minutes / 60, 0), 'hour')
-	return untilNext.format(-Number.round(minutes / 1440, 0), 'day')
-}
-
-// When a timer next starts the job, against the snapshot's clock: minutes within the hour, then hours.
-export function nextRun(next: number, now: number) {
-	const minutes = Number.max(0, Number.round((next - now) / 60_000, 0))
-	if (minutes < 60) return untilNext.format(minutes, 'minute')
-	return untilNext.format(Number.round(minutes / 60, 0), 'hour')
-}
 
 // A running job's time in its row's column, counting up from its start as m:ss.
 export function counted(milliseconds: number) {
@@ -65,22 +32,6 @@ export function owner(row: Row) {
 		Option.liftPredicate(row.item, item => item.kind === 'service' || item.kind === 'container'),
 		itemOwner
 	)
-}
-
-// Why a row needs a look, and for an app how long ago; a healthy row has none.
-export function reasonOf(row: Row) {
-	return Option.match(Option.fromUndefinedOr(row.item.failure), {
-		onNone: () => row.item.detail,
-		onSome: stop => stop.reason
-	})
-}
-
-export function failureAge(row: Row, now: number) {
-	return Option.map(Option.fromUndefinedOr(row.item.failure?.at), at => since(at, now))
-}
-
-export function reasonLine(row: Row, now: number) {
-	return Option.match(failureAge(row, now), {onNone: () => reasonOf(row), onSome: age => `${reasonOf(row)} · ${age}`})
 }
 
 // Failing rows first, then the apps by memory, then the jobs a timer starts.
@@ -154,14 +105,6 @@ export function middleEllipsis(value: string) {
 
 export function host(url: string) {
 	return Option.getOrElse(Array.head(String.split(String.replace(/^https:\/\//u, '')(url), '/')), () => url)
-}
-
-export function bandName(id: string, labels: Record<string, string>) {
-	if (id === 'other') return 'Low impact'
-	if (id === 'system') return 'System'
-	return Option.getOrElse(Record.get(labels, id), () =>
-		String.replaceAll(/^service:[a-z]+:(?:deslop-)?|\.service$/gu, '')(String.replace(/^container:/u, 'container ')(id))
-	)
 }
 
 export function runRequest(item: InventoryItem) {
