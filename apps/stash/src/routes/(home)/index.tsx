@@ -361,7 +361,9 @@ export function HomeRoute(props: {
 	const refreshNotes = useAtomRefresh(notesAtom)
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
-	const saved = AsyncResult.isSuccess(notes) || (AsyncResult.isFailure(notes) && Result.isSuccess(shownOf(notes)))
+	const saved =
+		!(AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) &&
+		(AsyncResult.isSuccess(notes) || (AsyncResult.isFailure(notes) && Result.isSuccess(shownOf(notes))))
 	return (
 		<Toolbar
 			modifiers={[
