@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomSet} from '@effect/atom-react'
+import {useAtomSet} from '@effect/atom-react'
 
 import {Array, Match, pipe} from 'effect'
 
@@ -6,10 +6,9 @@ import {Host, NavigationDestination, NavigationStack, useNativeState} from '@exp
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, SessionGate} from '@deslop/components-mobile/screens'
+import {SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {updateAtom} from '@deslop/runtime/mobile'
 
 import {primary, queryAtom, session} from '#lib/utils.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
@@ -64,12 +63,9 @@ function AppRoutes() {
 }
 
 export function RootRoute() {
-	useAtomMount(updateAtom)
 	return (
-		<Suspense fallback={<BlankScreen />}>
-			<SessionGate logo={logo} session={session.machine} tint={primary}>
-				<AppRoutes />
-			</SessionGate>
-		</Suspense>
+		<SessionGate logo={logo} session={session.machine} tint={primary}>
+			<AppRoutes />
+		</SessionGate>
 	)
 }

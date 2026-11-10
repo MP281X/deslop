@@ -6,10 +6,9 @@ import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {updateAtom} from '@deslop/runtime/mobile'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
@@ -76,12 +75,9 @@ function AppRoutes() {
 }
 
 export function RootRoute() {
-	useAtomMount(updateAtom)
 	return (
-		<Suspense fallback={<BlankScreen />}>
-			<SessionGate logo={icon} session={session.machine} tint={primary}>
-				<AppRoutes />
-			</SessionGate>
-		</Suspense>
+		<SessionGate logo={icon} session={session.machine} tint={primary}>
+			<AppRoutes />
+		</SessionGate>
 	)
 }
