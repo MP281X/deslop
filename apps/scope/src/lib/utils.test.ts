@@ -2,9 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Boolean, Option, String} from 'effect'
 
-import type {Search} from '#lib/schema.ts'
 import {navigationOf, nextSearch, selectionOf} from '#lib/utils.ts'
-import type {NavigationEvent} from '#lib/utils.ts'
+import type {NavigationEvent, Search} from '#lib/utils.ts'
 import type {Overview} from '#services/telemetry/schema.ts'
 
 const OPERATION = {app: 'deploy', name: 'Inventory.snapshot', runtime: 'server' as const}

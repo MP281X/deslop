@@ -22,9 +22,8 @@ import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
-import {Search} from '#lib/schema.ts'
-import type {OperationKey} from '#lib/schema.ts'
 import {
+	Search,
 	ageOf,
 	durationOf,
 	focusOf,
@@ -37,7 +36,7 @@ import {
 	traceAtom,
 	traceLabel
 } from '#lib/utils.ts'
-import type {ActiveOperation, NavigationEvent} from '#lib/utils.ts'
+import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
