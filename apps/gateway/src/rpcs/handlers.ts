@@ -5,10 +5,12 @@ import {CurrentUser} from '@deslop/runtime/auth/utils'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {AiProxy} from '#services/ai/service.ts'
 import {Connections} from '#services/connections/service.ts'
+import {Gateway} from '#services/gateway/service.ts'
 
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const connections = yield* Connections
+		const gateway = yield* Gateway
 		const ai = yield* AiProxy
 		return RpcContracts.of({
 			'ai.keys': Effect.fnUntraced(function* () {
@@ -19,7 +21,10 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'ai.usage': period => Stream.unwrap(Effect.map(CurrentUser, user => ai.usage(user.id, period))),
 			'gateway.add': Effect.fnUntraced(function* (input, options) {
-				return yield* connections.add(input.url, yield* CurrentUser, options.headers)
+				const added = yield* connections.add(input.url, yield* CurrentUser, options.headers)
+				// A new server's tools are read now, so its first list is not empty.
+				yield* gateway.connected(options.headers)
+				return added
 			}),
 			'gateway.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch)),
 			'gateway.usage': period => connections.usage(period)

@@ -2,6 +2,7 @@ import {
 	Array,
 	Clock,
 	Context,
+	Deferred,
 	Effect,
 	Equal,
 	Fiber,
@@ -29,6 +30,7 @@ import type {Headers} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {bearerOf} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
@@ -57,10 +59,14 @@ function rejected(server: Pick<Connection, 'name'>) {
 export class Gateway extends Context.Service<
 	Gateway,
 	{
-		// A provider that just connected: its tools are read even while another read runs, which listed the servers before it.
+		// A connection that was added or re-authorized: its tools are read now, even while another read runs.
 		readonly connected: (headers: Headers.Headers) => Effect.Effect<void>
-		// An agent's tools/list: a read already running reads the same servers, so it is not repeated.
+		// A tools/list: a first discovery under way is awaited so a just-added server's tools are listed; otherwise the registry answers alone.
+		readonly joinFirst: Effect.Effect<void>
+		// A tools/list answered from the registry: a stale registry is refreshed in the background, and a changed tool set notifies clients.
 		readonly refresh: (headers: Headers.Headers) => Effect.Effect<void>
+		// A removed connection's tools leave the registry, and clients hear that their list changed.
+		readonly removed: Effect.Effect<void>
 	}
 >()('@deslop/gateway/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
@@ -136,7 +142,10 @@ export class Gateway extends Context.Service<
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
 				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
-				if (current.mode === 'deslop') return {token: yield* auth.token(headers), url: current.url}
+				if (current.mode === 'deslop') {
+					// Every request that reaches here already verified its bearer, so it is forwarded without a second check.
+					return {token: Option.getOrUndefined(bearerOf(headers)) ?? (yield* auth.token(headers)), url: current.url}
+				}
 				return {token: yield* connections.token(server.id, server.generation), url: current.url}
 			})
 			function withClient<A>(
@@ -278,30 +287,41 @@ export class Gateway extends Context.Service<
 					tools: Array.map(found.tools, tool => tool.name)
 				})
 			})
-			function read(headers: Headers.Headers) {
-				return pipe(
-					prune,
-					Effect.andThen(connections.definitions),
-					Effect.flatMap(definitions =>
-						Effect.forEach(
-							definitions,
-							server =>
-								pipe(
-									discover(server, headers),
-									Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
-									Effect.catch(cause =>
-										connections.report(server.id, server.generation, {
-											_tag: 'Failed',
-											error: rejected(server)(cause).message
-										})
-									)
-								),
-							{concurrency: 6, discard: true}
-						)
+			const lastRead = yield* Ref.make(Option.none<number>())
+			const inFlight = yield* Ref.make(Option.none<Deferred.Deferred<void>>())
+			const read = Effect.fnUntraced(function* (headers: Headers.Headers) {
+				const done = yield* Deferred.make<void>()
+				yield* Ref.set(inFlight, Option.some(done))
+				yield* Effect.ensuring(
+					pipe(
+						prune,
+						Effect.andThen(connections.definitions),
+						Effect.flatMap(definitions =>
+							Effect.forEach(
+								definitions,
+								server =>
+									pipe(
+										discover(server, headers),
+										Effect.tapCause(cause => Effect.logWarning(`${server.name} discovery failed`, cause)),
+										Effect.catch(cause =>
+											connections.report(server.id, server.generation, {
+												_tag: 'Failed',
+												error: rejected(server)(cause).message
+											})
+										)
+									),
+								{concurrency: 6, discard: true}
+							)
+						),
+						Effect.andThen(prune)
 					),
-					Effect.andThen(prune)
+					Effect.gen(function* () {
+						yield* Ref.set(lastRead, Option.some(yield* Clock.currentTimeMillis))
+						yield* Ref.set(inFlight, Option.none())
+						yield* Deferred.succeed(done, undefined)
+					})
 				)
-			}
+			})
 			// The caller waits up to 2 seconds; a slow read finishes in the gateway's scope, and its defect never fails the caller.
 			const settle = Effect.fnUntraced(function* (work: Effect.Effect<unknown>) {
 				yield* pipe(
@@ -310,35 +330,54 @@ export class Gateway extends Context.Service<
 					Effect.catchCause(cause => Effect.logWarning('Reading the servers’ tools failed', cause))
 				)
 			})
+			const joinFirst = Effect.gen(function* () {
+				if (Option.isSome(yield* Ref.get(lastRead))) return
+				const pending = Option.getOrUndefined(yield* Ref.get(inFlight))
+				if (pending === undefined) return
+				yield* pipe(Deferred.await(pending), Effect.timeoutOption('2 seconds'), Effect.asVoid)
+			})
+			const refresh = Effect.fnUntraced(function* (headers: Headers.Headers) {
+				const now = yield* Clock.currentTimeMillis
+				const last = yield* Ref.get(lastRead)
+				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
+				if (Option.exists(last, readAt => now - readAt < 30_000)) return
+				if (Option.isNone(last)) {
+					// The first list waits for the first discovery, so a fresh registry answers with its tools.
+					yield* settle(refreshes.withPermits(1)(read(headers)))
+					return
+				}
+				yield* Effect.forkIn(
+					Effect.withSpan(refreshes.withPermitsIfAvailable(1)(read(headers)), 'Gateway.refresh'),
+					scope
+				)
+			})
 			return Gateway.of({
 				connected: headers => Effect.withSpan(settle(refreshes.withPermits(1)(read(headers))), 'Gateway.connected'),
-				refresh: headers =>
-					Effect.withSpan(settle(refreshes.withPermitsIfAvailable(1)(read(headers))), 'Gateway.refresh')
+				joinFirst,
+				refresh,
+				removed: Effect.withSpan(prune, 'Gateway.removed')
 			})
 		})
 	)
 }
 
-// Slow refreshes outlive the request, not the server.
+// A tools/list is answered from the registry: it waits only for a first discovery already under way, then a stale refresh follows the answer.
 export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
-		const auth = yield* Auth
 		return app =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
-				if (
-					request.method === 'POST' &&
-					request.url === MCP_PATH &&
-					request.headers['origin'] === undefined &&
-					Result.isSuccess(yield* Effect.result(auth.user(request.headers)))
-				) {
-					const body = yield* Effect.result(request.json)
-					if (Result.isSuccess(body) && Schema.is(ToolRequest)(body.success)) {
-						yield* gateway.refresh(request.headers)
-					}
+				if (request.method !== 'POST' || request.url !== MCP_PATH || request.headers['origin'] !== undefined) {
+					return yield* app
 				}
-				return yield* app
+				const body = yield* Effect.result(request.json)
+				if (Result.isFailure(body) || !Schema.is(ToolRequest)(body.success)) return yield* app
+				yield* gateway.joinFirst
+				const response = yield* app
+				// A refusal or an Auth outage did not verify the bearer, so it starts no work with it.
+				if (response.status !== 401 && response.status !== 503) yield* gateway.refresh(request.headers)
+				return response
 			})
 	})
 )
