@@ -1568,7 +1568,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'read_trace shows a span’s links and the traces following it',
+		'a trace and the traces linked to it read as one tree from either end',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
@@ -1584,20 +1584,46 @@ it.layer(platform)(test => {
 						traceId: capture
 					}),
 					span({
-						end: `${BigInt(START) + 10_000_000n}`,
+						end: `${BigInt(START) + 40_000_000n}`,
 						links: [{spanId: '1111111111111111', traceId: capture}],
 						name: 'Notes.organize',
 						spanId: '2222222222222222',
-						start: START,
+						start: `${BigInt(START) + 5_000_000n}`,
+						traceId: organize
+					}),
+					span({
+						end: `${BigInt(START) + 30_000_000n}`,
+						name: 'Notes.tag',
+						parent: '2222222222222222',
+						spanId: '3333333333333333',
+						start: `${BigInt(START) + 10_000_000n}`,
 						traceId: organize
 					})
 				])
 			)
-			assert.deepStrictEqual((yield* telemetry.readTrace({id: organize, limit: 100})).spans[0]?.links, [capture])
-			assert.deepStrictEqual((yield* telemetry.readTrace({id: capture, limit: 100})).followedBy, [
-				{operation: 'Notes.organize', trace: organize}
-			])
-			assert.strictEqual((yield* telemetry.readTrace({id: organize, limit: 100})).followedBy, undefined)
+			const tree = [
+				{at: 0, id: '1111111111111111', ms: 10, name: 'POST /api/capture'},
+				{at: 5, id: '2222222222222222', ms: 35, name: 'Notes.organize', parent: '1111111111111111'},
+				{at: 10, id: '3333333333333333', ms: 20, name: 'Notes.tag', parent: '2222222222222222'}
+			]
+			for (const id of [capture, organize]) {
+				const answer = yield* telemetry.readTrace({id, limit: 100})
+				assert.strictEqual(answer.ms, 40)
+				assert.deepStrictEqual(
+					Array.map(answer.spans, read => ({
+						at: read.at,
+						id: read.id,
+						ms: read.ms,
+						name: read.name,
+						...Option.match(Option.fromUndefinedOr(read.parent), {onNone: () => ({}), onSome: parent => ({parent})})
+					})),
+					tree
+				)
+				assert.deepStrictEqual(
+					Array.map((yield* telemetry.trace(id)).spans, view => view.depth),
+					[0, 1, 2]
+				)
+			}
 		})
 	)
 

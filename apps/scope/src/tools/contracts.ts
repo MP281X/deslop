@@ -32,7 +32,7 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Readonly, true),
 	Tool.make('read_trace', {
 		description:
-			'Open one trace to see where its time went or why it failed: spans in tree order with offsets, durations, errors, denied spans, attributes and logs, keeping the failing span’s ancestors and the longest spans when over the limit. Logs outside a span follow the spans.',
+			'Open one trace, with the traces its spans link to or from, to see where its time went or why it failed: spans in tree order with offsets, durations, errors, denied spans, attributes and logs, keeping the failing span’s ancestors and the longest spans when over the limit. Logs outside a span follow the spans.',
 		failure: TelemetryError,
 		parameters: ReadTraceParams,
 		success: ReadTraceAnswer

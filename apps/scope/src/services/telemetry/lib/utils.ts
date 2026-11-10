@@ -25,8 +25,7 @@ import type {
 	Range,
 	Resource,
 	ServiceStatus,
-	Trace,
-	TraceLink
+	Trace
 } from '#services/telemetry/schema.ts'
 
 // Each operation lists this many traces, its newest failures among them.
@@ -522,82 +521,66 @@ export function readLinks(payload: Schema.JsonObject) {
 	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(SpanLink))(payload['links']), () => [] as const)
 }
 
-function traceLink(entry: Entry) {
-	return {
-		app: appName(entry.service),
-		name: entry.name,
-		runtime: runtime(entry.resource),
-		trace: entry.traceId
-	} satisfies TraceLink
-}
-
-function added(link: TraceLink, current?: readonly TraceLink[]) {
-	const links = Option.getOrElse(Option.fromUndefinedOr(current), () => [])
-	if (Array.some(links, value => value.trace === link.trace)) return links
-	return [...links, link]
-}
-
-// The traces each span follows from, and the traces following each span of this one, resolved to their root operation.
-function traceLinks(entries: readonly Entry[]) {
-	const spans = Array.filter(entries, entry => entry.signal === 'trace' && entry.traceId !== '')
-	const roots = Record.fromEntries(
-		Array.map(Record.values(Array.groupBy(spans, entry => entry.traceId)), group => {
-			const root = traceRoot(group)
-			return [root.traceId, traceLink(root)] as const
+function reached(
+	edges: readonly {from: string; to: string}[],
+	found: HashSet.HashSet<string>
+): HashSet.HashSet<string> {
+	const next = Array.dedupe(
+		Array.flatMap(edges, edge => {
+			if (HashSet.has(found, edge.from) && !HashSet.has(found, edge.to)) return [edge.to]
+			if (HashSet.has(found, edge.to) && !HashSet.has(found, edge.from)) return [edge.from]
+			return []
 		})
 	)
-	const linked = Record.fromEntries(
-		Array.map(
-			spans,
-			entry =>
-				[
-					`${entry.traceId}:${entry.spanId}`,
-					Array.dedupeWith(
-						Array.getSomes(
-							Array.map(entry.links ?? [], link =>
-								Boolean.match(link.traceId === entry.traceId, {
-									onFalse: () => Record.get(roots, link.traceId),
-									onTrue: () => Option.none<TraceLink>()
-								})
-							)
-						),
-						(left, right) => left.trace === right.trace
-					)
-				] as const
-		)
-	)
-	const followers = Array.reduce(
-		spans,
-		{bySpan: Record.empty<string, readonly TraceLink[]>(), byTrace: Record.empty<string, readonly TraceLink[]>()},
-		(all, entry) =>
-			Option.match(Record.get(roots, entry.traceId), {
-				onNone: () => all,
-				onSome: follower =>
-					Array.reduce(entry.links ?? [], all, (maps, link) => {
-						if (link.traceId === entry.traceId) return maps
-						const spanKey = `${link.traceId}:${link.spanId}`
-						return {
-							bySpan: Record.set(maps.bySpan, spanKey, added(follower, maps.bySpan[spanKey])),
-							byTrace: Record.set(maps.byTrace, link.traceId, added(follower, maps.byTrace[link.traceId]))
-						}
-					})
+	if (!Array.isReadonlyArrayNonEmpty(next)) return found
+	return reached(edges, HashSet.union(found, HashSet.fromIterable(next)))
+}
+
+// The trace and every trace a span link joins to it, either way, so the work a request started reads as part of it.
+export function linkedTraces(entries: readonly Entry[], id: string) {
+	return reached(
+		Array.flatMap(entries, entry =>
+			Array.flatMap(entry.links ?? [], link => {
+				if (link.traceId === entry.traceId) return []
+				return [{from: entry.traceId, to: link.traceId}]
 			})
+		),
+		HashSet.make(id)
 	)
-	return {followers, linked}
+}
+
+// Each linked trace's root hangs under the span it links to, its own link first.
+function linkedParents(spans: readonly Entry[]) {
+	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
+	return Record.fromEntries(
+		Array.flatMap(Record.values(Array.groupBy(spans, span => span.traceId)), group => {
+			const root = traceRoot(group)
+			return Option.match(
+				Array.findFirst([root, ...group], span =>
+					Array.findFirst(span.links ?? [], link => link.traceId !== span.traceId && HashSet.has(ids, link.spanId))
+				),
+				{onNone: () => [], onSome: link => [[root.spanId, link.spanId] as const]}
+			)
+		})
+	)
 }
 
 export function traceView(entries: Entry[], id: string) {
-	const records = Array.filter(entries, entry => entry.traceId === id)
+	const traces = linkedTraces(entries, id)
+	const records = Array.filter(entries, entry => HashSet.has(traces, entry.traceId))
 	const ordered = Array.sort(records, byStart)
 	const spans = Array.map(
 		Array.filter(ordered, entry => entry.signal === 'trace'),
 		(entry, index) => ({entry, index})
 	)
 	const byId = Record.fromEntries(Array.map(spans, span => [span.entry.spanId, span] as const))
+	const linked = linkedParents(Array.map(spans, span => span.entry))
+	function parentOf(entry: Entry) {
+		return Option.getOrElse(Record.get(linked, entry.spanId), () => parentId(entry))
+	}
 	const timing = traceTiming(records)
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const bySpan = Array.groupBy(logs, log => log.spanId)
-	const links = traceLinks(entries)
 
 	const broken = brokeAt(Array.map(spans, span => span.entry))
 	const tree = pipe(
@@ -605,7 +588,7 @@ export function traceView(entries: Entry[], id: string) {
 			const ancestors = Array.reverse(
 				Array.unfold({entry: span.entry, seen: HashSet.make(span.entry.spanId)}, current =>
 					pipe(
-						Record.get(byId, parentId(current.entry)),
+						Record.get(byId, parentOf(current.entry)),
 						Option.filter(parent => !HashSet.has(current.seen, parent.entry.spanId)),
 						Option.map(
 							parent => [parent, {entry: parent.entry, seen: HashSet.add(current.seen, parent.entry.spanId)}] as const
@@ -613,20 +596,14 @@ export function traceView(entries: Entry[], id: string) {
 					)
 				)
 			)
-			const key = `${span.entry.traceId}:${span.entry.spanId}` as const
 			return {
 				path: [...Array.map(ancestors, parent => parent.index), span.index],
 				value: {
 					...Struct.omit(span.entry, ['links']),
 					depth: ancestors.length,
-					...Option.match(Record.get(links.followers.bySpan, key), {
-						onNone: () => ({}),
-						onSome: followedBy => ({followedBy})
-					}),
-					...Option.match(Record.get(links.linked, key), {onNone: () => ({}), onSome: linked => ({links: linked})}),
 					logs: Option.getOrElse(Record.get(bySpan, span.entry.spanId), () => []),
 					offsetMs: durationMs(timing.time, span.entry.time),
-					parentSpanId: parentId(span.entry),
+					parentSpanId: parentOf(span.entry),
 					runtime: runtime(span.entry.resource)
 				}
 			}
@@ -637,10 +614,6 @@ export function traceView(entries: Entry[], id: string) {
 	return {
 		durationMs: timing.durationMs,
 		...Option.match(broken, {onNone: () => ({}), onSome: span => ({failureSpanId: span.spanId})}),
-		...Option.match(Record.get(links.followers.byTrace, id), {
-			onNone: () => ({}),
-			onSome: followedBy => ({followedBy})
-		}),
 		id,
 		logs: Array.filter(logs, log => !Record.has(byId, log.spanId)),
 		services: Array.dedupeWith(

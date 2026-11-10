@@ -58,6 +58,7 @@ import {
 	subscription,
 	traceRoot,
 	traceTiming,
+	linkedTraces,
 	traceView,
 	tracedOf
 } from '#services/telemetry/lib/utils.ts'
@@ -245,7 +246,6 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 	const attrs = attributesFlat(span.payload, span.name, failedSpan)
 	const side = sideOf(span.service, span.resource)
 	const logs = Array.map(span.logs, compactLog)
-	const links = Array.dedupe(Array.map(span.links ?? [], link => link.trace))
 	return {
 		app: appName(span.service),
 		at: rounded(span.offsetMs),
@@ -256,16 +256,15 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 		...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})}),
 		...Boolean.match(span.denied === true, {onFalse: () => ({}), onTrue: () => ({denied: true})}),
-		...Boolean.match(Array.isReadonlyArrayNonEmpty(links), {onFalse: () => ({}), onTrue: () => ({links})}),
 		...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})}),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})})
 	}
 }
 
 function readTraceAnswer(entries: readonly Entry[], id: string, limit: number) {
-	const records = Array.filter(entries, entry => entry.traceId === id)
+	const traces = linkedTraces(entries, id)
 	const view = traceView([...entries], id)
-	const timing = traceTiming([...records])
+	const timing = traceTiming(Array.filter(entries, entry => HashSet.has(traces, entry.traceId)))
 	const ancestors = Option.match(
 		Option.flatMap(Option.fromUndefinedOr(view.failureSpanId), spanId =>
 			Array.findFirst(view.spans, span => span.spanId === spanId)
@@ -307,15 +306,6 @@ function readTraceAnswer(entries: readonly Entry[], id: string, limit: number) {
 		...Option.match(Option.fromUndefinedOr(view.failureSpanId), {
 			onNone: () => ({}),
 			onSome: spanId => ({failure: spanId})
-		}),
-		...Option.match(Option.fromUndefinedOr(view.followedBy), {
-			onNone: () => ({}),
-			onSome: followedBy => ({
-				followedBy: Array.sort(
-					Array.map(followedBy, link => ({operation: link.name, trace: link.trace})),
-					Order.mapInput(Order.String, (row: {operation: string; trace: string}) => row.trace)
-				)
-			})
 		}),
 		id,
 		ms: rounded(timing.durationMs),

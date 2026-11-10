@@ -10,7 +10,7 @@ import {cn} from '@deslop/components-web/utils'
 
 import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
 import {appName, failedEntry} from '#services/telemetry/lib/utils.ts'
-import type {Trace, TraceLink} from '#services/telemetry/schema.ts'
+import type {Trace} from '#services/telemetry/schema.ts'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -98,8 +98,8 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 	)
 }
 
-// The picked span's header, error, links, attributes and logs, as stock-height rows with no dividers between them.
-export function SpanDetail(props: {onLink: (link: TraceLink) => void; span: Trace['spans'][number]}) {
+// The picked span's header, error, attributes and logs, as stock-height rows with no dividers between them.
+export function SpanDetail(props: {span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
 	return (
@@ -136,26 +136,6 @@ export function SpanDetail(props: {onLink: (link: TraceLink) => void; span: Trac
 					</div>
 				)
 			})}
-			{Array.map(
-				[
-					...Array.map(props.span.links ?? [], link => ({label: 'from' as const, link})),
-					...Array.map(props.span.followedBy ?? [], link => ({label: 'then' as const, link}))
-				],
-				(row, index) => (
-					<div key={`${row.label}:${row.link.trace}:${index}`} role="listitem" className="contents">
-						<button
-							type="button"
-							onClick={() => props.onLink(row.link)}
-							className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 text-left max-sm:h-11"
-						>
-							<span className="text-muted-foreground truncate">{row.label}</span>
-							<span className="block min-w-0 truncate" title={row.link.name}>
-								{row.link.name}
-							</span>
-						</button>
-					</div>
-				)
-			)}
 			{Array.map(attributes, (attribute, index) => (
 				<div
 					key={`${attribute.key}:${index}`}

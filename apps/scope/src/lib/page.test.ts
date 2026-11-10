@@ -16,7 +16,7 @@ import {overviewAtom, traceAtom} from '#lib/utils.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceView} from '#services/telemetry/lib/utils.ts'
 import {Entry, TelemetryError} from '#services/telemetry/schema.ts'
-import type {Overview, Range, Trace, TraceLink} from '#services/telemetry/schema.ts'
+import type {Overview, Range, Trace} from '#services/telemetry/schema.ts'
 
 const ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const RANGE: Range = '1h'
@@ -473,79 +473,6 @@ it.effect(
 		assert.include(html, 'aria-label="Span details"')
 		assert.include(html, 'deploy · at 0 ms')
 		assert.include(html, 'Private retained span')
-	})
-)
-
-it.effect(
-	'shows a span’s linked traces under from and then',
-	Effect.fnUntraced(function* () {
-		const from: TraceLink = {app: 'deploy', name: 'POST /api/capture', runtime: 'server', trace: String.repeat(32)('b')}
-		const then: TraceLink = {...from, name: 'Notes.organize'}
-		const html = yield* render(
-			AsyncResult.success({
-				...trace,
-				spans: Array.map(trace.spans, span => ({...span, followedBy: [then], links: [from]}))
-			}),
-			undefined,
-			`/?source=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
-		)
-		assert.include(html, '>from<')
-		assert.include(html, 'POST /api/capture')
-		assert.include(html, '>then<')
-		assert.include(html, 'Notes.organize')
-	})
-)
-
-it.effect(
-	'opens a linked trace outside the operation’s listed traces',
-	Effect.fnUntraced(function* () {
-		const outside = String.repeat(32)('c')
-		const linked = traceView(
-			[
-				Entry.make({
-					durationMs: 4,
-					id: 'outside-span',
-					name: 'Outside trace span',
-					payload: {},
-					resource: {},
-					service: '@deslop/deploy-server',
-					signal: 'trace',
-					spanId: 'bbbbbbbbbbbbbbbb',
-					status: 0,
-					time: '1781870000000000000',
-					traceId: outside
-				})
-			],
-			outside
-		)
-		const html = yield* render(
-			AsyncResult.success(linked),
-			AsyncResult.success({
-				apps: [
-					{
-						name: 'deploy',
-						operations: [
-							{
-								count: 20,
-								failures: 0,
-								name: 'Inventory.snapshot',
-								p50Ms: 1,
-								p95Ms: 1,
-								runtime: 'server',
-								traces: Array.makeBy(20, index => ({
-									durationMs: 1,
-									id: String.padStart(32, '0')((index + 1).toString(16)),
-									time: '1781870000000000000'
-								}))
-							}
-						]
-					}
-				]
-			}),
-			`/?link=1&source=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${outside}`,
-			outside
-		)
-		assert.include(html, 'Outside trace span')
 	})
 )
 

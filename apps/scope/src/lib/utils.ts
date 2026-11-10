@@ -62,7 +62,6 @@ const Selection = Schema.Struct({
 })
 export type NavigationEvent =
 	| {readonly _tag: 'Back'}
-	| {readonly _tag: 'Link'; readonly operation: OperationKey; readonly traceId: string}
 	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
 	| {readonly _tag: 'Range'; readonly keepTrace: boolean; readonly range: Range}
 	| {readonly _tag: 'Source'; readonly app: string}
@@ -71,7 +70,6 @@ export type NavigationEvent =
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
-	link: Schema.optionalKey(Schema.Literal(1)),
 	operation: Schema.optionalKey(Schema.String),
 	pane: Schema.optionalKey(Pane),
 	range: Schema.optionalKey(Range),
@@ -114,27 +112,18 @@ function select(selection: Selection, frame?: Range, pane?: Pane) {
 // The bar chooses one app at a time and clears the selection it no longer contains; choosing the chosen app again changes nothing.
 function sourceSearch(search: Search, app: string) {
 	if (search.source === app) return search
-	return {...Struct.omit(search, ['link', 'operation', 'pane', 'side', 'span', 'trace']), source: app}
+	return {...Struct.omit(search, ['operation', 'pane', 'side', 'span', 'trace']), source: app}
 }
 
 export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
-	if (event._tag === 'Link') {
-		return {...select({operation: event.operation, traceId: event.traceId}, search.range, 'Trace'), link: 1 as const}
-	}
 	if (event._tag === 'Operation') return select({operation: event.operation}, search.range, 'Traces')
 	if (event._tag === 'Trace') return select(event.selection, search.range, 'Trace')
-	if (event._tag === 'Span') {
-		const span = select(event.selection, search.range, 'Span')
-		return Boolean.match(search.link === 1 && search.trace === event.selection.traceId, {
-			onFalse: () => span,
-			onTrue: () => ({...span, link: 1 as const})
-		})
-	}
+	if (event._tag === 'Span') return select(event.selection, search.range, 'Span')
 	if (event._tag === 'Range') {
 		const kept = Boolean.match(event.keepTrace, {
-			onFalse: () => Struct.omit(search, ['link', 'span', 'trace']),
-			onTrue: () => Struct.omit(search, ['link'])
+			onFalse: () => Struct.omit(search, ['span', 'trace']),
+			onTrue: () => search
 		})
 		return {...kept, range: event.range} satisfies Search
 	}
@@ -347,7 +336,6 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 		)
 	)
 	const selection = navigationOf(search).selection
-	const linked = search.link === 1
 	const activeOperation = Option.orElse(
 		Option.filter(
 			Option.flatMap(Option.fromUndefinedOr(selection?.operation), key =>
@@ -356,7 +344,7 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 			active => active.app.name === source
 		),
 		() =>
-			Boolean.match(linked || mobile, {
+			Boolean.match(mobile, {
 				onFalse: () =>
 					Option.flatMap(overview, current =>
 						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
@@ -364,36 +352,18 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 				onTrue: () => Option.none<ActiveOperation>()
 			})
 	)
-	const activeKey = Option.orElse(
-		Option.map(activeOperation, active => ({
-			app: active.app.name,
-			name: active.operation.name,
-			runtime: active.operation.runtime
-		})),
-		() =>
-			Boolean.match(linked, {
-				onFalse: () => Option.none<OperationKey>(),
-				onTrue: () =>
-					Option.all({
-						app: Option.fromUndefinedOr(search.source),
-						name: Option.fromUndefinedOr(search.operation),
-						runtime: Option.fromUndefinedOr(search.side)
-					})
-			})
-	)
-	const linkedTrace = Boolean.match(linked, {
-		onFalse: () => Option.none<OperationTrace>(),
-		onTrue: () =>
-			Option.map(Option.fromUndefinedOr(search.trace), id => ({durationMs: 0, id, time: '0'}) satisfies OperationTrace)
-	})
-	const activeTrace = Option.orElse(
-		Option.flatMap(activeOperation, active =>
+	const activeKey = Option.map(activeOperation, active => ({
+		app: active.app.name,
+		name: active.operation.name,
+		runtime: active.operation.runtime
+	}))
+	const activeTrace = Option.flatMap(activeOperation, active =>
+		Option.orElse(
 			Option.flatMap(Option.fromUndefinedOr(selection?.traceId), selected =>
 				Array.findFirst(active.operation.traces, trace => trace.id === selected)
-			)
-		),
-		() =>
-			Option.orElse(linkedTrace, () => Option.flatMap(activeOperation, active => Array.head(active.operation.traces)))
+			),
+			() => Array.head(active.operation.traces)
+		)
 	)
 	const pickedSpan = Option.getOrUndefined(
 		Option.flatMap(
