@@ -291,6 +291,7 @@ function PhoneList(props: {
 				className="min-h-0 flex-1"
 				compact
 				free={props.free}
+				history={props.history}
 				now={props.now}
 				onSelect={props.onSelect}
 				rows={props.rows}
@@ -341,6 +342,7 @@ function Workspace(props: {
 										className="h-full min-w-0"
 										compact={false}
 										free={props.free}
+										history={props.history}
 										now={props.now}
 										onSelect={props.onSelect}
 										rows={props.rows}

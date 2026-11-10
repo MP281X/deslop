@@ -2,7 +2,7 @@ import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/at
 
 import {Array, Boolean, Cause, HashSet, Number, Option, Order, Stream, String} from 'effect'
 
-import {AppWindowIcon, ClockIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
+import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
@@ -29,6 +29,7 @@ import {
 	dot,
 	failureAge,
 	host,
+	impactGroups,
 	middleEllipsis,
 	nextRun,
 	reasonLine,
@@ -38,6 +39,7 @@ import {
 } from '#routes/(home)/-rows.ts'
 import {workloadName} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
+import type {MachineHistory} from '#services/metrics/schema.ts'
 
 export function InventoryContent(props: {children: ReactNode}) {
 	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
@@ -310,18 +312,22 @@ function ListRows(props: {
 	)
 }
 
-// The apps on one machine: failures first, then apps by memory, then the jobs a timer starts under their own heading.
+// The apps on one machine: failures first, then high-impact apps by memory, then healthy low-impact apps under their heading, then the jobs a timer starts.
 export function ListPane(props: {
 	className?: string
 	compact: boolean
 	free: readonly InventoryItem[]
+	history?: MachineHistory
 	now: number
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
 	selectedId?: string
 }) {
-	const apps = Array.filter(props.rows, row => row.item.scheduled !== true)
 	const jobs = Array.filter(props.rows, row => row.item.scheduled === true)
+	const groups = impactGroups(
+		Array.filter(props.rows, row => row.item.scheduled !== true),
+		props.history
+	)
 	return (
 		<div className={cn('flex min-h-0 flex-col', props.className)}>
 			<ItemListHeading icon={<StackIcon />}>Processes</ItemListHeading>
@@ -337,19 +343,29 @@ export function ListPane(props: {
 						onEmpty: () => <EmptyState icon={<AppWindowIcon weight="light" />} label="No apps in this range" />,
 						onNonEmpty: () => (
 							<ScrollArea className="min-h-0 flex-1">
-								{Boolean.match(Array.isReadonlyArrayNonEmpty(apps), {
-									onFalse: () => null,
-									onTrue: () => (
-										<ListRows
-											compact={props.compact}
-											free={props.free}
-											now={props.now}
-											onSelect={props.onSelect}
-											rows={apps}
-											selectedId={props.selectedId}
-										/>
-									)
-								})}
+								{Array.isReadonlyArrayNonEmpty(groups.high) && (
+									<ListRows
+										compact={props.compact}
+										free={props.free}
+										now={props.now}
+										onSelect={props.onSelect}
+										rows={groups.high}
+										selectedId={props.selectedId}
+									/>
+								)}
+								{Array.isReadonlyArrayNonEmpty(groups.high) && Array.isReadonlyArrayNonEmpty(groups.low) && (
+									<ItemListHeading icon={<GaugeIcon />}>Low impact</ItemListHeading>
+								)}
+								{Array.isReadonlyArrayNonEmpty(groups.low) && (
+									<ListRows
+										compact={props.compact}
+										free={props.free}
+										now={props.now}
+										onSelect={props.onSelect}
+										rows={groups.low}
+										selectedId={props.selectedId}
+									/>
+								)}
 								{Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {
 									onFalse: () => null,
 									onTrue: () => (
