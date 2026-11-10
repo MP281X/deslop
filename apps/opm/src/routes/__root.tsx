@@ -1,12 +1,12 @@
-import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, Result, Schema} from 'effect'
+import {Array, Option, Schema} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
+import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 
@@ -19,13 +19,11 @@ import {ChapterPath} from '#services/chapters/schema.ts'
 import type {Series} from '#services/chapters/schema.ts'
 
 function Destination(props: {number: number; series: Series; start?: number}) {
-	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(chaptersAtom)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Chapters" onRetry={refresh} />
-	}
-	return <ReaderRoute chapters={shown.success} number={props.number} series={props.series} start={props.start} />
+	return (
+		<Loaded atom={chaptersAtom} name="Chapters">
+			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} start={props.start} />}
+		</Loaded>
+	)
 }
 
 function AppRoutes() {

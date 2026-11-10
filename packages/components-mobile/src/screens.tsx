@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomSet, useAtomSuspense} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Result} from 'effect'
 
@@ -20,6 +20,7 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
+import type {Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
@@ -87,6 +88,21 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 			})}
 		</VStack>
 	)
+}
+
+// One gate for a screen's content: a blocking failure is the retry card, and the value renders where it stands.
+export function Loaded<A, E>(props: {
+	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
+	children: (value: A) => ReactNode
+	name: string
+}) {
+	const loaded = useAtomSuspense(props.atom, {includeFailure: true})
+	const refresh = useAtomRefresh(props.atom)
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name={props.name} onRetry={refresh} />
+	}
+	return props.children(shown.success)
 }
 
 // The app's mark and GitHub sign-in at the bottom.
