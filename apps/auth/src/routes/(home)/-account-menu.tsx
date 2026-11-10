@@ -28,8 +28,8 @@ const route = getRouteApi('/(home)')
 // A failed menu action says so directly under it, as the menu already reports an unreadable passkey list.
 function MenuFailure(props: {message: string}) {
 	return (
-		<DropdownMenuItem disabled className="max-sm:h-11">
-			<span className="text-destructive text-xs">{props.message}</span>
+		<DropdownMenuItem disabled variant="destructive" className="max-sm:h-11">
+			{props.message}
 		</DropdownMenuItem>
 	)
 }
