@@ -2,7 +2,7 @@ import {Array, Effect, Option, Schema, SynchronizedRef, pipe} from 'effect'
 
 import {KeyValueStore} from 'effect/persistence'
 
-import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
+import {Chapter, ChaptersError, DeadLink, PushToken} from '#services/chapters/schema.ts'
 
 const failed = Effect.mapError((cause: unknown) => ChaptersError.make({cause, message: 'The chapter storage failed.'}))
 
@@ -10,6 +10,7 @@ const failed = Effect.mapError((cause: unknown) => ChaptersError.make({cause, me
 export const openStore = Effect.fnUntraced(function* () {
 	const store = yield* KeyValueStore.KeyValueStore
 	const chapters = KeyValueStore.toSchemaStore(store, Schema.Array(Chapter))
+	const deadLinks = KeyValueStore.toSchemaStore(store, Schema.Array(DeadLink))
 	const devices = KeyValueStore.toSchemaStore(store, Schema.Array(PushToken))
 	const tokens = yield* SynchronizedRef.make(Array.copy(Option.getOrElse(yield* devices.get('devices'), () => [])))
 	function updateDevices(update: (current: PushToken[]) => PushToken[]) {
@@ -24,9 +25,11 @@ export const openStore = Effect.fnUntraced(function* () {
 	}
 	return {
 		addDevice: (token: PushToken) => updateDevices(current => Array.dedupe([...current, token])),
+		deadLinks: pipe(deadLinks.get('dead-links'), Effect.map(Option.getOrElse(() => [])), failed),
 		devices: SynchronizedRef.get(tokens),
 		load: pipe(chapters.get('chapters'), Effect.map(Option.getOrElse(() => [])), failed),
 		removeDevice: (token: string) => updateDevices(current => Array.filter(current, saved => saved !== token)),
-		save: (current: Chapter[]) => pipe(chapters.set('chapters', current), failed)
+		save: (current: Chapter[]) => pipe(chapters.set('chapters', current), failed),
+		saveDeadLinks: (current: DeadLink[]) => pipe(deadLinks.set('dead-links', current), failed)
 	}
 }, failed)
