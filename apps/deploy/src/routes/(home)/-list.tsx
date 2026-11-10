@@ -160,7 +160,7 @@ function RunNow(props: {disabled: boolean; item: InventoryItem; onRun: () => voi
 	)
 }
 
-export function RunFailure(props: {item: InventoryItem}) {
+function RunFailure(props: {item: InventoryItem}) {
 	return <ResultError result={useAtomValue(runAtom(props.item.id))} className="mx-4 wrap-anywhere" />
 }
 
