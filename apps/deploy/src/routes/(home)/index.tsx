@@ -22,12 +22,12 @@ import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
+import {RANGES} from '#routes/(home)/-chart.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
 import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
 import {processTree} from '#routes/(home)/-process-tree.ts'
 import {Processes} from '#routes/(home)/-processes.tsx'
-import {type Row, failedFor, order, owner, rangeSet, ranged} from '#routes/(home)/-rows.ts'
-import {appHue} from '#routes/(home)/-usage.ts'
+import {type Row, failedFor, order, owner, ranged} from '#routes/(home)/-rows.ts'
 import icon from '#routes/icon.svg'
 import {availablePorts, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
@@ -47,7 +47,7 @@ const Search = Schema.Struct({
 })
 const route = getRouteApi('/(home)/')
 
-// The range as one stock control: a line of tabs in the bar, the short set on a phone.
+// The range as one stock control: the same five tabs in the bar at every width.
 function RangeTabs(props: {
 	minutes: HistoryQuery['minutes']
 	onChange: (minutes: HistoryQuery['minutes']) => void
@@ -114,7 +114,7 @@ function MachineTabs(props: {
 						render={<Link to="/" search={previous => ({...previous, app: undefined, machine: worker, pane: 'apps'})} />}
 					>
 						<MachineIcon worker={worker} />
-						<span className="max-w-32 truncate">{machineName(worker)}</span>
+						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
 						{/* Only an unreachable machine is marked; one that answers needs no dot. */}
 						{failed && (
 							<span role="img" aria-label="Unavailable" className="flex size-3 shrink-0 items-center justify-center">
@@ -128,7 +128,7 @@ function MachineTabs(props: {
 	)
 }
 
-// The processes' loading rows: the real mark and name and detail bars, and its two meters right-aligned at the row's end.
+// The processes' loading rows: the real mark and name and detail bars, and its two figures right-aligned at the row's end.
 function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 	return (
 		<RowsSkeleton label={props.label} rows={props.rows}>
@@ -142,10 +142,8 @@ function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 				</div>
 			</ItemContent>
 			<ItemActions>
-				<div className="flex items-center gap-1.5">
-					<Skeleton className="h-1.5 w-12" />
-					<Skeleton className="h-1.5 w-12" />
-				</div>
+				<Skeleton className="h-3 w-14" />
+				<Skeleton className="h-3 w-11" />
 			</ItemActions>
 		</RowsSkeleton>
 	)
@@ -171,12 +169,11 @@ function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
 function ProcessList(props: {row: Row}) {
 	const processes = props.row.item.processes ?? []
 	const tree = processTree(processes)
-	const hue = Option.getOrElse(appHue(workloadName(props.row.item)), () => 'var(--blue)')
 	return Array.match(processes, {
 		onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
 		onNonEmpty: () => (
 			<ScrollArea className="min-h-0 flex-1">
-				<Processes hue={hue} tree={tree} />
+				<Processes tree={tree} />
 			</ScrollArea>
 		)
 	})
@@ -440,8 +437,6 @@ function Home() {
 			Array.findFirst(activeRows, row => row.item.id === current)
 		)
 	)
-	const ranges = rangeSet(isPhone, minutes)
-
 	function selectRow(row: Row) {
 		view({app: row.item.id, pane: 'process'})
 	}
@@ -464,21 +459,27 @@ function Home() {
 				})}
 				icon={icon}
 				name="deploy"
-				controls={
-					<div className="flex items-center gap-1">
-						<DataProblem minutes={minutes} />
-						<RangeTabs minutes={minutes} onChange={range => view({range})} ranges={ranges} />
-					</div>
-				}
-				tabs={
-					<MachineTabs
-						active={active}
-						histories={shownHistories}
-						inventoryFailure={inventoryFailure}
-						sources={sources}
-						workers={workers}
-					/>
-				}
+				controls={Boolean.match(pushed, {
+					onFalse: () => (
+						<div className="flex items-center gap-1 max-sm:-ml-3">
+							<DataProblem minutes={minutes} />
+							<RangeTabs minutes={minutes} onChange={range => view({range})} ranges={RANGES} />
+						</div>
+					),
+					onTrue: () => <DataProblem minutes={minutes} />
+				})}
+				tabs={Boolean.match(pushed, {
+					onFalse: () => (
+						<MachineTabs
+							active={active}
+							histories={shownHistories}
+							inventoryFailure={inventoryFailure}
+							sources={sources}
+							workers={workers}
+						/>
+					),
+					onTrue: () => undefined
+				})}
 			/>
 			<Workspace
 				active={active}

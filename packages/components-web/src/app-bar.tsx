@@ -42,7 +42,7 @@ function AccountMenu() {
 				aria-label="Account"
 				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
 			>
-				<Avatar size="sm">
+				<Avatar size="sm" variant="plain">
 					<AvatarImage
 						src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(account.value.id)}?s=96`}
 						alt={account.value.name}

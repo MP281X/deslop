@@ -28,13 +28,11 @@ function PersonRow(props: {children?: ReactNode; footer?: ReactNode; person: Per
 					<AccountAvatar id={props.person.id} name={props.person.name} small />
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle>
-						{props.person.fullName ?? props.person.name}
-						{props.person.role === 'Admin' && (
-							<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0" />
-						)}
-					</ItemTitle>
+					<ItemTitle>{props.person.fullName ?? props.person.name}</ItemTitle>
 					{props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>}
+					{props.person.role === 'Admin' && (
+						<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0 self-center" />
+					)}
 				</ItemContent>
 				{props.children}
 			</Item>

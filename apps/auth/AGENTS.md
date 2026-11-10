@@ -7,7 +7,7 @@
 - The bar switches between Sign-ins and People; signing out of every app stays in the account menu. Rows carry their own actions at their end, never a context menu: one action is an icon button, several sit behind one … menu. Agents sign a client out, remove a member or remove a passkey through the `sign_out_session`, `remove_person` and `remove_passkey` MCP tools. The client list itself is never narrowed.
 - A browser's child app sign-ins contribute to its row's latest activity, never rows of their own; signing the browser out ends them all.
 - Loading is skeleton rows at the loaded geometry; a sign-in button that waits keeps its own icon and disabled label. Only the bar shows until the account is known, then the page that will render gets its own skeleton: the signed-in list at the top, the sign-in page's app list.
-- People are one Card of 32px rows (44 on phones): a 16px square picture, name with the GitHub handle muted inline and an admin's shield right after the name; whoever asks for access leads with Decline and Allow. Every admin or member row ends with the same since-date column, wide enough for "Nov 2026" on one line; agents remove a member through the `remove_person` MCP tool, never in the page.
+- People are one Card of 32px rows (44 on phones): a 16px square picture, name with the GitHub handle muted inline and an admin's shield after the handle; whoever asks for access leads with Decline and Allow. Every admin or member row ends with the same since-date column, wide enough for "Nov 2026" on one line; agents remove a member through the `remove_person` MCP tool, never in the page.
 
 ## Journeys
 

@@ -5,7 +5,7 @@ import {Boolean, Option, Predicate} from 'effect'
 import {CheckIcon, KeyIcon, XIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {MachineState} from '@typeonce/effect-machine-react'
-import {Suspense} from 'react'
+import {Suspense, useEffect, useRef} from 'react'
 
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
@@ -27,6 +27,22 @@ function Enter(props: {
 }) {
 	const linked = route.useSearch({select: search => search.code !== undefined})
 	const invalid = props.state === 'Missing' || Predicate.isObject(props.state)
+	// Leaving the page hides its keyboard; iOS would otherwise restore it, and its strip, on return.
+	const codeInput = useRef<HTMLInputElement>(null)
+	useEffect(() => {
+		function blur() {
+			codeInput.current?.blur()
+		}
+		function onVisibilityChange() {
+			if (document.visibilityState === 'hidden') blur()
+		}
+		document.addEventListener('visibilitychange', onVisibilityChange)
+		addEventListener('pagehide', blur)
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibilityChange)
+			removeEventListener('pagehide', blur)
+		}
+	}, [])
 	return (
 		<section className="flex w-full flex-col gap-2">
 			<Field data-invalid={invalid}>
@@ -36,6 +52,7 @@ function Enter(props: {
 					</InputGroupAddon>
 					<InputGroupInput
 						id="code"
+						ref={codeInput}
 						className="max-sm:h-11"
 						aria-label="Code of a sign-in to approve"
 						placeholder="Code"

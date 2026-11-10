@@ -1,11 +1,10 @@
 import {Array, Boolean, HashSet, Number, Option, Order, Record, String} from 'effect'
 
-import {RANGES} from '#routes/(home)/-chart.ts'
 import {appUsage} from '#routes/(home)/-process-tree.ts'
 import {itemOwner, type workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
-import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
+import type {MachineHistory} from '#services/metrics/schema.ts'
 
 export type Row = ReturnType<typeof workloads>[number]
 
@@ -148,12 +147,6 @@ export function bandName(id: string, labels: Record<string, string>) {
 	return Option.getOrElse(Record.get(labels, id), () =>
 		String.replaceAll(/^service:[a-z]+:(?:deslop-)?|\.service$/gu, '')(String.replace(/^container:/u, 'container ')(id))
 	)
-}
-
-// The phoned range keeps the current range in view beside the three worth carrying.
-export function rangeSet(isPhone: boolean, minutes: HistoryQuery['minutes']) {
-	if (!isPhone) return RANGES
-	return Array.filter(RANGES, range => range.minutes === minutes || Array.contains([60, 1440, 10_080], range.minutes))
 }
 
 export function runRequest(item: InventoryItem) {
