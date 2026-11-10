@@ -226,6 +226,17 @@ function FullBody(props: {note: NoteItem}) {
 	)
 }
 
+function NoteContent(props: {note: NoteItem}) {
+	return (
+		<VStack alignment="leading" spacing={space[4]}>
+			{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
+			<Suspense fallback={<Placeholder />}>
+				<FullBody note={props.note} />
+			</Suspense>
+		</VStack>
+	)
+}
+
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
@@ -282,22 +293,12 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 									<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
 										<Problem label={issue} onRetry={props.onRetry} />
 									</HStack>
-									{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
-									<Suspense fallback={<Placeholder />}>
-										<FullBody note={props.note} />
-									</Suspense>
+									<NoteContent note={props.note} />
 								</VStack>
 							)
 						})
 					),
-					Match.orElse(() => (
-						<VStack alignment="leading" spacing={space[4]}>
-							{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
-							<Suspense fallback={<Placeholder />}>
-								<FullBody note={props.note} />
-							</Suspense>
-						</VStack>
-					))
+					Match.orElse(() => <NoteContent note={props.note} />)
 				)}
 				<Divider />
 				<Byline note={props.note} />
