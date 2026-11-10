@@ -25,6 +25,15 @@ import type {SessionVia} from '#services/tokens/schema.ts'
 
 const route = getRouteApi('/(home)')
 
+// A failed menu action says so directly under it, as the menu already reports an unreadable passkey list.
+function MenuFailure(props: {message: string}) {
+	return (
+		<DropdownMenuItem disabled className="max-sm:h-11">
+			<span className="text-destructive text-xs">{props.message}</span>
+		</DropdownMenuItem>
+	)
+}
+
 function PasskeyItems(props: {via: SessionVia}) {
 	const read = useAtomValue(passkeysAtom)
 	const passkeys = AsyncResult.getOrElse(read, () => [])
@@ -35,11 +44,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 			{/* A failed read says so, rather than looking like an account without passkeys. */}
 			{Option.match(AsyncResult.error(read), {
 				onNone: () => null,
-				onSome: failure => (
-					<DropdownMenuItem disabled className="max-sm:h-11">
-						<span className="text-destructive text-xs">Passkeys unavailable · {failure.message}</span>
-					</DropdownMenuItem>
-				)
+				onSome: failure => <MenuFailure message={`Passkeys unavailable · ${failure.message}`} />
 			})}
 			{Array.map(passkeys, passkey => (
 				<DropdownMenuItem key={passkey.id} disabled>
@@ -53,12 +58,17 @@ function PasskeyItems(props: {via: SessionVia}) {
 			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
 			<DropdownMenuItem
 				className="max-sm:h-11"
+				closeOnClick={false}
 				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
 				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
 			>
 				<KeyIcon />
 				Add a passkey
 			</DropdownMenuItem>
+			{Option.match(AsyncResult.error(adding), {
+				onNone: () => null,
+				onSome: failure => <MenuFailure message={failure.message} />
+			})}
 		</DropdownMenuGroup>
 	)
 }
@@ -93,11 +103,16 @@ export function AccountMenu(props: {account: SignedAccount}) {
 				<DropdownMenuItem
 					variant="destructive"
 					className="max-sm:h-11"
+					closeOnClick={false}
 					disabled={AsyncResult.isWaiting(signOut)}
 					onClick={() => endSession(next)}
 				>
 					Sign out
 				</DropdownMenuItem>
+				{Option.match(AsyncResult.error(signOut), {
+					onNone: () => null,
+					onSome: failure => <MenuFailure message={failure.message} />
+				})}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)

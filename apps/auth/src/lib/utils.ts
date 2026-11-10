@@ -6,7 +6,6 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -150,14 +149,6 @@ export const appsAtom = Atom.keepAlive(
 		)
 	)
 )
-
-// An account-menu action has no row to answer under, so it says how it failed in a toast.
-function failedWith(title: string) {
-	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
-		Effect.tapError(effect, failure =>
-			Effect.sync(() => toast.add({description: failure.message, title, type: 'error'}))
-		)
-}
 
 // One per person, so a failed answer shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
@@ -322,7 +313,7 @@ export const passkeysAtom = Atom.keepAlive(
 	)
 )
 
-// Kept alive, since the menu that starts it closes at once and would drop the passkey the browser then makes.
+// Kept alive, since the browser's passkey prompt outlives the menu that starts it.
 export const addPasskeyAtom = Atom.keepAlive(
 	RpcClient.runtime.fn(
 		Effect.fnUntraced(function* () {
@@ -337,8 +328,7 @@ export const addPasskeyAtom = Atom.keepAlive(
 				Effect.flatMap(Schema.decodeUnknownEffect(Registration))
 			)
 			yield* client('auth.addPasskey', {response})
-			toast.add({title: 'Passkey added'})
-		}, failedWith('Cannot add a passkey'))
+		})
 	)
 )
 
@@ -397,5 +387,5 @@ function signOut(next: Search['next']) {
 // From another app's Sign out, whose page says how it failed.
 export const signOutAtom = authRuntime.fn(signOut)
 
-// From the account menu, which closes as it runs, so a failure is a toast.
-export const menuSignOutAtom = authRuntime.fn((next: Search['next']) => failedWith('Cannot sign out')(signOut(next)))
+// From the account menu, which shows a failure under its own item.
+export const menuSignOutAtom = authRuntime.fn(signOut)
