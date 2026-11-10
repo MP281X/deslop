@@ -20,7 +20,13 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 		])
 	),
 	message: Schema.String
-}) {}
+}) {
+	// Scope reads a failure's exception type: an outage must not look like a refusal.
+	override get name() {
+		if (this.error === 'temporarily_unavailable') return 'AuthUnavailable'
+		return 'AuthError'
+	}
+}
 
 export type User = typeof User.Type
 export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})

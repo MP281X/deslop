@@ -26,6 +26,7 @@ import {createRoot} from 'react-dom/client'
 
 import {Denied, Error, NotFound, SignIn} from '@deslop/components-web/fallbacks'
 
+import {layerRpcStreamClient} from '#rpc.ts'
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
 
@@ -148,7 +149,8 @@ export const layerProtocol = pipe(
 			Layer.provide(Socket.layerWebSocketConstructorGlobal)
 		)
 	),
-	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary())
+	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary()),
+	Layer.provideMerge(layerRpcStreamClient)
 )
 
 export function layer(applicationName: string) {

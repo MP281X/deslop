@@ -4,7 +4,6 @@ import {Signature} from 'effect/crypto'
 import type {Headers} from 'effect/http'
 import {FetchHttpClient, HttpClient, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {JoseError, Jwks, Jwt} from 'effect/jose'
-import {RpcSchema} from 'effect/rpc'
 
 import {MCP_METADATA_PATH} from '#schema.ts'
 
@@ -36,12 +35,6 @@ export class Auth extends Context.Service<
 				RpcAuth.of((effect, request) =>
 					pipe(
 						auth.user(request.headers),
-						Effect.tap(() => {
-							if (RpcSchema.isStreamSchema(request.rpc.successSchema)) {
-								return Effect.annotateCurrentSpan('rpc.stream', true)
-							}
-							return Effect.void
-						}),
 						Effect.flatMap(user =>
 							Effect.raceFirst(
 								Effect.provideService(effect, CurrentUser, user),

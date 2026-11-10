@@ -17,6 +17,7 @@
 					"packages/runtime/src/auth/schema.ts",
 					"packages/runtime/src/auth/lib/utils.ts",
 					"packages/runtime/src/net.ts",
+					"packages/runtime/src/rpc.ts",
 					"packages/runtime/src/schema.ts",
 					"packages/runtime/src/telemetry.ts"
 				]

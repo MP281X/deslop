@@ -10,6 +10,7 @@ import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import Constants from 'expo-constants'
 import {Alert} from 'react-native'
 
+import {layerRpcStreamClient} from '#rpc.ts'
 import {Account, RPC_PATH} from '#schema.ts'
 import {layerOtlp} from '#telemetry.ts'
 
@@ -47,6 +48,7 @@ function signedInProtocol<R>(token: Effect.Effect<string, AuthError, R>) {
 			Layer.provide(Socket.layerWebSocketConstructorGlobal),
 			Layer.provide(RpcSerialization.layerJson),
 			Layer.provideMerge(layerRpcAuthClient(token)),
+			Layer.provideMerge(layerRpcStreamClient),
 			Layer.provide(FetchHttpClient.layer)
 		)
 }

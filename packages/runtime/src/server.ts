@@ -45,6 +45,7 @@ import {KeyValueStore} from 'effect/persistence'
 import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
+import {RpcStream, layerRpcStream} from '#rpc.ts'
 import {
 	Account,
 	MANIFEST_PATH,
@@ -384,11 +385,13 @@ export function layerRpc<Rpcs extends Rpc.Any, E, R>(options: {
 	return pipe(
 		RpcServer.layerHttp({
 			disableTracing: options.disableTracing,
-			group: options.group,
+			// Marked for every server before its handler or auth check runs, so a subscription is never read as a failed call.
+			group: options.group.middleware(RpcStream),
 			path: RPC_PATH,
 			protocol: 'websocket'
 		}),
-		Layer.provide(options.handlers)
+		Layer.provide(options.handlers),
+		Layer.provide(layerRpcStream)
 	)
 }
 

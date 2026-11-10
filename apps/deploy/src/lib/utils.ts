@@ -3,6 +3,7 @@ import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {isDenied} from '@deslop/runtime/auth/utils'
+import {RpcStream} from '@deslop/runtime/rpc'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -10,7 +11,7 @@ import type {ExposeRequest, InventoryItem, RunRequest} from '#services/inventory
 import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: WebRuntime.layer('@deslop/deploy')
 }) {}
 

@@ -18,6 +18,7 @@ import {
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
+import {RpcStream} from '@deslop/runtime/rpc'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -48,7 +49,7 @@ type Wrapped = typeof Wrapped.Type
 const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: WebRuntime.layerProtocol
 }) {}
 

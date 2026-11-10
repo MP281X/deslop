@@ -9,6 +9,7 @@ import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
+import {RpcStream} from '@deslop/runtime/rpc'
 
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -21,7 +22,7 @@ export const primary = hues.ivory
 export const session = MobileSession.make('https://opm.mp281x.xyz', keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: session.protocol
 }) {}
 

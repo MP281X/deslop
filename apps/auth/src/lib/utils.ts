@@ -8,6 +8,7 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
+import {RpcStream} from '@deslop/runtime/rpc'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -29,7 +30,7 @@ export const Search = Schema.Struct({
 })
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: WebRuntime.layer('@deslop/auth')
 }) {}
 
