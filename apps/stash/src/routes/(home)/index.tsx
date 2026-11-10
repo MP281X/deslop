@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -39,7 +39,6 @@ import {
 	navigationTitle,
 	onAppear,
 	pickerStyle,
-	padding,
 	resizable,
 	searchable,
 	tag,
@@ -52,7 +51,7 @@ import {Linking} from 'react-native'
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
@@ -248,26 +247,6 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
-function Outages() {
-	const notes = useAtomValue(notesAtom)
-	const refresh = useAtomRefresh(notesAtom)
-	const search = useAtomValue(searchAtom)
-	const refreshSearch = useAtomRefresh(searchAtom)
-	if (!AsyncResult.isFailure(notes) && !AsyncResult.isFailure(search)) return null
-	return (
-		<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
-			{AsyncResult.isFailure(notes) && <Problem label="Notes not updating" onRetry={refresh} />}
-			{AsyncResult.isFailure(search) && (
-				<Problem
-					label="Search unavailable"
-					saved={Option.isSome(pipe(search, AsyncResult.value, Option.flatten))}
-					onRetry={refreshSearch}
-				/>
-			)}
-		</HStack>
-	)
-}
-
 function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: string) => void; tag?: string}) {
 	const remove = useAtomSet(removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
@@ -294,7 +273,6 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 				const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
 				return (
 					<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-						<Outages />
 						{Array.match(all, {
 							onEmpty: () => (
 								<Empty>
@@ -379,6 +357,11 @@ export function HomeRoute(props: {
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
+	const notes = useAtomValue(notesAtom)
+	const refreshNotes = useAtomRefresh(notesAtom)
+	const search = useAtomValue(searchAtom)
+	const refreshSearch = useAtomRefresh(searchAtom)
+	const saved = AsyncResult.isSuccess(notes) || (AsyncResult.isFailure(notes) && Result.isSuccess(shownOf(notes)))
 	return (
 		<Toolbar
 			modifiers={[
@@ -402,6 +385,20 @@ export function HomeRoute(props: {
 				</Suspense>
 			</PasteSheet>
 			<Toolbar.Content>
+				{saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)) && (
+					<ToolbarItem placement="topBarLeading">
+						<Problem
+							label={Boolean.match(AsyncResult.isFailure(notes), {
+								onFalse: () => 'Search unavailable',
+								onTrue: () => 'Notes not updating'
+							})}
+							onRetry={() => {
+								refreshNotes()
+								refreshSearch()
+							}}
+						/>
+					</ToolbarItem>
+				)}
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
 				</ToolbarItem>
