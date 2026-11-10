@@ -15,7 +15,6 @@ CliRuntime.runApp({
 	routes: pipe(
 		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(RpcSerialization.layerJson),
-		Layer.provide(Chapters.layer),
-		Layer.provide(ServerRuntime.layerDataStore)
+		Layer.provide(Chapters.layer)
 	)
 })

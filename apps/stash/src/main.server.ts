@@ -38,7 +38,6 @@ CliRuntime.runApp({
 			})
 		),
 		Layer.provide(layerNotes),
-		Layer.provide(ServerRuntime.layerDataStore),
 		Layer.provide(Layer.mergeAll(Sources.layer, Media.layer, Organizer.layer)),
 		Layer.provide(ServerRuntime.ToolPath.layer),
 		Layer.provide(NodeDns.layer)

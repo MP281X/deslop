@@ -41,7 +41,7 @@
 					// First match wins: schemas and pure helpers above stay shared; implementations default to server-only.
 					"apps/*/src/services/**",
 					"apps/*/src/{http,rpcs,tools}/handlers.ts",
-					"packages/runtime/src/auth/{service,sessions}.ts",
+					"packages/runtime/src/auth/{service,sessions,routes}.ts",
 					"packages/runtime/src/ai/service.ts",
 					"packages/runtime/src/server.ts",
 					"packages/runtime/src/cli.ts",

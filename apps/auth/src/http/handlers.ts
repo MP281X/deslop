@@ -6,6 +6,7 @@ import {RateLimiter} from 'effect/persistence'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {
 	APPS_PATH,
+	COOKIE,
 	DEVICE_PATH,
 	ISSUER_PATH,
 	JWKS_PATH,
@@ -49,7 +50,6 @@ import {
 } from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
-const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true} as const
 const LOGIN_COOKIE = '__Host-login'
 
 function session(seconds: number) {

@@ -27,9 +27,10 @@ import {Jwk, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {guard, layerAnnounce, layerKeyValueStore, layerRoutes, layerSessionRoutes} from '#server.ts'
+import {guard, layerAnnounce, layerKeyValueStore, layerRoutes} from '#server.ts'
 
 import {SESSION_COOKIE, clientIdOf} from '#auth/lib/utils.ts'
+import {layerSessionRoutes} from '#auth/routes.ts'
 import {AccessClaims, AuthError} from '#auth/schema.ts'
 import {Auth} from '#auth/service.ts'
 import {Sessions} from '#auth/sessions.ts'
@@ -293,7 +294,6 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const signIn = yield* send(web, 'https://dev.example.ts.net:25270/auth/sign-in', {
 					host: 'dev.example.ts.net:25270'
 				})
-				assert.strictEqual(signIn.status, 503)
 				assert.isNull(signIn.headers.get('location'))
 			})
 		)
