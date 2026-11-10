@@ -11,7 +11,7 @@ import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bandName, bytes, rate} from '#routes/(home)/-rows.ts'
-import {appHue, bands, runs} from '#routes/(home)/-usage.ts'
+import {appHue, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
 import {chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
@@ -73,6 +73,7 @@ function fillOf(
 function UsageChart(props: {
 	className?: string
 	cover?: boolean
+	focus?: string
 	format: (value: number) => string
 	history: MachineHistory
 	hue: (name: string) => Option.Option<string>
@@ -84,6 +85,7 @@ function UsageChart(props: {
 }) {
 	const [cursor, setCursor] = useState<{index: number; x: number; y: number}>()
 	const [hoverBand, setHoverBand] = useState<ChartLayer>()
+	const focused = Option.fromUndefinedOr(props.focus)
 	const hovered = Option.all([Option.fromUndefinedOr(cursor), Option.fromUndefinedOr(hoverBand)])
 	function move(event: PointerEvent<SVGSVGElement>) {
 		const bounds = event.currentTarget.getBoundingClientRect()
@@ -151,6 +153,8 @@ function UsageChart(props: {
 							)[1],
 							layer => {
 								const fill = fillOf(layer.band, props.names(layer.band.id), props.hue)
+								const isFocused = Option.exists(focused, focus => focus === layer.band.id)
+								const dimmed = Option.isSome(focused) && !isFocused
 								return Array.map(allRuns, run => (
 									<polygon
 										key={`${layer.band.id}:${run[0]?.x}`}
@@ -165,9 +169,20 @@ function UsageChart(props: {
 											' '
 										)}
 										fill={fill.color}
-										fillOpacity={fill.opacity}
-										stroke="var(--background)"
-										strokeWidth="0.6"
+										fillOpacity={Boolean.match(dimmed, {
+											onFalse: () =>
+												Boolean.match(isFocused, {
+													onFalse: () => fill.opacity,
+													onTrue: () => Number.max(fill.opacity, 0.9)
+												}),
+											onTrue: () => fill.opacity * 0.15
+										})}
+										stroke={Boolean.match(isFocused, {
+											onFalse: () => 'var(--background)',
+											onTrue: () => 'var(--foreground)'
+										})}
+										strokeOpacity={Boolean.match(isFocused, {onFalse: () => 1, onTrue: () => 0.7})}
+										strokeWidth={Boolean.match(isFocused, {onFalse: () => 0.6, onTrue: () => 0.75})}
 										vectorEffect="non-scaling-stroke"
 										onPointerEnter={() => setHoverBand(layer.band)}
 									/>
@@ -340,8 +355,12 @@ export function ChartBlock(props: {
 	isPhone: boolean
 	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
+	selectedOwner?: string
 }) {
 	const all = bands(props.history)
+	const focus = Option.getOrUndefined(
+		Option.flatMap(Option.fromUndefinedOr(props.selectedOwner), selected => focusedBand(props.history, selected))
+	)
 	const latest = Option.getOrUndefined(Array.last(props.history.samples))
 	const total = Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total)
 	const disk = Array.map(props.history.samples, sample =>
@@ -353,6 +372,7 @@ export function ChartBlock(props: {
 	const charts: readonly {
 		cover: boolean
 		figure: string
+		focus?: string
 		format: (value: number) => string
 		label: string
 		layers: readonly ChartLayer[]
@@ -361,6 +381,7 @@ export function ChartBlock(props: {
 		{
 			cover: false,
 			figure: Boolean.match(latest === undefined, {onFalse: () => bytes(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
+			focus,
 			format: bytes,
 			label: 'Memory',
 			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
@@ -369,6 +390,7 @@ export function ChartBlock(props: {
 		{
 			cover: false,
 			figure: Boolean.match(latest?.cpu === undefined, {onFalse: () => rate(latest?.cpu ?? 0), onTrue: () => '—'}),
+			focus,
 			format: rate,
 			label: 'CPU',
 			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
@@ -416,6 +438,7 @@ export function ChartBlock(props: {
 						<UsageChart
 							className="h-16 sm:h-32"
 							cover={chart.cover}
+							focus={chart.focus}
 							format={chart.format}
 							history={props.history}
 							hue={appHue}

@@ -219,6 +219,7 @@ function DetailPane(props: {
 	minutes: HistoryQuery['minutes']
 	pending: boolean
 	row?: Row
+	selectedOwner?: string
 	worker?: string
 }) {
 	return (
@@ -232,7 +233,13 @@ function DetailPane(props: {
 						{
 							onNone: () => <EmptyChart worker={props.worker} />,
 							onSome: history => (
-								<ChartBlock history={history} isPhone={false} labels={props.labels} minutes={props.minutes} />
+								<ChartBlock
+									history={history}
+									isPhone={false}
+									labels={props.labels}
+									minutes={props.minutes}
+									selectedOwner={props.selectedOwner}
+								/>
 							)
 						}
 					)}
@@ -255,6 +262,7 @@ function PhoneList(props: {
 	onSelect: (row: Row) => void
 	rows: readonly Row[]
 	selectedId?: string
+	selectedOwner?: string
 }) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -266,7 +274,15 @@ function PhoneList(props: {
 						),
 						{
 							onNone: () => <EmptyChart />,
-							onSome: history => <ChartBlock history={history} isPhone labels={props.labels} minutes={props.minutes} />
+							onSome: history => (
+								<ChartBlock
+									history={history}
+									isPhone
+									labels={props.labels}
+									minutes={props.minutes}
+									selectedOwner={props.selectedOwner}
+								/>
+							)
 						}
 					)}
 				</MetricsContent>
@@ -303,6 +319,9 @@ function Workspace(props: {
 	selectedApp?: string
 	selectedRow?: Row
 }) {
+	const selectedOwner = Option.getOrUndefined(
+		Option.flatMap(Option.fromUndefinedOr(props.selectedRow), row => owner(row))
+	)
 	return Option.match(props.authFailure, {
 		onNone: () => (
 			<div className="flex min-h-0 flex-1 flex-col">
@@ -337,6 +356,7 @@ function Workspace(props: {
 										minutes={props.minutes}
 										pending={props.pending}
 										row={props.selectedRow}
+										selectedOwner={selectedOwner}
 										worker={props.active}
 									/>
 								</ResizablePanel>
@@ -354,6 +374,7 @@ function Workspace(props: {
 										onSelect={props.onSelect}
 										rows={props.rows}
 										selectedId={props.selectedRow?.item.id}
+										selectedOwner={selectedOwner}
 									/>
 								),
 								onTrue: () => (
