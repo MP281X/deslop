@@ -5,8 +5,8 @@
 	--primary: var(--cyan);
 }
 
-/* A box keeps 1px of the page at its right edge, so touching siblings stay distinguishable without moving. */
-[data-icicle-box] > span {
+/* A bar keeps 1px of the page at its right edge, so touching bars stay distinguishable without moving; a 2px tick keeps both. */
+[data-flame-fill] {
 	box-shadow: inset -1px 0 0 var(--background);
 }
 
