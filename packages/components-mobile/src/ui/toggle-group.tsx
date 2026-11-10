@@ -6,6 +6,7 @@ import {
 	buttonStyle,
 	controlSize,
 	fixedSize,
+	foregroundStyle,
 	labelStyle,
 	lineLimit,
 	tint
@@ -58,8 +59,11 @@ export function ToggleGroupItem(props: {
 					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
 				),
 				buttonBorderShape('capsule'),
-				controlSize('large'),
-				...Boolean.match(selected, {onFalse: () => [], onTrue: () => [tint(group.tint)]}),
+				controlSize('regular'),
+				...Boolean.match(selected, {
+					onFalse: () => [],
+					onTrue: () => [tint(group.tint), foregroundStyle(colors.primaryForeground)]
+				}),
 				labelStyle('titleAndIcon'),
 				text.detail,
 				lineLimit(1),
