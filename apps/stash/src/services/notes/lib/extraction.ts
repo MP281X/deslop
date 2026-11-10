@@ -158,6 +158,15 @@ const load = Effect.fnUntraced(function* <A, E>(
 	)
 })
 
+// One span per request to a source, with the address and its answer, while the pinned agent and proxy keep their client spans off.
+function attempt<A, E>(url: URL, read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>) {
+	return pipe(
+		load(url, read),
+		Effect.tap(found => Effect.annotateCurrentSpan('status', found.status)),
+		Effect.withSpan('Sources.fetch', {attributes: {source: sourceFor(url.href), url: url.href}})
+	)
+}
+
 const follow = Effect.fnUntraced(function* <A, E>(
 	url: URL,
 	read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>,
@@ -165,7 +174,7 @@ const follow = Effect.fnUntraced(function* <A, E>(
 ): Effect.fn.Return<{body: A; type: string; url: URL}, NotesError, Dns.Dns> {
 	const proxied = Option.isSome(yield* Exit)
 	const answer = yield* pipe(
-		load(url, read),
+		attempt(url, read),
 		Effect.filterOrFail(
 			// A residential exit can be offline or flagged; each new try gets another exit address.
 			found => !proxied || !Array.contains([403, 429, 500, 502, 503], found.status),
@@ -213,7 +222,7 @@ function whole(post: FxStatus['status']) {
 
 const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.Return<URL, NotesError, Dns.Dns> {
 	if (!Array.contains(['vm.tiktok.com', 'vt.tiktok.com', 't.co'], url.hostname)) return url
-	const answer = yield* load(url, () => Effect.void)
+	const answer = yield* attempt(url, () => Effect.void)
 	if (answer.location === undefined || hops === 5) {
 		return yield* NotesError.make({message: 'The short link leads to no post.'})
 	}
