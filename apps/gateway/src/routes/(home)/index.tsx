@@ -442,7 +442,8 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 function CopyEndpoint() {
 	const [result, copy] = useAtom(copyAtom(ENDPOINT))
 	const copied = useAtomValue(copiedAtom)
-	const failed = AsyncResult.isFailure(result)
+	// A retry in flight is no longer the failure it follows.
+	const failed = AsyncResult.isFailure(result) && !result.waiting
 	return (
 		<Button
 			variant={Boolean.match(failed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
