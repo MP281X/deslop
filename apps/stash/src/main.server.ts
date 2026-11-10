@@ -33,7 +33,8 @@ CliRuntime.runApp({
 			rpc,
 			pipe(HttpHandlers, Layer.provide(HttpAuth.layer)),
 			ServerRuntime.layerMcp({
-				instructions: 'Stash is the reading list of articles, videos and posts the user saved or asks to keep.',
+				instructions:
+					'Stash holds the reading list of articles, videos and posts the user saved or asks to keep; start with search_notes.',
 				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			})
 		),

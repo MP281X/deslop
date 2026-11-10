@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Layer, Option, Stream, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, Layer, Option, Stream, String, pipe} from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
 
@@ -54,11 +54,28 @@ export const ToolHandlers = Tools.toLayer(
 			list_passkeys: Effect.fnUntraced(function* () {
 				return {passkeys: Option.getOrElse(yield* Stream.runHead(passkeys.list(yield* CurrentOwner)), () => [])}
 			}),
+			list_people: Effect.fnUntraced(function* () {
+				return {
+					people: Array.map(yield* people.list((yield* CurrentOwner).user), person => ({
+						login: person.name,
+						role: person.role
+					}))
+				}
+			}),
 			list_sessions: Effect.fnUntraced(function* () {
 				return {
 					sessions: Array.map(
 						withChildActivity(Option.getOrElse(yield* Stream.runHead(tokens.apps(yield* CurrentOwner)), () => [])),
-						app => ({...Struct.pick(app, ['address', 'client', 'device', 'lastActive']), id: app.family})
+						app => ({
+							...Option.match(Option.fromUndefinedOr(app.address), {
+								onNone: () => ({}),
+								onSome: address => ({address})
+							}),
+							client: app.client,
+							...Boolean.match(app.device === app.address, {onFalse: () => ({device: app.device}), onTrue: () => ({})}),
+							id: app.family,
+							lastActive: DateTime.formatIso(DateTime.makeUnsafe(app.lastActive))
+						})
 					)
 				}
 			}),
@@ -84,7 +101,7 @@ export const ToolHandlers = Tools.toLayer(
 					Effect.fromOption,
 					Effect.mapError(() => AuthError.make({message: `No GitHub account ${input.login} is listed in Auth`}))
 				)
-				return yield* people.remove(person.id, owner.user)
+				return {login: (yield* people.remove(person.id, owner.user)).name}
 			}),
 			sign_out_session: Effect.fnUntraced(function* (input) {
 				yield* tokens.disconnect(input.id, yield* CurrentOwner)

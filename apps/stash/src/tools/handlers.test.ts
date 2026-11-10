@@ -1,0 +1,83 @@
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {assert, it} from '@effect/vitest'
+
+import {Array, Context, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
+
+import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {layerKeyValueStore} from '@deslop/runtime/server'
+
+import {Media} from '#services/media/service.ts'
+import {Sources} from '#services/notes/lib/extraction.ts'
+import {Organizer} from '#services/notes/lib/organization.ts'
+import {NoteId} from '#services/notes/schema.ts'
+import {Notes} from '#services/notes/service.ts'
+import {Tools} from '#tools/contracts.ts'
+import {ToolHandlers} from '#tools/handlers.ts'
+
+const USER = {id: 'github:1', name: 'tester'}
+
+const organizer = Organizer.of({
+	organize: () =>
+		Effect.succeed({
+			body: 'Remember the milk.',
+			definitions: [],
+			screenText: '',
+			summary: 'A reminder.',
+			tags: ['errand'],
+			title: 'Milk',
+			topics: 'errands'
+		})
+})
+
+const sources = Sources.of({
+	extract: () => Effect.die('A text note reads no link'),
+	image: () => Effect.die('A text note keeps no image'),
+	resolve: Effect.succeed
+})
+
+const media = Media.of({
+	fileFrames: () => Effect.succeed([]),
+	fileTranscript: () => Effect.succeedNone,
+	frames: () => Effect.succeed([]),
+	read: () => Effect.die('A text note reads no video')
+})
+
+it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash tools', test => {
+	test.effect(
+		'removes a saved note through the MCP tool',
+		Effect.fnUntraced(function* () {
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+					const context = yield* Layer.build(
+						pipe(
+							Notes.layer(directory),
+							Layer.provide(layerKeyValueStore(directory)),
+							Layer.provide(Layer.succeed(Sources, sources)),
+							Layer.provide(Layer.succeed(Media, media)),
+							Layer.provide(Layer.succeed(Organizer, organizer))
+						)
+					)
+					const notes = Context.get(context, Notes)
+					// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns the toolkit's lifetime.
+					const toolkit = yield* pipe(Tools, Effect.provide(ToolHandlers), Effect.provideService(Notes, notes))
+					const saved = yield* pipe(
+						toolkit.handle('save_note', {text: 'Remember the milk'}, '1'),
+						Effect.flatMap(Stream.runCollect),
+						Effect.map(results => Option.getOrThrow(Array.last(results))),
+						Effect.provideService(CurrentUser, USER)
+					)
+					assert.isFalse(saved.isFailure)
+					const note = yield* Schema.decodeUnknownEffect(Schema.Struct({id: NoteId}))(saved.encodedResult)
+					assert.strictEqual((yield* notes.list).length, 1)
+					yield* pipe(
+						toolkit.handle('remove_note', {id: note.id}, '2'),
+						Effect.flatMap(Stream.runDrain),
+						Effect.provideService(CurrentUser, USER)
+					)
+					assert.deepStrictEqual(yield* notes.list, [])
+				})
+			)
+		})
+	)
+})

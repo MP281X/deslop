@@ -40,7 +40,8 @@ CliRuntime.runApp({
 			HttpHandlers,
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
-				instructions: 'Approve a sign-in you started with answer_request.',
+				instructions:
+					"Auth holds the user's sign-ins, passkeys and people; answer a sign-in you started with answer_request, and start with list_sessions for anything else.",
 				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
 			})
 		),

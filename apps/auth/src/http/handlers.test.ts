@@ -71,7 +71,8 @@ const me = pipe(
 
 const mcp = pipe(
 	McpServer.layerHttp({
-		instructions: 'Approve a sign-in you started with answer_request.',
+		instructions:
+			"Auth holds the user's sign-ins, passkeys and people; start with list_sessions, or answer_request when the user shows you a sign-in code.",
 		name: 'Auth',
 		path: '/mcp',
 		protocols: [McpProtocol.v2025_06_18],
@@ -2236,9 +2237,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 						Schema.Struct({
 							address: Schema.optionalKey(Schema.String),
 							client: Schema.String,
-							device: Schema.String,
+							device: Schema.optionalKey(Schema.String),
 							id: Schema.NonEmptyString,
-							lastActive: Schema.Finite
+							lastActive: Schema.DateTimeUtcFromString
 						})
 					)
 				})
@@ -2250,6 +2251,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				['Browser', 'Browser', 'Opencode']
 			)
+			assert.isTrue(
+				Array.every(listed.sessions, session => session.device === undefined || session.device !== session.address)
+			)
+			const command = yield* Effect.fromOption(
+				Array.findFirst(listed.sessions, session => session.client === 'Opencode')
+			)
+			assert.deepStrictEqual([command.address, command.device], ['93.184.216.34', undefined])
 			const browser = yield* Effect.fromOption(
 				Array.findFirst(listed.sessions, session => session.client === 'Browser')
 			)
@@ -2326,10 +2334,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const stranger = cookie(yield* signIn(web.issuer, 'stranger'))
 			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
 			const agent = yield* agentToken(web.issuer, admin)
-			const denied = yield* callTool(web.issuer, yield* agentToken(web.issuer, stranger), 'remove_person', {
-				login: 'octocat'
-			})
+			const memberAgent = yield* agentToken(web.issuer, stranger)
+			const denied = yield* callTool(web.issuer, memberAgent, 'remove_person', {login: 'octocat'})
 			assert.include(yield* Effect.promise(() => denied.text()), 'Only an admin can manage people')
+			const hidden = yield* callTool(web.issuer, memberAgent, 'list_people', {})
+			assert.include(yield* Effect.promise(() => hidden.text()), 'Only an admin can manage people')
+			assert.deepStrictEqual(yield* toolResult(yield* callTool(web.issuer, agent, 'list_people', {})), {
+				people: [
+					{login: 'octocat', role: 'Admin'},
+					{login: 'stranger', role: 'Member'}
+				]
+			})
 			assert.strictEqual((yield* callTool(web.issuer, agent, 'remove_person', {login: 'stranger'})).status, 200)
 			assert.deepStrictEqual(yield* people(web.issuer, admin), ['octocat:Admin'])
 			assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: stranger}})).status, 401)
