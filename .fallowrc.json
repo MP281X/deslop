@@ -6,20 +6,7 @@
 	"failOnParseError": true,
 	"boundaries": {
 		"zones": [
-			{
-				"name": "client",
-				"patterns": [
-					"apps/*/index.html",
-					"apps/*/src/main.client.tsx",
-					"apps/*/src/routes/**",
-					"apps/*/src/lib/{utils.ts,components.tsx,activities.tsx}",
-					"apps/portfolio/src/lib/profile.ts",
-					"apps/*/modules/native/index.ts",
-					"packages/components-*/src/**",
-					"packages/runtime/src/{web,mobile}/client.{ts,tsx}",
-					"packages/runtime/src/mobile/{session,keychain}.ts"
-				]
-			},
+			{"name": "test", "patterns": ["apps/*/src/lib/*.test.ts"]},
 			{
 				"name": "shared",
 				"patterns": [
@@ -32,6 +19,21 @@
 					"packages/runtime/src/net.ts",
 					"packages/runtime/src/schema.ts",
 					"packages/runtime/src/telemetry.ts"
+				]
+			},
+			{
+				"name": "client",
+				"patterns": [
+					"apps/*/index.html",
+					"apps/*/src/main.client.tsx",
+					"apps/*/src/routes/**",
+					"apps/*/src/lib/*.ts",
+					"apps/*/src/lib/*.tsx",
+					"apps/portfolio/src/lib/profile.ts",
+					"apps/*/modules/native/index.ts",
+					"packages/components-*/src/**",
+					"packages/runtime/src/{web,mobile}/client.{ts,tsx}",
+					"packages/runtime/src/mobile/{session,keychain}.ts"
 				]
 			},
 			{
