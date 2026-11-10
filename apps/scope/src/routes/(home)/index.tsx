@@ -36,7 +36,7 @@ import {
 	traceAtom
 } from '#lib/utils.ts'
 import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
-import {Icicle, SpansSkeleton, TimeAxis} from '#routes/(home)/-icicle.tsx'
+import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
@@ -405,7 +405,7 @@ function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	})
 }
 
-// The trace's icicle under its time axis, then, when inline, the picked span's details after one hairline.
+// The trace's flame under its pinned time axis, then, when inline, the picked span's details after one hairline.
 function SpansList(props: {
 	focus: Option.Option<Trace['spans'][number]>
 	inlineDetails: boolean
@@ -415,30 +415,14 @@ function SpansList(props: {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
 		return <EmptyState label="No spans" icon={<ChartBarHorizontalIcon weight="light" />} />
 	}
-	const total = Number.max(props.trace.durationMs, 1)
-	const shortest = Array.reduce(props.trace.spans, Infinity, (min, span) =>
-		Number.min(min, Boolean.match(span.durationMs > 0, {onFalse: () => Infinity, onTrue: () => span.durationMs}))
-	)
 	return (
 		<ScrollArea className="min-h-0 flex-1">
-			<div className="overflow-x-auto">
-				<div
-					className="w-full min-w-(--ice-width)"
-					style={{
-						'--ice-width': `${Boolean.match(shortest === Infinity, {
-							onFalse: () => total / shortest + 32,
-							onTrue: () => 0
-						})}px`
-					}}
-				>
-					<TimeAxis totalMs={props.trace.durationMs} />
-					<Icicle
-						focus={Option.getOrUndefined(Option.map(props.focus, span => span.spanId))}
-						onPick={props.onPick}
-						trace={props.trace}
-					/>
-				</div>
-			</div>
+			<TimeAxis totalMs={props.trace.durationMs} />
+			<Flame
+				focus={Option.getOrUndefined(Option.map(props.focus, span => span.spanId))}
+				onPick={props.onPick}
+				trace={props.trace}
+			/>
 			{Boolean.match(props.inlineDetails && Option.isSome(props.focus), {
 				onFalse: () => null,
 				onTrue: () => (
