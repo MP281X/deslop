@@ -267,6 +267,8 @@ const saveLink = Effect.fnUntraced(function* (count: string) {
 })
 
 export const clipboard = makeClipboard({
+	// A copy that failed to save is never offered again.
+	answered: () => true,
 	detect: Effect.gen(function* () {
 		if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
 		if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')
@@ -277,8 +279,6 @@ export const clipboard = makeClipboard({
 		notSaved: 'Not Saved',
 		questions: {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'}
 	},
-	// The count is kept before the save, so a copy that failed to save is never offered again.
-	once: {_tag: 'Before'},
 	save: (copy, get) =>
 		Boolean.match(copy.kind === 'image', {
 			onFalse: () =>

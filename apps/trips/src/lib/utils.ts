@@ -139,6 +139,8 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 })
 
 export const clipboard = makeClipboard({
+	// A refused booking is answered, but a lost connection offers the same copy on the next return.
+	answered: error => error._tag === 'BookingsError',
 	detect: Effect.gen(function* () {
 		if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
 		if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<ClipboardKind>('text')
@@ -153,8 +155,6 @@ export const clipboard = makeClipboard({
 			text: 'Add a booking from the copied text?'
 		}
 	},
-	// A refused booking is handled, but a lost connection offers the same copy on the next return.
-	once: {_tag: 'After', keep: error => error._tag === 'BookingsError'},
 	save: (copy, get) =>
 		Effect.gen(function* () {
 			const source = yield* readClipboard(copy.count, bookingFromClipboard(copy))

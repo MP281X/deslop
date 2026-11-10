@@ -143,18 +143,13 @@ export type ClipboardLabels = {
 	readonly questions: Record<ClipboardKind, string>
 }
 
-// Stash keeps the count before saving, so a failed save never offers the same copy again; Trips keeps it only once the save succeeded or was refused as handled.
-export type ClipboardOnce<E> =
-	| {readonly _tag: 'After'; readonly keep: (error: E) => boolean}
-	| {readonly _tag: 'Before'}
-
 export type Clipboard = ReturnType<typeof makeClipboard>
 
-// A copy is offered once: the count file, its write, the answer and the return listener are the same in every app.
+// A copy is offered once: the count file, its write, the answer and the return listener are the same in every app; `answered` names the failed saves that must not offer the same copy again.
 export function makeClipboard<E extends {_tag: string; message: string}>(options: {
+	answered: (error: E) => boolean
 	detect: Effect.Effect<Option.Option<ClipboardKind>>
 	labels: ClipboardLabels
-	once: ClipboardOnce<E>
 	save: (copy: ClipboardCopy, context: Atom.AtomContext) => Effect.Effect<void, E>
 }) {
 	const file = new File(Paths.document, 'clipboard.txt')
@@ -172,22 +167,12 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 							onFalse: () => Effect.void,
 							onTrue: () => options.save(answer, get)
 						})
-						const once = options.once
 						yield* pipe(
-							Effect.gen(function* () {
-								if (once._tag === 'After') {
-									yield* pipe(
-										save,
-										Effect.tapError(error =>
-											Boolean.match(once.keep(error), {onFalse: () => Effect.void, onTrue: () => handled})
-										)
-									)
-									yield* handled
-									return
-								}
-								yield* handled
-								yield* save
-							}),
+							save,
+							Effect.tapError(error =>
+								Boolean.match(options.answered(error), {onFalse: () => Effect.void, onTrue: () => handled})
+							),
+							Effect.andThen(handled),
 							alert(options.labels.notSaved),
 							Effect.ignore({log: 'Warn', message: 'The clipboard copy was not saved'})
 						)
