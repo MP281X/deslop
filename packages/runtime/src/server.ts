@@ -42,9 +42,10 @@ import {
 	HttpStaticServer
 } from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
-import {RpcMiddleware, RpcSchema, RpcSerialization, RpcServer} from 'effect/rpc'
+import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
+import {RpcStream, layerRpcStream} from '#rpc.ts'
 import {
 	Account,
 	MANIFEST_PATH,
@@ -373,16 +374,6 @@ export const layerWeb = Layer.unwrap(
 			}),
 			HttpStaticServer.layer({cacheControl: 'no-cache', index: 'index.html', root: client, spa: true})
 		)
-	})
-)
-
-class RpcStream extends RpcMiddleware.Service<RpcStream>()('@deslop/runtime/server/RpcStream') {}
-
-const layerRpcStream = Layer.succeed(
-	RpcStream,
-	RpcStream.of((effect, options) => {
-		if (!RpcSchema.isStreamSchema(options.rpc.successSchema)) return effect
-		return Effect.andThen(Effect.annotateCurrentSpan('rpc.stream', true), effect)
 	})
 )
 

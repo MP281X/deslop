@@ -23,6 +23,7 @@ import {RpcClient, RpcSerialization} from 'effect/rpc'
 
 import type {User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
+import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/rpc'
 import {RPC_PATH} from '@deslop/runtime/schema'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -37,7 +38,7 @@ import {Metrics} from '#services/metrics/service.ts'
 // Who another worker's Deploy acts as: its bearer is the shared key, never a person's sign-in.
 const PEER = {id: 'deploy:peer', name: 'deploy'} satisfies User
 
-const makeRemoteClient = RpcClient.make(RpcContracts, {flatten: true})
+const makeRemoteClient = RpcClient.make(RpcContracts.middleware(RpcStream), {flatten: true})
 
 // Workers authorize each other with the DEPLOY_KEY their env files share, compared by digest; people sign in as on every app.
 export const layerPeerAuth = Layer.effectContext(
@@ -136,7 +137,8 @@ export class Fleet extends Context.Service<
 							pipe(
 								RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
 								Layer.provide(NodeSocket.layerWebSocket(url.href)),
-								Layer.provide(RpcSerialization.layerSchemaBinary())
+								Layer.provide(RpcSerialization.layerSchemaBinary()),
+								Layer.provideMerge(layerRpcStreamClient)
 							)
 						)
 					)

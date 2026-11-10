@@ -4,28 +4,25 @@ import {createServer} from 'node:http'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Exit, Layer, MutableList, Ref, Schema, Stream, String, Tracer, pipe} from 'effect'
+import {Array, Context, Effect, Layer, MutableList, Schema, Stream, String, Tracer, pipe} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
 import {Rpc, RpcClient, RpcGroup, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
+import {RpcStream, layerRpcStreamClient} from '#rpc.ts'
 import {RPC_PATH} from '#schema.ts'
 import {layerProtocol, layerRpc} from '#server.ts'
-
-import {CurrentUser, DEVELOPER, RpcAuth, layerRpcStreamClient} from '#auth/lib/utils.ts'
-import {AuthError} from '#auth/schema.ts'
 
 class TestRpcs extends RpcGroup.make(
 	Rpc.make('test.echo', {payload: Schema.String, success: Schema.String}),
 	Rpc.make('test.watch', {payload: Schema.String, stream: true, success: Schema.String})
-).middleware(RpcAuth) {}
+).middleware(RpcStream) {}
 
 it.layer(NodeServices.layer)('RPC streams', test => {
-	test.effect('marks both ends of a stream before its auth check and leaves a call unmarked', () =>
+	test.effect('marks both ends of a stream without auth and leaves a call unmarked', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
-				const allowed = yield* Ref.make(true)
 				const spans = MutableList.make<Tracer.NativeSpan>()
 				const tracer = Tracer.make({
 					span: options => {
@@ -37,23 +34,10 @@ it.layer(NodeServices.layer)('RPC streams', test => {
 				const context = yield* Layer.build(
 					pipe(
 						HttpRouter.serve(
-							pipe(
-								layerRpc({
-									group: TestRpcs,
-									handlers: TestRpcs.toLayer({'test.echo': Effect.succeed, 'test.watch': () => Stream.make('tick')})
-								}),
-								Layer.provide(
-									Layer.succeed(
-										RpcAuth,
-										RpcAuth.of(effect =>
-											Effect.flatMap(Ref.get(allowed), permitted => {
-												if (permitted) return Effect.provideService(effect, CurrentUser, DEVELOPER)
-												return Effect.fail(AuthError.make({message: 'Not allowed'}))
-											})
-										)
-									)
-								)
-							)
+							layerRpc({
+								group: TestRpcs,
+								handlers: TestRpcs.toLayer({'test.echo': Effect.succeed, 'test.watch': () => Stream.make('tick')})
+							})
 						),
 						Layer.provide(layerProtocol),
 						Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0})),
@@ -81,32 +65,23 @@ it.layer(NodeServices.layer)('RPC streams', test => {
 					Layer.provideMerge(RpcSerialization.layerSchemaBinary()),
 					Layer.provideMerge(layerRpcStreamClient)
 				)
-				const refused = yield* pipe(
+				yield* pipe(
 					Effect.gen(function* () {
 						const client = yield* RpcClient.make(TestRpcs, {flatten: true})
 						yield* Stream.runDrain(client('test.watch', 'tick'))
 						yield* client('test.echo', 'echo')
-						yield* Ref.set(allowed, false)
-						return yield* Effect.exit(Stream.runDrain(client('test.watch', 'tick')))
 					}),
 					// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The test client owns its socket and closes it with the test's scope.
 					Effect.provide(protocol),
 					Effect.provideService(Tracer.Tracer, tracer)
 				)
-				assert.isTrue(Exit.isFailure(refused))
 
 				const collected = MutableList.toArray(spans)
 				const streamed = Array.filter(collected, span => span.name === 'test.watch')
-				assert.lengthOf(streamed, 4)
+				assert.lengthOf(streamed, 2)
 				assert.isTrue(Array.every(streamed, span => span.attributes.get('rpc.stream') === true))
-				assert.lengthOf(
-					Array.filter(streamed, span => span.kind === 'client'),
-					2
-				)
-				assert.lengthOf(
-					Array.filter(streamed, span => span.kind === 'server'),
-					2
-				)
+				assert.isTrue(Array.some(streamed, span => span.kind === 'client'))
+				assert.isTrue(Array.some(streamed, span => span.kind === 'server'))
 				const called = Array.filter(collected, span => span.name === 'test.echo')
 				assert.lengthOf(called, 2)
 				assert.isFalse(Array.some(called, span => span.attributes.has('rpc.stream')))

@@ -5,6 +5,7 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
+import {RpcStream} from '@deslop/runtime/rpc'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -15,7 +16,7 @@ import type {Period} from '#services/usage/schema.ts'
 export const ENDPOINT = `${window.location.origin}/mcp`
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: WebRuntime.layer('@deslop/gateway')
 }) {}
 

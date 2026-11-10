@@ -19,7 +19,7 @@ import {Base64Url} from 'effect/encoding'
 import {Headers, HttpClient} from 'effect/http'
 import {AsyncResult} from 'effect/reactivity'
 import type {Atom, AtomRegistry} from 'effect/reactivity'
-import {RpcMiddleware, RpcSchema} from 'effect/rpc'
+import {RpcMiddleware} from 'effect/rpc'
 
 import type {User} from '#auth/schema.ts'
 import {AuthError, ClientInfo} from '#auth/schema.ts'
@@ -128,31 +128,16 @@ export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUs
 	{error: AuthError}
 ) {}
 
-// A stream outlives its request, so its client span carries the same mark as the server's before Scope reads it as a failure.
-function layerRpcClient<R>(token: Option.Option<Effect.Effect<string, AuthError, R>>) {
+export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>) {
 	return RpcMiddleware.layerClient(RpcAuth, options =>
 		Effect.gen(function* () {
-			if (RpcSchema.isStreamSchema(options.rpc.successSchema)) {
-				yield* Effect.annotateCurrentSpan('rpc.stream', true)
-			}
 			return yield* options.next({
 				...options.request,
-				headers: yield* Option.match(token, {
-					onNone: () => Effect.succeed(options.request.headers),
-					onSome: bearer =>
-						Effect.map(bearer, value => Headers.set(options.request.headers, 'authorization', `Bearer ${value}`))
-				})
+				headers: Headers.set(options.request.headers, 'authorization', `Bearer ${yield* token}`)
 			})
 		})
 	)
 }
-
-export function layerRpcAuthClient<R>(token: Effect.Effect<string, AuthError, R>) {
-	return layerRpcClient(Option.some(token))
-}
-
-// The web sends its session cookie instead of a bearer, so only the mark applies.
-export const layerRpcStreamClient = layerRpcClient(Option.none<Effect.Effect<string, AuthError>>())
 
 // Observe the read before recovery can swallow its refusal, since only a real emission restores authorization.
 export function withoutDeniedData<A, E, R>(

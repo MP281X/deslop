@@ -6,6 +6,7 @@ import {AtomRpc} from 'effect/reactivity'
 import {hues} from '@deslop/components-mobile/theme'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
+import {RpcStream} from '@deslop/runtime/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 
@@ -16,7 +17,7 @@ export const primary = hues.amber
 export const session = MobileSession.make(SERVER, keychain)
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/stash/lib/session/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: session.protocol
 }) {}
 

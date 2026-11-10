@@ -26,10 +26,11 @@ import {createRoot} from 'react-dom/client'
 
 import {Denied, Error, NotFound, SignIn} from '@deslop/components-web/fallbacks'
 
+import {layerRpcStreamClient} from '#rpc.ts'
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
 
-import {isDenied, layerRpcStreamClient, needsSignIn, signInUrl, withoutDeniedData} from '#auth/lib/utils.ts'
+import {isDenied, needsSignIn, signInUrl, withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())

@@ -23,6 +23,7 @@
 		"./mobile/fingerprint": "./src/mobile/fingerprint.js",
 		"./mobile/metro": "./src/mobile/metro.ts",
 		"./net": "./src/net.ts",
+		"./rpc": "./src/rpc.ts",
 		"./server": "./src/server.ts",
 		"./vite": "./src/vite.ts",
 		"./web": "./src/web/client.tsx"

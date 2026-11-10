@@ -5,13 +5,14 @@ import type {AsyncResult, Atom} from 'effect/reactivity'
 
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
+import {RpcStream} from '@deslop/runtime/rpc'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 
 export const session = MobileSession.make('https://trips.mp281x.xyz', keychain)
 
 export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/trips/lib/session/RpcClient', {
-	group: RpcContracts,
+	group: RpcContracts.middleware(RpcStream),
 	protocol: session.protocol
 }) {}
 
