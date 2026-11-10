@@ -91,7 +91,7 @@ function RowBones(props: {tool?: boolean}) {
 	return (
 		<>
 			<ItemMedia>
-				<Skeleton className="size-5" />
+				<Skeleton className="size-4" />
 			</ItemMedia>
 			<ItemContent>
 				<Skeleton className="h-3 w-24" />
@@ -109,7 +109,7 @@ function RowBones(props: {tool?: boolean}) {
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-5 shrink-0 items-center justify-center">
+		<span className="flex size-4 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
@@ -250,7 +250,7 @@ function KeyRow(props: {
 		<div role="listitem">
 			<Item size="row">
 				<ItemMedia>
-					<span className="flex size-5 items-center justify-center">
+					<span className="flex size-4 items-center justify-center">
 						<ProviderMark provider={props.provider} />
 					</span>
 				</ItemMedia>
