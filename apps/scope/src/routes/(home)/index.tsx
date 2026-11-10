@@ -33,7 +33,8 @@ import {
 	overviewAtom,
 	Search,
 	selectionOf,
-	traceAtom
+	traceAtom,
+	traceLabel
 } from '#lib/utils.ts'
 import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
@@ -325,7 +326,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 						aria-label={Array.join(
 							[
 								ageOf(props.trace.time, props.now),
-								`trace ${String.slice(0, 8)(props.trace.id)}`,
+								`trace ${traceLabel(props.trace)}`,
 								...Option.match(Option.fromUndefinedOr(props.trace.failure), {
 									onNone: () => [],
 									onSome: failure => [`failed in ${failure.span}`]
@@ -353,7 +354,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 				<ItemContent>
 					<span className="flex min-w-0 items-center gap-1.5">
 						<span className="truncate" title={props.trace.id}>
-							{String.slice(0, 8)(props.trace.id)}
+							{traceLabel(props.trace)}
 						</span>
 						{props.trace.failure !== undefined && (
 							<span
@@ -527,7 +528,7 @@ function TracePane(props: {
 					<ItemListHeading icon={<WaterfallGlyph />}>
 						{Option.match(trace, {
 							onNone: () => null,
-							onSome: current => `${String.slice(0, 8)(current.id)} · ${ageOf(current.time, props.now)}`
+							onSome: current => `${traceLabel(current)} · ${ageOf(current.time, props.now)}`
 						})}
 					</ItemListHeading>
 				),

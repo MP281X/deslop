@@ -1,11 +1,11 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
+import {Array, DateTime, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
 
 import {TestClock} from 'effect/testing'
 
-import {jobTrace, runTrace} from '#services/github/lib/utils.ts'
+import {jobLogs, jobTrace, runTrace} from '#services/github/lib/utils.ts'
 import {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
@@ -39,6 +39,7 @@ const run = WorkflowRun.make({
 		id: 101,
 		name: 'Release',
 		run_attempt: 1,
+		run_number: 101,
 		run_started_at: '2026-11-03T08:00:00Z',
 		updated_at: '2026-11-03T08:06:00Z'
 	}
@@ -78,6 +79,51 @@ const job = WorkflowJob.make({
 	}
 })
 
+it('attaches a job log to the step each line falls in, the job otherwise', () => {
+	const log = Array.join(
+		[
+			'﻿2026-11-03T08:00:11.0000000Z Runner started',
+			'2026-11-03T08:00:20.0000000Z ##[group]Set up job',
+			'2026-11-03T08:00:21.0000000Z \u001B[36;1mPreparing\u001B[0m',
+			'2026-11-03T08:00:22.0000000Z ##[endgroup]',
+			'2026-11-03T08:01:01.0000000Z ##[error]Format failed',
+			'2026-11-03T08:01:02.0000000Z [command]vp run verify',
+			'2026-11-03T08:05:30.0000000Z ##[warning]Post job cleanup'
+		],
+		'\n'
+	)
+	const records = jobLogs(job, log).resourceLogs?.[0]?.scopeLogs?.[0]?.logRecords ?? []
+	assert.deepStrictEqual(
+		Array.map(records, record => [record.spanId, record.body?.['stringValue'], record.severityNumber]),
+		[
+			['30000000000ca001', 'Runner started', 9],
+			['30000000000ca001', 'Preparing', 9],
+			['30000000000ca002', 'Format failed', 17],
+			['30000000000ca002', 'vp run verify', 9],
+			['20000000000000ca', 'Post job cleanup', 13]
+		]
+	)
+	assert.strictEqual(
+		records[0]?.timeUnixNano,
+		`${BigInt(DateTime.toEpochMillis(DateTime.makeUnsafe('2026-11-03T08:00:11Z'))) * 1_000_000n}`
+	)
+	assert.strictEqual(records[0]?.traceId, '00000000000000000000006500000001')
+})
+
+it('names a retry attempt after its build number', () => {
+	const retry = runTrace({...run, workflow_run: {...run.workflow_run, run_attempt: 2}})
+	assert.deepStrictEqual(
+		Array.map(
+			Array.filter(
+				Option.getOrThrow(Array.head(retry.resourceSpans?.[0]?.scopeSpans?.[0]?.spans ?? [])).attributes ?? [],
+				attribute => attribute.key === 'trace.label'
+			),
+			attribute => attribute.value['stringValue']
+		),
+		['#101.2']
+	)
+})
+
 it.layer(layer)(test => {
 	test.effect(
 		'reads a workflow run as a trace of its jobs and steps, broken at the step that failed',
@@ -103,6 +149,7 @@ it.layer(layer)(test => {
 			const trace = Option.getOrThrow(Array.head(app.operations[0]?.traces ?? []))
 			assert.deepStrictEqual(trace.failure, {span: 'Format, lint, types and dead code'})
 			assert.strictEqual(trace.durationMs, 360_000)
+			assert.strictEqual(trace.label, '#101')
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.trace(trace.id)).spans, span => [span.depth, span.name]),
 				[

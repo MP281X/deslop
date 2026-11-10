@@ -1,9 +1,17 @@
-import {Array, Config, Effect, Option, Predicate, Redacted, Schema, SchemaGetter, String, pipe} from 'effect'
+import {Array, Config, Effect, Option, Predicate, Redacted, Schema, SchemaGetter, Stream, String, pipe} from 'effect'
 
 import {Mac} from 'effect/crypto'
-import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
+import {
+	HttpClient,
+	HttpClientRequest,
+	HttpClientResponse,
+	HttpMiddleware,
+	HttpRouter,
+	HttpServerRequest,
+	HttpServerResponse
+} from 'effect/http'
 
-import {jobTrace, runIds, runTrace} from '#services/github/lib/utils.ts'
+import {jobLogs, jobTrace, runIds, runTrace} from '#services/github/lib/utils.ts'
 import {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
 import type {TelemetryError} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
@@ -79,6 +87,28 @@ export const HttpHandlers = HttpRouter.use(router =>
 			onNone: () => Effect.void,
 			onSome: Effect.fnUntraced(function* (secret) {
 				const key = yield* Mac.key(Mac.hmacSha256, new TextEncoder().encode(Redacted.value(secret)))
+				// Job logs arrive only through the API; without a token their traces keep the link to GitHub.
+				const token = yield* Config.option(Config.Redacted('GITHUB_TOKEN'))
+				const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
+				const ingestJobLogs = Effect.fnUntraced(function* (event: WorkflowJob, credential: Redacted.Redacted) {
+					const request = HttpClientRequest.get(
+						`https://api.github.com/repos/${event.repository.full_name}/actions/jobs/${event.workflow_job.id}/logs`
+					)
+					const log = yield* pipe(
+						client.execute(
+							HttpClientRequest.setHeaders(request, {
+								accept: 'application/vnd.github+json',
+								authorization: `Bearer ${Redacted.value(credential)}`,
+								'user-agent': '@deslop/scope'
+							})
+						),
+						HttpClientResponse.stream,
+						Stream.decodeText,
+						Stream.mkString,
+						Effect.timeout('8 seconds')
+					)
+					yield* telemetry.ingestLogs(jobLogs(event, log))
+				})
 				yield* router.add(
 					'POST',
 					'/v1/github',
@@ -115,6 +145,15 @@ export const HttpHandlers = HttpRouter.use(router =>
 								// A job that never ran, skipped by its condition, has nothing to show.
 								if (event.action === 'completed' && event.workflow_job.conclusion !== 'skipped') {
 									yield* telemetry.ingestTraces(jobTrace(event))
+									yield* Option.match(token, {
+										onNone: () => Effect.void,
+										onSome: Effect.fnUntraced(function* (credential) {
+											yield* pipe(
+												ingestJobLogs(event, credential),
+												Effect.ignore({log: 'Warn', message: 'A GitHub job log did not arrive'})
+											)
+										})
+									})
 								}
 							}
 							// Other events, such as the ping a new webhook sends, need nothing beyond being received.

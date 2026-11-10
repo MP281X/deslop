@@ -1,8 +1,16 @@
-import {Array, DateTime, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Option, String, pipe} from 'effect'
 
 import type {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
 import type {Span} from '#services/telemetry/schema.ts'
-import {TracesRequest} from '#services/telemetry/schema.ts'
+import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
+
+// A log line as GitHub writes it: an ISO time, then the runner's message.
+const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+Z) (.*)$/u
+// A runner command such as `##[error]` or `[command]`; group and action markers only divide the page.
+const LOG_COMMAND =
+	/^(?:##)?\[(command|debug|error|group|endgroup|notice|section|start-action|end-action|warning)(?: [^\]]*)?\](.*)$/u
+// oxlint-disable-next-line eslint/no-control-regex -- ANSI escapes start with the ESC control character.
+const ANSI = /\u001B\[[0-9;]*m/gu
 
 // An ISO time as OTLP's nanoseconds.
 function nanos(time: string) {
@@ -57,6 +65,14 @@ export function runIds(event: WorkflowRun) {
 	}
 }
 
+// A run's build number, with the attempt after a dot when it is not the first.
+function runLabel(run: WorkflowRun['workflow_run']) {
+	return `#${run.run_number}${Boolean.match(run.run_attempt === 1, {
+		onFalse: () => `.${run.run_attempt}`,
+		onTrue: () => ''
+	})}`
+}
+
 // A workflow run as its trace's root: running, it has no end yet, so the trace lasts as long as its finished jobs.
 export function runTrace(event: WorkflowRun) {
 	const run = event.workflow_run
@@ -65,6 +81,9 @@ export function runTrace(event: WorkflowRun) {
 			attributes: [
 				text('github.title', run.display_title),
 				text('github.event', run.event),
+				text('github.run_number', `${run.run_number}`),
+				text('github.run_attempt', `${run.run_attempt}`),
+				text('trace.label', runLabel(run)),
 				text('git.branch', run.head_branch ?? ''),
 				text('git.commit', run.head_sha),
 				text('github.conclusion', run.conclusion ?? ''),
@@ -84,11 +103,9 @@ export function runTrace(event: WorkflowRun) {
 	])
 }
 
-// A failed step links to its log, since GitHub sends no output.
-export function jobTrace(event: WorkflowJob) {
-	const job = event.workflow_job
-	const traceId = traceIdOf(job.run_id, job.run_attempt)
-	const steps = Array.getSomes(
+// The steps that ran, with the times GitHub gave them.
+function stepsOf(job: WorkflowJob['workflow_job']) {
+	return Array.getSomes(
 		Array.map(job.steps, step =>
 			pipe(
 				Option.all({
@@ -99,6 +116,17 @@ export function jobTrace(event: WorkflowJob) {
 			)
 		)
 	)
+}
+
+function stepSpanId(job: number, step: number) {
+	return `3${hex(job, 12)}${hex(step, 3)}`
+}
+
+// A job as a span with its steps beneath it, each step linking to its GitHub log.
+export function jobTrace(event: WorkflowJob) {
+	const job = event.workflow_job
+	const traceId = traceIdOf(job.run_id, job.run_attempt)
+	const steps = stepsOf(job)
 	const failed = Array.findFirst(steps, step => statusOf(step.conclusion, '').code === 2)
 	return repositoryTraces(event.repository.full_name, [
 		{
@@ -134,10 +162,71 @@ export function jobTrace(event: WorkflowJob) {
 			kind: 1,
 			name: step.name,
 			parentSpanId: jobSpanId(job.id),
-			spanId: `3${hex(job.id, 12)}${hex(step.number, 3)}`,
+			spanId: stepSpanId(job.id, step.number),
 			startTimeUnixNano: nanos(step.started),
 			status: statusOf(step.conclusion, `${step.name} failed`),
 			traceId
 		}))
 	])
+}
+
+// A runner command's severity as OTLP's: errors are 17, warnings 13, everything else info.
+function severityOf(command: string) {
+	if (command === 'error') return 17
+	if (command === 'warning') return 13
+	return 9
+}
+
+// The job's log as one log record per line, on the step whose time holds it and the job otherwise, so a trace's steps show their own output.
+export function jobLogs(event: WorkflowJob, log: string) {
+	const traceId = traceIdOf(event.workflow_job.run_id, event.workflow_job.run_attempt)
+	const steps = Array.map(stepsOf(event.workflow_job), step => ({
+		end: DateTime.toEpochMillis(DateTime.makeUnsafe(step.completed)),
+		spanId: stepSpanId(event.workflow_job.id, step.number),
+		start: DateTime.toEpochMillis(DateTime.makeUnsafe(step.started))
+	}))
+	const records = Array.getSomes(
+		Array.map(String.split('\n')(log), raw =>
+			pipe(
+				raw,
+				String.replaceAll(ANSI, ''),
+				String.trim,
+				String.match(LOG_LINE),
+				Option.flatMap(match => {
+					const message = match[2] ?? ''
+					return Option.map(DateTime.make(match[1] ?? ''), date => ({
+						...Option.match(String.match(LOG_COMMAND)(message), {
+							onNone: () => ({command: '', message}),
+							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
+						}),
+						time: DateTime.toEpochMillis(date)
+					}))
+				}),
+				Option.filter(
+					line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup'
+				),
+				Option.map(line => ({
+					body: {stringValue: line.message},
+					severityNumber: severityOf(line.command),
+					spanId: Option.getOrElse(
+						Option.map(
+							Array.findFirst(steps, step => line.time >= step.start && line.time <= step.end),
+							step => step.spanId
+						),
+						() => jobSpanId(event.workflow_job.id)
+					),
+					timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
+					traceId
+				}))
+			)
+		)
+	)
+	return LogsRequest.make({
+		resourceLogs: [
+			{
+				resource: {attributes: [text('service.name', event.repository.full_name), text('scope.runtime', 'ci')]},
+				scopeLogs: [{logRecords: records, scope: {name: 'github-actions'}}]
+			}
+		]
+	})
 }

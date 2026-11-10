@@ -46,6 +46,7 @@ export const WorkflowRun = Schema.Struct({
 		id: Schema.Int,
 		name: Schema.NullOr(Schema.String),
 		run_attempt: Schema.Int,
+		run_number: Schema.Int,
 		run_started_at: Schema.String,
 		updated_at: Schema.String
 	})

@@ -241,6 +241,7 @@ export const OperationTrace = Schema.Struct({
 	durationMs: Schema.Finite,
 	failure: Schema.optionalKey(Schema.Struct({span: Schema.String})),
 	id: TraceId,
+	label: Schema.optionalKey(Schema.String),
 	time: Nano
 })
 
