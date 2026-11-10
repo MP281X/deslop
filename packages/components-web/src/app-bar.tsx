@@ -116,7 +116,7 @@ export function AppBar(props: {
 	tabs?: ReactNode
 }) {
 	return (
-		<header className="bg-background/90 supports-backdrop-filter:bg-background/80 sticky top-0 z-30 flex h-12 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md">
+		<header className="bg-background flex h-12 shrink-0 items-center gap-4 border-b px-4">
 			{Option.match(Option.fromUndefinedOr(props.heading), {
 				onNone: () => (
 					<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
