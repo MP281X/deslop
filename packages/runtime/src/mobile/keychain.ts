@@ -5,7 +5,7 @@ import * as SecureStore from 'expo-secure-store'
 import {AuthError} from '#auth/schema.ts'
 import type {Storage} from '#mobile/session.ts'
 
-// Outside session.ts: loading expo-secure-store crashes an app that does not build its native module, such as Stash.
+// Outside session.ts: loading expo-secure-store crashes an app that does not build its native module.
 export const keychain = {
 	clear: Effect.tryPromise({
 		catch: cause => AuthError.make({cause, message: 'The Keychain could not remove the session'}),

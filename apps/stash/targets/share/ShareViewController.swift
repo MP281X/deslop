@@ -247,8 +247,8 @@ private struct Upload {
 
   private var keychainQuery: [String: Any] {
     [kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: "deslop.auth", kSecAttrAccount as String: "stash",
-      kSecAttrAccessGroup as String: keychainGroup]
+      kSecAttrService as String: "app:no-auth", kSecAttrGeneric as String: Data("session".utf8),
+      kSecAttrAccount as String: Data("session".utf8), kSecAttrAccessGroup as String: keychainGroup]
   }
 
   private func sessionId() throws -> String {

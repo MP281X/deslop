@@ -8,6 +8,7 @@ export default {
 		...app.config.ios,
 		entitlements: {
 			'com.apple.security.application-groups': [app.appGroup],
+			// A Keychain item saved without a group lands in the app's first group, the one the share extension reads.
 			'keychain-access-groups': [`$(AppIdentifierPrefix)${app.appGroup}`]
 		},
 		infoPlist: {DeslopKeychainGroup: `$(AppIdentifierPrefix)${app.appGroup}`}
