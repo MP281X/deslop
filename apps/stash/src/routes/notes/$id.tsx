@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Result, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -40,7 +40,7 @@ import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
@@ -58,7 +58,8 @@ const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foregrou
 
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
 
-const coverFrame = [frame({maxHeight: 280, maxWidth: Infinity})]
+// A fixed slot, so the title stays put while the cover loads or when it cannot.
+const coverFrame = [frame({height: 280}), frame({maxWidth: Infinity})]
 
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
@@ -316,17 +317,16 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	)
 }
 
-export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
+function NoteScreen(props: {
+	id: Note['id']
+	notes: readonly NoteItem[]
+	onClose: () => void
+	onTag: (tag: string) => void
+}) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(notesAtom)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Notes" onRetry={refresh} />
-	}
 	return Option.match(
-		Array.findFirst(shown.success, item => item.id === props.id),
+		Array.findFirst(props.notes, item => item.id === props.id),
 		{
 			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
 			onSome: item => (
@@ -385,5 +385,13 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 				</Toolbar>
 			)
 		}
+	)
+}
+
+export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
+	return (
+		<Loaded atom={notesAtom} name="Notes">
+			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
+		</Loaded>
 	)
 }

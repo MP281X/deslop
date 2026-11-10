@@ -46,8 +46,11 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 			})
 		)
 	)
-	// A removal outlives its row, which a search, a folded section or a closing detail unmounts.
-	const held = Atom.family((id: string) => Atom.keepAlive(Atom.readable(get => get(machine(id).ref))))
+	// A removal outlives its row, which a search, a folded section or a closing detail unmounts; the family forgets a machine nothing references, so the hold keeps the machine itself.
+	const held = Atom.family((id: string) => {
+		const removing = machine(id)
+		return Atom.keepAlive(Atom.readable(get => get(removing.ref)))
+	})
 	return {
 		machine,
 		removeAtom: Atom.writable(
