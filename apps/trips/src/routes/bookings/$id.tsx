@@ -119,7 +119,6 @@ function TrainFields(props: {train: Train}) {
 			</Section>
 			<Section title="Booking">
 				<Field label="Train" value={props.train.operatorName} />
-				<Field label="Coach" value={props.train.coach} />
 				<Field label="Confirmation" value={props.train.confirmation} />
 			</Section>
 		</>

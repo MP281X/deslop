@@ -276,11 +276,7 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase)
 			() => ''
 		)
 	}
-	return line([
-		labelled('Seat', flight.seat),
-		labelled('Group', flight.boardingGroup),
-		labelled('was', flight.live?.previousGate)
-	])
+	return line([labelled('Group', flight.boardingGroup), labelled('was', flight.live?.previousGate)])
 }
 
 function chipOf(text: string, tone: Tone) {
