@@ -37,10 +37,6 @@ export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem,
 
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
-function indexUrl(series: Series) {
-	return `https://cubari.moe/read/gist/${INDEXES[series]}/`
-}
-
 export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
 	return `${chapter.series}:${chapter.number}`
 }
@@ -220,7 +216,7 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 				...found,
 				notified: true,
 				series: kind,
-				source: `${indexUrl(kind)}${entry[0]}/1/`,
+				source: `https://cubari.moe/read/gist/${INDEXES[kind]}/${entry[0]}/1/`,
 				title: nameOf(entry[1].title ?? '')
 			})),
 			Result.fromOption(() => undefined)
