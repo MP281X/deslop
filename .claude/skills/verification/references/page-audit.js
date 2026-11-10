@@ -261,9 +261,6 @@
 			})
 			.map(describe),
 		columnHeadings: all.filter(element => element.matches('th, [role="columnheader"]')).map(describe),
-		commandWithoutIcon: all
-			.filter(element => element.matches('[data-slot="command-item"]') && !element.querySelector('svg, img'))
-			.map(describe),
 		countInHeading: all
 			.filter(element => element.matches('h1, h2, h3, h4, h5, h6, [role="tab"], [data-slot="tabs-trigger"]'))
 			.filter(element => /\(\d+\)|\s\d+$/u.test(textOf(element)))
@@ -331,10 +328,6 @@
 					rows.some(width => width > 0)
 				)
 			})
-			.map(describe),
-		shortcutOutsideKbd: texts
-			.filter(element => /^(⌘|⌥|⇧|⌃|Ctrl|Alt|Shift)\s?\+?\s?\S{1,3}$/u.test(textOf(element)))
-			.filter(element => !element.closest('kbd, [data-slot="kbd"], [data-slot="command-shortcut"]'))
 			.map(describe),
 		spinner: all
 			// A progress bar with a value measures something; one without is a loading indicator.

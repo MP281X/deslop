@@ -8,7 +8,7 @@
 - Keys: a heading, then one row per provider with a key: SVGL mark, provider name, last four muted, a 64×14 sparkline of its cost in `--primary`, then the period's cost. Agents remove a key through the `remove_ai_key` MCP tool; the page has no removal control. A provider without a key has no row; the field adds it.
 - MCP usage counts each proxied tool call into its server's hourly bucket in the app's Effect KeyValueStore under `ServerRuntime.dataDirectory`, kept for 30 days and summed into the bar's period. It starts empty: no backfill and no migration, so calls made before the page recorded them never appear. AI usage is each person's ledger, and the key figures read it.
 - Staleness shows once per page, in the bar's Problem: the oldest stale reader of the four (servers, MCP usage, keys, AI usage) and one retry that refreshes them all. Rows stay unmarked. A refusal or a failed read with nothing retained is a lock or one destructive retry in its group; one group failing leaves the other's rows.
-- No charts card, no app breakdown, no summary line, no animations and no spinners. Skeletons keep the headings and match each row's marks, names, sparkline and figure columns.
+- No charts card, no app breakdown, no summary line. Skeletons keep the headings and match each row's marks, names, sparkline and figure columns.
 
 ## Journeys
 

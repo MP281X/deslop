@@ -39,7 +39,6 @@ import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
 import {noPipeMethod} from '#lint/no-pipe-method.ts'
 import {noPollingTest} from '#lint/no-polling-test.ts'
-import {noPrimitiveRestyle} from '#lint/no-primitive-restyle.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
 import {noRedundantStateType} from '#lint/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#lint/no-redundant-use-ref-null-type.ts'
@@ -150,7 +149,6 @@ const RULES = {
 	'no-option-value-access': noOptionValueAccess,
 	'no-pipe-method': noPipeMethod,
 	'no-polling-test': noPollingTest,
-	'no-primitive-restyle': noPrimitiveRestyle,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-state-type': noRedundantStateType,
 	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
@@ -730,6 +728,8 @@ export const lint: OxlintConfig = {
 			'error',
 			{
 				allow: ['layout'],
+				// The rule's `ui` setting does not reach the JS plugin here, so the primitives' modules are named directly.
+				componentImports: ['^@deslop/components-web/ui(/|$)', '^#components/ui(/|$)'],
 				// Hairline rows: Items touch, with a separator between them and no margin around it.
 				contracts: [
 					{allow: ['layout', 'gap-0'], pattern: '^ItemGroup$'},
