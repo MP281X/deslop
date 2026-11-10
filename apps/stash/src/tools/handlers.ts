@@ -22,7 +22,11 @@ export const ToolHandlers = Tools.toLayer(
 		const notes = yield* Notes
 		const random = yield* SecureRandom.SecureRandom
 		return Tools.of({
-			read_note: input => notes.get(input),
+			read_note: input =>
+				Effect.map(notes.get(input), note =>
+					Struct.omit(note, ['createdAt', 'file', 'id', 'image', 'requester', 'source'])
+				),
+			remove_note: input => notes.remove(input),
 			save_note: Effect.fnUntraced(function* (input) {
 				const user = yield* CurrentUser
 				const saved = yield* notes.capture(user.id, {id: yield* random.uuidV4(), text: input.text})
@@ -36,7 +40,7 @@ export const ToolHandlers = Tools.toLayer(
 						onNone: () => all,
 						onSome: query => findNotes(all, query)
 					})
-					return {notes: Array.map(Array.take(Array.drop(found, input.offset), input.limit), row), total: found.length}
+					return {notes: Array.map(Array.take(found, input.limit), row), total: found.length}
 				})
 		})
 	})

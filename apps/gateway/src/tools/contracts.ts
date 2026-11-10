@@ -10,7 +10,8 @@ import {ServerId} from '#services/connections/schema.ts'
 
 export const Tools = Toolkit.make(
 	Tool.make('list_mcp_connections', {
-		description: "Each server's state, tool count and last failure; name a server to also read its own instructions.",
+		description:
+			"Use when an MCP tool is missing or failing, or to see each server's state; returns each server's id, status, tool count and error, and one server's own instructions when named.",
 		parameters: Schema.Struct({
 			server: Schema.optionalKey(
 				ServerId.annotate({description: 'A server id, the prefix before __ in its tool names.'})
@@ -30,7 +31,8 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Readonly, true),
 	Tool.make('remove_mcp_server', {
 		dependencies: [CurrentUser],
-		description: 'Remove an MCP server everyone shares, by the id list_mcp_connections returns.',
+		description:
+			'Use when the user asks to remove a shared MCP server; removes it by the id list_mcp_connections returns.',
 		failure: AuthError,
 		parameters: Schema.Struct({
 			server: ServerId.annotate({description: 'A server id, the prefix before __ in its tool names.'})
@@ -38,8 +40,9 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Destructive, true),
 	Tool.make('remove_ai_key', {
 		dependencies: [CurrentUser],
-		description: 'Remove your own provider key, so your AI calls through Gateway stop using it.',
+		description:
+			'Use when the user asks to remove their provider key; removes it so their AI calls through Gateway stop using it.',
 		failure: AuthError,
-		parameters: Schema.Struct({provider: AiProvider})
+		parameters: Schema.Struct({provider: AiProvider.annotate({description: 'The provider whose key to remove.'})})
 	}).annotate(Tool.Destructive, true)
 )

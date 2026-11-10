@@ -17,15 +17,14 @@ export const GatewayMcp = Layer.unwrap(
 			ServerRuntime.layerMcp({
 				instructions: Array.join(
 					[
-						"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
+						"Gateway holds the user's MCP servers, provider keys and AI usage; start with list_mcp_connections, and upstream tools are named <server>__<tool>.",
 						...Array.map(
 							Array.filter(
 								yield* (yield* Connections).definitions,
 								server => connectionStatus(server, now) === 'Connected'
 							),
 							server => `${server.id}: ${summary(server)}`
-						),
-						'If a tool is missing or failing, list_mcp_connections says why.'
+						)
 					],
 					'\n'
 				),
