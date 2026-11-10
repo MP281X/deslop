@@ -404,11 +404,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					get: key =>
 						Effect.gen(function* () {
 							if (yield* Ref.get(storageFails)) {
-								return yield* new KeyValueStore.KeyValueStoreError({
-									key,
-									message: 'Storage unavailable',
-									method: 'get'
-								})
+								return yield* new KeyValueStore.KeyValueStoreError({key, message: 'Storage unavailable', method: 'get'})
 							}
 							return yield* base.get(key)
 						})

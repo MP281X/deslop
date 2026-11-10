@@ -274,11 +274,7 @@ const make = Effect.gen(function* () {
 						Stream.fromReadableStream({
 							evaluate: () => meter,
 							onError: cause =>
-								AuthError.make({
-									cause,
-									error: 'temporarily_unavailable',
-									message: 'AI usage could not be read'
-								})
+								AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage could not be read'})
 						}),
 						Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
 						Stream.runForEach(chunk =>

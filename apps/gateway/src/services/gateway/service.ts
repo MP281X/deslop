@@ -58,11 +58,7 @@ export const VerifiedCaller = Context.Reference<
 function rejected(server: Pick<Connection, 'name'>) {
 	return (cause: unknown) => {
 		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({
-			cause,
-			error: 'temporarily_unavailable',
-			message: `${server.name}: ${describe(cause)}`
-		})
+		return AuthError.make({cause, error: 'temporarily_unavailable', message: `${server.name}: ${describe(cause)}`})
 	}
 }
 

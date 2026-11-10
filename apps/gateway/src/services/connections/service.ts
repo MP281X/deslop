@@ -88,11 +88,7 @@ function siteOf(url: URL) {
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => {
 		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({
-			cause,
-			error: 'temporarily_unavailable',
-			message: `${message}: ${describe(cause)}`
-		})
+		return AuthError.make({cause, error: 'temporarily_unavailable', message: `${message}: ${describe(cause)}`})
 	})
 }
 
