@@ -6,7 +6,7 @@ import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} f
 import {BrandLogo} from '@deslop/components-mobile/icons'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 
-import {kindOf, kinds, siteOf} from '#lib/utils.ts'
+import {kindOf, kinds, siteOf} from '#lib/kinds.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
 import {Brand} from '#services/notes/schema.ts'
 

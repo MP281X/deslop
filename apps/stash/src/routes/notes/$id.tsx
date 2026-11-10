@@ -49,7 +49,9 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-
 import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {Byline} from '#lib/components.tsx'
-import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
+import {appOf, brandOf, kinds} from '#lib/kinds.ts'
+import {imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/notes.ts'
+import {primary} from '#lib/session.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]

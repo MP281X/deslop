@@ -61,22 +61,11 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 
+import {clipboard} from '#lib/clipboard.ts'
 import {Byline} from '#lib/components.tsx'
-import {
-	appOf,
-	brandOf,
-	clipboard,
-	imageAtom,
-	kindOf,
-	kinds,
-	notesAtom,
-	primary,
-	queryAtom,
-	regenerateAtom,
-	removeAtom,
-	searchAtom,
-	session
-} from '#lib/utils.ts'
+import {appOf, brandOf, kindOf, kinds} from '#lib/kinds.ts'
+import {imageAtom, notesAtom, queryAtom, regenerateAtom, removeAtom, searchAtom} from '#lib/notes.ts'
+import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
