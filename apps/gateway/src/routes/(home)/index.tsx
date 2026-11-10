@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Number, Option, Order, Schema, String} from 'effect'
 
@@ -91,7 +91,7 @@ function RowBones(props: {tool?: boolean}) {
 	return (
 		<>
 			<ItemMedia>
-				<Skeleton className="size-5" />
+				<Skeleton className="size-4" />
 			</ItemMedia>
 			<ItemContent>
 				<Skeleton className="h-3 w-24" />
@@ -109,7 +109,7 @@ function RowBones(props: {tool?: boolean}) {
 function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
-		<span className="flex size-5 shrink-0 items-center justify-center">
+		<span className="flex size-4 shrink-0 items-center justify-center">
 			{Option.match(Array.get(props.sources, failed), {
 				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
@@ -250,7 +250,7 @@ function KeyRow(props: {
 		<div role="listitem">
 			<Item size="row">
 				<ItemMedia>
-					<span className="flex size-5 items-center justify-center">
+					<span className="flex size-4 items-center justify-center">
 						<ProviderMark provider={props.provider} />
 					</span>
 				</ItemMedia>
@@ -438,16 +438,22 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 	)
 }
 
-// Copies the gateway's MCP URL; the button shows a check for a moment after a copy.
+// Copies the gateway's MCP URL; the button shows a check for a moment after a copy and turns destructive when it fails.
 function CopyEndpoint() {
-	const copy = useAtomSet(copyAtom(ENDPOINT))
+	const [result, copy] = useAtom(copyAtom(ENDPOINT))
 	const copied = useAtomValue(copiedAtom)
+	// A retry in flight is no longer the failure it follows.
+	const failed = AsyncResult.isFailure(result) && !result.waiting
 	return (
 		<Button
-			variant="ghost"
+			variant={Boolean.match(failed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
 			size="icon-sm"
 			className="max-sm:size-11"
-			aria-label={Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'})}
+			aria-label={Boolean.match(failed, {
+				onFalse: () => Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'}),
+				onTrue: () => 'Cannot copy'
+			})}
+			title={Boolean.match(failed, {onFalse: () => undefined, onTrue: () => 'Cannot copy'})}
 			onClick={() => copy()}
 		>
 			{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon />})}

@@ -79,11 +79,6 @@ type WorkspaceProps = {
 	source?: string
 }
 
-// A pane with nothing selected keeps its mark alone, never a sentence that repeats the pane's name.
-function EmptyIcon() {
-	return <img src={icon} alt="" className="pixelated size-8 opacity-50" />
-}
-
 // The operations rows' geometry while the overview loads: the name at the gutter, then the same figure columns.
 function OperationsSkeleton(props: {label: string}) {
 	return (
@@ -250,7 +245,7 @@ function OperationsPane(props: {
 				<OverviewContent>
 					{overview =>
 						Array.match(operationsOf(overview, props.source), {
-							onEmpty: () => <EmptyState label="No traces yet" icon={<EmptyIcon />} />,
+							onEmpty: () => <EmptyState label="No traces yet" icon={<ChartBarHorizontalIcon weight="light" />} />,
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
 								return (
@@ -368,10 +363,10 @@ function TracesPane(props: {
 				<OverviewContent>
 					{() =>
 						Option.match(active, {
-							onNone: () => <EmptyState label="Select an operation" icon={<EmptyIcon />} />,
+							onNone: () => <EmptyState label="Select an operation" icon={<ChartBarHorizontalIcon weight="light" />} />,
 							onSome: current =>
 								Boolean.match(Array.isReadonlyArrayNonEmpty(current.operation.traces), {
-									onFalse: () => <EmptyState label="No traces" icon={<EmptyIcon />} />,
+									onFalse: () => <EmptyState label="No traces" icon={<ChartBarHorizontalIcon weight="light" />} />,
 									onTrue: () => (
 										<ScrollArea className="min-h-0 flex-1">
 											<div role="list">
@@ -399,7 +394,7 @@ function TracesPane(props: {
 // The picked span's details alone, for the phone's pushed span screen.
 function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	return Option.match(props.focus, {
-		onNone: () => <EmptyState label="Select a span" icon={<EmptyIcon />} />,
+		onNone: () => <EmptyState label="Select a span" icon={<ChartBarHorizontalIcon weight="light" />} />,
 		onSome: span => (
 			<ScrollArea className="min-h-0 flex-1">
 				<div className="flex flex-col">
@@ -418,7 +413,7 @@ function SpansList(props: {
 	trace: Trace
 }) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
-		return <EmptyState label="No spans" icon={<EmptyIcon />} />
+		return <EmptyState label="No spans" icon={<ChartBarHorizontalIcon weight="light" />} />
 	}
 	const total = Number.max(props.trace.durationMs, 1)
 	const shortest = Array.reduce(props.trace.spans, Infinity, (min, span) =>
@@ -529,7 +524,7 @@ function TracePane(props: {
 										onFalse: () => 'Select a trace',
 										onTrue: () => 'Select a span'
 									})}
-									icon={<EmptyIcon />}
+									icon={<ChartBarHorizontalIcon weight="light" />}
 								/>
 							),
 							onSome: current => (

@@ -4,6 +4,7 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 
+import {Passkey, PasskeyParams} from '#services/passkeys/schema.ts'
 import {Person} from '#services/people/schema.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 
@@ -40,6 +41,21 @@ export const Tools = Toolkit.make(
 		description: 'Sign a client out of every app by the id list_sessions returns.',
 		failure: AuthError,
 		parameters: Schema.Struct({id: Schema.NonEmptyString}),
+		success: Schema.Struct({id: Schema.NonEmptyString})
+	}).annotate(Tool.Destructive, true),
+	Tool.make('list_passkeys', {
+		dependencies: [CurrentOwner],
+		description:
+			'Each passkey of yours with its id, browser and device, and whether it is synced; remove one with remove_passkey.',
+		failure: AuthError,
+		parameters: Tool.EmptyParams,
+		success: Schema.Struct({passkeys: Schema.Array(Passkey)})
+	}).annotate(Tool.Readonly, true),
+	Tool.make('remove_passkey', {
+		dependencies: [CurrentOwner],
+		description: 'Remove one of your passkeys by the id list_passkeys returns.',
+		failure: AuthError,
+		parameters: PasskeyParams,
 		success: Schema.Struct({id: Schema.NonEmptyString})
 	}).annotate(Tool.Destructive, true),
 	Tool.make('remove_person', {

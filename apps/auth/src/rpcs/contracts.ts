@@ -6,7 +6,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
 import {Catalog} from '#services/apps/schema.ts'
-import {AddPasskeyParams, CreationOptions, Passkey, PasskeyParams} from '#services/passkeys/schema.ts'
+import {AddPasskeyParams, CreationOptions, Passkey} from '#services/passkeys/schema.ts'
 import {AdmitParams, Person, SignedAccount} from '#services/people/schema.ts'
 import {
 	AnswerParams,
@@ -37,8 +37,7 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('auth.catalog', {error: AuthError, stream: true, success: Catalog}),
 	Rpc.make('auth.passkeys', {error: AuthError, stream: true, success: Schema.Array(Passkey)}),
 	Rpc.make('auth.passkeyOptions', {error: AuthError, success: CreationOptions}),
-	Rpc.make('auth.addPasskey', {error: AuthError, payload: AddPasskeyParams}),
-	Rpc.make('auth.removePasskey', {error: AuthError, payload: PasskeyParams})
+	Rpc.make('auth.addPasskey', {error: AuthError, payload: AddPasskeyParams})
 )
 	.middleware(RpcAuth)
 	.middleware(RpcOwner)

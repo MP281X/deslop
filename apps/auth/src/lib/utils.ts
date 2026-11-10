@@ -6,7 +6,6 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -151,21 +150,10 @@ export const appsAtom = Atom.keepAlive(
 	)
 )
 
-// An account-menu action has no row to answer under, so it says how it failed in a toast.
-function failedWith(title: string) {
-	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
-		Effect.tapError(effect, failure =>
-			Effect.sync(() => toast.add({description: failure.message, title, type: 'error'}))
-		)
-}
-
 // One per person, so a failed answer shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
 )
-
-// The row that carries focus, as the id of its element.
-export const selectedRowAtom = Atom.make(Option.none<string>())
 
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
@@ -325,7 +313,7 @@ export const passkeysAtom = Atom.keepAlive(
 	)
 )
 
-// Kept alive, since the menu that starts it closes at once and would drop the passkey the browser then makes.
+// Kept alive, since the browser's passkey prompt outlives the menu that starts it.
 export const addPasskeyAtom = Atom.keepAlive(
 	RpcClient.runtime.fn(
 		Effect.fnUntraced(function* () {
@@ -340,13 +328,15 @@ export const addPasskeyAtom = Atom.keepAlive(
 				Effect.flatMap(Schema.decodeUnknownEffect(Registration))
 			)
 			yield* client('auth.addPasskey', {response})
-			toast.add({title: 'Passkey added'})
-		}, failedWith('Cannot add a passkey'))
+		})
 	)
 )
 
 // The tab remembers the passkey it went to GitHub for, so the page it lands on adds it.
 export const ADDING_PASSKEY = 'adding-passkey'
+
+// The account menu's open state, which the return from GitHub also sets so the passkey's outcome shows on its action.
+export const accountMenuOpenAtom = Atom.make(false)
 
 // A code may have been approved for someone else's browser, so a code session signs in with GitHub first.
 export const confirmForPasskeyAtom = Atom.fn(() =>
@@ -357,15 +347,6 @@ export const confirmForPasskeyAtom = Atom.fn(() =>
 			location.assign('/auth/github')
 		}
 	})
-)
-
-export const removePasskeyAtom = Atom.keepAlive(
-	RpcClient.runtime.fn((id: string) =>
-		pipe(
-			Effect.flatMap(RpcClient, client => client('auth.removePasskey', {id})),
-			failedWith('Cannot remove the passkey')
-		)
-	)
 )
 
 export const signInAtom = Atom.fn(() =>
@@ -409,5 +390,5 @@ function signOut(next: Search['next']) {
 // From another app's Sign out, whose page says how it failed.
 export const signOutAtom = authRuntime.fn(signOut)
 
-// From the account menu, which closes as it runs, so a failure is a toast.
-export const menuSignOutAtom = authRuntime.fn((next: Search['next']) => failedWith('Cannot sign out')(signOut(next)))
+// From the account menu, which shows a failure under its own item.
+export const menuSignOutAtom = authRuntime.fn(signOut)

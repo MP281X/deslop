@@ -14,9 +14,6 @@ import {
 	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
-	DropdownMenuSub,
-	DropdownMenuSubContent,
-	DropdownMenuSubTrigger,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
@@ -24,64 +21,61 @@ import {
 import {AccountAvatar} from '#lib/components.tsx'
 import {
 	ADDING_PASSKEY,
+	accountMenuOpenAtom,
 	addPasskeyAtom,
 	confirmForPasskeyAtom,
 	menuSignOutAtom,
-	passkeysAtom,
-	removePasskeyAtom
+	passkeysAtom
 } from '#lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
 const route = getRouteApi('/(home)')
 
+// A failed menu action says so directly under it, as the menu already reports an unreadable passkey list.
+function MenuFailure(props: {message: string}) {
+	return (
+		<DropdownMenuItem disabled variant="destructive" className="max-sm:h-11">
+			{props.message}
+		</DropdownMenuItem>
+	)
+}
+
 function PasskeyItems(props: {via: SessionVia}) {
 	const read = useAtomValue(passkeysAtom)
 	const passkeys = AsyncResult.getOrElse(read, () => [])
 	const [adding, add] = useAtom(addPasskeyAtom)
-	const [removing, remove] = useAtom(removePasskeyAtom)
 	const [confirming, confirm] = useAtom(confirmForPasskeyAtom)
 	return (
 		<DropdownMenuGroup>
 			{/* A failed read says so, rather than looking like an account without passkeys. */}
 			{Option.match(AsyncResult.error(read), {
 				onNone: () => null,
-				onSome: failure => (
-					<DropdownMenuItem disabled className="max-sm:h-11">
-						<span className="text-destructive text-xs">Passkeys unavailable · {failure.message}</span>
-					</DropdownMenuItem>
-				)
+				onSome: failure => <MenuFailure message={`Passkeys unavailable · ${failure.message}`} />
 			})}
 			{Array.map(passkeys, passkey => (
-				<DropdownMenuSub key={passkey.id}>
-					<DropdownMenuSubTrigger>
-						<KeyIcon />
-						<span className="truncate">{passkey.addedFrom}</span>
-						<span className="text-muted-foreground ml-auto pl-3 text-xs">
-							{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
-						</span>
-					</DropdownMenuSubTrigger>
-					<DropdownMenuSubContent>
-						<DropdownMenuItem
-							variant="destructive"
-							className="max-sm:h-11"
-							disabled={AsyncResult.isWaiting(removing)}
-							onClick={() => remove(passkey.id)}
-						>
-							Remove
-						</DropdownMenuItem>
-					</DropdownMenuSubContent>
-				</DropdownMenuSub>
+				<DropdownMenuItem key={passkey.id} disabled>
+					<KeyIcon />
+					<span className="truncate">{passkey.addedFrom}</span>
+					<span className="text-muted-foreground ml-auto pl-3 text-xs">
+						{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
+					</span>
+				</DropdownMenuItem>
 			))}
 			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
 			<DropdownMenuItem
 				className="max-sm:h-11"
+				closeOnClick={false}
 				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
 				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
 			>
 				<KeyIcon />
 				Add a passkey
 			</DropdownMenuItem>
+			{Option.match(AsyncResult.error(adding), {
+				onNone: () => null,
+				onSome: failure => <MenuFailure message={failure.message} />
+			})}
 		</DropdownMenuGroup>
 	)
 }
@@ -90,14 +84,17 @@ export function AccountMenu(props: {account: SignedAccount}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
 	const add = useAtomSet(addPasskeyAtom)
+	const [open, setOpen] = useAtom(accountMenuOpenAtom)
 	// Back from GitHub, the passkey it went for starts at once, and only once.
 	useEffect(() => {
 		if (sessionStorage.getItem(ADDING_PASSKEY) === null) return
 		sessionStorage.removeItem(ADDING_PASSKEY)
-		if (props.account.via !== 'Code') add()
-	}, [add, props.account.via])
+		if (props.account.via === 'Code') return
+		setOpen(true)
+		add()
+	}, [add, props.account.via, setOpen])
 	return (
-		<DropdownMenu>
+		<DropdownMenu open={open} onOpenChange={setOpen}>
 			<DropdownMenuTrigger
 				aria-label="Account"
 				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}
@@ -116,11 +113,16 @@ export function AccountMenu(props: {account: SignedAccount}) {
 				<DropdownMenuItem
 					variant="destructive"
 					className="max-sm:h-11"
+					closeOnClick={false}
 					disabled={AsyncResult.isWaiting(signOut)}
 					onClick={() => endSession(next)}
 				>
 					Sign out
 				</DropdownMenuItem>
+				{Option.match(AsyncResult.error(signOut), {
+					onNone: () => null,
+					onSome: failure => <MenuFailure message={failure.message} />
+				})}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	)

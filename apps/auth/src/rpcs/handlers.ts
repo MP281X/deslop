@@ -43,9 +43,6 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}),
 			'auth.passkeys': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
 			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
-			'auth.removePasskey': Effect.fnUntraced(function* (input) {
-				yield* passkeys.remove(input.id, yield* CurrentOwner)
-			}),
 			'auth.wait': (input, options) =>
 				Stream.onStart(signIns.status(input.request, options.headers), Effect.annotateCurrentSpan('rpc.stream', true))
 		})

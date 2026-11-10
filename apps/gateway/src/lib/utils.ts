@@ -4,7 +4,6 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
-import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -109,15 +108,21 @@ export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; se
 // The copy button's check, set by the copy and cleared a moment later.
 export const copiedAtom = Atom.make(false)
 
-// The button confirms a copy in place; a failure says why in a toast.
+// The button confirms a copy in place; a failure leaves it destructive until the next press.
 export const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		pipe(
-			Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => navigator.clipboard.writeText(value)}),
+			// A press inside the check's moment starts over, so a copy that now fails does not keep the check.
+			Atom.set(copiedAtom, false),
+			Effect.andThen(
+				Effect.tryPromise({
+					catch: cause => UpstreamError.make({cause}),
+					try: () => navigator.clipboard.writeText(value)
+				})
+			),
 			Effect.andThen(Atom.set(copiedAtom, true)),
 			Effect.andThen(Effect.sleep('1500 millis')),
-			Effect.andThen(Atom.set(copiedAtom, false)),
-			Effect.tapError(() => Effect.sync(() => toast.add({description: value, title: 'Cannot copy', type: 'error'})))
+			Effect.andThen(Atom.set(copiedAtom, false))
 		)
 	)
 )

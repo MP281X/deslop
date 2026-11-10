@@ -23,7 +23,7 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
-import {InventoryContent, ListPane, RunFailure} from '#routes/(home)/-list.tsx'
+import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
 import {processTree} from '#routes/(home)/-process-tree.ts'
 import {Processes} from '#routes/(home)/-processes.tsx'
 import {type Row, failedFor, order, owner, rangeSet, ranged} from '#routes/(home)/-rows.ts'
@@ -168,35 +168,22 @@ function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
 	return <StaleProblem label="Data out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
 }
 
-// The selected app's processes, or one job's, with what the row cannot show: its failure.
-function ProcessList(props: {now: number; row: Row}) {
+function ProcessList(props: {row: Row}) {
 	const processes = props.row.item.processes ?? []
 	const tree = processTree(processes)
 	const hue = Option.getOrElse(appHue(workloadName(props.row.item)), () => 'var(--blue)')
-	return (
-		<>
-			{Boolean.match(props.row.item.scheduled === true, {
-				onFalse: () => null,
-				onTrue: () => (
-					<div className="px-4 pt-2 empty:hidden">
-						<RunFailure item={props.row.item} />
-					</div>
-				)
-			})}
-			{Array.match(processes, {
-				onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
-				onNonEmpty: () => (
-					<ScrollArea className="min-h-0 flex-1">
-						<Processes hue={hue} tree={tree} />
-					</ScrollArea>
-				)
-			})}
-		</>
-	)
+	return Array.match(processes, {
+		onEmpty: () => <EmptyState icon={<TerminalWindowIcon weight="light" />} label="No processes right now" />,
+		onNonEmpty: () => (
+			<ScrollArea className="min-h-0 flex-1">
+				<Processes hue={hue} tree={tree} />
+			</ScrollArea>
+		)
+	})
 }
 
 // The processes below the chart, or a phone's pushed pane; nothing selected is one symbol.
-function SelectedProcesses(props: {app?: string; now: number; pending: boolean; row?: Row}) {
+function SelectedProcesses(props: {app?: string; pending: boolean; row?: Row}) {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{Option.match(Option.fromUndefinedOr(props.row), {
@@ -218,7 +205,7 @@ function SelectedProcesses(props: {app?: string; now: number; pending: boolean; 
 						}
 					>
 						<InventoryContent>
-							<ProcessList now={props.now} row={row} />
+							<ProcessList row={row} />
 						</InventoryContent>
 					</Suspense>
 				)
@@ -233,7 +220,6 @@ function DetailPane(props: {
 	history?: MachineHistory
 	labels: Record<string, string>
 	minutes: HistoryQuery['minutes']
-	now: number
 	pending: boolean
 	row?: Row
 	worker?: string
@@ -256,7 +242,7 @@ function DetailPane(props: {
 				</MetricsContent>
 			</Suspense>
 			<div className="flex min-h-0 flex-1 flex-col">
-				<SelectedProcesses app={props.app} now={props.now} pending={props.pending} row={props.row} />
+				<SelectedProcesses app={props.app} pending={props.pending} row={props.row} />
 			</div>
 		</div>
 	)
@@ -352,7 +338,6 @@ function Workspace(props: {
 										history={props.history}
 										labels={props.labels}
 										minutes={props.minutes}
-										now={props.now}
 										pending={props.pending}
 										row={props.selectedRow}
 										worker={props.active}
@@ -375,12 +360,7 @@ function Workspace(props: {
 									/>
 								),
 								onTrue: () => (
-									<SelectedProcesses
-										app={props.selectedApp}
-										now={props.now}
-										pending={props.pending}
-										row={props.selectedRow}
-									/>
+									<SelectedProcesses app={props.selectedApp} pending={props.pending} row={props.selectedRow} />
 								)
 							})
 					})}
