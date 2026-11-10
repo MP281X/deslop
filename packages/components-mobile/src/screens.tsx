@@ -126,9 +126,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 						disabled(props.waiting)
 					]}
 				>
-					<Text modifiers={[text.title]}>
-						{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
-					</Text>
+					<Text modifiers={[text.title]}>Sign in with GitHub</Text>
 				</Button>
 			</VStack>
 		</Host>
