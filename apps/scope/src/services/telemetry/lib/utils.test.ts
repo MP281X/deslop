@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, HashMap, Option, Order, String} from 'effect'
 
-import {overview, retentionOf} from '#services/telemetry/lib/utils.ts'
+import {overviewOf, retentionOf, tracedOf} from '#services/telemetry/lib/utils.ts'
 import {Entry} from '#services/telemetry/schema.ts'
 
 const NOW = 1_781_870_000_000
@@ -36,12 +36,12 @@ const entries = [
 	span(String.repeat(32)('d'), '@deslop/gateway-server', NOW - 2 * HOUR, 20)
 ]
 
-function appOf(frame: ReturnType<typeof overview>, name: string) {
+function appOf(frame: ReturnType<typeof overviewOf>, name: string) {
 	return Option.getOrThrow(Array.findFirst(frame.apps, current => current.name === name))
 }
 
 it('counts each app’s operations only inside the page’s time frame and keeps every app tab', () => {
-	const hour = overview(entries, NOW, '1h')
+	const hour = overviewOf(tracedOf(entries, NOW), NOW, '1h')
 	assert.deepStrictEqual(
 		Array.map(appOf(hour, 'stash').operations, operation => [operation.name, operation.count, operation.p50Ms]),
 		[['share', 1, 10]]
@@ -49,7 +49,7 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 	assert.lengthOf(hour.apps, 2)
 	assert.lengthOf(appOf(hour, 'gateway').operations, 0)
 
-	const day = overview(entries, NOW, '24h')
+	const day = overviewOf(tracedOf(entries, NOW), NOW, '24h')
 	assert.deepStrictEqual(
 		Array.map(appOf(day, 'stash').operations, operation => [operation.name, operation.count, operation.p50Ms]),
 		[['share', 3, 100]]

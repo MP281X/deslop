@@ -679,7 +679,3 @@ export function overviewOf(traces: readonly Traced[], now: number, range: Range)
 		)
 	} satisfies Overview
 }
-
-export function overview(entries: readonly Entry[], now: number, range: Range) {
-	return overviewOf(tracedOf(entries, now), now, range)
-}
