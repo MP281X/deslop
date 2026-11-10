@@ -3,6 +3,8 @@ import {Array, DateTime, Effect, HashSet, MutableList, Option, String, pipe} fro
 import {AsyncResult, Atom} from 'effect/reactivity'
 import * as Calendar from 'expo-calendar'
 
+import {palette} from '@deslop/components-mobile/palette'
+
 import {bookingsAtom} from '#lib/bookings.ts'
 import {linkOf} from '#lib/deep-links.ts'
 import {placeLine} from '#lib/rides.ts'
@@ -114,7 +116,7 @@ export const calendarAtom = Atom.make(get =>
 							try: () => {
 								const source = Calendar.getDefaultCalendarSync().source
 								return Calendar.createCalendar({
-									color: '#4385be',
+									color: palette.orange,
 									entityType: Calendar.EntityTypes.EVENT,
 									name: CALENDAR,
 									source,
@@ -123,7 +125,16 @@ export const calendarAtom = Atom.make(get =>
 								})
 							}
 						}),
-					onSome: Effect.succeed
+					onSome: found =>
+						Effect.gen(function* () {
+							if (String.toLowerCase(found.color ?? '') !== String.toLowerCase(palette.orange)) {
+								yield* Effect.tryPromise({
+									catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
+									try: () => found.update({color: palette.orange})
+								})
+							}
+							return found
+						})
 				}
 			)
 			const now = DateTime.toEpochMillis(DateTime.nowUnsafe())

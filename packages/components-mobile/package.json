@@ -11,7 +11,8 @@
 		"./theme": "./src/theme.ts",
 		"./utils": "./src/lib/utils.ts",
 		"./clipboard": "./src/lib/clipboard.ts",
-		"./removal": "./src/lib/removal.ts"
+		"./removal": "./src/lib/removal.ts",
+		"./palette": "./src/palette.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"
