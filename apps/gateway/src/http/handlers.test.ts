@@ -232,6 +232,22 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		}
 		return new Response(undefined, {status: 401})
 	})
+	const listedTools = Effect.fnUntraced(function* (id?: number | string) {
+		yield* Effect.sleep(`${yield* Ref.get(discoveryDelay)} millis`)
+		yield* Queue.offer(upstreamTools, undefined)
+		return Response.json({
+			id,
+			jsonrpc: '2.0',
+			result: {
+				tools: Array.map(yield* Ref.get(toolNames), name => ({
+					annotations: {readOnlyHint: true},
+					description: 'Search example',
+					inputSchema: {properties: {query: {type: 'string'}}, required: ['query'], type: 'object'},
+					name
+				}))
+			}
+		})
+	})
 	function fetchUpstream(input: RequestInfo | URL, init?: RequestInit) {
 		const request = new Request(input, init)
 		// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's FetchLike contract requires a Promise<Response>.
@@ -294,23 +310,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					return new Response(undefined, {status: 404})
 				}
 				if (message.method === 'notifications/initialized') return new Response(undefined, {status: 202})
-				if (message.method === 'tools/list') {
-					const delay = yield* Ref.get(discoveryDelay)
-					if (delay > 0) yield* Effect.sleep(`${delay} millis`)
-					yield* Queue.offer(upstreamTools, undefined)
-					return Response.json({
-						id: message.id,
-						jsonrpc: '2.0',
-						result: {
-							tools: Array.map(yield* Ref.get(toolNames), name => ({
-								annotations: {readOnlyHint: true},
-								description: 'Search example',
-								inputSchema: {properties: {query: {type: 'string'}}, required: ['query'], type: 'object'},
-								name
-							}))
-						}
-					})
-				}
+				if (message.method === 'tools/list') return yield* listedTools(message.id)
 				return Response.json({
 					id: message.id,
 					jsonrpc: '2.0',
