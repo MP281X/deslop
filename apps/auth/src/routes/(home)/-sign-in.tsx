@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, pipe} from 'effect'
+import {Array, Boolean, Option, pipe} from 'effect'
 
 import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -54,33 +54,23 @@ function Suite(props: {apps: readonly {name: string; origin: string}[]}) {
 	)
 }
 
-// The signed-out page's centred shape while its app list loads, never a skeleton for the bar, tabs, a heading or the code field.
-function SignInSkeleton() {
+// The app list's place while its catalog loads, at the loaded suite's geometry.
+function SuiteSkeleton() {
 	return (
-		<section
-			aria-busy="true"
-			aria-label="Sign in"
-			role="status"
-			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
-		>
-			<div className="flex flex-col gap-2">
-				<Skeleton className="h-9 w-full max-sm:h-11" />
-				<Skeleton className="h-9 w-full max-sm:h-11" />
-				<Skeleton className="h-9 w-full max-sm:h-11" />
-			</div>
-			<div className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
-				{Array.map(Array.range(1, 4), row => (
-					<span key={row} className="flex h-6 min-w-0 items-center gap-2.5 max-sm:h-11">
-						<Skeleton className="size-4 shrink-0" />
-						<Skeleton className="h-3 w-20" />
-					</span>
-				))}
-			</div>
-		</section>
+		<div aria-busy="true" aria-label="Apps" role="status" className="grid grid-cols-2 gap-x-8 gap-y-3 border-t pt-5">
+			{Array.map(Array.range(1, 4), row => (
+				<span key={row} className="flex h-6 min-w-0 items-center gap-2.5 max-sm:h-11">
+					<Skeleton className="size-4 shrink-0" />
+					<Skeleton className="h-3 w-20" />
+				</span>
+			))}
+		</div>
 	)
 }
 
-function SignIn(props: {apps: readonly {name: string; origin: string}[]}) {
+function SignIn() {
+	const catalog = useAtomValue(catalogAtom)
+	const apps = AsyncResult.getOrElse(catalog, () => [])
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
 	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
@@ -122,14 +112,15 @@ function SignIn(props: {apps: readonly {name: string; origin: string}[]}) {
 				</Button>
 				<Failures />
 			</div>
-			{Array.isReadonlyArrayNonEmpty(props.apps) && <Suite apps={props.apps} />}
+			{Boolean.match(AsyncResult.isInitial(catalog), {
+				onFalse: () => Array.isReadonlyArrayNonEmpty(apps) && <Suite apps={apps} />,
+				onTrue: () => <SuiteSkeleton />
+			})}
 		</section>
 	)
 }
 
-// A known signed-out account sees the sign-in page; until its app list arrives, the page's centred shape stands in.
+// A known signed-out account sees the sign-in page at once; only its app list waits for the catalog.
 export function SignedOut() {
-	const catalog = useAtomValue(catalogAtom)
-	if (AsyncResult.isInitial(catalog)) return <SignInSkeleton />
-	return <SignIn apps={AsyncResult.getOrElse(catalog, () => [])} />
+	return <SignIn />
 }
