@@ -1,30 +1,33 @@
-import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, Result} from 'effect'
+import {Array, Option} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
+import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {updateAtom} from '@deslop/runtime/mobile'
 
-import {activitiesAtom, bookingsAtom, calendarAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
+import {bookingsAtom} from '#lib/bookings.ts'
+import {calendarAtom} from '#lib/calendar.ts'
+import {openedAtom} from '#lib/deep-links.ts'
+import {activitiesAtom} from '#lib/live-activity.ts'
+import {pushAtom} from '#lib/notifications.ts'
+import {session} from '#lib/session.ts'
+import {primary} from '#lib/status.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import {BookingRoute} from '#routes/bookings/$id.tsx'
 import icon from '#routes/icon.png'
 
 function Destination(props: {onClose: () => void; value: string}) {
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(bookingsAtom)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
-	}
-	return <BookingRoute key={props.value} bookings={shown.success} id={props.value} onClose={props.onClose} />
+	return (
+		<Loaded atom={bookingsAtom} name="Trips">
+			{bookings => <BookingRoute key={props.value} bookings={bookings} id={props.value} onClose={props.onClose} />}
+		</Loaded>
+	)
 }
 
 function AppRoutes() {
@@ -53,12 +56,9 @@ function AppRoutes() {
 }
 
 export function RootRoute() {
-	useAtomMount(updateAtom)
 	return (
-		<Suspense fallback={<BlankScreen />}>
-			<SessionGate logo={icon} session={session.machine} tint={primary}>
-				<AppRoutes />
-			</SessionGate>
-		</Suspense>
+		<SessionGate logo={icon} session={session.machine} tint={primary}>
+			<AppRoutes />
+		</SessionGate>
 	)
 }

@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} from 'effect'
 
@@ -39,59 +39,58 @@ import {
 	navigationTitle,
 	onAppear,
 	pickerStyle,
-	padding,
 	resizable,
 	searchable,
 	tag,
 	tint
 } from '@expo/ui/swift-ui/modifiers'
-import {useMachineResult} from '@typeonce/effect-machine-react'
-import {AtomMachine} from '@typeonce/effect-machine/reactivity'
+import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
-import {useState} from 'react'
-import type {ReactNode} from 'react'
+import {Suspense, useState} from 'react'
 import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
-import {BrandIcon, BrandLogo} from '@deslop/components-mobile/icons'
+import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
-import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+	itemRow
+} from '@deslop/components-mobile/ui/item'
+import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 
+import {clipboard} from '#lib/clipboard.ts'
 import {Byline} from '#lib/components.tsx'
-import {
-	appOf,
-	brandOf,
-	clipboardAtom,
-	clipboardReturnsAtom,
-	imageAtom,
-	kindOf,
-	kinds,
-	notesAtom,
-	primary,
-	queryAtom,
-	regenerateAtom,
-	removeAtom,
-	searchAtom,
-	session
-} from '#lib/utils.ts'
+import {BrandIcon, BrandLogo} from '#lib/icons.tsx'
+import {appOf, brandOf, kindOf, kinds, subjectOf} from '#lib/kinds.ts'
+import {imageAtom, notesAtom, queryAtom, regenerateAtom, removal, searchAtom} from '#lib/notes.ts'
+import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 import {Brand, Kind} from '#services/notes/schema.ts'
 
-const OFFERS = {image: 'Save the copied image?', link: 'Save the copied link?', text: 'Save the copied link?'} as const
-
 // The summary waits in the note, so the list scans fast.
-function Lines(props: {note: NoteItem}) {
+function Lines(props: {muted?: boolean; note: NoteItem}) {
 	return (
 		<ItemContent>
-			<ItemTitle>{props.note.title}</ItemTitle>
+			<ItemTitle
+				modifiers={Boolean.match(props.muted === true, {
+					onFalse: () => [],
+					onTrue: () => [foregroundStyle(colors.mutedForeground)]
+				})}
+			>
+				{props.note.title}
+			</ItemTitle>
 			{pipe(
 				Match.value(props.note.status),
 				Match.when('organizing', () => (
@@ -100,13 +99,22 @@ function Lines(props: {note: NoteItem}) {
 						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
 					>
 						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>Reading this link</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>{`Reading this ${subjectOf(props.note)}`}</Text>
 					</HStack>
 				)),
 				Match.when('failed', () => (
-					<HStack spacing={space[1]} modifiers={[accessibilityElement('combine'), foregroundStyle(colors.destructive)]}>
+					<HStack
+						spacing={space[1]}
+						modifiers={[
+							accessibilityElement('combine'),
+							Boolean.match(props.muted === true, {
+								onFalse: () => foregroundStyle(colors.destructive),
+								onTrue: () => foregroundStyle(colors.mutedForeground)
+							})
+						]}
+					>
 						<Image systemName="exclamationmark.triangle.fill" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>Couldn’t read this link</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>{`Couldn’t read this ${subjectOf(props.note)}`}</Text>
 					</HStack>
 				)),
 				Match.orElse(() => <Byline note={props.note} />)
@@ -173,48 +181,78 @@ function NoteRow(props: {
 	onAppear: () => void
 	onOpen: (id: Note['id']) => void
 	onRegenerate: (id: Note['id']) => void
-	onRemove: (id: Note['id']) => void
 }) {
+	const machine = removal.machine(props.note.id)
+	const remove = useAtomSet(removal.removeAtom)
+	const send = useAtomSet(machine.send)
 	return (
-		<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
-			<ContextMenu>
-				<ContextMenu.Trigger>
-					<Item
-						onPress={() => props.onOpen(props.note.id)}
-						modifiers={[accessibilityAddTraits(['isButton']), onAppear(props.onAppear)]}
-					>
+		<>
+			<MachineState machine={machine} path="Idle">
+				{() => (
+					<SwipeActions modifiers={[...itemRow, tag(props.note.id)]}>
+						<ContextMenu>
+							<ContextMenu.Trigger>
+								<Item
+									onPress={() => props.onOpen(props.note.id)}
+									modifiers={[accessibilityAddTraits(['isButton']), onAppear(props.onAppear)]}
+								>
+									<ItemMedia>
+										<NoteMedia note={props.note} />
+									</ItemMedia>
+									<Lines note={props.note} />
+								</Item>
+							</ContextMenu.Trigger>
+							<ContextMenu.Items>
+								{Option.match(Option.fromNullishOr(props.note.url), {
+									onNone: () => undefined,
+									onSome: url => (
+										<Button onPress={() => Linking.openURL(url)}>
+											<Label
+												title={Option.match(appOf(props.note), {
+													onNone: () => 'Open Link',
+													onSome: name => `Open in ${name}`
+												})}
+												{...Option.match(brandOf(props.note), {
+													onNone: () => ({systemImage: 'arrow.up.right' as const}),
+													onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
+												})}
+											/>
+										</Button>
+									)
+								})}
+								<Button
+									label="Regenerate"
+									systemImage="arrow.clockwise"
+									onPress={() => props.onRegenerate(props.note.id)}
+								/>
+								<DeleteButton onPress={() => remove(props.note.id)} />
+							</ContextMenu.Items>
+						</ContextMenu>
+						<SwipeActions.Actions edge="trailing">
+							<DeleteButton onPress={() => remove(props.note.id)} />
+						</SwipeActions.Actions>
+					</SwipeActions>
+				)}
+			</MachineState>
+			<MachineState machine={machine} path="Pending">
+				{() => (
+					<Item modifiers={itemRow}>
 						<ItemMedia>
 							<NoteMedia note={props.note} />
 						</ItemMedia>
-						<Lines note={props.note} />
+						<Lines muted note={props.note} />
+						<ItemActions>
+							<Button
+								label="Undo"
+								systemImage="arrow.uturn.backward"
+								onPress={() => send({_tag: 'Restored'})}
+								modifiers={[labelStyle('iconOnly')]}
+							/>
+						</ItemActions>
 					</Item>
-				</ContextMenu.Trigger>
-				<ContextMenu.Items>
-					{Option.match(Option.fromNullishOr(props.note.url), {
-						onNone: () => undefined,
-						onSome: url => (
-							<Button onPress={() => Linking.openURL(url)}>
-								<Label
-									title={Option.match(appOf(props.note), {
-										onNone: () => 'Open Link',
-										onSome: name => `Open in ${name}`
-									})}
-									{...Option.match(brandOf(props.note), {
-										onNone: () => ({systemImage: 'arrow.up.right' as const}),
-										onSome: brand => ({icon: <BrandIcon brand={kinds[brand].logo} />})
-									})}
-								/>
-							</Button>
-						)
-					})}
-					<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => props.onRegenerate(props.note.id)} />
-					<DeleteButton onPress={() => props.onRemove(props.note.id)} />
-				</ContextMenu.Items>
-			</ContextMenu>
-			<SwipeActions.Actions edge="trailing">
-				<DeleteButton onPress={() => props.onRemove(props.note.id)} />
-			</SwipeActions.Actions>
-		</SwipeActions>
+				)}
+			</MachineState>
+		</>
 	)
 }
 
@@ -264,40 +302,101 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 	)
 }
 
-function PasteSheet(props: {children: ReactNode}) {
-	useAtomMount(clipboardReturnsAtom)
-	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
-	const send = useAtomSet(clipboardAtom.send)
-	const kind = Option.match(offer, {onNone: () => 'link' as const, onSome: open => open.kind})
-	return (
-		<ClipboardDialog
-			confirm="Save"
-			onAnswer={save => send({_tag: 'Answered', save})}
-			open={Option.isSome(offer)}
-			question={OFFERS[kind]}
-		>
-			{props.children}
-		</ClipboardDialog>
-	)
-}
-
-function Outages() {
-	const notes = useAtomValue(notesAtom)
-	const refresh = useAtomRefresh(notesAtom)
+function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: string) => void; tag?: string}) {
+	const regenerate = useAtomSet(regenerateAtom)
+	const paste = useAtomSet(clipboard.atom.send)
+	const query = String.trim(useAtomValue(queryAtom))
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
-	if (!AsyncResult.isFailure(notes) && !AsyncResult.isFailure(search)) return null
+	const found = pipe(search, AsyncResult.value, Option.flatten)
+	const [limit, setLimit] = useState(80)
 	return (
-		<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
-			{AsyncResult.isFailure(notes) && <Problem label="Notes not updating" onRetry={refresh} />}
-			{AsyncResult.isFailure(search) && (
-				<Problem
-					label="Search unavailable"
-					saved={Option.isSome(pipe(search, AsyncResult.value, Option.flatten))}
-					onRetry={refreshSearch}
-				/>
-			)}
-		</HStack>
+		<Loaded atom={notesAtom} name="Notes">
+			{all => {
+				if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
+					return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} />
+				}
+				const notes = Array.filter(
+					all,
+					note =>
+						Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
+						(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
+						(props.kind === undefined || kindOf(note) === props.kind)
+				)
+				const tags = Array.map(tagCounts(all), entry => entry.tag)
+				const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
+				return (
+					<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+						{Array.match(all, {
+							onEmpty: () => (
+								<Empty>
+									<EmptyAction
+										label="Paste Link"
+										systemImage="link"
+										onPress={() => paste({_tag: 'Returned'})}
+										tint={primary}
+									/>
+								</Empty>
+							),
+							onNonEmpty: () => (
+								// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
+								<Overlay>
+									<ItemGroup>
+										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+										<ToggleGroup
+											value={props.tag ?? 'all'}
+											onValueChange={value =>
+												Boolean.match(value === 'all' || value === props.tag, {
+													onFalse: () => props.onTag(value),
+													onTrue: () => props.onTag()
+												})
+											}
+											tint={primary}
+											modifiers={[
+												listRowSeparator('hidden'),
+												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
+											]}
+										>
+											<ToggleGroupItem value="all" systemImage="tray">
+												all
+											</ToggleGroupItem>
+											{Array.map(tags, name => (
+												<ToggleGroupItem key={name} value={name}>
+													{name}
+												</ToggleGroupItem>
+											))}
+										</ToggleGroup>
+										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+										{Array.map(Array.take(notes, limit), (note, position) => (
+											<NoteRow
+												key={note.id}
+												note={note}
+												onAppear={() => {
+													if (position === limit - 1) setLimit(limit + 80)
+												}}
+												onOpen={props.onOpen}
+												onRegenerate={id => regenerate(id)}
+											/>
+										))}
+									</ItemGroup>
+									{filtered && Array.isReadonlyArrayEmpty(notes) && (
+										<Overlay.Content>
+											<Empty
+												systemImage={Boolean.match(String.isEmpty(query), {
+													onFalse: () => 'magnifyingglass',
+													onTrue: () => 'tray'
+												})}
+												label="No notes match"
+											/>
+										</Overlay.Content>
+									)}
+								</Overlay>
+							)
+						})}
+					</VStack>
+				)
+			}}
+		</Loaded>
 	)
 }
 
@@ -311,33 +410,13 @@ export function HomeRoute(props: {
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
-	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(notesAtom)
-	const remove = useAtomSet(removeAtom)
-	const regenerate = useAtomSet(regenerateAtom)
-	const paste = useAtomSet(clipboardAtom.send)
-	const query = String.trim(useAtomValue(queryAtom))
+	const notes = useAtomValue(notesAtom)
+	const refreshNotes = useAtomRefresh(notesAtom)
 	const search = useAtomValue(searchAtom)
 	const refreshSearch = useAtomRefresh(searchAtom)
-	const found = pipe(search, AsyncResult.value, Option.flatten)
-	const [limit, setLimit] = useState(80)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Notes" onRetry={refresh} />
-	}
-	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
-		return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} />
-	}
-	const notes = Array.filter(
-		shown.success,
-		note =>
-			Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
-			(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
-			(props.kind === undefined || kindOf(note) === props.kind)
-	)
-	const tags = Array.map(tagCounts(shown.success), entry => entry.tag)
-	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
-
+	const saved =
+		!(AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) &&
+		(AsyncResult.isSuccess(notes) || (AsyncResult.isFailure(notes) && Result.isSuccess(shownOf(notes))))
 	return (
 		<Toolbar
 			modifiers={[
@@ -347,79 +426,34 @@ export function HomeRoute(props: {
 				bottomBarSearch
 			]}
 		>
-			<PasteSheet>
-				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-					<Outages />
-					{Array.match(shown.success, {
-						onEmpty: () => (
-							<Empty>
-								<EmptyAction
-									label="Paste Link"
-									systemImage="link"
-									onPress={() => paste({_tag: 'Returned'})}
-									tint={primary}
-								/>
-							</Empty>
-						),
-						onNonEmpty: () => (
-							// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
-							<Overlay>
-								<ItemGroup>
-									{/* "all" clears the tag, and choosing the chosen tag again does too. */}
-									<ToggleGroup
-										value={props.tag ?? 'all'}
-										onValueChange={value =>
-											Boolean.match(value === 'all' || value === props.tag, {
-												onFalse: () => props.onTag(value),
-												onTrue: () => props.onTag()
-											})
-										}
-										tint={primary}
-										modifiers={[
-											listRowSeparator('hidden'),
-											listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
-										]}
-									>
-										<ToggleGroupItem value="all" systemImage="tray">
-											all
-										</ToggleGroupItem>
-										{Array.map(tags, name => (
-											<ToggleGroupItem key={name} value={name}>
-												{name}
-											</ToggleGroupItem>
-										))}
-									</ToggleGroup>
-									{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-									{Array.map(Array.take(notes, limit), (note, position) => (
-										<NoteRow
-											key={note.id}
-											note={note}
-											onAppear={() => {
-												if (position === limit - 1) setLimit(limit + 80)
-											}}
-											onOpen={props.onOpen}
-											onRegenerate={id => regenerate(id)}
-											onRemove={id => remove(id)}
-										/>
-									))}
-								</ItemGroup>
-								{filtered && Array.isReadonlyArrayEmpty(notes) && (
-									<Overlay.Content>
-										<Empty
-											systemImage={Boolean.match(String.isEmpty(query), {
-												onFalse: () => 'magnifyingglass',
-												onTrue: () => 'tray'
-											})}
-											label="No notes match"
-										/>
-									</Overlay.Content>
-								)}
-							</Overlay>
-						)
-					})}
-				</VStack>
+			<PasteSheet clipboard={clipboard}>
+				<Suspense
+					fallback={
+						<ItemGroupSkeleton
+							rows={10}
+							descriptionLines={1}
+							media={<Skeleton modifiers={[frame({height: 64, width: 64})]} />}
+						/>
+					}
+				>
+					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
+				</Suspense>
 			</PasteSheet>
 			<Toolbar.Content>
+				{saved && (AsyncResult.isFailure(notes) || AsyncResult.isFailure(search)) && (
+					<ToolbarItem placement="topBarLeading">
+						<Problem
+							label={Boolean.match(AsyncResult.isFailure(notes), {
+								onFalse: () => 'Search unavailable',
+								onTrue: () => 'Notes not updating'
+							})}
+							onRetry={() => {
+								refreshNotes()
+								refreshSearch()
+							}}
+						/>
+					</ToolbarItem>
+				)}
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
 				</ToolbarItem>

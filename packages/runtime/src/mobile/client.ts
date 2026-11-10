@@ -1,67 +1,14 @@
-import {Boolean, DateTime, Duration, Effect, Layer, Option, Schema, String, pipe} from 'effect'
+import {Boolean, Duration, Effect, Schema, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {FetchHttpClient} from 'effect/http'
 import {Atom} from 'effect/reactivity'
-import {RpcClient, RpcSerialization} from 'effect/rpc'
-import {Socket} from 'effect/socket'
 import Constants from 'expo-constants'
 import * as Updates from 'expo-updates'
-import {AppState} from 'react-native'
 
-import {RPC_PATH} from '#schema.ts'
-import {layerOtlp} from '#telemetry.ts'
-
-import {layerRpcAuthClient} from '#auth/lib/utils.ts'
-import type {AuthError} from '#auth/schema.ts'
+import {activationsAtom, awayAtom} from '#mobile/activations.ts'
 
 export const extra = Schema.decodeUnknownSync(Schema.Struct({scheme: Schema.String}))(Constants.expoConfig?.extra)
-
-// Telemetry starts once and the socket is built per server; JSON frames, because binary ones failed to reopen a cancelled watch on iOS.
-export function layer(applicationName: string) {
-	// Scope's public receiver takes traces and logs from anywhere; the version is the release running, a build's or an over-the-air update's.
-	Atom.runtime.addGlobalLayer(
-		layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile', Constants.expoConfig?.version ?? '0.1.0')
-	)
-	return (server: string) =>
-		pipe(
-			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-			Layer.provide(Socket.layerWebSocket(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws')))),
-			Layer.provide(Socket.layerWebSocketConstructorGlobal),
-			Layer.provide(RpcSerialization.layerJson)
-		)
-}
-
-export function layerSignedIn<R>(applicationName: string, token: Effect.Effect<string, AuthError, R>) {
-	return (server: string) =>
-		pipe(
-			layer(applicationName)(server),
-			Layer.provideMerge(layerRpcAuthClient(token)),
-			Layer.provide(FetchHttpClient.layer)
-		)
-}
-
-// How long the app spent in the background before its latest return, in milliseconds.
-const awayAtom = Atom.keepAlive(Atom.make(0))
-
-// iOS suspends sockets in the background, so atoms that read this count start over on each return from it; a sign-in sheet only makes the app inactive.
-export const activationsAtom = Atom.make(get => {
-	const left = {at: 0, background: false}
-	const subscription = AppState.addEventListener('change', state => {
-		if (state === 'background') {
-			left.at = DateTime.toEpochMillis(DateTime.nowUnsafe())
-			left.background = true
-		}
-		if (state !== 'active' || !left.background) return
-		left.background = false
-		get.set(awayAtom, DateTime.toEpochMillis(DateTime.nowUnsafe()) - left.at)
-		get.setSelf(Option.getOrElse(get.self<number>(), () => 0) + 1)
-	})
-	get.addFinalizer(() => subscription.remove())
-	return 0
-})
 
 class UpdateError extends Schema.TaggedError<UpdateError>()('UpdateError', {
 	cause: Schema.Defect(),

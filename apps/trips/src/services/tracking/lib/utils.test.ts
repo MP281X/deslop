@@ -47,14 +47,12 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 		},
 		Train.make({
 			arrives: 0,
-			createdAt: 0,
 			departs: 0,
 			from: {code: 'it-trenitalia_08409:station', name: 'Roma', timeZone: 'Europe/Rome'},
 			id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 			number: '9541',
 			operator: 'trenitalia',
 			operatorName: 'Frecciarossa',
-			sources: [],
 			status: 'confirmed',
 			to: {name: 'Bologna Centrale', timeZone: 'Europe/Rome'}
 		}),
@@ -69,14 +67,12 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 it('reads the platform, the delay it left with and the delay it runs with at the booked stop', () => {
 	const train = Train.make({
 		arrives: 0,
-		createdAt: 0,
 		departs: 0,
 		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 		number: '9541',
 		operator: 'trenitalia',
 		operatorName: 'Frecciarossa',
-		sources: [],
 		status: 'confirmed',
 		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 	})
@@ -126,14 +122,12 @@ it('checks a train each minute near departure and calls live data stale after tw
 	const departs = DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T15:40:00Z'))
 	const train = Train.make({
 		arrives: departs + 3 * HOUR,
-		createdAt: 0,
 		departs,
 		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 		number: '9541',
 		operator: 'trenitalia',
 		operatorName: 'Frecciarossa',
-		sources: [],
 		status: 'confirmed',
 		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 	})
@@ -141,12 +135,10 @@ it('checks a train each minute near departure and calls live data stale after tw
 		airline: 'British Airways',
 		airlineCode: 'BA',
 		arrives: departs + 2.5 * HOUR,
-		createdAt: 0,
 		departs,
 		from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
 		id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
 		number: '553',
-		sources: [],
 		status: 'confirmed',
 		to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
 	})
@@ -180,14 +172,12 @@ it('checks a train each minute near departure and calls live data stale after tw
 it("answers nothing for another day's run of the number or a run that does not call at the booked station", () => {
 	const train = Train.make({
 		arrives: 0,
-		createdAt: 0,
 		departs: 0,
 		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 		number: '9541',
 		operator: 'trenitalia',
 		operatorName: 'Frecciarossa',
-		sources: [],
 		status: 'confirmed',
 		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 	})

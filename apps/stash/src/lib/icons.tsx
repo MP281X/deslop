@@ -3,8 +3,9 @@ import {useAtomValue} from '@effect/atom-react'
 import {Boolean} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
-import {requireNativeView} from 'expo'
 import {useColorScheme} from 'react-native'
+
+import {assetAtom} from '@deslop/components-mobile/utils'
 
 import tiktokDark from './svgs/tiktok-icon-dark.svg'
 import tiktokLight from './svgs/tiktok-icon-light.svg'
@@ -12,9 +13,7 @@ import xLight from './svgs/x.svg'
 import xDark from './svgs/x_dark.svg'
 import youtube from './svgs/youtube.svg'
 
-import {assetAtom} from '#lib/utils.ts'
-
-const Logo = requireNativeView<{size: number; template?: boolean; uri: string}>('DeslopComponents', 'Logo')
+import {Logo} from '#modules/native/index.ts'
 
 export type Brand = {dark: string; light: string}
 

@@ -1,4 +1,4 @@
-import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Result, String, pipe} from 'effect'
 
@@ -29,10 +29,9 @@ import {MachineState, useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
-import type {ReactNode} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {ClipboardDialog} from '@deslop/components-mobile/clipboard-dialog'
+import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
@@ -50,22 +49,9 @@ import {
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
-import {
-	clipboardAtom,
-	clipboardReturnsAtom,
-	bookingsAtom,
-	daysUntil,
-	nowAtom,
-	primary,
-	problemOf,
-	removeAtom,
-	restoreAtom,
-	session,
-	statusOf,
-	timeAt,
-	tones,
-	undoAtom
-} from '#lib/utils.ts'
+import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
+import {session} from '#lib/session.ts'
+import {daysUntil, primary, problemOf, statusOf, timeAt, tones} from '#lib/status.ts'
 import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 
@@ -125,67 +111,78 @@ function Gutter(props: {countdown: Countdown}) {
 }
 
 function BookingRow(props: {booking: Booking; countdown: Countdown; now: number; onOpen: (id: string) => void}) {
-	const remove = useAtomSet(removeAtom)
+	const machine = removal.machine(props.booking.id)
+	const remove = useAtomSet(removal.removeAtom)
+	const send = useAtomSet(machine.send)
 	const status = statusOf(props.booking, props.now)
 	return (
-		<SwipeActions modifiers={itemRow}>
-			<Item alignment="top" onPress={() => props.onOpen(props.booking.id)}>
-				<ItemMedia>
-					<Gutter countdown={props.countdown} />
-				</ItemMedia>
-				<ItemContent>
-					<ItemTitle>{headingOf(props.booking)}</ItemTitle>
-					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>{lineOf(props.booking, status)}</Text>
-				</ItemContent>
-				{Option.match(problemOf(props.booking, status, props.now), {
-					onNone: () => undefined,
-					onSome: problem => (
+		<>
+			<MachineState machine={machine} path="Idle">
+				{() => (
+					<SwipeActions modifiers={itemRow}>
+						<Item alignment="top" onPress={() => props.onOpen(props.booking.id)}>
+							<ItemMedia>
+								<Gutter countdown={props.countdown} />
+							</ItemMedia>
+							<ItemContent>
+								<ItemTitle>{headingOf(props.booking)}</ItemTitle>
+								<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
+									{lineOf(props.booking, status)}
+								</Text>
+							</ItemContent>
+							{Option.match(problemOf(props.booking, status, props.now), {
+								onNone: () => undefined,
+								onSome: problem => (
+									<ItemActions>
+										<HStack spacing={space[2]}>
+											<StatusDot status={problem.status} />
+											<Text modifiers={[text.detail, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
+										</HStack>
+									</ItemActions>
+								)
+							})}
+						</Item>
+						<SwipeActions.Actions edge="trailing">
+							<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking.id)} />
+						</SwipeActions.Actions>
+					</SwipeActions>
+				)}
+			</MachineState>
+			<MachineState machine={machine} path="Pending">
+				{() => (
+					<Item alignment="top" modifiers={itemRow}>
+						<ItemMedia>
+							<Gutter countdown={props.countdown} />
+						</ItemMedia>
+						<ItemContent>
+							<ItemTitle modifiers={[foregroundStyle(colors.mutedForeground)]}>{headingOf(props.booking)}</ItemTitle>
+							<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
+								{lineOf(props.booking, status)}
+							</Text>
+						</ItemContent>
 						<ItemActions>
-							<HStack spacing={space[2]}>
-								<StatusDot status={problem.status} />
-								<Text modifiers={[text.detail, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
-							</HStack>
+							<Button
+								label="Undo"
+								systemImage="arrow.uturn.backward"
+								onPress={() => send({_tag: 'Restored'})}
+								modifiers={[labelStyle('iconOnly')]}
+							/>
 						</ItemActions>
-					)
-				})}
-			</Item>
-			<SwipeActions.Actions edge="trailing">
-				<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking)} />
-			</SwipeActions.Actions>
-		</SwipeActions>
-	)
-}
-
-function PasteSheet(props: {children: ReactNode}) {
-	useAtomMount(clipboardReturnsAtom)
-	const offer = pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Offered')), AsyncResult.getOrElse(Option.none))
-	const send = useAtomSet(clipboardAtom.send)
-	return (
-		<ClipboardDialog
-			confirm="Add"
-			onAnswer={save => send({_tag: 'Answered', save})}
-			open={Option.isSome(offer)}
-			question={Boolean.match(
-				Option.exists(offer, current => current.kind === 'image'),
-				{
-					onFalse: () => 'Add a booking from the copied text?',
-					onTrue: () => 'Add a booking from the copied screenshot?'
-				}
-			)}
-		>
-			{props.children}
-		</ClipboardDialog>
+					</Item>
+				)}
+			</MachineState>
+		</>
 	)
 }
 
 function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(bookingsAtom)
-	const paste = useAtomSet(clipboardAtom.send)
+	const paste = useAtomSet(clipboard.atom.send)
 	const [pastOpen, setPastOpen] = useState(false)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const adding = Option.exists(
-		pipe(useMachineResult(AtomMachine.select(clipboardAtom, 'Answering')), AsyncResult.getOrElse(Option.none)),
+		pipe(useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')), AsyncResult.getOrElse(Option.none)),
 		current => current.save
 	)
 	const shown = shownOf(loaded)
@@ -292,7 +289,6 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 
 // Native navigation and clipboard/account controls do not wait for the bookings stream.
 export function HomeRoute(props: {onOpen: (id: string) => void}) {
-	const restore = useAtomSet(restoreAtom)
 	const query = useNativeState('')
 	const [searched, setSearched] = useState('')
 	return (
@@ -304,7 +300,7 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 				bottomBarSearch
 			]}
 		>
-			<PasteSheet>
+			<PasteSheet clipboard={clipboard}>
 				<Suspense
 					fallback={
 						<ItemGroupSkeleton rows={10} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
@@ -317,18 +313,6 @@ export function HomeRoute(props: {onOpen: (id: string) => void}) {
 				<ToolbarItem placement="topBarTrailing">
 					<AccountMenu session={session} />
 				</ToolbarItem>
-				<MachineState machine={undoAtom} path="Offered">
-					{offered => (
-						<ToolbarItem placement="bottomBar">
-							<Button
-								label={`Undo Delete ${titleOf(offered.value.booking)}`}
-								systemImage="arrow.uturn.backward"
-								onPress={() => restore(offered.value.booking)}
-								modifiers={[labelStyle('titleAndIcon')]}
-							/>
-						</ToolbarItem>
-					)}
-				</MachineState>
 			</Toolbar.Content>
 		</Toolbar>
 	)

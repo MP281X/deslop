@@ -42,7 +42,7 @@ Release publishes every app and tool as `0.1.<run>` with npm trusted publishing,
 
 ## Publish an iOS app
 
-1. **Register before pushing.** Check `npx --yes eas-cli@latest whoami` (`login --device` if needed). The generator's all-zero project ID counts as linked, so temporarily reduce `app.config.ts` to its `name`, `owner` and `slug`, run `init` in `apps/<name>`, and restore the config with the real UUID. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect`.
+1. **Register before pushing.** Check `npx --yes eas-cli@latest whoami` (`login --device` if needed). The generator's all-zero project ID counts as linked, so temporarily replace `app.config.ts` with a plain `{name, owner: 'mp281x.xyz', slug}`, run `init` in `apps/<name>`, and restore the config with the real UUID. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect`.
 2. **Prove the app** on the branch's Simulator build: sign in through both callback schemes, then complete a real action.
 3. **Resolve production.** Every standalone build, credentials, submit or metadata command takes `APP_VARIANT=production` and an unused `RELEASE_NUMBER`; check the result before creating Apple records:
 

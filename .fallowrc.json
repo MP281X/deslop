@@ -6,20 +6,7 @@
 	"failOnParseError": true,
 	"boundaries": {
 		"zones": [
-			{
-				"name": "client",
-				"patterns": [
-					"apps/*/index.html",
-					"apps/*/src/main.client.tsx",
-					"apps/*/src/routes/**",
-					"apps/*/src/lib/{utils.ts,components.tsx,activities.tsx}",
-					"apps/portfolio/src/lib/profile.ts",
-					"apps/*/modules/native/index.ts",
-					"packages/components-*/src/**",
-					"packages/runtime/src/{web,mobile}/client.{ts,tsx}",
-					"packages/runtime/src/mobile/{session,keychain}.ts"
-				]
-			},
+			{"name": "test", "patterns": ["apps/*/src/lib/*.test.ts"]},
 			{
 				"name": "shared",
 				"patterns": [
@@ -32,6 +19,21 @@
 					"packages/runtime/src/net.ts",
 					"packages/runtime/src/schema.ts",
 					"packages/runtime/src/telemetry.ts"
+				]
+			},
+			{
+				"name": "client",
+				"patterns": [
+					"apps/*/index.html",
+					"apps/*/src/main.client.tsx",
+					"apps/*/src/routes/**",
+					"apps/*/src/lib/*.ts",
+					"apps/*/src/lib/*.tsx",
+					"apps/portfolio/src/lib/profile.ts",
+					"apps/*/modules/native/index.ts",
+					"packages/components-*/src/**",
+					"packages/runtime/src/{web,mobile}/client.{ts,tsx}",
+					"packages/runtime/src/mobile/{activations,session,keychain}.ts"
 				]
 			},
 			{
@@ -63,7 +65,9 @@
 				"apps/*/fingerprint.config.js",
 				"apps/*/targets/**",
 				"packages/runtime/src/vite.ts",
-				"packages/runtime/src/mobile/expo.ts"
+				"packages/runtime/src/mobile/expo.ts",
+				"packages/runtime/src/mobile/fingerprint.js",
+				"packages/runtime/src/mobile/metro.ts"
 			]
 		}
 	},
@@ -80,7 +84,8 @@
 		// The runtime imports these; each app keeps them so autolinking includes their native modules.
 		"expo-auth-session",
 		"expo-secure-store",
-		"expo-updates"
+		"expo-updates",
+		"expo-web-browser"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [
@@ -88,8 +93,6 @@
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},
 		{"exports": ["*"], "file": "apps/*/src/services/*/schema.ts"},
-		// The generated mobile template opens the unsigned socket before an app adds sign-in.
-		{"exports": ["layer"], "file": "packages/runtime/src/mobile/client.ts"},
 		{"exports": ["*"], "file": "packages/components-web/src/ui/**/*.{ts,tsx}"}
 	],
 	"overrides": [

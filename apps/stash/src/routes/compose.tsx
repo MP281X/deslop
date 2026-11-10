@@ -14,7 +14,7 @@ import {
 
 import {colors, space} from '@deslop/components-mobile/theme'
 
-import {draftAtom, writeAtom} from '#lib/utils.ts'
+import {draftAtom, writeAtom} from '#lib/notes.ts'
 
 export function ComposeRoute(props: {onDone: () => void}) {
 	const [draft, setDraft] = useAtom(draftAtom)

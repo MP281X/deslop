@@ -1,14 +1,19 @@
-import {Boolean, Context, Effect, Option, Schema} from 'effect'
+import {Boolean, Context, Effect, Layer, Option, Schema, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
-import type {File} from 'expo-file-system'
+import {AtomMachine} from '@typeonce/effect-machine/reactivity'
+import {Atom} from 'effect/reactivity'
+import {File, Paths} from 'expo-file-system'
 
-import {clipboardChangeCount} from '#lib/utils.ts'
+import {activationsAtom} from '@deslop/runtime/mobile/activations'
+
+import {alert, clipboardChangeCount, writeAtomically} from '#lib/utils.ts'
 
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
 
-type Offered = {readonly count: string; readonly kind: ClipboardKind}
+export type ClipboardCopy = {readonly count: string; readonly kind: ClipboardKind}
+type Offered = ClipboardCopy
 type Answer = Offered & {readonly save: boolean}
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
@@ -34,7 +39,7 @@ export function readClipboard<A, E, R>(count: string, read: Effect.Effect<A, E, 
 	)
 }
 
-export class ClipboardOffer extends Context.Service<
+class ClipboardOffer extends Context.Service<
 	ClipboardOffer,
 	{
 		readonly answer: (answer: Answer) => Effect.Effect<void>
@@ -45,7 +50,7 @@ export class ClipboardOffer extends Context.Service<
 >()('@deslop/components-mobile/lib/clipboard/ClipboardOffer') {}
 
 // A copy is offered once: the change count it was answered at stays in the app's file, so a return offers only a newer copy.
-export const clipboardMachine = Machine.make({
+const clipboardMachine = Machine.make({
 	branches: {
 		answered: {checking: {target: 'Checking'}, idle: {target: 'Idle'}},
 		inspected: {idle: {target: 'Idle'}, offered: {target: 'Offered'}}
@@ -131,3 +136,56 @@ export const clipboardMachine = Machine.make({
 		}
 	}
 })
+
+export type ClipboardLabels = {
+	readonly confirm: string
+	readonly notSaved: string
+	readonly questions: Record<ClipboardKind, string>
+}
+
+export type Clipboard = ReturnType<typeof makeClipboard>
+
+// A copy is offered once: the count file, its write, the answer and the return listener are the same in every app; `answered` names the failed saves that must not offer the same copy again.
+export function makeClipboard<E extends {_tag: string; message: string}>(options: {
+	answered: (error: E) => boolean
+	detect: Effect.Effect<Option.Option<ClipboardKind>>
+	labels: ClipboardLabels
+	save: (copy: ClipboardCopy, context: Atom.AtomContext) => Effect.Effect<void, E>
+}) {
+	const file = new File(Paths.document, 'clipboard.txt')
+	const atom = AtomMachine.bind(
+		Atom.runtime(get =>
+			Layer.succeed(
+				ClipboardOffer,
+				ClipboardOffer.of({
+					answer: Effect.fnUntraced(function* (answer) {
+						const handled = Effect.try({
+							catch: cause => ClipboardError.make({cause, message: 'The answer could not be kept on this iPhone.'}),
+							try: () => writeAtomically(file, answer.count)
+						})
+						const save: Effect.Effect<void, E> = Boolean.match(answer.save, {
+							onFalse: () => Effect.void,
+							onTrue: () => options.save(answer, get)
+						})
+						yield* pipe(
+							save,
+							Effect.tapError(error =>
+								Boolean.match(options.answered(error), {onFalse: () => Effect.void, onTrue: () => handled})
+							),
+							Effect.andThen(handled),
+							alert(options.labels.notSaved),
+							Effect.ignore({log: 'Warn', message: 'The clipboard copy was not saved'})
+						)
+					}),
+					detect: options.detect,
+					file
+				})
+			)
+		)
+	).make(clipboardMachine)
+	const returnsAtom = Atom.make(get => {
+		get(activationsAtom)
+		get.set(atom.send, {_tag: 'Returned'})
+	})
+	return {atom, labels: options.labels, returnsAtom}
+}

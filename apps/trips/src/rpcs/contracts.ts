@@ -4,14 +4,13 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {RpcAuth} from '@deslop/runtime/auth/utils'
 
-import {Booking, BookingId, BookingSource, BookingsError, BookingsEvent} from '#services/bookings/schema.ts'
+import {BookingId, BookingSource, BookingsError, BookingsEvent} from '#services/bookings/schema.ts'
 import {ActivityClaim, ActivityToken, Device, PushError} from '#services/push/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('bookings.watch', {error: BookingsError, stream: true, success: BookingsEvent}),
-	Rpc.make('bookings.save', {error: BookingsError, payload: BookingSource, success: Schema.Array(Booking)}),
+	Rpc.make('bookings.save', {error: BookingsError, payload: BookingSource}),
 	Rpc.make('bookings.remove', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
-	Rpc.make('bookings.restore', {error: BookingsError, payload: Booking}),
 	// Asks the provider now, at most once a minute while the journey is tracked.
 	Rpc.make('bookings.refresh', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
 	Rpc.make('devices.register', {error: PushError, payload: Device}),

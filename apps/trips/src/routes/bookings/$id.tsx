@@ -33,21 +33,9 @@ import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 
-import {
-	dayAt,
-	mapsAtom,
-	nowAtom,
-	placeLine,
-	primary,
-	problemOf,
-	refreshAtom,
-	removeAtom,
-	ridesFor,
-	statusOf,
-	timeAt,
-	tones,
-	uberAtom
-} from '#lib/utils.ts'
+import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
+import {mapsAtom, placeLine, ridesFor, uberAtom} from '#lib/rides.ts'
+import {dayAt, primary, problemOf, statusOf, timeAt, tones} from '#lib/status.ts'
 import {arrivalOf, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, FlightTracking, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
@@ -131,7 +119,6 @@ function TrainFields(props: {train: Train}) {
 			</Section>
 			<Section title="Booking">
 				<Field label="Train" value={props.train.operatorName} />
-				<Field label="Coach" value={props.train.coach} />
 				<Field label="Confirmation" value={props.train.confirmation} />
 			</Section>
 		</>
@@ -250,7 +237,7 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
 }
 
 export function BookingRoute(props: {bookings: BookingList; id: string; onClose: () => void}) {
-	const remove = useAtomSet(removeAtom)
+	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	return Option.match(
@@ -315,7 +302,7 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 										systemImage="trash"
 										role="destructive"
 										onPress={() => {
-											remove(booking)
+											remove(props.id)
 											props.onClose()
 										}}
 									/>

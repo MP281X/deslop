@@ -1,4 +1,4 @@
-import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
+import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Result} from 'effect'
 
@@ -20,10 +20,13 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
+import type {Atom} from 'effect/reactivity'
+import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
 import {isDenied} from '@deslop/runtime/auth/utils'
+import {updateAtom} from '@deslop/runtime/mobile'
 import type {Session} from '@deslop/runtime/mobile/session'
 
 import {colors, radius, space, text} from './theme.ts'
@@ -34,7 +37,7 @@ import {assetAtom} from '#lib/utils.ts'
 const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]
 
 // Reading the saved session is local and takes milliseconds, so it shows the empty screen rather than a skeleton that blinks.
-export function BlankScreen() {
+function BlankScreen() {
 	return (
 		<Host style={{flex: 1}}>
 			<Rectangle modifiers={[foregroundStyle(colors.background)]} />
@@ -87,6 +90,21 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 	)
 }
 
+// One gate for a screen's content: a blocking failure is the retry card, and the value renders where it stands.
+export function Loaded<A, E>(props: {
+	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
+	children: (value: A) => ReactNode
+	name: string
+}) {
+	const loaded = useAtomSuspense(props.atom, {includeFailure: true})
+	const refresh = useAtomRefresh(props.atom)
+	const shown = shownOf(loaded)
+	if (Result.isFailure(shown)) {
+		return <FailureContent cause={shown.failure} name={props.name} onRetry={refresh} />
+	}
+	return props.children(shown.success)
+}
+
 // The app's mark and GitHub sign-in at the bottom.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
@@ -108,9 +126,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 						disabled(props.waiting)
 					]}
 				>
-					<Text modifiers={[text.title]}>
-						{Boolean.match(props.waiting, {onFalse: () => 'Sign in with GitHub', onTrue: () => 'Signing In…'})}
-					</Text>
+					<Text modifiers={[text.title]}>Sign in with GitHub</Text>
 				</Button>
 			</VStack>
 		</Host>
@@ -119,8 +135,9 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 
 export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session; tint: ColorValue}) {
 	const send = useAtomSet(props.session.send)
+	useAtomMount(updateAtom)
 	return (
-		<>
+		<Suspense fallback={<BlankScreen />}>
 			<MachineState machine={props.session} path="Reading" pending={<BlankScreen />}>
 				{() => <BlankScreen />}
 			</MachineState>
@@ -135,6 +152,6 @@ export function SessionGate(props: {children: ReactNode; logo: number | string; 
 			<MachineState machine={props.session} path="SignedIn">
 				{() => props.children}
 			</MachineState>
-		</>
+		</Suspense>
 	)
 }

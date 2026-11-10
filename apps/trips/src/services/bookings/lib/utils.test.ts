@@ -15,12 +15,10 @@ const flight = Flight.make({
 	airline: 'British Airways',
 	airlineCode: 'BA',
 	arrives: DEPARTS + 2.5 * HOUR,
-	createdAt: 0,
 	departs: DEPARTS,
 	from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
 	id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
 	number: '553',
-	sources: ['mail:a'],
 	status: 'confirmed',
 	to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
 })
@@ -28,14 +26,12 @@ const flight = Flight.make({
 const train = Train.make({
 	arrives: DEPARTS + 3 * HOUR,
 	coach: '5',
-	createdAt: 0,
 	departs: DEPARTS,
 	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 	number: '9541',
 	operator: 'trenitalia',
 	operatorName: 'Frecciarossa',
-	sources: ['mail:b'],
 	status: 'confirmed',
 	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 })
@@ -50,27 +46,24 @@ it('reads a printed time in the place zone and an offset as given', () => {
 
 it('merges a reservation seen again and keeps live data unless the service moved', () => {
 	const tracked = {...flight, live: {checkedAt: 1, departureGate: 'B12', state: 'scheduled' as const}}
-	const again = Flight.make({...flight, id: 'aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f', seat: '14A', sources: ['mail:c']})
-	const merged = upsert([tracked], [again])
-	assert.deepStrictEqual(merged.ids, [flight.id])
+	const again = Flight.make({...flight, id: 'aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f', seat: '14A'})
 	assert.deepStrictEqual(
-		Array.map(merged.bookings, booking => [
+		Array.map(upsert([tracked], [again]), booking => [
 			booking.id,
-			booking.sources,
 			booking._tag === 'flight' && booking.seat,
 			booking._tag === 'flight' && booking.live?.departureGate
 		]),
-		[[flight.id, ['mail:a', 'mail:c'], '14A', 'B12']]
+		[[flight.id, '14A', 'B12']]
 	)
 	assert.deepStrictEqual(
 		Array.map(
-			upsert([tracked], [Flight.make({...again, departs: DEPARTS + 3 * HOUR})]).bookings,
+			upsert([tracked], [Flight.make({...again, departs: DEPARTS + 3 * HOUR})]),
 			booking => booking._tag === 'flight' && booking.live
 		),
 		[undefined]
 	)
 
-	assert.strictEqual(upsert([tracked], [Flight.make({...again, number: '555'})]).bookings.length, 2)
+	assert.strictEqual(upsert([tracked], [Flight.make({...again, number: '555'})]).length, 2)
 })
 
 it('keeps the two legs of one flight number apart', () => {
@@ -83,7 +76,7 @@ it('keeps the two legs of one flight number apart', () => {
 		id: 'bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
 		to: {city: 'Sydney', code: 'SYD', name: 'Kingsford Smith', timeZone: 'Australia/Sydney'}
 	})
-	assert.strictEqual(upsert([first], [second]).bookings.length, 2)
+	assert.strictEqual(upsert([first], [second]).length, 2)
 })
 
 it('splits a flight longer than an activity may live into departure and arrival', () => {
@@ -165,8 +158,8 @@ it('shows a changed platform and a late train', () => {
 		DEPARTS + HOUR
 	)
 	assert.deepStrictEqual(
-		[running.phase, running.departs, running.label, running.chip],
-		['running', DEPARTS + 5 * MINUTE, '+12′', {text: 'Bin 7', tone: 'plain'}]
+		[running.phase, running.departureTime, running.label, running.chip],
+		['running', '16:45', '+12′', {text: 'Bin 7', tone: 'plain'}]
 	)
 })
 
@@ -176,7 +169,7 @@ it('keeps the timetable for a train running early before it leaves', () => {
 		[],
 		DEPARTS - 20 * MINUTE
 	)
-	assert.deepStrictEqual([early.departs, early.departureTime], [DEPARTS, '16:40'])
+	assert.deepStrictEqual([early.departureTime, early.countdown], ['16:40', DEPARTS])
 })
 
 it('shows a cancelled train without a countdown', () => {

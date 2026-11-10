@@ -2,7 +2,7 @@
 function targetConfig(config) {
 	return {
 		bundleIdentifier: '.share',
-		deploymentTarget: '18.0',
+		deploymentTarget: '26.0',
 		displayName: 'stash',
 		entitlements: {'keychain-access-groups': [`$(AppIdentifierPrefix)group.${config.ios.bundleIdentifier}`]},
 		frameworks: ['SwiftUI', 'UIKit', 'UniformTypeIdentifiers', 'Security', 'CoreText'],

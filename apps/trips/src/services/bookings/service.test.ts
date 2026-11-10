@@ -55,15 +55,14 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 				),
 				Bookings
 			)
-			const text = {text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'}
-			const image = {image: new Uint8Array([255, 216, 255, 217])}
-			const first = yield* bookings.save(USER, text)
-			const second = yield* bookings.save(USER, image)
-			assert.deepStrictEqual(yield* Ref.get(seen), [text, image])
-			assert.deepStrictEqual(second, first)
+			const first = {text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'}
+			const second = {image: new Uint8Array([255, 216, 255, 217])}
+			yield* bookings.save(USER, first)
+			yield* bookings.save(USER, second)
+			assert.deepStrictEqual(yield* Ref.get(seen), [first, second])
 			assert.lengthOf(yield* bookings.list, 1)
 			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, BookingList)
-			assert.deepStrictEqual(yield* store.get('bookings'), Option.some(second))
+			assert.deepStrictEqual(yield* store.get('bookings'), Option.some(yield* bookings.list))
 		})
 	)
 
@@ -85,7 +84,8 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 				),
 				Bookings
 			)
-			const saved = yield* bookings.save(USER, {text: 'Existing booking'})
+			yield* bookings.save(USER, {text: 'Existing booking'})
+			const saved = yield* bookings.list
 			yield* Ref.set(items, [
 				{...FLIGHT, flightNumber: '554'},
 				{...FLIGHT, from: 'BAD'}

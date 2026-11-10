@@ -21,6 +21,7 @@ import {
 
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {layerKeyValueStore} from '@deslop/runtime/server'
@@ -219,7 +220,7 @@ it.layer(NodeServices.layer)(test => {
 			])
 			assert.deepStrictEqual(
 				Option.map(
-					Array.findFirst(first, chapter => keyOf(chapter) === 'manga:3'),
+					Array.findFirst(yield* store.load, chapter => keyOf(chapter) === 'manga:3'),
 					chapter => chapter.source
 				),
 				Option.some('https://cubari.moe/read/imgchest/folk/1')
@@ -231,8 +232,8 @@ it.layer(NodeServices.layer)(test => {
 			// The next round's six-hour wait starts only once this round has announced its new chapters.
 			// oxlint-disable-next-line @deslop/coding-standards/no-polling-test -- the round marks chapters announced through file writes that no event or service reports, so only the store shows it.
 			yield* Effect.repeat(store.load, {until: saved => Array.every(saved, chapter => chapter.notified)})
-			yield* chapters.read({done: true, number: 1, opened: true, page: 0, series: 'manga'})
-			yield* chapters.read({done: false, number: 1, opened: true, page: 0, series: 'webcomic'})
+			yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
+			yield* chapters.read({done: false, number: 1, page: 0, series: 'webcomic'})
 			yield* Ref.set(revised, true)
 			yield* TestClock.adjust('6 hours')
 			yield* pipe(
@@ -301,31 +302,32 @@ it.layer(NodeServices.layer)(test => {
 						),
 						Chapters
 					)
-					yield* chapters.read({done: true, number: 2, opened: false, page: 0, series: 'manga'})
+					yield* chapters.read({done: true, number: 2, page: 0, series: 'manga'})
 					assert.deepStrictEqual(
 						Option.map(
 							Array.findFirst(
 								(yield* Effect.fromOption(yield* Stream.runHead(chapters.changes))).upserted,
 								chapter => chapter.series === 'manga' && chapter.number === 2
 							),
-							chapter => chapter.reading?.at
+							chapter => chapter.reading
 						),
-						Option.some(0)
+						Option.some({done: true, page: 0})
 					)
 					yield* TestClock.adjust('1 second')
-					yield* chapters.read({done: true, number: 1, opened: true, page: 0, series: 'manga'})
-					yield* chapters.read({done: false, number: 2, opened: false, page: 0, series: 'manga'})
+					yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
+					yield* chapters.read({done: false, number: 2, page: 0, series: 'manga'})
 					yield* TestClock.adjust('1 second')
-					yield* chapters.read({done: false, number: 1, opened: true, page: 0, series: 'webcomic'})
+					yield* chapters.read({done: false, number: 1, page: 0, series: 'webcomic'})
 				})
 			)
 			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
 			assert.deepStrictEqual(
 				Array.map(
-					Array.filter(yield* store.load, chapter => (chapter.reading?.at ?? 0) > 0),
+					Array.filter(yield* store.load, chapter => chapter.reading !== undefined),
 					chapter => [keyOf(chapter), chapter.reading?.page]
 				),
 				[
+					['manga:2', 0],
 					['manga:1', 0],
 					['webcomic:1', 0]
 				]
@@ -340,6 +342,19 @@ it.layer(NodeServices.layer)(test => {
 				]
 			)
 			assert.deepStrictEqual(yield* store.devices, [second])
+		})
+	)
+
+	test.effect(
+		'loads a stored chapter whose reading still carries the old visit timestamp',
+		Effect.fnUntraced(function* () {
+			const keyValueStore = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
+			yield* keyValueStore.set(
+				'chapters',
+				'[{"notified":true,"number":1,"pages":[],"postedAt":0,"reading":{"at":1700000000000,"done":true,"page":3},"series":"manga","source":"https://example.test/1","title":""}]'
+			)
+			const store = yield* Effect.provideService(openStore(), KeyValueStore.KeyValueStore, keyValueStore)
+			assert.deepStrictEqual((yield* store.load)[0]?.reading, {done: true, page: 3})
 		})
 	)
 })

@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, DateTime, Number, Option, Order, Result, String, pipe} from 'effect'
 
@@ -35,7 +35,7 @@ import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {Loaded, shownOf} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {
@@ -132,7 +132,6 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 						read({
 							done: !done,
 							number: props.chapter.number,
-							opened: false,
 							page: Boolean.match(done, {
 								onFalse: () => Number.max(props.chapter.pages.length - 1, 0),
 								onTrue: () => 0
@@ -148,38 +147,39 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 }
 
 function Chapters(props: {onOpen: (number: number, page?: number) => void; searched: string; series: Series}) {
-	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(chaptersAtom)
-	const result = shownOf(loaded)
-	if (Result.isFailure(result)) {
-		return <FailureContent cause={result.failure} name="Chapters" onRetry={refresh} />
-	}
-	const chapters = Array.filter(result.success, chapter => chapter.series === props.series)
-	const needle = String.toLowerCase(String.trim(props.searched))
-	return Array.match(
-		pipe(
-			Array.sort(chapters, Order.flip(byNumber)),
-			Array.filter(
-				chapter =>
-					String.startsWith(needle)(`${chapter.number}`) || String.includes(needle)(String.toLowerCase(chapter.title))
-			)
-		),
-		{
-			onEmpty: () =>
-				Boolean.match(String.isEmpty(needle), {
-					onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
-					onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
-				}),
-			onNonEmpty: matches => (
-				<ItemGroup>
-					<Section>
-						{Array.map(matches, chapter => (
-							<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
-						))}
-					</Section>
-				</ItemGroup>
-			)
-		}
+	return (
+		<Loaded atom={chaptersAtom} name="Chapters">
+			{all => {
+				const chapters = Array.filter(all, chapter => chapter.series === props.series)
+				const needle = String.toLowerCase(String.trim(props.searched))
+				return Array.match(
+					pipe(
+						Array.sort(chapters, Order.flip(byNumber)),
+						Array.filter(
+							chapter =>
+								String.startsWith(needle)(`${chapter.number}`) ||
+								String.includes(needle)(String.toLowerCase(chapter.title))
+						)
+					),
+					{
+						onEmpty: () =>
+							Boolean.match(String.isEmpty(needle), {
+								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
+								onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
+							}),
+						onNonEmpty: matches => (
+							<ItemGroup>
+								<Section>
+									{Array.map(matches, chapter => (
+										<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
+									))}
+								</Section>
+							</ItemGroup>
+						)
+					}
+				)
+			}}
+		</Loaded>
 	)
 }
 

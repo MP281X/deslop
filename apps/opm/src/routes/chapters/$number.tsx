@@ -25,6 +25,21 @@ import type {ChapterList, Series} from '#services/chapters/schema.ts'
 // Immutable, so every reader starts from this one value and replaces it as chapters finish.
 const NOTHING_FINISHED = HashSet.empty<number>()
 
+// The reader's full-page skeleton, also used while the chapter list itself loads behind a notification.
+export function ReaderSkeleton(props: {number: number}) {
+	return (
+		<Skeleton
+			modifiers={[
+				frame({maxHeight: Infinity, maxWidth: Infinity}),
+				padding({all: space[4]}),
+				navigationTitle(`Chapter ${props.number}`),
+				navigationBarTitleDisplayMode('inline'),
+				accessibilityLabel('Loading chapter')
+			]}
+		/>
+	)
+}
+
 export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
 	const read = useAtomSet(readAtom)
 	const following = pipe(
@@ -51,17 +66,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 				/>
 			)
 		}
-		return (
-			<Skeleton
-				modifiers={[
-					frame({maxHeight: Infinity, maxWidth: Infinity}),
-					padding({all: space[4]}),
-					navigationTitle(`Chapter ${props.number}`),
-					navigationBarTitleDisplayMode('inline'),
-					accessibilityLabel('Loading chapter')
-				]}
-			/>
-		)
+		return <ReaderSkeleton number={props.number} />
 	}
 
 	return (
@@ -100,13 +105,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 										onNone: () => undefined,
 										onSome: before => {
 											finished.current = HashSet.add(finished.current, before.number)
-											read({
-												done: true,
-												number: before.number,
-												opened: true,
-												page: before.pages.length - 1,
-												series: before.series
-											})
+											read({done: true, number: before.number, page: before.pages.length - 1, series: before.series})
 										}
 									}
 								)
@@ -118,7 +117,6 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 								read({
 									done: HashSet.has(finished.current, chapter.number),
 									number: chapter.number,
-									opened: true,
 									page,
 									series: chapter.series
 								})

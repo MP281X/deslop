@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Result, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -39,9 +39,8 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {Linking} from 'react-native'
 
-import {BrandLogo} from '@deslop/components-mobile/icons'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
@@ -49,23 +48,30 @@ import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-
 import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {Byline} from '#lib/components.tsx'
-import {appOf, brandOf, imageAtom, kinds, noteAtom, notesAtom, primary, regenerateAtom, removeAtom} from '#lib/utils.ts'
+import {BrandLogo} from '#lib/icons.tsx'
+import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
+import {imageAtom, noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
+import {primary} from '#lib/session.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
 
 const lede = [text.body, lineSpacing(space[1]), foregroundStyle(colors.mutedForeground), textSelection(true)]
 
+// A fixed slot, so the title stays put while the cover loads or when it cannot.
+const coverFrame = [frame({height: 280}), frame({maxWidth: Infinity})]
+
 function Cover(props: {note: NoteItem}) {
 	const image = useAtomValue(imageAtom(props.note.id))
-	if (!AsyncResult.isSuccess(image)) return undefined
+	if (AsyncResult.isFailure(image)) return <VStack modifiers={coverFrame}>{null}</VStack>
+	if (!AsyncResult.isSuccess(image)) return <Skeleton modifiers={coverFrame} />
 	return (
 		<Image
 			uiImage={image.value}
 			modifiers={[
 				resizable(),
 				aspectRatio({contentMode: 'fit'}),
-				frame({maxHeight: 280, maxWidth: Infinity}),
+				...coverFrame,
 				clipShape('roundedRectangle', radius),
 				accessibilityHidden(true)
 			]}
@@ -149,8 +155,24 @@ function Placeholder() {
 	)
 }
 
+export function NoteSkeleton() {
+	return (
+		<VStack
+			alignment="leading"
+			spacing={space[4]}
+			modifiers={[
+				padding({bottom: space[8], horizontal: space[4], top: space[2]}),
+				frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
+			]}
+		>
+			<Skeleton modifiers={[frame({height: 28}), frame({maxWidth: 320})]} />
+			<Placeholder />
+		</VStack>
+	)
+}
+
 // The summary and body a note shows once Stash has read its link.
-function Reading() {
+function Reading(props: {note: NoteItem}) {
 	return (
 		<VStack
 			alignment="leading"
@@ -158,7 +180,7 @@ function Reading() {
 			modifiers={[
 				frame({alignment: 'leading', maxWidth: Infinity}),
 				accessibilityElement('ignore'),
-				accessibilityLabel('Reading this link')
+				accessibilityLabel(`Reading this ${subjectOf(props.note)}`)
 			]}
 		>
 			<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 300})]} />
@@ -205,12 +227,26 @@ function FullBody(props: {note: NoteItem}) {
 	)
 }
 
+function NoteContent(props: {note: NoteItem}) {
+	return (
+		<VStack alignment="leading" spacing={space[4]}>
+			{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
+			<Suspense fallback={<Placeholder />}>
+				<FullBody note={props.note} />
+			</Suspense>
+		</VStack>
+	)
+}
+
 function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string) => void}) {
 	const full = useAtomValue(noteAtom(props.note))
 	const reload = useAtomRefresh(noteAtom(props.note))
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
 	}
+	const issue = Option.getOrElse(Option.fromUndefinedOr(props.note.issue), () => 'Can’t Read This Link')
+	const kept =
+		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => note.body !== undefined)
 	return (
 		<ScrollView>
 			<VStack
@@ -234,31 +270,36 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				{props.note.image !== undefined && <Cover note={props.note} />}
 				{pipe(
 					Match.value(props.note.status),
-					Match.when('organizing', () => <Reading />),
-					Match.when('failed', () => (
-						<Empty>
-							<Button
-								label="Can’t Read This Link"
-								systemImage="arrow.clockwise"
-								role="destructive"
-								onPress={props.onRetry}
-								modifiers={[
-									buttonStyle('glassProminent'),
-									buttonBorderShape('capsule'),
-									controlSize('large'),
-									tint(colors.destructive)
-								]}
-							/>
-						</Empty>
-					)),
-					Match.orElse(() => (
-						<VStack alignment="leading" spacing={space[4]}>
-							{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
-							<Suspense fallback={<Placeholder />}>
-								<FullBody note={props.note} />
-							</Suspense>
-						</VStack>
-					))
+					Match.when('organizing', () => <Reading note={props.note} />),
+					Match.when('failed', () =>
+						Boolean.match(kept, {
+							onFalse: () => (
+								<Empty>
+									<Button
+										label={issue}
+										systemImage="arrow.clockwise"
+										role="destructive"
+										onPress={props.onRetry}
+										modifiers={[
+											buttonStyle('glassProminent'),
+											buttonBorderShape('capsule'),
+											controlSize('large'),
+											tint(colors.destructive)
+										]}
+									/>
+								</Empty>
+							),
+							onTrue: () => (
+								<VStack alignment="leading" spacing={space[4]}>
+									<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
+										<Problem label={issue} onRetry={props.onRetry} />
+									</HStack>
+									<NoteContent note={props.note} />
+								</VStack>
+							)
+						})
+					),
+					Match.orElse(() => <NoteContent note={props.note} />)
 				)}
 				<Divider />
 				<Byline note={props.note} />
@@ -276,17 +317,16 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	)
 }
 
-export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
-	const remove = useAtomSet(removeAtom)
+function NoteScreen(props: {
+	id: Note['id']
+	notes: readonly NoteItem[]
+	onClose: () => void
+	onTag: (tag: string) => void
+}) {
+	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(notesAtom)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Notes" onRetry={refresh} />
-	}
 	return Option.match(
-		Array.findFirst(shown.success, item => item.id === props.id),
+		Array.findFirst(props.notes, item => item.id === props.id),
 		{
 			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
 			onSome: item => (
@@ -334,7 +374,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 									systemImage="trash"
 									role="destructive"
 									onPress={() => {
-										remove(item.id)
+										remove(props.id)
 										props.onClose()
 									}}
 									modifiers={[tint(colors.destructive)]}
@@ -345,5 +385,13 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 				</Toolbar>
 			)
 		}
+	)
+}
+
+export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
+	return (
+		<Loaded atom={notesAtom} name="Notes">
+			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}
+		</Loaded>
 	)
 }

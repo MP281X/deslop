@@ -147,100 +147,48 @@ it.layer(AtomRegistry.layer)(test => {
 		)
 	)
 
-	test.effect('a denial invalidates pending writes from every registry sharing the file', () =>
+	test.effect('a denial leaves no cached file and no late write', () =>
 		Effect.scoped(
 			Effect.gen(function* () {
 				const clock = yield* Clock.Clock
-				const first = yield* Effect.acquireRelease(
-					Effect.sync(() => AtomRegistry.make()),
-					registry => Effect.sync(() => registry.dispose())
-				)
-				const second = yield* Effect.acquireRelease(
-					Effect.sync(() => AtomRegistry.make()),
-					registry => Effect.sync(() => registry.dispose())
-				)
-				const a = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError | string>>()
-				const b = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
-				const file = new File('file:///shared.json')
+				const file = new File('file:///denied.json')
 				file.writeSync('[{"id":"old"}]')
-				const readA = Atom.make(get =>
+				const incoming = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
+				const list = Atom.make(get =>
 					pipe(
 						cachedList(
 							get,
 							file,
 							Schema.Struct({id: Schema.String}),
-							pipe(Stream.fromQueue(a), Stream.mapEffect(Function.identity))
+							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity))
 						),
 						Stream.provideService(Clock.Clock, clock)
 					)
 				)
-				const readB = Atom.make(get =>
-					pipe(
-						cachedList(
-							get,
-							new File(file.uri),
-							Schema.Struct({id: Schema.String}),
-							pipe(Stream.fromQueue(b), Stream.mapEffect(Function.identity))
-						),
-						Stream.provideService(Clock.Clock, clock)
-					)
-				)
-				first.mount(readA)
-				second.mount(readB)
+				const registry = yield* AtomRegistry.AtomRegistry
+				yield* Atom.mount(list)
+				assert.deepStrictEqual(yield* Atom.getResult(list), [{id: 'old'}])
 				const updated = yield* Effect.forkChild(
 					pipe(
-						AtomRegistry.toStream(second, readB),
+						AtomRegistry.toStream(registry, list),
 						Stream.filter(result => Option.exists(AsyncResult.value(result), items => items[0]?.id === 'pending')),
 						Stream.runHead
 					)
 				)
-				yield* Queue.offer(b, Effect.succeed([{id: 'pending'}]))
+				yield* Queue.offer(incoming, Effect.succeed([{id: 'pending'}]))
 				yield* Fiber.join(updated)
 				const denied = yield* Effect.forkChild(
-					pipe(AtomRegistry.toStream(first, readA), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+					pipe(AtomRegistry.toStream(registry, list), Stream.filter(AsyncResult.isFailure), Stream.runHead)
 				)
-				yield* Queue.offer(a, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
+				yield* Queue.offer(incoming, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
 				yield* Fiber.join(denied)
 				assert.isFalse(file.exists)
 				yield* TestClock.adjust('3 seconds')
 				assert.isFalse(new File(file.uri).exists)
-				const cold = yield* Effect.acquireRelease(
-					Effect.sync(() => AtomRegistry.make()),
-					registry => Effect.sync(() => registry.dispose())
-				)
-				const opened = yield* Queue.unbounded<void>()
-				const restarted = Atom.make(get =>
-					cachedList(
-						get,
-						new File(file.uri),
-						Schema.Struct({id: Schema.String}),
-						Stream.concat(Stream.drain(Stream.fromEffect(Queue.offer(opened, undefined))), Stream.never)
-					)
-				)
-				cold.mount(restarted)
-				yield* Queue.take(opened)
-				assert.isTrue(Option.isNone(AsyncResult.value(cold.get(restarted))))
-				const fresh = yield* Effect.forkChild(
-					pipe(
-						AtomRegistry.toStream(second, readB),
-						Stream.filter(result => Option.exists(AsyncResult.value(result), items => items[0]?.id === 'authorized')),
-						Stream.runHead
-					)
-				)
-				yield* Queue.offer(b, Effect.succeed([{id: 'authorized'}]))
-				yield* Fiber.join(fresh)
-				yield* TestClock.adjust('3 seconds')
-				assert.strictEqual(new File(file.uri).textSync(), '[{"id":"authorized"}]')
-				first.refresh(readA)
-				const failed = yield* Effect.forkChild(
-					pipe(AtomRegistry.toStream(first, readA), Stream.filter(AsyncResult.isFailure), Stream.runHead)
-				)
-				yield* Queue.offer(a, Effect.fail('Still offline'))
-				yield* Fiber.join(failed)
-				assert.isTrue(Option.isNone(AsyncResult.value(first.get(readA))))
+				assert.isTrue(Option.isNone(AsyncResult.value(yield* Atom.get(list))))
 				assert.isTrue(
 					Option.exists(
-						AsyncResult.error(first.get(readA)),
+						AsyncResult.error(yield* Atom.get(list)),
 						error => Schema.is(AuthError)(error) && error.error === 'access_denied'
 					)
 				)

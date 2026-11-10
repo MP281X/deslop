@@ -1,32 +1,28 @@
-import {useAtomMount, useAtomRefresh, useAtomSubscribe, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, Result, Schema} from 'effect'
+import {Array, Option, Schema} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
 import {Suspense, useState} from 'react'
 
-import {BlankScreen, FailureContent, SessionGate, shownOf} from '@deslop/components-mobile/screens'
+import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
-import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {updateAtom} from '@deslop/runtime/mobile'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
-import {ReaderRoute} from '#routes/chapters/$number.tsx'
+import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterPath} from '#services/chapters/schema.ts'
 import type {Series} from '#services/chapters/schema.ts'
 
 function Destination(props: {number: number; series: Series; start?: number}) {
-	const loaded = useAtomSuspense(chaptersAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(chaptersAtom)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Chapters" onRetry={refresh} />
-	}
-	return <ReaderRoute chapters={shown.success} number={props.number} series={props.series} start={props.start} />
+	return (
+		<Loaded atom={chaptersAtom} name="Chapters">
+			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} start={props.start} />}
+		</Loaded>
+	)
 }
 
 function AppRoutes() {
@@ -63,7 +59,7 @@ function AppRoutes() {
 						onNone: () => undefined,
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
-								<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
+								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
 									<Destination number={target[2]} series={target[0]} start={resumePage} />
 								</Suspense>
 							</NavigationDestination>
@@ -76,12 +72,9 @@ function AppRoutes() {
 }
 
 export function RootRoute() {
-	useAtomMount(updateAtom)
 	return (
-		<Suspense fallback={<BlankScreen />}>
-			<SessionGate logo={icon} session={session.machine} tint={primary}>
-				<AppRoutes />
-			</SessionGate>
-		</Suspense>
+		<SessionGate logo={icon} session={session.machine} tint={primary}>
+			<AppRoutes />
+		</SessionGate>
 	)
 }
