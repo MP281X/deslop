@@ -196,6 +196,11 @@ export function traceAtom(range: Range, id: string) {
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))
 
+// A trace's name in a row or heading: the source's own number when it has one, else the id's short form.
+export function traceLabel(trace: OperationTrace) {
+	return trace.label ?? String.slice(0, 8)(trace.id)
+}
+
 export function ageOf(time: string, now: number) {
 	return Option.match(Number.parse(pipe(time, String.slice(0, -6))), {
 		onNone: () => '—',
@@ -258,6 +263,7 @@ export function attributesOf(span: Trace['spans'][number]) {
 				attributes,
 				attribute =>
 					attribute.value !== span.name &&
+					attribute.key !== 'trace.label' &&
 					!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
 					(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
 			)

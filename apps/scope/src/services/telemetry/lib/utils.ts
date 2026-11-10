@@ -477,6 +477,13 @@ function traced(records: readonly Entry[], now: number) {
 					durationMs: timing.durationMs,
 					...Option.match(brokeAt(spans), {onNone: () => ({}), onSome: span => ({failure: {span: span.name}})}),
 					id: root.traceId,
+					...Option.match(
+						Option.flatMap(
+							Array.findFirst(spanAttributes(root), attribute => attribute.key === 'trace.label'),
+							attribute => Option.liftPredicate(attribute.value['stringValue'], String.isString)
+						),
+						{onNone: () => ({}), onSome: label => ({label})}
+					),
 					time: timing.time
 				}
 			} satisfies Traced)
