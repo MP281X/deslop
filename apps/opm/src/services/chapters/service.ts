@@ -177,48 +177,51 @@ export class Chapters extends Context.Service<
 						pipe(backfill(kind), Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})),
 					{concurrency: 1, discard: true}
 				)
-				// One residential exit per round: both feeds and every retry share the proxy client built here.
-				const feedLayer = yield* Option.match(exit, {
-					onNone: () => Effect.succeed(Layer.succeed(HttpClient.HttpClient, client)),
-					onSome: proxy =>
-						Effect.map(Random.nextIntBetween(10_000_000, 99_999_999), session =>
-							pipe(
-								NodeHttpClient.layerNodeHttpNoAgent,
-								Layer.provide(
-									NodeHttpClient.layerAgentOptions({
-										proxyEnv: {
-											HTTP_PROXY: String.replaceAll('{session}', `${session}`)(proxy),
-											HTTPS_PROXY: String.replaceAll('{session}', `${session}`)(proxy),
-											NODE_ENV: 'production'
-										}
-									})
-								)
-							)
-						)
-				})
 				// One subreddit that does not answer leaves the other's releases for this round.
-				const feeds = yield* Effect.scoped(
-					Effect.gen(function* () {
-						const feedClient = Context.get(yield* Layer.build(feedLayer), HttpClient.HttpClient)
-						return yield* pipe(
-							Effect.forEach(
-								FEEDS,
-								url =>
-									pipe(
+				const feeds = yield* Effect.forEach(
+					FEEDS,
+					url =>
+						pipe(
+							Effect.scoped(
+								Effect.gen(function* () {
+									const feedClient = yield* Option.match(exit, {
+										onNone: () => Effect.succeed(client),
+										// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
+										onSome: proxy =>
+											Effect.gen(function* () {
+												const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+												const context = yield* Layer.build(
+													pipe(
+														NodeHttpClient.layerNodeHttpNoAgent,
+														Layer.provide(
+															NodeHttpClient.layerAgentOptions({
+																proxyEnv: {
+																	HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
+																	HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
+																	NODE_ENV: 'production'
+																}
+															})
+														)
+													)
+												)
+												return Context.get(context, HttpClient.HttpClient)
+											})
+									})
+									return yield* pipe(
 										HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
 										Effect.flatMap(HttpClientResponse.filterStatusOk),
 										Effect.flatMap(response => response.text),
 										Effect.timeout('20 seconds'),
-										Effect.retry({times: 3}),
-										Effect.map(postsOf),
-										Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
-										Effect.option
-									),
-								{concurrency: 'unbounded'}
+										Effect.provideService(HttpClient.HttpClient, feedClient)
+									)
+								})
 							),
-							Effect.provideService(HttpClient.HttpClient, feedClient)
-						)
-					})
+							Effect.retry({times: 3}),
+							Effect.map(postsOf),
+							Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
+							Effect.option
+						),
+					{concurrency: 'unbounded'}
 				)
 				if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
 				const now = yield* Clock.currentTimeMillis

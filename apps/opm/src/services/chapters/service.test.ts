@@ -494,10 +494,10 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'builds the proxy client once per sync',
+		'leaves from a fresh proxy session on every feed try',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const draws = MutableRef.make(0)
+			const sessions = MutableRef.make(Array.empty<number>())
 			const failed = yield* Queue.unbounded<void>()
 			const client = HttpClient.make(request =>
 				Effect.sync(() =>
@@ -520,8 +520,9 @@ it.layer(NodeServices.layer)(test => {
 					Layer.provide(
 						Layer.succeed(Random.Random, {
 							nextDoubleUnsafe: () => {
-								draws.current += 1
-								return 0.5
+								const session = Array.length(sessions.current) + 1
+								sessions.current = [...sessions.current, session]
+								return session / 100
 							},
 							nextIntUnsafe: () => 0
 						})
@@ -529,10 +530,12 @@ it.layer(NodeServices.layer)(test => {
 				)
 			)
 			yield* Queue.take(failed)
-			assert.strictEqual(draws.current, 1)
+			assert.strictEqual(Array.length(sessions.current), 8)
+			assert.strictEqual(Array.length(Array.dedupe(sessions.current)), 8)
 			yield* TestClock.adjust('6 hours')
 			yield* Queue.take(failed)
-			assert.strictEqual(draws.current, 2)
+			assert.strictEqual(Array.length(sessions.current), 16)
+			assert.strictEqual(Array.length(Array.dedupe(sessions.current)), 16)
 		})
 	)
 
