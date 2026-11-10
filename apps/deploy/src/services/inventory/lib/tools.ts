@@ -1,9 +1,18 @@
 import {Array, Boolean, Effect, Function, Number, Option, Order, Record, String, pipe} from 'effect'
 
-import {appUsage, processTree} from '#services/inventory/lib/process-tree.ts'
-import type {ProcessNode} from '#services/inventory/lib/process-tree.ts'
-import {dot, nextRun, reasonLine, status} from '#services/inventory/lib/state.ts'
-import {itemOwner, type Row, workloadName, workloads} from '#services/inventory/lib/utils.ts'
+import {
+	appUsage,
+	dot,
+	itemOwner,
+	nextRun,
+	type ProcessNode,
+	processTree,
+	reasonLine,
+	type Row,
+	status,
+	workloadName,
+	workloads
+} from '#services/inventory/lib/utils.ts'
 import {
 	DeployError,
 	type InventoryItem,

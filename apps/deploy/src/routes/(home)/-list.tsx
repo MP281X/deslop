@@ -24,8 +24,16 @@ import {inventoryAtom, runAtom} from '#lib/utils.ts'
 import {useExpose} from '#routes/(home)/-expose.tsx'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {counted, host, impactGroups, middleEllipsis, runRequest} from '#routes/(home)/-rows.ts'
-import {dot, failureAge, nextRun, reasonLine, reasonOf, status} from '#services/inventory/lib/state.ts'
-import {type Row, workloadName} from '#services/inventory/lib/utils.ts'
+import {
+	dot,
+	failureAge,
+	nextRun,
+	reasonLine,
+	reasonOf,
+	type Row,
+	status,
+	workloadName
+} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 

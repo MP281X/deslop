@@ -93,26 +93,3 @@ export const MachineHistory = Schema.Struct({
 	time: Schema.Finite,
 	worker: Schema.String
 })
-
-export type MachineSummary = typeof MachineSummary.Type
-export const MachineSummary = Schema.Struct({
-	cpuModel: Schema.optionalKey(Schema.String),
-	current: Schema.optionalKey(Sample),
-	error: Schema.String,
-	intervalSeconds: Schema.Finite,
-	recordedSince: Schema.optionalKey(Schema.Finite),
-	series: Schema.Struct({
-		cpu: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		diskRead: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		diskWrite: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		memoryUsed: Schema.Array(Schema.Finite),
-		networkReceive: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		networkSend: Schema.Array(Schema.OptionFromNullOr(Schema.Finite)),
-		storageUsed: Schema.Array(Schema.Finite),
-		swapUsed: Schema.Array(Schema.Finite),
-		time: Schema.Array(Schema.Finite)
-	}),
-	stale: Schema.Boolean,
-	time: Schema.Finite,
-	worker: Schema.String
-})

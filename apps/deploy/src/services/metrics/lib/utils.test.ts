@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Formatter, HashSet, Option} from 'effect'
+import {Array, HashSet, Option} from 'effect'
 
 import {
 	appCgroup,
@@ -8,7 +8,6 @@ import {
 	cgroupUsage,
 	chartWindow,
 	compact,
-	compactHistory,
 	counters,
 	history,
 	resolution,
@@ -72,15 +71,6 @@ it('bounds history by the chosen time window and response size without synthesiz
 	const times = HashSet.fromIterable(Array.map(samples, point => point.time))
 	assert.isTrue(Array.every(retained, point => HashSet.has(times, point.time)))
 	assert.deepStrictEqual(compact(retained, now), retained)
-	const report = compactHistory(
-		{cpuModel: 'fixture', error: '', samples: history(retained, 10_080, now), stale: false, time: now, worker: 'dev'},
-		10_080
-	)
-	assert.strictEqual(report.intervalSeconds, 10_080)
-	assert.strictEqual(report.series.time.length, report.series.cpu.length)
-	assert.strictEqual(report.recordedSince, 0)
-	assert.isTrue(Option.isNone(report.series.cpu[0] ?? Option.none()))
-	assert.isBelow(Formatter.formatJson(report).length, Formatter.formatJson({samples}).length / 10)
 })
 
 it('measures individual logical cores, memory detail, load and uptime without bridging resets', () => {
@@ -112,21 +102,13 @@ it('measures individual logical cores, memory detail, load and uptime without br
 	)
 })
 
-it('sends one current snapshot and compact aligned MCP columns with unknown rates preserved', () => {
+it('keeps mounts on the newest point and a missing rate unmeasured', () => {
 	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
-	const samples = [value, {...value, cpu: 12.3456, networkReceive: 1234.5678, time: 60_000}]
-	const result = compactHistory({error: '', samples, stale: false, time: 60_000, worker: 'dev'}, 60)
-	assert.strictEqual(result.current, samples[1])
-	assert.deepStrictEqual(result.series.cpu, [Option.none(), Option.some(12.3)])
-	assert.deepStrictEqual(result.series.networkReceive, [Option.none(), Option.some(1235)])
-	assert.deepStrictEqual(result.series.time, [0, 60_000])
-	const selected = history(samples, 60, 60_000)
+	const selected = history([value, {...value, cpu: 12.3456, networkReceive: 1234.5678, time: 60_000}], 60, 60_000)
 	assert.isEmpty(selected[0]?.disks ?? [])
+	assert.strictEqual(selected[0]?.storageUsed, 750_000)
+	assert.isUndefined(selected[0]?.cpu)
 	assert.deepStrictEqual(selected[1]?.disks, value.disks)
-	assert.deepStrictEqual(
-		compactHistory({error: '', samples: selected, stale: false, time: 60_000, worker: 'dev'}, 60).series.storageUsed,
-		[750_000, 750_000]
-	)
 })
 
 it('retains new-agent samples while displaying the entire requested window without fabricating recordings', () => {
