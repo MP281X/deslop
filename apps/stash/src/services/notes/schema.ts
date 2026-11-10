@@ -31,7 +31,7 @@ export type Picture = typeof Picture.Type
 export const Picture = Schema.Struct({...Image.fields, label: Schema.String})
 
 export type FileType = typeof FileType.Type
-export const FileType = Schema.Literals(['image/jpeg', 'image/png', 'video/mp4', 'video/quicktime'])
+export const FileType = Schema.Literals(['image/jpeg', 'video/mp4', 'video/quicktime'])
 
 export type Note = typeof Note.Type
 export const Note = Schema.Struct({

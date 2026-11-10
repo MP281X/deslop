@@ -39,7 +39,6 @@ const run = WorkflowRun.make({
 		id: 101,
 		name: 'Release',
 		run_attempt: 1,
-		run_number: 1240,
 		run_started_at: '2026-11-03T08:00:00Z',
 		updated_at: '2026-11-03T08:06:00Z'
 	}
@@ -102,10 +101,7 @@ it.layer(layer)(test => {
 				[['ci', 'Release', 1, 1]]
 			)
 			const trace = Option.getOrThrow(Array.head(app.operations[0]?.traces ?? []))
-			assert.deepStrictEqual(trace.failure, {
-				message: 'Format, lint, types and dead code failed',
-				span: 'Format, lint, types and dead code'
-			})
+			assert.deepStrictEqual(trace.failure, {span: 'Format, lint, types and dead code'})
 			assert.strictEqual(trace.durationMs, 360_000)
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.trace(trace.id)).spans, span => [span.depth, span.name]),

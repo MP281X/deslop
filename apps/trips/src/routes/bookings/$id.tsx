@@ -70,7 +70,7 @@ function Field(props: {label: string; tone?: Tone; value?: string}) {
 	)
 }
 
-function moved(scheduled: number, current: number, timeZone?: string) {
+function moved(scheduled: number, current: number, timeZone: string) {
 	if (Math.abs(current - scheduled) < MINUTE) return timeAt(scheduled, timeZone)
 	return `${timeAt(current, timeZone)} (${timeAt(scheduled, timeZone)})`
 }

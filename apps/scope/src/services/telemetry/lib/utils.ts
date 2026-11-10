@@ -29,6 +29,9 @@ import type {
 	Trace
 } from '#services/telemetry/schema.ts'
 
+// Each operation lists this many traces, its newest failures among them.
+const KEEP = 20
+
 // Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
 const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
@@ -43,15 +46,6 @@ export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset
 		from: now - Duration.toMillis(filters.since),
 		to: now
 	}
-}
-
-// A log's own time, else when the exporter saw it; OTLP sends 0 for a time it does not know.
-export function logTime(log: {observedTimeUnixNano?: string; timeUnixNano?: string}, now: string) {
-	return pipe(
-		Array.findFirst([log.timeUnixNano, log.observedTimeUnixNano], time => time !== undefined && time !== '0'),
-		Option.flatMap(Option.fromUndefinedOr),
-		Option.getOrElse(() => now)
-	)
 }
 
 function resourceString(resource: {readonly attributes?: readonly Attribute[]}, key: string) {
@@ -183,9 +177,6 @@ export function appName(service: string) {
 function runtime(resource: Resource) {
 	const value = resourceString(resource, 'scope.runtime')
 	if (Schema.is(Runtime)(value)) return value
-	const language = resourceString(resource, 'telemetry.sdk.language')
-	if (language === 'webjs') return 'web' as const
-	if (language === 'nodejs') return 'server' as const
 	return 'unknown' as const
 }
 
@@ -246,24 +237,22 @@ export function durationMs(start: string, end: string) {
 	return pipe(Number.parse(`${BigInt(end) - BigInt(start)}`), Option.getOrThrow) / 1_000_000
 }
 
+function percentile(times: readonly number[], ratio: number) {
+	return Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)), () => 0)
+}
+
 export function summary(entries: Entry[], query: Query) {
 	const times = Array.sort(
 		Array.map(entries, entry => entry.durationMs),
 		Order.Number
 	)
-	function percentile(ratio: number) {
-		return pipe(
-			Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)),
-			Option.getOrElse(() => 0)
-		)
-	}
 	return {
 		count: entries.length,
 		errors: Array.countBy(entries, entry => entry.status === 2),
 		from: query.from,
-		maxMs: percentile(1),
-		p50Ms: percentile(0.5),
-		p95Ms: percentile(0.95),
+		maxMs: percentile(times, 1),
+		p50Ms: percentile(times, 0.5),
+		p95Ms: percentile(times, 0.95),
 		to: query.to
 	} satisfies Stats
 }
@@ -352,6 +341,16 @@ function parentId(entry: Entry) {
 	return ''
 }
 
+// Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
+function brokeAt(spans: readonly Entry[]) {
+	const failed = Array.filter(spans, span => span.status === 2)
+	const parents = HashSet.fromIterable(Array.map(failed, parentId))
+	return Array.match(
+		Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
+		{onEmpty: () => Option.none(), onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))}
+	)
+}
+
 export function traceView(entries: Entry[], id: string) {
 	const ordered = Array.reverse(orderEntries(entries, 'recent'))
 	const spans = Array.map(
@@ -363,6 +362,7 @@ export function traceView(entries: Entry[], id: string) {
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const bySpan = Array.groupBy(logs, log => log.spanId)
 
+	const broken = brokeAt(Array.map(spans, span => span.entry))
 	const tree = pipe(
 		Array.map(spans, span => {
 			const ancestors = Array.reverse(
@@ -393,6 +393,7 @@ export function traceView(entries: Entry[], id: string) {
 	)
 	return {
 		durationMs: timing.durationMs,
+		...Option.match(broken, {onNone: () => ({}), onSome: span => ({failureSpanId: span.spanId})}),
 		id,
 		logs: Array.filter(logs, log => !Record.has(byId, log.spanId)),
 		services: Array.dedupeWith(
@@ -447,16 +448,6 @@ function failureCount(group: readonly Traced[]) {
 	return Array.countBy(group, item => item.trace.failure !== undefined)
 }
 
-// Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
-function brokeAt(spans: readonly Entry[]) {
-	const failed = Array.filter(spans, span => span.status === 2)
-	const parents = HashSet.fromIterable(Array.map(failed, parentId))
-	return Array.match(
-		Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
-		{onEmpty: () => Option.none(), onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))}
-	)
-}
-
 // A trace is a row once its root has arrived, since children export first; one whose root never comes shows after a minute.
 function traced(records: readonly Entry[], now: number) {
 	return Option.flatMap(
@@ -483,21 +474,7 @@ function traced(records: readonly Entry[], now: number) {
 				runtime: runtime(root.resource),
 				trace: {
 					durationMs: timing.durationMs,
-					...Option.match(brokeAt(spans), {
-						onNone: () => ({}),
-						onSome: span => ({
-							failure: {
-								message: pipe(
-									Option.fromNullishOr(span.payload['status']),
-									Option.filter(Predicate.isObject),
-									Option.flatMap(status => Option.fromNullishOr(Struct.get(status, 'message'))),
-									Option.filter(String.isString),
-									Option.getOrElse(() => '')
-								),
-								span: span.name
-							}
-						})
-					}),
+					...Option.match(brokeAt(spans), {onNone: () => ({}), onSome: span => ({failure: {span: span.name}})}),
 					id: root.traceId,
 					time: timing.time
 				}
@@ -506,57 +483,50 @@ function traced(records: readonly Entry[], now: number) {
 	)
 }
 
-// Failures lead, then the busiest.
-function operationsOf(group: readonly Traced[], keep: number) {
-	return Array.sort(
-		Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
-			const times = Array.sort(
-				Array.map(entry[1], item => item.trace.durationMs),
-				Order.Number
-			)
-			return {
-				count: entry[1].length,
-				failures: failureCount(entry[1]),
-				name: Array.headNonEmpty(entry[1]).name,
-				p50Ms: Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length / 2) - 1)), () => 0),
-				runtime: Array.headNonEmpty(entry[1]).runtime,
-				// The slowest first, with the newest failures always among them, since those are the traces worth opening.
-				traces: Array.map(
-					Array.sort(
-						Array.take(
-							Array.dedupeWith(
-								[
-									...Array.take(
-										Array.sort(
-											Array.filter(entry[1], item => item.trace.failure !== undefined),
-											Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
-										),
-										keep / 2
-									),
-									...Array.sort(
-										entry[1],
-										Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
-									)
-								],
-								(first: Traced, second: Traced) => first.trace.id === second.trace.id
-							),
-							keep
-						),
-						Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
-					),
-					item => item.trace
-				)
-			} satisfies Operation
-		}),
-		Order.combine(
-			Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.failures),
-			Order.mapInput(Order.flip(Order.Number), (operation: Operation) => operation.count)
+function operationsOf(group: readonly Traced[]) {
+	return Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
+		const times = Array.sort(
+			Array.map(entry[1], item => item.trace.durationMs),
+			Order.Number
 		)
-	)
+		return {
+			count: entry[1].length,
+			failures: failureCount(entry[1]),
+			name: Array.headNonEmpty(entry[1]).name,
+			p50Ms: percentile(times, 0.5),
+			runtime: Array.headNonEmpty(entry[1]).runtime,
+			// The slowest first, with the newest failures always among them, since those are the traces worth opening.
+			traces: Array.map(
+				Array.sort(
+					Array.take(
+						Array.dedupeWith(
+							[
+								...Array.take(
+									Array.sort(
+										Array.filter(entry[1], item => item.trace.failure !== undefined),
+										Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
+									),
+									KEEP / 2
+								),
+								...Array.sort(
+									entry[1],
+									Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+								)
+							],
+							(first: Traced, second: Traced) => first.trace.id === second.trace.id
+						),
+						KEEP
+					),
+					Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+				),
+				item => item.trace
+			)
+		} satisfies Operation
+	})
 }
 
 // Apps with failures lead, then the busiest.
-export function overview(entries: readonly Entry[], keep: number, now: number) {
+export function overview(entries: readonly Entry[], now: number) {
 	return {
 		apps: Array.map(
 			Array.sort(
@@ -581,7 +551,7 @@ export function overview(entries: readonly Entry[], keep: number, now: number) {
 					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => group.length)
 				)
 			),
-			group => ({name: Array.headNonEmpty(group).app, operations: operationsOf(group, keep)})
+			group => ({name: Array.headNonEmpty(group).app, operations: operationsOf(group)})
 		)
 	} satisfies Overview
 }

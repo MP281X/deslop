@@ -25,27 +25,41 @@ import {
 	pipe
 } from 'effect'
 
-import {KeyFormat, Signature} from 'effect/crypto'
-import {Base64, Base64Url} from 'effect/encoding'
+import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
+import {Jwk, Jws} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 
-import {
-	ACTIVITY_NAME,
-	activeWindow,
-	activityProps,
-	alertsFor,
-	HOUR,
-	MINUTE,
-	startAlert,
-	urgencyOf
-} from '#services/bookings/lib/utils.ts'
-import type {Alert} from '#services/bookings/lib/utils.ts'
+import {ACTIVITY_NAME, activeWindow, activityProps, HOUR, MINUTE, urgencyOf} from '#services/bookings/lib/utils.ts'
 import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {alertKey, announced, holds, showPlan, expiredActivities, retainPushState} from '#services/push/lib/utils.ts'
+import {
+	alertKey,
+	alertsFor,
+	announced,
+	holds,
+	showPlan,
+	expiredActivities,
+	retainPushState,
+	startAlert
+} from '#services/push/lib/utils.ts'
+import type {Alert} from '#services/push/lib/utils.ts'
 import type {ActivityClaim, ActivityRecord, ActivityToken, Bundle, Device} from '#services/push/schema.ts'
-import {ActivityPropsJson, ApnsReason, JwtPart, PushError, PushState} from '#services/push/schema.ts'
+import {ActivityPropsJson, ApnsReason, JwtClaims, PushError, PushState} from '#services/push/schema.ts'
+
+// The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
+const BUNDLES = {
+	'xyz.mp281x.trips': {
+		channels: 'https://api-manage-broadcast.push.apple.com:2196',
+		host: 'https://api.push.apple.com',
+		scheme: 'trips'
+	},
+	'xyz.mp281x.trips.dev': {
+		channels: 'https://api-manage-broadcast.sandbox.push.apple.com:2195',
+		host: 'https://api.sandbox.push.apple.com',
+		scheme: 'trips-dev'
+	}
+}
 
 type Apns = {bundle: Bundle}
 type Answer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
@@ -64,17 +78,6 @@ export const layerApnsClient = Layer.effect(
 		return yield* Effect.provideService(NodeHttpClient.makeUndici, NodeHttpClient.Dispatcher, dispatcher)
 	})
 )
-
-// The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
-function host(bundle: Bundle) {
-	if (bundle === 'xyz.mp281x.trips') return 'https://api.push.apple.com'
-	return 'https://api.sandbox.push.apple.com'
-}
-
-function channels(bundle: Bundle) {
-	if (bundle === 'xyz.mp281x.trips') return 'https://api-manage-broadcast.push.apple.com:2196'
-	return 'https://api-manage-broadcast.sandbox.push.apple.com:2195'
-}
 
 // APNs drops a token whose app is gone or which belongs to the other environment.
 function deadToken(answer: Answer) {
@@ -167,17 +170,21 @@ export class Push extends Context.Service<
 					const der = yield* Effect.fromResult(
 						Base64.decode(String.replaceAll(/-----[^-]+-----|\\n|\s/gu, '')(Redacted.value(found.privateKey)))
 					)
-					return yield* KeyFormat.decodePrivate(KeyFormat.pkcs8, Signature.ecdsaP256, der)
+					return yield* Jwk.importPkcs8(Redacted.make(der), 'ES256', {kid: found.keyId})
 				})
 			)
-			const signature = yield* Signature.Signature
 			const bearer = yield* Ref.make(Option.none<{at: number; token: string}>())
 			const retrying = yield* Ref.make(HashMap.empty<string, {answer: Answer; until: number}>())
 
 			const sign = Effect.fnUntraced(function* (now: number) {
 				const found = yield* Effect.fromOption(signer)
-				const input = `${Base64Url.encode(yield* Schema.encodeEffect(JwtPart)({alg: 'ES256', kid: found.keyId}))}.${Base64Url.encode(yield* Schema.encodeEffect(JwtPart)({iat: seconds(now), iss: found.teamId}))}`
-				const token = `${input}.${Base64Url.encode(yield* signature.sign(yield* signingKey, new TextEncoder().encode(input)))}`
+				const token = Redacted.value(
+					yield* Jws.sign(
+						new TextEncoder().encode(yield* Schema.encodeEffect(JwtClaims)({iat: seconds(now), iss: found.teamId})),
+						yield* signingKey,
+						{kid: found.keyId}
+					)
+				)
 				yield* Ref.set(bearer, Option.some({at: now, token}))
 				return token
 			})
@@ -241,7 +248,7 @@ export class Push extends Context.Service<
 			) {
 				return Effect.flatMap(
 					HttpClientRequest.bodyJson(
-						HttpClientRequest.post(`${host(target.bundle)}/3/device/${target.token}`, {
+						HttpClientRequest.post(`${BUNDLES[target.bundle].host}/3/device/${target.token}`, {
 							headers: {
 								'apns-priority': `${priority}`,
 								'apns-push-type': type,
@@ -262,7 +269,7 @@ export class Push extends Context.Service<
 				const answer = yield* send(
 					yield* failed('The channel request could not be written.')(
 						HttpClientRequest.bodyJson(
-							HttpClientRequest.post(`${channels(target.bundle)}/1/apps/${target.bundle}/channels`),
+							HttpClientRequest.post(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`),
 							{'message-storage-policy': 1, 'push-type': 'LiveActivity'}
 						)
 					)
@@ -275,7 +282,7 @@ export class Push extends Context.Service<
 			function deleteChannel(target: Apns & {channel: string}) {
 				return Effect.ignore(
 					send(
-						HttpClientRequest.delete(`${channels(target.bundle)}/1/apps/${target.bundle}/channels`, {
+						HttpClientRequest.delete(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`, {
 							headers: {'apns-channel-id': target.channel}
 						})
 					),
@@ -290,7 +297,7 @@ export class Push extends Context.Service<
 				if (record.channel !== undefined) {
 					return Effect.flatMap(
 						HttpClientRequest.bodyJson(
-							HttpClientRequest.post(`${host(record.bundle)}/4/broadcasts/apps/${record.bundle}`, {
+							HttpClientRequest.post(`${BUNDLES[record.bundle].host}/4/broadcasts/apps/${record.bundle}`, {
 								headers: {
 									'apns-channel-id': record.channel,
 									// The channel stores the latest message for a phone offline in flight, as long as an activity lives.
@@ -355,9 +362,7 @@ export class Push extends Context.Service<
 						{
 							aps: {
 								alert: startAlert(showing.journey),
-								attributes: {
-									url: `${{'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}[target.bundle]}://booking/${showing.journey.id}`
-								},
+								attributes: {url: `${BUNDLES[target.bundle].scheme}://booking/${showing.journey.id}`},
 								'attributes-type': 'LiveActivityAttributes',
 								'content-state': contentState(json),
 								event: 'start',

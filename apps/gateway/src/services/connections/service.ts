@@ -106,7 +106,6 @@ export class Connections extends Context.Service<
 		readonly complete: (params: Callback, route: Option.Option<string>, user: User) => Effect.Effect<void, AuthError>
 		readonly definitions: Effect.Effect<Connection[]>
 		readonly get: (id: ServerId) => Effect.Effect<Connection, AuthError>
-		readonly list: Effect.Effect<ConnectionInfo[]>
 		readonly remove: (id: ServerId, user: User) => Effect.Effect<void, AuthError>
 		readonly report: (id: ServerId, generation: string, outcome: Discovery) => Effect.Effect<void>
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
@@ -291,19 +290,16 @@ export class Connections extends Context.Service<
 				Effect.timeout('20 seconds')
 			)
 			const now = yield* Clock.currentTimeMillis
-			// A refresh answer may leave the refresh token out, which keeps the one sent.
-			const next = {
-				...token,
-				...Option.match(
-					Option.orElse(Option.fromUndefinedOr(token.refresh_token), () =>
-						Option.filter(
-							Option.fromUndefinedOr(params['refresh_token']),
-							() => params['grant_type'] === 'refresh_token'
-						)
-					),
-					{onNone: () => ({}), onSome: refresh => ({refresh_token: refresh})}
-				)
+			// A refresh answer may leave the refresh token out, which keeps the one sent on a refresh grant.
+			function refreshToken() {
+				if (token.refresh_token !== undefined) return token.refresh_token
+				if (params['grant_type'] !== 'refresh_token') return undefined
+				return params['refresh_token']
 			}
+			const next = Option.match(Option.fromUndefinedOr(refreshToken()), {
+				onNone: () => Struct.omit(token, ['refresh_token']),
+				onSome: refresh_token => ({...token, refresh_token})
+			})
 			// The tokens are saved with the client they were issued to.
 			yield* update(connection.id, connection.generation, found => ({
 				...Struct.omit(found, ['error']),
@@ -435,14 +431,6 @@ export class Connections extends Context.Service<
 						Option.map(String.trim),
 						Option.filter(String.isNonEmpty),
 						Option.getOrElse(() => initial.name)
-					),
-					toolDescriptions: Record.fromEntries(
-						Array.flatMap(tools.tools, tool =>
-							Option.match(Option.fromUndefinedOr(tool.description), {
-								onNone: () => [],
-								onSome: description => [[tool.name, description] as const]
-							})
-						)
 					),
 					tools: Array.map(tools.tools, tool => tool.name)
 				} satisfies Connection
@@ -665,7 +653,6 @@ export class Connections extends Context.Service<
 			}, failed('Cannot finish the connection')),
 			definitions: Effect.map(SubscriptionRef.get(state), Record.values),
 			get,
-			list,
 			remove: (id, user) =>
 				Effect.andThen(
 					manage(id, user, () => Option.none()),
@@ -676,8 +663,8 @@ export class Connections extends Context.Service<
 					update(id, generation, found =>
 						Match.valueTags(outcome, {
 							Discovered: discovered => ({
-								...Struct.omit(found, ['error', 'instructions', 'toolDescriptions']),
-								...Struct.pick(discovered, ['icons', 'instructions', 'toolDescriptions']),
+								...Struct.omit(found, ['error', 'instructions']),
+								...Struct.pick(discovered, ['icons', 'instructions']),
 								tools: discovered.tools
 							}),
 							Failed: failure => ({...found, error: failure.error})

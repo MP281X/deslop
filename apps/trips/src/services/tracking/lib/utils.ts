@@ -1,7 +1,7 @@
-import {Array, DateTime, Option, Order, Predicate, Record, Result, String, pipe} from 'effect'
+import {Array, DateTime, Number, Option, Order, Predicate, Record, Result, String, pipe} from 'effect'
 
-import {HOUR} from '#services/bookings/lib/utils.ts'
-import type {Flight, FlightTracking, Place, Train, TrainTracking} from '#services/bookings/schema.ts'
+import {AIRPORT_LEAD, arrivalOf, departureOf, HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
+import type {Booking, Flight, FlightTracking, Place, Train, TrainTracking} from '#services/bookings/schema.ts'
 import type {FaFlight, FaFlights, VtStatus, VtStop} from '#services/tracking/schema.ts'
 
 function instant(value?: string | null) {
@@ -175,4 +175,55 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 		state: trainState(from, to)
 	}
 	return Option.some(tracking)
+}
+
+function flightInterval(flight: Flight, now: number) {
+	const departure = departureOf(flight)
+	const arrival = arrivalOf(flight)
+	const state = flight.live?.state
+	if (flight.status === 'cancelled' || state === 'cancelled' || state === 'diverted') return Option.none<number>()
+	// FlightAware answers at most two days ahead.
+	if (now < flight.departs - 47 * HOUR || now > arrival + 2 * HOUR) return Option.none<number>()
+	if (state === 'arrived') {
+		if (flight.live?.belt === undefined && now < arrival + 45 * MINUTE) return Option.some(5 * MINUTE)
+		return Option.none<number>()
+	}
+	if (state === 'landed') return Option.some(5 * MINUTE)
+	if (state === 'departed' || state === 'airborne') {
+		if (now > arrival - 45 * MINUTE) return Option.some(5 * MINUTE)
+		return Option.some(15 * MINUTE)
+	}
+	if (now < departure - 6 * HOUR) return Option.some(3 * HOUR)
+	if (now < departure - AIRPORT_LEAD) return Option.some(20 * MINUTE)
+	return Option.some(5 * MINUTE)
+}
+
+// ViaggiaTreno lists only the day's runs and assigns platforms in the last hour.
+function trainInterval(train: Train, now: number) {
+	if (train.status === 'cancelled' || train.operator !== 'trenitalia' || train.live?.state === 'arrived') {
+		return Option.none<number>()
+	}
+	if (now < train.departs - 6 * HOUR || now > arrivalOf(train) + 30 * MINUTE) return Option.none<number>()
+	if (now < train.departs - 90 * MINUTE) return Option.some(30 * MINUTE)
+	return Option.some(MINUTE)
+}
+
+export function checkEvery(booking: Booking, now: number) {
+	if (booking._tag === 'stay') return Option.none<number>()
+	if (booking._tag === 'flight') return flightInterval(booking, now)
+	return trainInterval(booking, now)
+}
+
+// The last attempt counts, answered or not, so a failing provider is asked on the same schedule.
+export function isDue(booking: Booking, now: number, attemptedAt: number) {
+	if (booking._tag === 'stay') return false
+	const checkedAt = booking.live?.checkedAt ?? 0
+	return Option.exists(checkEvery(booking, now), every => now - Number.max(checkedAt, attemptedAt) >= every)
+}
+
+// Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final.
+export function isStale(booking: Booking, now: number) {
+	if (booking._tag === 'stay' || booking.live === undefined || booking.live.state === 'arrived') return false
+	const checkedAt = booking.live.checkedAt
+	return Option.exists(checkEvery(booking, checkedAt), every => now - checkedAt > 2 * every + 2 * MINUTE)
 }

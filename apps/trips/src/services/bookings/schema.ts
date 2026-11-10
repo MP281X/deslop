@@ -28,6 +28,10 @@ export const Place = Schema.Struct({
 	timeZone: Schema.optionalKey(Schema.String)
 })
 
+// A booked journey always knows its place's zone; only a station lookup may answer one without it.
+export type BookedPlace = typeof BookedPlace.Type
+export const BookedPlace = Schema.Struct({...Place.fields, timeZone: Schema.String})
+
 // Whether the reservation stands; a cancelled one stays listed so the change is visible.
 export type ReservationStatus = typeof ReservationStatus.Type
 export const ReservationStatus = Schema.Literals(['confirmed', 'cancelled'])
@@ -62,14 +66,14 @@ export const Flight = Schema.TaggedStruct('flight', {
 	confirmation: Schema.optionalKey(Schema.String),
 	createdAt: Schema.Finite,
 	departs: Schema.Finite,
-	from: Place,
+	from: BookedPlace,
 	id: BookingId,
 	live: Schema.optionalKey(FlightTracking),
 	number: Schema.String,
 	seat: Schema.optionalKey(Schema.String),
 	sources: Schema.Array(Schema.String),
 	status: ReservationStatus,
-	to: Place
+	to: BookedPlace
 })
 
 export type TrainOperator = typeof TrainOperator.Type
@@ -84,7 +88,7 @@ export const TrainTracking = Schema.Struct({
 	departurePlatform: Schema.optionalKey(Schema.String),
 	departurePlatformPlanned: Schema.optionalKey(Schema.String),
 	lastSeen: Schema.optionalKey(Schema.Struct({at: Schema.Finite, station: Schema.String})),
-	state: Schema.Literals(['scheduled', 'running', 'departed', 'arrived'])
+	state: Schema.Literals(['scheduled', 'departed', 'arrived'])
 })
 
 export type Train = typeof Train.Type
@@ -94,7 +98,7 @@ export const Train = Schema.TaggedStruct('train', {
 	confirmation: Schema.optionalKey(Schema.String),
 	createdAt: Schema.Finite,
 	departs: Schema.Finite,
-	from: Place,
+	from: BookedPlace,
 	id: BookingId,
 	live: Schema.optionalKey(TrainTracking),
 	number: Schema.String,
@@ -103,7 +107,7 @@ export const Train = Schema.TaggedStruct('train', {
 	seat: Schema.optionalKey(Schema.String),
 	sources: Schema.Array(Schema.String),
 	status: ReservationStatus,
-	to: Place
+	to: BookedPlace
 })
 
 export type Stay = typeof Stay.Type
@@ -114,7 +118,7 @@ export const Stay = Schema.TaggedStruct('stay', {
 	createdAt: Schema.Finite,
 	id: BookingId,
 	name: Schema.String,
-	place: Place,
+	place: BookedPlace,
 	sources: Schema.Array(Schema.String),
 	status: ReservationStatus
 })

@@ -23,7 +23,6 @@ import {
 } from 'effect'
 
 import {Digest, SecureRandom, Signature} from 'effect/crypto'
-import {Base64Url} from 'effect/encoding'
 import type {Headers} from 'effect/http'
 import {Jwk, Jwt} from 'effect/jose'
 import type {Jwks} from 'effect/jose'
@@ -39,10 +38,13 @@ import {
 	clientOf,
 	deviceLabel,
 	given,
+	hashOf,
 	live,
-	signedInApps,
 	matchingRedirect,
-	sameOwner
+	randomTokenOf,
+	sameOwner,
+	signedInApps,
+	storedOrigin
 } from '#services/tokens/lib/utils.ts'
 import type {
 	AuthorizeClient,
@@ -81,6 +83,18 @@ function parts(token: string) {
 
 function end(grants: Grants, family: string) {
 	return Record.filter(grants, (grant, key) => key !== family && grant.parent !== family)
+}
+
+// Touch a grant at most once a minute, and not at all once it is gone or already touched since the read.
+function touch(current: Grants, family: string, now: number) {
+	return Option.match(Record.get(current, family), {
+		onNone: () => current,
+		onSome: grant =>
+			Boolean.match(now - grant.lastActive > 60_000, {
+				onFalse: () => current,
+				onTrue: () => ({...current, [family]: {...grant, lastActive: now}})
+			})
+	})
 }
 
 // Signed-in apps and browsers live under ~/.deslop/auth; codes and sign-ins in progress stay in memory.
@@ -152,14 +166,8 @@ export class Tokens extends Context.Service<
 			const signature = yield* Signature.Signature
 			const codes = yield* Ref.make(HashMap.empty<string, Code>())
 			const redeeming = yield* Semaphore.make(1)
-			const random = yield* SecureRandom.SecureRandom
-			const digest = yield* Digest.Digest
-			function secret(bytes: number) {
-				return Effect.map(random.randomBytes(bytes), Base64Url.encode)
-			}
-			const hash = Effect.fnUntraced(function* (value: string) {
-				return Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(value)))
-			})
+			const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
+			const hash = hashOf(yield* Digest.Digest)
 			// Every change saves the next grants before memory and the live views see them.
 			const change = Effect.fnUntraced(function* <A, E>(
 				update: (current: Grants, now: number) => Effect.Effect<readonly [A, Grants], E>
@@ -221,19 +229,7 @@ export class Tokens extends Context.Service<
 				// Touch the grant at most once a minute, so a token's last use shows without a write per tool call.
 				if (found.now - found.grant.lastActive > 60_000) {
 					yield* pipe(
-						change(current =>
-							Effect.succeed([
-								undefined,
-								Option.match(Record.get(current, found.family), {
-									onNone: () => current,
-									onSome: grant =>
-										Boolean.match(found.now - grant.lastActive > 60_000, {
-											onFalse: () => current,
-											onTrue: () => ({...current, [found.family]: {...grant, lastActive: found.now}})
-										})
-								})
-							] as const)
-						),
+						change(current => Effect.succeed([undefined, touch(current, found.family, found.now)] as const)),
 						Effect.ignore({log: 'Warn', message: 'The token’s last use could not be saved'})
 					)
 				}
@@ -246,7 +242,7 @@ export class Tokens extends Context.Service<
 				client: string,
 				now: number
 			) {
-				const refreshSecret = yield* secret(32)
+				const refreshSecret = yield* randomToken(32)
 				const iat = Math.floor(now / 1000)
 				const access = yield* Effect.provideService(
 					Jwt.sign(
@@ -293,11 +289,10 @@ export class Tokens extends Context.Service<
 				)
 				const grant: Grant = {
 					client: clientLabel(request.clientName),
-					createdAt: now,
 					credential: {_tag: 'App', clientId: request.clientId, generation: 0, replaced: [], ...minted.refresh},
 					device: deviceLabel(origin),
 					lastActive: now,
-					origin,
+					origin: storedOrigin(origin),
 					...Struct.pick(request, ['parent']),
 					...owner
 				}
@@ -322,7 +317,7 @@ export class Tokens extends Context.Service<
 				) {
 					const key = yield* hash(params.code)
 					const verifier = yield* hash(params.code_verifier)
-					const family = yield* secret(16)
+					const family = yield* randomToken(16)
 					// The grant commits before its code is marked used; concurrent redemptions take turns through both steps.
 					const result = yield* change<Exchange, AuthError>((current, now) =>
 						Effect.gen(function* () {
@@ -434,7 +429,7 @@ export class Tokens extends Context.Service<
 									// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
 									device: deviceLabel(origin),
 									lastActive: now,
-									origin
+									origin: storedOrigin(origin)
 								}
 							}
 						] as const
@@ -476,7 +471,7 @@ export class Tokens extends Context.Service<
 					return {clientName: client.name, redirectUri}
 				}),
 				device: Effect.fn('Tokens.device')(function* (request: DeviceRequest, owner: CredentialOwner, origin: Origin) {
-					const family = yield* secret(16)
+					const family = yield* randomToken(16)
 					return yield* change((current, now) => signIn(current, now, family, request, owner, origin))
 				}, rejected('Cannot sign the command in')),
 				disconnect: Effect.fn('Tokens.disconnect')(function* (family: string, owner: CredentialOwner) {
@@ -520,7 +515,7 @@ export class Tokens extends Context.Service<
 					)
 				}, rejected('Cannot sign this account out')),
 				issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, owner: CredentialOwner) {
-					const code = yield* secret(32)
+					const code = yield* randomToken(32)
 					const key = yield* hash(code)
 					const now = yield* Clock.currentTimeMillis
 					yield* Ref.update(codes, current =>
@@ -566,8 +561,8 @@ export class Tokens extends Context.Service<
 					via: SessionVia,
 					previousToken: string
 				) {
-					const family = yield* secret(16)
-					const sessionSecret = yield* secret(32)
+					const family = yield* randomToken(16)
+					const sessionSecret = yield* randomToken(32)
 					const seconds = pipe(
 						Match.value(via),
 						Match.when('Code', () => 30 * 86_400),
@@ -603,11 +598,10 @@ export class Tokens extends Context.Service<
 								...retained,
 								[family]: {
 									client: browserLabel(origin),
-									createdAt: now,
 									credential: {_tag: 'Browser' as const, expiresAt: now + seconds * 1000, hash: sessionHash, via},
 									device: deviceLabel(origin),
 									lastActive: now,
-									origin,
+									origin: storedOrigin(origin),
 									...owner
 								}
 							}

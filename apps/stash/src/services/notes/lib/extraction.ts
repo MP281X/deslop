@@ -27,15 +27,8 @@ import {isPublicIp} from '@deslop/runtime/net'
 
 import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
 import {pageText} from '#services/notes/lib/page.ts'
-import {
-	captureUrl,
-	conversationPlan,
-	conversationExtraction,
-	isYouTube,
-	plainText,
-	sourceFor,
-	tikTokExtraction
-} from '#services/notes/lib/utils.ts'
+import {canonical, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
+import {conversationPlan, conversationExtraction, tikTokExtraction} from '#services/notes/lib/x.ts'
 import type {Image} from '#services/notes/schema.ts'
 import {
 	Extraction,
@@ -226,10 +219,6 @@ const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.
 	}
 	return yield* resolve(new URL(answer.location, url), hops + 1)
 })
-
-function canonical(url: URL) {
-	return captureUrl(url.href) ?? url.href
-}
 
 const fromOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
 	const embed = yield* decode(OEmbed, new URL(`${endpoint}${encodeURIComponent(url.href)}`))

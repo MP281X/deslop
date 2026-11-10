@@ -31,7 +31,6 @@ import {
 	durationMs,
 	filterEntries,
 	logMessage,
-	logTime,
 	newestVersions,
 	orderEntries,
 	overview,
@@ -151,7 +150,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					Stream.fromEffect(
 						pipe(
 							Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'}),
-							Effect.map(current => overview(current.entries, 20, current.now))
+							Effect.map(current => overview(current.entries, current.now))
 						)
 					),
 					Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
@@ -166,7 +165,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		return {
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(function* (payload: LogsRequest) {
 				const receivedAt = yield* Clock.currentTimeMillis
-				const now = `${BigInt(receivedAt) * 1_000_000n}`
 				yield* save(
 					yield* Effect.forEach(
 						Array.flatMap(payload.resourceLogs ?? [], group =>
@@ -182,14 +180,11 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								payload: item.log,
 								receivedAt,
 								resource: item.group.resource ?? {},
-								resourceSchemaUrl: item.group.schemaUrl ?? '',
-								scope: item.scope.scope ?? {},
-								scopeSchemaUrl: item.scope.schemaUrl ?? '',
 								service: serviceName(item.group.resource ?? {}),
 								signal: 'log' as const,
 								spanId: String.toLowerCase(item.log.spanId ?? ''),
 								status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {onFalse: () => 0, onTrue: () => 2}),
-								time: logTime(item.log, now),
+								time: item.log.timeUnixNano,
 								traceId: String.toLowerCase(item.log.traceId ?? '')
 							})),
 						{concurrency: 1}
@@ -208,9 +203,6 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								payload: span,
 								receivedAt,
 								resource: group.resource ?? {},
-								resourceSchemaUrl: group.schemaUrl ?? '',
-								scope: scope.scope ?? {},
-								scopeSchemaUrl: scope.schemaUrl ?? '',
 								service: serviceName(group.resource ?? {}),
 								signal: 'trace' as const,
 								spanId: String.toLowerCase(span.spanId),
@@ -274,7 +266,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					entries: Array.map(Array.take(Array.drop(ordered, query.offset), query.limit), found => {
 						const records = byTrace[found.id] ?? []
 						const view = traceView(records, found.id)
-						const root = Option.getOrElse(Array.head(view.spans), () => Option.getOrThrow(Array.head(records)))
+						const root = Option.getOrThrow(Array.head(view.spans))
 						return {
 							durationMs: found.durationMs,
 							errors: Array.countBy(records, entry => entry.status === 2),

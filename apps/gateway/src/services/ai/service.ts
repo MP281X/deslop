@@ -36,7 +36,7 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {bearerOf, failureOptions, isJwt, localAuth} from '@deslop/runtime/auth/utils'
 
 import type {AiProvider} from '#services/ai/schema.ts'
-import {AiStoredKey, AiUsageEntry, ModelsCatalog} from '#services/ai/schema.ts'
+import {AiStoredKey, AiUsageEntry, ModelsCatalog, PROVIDER_NAMES} from '#services/ai/schema.ts'
 import {readUsage, report} from '#services/ai/usage.ts'
 import type {Period, UsageRange} from '#services/usage/schema.ts'
 import {usageWindow} from '#services/usage/utils.ts'
@@ -46,12 +46,6 @@ const UPSTREAMS = {
 	'opencode-go': 'https://opencode.ai/inference/go',
 	'opencode-zen': 'https://opencode.ai/inference',
 	openrouter: 'https://openrouter.ai/api'
-}
-const NAMES = {
-	anthropic: 'Anthropic',
-	'opencode-go': 'OpenCode Go',
-	'opencode-zen': 'OpenCode Zen',
-	openrouter: 'OpenRouter'
 }
 const HOP_BY_HOP = [
 	'connection',
@@ -82,6 +76,18 @@ const make = Effect.gen(function* () {
 	function loadKeys(id: string) {
 		return pipe(keys.get(`ai-keys/${id}`), Effect.map(Option.getOrElse(() => [])), failed)
 	}
+	const updateKeys = Effect.fnUntraced(function* (
+		id: string,
+		update: (current: readonly AiStoredKey[]) => AiStoredKey[]
+	) {
+		yield* pipe(
+			Effect.gen(function* () {
+				yield* keys.set(`ai-keys/${id}`, update(yield* loadKeys(id)))
+			}),
+			Semaphore.withPermit(lock),
+			failed
+		)
+	})
 	const saveUsage = Effect.fnUntraced(function* (id: string, entry: AiUsageEntry) {
 		const metered = {entry}
 		if (
@@ -160,12 +166,7 @@ const make = Effect.gen(function* () {
 	return {
 		keys: (id: string) =>
 			Effect.map(loadKeys(id), entries =>
-				Array.map(entries, key => ({
-					addedAt: key.addedAt,
-					last4: key.last4,
-					lastStatus: key.lastStatus,
-					provider: key.provider
-				}))
+				Array.map(entries, key => ({last4: key.last4, lastStatus: key.lastStatus, provider: key.provider}))
 			),
 		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
 			const request = yield* HttpServerRequest.HttpServerRequest
@@ -185,7 +186,7 @@ const make = Effect.gen(function* () {
 			const key = Option.getOrUndefined(Array.findFirst(yield* loadKeys(id), value => value.provider === provider))
 			if (key === undefined) {
 				return HttpServerResponse.jsonUnsafe(
-					{error: {message: `Add your ${NAMES[provider]} key in Gateway`}},
+					{error: {message: `Add your ${PROVIDER_NAMES[provider]} key in Gateway`}},
 					{status: 402}
 				)
 			}
@@ -249,8 +250,7 @@ const make = Effect.gen(function* () {
 				inputTokens: 0,
 				model: Option.getOrUndefined(outgoing.model),
 				outputTokens: 0,
-				provider,
-				status: response.status
+				provider
 			}
 			yield* pipe(
 				Effect.gen(function* () {
@@ -314,28 +314,13 @@ const make = Effect.gen(function* () {
 			)
 		}),
 		removeKey: Effect.fnUntraced(function* (id: string, provider: AiProvider) {
-			return yield* pipe(
-				Effect.gen(function* () {
-					yield* keys.set(
-						`ai-keys/${id}`,
-						Array.filter(yield* loadKeys(id), key => key.provider !== provider)
-					)
-				}),
-				Semaphore.withPermit(lock),
-				failed
-			)
+			yield* updateKeys(id, entries => Array.filter(entries, key => key.provider !== provider))
 		}),
 		setKey: Effect.fnUntraced(function* (id: string, provider: AiProvider, secret: Redacted.Redacted) {
-			return yield* pipe(
-				Effect.gen(function* () {
-					yield* keys.set(`ai-keys/${id}`, [
-						...Array.filter(yield* loadKeys(id), key => key.provider !== provider),
-						{addedAt: yield* Clock.currentTimeMillis, last4: String.slice(-4)(Redacted.value(secret)), provider, secret}
-					])
-				}),
-				Semaphore.withPermit(lock),
-				failed
-			)
+			yield* updateKeys(id, entries => [
+				...Array.filter(entries, key => key.provider !== provider),
+				{last4: String.slice(-4)(Redacted.value(secret)), provider, secret}
+			])
 		}),
 		usage: (id: string, period: Period) =>
 			usageWindow(

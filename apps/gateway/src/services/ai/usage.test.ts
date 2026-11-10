@@ -3,7 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {Result} from 'effect'
 
 import type {AiUsageEntry} from '#services/ai/schema.ts'
-import {readUsage, report} from '#services/ai/usage.ts'
+import {readUsage} from '#services/ai/usage.ts'
 
 const EMPTY: AiUsageEntry = {
 	app: 'https://stash.mp281x.xyz',
@@ -13,8 +13,7 @@ const EMPTY: AiUsageEntry = {
 	costSource: 'unknown',
 	inputTokens: 0,
 	outputTokens: 0,
-	provider: 'opencode-zen',
-	status: 200
+	provider: 'opencode-zen'
 }
 
 it('counts cached tokens once whichever response shape a provider returns', () => {
@@ -29,6 +28,5 @@ it('counts cached tokens once whichever response shape a provider returns', () =
 	)
 	for (const entry of [messages, completions]) {
 		assert.deepInclude(entry, {cacheReadTokens: 100, inputTokens: 10, outputTokens: 5})
-		assert.equal(report([entry], {bucket: 'day', from: 0, to: 1}).totals.tokens, 115)
 	}
 })

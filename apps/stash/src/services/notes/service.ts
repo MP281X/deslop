@@ -35,17 +35,10 @@ import type {Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 import {Organizer} from '#services/notes/lib/organization.ts'
+import {findNotes} from '#services/notes/lib/search.ts'
 import {openStore} from '#services/notes/lib/store.ts'
-import {
-	captureUrl,
-	commentFor,
-	findNotes,
-	hasVideo,
-	reconcileOrganization,
-	reconcileDefinitions,
-	sourceFor,
-	tagCounts
-} from '#services/notes/lib/utils.ts'
+import {reconcileOrganization, reconcileDefinitions} from '#services/notes/lib/tags.ts'
+import {captureUrl, commentFor, hasVideo, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, NotesEvent, Picture, TagDefinition} from '#services/notes/schema.ts'
 import {ImageType, Note, NotesError, TagEntry} from '#services/notes/schema.ts'
 
@@ -95,7 +88,6 @@ export class Notes extends Context.Service<
 		readonly regenerate: (userId: string, input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly remove: (input: Pick<Note, 'id'>) => Effect.Effect<void, NotesError>
 		readonly search: (input: {query: string}) => Stream.Stream<readonly Note['id'][]>
-		readonly tags: Effect.Effect<TagEntry[]>
 	}
 >()('@deslop/stash/services/notes/service/Notes') {
 	static readonly layer = (directory: string) =>
@@ -569,8 +561,7 @@ export class Notes extends Context.Service<
 							SubscriptionRef.changes(state),
 							Stream.map(all => Array.map(findNotes(all, input.query), note => note.id)),
 							Stream.changesWith(Array.makeEquivalence(Equivalence.String))
-						),
-					tags: tagEntries
+						)
 				})
 			})
 		)

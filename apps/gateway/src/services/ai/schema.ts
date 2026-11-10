@@ -3,9 +3,14 @@ import {Schema} from 'effect'
 import {AiProvider} from '@deslop/runtime/ai/schema'
 
 export {AiProvider}
+export const PROVIDER_NAMES = {
+	anthropic: 'Anthropic',
+	'opencode-go': 'OpenCode Go',
+	'opencode-zen': 'OpenCode Zen',
+	openrouter: 'OpenRouter'
+} satisfies Record<AiProvider, string>
 export type AiKeyInfo = typeof AiKeyInfo.Type
 export const AiKeyInfo = Schema.Struct({
-	addedAt: Schema.Finite,
 	last4: Schema.String,
 	lastStatus: Schema.optional(Schema.Finite),
 	provider: AiProvider
@@ -25,51 +30,18 @@ export const AiUsageEntry = Schema.Struct({
 	inputTokens: Schema.Finite,
 	model: Schema.optional(Schema.String),
 	outputTokens: Schema.Finite,
-	provider: AiProvider,
-	status: Schema.Finite
-})
-export type AiUsageQuery = typeof AiUsageQuery.Type
-export const AiUsageQuery = Schema.Struct({
-	bucket: Schema.Literals(['hour', 'day']),
-	from: Schema.Finite,
-	to: Schema.Finite
-})
-export type AiUsageTotals = typeof AiUsageTotals.Type
-export const AiUsageTotals = Schema.Struct({
-	cacheReadTokens: Schema.Finite,
-	cacheWriteTokens: Schema.Finite,
-	calls: Schema.Finite,
-	costUsd: Schema.Finite,
-	inputTokens: Schema.Finite,
-	outputTokens: Schema.Finite,
-	// Every token billed once: Anthropic reports cache tokens beside its input, the others inside it.
-	tokens: Schema.Finite,
-	unknownCostCalls: Schema.Finite
+	provider: AiProvider
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
-export const AiUsageBreakdown = Schema.Struct({name: Schema.String, ...AiUsageTotals.fields})
-export type AiUsageCell = typeof AiUsageCell.Type
-export const AiUsageCell = Schema.Struct({
-	app: Schema.String,
-	at: Schema.Finite,
-	model: Schema.String,
-	...AiUsageTotals.fields
+export const AiUsageBreakdown = Schema.Struct({
+	costUsd: Schema.Finite,
+	name: Schema.String,
+	unknownCostCalls: Schema.Finite
 })
 export type AiUsageReport = typeof AiUsageReport.Type
 export const AiUsageReport = Schema.Struct({
-	byApp: Schema.Array(AiUsageBreakdown),
-	byModel: Schema.Array(AiUsageBreakdown),
 	byProvider: Schema.Array(AiUsageBreakdown),
-	cells: Schema.Array(AiUsageCell),
-	series: Schema.Array(
-		Schema.Struct({
-			at: Schema.Finite,
-			byApp: Schema.Array(AiUsageBreakdown),
-			byModel: Schema.Array(AiUsageBreakdown),
-			byProvider: Schema.Array(AiUsageBreakdown)
-		})
-	),
-	totals: AiUsageTotals
+	series: Schema.Array(Schema.Struct({at: Schema.Finite, byProvider: Schema.Array(AiUsageBreakdown)}))
 })
 
 export type ModelsCatalog = typeof ModelsCatalog.Type

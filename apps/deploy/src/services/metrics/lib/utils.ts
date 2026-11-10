@@ -275,12 +275,20 @@ export function compact(samples: readonly Sample[], now: number) {
 	)
 }
 
+// The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
+export function usedStorage(point: Sample) {
+	return Option.getOrElse(Option.fromUndefinedOr(point.storageUsed), () =>
+		Array.reduce(point.disks, 0, (sum, disk) => sum + disk.used)
+	)
+}
+
 export function history(samples: readonly Sample[], minutes: number, now: number) {
+	const window = chartWindow(minutes, now)
+	const slot = resolution(minutes)
 	const selected = pipe(
-		Array.filter(samples, value => value.time > chartWindow(minutes, now).start && value.time <= now),
+		Array.filter(samples, value => value.time > window.start && value.time <= now),
 		Array.groupBy(
-			value =>
-				`${Number.clamp(Math.ceil((value.time - chartWindow(minutes, now).start) / resolution(minutes)) - 1, {maximum: 59, minimum: 0})}`
+			value => `${Number.clamp(Math.ceil((value.time - window.start) / slot) - 1, {maximum: 59, minimum: 0})}`
 		),
 		Record.values,
 		Array.map(merge)
@@ -288,11 +296,7 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 	// Every point keeps its cores and apps, which the charts split by; mounts and load stay on the latest only.
 	return Array.map(selected, (value, index) => {
 		if (index === selected.length - 1) return value
-		const point: Sample = {
-			...pipe(value, Struct.omit(['load', 'uptime'])),
-			disks: [],
-			storageUsed: value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used)
-		}
+		const point: Sample = {...pipe(value, Struct.omit(['load', 'uptime'])), disks: [], storageUsed: usedStorage(value)}
 		return point
 	})
 }
@@ -319,10 +323,7 @@ export function compactHistory(machine: MachineHistory, minutes: number) {
 			networkSend: Array.map(machine.samples, value =>
 				Option.map(Option.fromUndefinedOr(value.networkSend), Number.round(0))
 			),
-			storageUsed: Array.map(
-				machine.samples,
-				value => value.storageUsed ?? Array.reduce(value.disks, 0, (sum, disk) => sum + disk.used)
-			),
+			storageUsed: Array.map(machine.samples, usedStorage),
 			swapUsed: Array.map(machine.samples, value => value.swapUsed),
 			time: Array.map(machine.samples, value => value.time)
 		},

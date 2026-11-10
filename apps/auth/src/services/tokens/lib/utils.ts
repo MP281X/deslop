@@ -1,5 +1,7 @@
 import {Array, Effect, Option, Order, Record, Result, Schema, String, Struct, pipe} from 'effect'
 
+import {Digest} from 'effect/crypto'
+import type {SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
@@ -33,6 +35,20 @@ export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
 	return left.user.id === right.user.id && left.incarnation === right.incarnation
 }
 
+// A stored origin keeps only the address: the user agent labelled the sign-in when it was made.
+export function storedOrigin(origin: Origin) {
+	return Option.match(Option.fromUndefinedOr(origin.address), {onNone: () => ({}), onSome: address => ({address})})
+}
+
+// A secret as its URL-safe base64, and a value as the same digest every comparison uses, bound once in each layer.
+export function randomTokenOf(random: SecureRandom.SecureRandom['Service']) {
+	return (bytes: number) => Effect.map(random.randomBytes(bytes), Base64Url.encode)
+}
+
+export function hashOf(digest: Digest.Digest['Service']) {
+	return (value: string) => Effect.map(digest.digest(Digest.sha256, new TextEncoder().encode(value)), Base64Url.encode)
+}
+
 export function live(grants: Grants, now: number) {
 	const current = Record.filter(grants, grant => grant.credential.expiresAt > now)
 	return Record.filter(
@@ -51,9 +67,7 @@ export function signedInApps(grants: Grants, now: number, owner: CredentialOwner
 			entry =>
 				({
 					client: entry[1].client,
-					createdAt: entry[1].createdAt,
 					device: entry[1].device,
-					expiresAt: entry[1].credential.expiresAt,
 					family: entry[0],
 					kind: entry[1].credential._tag,
 					lastActive: entry[1].lastActive,

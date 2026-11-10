@@ -22,11 +22,11 @@ import {
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import {checkEvery, HOUR, isDue, MINUTE} from '#services/bookings/lib/utils.ts'
+import {HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, Train, FlightTracking, TrainTracking} from '#services/bookings/schema.ts'
 import {BookingsError, TripNumber} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {flightTracking, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
+import {checkEvery, flightTracking, isDue, pickFlight, trainTracking} from '#services/tracking/lib/utils.ts'
 import {FaFlights, Usage, VtRun, VtStatus} from '#services/tracking/schema.ts'
 
 // FlightAware's personal plan includes $5 a month, a thousand lookups.

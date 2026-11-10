@@ -21,8 +21,9 @@ import {ChildProcessSpawner} from 'effect/process'
 
 import {execute} from '@deslop/runtime/cli/service'
 
+import {unitFailures} from '#services/inventory/lib/failures.ts'
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
-import {probeSocket, socketLine, socketProcess, socketUnit, unitFailures} from '#services/inventory/lib/utils.ts'
+import {probeSocket, socketLine, socketProcess, socketUnit} from '#services/inventory/lib/sockets.ts'
 import {
 	Container,
 	DeployError,
@@ -39,10 +40,10 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 	return Effect.forEach(
 		Array.getSomes(Array.map(String.split(String.trim(text), '\n'), socketLine)),
 		Effect.fnUntraced(function* (socket) {
-			const cgroup = yield* Option.match(socket.pid, {
+			const cgroup = yield* Option.match(socket.process, {
 				onNone: () => Effect.succeed(''),
-				onSome: Effect.fnUntraced(function* (pid) {
-					return Option.getOrElse(yield* Effect.option(fs.readFileString(`/proc/${pid}/cgroup`)), () => '')
+				onSome: Effect.fnUntraced(function* (match) {
+					return Option.getOrElse(yield* Effect.option(fs.readFileString(`/proc/${match.pid}/cgroup`)), () => '')
 				})
 			})
 			const unit = socketUnit(cgroup)

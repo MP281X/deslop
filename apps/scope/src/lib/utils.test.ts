@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Boolean, Option, String} from 'effect'
 
-import {navigationOf, nextSearch, openingApp} from '#lib/utils.ts'
+import {navigationOf, nextSearch, selectionOf} from '#lib/utils.ts'
 import type {NavigationEvent, Search} from '#lib/utils.ts'
 import type {Overview} from '#services/telemetry/schema.ts'
 
@@ -17,7 +17,7 @@ function failureTrace(time: string, failed: boolean) {
 		durationMs: 1,
 		id: String.repeat(32)('a'),
 		time,
-		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {message: '', span: 'run'}})})
+		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {span: 'run'}})})
 	}
 }
 
@@ -93,7 +93,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			}
 		]
 	}
-	assert.deepStrictEqual(openingApp(overview), Option.some('gateway'))
+	assert.strictEqual(selectionOf(Option.some(overview), {}, false).source, 'gateway')
 	const quiet: Overview = {
 		apps: Array.map(overview.apps, app => ({
 			...app,
@@ -103,8 +103,62 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			}))
 		}))
 	}
-	assert.deepStrictEqual(openingApp(quiet), Option.some('stash'))
-	assert.deepStrictEqual(openingApp({apps: []}), Option.none())
+	assert.strictEqual(selectionOf(Option.some(quiet), {}, false).source, 'stash')
+	assert.isUndefined(selectionOf(Option.some({apps: []}), {}, false).source)
+})
+
+it('selects the app, operation, trace and span the URL names, defaulting a desktop layout', () => {
+	const traceId = String.repeat(32)('a')
+	const otherId = String.repeat(32)('b')
+	const overview: Overview = {
+		apps: [
+			{
+				name: 'deploy',
+				operations: [
+					{
+						count: 1,
+						failures: 0,
+						name: 'deploy.idle',
+						p50Ms: 2,
+						runtime: 'server',
+						traces: [
+							{...failureTrace('300', false), id: traceId},
+							{...failureTrace('100', false), id: otherId}
+						]
+					},
+					{count: 1, failures: 1, name: 'deploy.fail', p50Ms: 1, runtime: 'server', traces: [failureTrace('200', true)]}
+				]
+			},
+			{
+				name: 'stash',
+				operations: [
+					{count: 1, failures: 0, name: 'notes.search', p50Ms: 1, runtime: 'web', traces: [failureTrace('400', false)]}
+				]
+			}
+		]
+	}
+	const desktop = selectionOf(Option.some(overview), {}, false)
+	assert.strictEqual(desktop.source, 'deploy')
+	assert.strictEqual(Option.getOrThrow(desktop.activeKey).name, 'deploy.fail')
+	assert.isUndefined(desktop.pickedSpan)
+	const phone = selectionOf(Option.some(overview), {}, true)
+	assert.strictEqual(phone.source, 'deploy')
+	assert.isTrue(Option.isNone(phone.activeOperation))
+	const picked = selectionOf(
+		Option.some(overview),
+		{operation: 'deploy.idle', pane: 'Span', side: 'server', source: 'deploy', span: 'child', trace: otherId},
+		true
+	)
+	assert.strictEqual(Option.getOrThrow(picked.activeOperation).operation.name, 'deploy.idle')
+	assert.strictEqual(Option.getOrThrow(picked.activeTrace).id, otherId)
+	assert.strictEqual(picked.pickedSpan, 'child')
+	assert.strictEqual(
+		Option.getOrThrow(
+			selectionOf(Option.some(overview), {operation: 'deploy.fail', side: 'server', source: 'stash'}, false)
+				.activeOperation
+		).app.name,
+		'stash'
+	)
 })
 
 it('keeps the bar’s app filter through a selection and Back', () => {

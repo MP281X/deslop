@@ -2,6 +2,7 @@ import {
 	Array,
 	Clock,
 	Context,
+	Duration,
 	Effect,
 	Exit,
 	HashMap,
@@ -19,7 +20,6 @@ import {
 
 import {Machine} from '@typeonce/effect-machine'
 import {Digest, SecureRandom} from 'effect/crypto'
-import {Base64Url} from 'effect/encoding'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 
@@ -27,7 +27,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 import {AUTH_URL, rejected} from '@deslop/runtime/auth/utils'
 
 import {People} from '#services/people/service.ts'
-import {CODE_LENGTH, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
+import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
 import {
@@ -36,7 +36,9 @@ import {
 	browserToken,
 	callbackUrl,
 	clientLabel,
-	deviceLabel
+	deviceLabel,
+	hashOf,
+	randomTokenOf
 } from '#services/tokens/lib/utils.ts'
 import {CredentialOwner} from '#services/tokens/schema.ts'
 import type {DeviceTokenParams, Origin, TokenResponse} from '#services/tokens/schema.ts'
@@ -46,8 +48,7 @@ export const REQUEST_COOKIE = '__Host-request-'
 
 const expired = AuthError.make({message: 'This sign-in expired. Start it again in the app.'})
 const notWaiting = AuthError.make({
-	message:
-		'No waiting sign-in has this code: it is mistyped, already answered or expired after 10 minutes. Read the code again from the page or command that is still waiting; start a new sign-in only if none is.'
+	message: `No waiting sign-in has this code: it is mistyped, already answered or expired after ${Duration.toMinutes(SIGN_IN_LIFETIME)} minutes. Read the code again from the page or command that is still waiting; start a new sign-in only if none is.`
 })
 
 const deliver = Effect.fnUntraced(function* (input: {
@@ -119,7 +120,7 @@ const SignIn = Machine.make({
 	}),
 	input: SignInInput,
 	root: SignInStates,
-	timers: {lifetime: '10 minutes'}
+	timers: {lifetime: SIGN_IN_LIFETIME}
 }).handle({
 	initial: {data: transition => transition.input, target: 'Open'},
 	states: {
@@ -207,13 +208,11 @@ export class SignIns extends Context.Service<
 			const tokens = yield* Tokens
 			const people = yield* People
 			const random = yield* SecureRandom.SecureRandom
-			const digest = yield* Digest.Digest
+			const randomToken = randomTokenOf(random)
+			const hash = hashOf(yield* Digest.Digest)
 			const scope = yield* Effect.scope
 			const open = yield* SubscriptionRef.make(HashMap.empty<string, Open>())
 			const answering = yield* Semaphore.make(1)
-			const hash = Effect.fnUntraced(function* (value: string) {
-				return Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(value)))
-			})
 			function find(code: string) {
 				return Effect.map(SubscriptionRef.get(open), HashMap.get(typedCode(code)))
 			}
@@ -329,7 +328,7 @@ export class SignIns extends Context.Service<
 				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, origin: Origin) {
 					const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
 					const now = yield* Clock.currentTimeMillis
-					const receiver = Base64Url.encode(yield* random.randomBytes(32))
+					const receiver = yield* randomToken(32)
 					const owned = yield* Scope.fork(scope)
 					const ref = yield* pipe(
 						run({delivery, origin}),
@@ -360,9 +359,8 @@ export class SignIns extends Context.Service<
 									kind: 'App' as const
 								})
 							}),
-							createdAt: now,
 							// The machine's lifetime timer.
-							expiresAt: now + 10 * 60_000,
+							expiresAt: now + Duration.toMillis(SIGN_IN_LIFETIME),
 							id: code
 						}),
 						receiver: yield* hash(receiver),

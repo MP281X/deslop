@@ -4,7 +4,6 @@ import {
 	Context,
 	Effect,
 	FileSystem,
-	Function,
 	HashSet,
 	Layer,
 	Number,
@@ -22,7 +21,7 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {execute} from '@deslop/runtime/cli/service'
 
-import {processOwner} from '#services/inventory/lib/utils.ts'
+import {processOwner} from '#services/inventory/lib/owners.ts'
 import {DeployError} from '#services/inventory/schema.ts'
 import {appCgroup, appShares, cgroupUsage, compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
@@ -76,52 +75,44 @@ export class Metrics extends Context.Service<
 			const collectError = yield* Ref.make('')
 			const persistError = yield* Ref.make('')
 			// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
-			const appCgroups = Effect.gen(function* () {
-				const walk = yield* Ref.make({found: Array.empty<string>(), pending: ['']})
-				const done = yield* Effect.repeat(
-					Effect.gen(function* () {
-						const level = yield* Ref.get(walk)
-						const children = Array.flatMap(
-							Array.getSomes(
-								yield* Effect.forEach(
-									level.pending,
-									path =>
-										Effect.option(
-											Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
-												Array.map(
-													Array.filter(names, name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
-													name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`})
-												)
-											)
-										),
-									{concurrency: 'unbounded'}
+			function walk(pending: readonly string[], found: readonly string[]): Effect.Effect<readonly string[]> {
+				if (Array.isReadonlyArrayEmpty(pending)) return Effect.succeed(found)
+				return Effect.flatMap(
+					Effect.forEach(
+						pending,
+						path =>
+							Effect.option(
+								Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
+									Array.map(
+										Array.filter(names, name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
+										name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`})
+									)
 								)
 							),
-							Function.identity
-						)
-						const next = {
-							found: [
-								...level.found,
-								...Array.map(
-									Array.filter(children, child => child.app),
-									child => child.path
-								)
-							],
-							pending: Array.map(
+						{concurrency: 'unbounded'}
+					),
+					levels => {
+						const children = Array.flatten(Array.getSomes(levels))
+						return walk(
+							Array.map(
 								Array.filter(
 									children,
 									child => !child.app && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child.path))
 								),
 								child => child.path
-							)
-						}
-						yield* Ref.set(walk, next)
-						return next
-					}),
-					{until: next => Array.isReadonlyArrayEmpty(next.pending)}
+							),
+							[
+								...found,
+								...Array.map(
+									Array.filter(children, child => child.app),
+									child => child.path
+								)
+							]
+						)
+					}
 				)
-				return done.found
-			})
+			}
+			const appCgroups = walk([''], [])
 			// Each app cgroup's memory and CPU time, which count processes that came and went between samples.
 			const apps = Effect.gen(function* () {
 				const readings = yield* Effect.forEach(

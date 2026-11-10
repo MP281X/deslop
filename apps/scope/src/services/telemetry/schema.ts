@@ -74,7 +74,7 @@ const Log = Schema.StructWithRest(
 		severityNumber: Schema.optionalKey(Schema.Int),
 		severityText: Schema.optionalKey(Schema.String),
 		spanId: Schema.optionalKey(Schema.Union([SpanId, Schema.Literal('')])),
-		timeUnixNano: Schema.optionalKey(Nano),
+		timeUnixNano: Nano,
 		traceId: Schema.optionalKey(Schema.Union([TraceId, Schema.Literal('')]))
 	}),
 	[Schema.JsonObject]
@@ -143,9 +143,6 @@ export const Entry = Schema.Struct({
 	// Absent on the immediately previous release's stored entries.
 	receivedAt: Schema.optionalKey(Schema.Natural),
 	resource: Resource,
-	resourceSchemaUrl: Schema.String,
-	scope: Resource,
-	scopeSchemaUrl: Schema.String,
 	service: Schema.String,
 	signal: Schema.Literals(['trace', 'log']),
 	spanId: Schema.String,
@@ -156,7 +153,7 @@ export const Entry = Schema.Struct({
 
 // What the tools answer for an entry: `service` already names its resource, so a page stays small enough to read.
 type EntryItem = typeof EntryItem.Type
-const EntryItem = Entry.mapFields(Struct.omit(['resource', 'resourceSchemaUrl', 'scope', 'scopeSchemaUrl']))
+const EntryItem = Entry.mapFields(Struct.omit(['resource']))
 
 export type Query = typeof Query.Type
 export const Query = Schema.Struct({
@@ -227,7 +224,7 @@ export const TracesPage = Schema.Struct({entries: Schema.Array(TraceSummary), to
 export type OperationTrace = typeof OperationTrace.Type
 export const OperationTrace = Schema.Struct({
 	durationMs: Schema.Finite,
-	failure: Schema.optionalKey(Schema.Struct({message: Schema.String, span: Schema.String})),
+	failure: Schema.optionalKey(Schema.Struct({span: Schema.String})),
 	id: TraceId,
 	time: Nano
 })
@@ -272,6 +269,7 @@ const TraceSpan = Schema.Struct({
 export type Trace = typeof Trace.Type
 export const Trace = Schema.Struct({
 	durationMs: Schema.Finite,
+	failureSpanId: Schema.optionalKey(Schema.String),
 	id: TraceId,
 	logs: Schema.Array(EntryItem),
 	services: Schema.Array(Service),
@@ -321,8 +319,8 @@ export const Filters = Schema.Struct({
 	)
 })
 
-export type PageFilters = typeof PageFilters.Type
-export const PageFilters = Schema.Struct({
+export type SortFilters = typeof SortFilters.Type
+export const SortFilters = Schema.Struct({
 	...Filters.fields,
 	limit: pipe(
 		Query.fields.limit,
@@ -333,12 +331,7 @@ export const PageFilters = Schema.Struct({
 		Query.fields.offset,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed(0)),
 		Schema.annotateEncoded({description: 'Entries to skip, for the next page.'})
-	)
-})
-
-export type SortFilters = typeof SortFilters.Type
-export const SortFilters = Schema.Struct({
-	...PageFilters.fields,
+	),
 	sort: pipe(
 		Query.fields.sort,
 		Schema.withDecodingDefaultTypeKey(Effect.succeed('recent' as const)),

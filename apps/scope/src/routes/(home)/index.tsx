@@ -1,27 +1,11 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {
-	Array,
-	Boolean,
-	Cause,
-	DateTime,
-	Formatter,
-	HashSet,
-	Match,
-	Number,
-	Option,
-	Order,
-	Predicate,
-	Record,
-	Schema,
-	String,
-	pipe
-} from 'effect'
+import {Array, Boolean, Cause, DateTime, Match, Number, Option, Order, Predicate, Record, String, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useEffect, useLayoutEffect, useRef, useState} from 'react'
+import {Suspense, useEffect} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
@@ -33,8 +17,6 @@ import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/comp
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
-import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
@@ -42,50 +24,24 @@ import * as WebRuntime from '@deslop/runtime/web'
 import {
 	ageOf,
 	durationOf,
+	focusOf,
 	navigationOf,
 	nextSearch,
 	nowAtom,
-	openingApp,
+	operationsOf,
 	overviewAtom,
 	Search,
+	selectionOf,
 	traceAtom
 } from '#lib/utils.ts'
-import type {NavigationEvent, OperationKey} from '#lib/utils.ts'
+import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
+import {Icicle, SpansSkeleton, TimeAxis} from '#routes/(home)/-icicle.tsx'
+import {CiMark, DetailSkeleton, marks, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
-import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
-
-const STATUS: Record<string, string> = {
-	400: 'Bad Request',
-	401: 'Unauthorized',
-	403: 'Forbidden',
-	404: 'Not Found',
-	409: 'Conflict',
-	422: 'Unprocessable',
-	429: 'Too Many Requests',
-	500: 'Server Error',
-	502: 'Bad Gateway',
-	503: 'Unavailable',
-	504: 'Gateway Timeout'
-}
-
-// The HTTP attributes a failed span's error line already reads, so its details do not repeat them.
-const HTTP_ATTRIBUTES = [
-	'http.request.method',
-	'http.response.status_code',
-	'server.address',
-	'server.port',
-	'url.full',
-	'url.path',
-	'url.scheme'
-] as const
 
 // The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
-
-// The icicle's lanes: a 22px box with 2px between lanes.
-const ICICLE_LANE = 24
-const ICICLE_BOX = 22
 
 const KINDS: Record<Runtime, ReactElement> = {
 	ci: <FlowArrowIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />,
@@ -101,38 +57,14 @@ const clock = new Intl.DateTimeFormat(undefined, {
 	minute: '2-digit',
 	second: '2-digit'
 })
-const preciseClock = new Intl.DateTimeFormat(undefined, {
-	fractionalSecondDigits: 3,
-	hour: '2-digit',
-	hourCycle: 'h23',
-	minute: '2-digit',
-	second: '2-digit'
-})
 const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
 const compact = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1, notation: 'compact'})
-
-// The icicle measures its lane width before paint; a server render such as the page test has no window.
-const useIsomorphicLayoutEffect = Boolean.match(typeof window === 'undefined', {
-	onFalse: () => useLayoutEffect,
-	onTrue: () => useEffect
-})
 
 // One run or many, in the reader's words.
 function runsOf(n: number) {
 	return `${count.format(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
 }
 const route = getRouteApi('/(home)/')
-
-type Attributes = typeof Attributes.Type
-const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
-type Wrapped = typeof Wrapped.Type
-const Wrapped = Schema.Record(Schema.String, Schema.Json)
-
-const marks = WebRuntime.appIcons(
-	import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-)
-
-type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
 
 type WorkspaceProps = {
 	active?: ActiveOperation
@@ -196,134 +128,10 @@ function TracesSkeleton(props: {label: string}) {
 	)
 }
 
-// The icicle's 22px lanes while its trace loads, including a lane with two sibling boxes; no axis, which the real pane draws only with data.
-function SpansSkeleton(props: {label: string}) {
-	return (
-		<div aria-busy="true" aria-label={props.label} role="status" className="px-4 pt-1.5 pb-2">
-			<div
-				className="relative h-(--ice-height)"
-				style={{'--ice-height': `${4 * ICICLE_LANE - (ICICLE_LANE - ICICLE_BOX)}px`}}
-			>
-				{Array.map(
-					[
-						{left: 0, top: 0, width: 100},
-						{left: 2, top: 24, width: 97},
-						{left: 6, top: 48, width: 2.5},
-						{left: 10, top: 48, width: 89},
-						{left: 14, top: 72, width: 85}
-					],
-					(box, index) => (
-						<Skeleton
-							key={index}
-							aria-hidden
-							className="absolute top-(--ice-top) left-(--ice-left) h-5.5 w-(--ice-width)"
-							style={{'--ice-left': `${box.left}%`, '--ice-top': `${box.top}px`, '--ice-width': `${box.width}%`}}
-						/>
-					)
-				)}
-			</div>
-		</div>
-	)
-}
-
-// The inspector's stock-height rows while its span loads, sharing the same max-content key column as the real ones.
-function DetailSkeleton(props: {label: string}) {
-	return (
-		<div
-			aria-busy="true"
-			aria-label={props.label}
-			role="status"
-			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4"
-		>
-			{Array.map(Array.range(1, 6), row => (
-				<div key={row} aria-hidden className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-					<Skeleton className="h-3 w-24" />
-					<Skeleton className="h-3 w-1/2" />
-				</div>
-			))}
-		</div>
-	)
-}
-
 function FailureContent(props: {error: unknown; reset: () => void}) {
 	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
 	if (isDenied(props.error)) return <Denied />
 	return <Error error={props.error} reset={props.reset} />
-}
-
-// An attribute's value as OTLP wraps it, such as {stringValue: "…"}, shown as its one value.
-function valueOf(value: Schema.Json) {
-	return pipe(
-		Schema.decodeUnknownOption(Wrapped)(value),
-		Option.flatMap(wrapped => Array.head(Record.values(wrapped))),
-		Option.filter(inner => Predicate.isString(inner) || Predicate.isNumber(inner) || Predicate.isBoolean(inner)),
-		Option.match({onNone: () => Formatter.formatJson(value), onSome: inner => `${inner}`})
-	)
-}
-
-function errorOf(span: Trace['spans'][number]) {
-	return pipe(
-		Option.liftPredicate(span, current => current.status === 2),
-		Option.flatMap(current => Option.fromNullishOr(current.payload['status'])),
-		Option.filter(Predicate.isObject),
-		Option.flatMap(status => Option.fromNullishOr(pipe(Record.get(status, 'message'), Option.getOrUndefined))),
-		Option.filter(String.isString),
-		Option.filter(String.isNonEmpty)
-	)
-}
-
-// Attributes, without anything that only repeats the row: its name, code.function, or the status code the error line carries.
-function attributesOf(span: Trace['spans'][number]) {
-	if (span.payload['attributes'] === undefined) return []
-	return Option.match(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), {
-		onNone: () => [{key: 'attributes', value: 'Unreadable'}],
-		onSome: decoded => {
-			const failed = Option.isSome(errorOf(span))
-			const attributes = Array.map(
-				Array.filter(decoded, attribute => attribute.key !== 'service.name'),
-				attribute => ({key: attribute.key, value: valueOf(attribute.value)})
-			)
-			const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
-			return Array.filter(
-				attributes,
-				attribute =>
-					attribute.value !== span.name &&
-					!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
-					(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
-			)
-		}
-	})
-}
-
-// Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
-function ErrorText(props: {message: string}) {
-	return Option.match(String.match(/^StatusCode error \((\d{3}) (\w+) (https?:\/\/[^\s)]+)\)$/u)(props.message), {
-		onNone: () => <span className="break-words">{props.message}</span>,
-		onSome: parts => {
-			const code = parts[1] ?? ''
-			const method = parts[2] ?? ''
-			const url = parts[3] ?? ''
-			return (
-				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
-					<span className="font-medium">
-						{code} {Option.getOrElse(Record.get(STATUS, code), () => '')}
-					</span>
-					<span>{method}</span>
-					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>
-				</span>
-			)
-		}
-	})
-}
-
-// GitHub's mark for a CI app or span, filling its 16px slot where the pixel icons keep a margin.
-function CiMark() {
-	return (
-		<span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
-			<GithubLight className="size-3.5 dark:hidden" />
-			<GithubDark className="hidden size-3.5 dark:block" />
-		</span>
-	)
 }
 
 // An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
@@ -337,18 +145,6 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 					onTrue: () => <CiMark />
 				}
 			),
-		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-	})
-}
-
-// The mark of the app that ran a span: its own icon, GitHub's for CI, else a server glyph.
-function SpanMark(props: {span: Trace['spans'][number]}) {
-	return Option.match(Option.fromUndefinedOr(marks[appName(props.span.service)]), {
-		onNone: () =>
-			Boolean.match(props.span.runtime === 'ci', {
-				onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-				onTrue: () => <CiMark />
-			}),
 		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
 	})
 }
@@ -381,34 +177,6 @@ function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 				</AppBarTab>
 			))}
 		</AppBarTabs>
-	)
-}
-
-// The most recent trace an operation started, which orders the list after failures.
-function latestOf(operation: Operation) {
-	return Array.match(operation.traces, {
-		onEmpty: () => 0n,
-		onNonEmpty: traces =>
-			BigInt(
-				Array.max(
-					traces,
-					Order.mapInput(Order.BigInt, (trace: OperationTrace) => BigInt(trace.time))
-				).time
-			)
-	})
-}
-
-// One app's operations: failing first, then most recent.
-function operationsOf(overview: Overview, source?: string) {
-	return Array.sort(
-		Array.flatMap(
-			Array.filter(overview.apps, (app: Overview['apps'][number]) => app.name === source),
-			(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
-		),
-		Order.combine(
-			Order.mapInput(Order.flip(Order.Boolean), (row: ActiveOperation) => row.operation.failures > 0),
-			Order.mapInput(Order.flip(Order.BigInt), (row: ActiveOperation) => latestOf(row.operation))
-		)
 	)
 }
 
@@ -641,236 +409,6 @@ function TracesPane(props: {
 	)
 }
 
-// The trace's time scale: start, quarters and total, in tabular figures.
-function TimeAxis(props: {totalMs: number}) {
-	const total = Number.max(props.totalMs, 1)
-	return (
-		<div className="text-muted-foreground h-6 shrink-0 border-b px-4 text-xs tabular-nums">
-			<div className="relative h-full">
-				{Array.map([0, 0.25, 0.5, 0.75, 1] as const, ratio => (
-					<span
-						key={ratio}
-						className={cn(
-							'absolute top-1/2 left-(--axis-left) -translate-y-1/2 whitespace-nowrap',
-							Boolean.match(ratio === 0, {
-								onFalse: () =>
-									Boolean.match(ratio === 1, {onFalse: () => '-translate-x-1/2', onTrue: () => '-translate-x-full'}),
-								onTrue: () => undefined
-							})
-						)}
-						style={{'--axis-left': `${ratio * 100}%`}}
-					>
-						{Boolean.match(ratio === 0, {onFalse: () => durationOf(total * ratio), onTrue: () => '0'})}
-					</span>
-				))}
-			</div>
-		</div>
-	)
-}
-
-// One lane per span depth, each span a box on the trace's time scale with its name and duration inside; arrow keys walk the tree.
-function Icicle(props: {focus?: string; onPick: (id: string) => void; trace: Trace}) {
-	const total = Number.max(props.trace.durationMs, 1)
-	const lanes = Array.reduce(props.trace.spans, 0, (deepest, span) => Number.max(deepest, span.depth)) + 1
-	const [width, setWidth] = useState(0)
-	const surface = useRef<HTMLDivElement>(null)
-	useIsomorphicLayoutEffect(() => {
-		const element = surface.current
-		if (element === null) return
-		setWidth(element.getBoundingClientRect().width)
-		const observer = new ResizeObserver(() => setWidth(element.getBoundingClientRect().width))
-		observer.observe(element)
-		return () => observer.disconnect()
-	}, [])
-	const rows = Array.map(props.trace.spans, span => {
-		const fraction = span.durationMs / total
-		const time = durationOf(span.durationMs)
-		return {
-			label: `${span.name} ${time}`,
-			// 8px covers the 12px mono face's advance; 6px pads the box and separates its name and time.
-			labelled: width === 0 || fraction * width >= time.length * 8 + 6 * 2 + 6,
-			left: (span.offsetMs / total) * 100,
-			picked: span.spanId === props.focus,
-			span,
-			time,
-			top: span.depth * ICICLE_LANE,
-			width: fraction * 100
-		}
-	})
-	function moveFocus(span: Trace['spans'][number], key: string) {
-		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
-		const index = Option.getOrElse(
-			Array.findFirstIndex(siblings, other => other.spanId === span.spanId),
-			() => 0
-		)
-		Option.match(
-			pipe(
-				Match.value(key),
-				Match.when('ArrowLeft', () => Array.get(siblings, index - 1)),
-				Match.when('ArrowRight', () => Array.get(siblings, index + 1)),
-				Match.when('ArrowUp', () => Array.findFirst(props.trace.spans, other => other.spanId === span.parentSpanId)),
-				Match.when('ArrowDown', () => Array.findFirst(props.trace.spans, other => other.parentSpanId === span.spanId)),
-				Match.orElse(() => Option.none<Trace['spans'][number]>())
-			),
-			{
-				onNone: () => undefined,
-				onSome: next =>
-					surface.current?.querySelector<HTMLButtonElement>(`[data-span-id="${next.spanId}"] button`)?.focus()
-			}
-		)
-	}
-	return (
-		<div className="mt-1.5 mb-2 px-4">
-			<div
-				ref={surface}
-				role="group"
-				aria-label="Spans"
-				className="relative h-(--ice-height) w-full"
-				style={{'--ice-height': `${lanes * ICICLE_LANE - (ICICLE_LANE - ICICLE_BOX)}px`}}
-			>
-				{Array.map(rows, row => (
-					<div
-						key={row.span.spanId}
-						data-icicle-box=""
-						data-span-id={row.span.spanId}
-						className="has-[:focus-visible]:outline-ring absolute top-(--span-top) left-(--span-left) h-5.5 w-(--span-width) min-w-px has-[:focus-visible]:outline-2"
-						style={{'--span-left': `${row.left}%`, '--span-top': `${row.top}px`, '--span-width': `${row.width}%`}}
-					>
-						<span
-							aria-hidden
-							data-app={appName(row.span.service)}
-							className={cn(
-								'text-background absolute inset-0 flex items-center overflow-hidden text-xs',
-								Boolean.match(row.labelled, {onFalse: () => undefined, onTrue: () => 'px-1.5'}),
-								Boolean.match(row.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'}),
-								Boolean.match(row.picked, {
-									onFalse: () => undefined,
-									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'
-								})
-							)}
-						>
-							{Boolean.match(row.labelled, {
-								onFalse: () => null,
-								onTrue: () => (
-									<span className="flex w-full min-w-0 items-center justify-between gap-1.5">
-										<span className="min-w-0 truncate">{row.span.name}</span>
-										<span className="shrink-0 opacity-70">{row.time}</span>
-									</span>
-								)
-							})}
-						</span>
-						<button
-							type="button"
-							aria-current={Boolean.match(row.picked, {onFalse: () => undefined, onTrue: () => 'true' as const})}
-							aria-label={row.label}
-							title={row.label}
-							onClick={() => props.onPick(row.span.spanId)}
-							onKeyDown={event => {
-								if (String.startsWith('Arrow')(event.key)) {
-									event.preventDefault()
-									moveFocus(row.span, event.key)
-								}
-							}}
-							className="absolute inset-0 h-full w-full border-0 bg-transparent p-0 outline-none"
-						/>
-					</div>
-				))}
-			</div>
-		</div>
-	)
-}
-
-// The picked span's identity above its details: its app's mark, its name, where it started, and its duration.
-function SpanHeader(props: {span: Trace['spans'][number]}) {
-	return (
-		<div role="listitem" className="col-span-2 flex h-8 items-center gap-3 max-sm:h-11">
-			<SpanMark span={props.span} />
-			<span
-				className={cn(
-					'min-w-0 truncate',
-					Boolean.match(props.span.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
-				)}
-			>
-				{props.span.name}
-			</span>
-			<span className="text-muted-foreground shrink-0 truncate">
-				{`${appName(props.span.service)} · at ${durationOf(props.span.offsetMs)}`}
-			</span>
-			<span className="ml-auto shrink-0 tabular-nums">{durationOf(props.span.durationMs)}</span>
-		</div>
-	)
-}
-
-// The picked span's header, error, attributes and logs, as stock-height rows with no dividers between them.
-function SpanDetail(props: {span: Trace['spans'][number]}) {
-	const error = errorOf(props.span)
-	const attributes = attributesOf(props.span)
-	return (
-		<div
-			role="list"
-			aria-label="Span details"
-			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4 text-xs"
-		>
-			<SpanHeader span={props.span} />
-			{Option.match(error, {
-				onNone: () => null,
-				onSome: message => (
-					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-						<span className="text-muted-foreground truncate">error</span>
-						<span className="text-destructive min-w-0 truncate" title={message}>
-							<ErrorText message={message} />
-						</span>
-					</div>
-				)
-			})}
-			{Array.map(attributes, (attribute, index) => (
-				<div
-					key={`${attribute.key}:${index}`}
-					role="listitem"
-					className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11"
-				>
-					<span className="text-muted-foreground truncate" title={attribute.key}>
-						{attribute.key}
-					</span>
-					<span className="block min-w-0 truncate select-text" title={attribute.value}>
-						{Boolean.match(attribute.key === 'url.full' && String.startsWith('https://')(attribute.value), {
-							onFalse: () => attribute.value,
-							onTrue: () => (
-								<a href={attribute.value} target="_blank" rel="noreferrer" className="text-primary">
-									{attribute.value}
-								</a>
-							)
-						})}
-					</span>
-				</div>
-			))}
-			{Array.map(props.span.logs, (log, index) => (
-				<div
-					key={`${log.id}:${index}`}
-					role="listitem"
-					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
-				>
-					<span className="text-muted-foreground truncate tabular-nums">
-						{Option.match(Number.parse(String.slice(0, -6)(log.time)), {
-							onNone: () => '—',
-							onSome: timestamp => preciseClock.format(timestamp)
-						})}
-					</span>
-					<span
-						className={cn(
-							'text-muted-foreground block min-w-0 truncate',
-							Boolean.match(log.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
-						)}
-						title={log.name}
-					>
-						{log.name}
-					</span>
-				</div>
-			))}
-		</div>
-	)
-}
-
 // The picked span's details alone, for the phone's pushed span screen.
 function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 	return Option.match(props.focus, {
@@ -928,27 +466,6 @@ function SpansList(props: {
 				)
 			})}
 		</ScrollArea>
-	)
-}
-
-// Effect marks every span a failure passed through, so where it broke is the failed span with no failed child.
-function brokeAt(spans: Trace['spans']) {
-	const failed = Array.filter(spans, span => span.status === 2)
-	const parents = HashSet.fromIterable(
-		Array.map(failed, span =>
-			String.toLowerCase(
-				Option.getOrElse(Option.filter(Option.fromNullishOr(span.payload['parentSpanId']), String.isString), () => '')
-			)
-		)
-	)
-	return Array.findFirst(failed, span => !HashSet.has(parents, span.spanId))
-}
-
-// The span the URL picks, else where the failure broke, else the first span.
-function focusOf(trace: Trace, pickedSpan?: string) {
-	return Option.orElse(
-		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
-		() => Option.orElse(brokeAt(trace.spans), () => Array.findFirst(trace.spans, span => span.depth === 0))
 	)
 }
 
@@ -1204,17 +721,6 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 	)
 }
 
-function findOperation(overview: Overview, key: OperationKey) {
-	return Option.flatMap(
-		Array.findFirst(overview.apps, app => app.name === key.app),
-		app =>
-			Option.map(
-				Array.findFirst(app.operations, operation => operation.runtime === key.runtime && operation.name === key.name),
-				operation => ({app, operation})
-			)
-	)
-}
-
 function renderPage(children: ReactNode) {
 	return (
 		<main className="pb-safe-bottom relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1243,116 +749,45 @@ function Home() {
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 
 	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
-	const source = Option.getOrUndefined(
-		Option.orElse(
-			Option.filter(Option.fromUndefinedOr(search.source), name =>
-				Option.exists(value, current => Array.some(current.apps, app => app.name === name))
-			),
-			() => Option.flatMap(value, openingApp)
-		)
-	)
+	const selection = selectionOf(value, search, isMobile)
+	const source = selection.source
 	useEffect(() => {
 		if (source === undefined || search.source === source) return
 		navigate({replace: true, search: previous => nextSearch(previous, {_tag: 'Source', app: source})})
 	}, [navigate, search.source, source])
-
-	const activeOperation = Option.orElse(
-		Option.filter(
-			Option.flatMap(Option.fromUndefinedOr(navigation.selection?.operation), key =>
-				Option.flatMap(value, current => findOperation(current, key))
-			),
-			active => active.app.name === source
-		),
-		() =>
-			Boolean.match(isMobile, {
-				onFalse: () =>
-					Option.flatMap(value, current =>
-						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
-					),
-				onTrue: () => Option.none<ActiveOperation>()
-			})
-	)
-	const activeKey = Option.map(activeOperation, active => ({
-		app: active.app.name,
-		name: active.operation.name,
-		runtime: active.operation.runtime
-	}))
-	const activeTrace = Option.flatMap(activeOperation, active =>
-		Option.orElse(
-			Option.flatMap(Option.fromUndefinedOr(navigation.selection?.traceId), selected =>
-				Array.findFirst(active.operation.traces, trace => trace.id === selected)
-			),
-			() => Array.head(active.operation.traces)
-		)
-	)
 
 	function selectOperation(app: string, operation: Operation) {
 		send({_tag: 'Operation', operation: {app, name: operation.name, runtime: operation.runtime}})
 	}
 
 	function selectTrace(trace: OperationTrace) {
-		Option.map(activeKey, operation => send({_tag: 'Trace', selection: {operation, traceId: trace.id}}))
+		Option.map(selection.activeKey, operation => send({_tag: 'Trace', selection: {operation, traceId: trace.id}}))
 	}
 
 	function selectSpan(id: string) {
-		Option.map(Option.all({operation: activeKey, trace: activeTrace}), selected =>
+		Option.map(Option.all({operation: selection.activeKey, trace: selection.activeTrace}), selected =>
 			send({_tag: 'Span', selection: {operation: selected.operation, spanId: id, traceId: selected.trace.id}})
 		)
 	}
 
-	const pickedSpan = Option.getOrUndefined(
-		Option.flatMap(
-			Option.filter(Option.fromUndefinedOr(navigation.selection), selected =>
-				Option.exists(activeTrace, trace => selected.traceId === trace.id)
-			),
-			selected => Option.fromUndefinedOr(selected.spanId)
-		)
-	)
-
+	const workspaceProps = {
+		active: Option.getOrUndefined(selection.activeOperation),
+		activeKey: Option.getOrUndefined(selection.activeKey),
+		activeTrace: Option.getOrUndefined(selection.activeTrace),
+		now,
+		onPickSpan: selectSpan,
+		onSelectOperation: selectOperation,
+		onSelectTrace: selectTrace,
+		pickedSpan: selection.pickedSpan,
+		source: selection.source
+	}
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
 			Boolean.match(isWide, {
-				onFalse: () => (
-					<NarrowWorkspace
-						active={Option.getOrUndefined(activeOperation)}
-						activeKey={Option.getOrUndefined(activeKey)}
-						activeTrace={Option.getOrUndefined(activeTrace)}
-						now={now}
-						onPickSpan={selectSpan}
-						onSelectOperation={selectOperation}
-						onSelectTrace={selectTrace}
-						pickedSpan={pickedSpan}
-						source={source}
-					/>
-				),
-				onTrue: () => (
-					<WideWorkspace
-						active={Option.getOrUndefined(activeOperation)}
-						activeKey={Option.getOrUndefined(activeKey)}
-						activeTrace={Option.getOrUndefined(activeTrace)}
-						now={now}
-						onPickSpan={selectSpan}
-						onSelectOperation={selectOperation}
-						onSelectTrace={selectTrace}
-						pickedSpan={pickedSpan}
-						source={source}
-					/>
-				)
+				onFalse: () => <NarrowWorkspace {...workspaceProps} />,
+				onTrue: () => <WideWorkspace {...workspaceProps} />
 			}),
-		onTrue: () => (
-			<MobileWorkspace
-				active={Option.getOrUndefined(activeOperation)}
-				activeKey={Option.getOrUndefined(activeKey)}
-				activeTrace={Option.getOrUndefined(activeTrace)}
-				now={now}
-				onPickSpan={selectSpan}
-				onSelectOperation={selectOperation}
-				onSelectTrace={selectTrace}
-				pane={pane}
-				pickedSpan={pickedSpan}
-				source={source}
-			/>
-		)
+		onTrue: () => <MobileWorkspace {...workspaceProps} pane={pane} />
 	})
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
@@ -1365,7 +800,10 @@ function Home() {
 						pipe(
 							Match.value(pane),
 							Match.when('Traces', () =>
-								Option.match(activeOperation, {onNone: () => 'Traces', onSome: active => active.operation.name})
+								Option.match(selection.activeOperation, {
+									onNone: () => 'Traces',
+									onSome: active => active.operation.name
+								})
 							),
 							Match.when('Span', () => 'Span'),
 							Match.orElse(() => 'Trace')
@@ -1383,12 +821,12 @@ function Home() {
 						onClick: () => send({_tag: 'Back'})
 					})
 				})}
-				controls={<StaleMark trace={Option.getOrUndefined(activeTrace)} />}
+				controls={<StaleMark trace={Option.getOrUndefined(selection.activeTrace)} />}
 				tabs={Option.match(value, {
 					onNone: () => undefined,
 					onSome: current =>
 						Boolean.match(isMobile && pane !== 'Operations', {
-							onFalse: () => <SourceTabs apps={current.apps} source={source} />,
+							onFalse: () => <SourceTabs apps={current.apps} source={selection.source} />,
 							onTrue: () => undefined
 						})
 				})}

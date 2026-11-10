@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Order} from 'effect'
+import {Array, Boolean, DateTime, Option, pipe} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -15,13 +15,12 @@ import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 
 import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
-import {accountAtom, admitAtom, dayLabel, peopleAtom, selectedRowAtom} from '#lib/utils.ts'
+import {accountAtom, admitAtom, peopleAtom, selectedRowAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
 // The row's own line, then its failed answer beneath it; its actions sit at its end.
 function PersonRow(props: {
 	children?: ReactNode
-	failure: Option.Option<string>
 	footer?: ReactNode
 	onSelect: () => void
 	person: Person
@@ -46,11 +45,7 @@ function PersonRow(props: {
 							<ShieldIcon role="img" aria-label="Admin" className="text-primary size-4 shrink-0" />
 						)}
 					</ItemTitle>
-					{Option.match(props.failure, {
-						onNone: () =>
-							props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>,
-						onSome: message => <ItemDescription>{message}</ItemDescription>
-					})}
+					{props.person.fullName !== undefined && <ItemDescription>@{props.person.name}</ItemDescription>}
 				</ItemContent>
 				{props.children}
 			</Item>
@@ -67,7 +62,6 @@ function AskingRow(props: {onSelect: () => void; person: Person; selected: boole
 			person={props.person}
 			selected={props.selected}
 			onSelect={props.onSelect}
-			failure={Option.none()}
 			footer={<ResultError result={admit} className="mb-2 ml-9" />}
 		>
 			<ItemActions>
@@ -87,7 +81,7 @@ function Since(props: {since: number}) {
 	return (
 		<ItemActions>
 			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{dayLabel(props.since)}
+				{pipe(DateTime.makeUnsafe(props.since), DateTime.formatLocal({month: 'short', year: 'numeric'}))}
 			</span>
 		</ItemActions>
 	)
@@ -95,7 +89,7 @@ function Since(props: {since: number}) {
 
 function MemberRow(props: {onSelect: () => void; person: Person; selected: boolean}) {
 	return (
-		<PersonRow person={props.person} selected={props.selected} onSelect={props.onSelect} failure={Option.none()}>
+		<PersonRow person={props.person} selected={props.selected} onSelect={props.onSelect}>
 			<Since since={props.person.since} />
 		</PersonRow>
 	)
@@ -108,41 +102,35 @@ function Directory() {
 	return (
 		<>
 			<h1 className="sr-only">People</h1>
-			{Array.match(
-				Array.sort(
-					useAtomSuspense(peopleAtom).value,
-					Order.mapInput(Order.Boolean, (person: Person) => person.role !== 'Waiting')
-				),
-				{
-					onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
-					onNonEmpty: rows => (
-						<Card size="list">
-							<div role="list" aria-label="People">
-								{Array.map(rows, person =>
-									Boolean.match(person.role === 'Waiting', {
-										onFalse: () => (
-											<MemberRow
-												key={person.id}
-												person={person}
-												selected={Option.contains(selected, `person-${person.id}`)}
-												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-											/>
-										),
-										onTrue: () => (
-											<AskingRow
-												key={person.id}
-												person={person}
-												selected={Option.contains(selected, `person-${person.id}`)}
-												onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-											/>
-										)
-									})
-								)}
-							</div>
-						</Card>
-					)
-				}
-			)}
+			{Array.match(useAtomSuspense(peopleAtom).value, {
+				onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
+				onNonEmpty: rows => (
+					<Card size="list">
+						<div role="list" aria-label="People">
+							{Array.map(rows, person =>
+								Boolean.match(person.role === 'Waiting', {
+									onFalse: () => (
+										<MemberRow
+											key={person.id}
+											person={person}
+											selected={Option.contains(selected, `person-${person.id}`)}
+											onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+										/>
+									),
+									onTrue: () => (
+										<AskingRow
+											key={person.id}
+											person={person}
+											selected={Option.contains(selected, `person-${person.id}`)}
+											onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+										/>
+									)
+								})
+							)}
+						</div>
+					</Card>
+				)
+			})}
 		</>
 	)
 }
@@ -150,7 +138,7 @@ function Directory() {
 function PeopleRoute() {
 	if (!Option.exists(useAtomSuspense(accountAtom).value, signed => signed.role === 'Admin')) return <Navigate to="/" />
 	return (
-		<Suspense fallback={<PeopleRowsSkeleton label="People" rows={3} />}>
+		<Suspense fallback={<PeopleRowsSkeleton />}>
 			<Directory />
 		</Suspense>
 	)

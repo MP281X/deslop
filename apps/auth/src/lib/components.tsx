@@ -1,11 +1,10 @@
 import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {useEffect, useState} from 'react'
-import {toQR} from 'toqr'
+import {useState} from 'react'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
@@ -24,47 +23,20 @@ import codex from '#lib/brands/codex.svg'
 import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
-import {
-	ageLabel,
-	appsAtom,
-	avatarUrl,
-	catalogAtom,
-	consentAtom,
-	minuteAtom,
-	minutesSince,
-	newest,
-	pendingAtom,
-	requestCode,
-	selectedRowAtom,
-	signInLabel
-} from '#lib/utils.ts'
+import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, selectedRowAtom, signInLabel} from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 
-// The link as a QR code, one square per dark module, inside the quiet zone scanners need.
-export function QrCode(props: {className?: string; text: string}) {
-	const modules = Array.fromIterable(toQR(props.text))
-	const size = Math.sqrt(modules.length)
-	return (
-		<svg
-			viewBox={`-2 -2 ${size + 4} ${size + 4}`}
-			shapeRendering="crispEdges"
-			fill="currentColor"
-			className={props.className}
-			aria-hidden="true"
-		>
-			<path
-				d={pipe(
-					modules,
-					Array.map((dark, index) => ({dark, x: index % size, y: Math.floor(index / size)})),
-					Array.filter(module => module.dark === 1),
-					Array.map(module => `M${module.x} ${module.y}h1v1h-1z`),
-					Array.join('')
-				)}
-			/>
-		</svg>
-	)
+function ageLabel(minutes: number) {
+	if (minutes < 1) return 'now'
+	if (minutes < 60) return `${minutes}m`
+	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
+	return `${Math.floor(minutes / 1440)}d`
+}
+
+function newest(apps: readonly SignedInApp[]) {
+	return Array.reduce(apps, 0, (latest, app) => Number.max(latest, app.lastActive))
 }
 
 // A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
@@ -74,22 +46,20 @@ export function AccountAvatar(props: {id: string; name: string; small?: boolean}
 			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
 			className={cn(props.small === true && 'size-4')}
 		>
-			<AvatarImage src={avatarUrl(props.id)} alt={props.name} />
+			<AvatarImage
+				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.id)}?s=96`}
+				alt={props.name}
+			/>
 			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
 		</Avatar>
 	)
 }
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-export function AppIcon(props: {origin: string; small?: boolean}) {
+export function AppIcon(props: {origin: string}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
-		<span
-			className={cn(
-				'text-muted-foreground relative flex shrink-0 items-center justify-center',
-				Boolean.match(props.small === true, {onFalse: () => 'size-5', onTrue: () => 'size-4'})
-			)}
-		>
+		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
 			{state !== 'loaded' && <AppWindowIcon className="size-4" />}
 			{state !== 'failed' && (
 				<img
@@ -143,13 +113,13 @@ function PendingRowSkeleton() {
 }
 
 // The signed-in rows a card will hold while its data loads, at the loaded rows' geometry: 16px mark at the gutter, name at 44px, figures right-aligned.
-export function SignInRowsSkeleton(props: {label: string; pending?: boolean; rows: number}) {
+export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label={props.label} role="status">
+			<div aria-busy="true" aria-label="Signed in" role="status">
 				<div role="list" aria-label="Signed-in clients">
 					{props.pending === true && <PendingRowSkeleton />}
-					{Array.map(Array.range(1, props.rows), row => (
+					{Array.map(Array.range(1, 9), row => (
 						<ClientRowSkeleton key={row} />
 					))}
 				</div>
@@ -159,12 +129,12 @@ export function SignInRowsSkeleton(props: {label: string; pending?: boolean; row
 }
 
 // The people rows a card will hold while the list loads, with the mark, name, handle and since date.
-export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
+export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label={props.label} role="status">
+			<div aria-busy="true" aria-label="People" role="status">
 				<div role="list" aria-label="People">
-					{Array.map(Array.range(1, props.rows), row => (
+					{Array.map(Array.range(1, 3), row => (
 						<Item key={row} aria-hidden size="row">
 							<ItemMedia className="size-4">
 								<Skeleton className="size-4" />
@@ -186,46 +156,47 @@ export function PeopleRowsSkeleton(props: {label: string; rows: number}) {
 
 const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
 
-function brandLogoOf(client: Client) {
-	if (client.kind === 'Browser') return Option.map(Record.get(BROWSERS, client.name), src => ({invert: false, src}))
-	if (Option.isSome(String.match(/claude/iu)(client.name))) return Option.some({invert: false, src: claude})
-	if (Option.isSome(String.match(/codex/iu)(client.name))) return Option.some({invert: true, src: codex})
-	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
-	if (Option.isSome(String.match(/gateway/iu)(client.name))) return Option.none()
-	if (Array.contains(['iPhone', 'iPad'], client.device)) return Option.some({invert: true, src: apple})
-	if (client.device === 'Android') return Option.some({invert: false, src: android})
-	return Option.none()
-}
-
 type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
 
 function Brand(props: {client: Client}) {
-	return Option.match(brandLogoOf(props.client), {
-		onNone: () =>
-			pipe(
-				Match.value(props.client),
-				Match.when({kind: 'Browser'}, () => <GlobeIcon />),
-				Match.when(
-					client => Option.isSome(String.match(/gateway/iu)(client.name)),
-					() => <GraphIcon />
-				),
-				Match.orElse(() => <HardDrivesIcon />)
-			),
-		onSome: brand => <img src={brand.src} alt="" className={cn('size-3.5', brand.invert && 'dark:invert')} />
-	})
+	if (props.client.kind === 'Browser') {
+		return Option.match(Record.get(BROWSERS, props.client.name), {
+			onNone: () => <GlobeIcon />,
+			onSome: src => <img src={src} alt="" className="size-3.5" />
+		})
+	}
+	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
+		return <img src={claude} alt="" className="size-3.5" />
+	}
+	if (Option.isSome(String.match(/codex/iu)(props.client.name))) {
+		return <img src={codex} alt="" className="size-3.5 dark:invert" />
+	}
+	// The gateway runs on a server whatever device approved it, so its glyph wins over the device's logo.
+	if (Option.isSome(String.match(/gateway/iu)(props.client.name))) return <GraphIcon />
+	if (Array.contains(['iPhone', 'iPad'], props.client.device)) {
+		return <img src={apple} alt="" className="size-3.5 dark:invert" />
+	}
+	if (props.client.device === 'Android') return <img src={android} alt="" className="size-3.5" />
+	return <HardDrivesIcon />
 }
 
 function ClientIcon(props: {client: Client}) {
 	return Option.match(props.client.app, {
 		onNone: () => <Brand client={props.client} />,
-		onSome: origin => <AppIcon origin={origin} small />
+		onSome: origin => <AppIcon origin={origin} />
 	})
 }
 
 type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: number}
 
 function ClientRow(props: {client: SignedInClient; now: number; onSelect: () => void; selected: boolean}) {
-	const active = ageLabel(minutesSince(props.client.lastActive, props.now))
+	const active = ageLabel(
+		Math.floor(
+			Duration.toMinutes(
+				DateTime.distance(DateTime.makeUnsafe(props.client.lastActive), DateTime.makeUnsafe(props.now))
+			)
+		)
+	)
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<div role="listitem">
@@ -274,7 +245,7 @@ function PendingMark(props: {catalog: readonly {name: string; origin: string}[];
 					onFalse: () => <HardDrivesIcon />,
 					onTrue: () => <GlobeIcon />
 				}),
-			onSome: origin => <AppIcon origin={origin} small />
+			onSome: origin => <AppIcon origin={origin} />
 		}
 	)
 }
@@ -363,8 +334,6 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 	const checking = props.checking === true && Option.isNone(props.pending)
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
-	const setPending = useAtomSet(pendingAtom)
-	useEffect(() => setPending(props.pending), [props.pending, setPending])
 	if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 		return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
 	}

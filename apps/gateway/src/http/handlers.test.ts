@@ -6,6 +6,7 @@ import {
 	Boolean,
 	Clock,
 	ConfigProvider,
+	Context,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -14,6 +15,7 @@ import {
 	MutableList,
 	Option,
 	Queue,
+	Redacted,
 	Ref,
 	Schema,
 	Stream,
@@ -22,38 +24,27 @@ import {
 } from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
-import {
-	Cookies,
-	FetchHttpClient,
-	HttpClient,
-	HttpClientResponse,
-	HttpRouter,
-	HttpServerRequest,
-	HttpServerResponse
-} from 'effect/http'
+import {Cookies, FetchHttpClient, HttpClient, HttpClientResponse, HttpRouter} from 'effect/http'
 import {RpcTest} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
 import type {User} from '@deslop/runtime/auth/schema'
-import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
-import {AUTH_URL, CurrentUser} from '@deslop/runtime/auth/utils'
+import {Auth} from '@deslop/runtime/auth/service'
+import {AUTH_URL} from '@deslop/runtime/auth/utils'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {AiKeyInfo, AiSetKey} from '#services/ai/schema.ts'
-import type {AiUsageReport} from '#services/ai/schema.ts'
+import type {AiProvider, AiUsageReport} from '#services/ai/schema.ts'
 import {AiProxy} from '#services/ai/service.ts'
-import {connectionStatus, summary} from '#services/connections/lib/utils.ts'
-import {AddServer, ConnectionInfo, ServerParams} from '#services/connections/schema.ts'
+import {ConnectionInfo} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
-import {Gateway, GatewayDiscovery} from '#services/gateway/service.ts'
+import {GatewayMcp} from '#services/gateway/mcp.ts'
+import {Gateway} from '#services/gateway/service.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
-import {Tools} from '#tools/contracts.ts'
-import {ToolHandlers} from '#tools/handlers.ts'
 
 const GATEWAY_URL = 'https://gateway.mp281x.xyz'
 const ACCOUNTS: Record<string, User> = {
@@ -75,33 +66,6 @@ const PROVIDERS = {
 }
 const SESSION = 'session=octocat'
 const TOKEN = 'agent.octocat.signature'
-
-const mcp = Layer.unwrap(
-	Effect.gen(function* () {
-		const now = yield* Clock.currentTimeMillis
-		return pipe(
-			ServerRuntime.layerMcp({
-				instructions: Array.join(
-					[
-						"Gateway to the user's MCP servers; tools are named <server>__<tool>.",
-						...Array.map(
-							Array.filter(
-								yield* (yield* Connections).definitions,
-								server => connectionStatus(server, now) === 'Connected'
-							),
-							server => `${server.id}: ${summary(server)}`
-						),
-						'If a tool is missing or failing, list_mcp_connections says why.'
-					],
-					'\n'
-				),
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
-			}),
-			Layer.provide(GatewayDiscovery.layer),
-			Layer.provide(McpServer.McpServer.layer)
-		)
-	})
-)
 
 function discoveryResponse(url: string, challengeMethods?: string[]) {
 	if (url === 'https://challenge.example.com/resource-info') {
@@ -205,12 +169,6 @@ function upstreamHttpResponse(request: Request, challengeMethods?: string[]) {
 	return undefined
 }
 
-function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
-	return Effect.catchIf(handler, Schema.is(AuthError), failure =>
-		Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))
-	)
-}
-
 function account(login?: string) {
 	return pipe(
 		Option.fromUndefinedOr(ACCOUNTS[login ?? '']),
@@ -245,7 +203,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const scope = yield* Effect.scope
 	const memoMap = yield* Layer.makeMemoMap
 	const verified = yield* Ref.make(0)
-	const ready = yield* Queue.make<true>()
 	const rejectAccess = yield* Ref.make('never')
 	const pauseReject = yield* Ref.make(false)
 	const rejectReady = yield* Queue.make<true>()
@@ -457,124 +414,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
 				pipe(
-					Layer.mergeAll(
-						AiHttpHandlers,
-						HttpHandlers,
-						mcp,
-						pipe(
-							Layer.mergeAll(
-								HttpRouter.add(
-									'GET',
-									'/server-events',
-									Effect.gen(function* () {
-										return HttpServerResponse.stream(
-											pipe(
-												(yield* Connections).watch(yield* CurrentUser),
-												Stream.take(2),
-												Stream.mapEffect((snapshot, index) =>
-													Effect.gen(function* () {
-														if (index === 0) yield* Queue.offer(ready, true)
-														return new TextEncoder().encode(
-															`${yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(snapshot)}\n`
-														)
-													})
-												)
-											)
-										)
-									})
-								),
-								HttpRouter.add(
-									'POST',
-									'/servers/remove',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(ServerParams)
-											yield* (yield* Connections).remove(input.id, yield* CurrentUser)
-											return HttpServerResponse.empty()
-										}),
-										refused
-									)
-								),
-								HttpRouter.add(
-									'POST',
-									'/servers',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(AddServer)
-											return yield* HttpServerResponse.schemaJson(ConnectionInfo)(
-												yield* (yield* Connections).add(
-													input.url,
-													yield* CurrentUser,
-													(yield* HttpServerRequest.HttpServerRequest).headers
-												)
-											)
-										}),
-										refused
-									)
-								),
-								HttpRouter.add(
-									'GET',
-									'/servers/discovered',
-									Effect.gen(function* () {
-										return yield* HttpServerResponse.schemaJson(Schema.Array(ConnectionInfo))(
-											yield* Effect.flatMap(
-												Stream.runHead(
-													Stream.filter((yield* Connections).watch(yield* CurrentUser), rows =>
-														Array.every(
-															rows,
-															row => row.status !== 'Connected' || Array.isReadonlyArrayNonEmpty(row.tools)
-														)
-													)
-												),
-												Effect.fromOption
-											)
-										)
-									})
-								),
-								HttpRouter.add(
-									'GET',
-									'/servers',
-									pipe(
-										Effect.gen(function* () {
-											return yield* HttpServerResponse.schemaJson(Schema.Array(ConnectionInfo))(
-												yield* Effect.flatMap(
-													Stream.runHead((yield* Connections).watch(yield* CurrentUser)),
-													Effect.fromOption
-												)
-											)
-										}),
-										refused
-									)
-								),
-								// The keys page's reader and writer, which the MCP tools remove from.
-								HttpRouter.add(
-									'GET',
-									'/ai/keys',
-									pipe(
-										Effect.gen(function* () {
-											return yield* HttpServerResponse.schemaJson(Schema.Array(AiKeyInfo))(
-												yield* (yield* AiProxy).keys((yield* CurrentUser).id)
-											)
-										}),
-										refused
-									)
-								),
-								HttpRouter.add(
-									'POST',
-									'/ai/keys',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(AiSetKey)
-											yield* (yield* AiProxy).setKey((yield* CurrentUser).id, input.provider, input.secret)
-											return HttpServerResponse.empty()
-										}),
-										refused
-									)
-								)
-							),
-							Layer.provide(HttpAuth.layer)
-						)
-					),
+					Layer.mergeAll(AiHttpHandlers, HttpHandlers, GatewayMcp),
 					Layer.provideMerge(Layer.provide(Gateway.layer, McpServer.McpServer.layer)),
 					Layer.provideMerge(Connections.layer),
 					Layer.provideMerge(AiProxy.layer),
@@ -589,18 +429,42 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		handler => Effect.promise(() => handler.dispose())
 	)
 	return {
+		add: (url: string) => client('gateway.add', {url}, {headers: {cookie: SESSION}}),
+		addFailure: (url: string, session: string = SESSION) =>
+			Effect.flip(client('gateway.add', {url}, {headers: {cookie: session}})),
 		challengeMethods,
 		client,
+		discovered: () =>
+			Effect.flatMap(
+				Stream.runHead(
+					Stream.filter(client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+						Array.every(rows, row => row.status !== 'Connected' || row.tools > 0)
+					)
+				),
+				Effect.fromOption
+			),
 		grants,
+		keys: (session: string) => client('ai.keys', undefined, {headers: {cookie: session}}),
+		list: (session: string = SESSION) =>
+			Effect.flatMap(
+				Stream.runHead(client('gateway.servers', undefined, {headers: {cookie: session}})),
+				Effect.fromOption
+			),
 		metadataUnavailable,
 		pauseReject,
 		providerName,
-		ready,
 		registrations,
 		rejectAccess,
 		rejectContinue,
 		rejectReady,
+		remove: (id: string, session: string = SESSION) =>
+			Context.get(rpc, Connections).remove(
+				id,
+				Option.getOrThrow(Option.fromUndefinedOr(ACCOUNTS[String.replace(/^session=/u, '')(session)]))
+			),
 		sessions,
+		setKey: (session: string, aiProvider: AiProvider, secret: string) =>
+			client('ai.setKey', {provider: aiProvider, secret: Redacted.make(secret)}, {headers: {cookie: session}}),
 		stall,
 		stallReady,
 		toolNames,
@@ -624,20 +488,6 @@ function cookie(response: Response) {
 	)
 }
 
-const post = Effect.fnUntraced(function* (web: Web, path: string, session: string, body: unknown) {
-	return yield* send(web, path, {
-		body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body),
-		headers: {'content-type': 'application/json', cookie: session},
-		method: 'POST'
-	})
-})
-
-const addMcp = Effect.fnUntraced(function* (web: Web, url: string) {
-	const response = yield* post(web, '/servers', SESSION, {url})
-	assert.strictEqual(response.status, 200)
-	return yield* Schema.decodeEffect(Schema.fromJsonString(ConnectionInfo))(yield* Effect.promise(() => response.text()))
-})
-
 const connect = Effect.fnUntraced(function* (web: Web, id: string, answer: Record<string, string>) {
 	const start = yield* send(web, `/oauth/connect?id=${id}`, {headers: {cookie: SESSION}})
 	return yield* send(
@@ -645,20 +495,6 @@ const connect = Effect.fnUntraced(function* (web: Web, id: string, answer: Recor
 		`/oauth/callback/${id}?${new URLSearchParams({...answer, state: new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''})}`,
 		{headers: {cookie: `${SESSION}; ${cookie(start)}`}}
 	)
-})
-
-const listServers = Effect.fnUntraced(function* (web: Web) {
-	const response = yield* send(web, '/servers', {headers: {cookie: SESSION}})
-	return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
-		yield* Effect.promise(() => response.text())
-	)
-})
-
-const listKeys = Effect.fnUntraced(function* (web: Web, session: string) {
-	const response = yield* send(web, '/ai/keys', {headers: {cookie: session}})
-	return yield* Schema.decodeEffect(
-		Schema.fromJsonString(Schema.Array(Schema.Struct({last4: Schema.String, provider: Schema.String})))
-	)(yield* Effect.promise(() => response.text()))
 })
 
 const callTool = Effect.fnUntraced(function* (web: Web, token: string, name: string, input: Record<string, unknown>) {
@@ -731,7 +567,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'keeps live authorizations when unknown callbacks arrive and exchanges a state only once',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			const start = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 			const state = new URL(start.headers.get('location') ?? '').searchParams.get('state') ?? ''
 			for (const index of Array.range(0, 64)) {
@@ -757,12 +593,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'shows fresh discovery failures on the connection and recovers on the next attempt',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			yield* Ref.set(gateway.metadataUnavailable, true)
 			const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 			assert.strictEqual(response.status, 302)
 			assert.strictEqual(response.headers.get('location'), '/')
-			assert.isNotEmpty((yield* listServers(gateway.web))[0]?.error ?? '')
+			assert.isNotEmpty((yield* gateway.list())[0]?.error ?? '')
 			assert.strictEqual(gateway.registrations.length, 1)
 			assert.strictEqual(gateway.grants.length, 0)
 			yield* Ref.set(gateway.metadataUnavailable, false)
@@ -777,13 +613,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'refuses authorization unless the provider currently advertises S256 PKCE',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			for (const methods of [Option.none<string[]>(), Option.some(['plain'])]) {
 				yield* Ref.set(gateway.challengeMethods, methods)
 				const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 				assert.strictEqual(response.status, 302)
 				assert.strictEqual(response.headers.get('location'), '/')
-				assert.include((yield* listServers(gateway.web))[0]?.error ?? '', 'S256 PKCE')
+				assert.include((yield* gateway.list())[0]?.error ?? '', 'S256 PKCE')
 				assert.strictEqual(gateway.registrations.length, 1)
 			}
 			yield* Ref.set(gateway.challengeMethods, Option.some(['S256']))
@@ -797,11 +633,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 	test.effect(
 		'uses the local trusted developer without production admin configuration',
 		Effect.fnUntraced(function* () {
+			const gateway = yield* servers(undefined, 'http://127.0.0.1:5000', true)
 			assert.strictEqual(
-				(yield* post((yield* servers(undefined, 'http://127.0.0.1:5000', true)).web, '/servers', 'session=dev', {
-					url: 'https://public.example.com/mcp'
-				})).status,
-				200
+				(yield* gateway.client(
+					'gateway.add',
+					{url: 'https://public.example.com/mcp'},
+					{headers: {cookie: 'session=dev'}}
+				)).status,
+				'Connected'
 			)
 		})
 	)
@@ -816,7 +655,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)(yield* Effect.promise(() => metadata.text()))
 			assert.strictEqual(document.client_id, `${origin}/oauth/client.json`)
 			assert.deepStrictEqual(document.redirect_uris, [`${origin}/oauth/callback`])
-			const added = yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			const added = yield* gateway.add(PROVIDERS.mobbin.url)
 			assert.strictEqual(
 				new URL(
 					(yield* send(gateway.web, `/oauth/connect?id=${added.id}`, {headers: {cookie: SESSION}})).headers.get(
@@ -825,8 +664,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				).searchParams.get('redirect_uri'),
 				`${origin}/oauth/callback/${added.id}`
 			)
-			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: `${origin}/mcp`})).status, 400)
-			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			assert.isTrue(Schema.is(AuthError)(yield* gateway.addFailure(`${origin}/mcp`)))
+			const publicServer = yield* gateway.add('https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			const verifiedBefore = yield* Ref.get(gateway.verified)
 			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
@@ -842,7 +681,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'discovers challenge-only metadata and authorizes with a client metadata document only when the answer names its issuer',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			const added = yield* addMcp(gateway.web, 'https://challenge.example.com/mcp')
+			const added = yield* gateway.add('https://challenge.example.com/mcp')
 			assert.strictEqual(added.status, 'Not connected')
 			const answerWith = Effect.fnUntraced(function* (search: Record<string, string>) {
 				const start = yield* send(gateway.web, `/oauth/connect?id=${added.id}`, {headers: {cookie: SESSION}})
@@ -866,9 +705,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				['https://challenge.example.com/mcp']
 			)
-			assert.strictEqual(
-				(yield* post(gateway.web, '/servers', SESSION, {url: 'https://silent.example.com/mcp'})).status,
-				400
+			yield* gateway.addFailure('https://silent.example.com/mcp')
+			assert.deepStrictEqual(
+				Array.map(yield* gateway.list(), server => server.id),
+				[added.id]
 			)
 		})
 	)
@@ -876,7 +716,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'encodes unsafe tool names and keeps vanished and removed tools out of lists and calls',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			const added = yield* gateway.add('https://public.example.com/mcp')
 			yield* Ref.set(gateway.toolNames, ['search.docs', 'search_docs', 'search__encoded_literal'])
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
@@ -913,7 +753,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.deepStrictEqual(yield* listed(), [`${added.id}__search_docs`])
 			const vanished = yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'gone'}, name: encoded})
 			assert.isTrue(String.includes('error')(yield* Effect.promise(() => vanished.text())))
-			yield* post(gateway.web, '/servers/remove', SESSION, {id: added.id})
+			yield* gateway.remove(added.id)
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			assert.deepStrictEqual(yield* listed(), [])
 		})
@@ -922,7 +762,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'never retries an old URL with a removed and replaced connection’s credentials',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			const approve = connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			yield* approve
 			yield* modern(gateway.web, TOKEN, 'tools/list')
@@ -932,8 +772,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'racing'}, name: 'mobbin__search'})
 			)
 			yield* Queue.take(gateway.rejectReady)
-			yield* post(gateway.web, '/servers/remove', SESSION, {id: 'mobbin'})
-			assert.strictEqual((yield* addMcp(gateway.web, 'https://app.mobbin.net/mcp')).id, 'mobbin')
+			yield* gateway.remove('mobbin')
+			assert.strictEqual((yield* gateway.add('https://app.mobbin.net/mcp')).id, 'mobbin')
 			yield* approve
 			yield* Queue.offer(gateway.rejectContinue, true)
 			const response = yield* Fiber.join(pending)
@@ -953,14 +793,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			yield* Ref.set(gateway.providerName, '   ')
-			assert.deepStrictEqual(yield* listServers(gateway.web), [])
-			const publicServer = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			assert.deepStrictEqual(yield* gateway.list(), [])
+			const publicServer = yield* gateway.add('https://public.example.com/mcp')
 			assert.strictEqual(publicServer.name, 'Public')
 			assert.strictEqual(publicServer.status, 'Connected')
-			assert.deepStrictEqual(publicServer.tools, [{description: 'Search example', name: 'search'}])
+			assert.strictEqual(publicServer.tools, 1)
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
-			const external = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
-			const collision = yield* addMcp(gateway.web, 'https://mcp.example.net/mcp')
+			const external = yield* gateway.add('https://mcp.example.com/mcp')
+			const collision = yield* gateway.add('https://mcp.example.net/mcp')
 			assert.strictEqual(external.id, 'example')
 			assert.match(collision.id, /^example_[a-z0-9_-]{6}$/u)
 			assert.strictEqual(external.status, 'Not connected')
@@ -968,8 +808,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const beforeText = yield* Effect.promise(() => before.text())
 			assert.isTrue(String.includes(`${publicServer.id}__search`)(beforeText))
 			assert.isFalse(String.includes('example__search')(beforeText))
-			assert.strictEqual((yield* post(gateway.web, '/servers/remove', SESSION, {id: publicServer.id})).status, 204)
-			assert.strictEqual((yield* addMcp(gateway.web, publicServer.url)).id, publicServer.id)
+			yield* gateway.remove(publicServer.id)
+			assert.strictEqual((yield* gateway.add(publicServer.url)).id, publicServer.id)
 			const previousRequests = MutableList.toArray(gateway.upstreamRequests)
 			const stale = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'stale definition'},
@@ -983,16 +823,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				name: `${publicServer.id}__search`
 			})
 			assert.isTrue(String.includes('new definition')(yield* Effect.promise(() => called.text())))
-			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: publicServer.url})).status, 400)
+			assert.isTrue(Schema.is(AuthError)(yield* gateway.addFailure(publicServer.url)))
+			const stranger = yield* gateway.addFailure('https://another.example.com/mcp', 'session=stranger')
+			const self = yield* gateway.addFailure(`${GATEWAY_URL}/mcp`)
 			assert.deepStrictEqual(
-				[
-					(yield* post(gateway.web, '/servers', 'session=stranger', {url: 'https://another.example.com/mcp'})).status,
-					(yield* post(gateway.web, '/servers', SESSION, {url: `${GATEWAY_URL}/mcp`})).status
-				],
-				[400, 400]
+				[Schema.is(AuthError)(stranger), stranger.error, Schema.is(AuthError)(self), self.error],
+				[true, 'access_denied', true, undefined]
 			)
-			const snapshot = yield* send(gateway.web, '/servers', {headers: {cookie: SESSION}})
-			const snapshotText = yield* Effect.promise(() => snapshot.text())
+			const snapshotText = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
+				yield* gateway.list()
+			)
 			assert.isFalse(String.includes('access_token')(snapshotText))
 			assert.isFalse(String.includes('refresh_token')(snapshotText))
 			assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
@@ -1002,7 +842,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'counts each proxied tool call in a usage window that moves at the bucket boundary',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			const added = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+			const added = yield* gateway.add('https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			const updates = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
 			yield* Effect.forkScoped(
@@ -1012,7 +852,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			const first = yield* Queue.take(updates)
 			assert.deepStrictEqual(first, {
-				range: {bucket: 'hour', count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
+				range: {count: 24, from: -82_800_000, size: 3_600_000, to: 3_600_000},
 				report: [{id: added.id, series: []}]
 			})
 			for (const index of Array.range(1, 2)) {
@@ -1033,7 +873,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// Past the hour boundary, the window moves and a later call still counts.
 			yield* TestClock.adjust('1 hour')
 			assert.deepStrictEqual((yield* Queue.take(updates)).range, {
-				bucket: 'hour',
 				count: 24,
 				from: -79_200_000,
 				size: 3_600_000,
@@ -1069,7 +908,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'streams AI usage only to the person whose calls it counts',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* post(gateway.web, '/ai/keys', 'session=stranger', {provider: 'anthropic', secret: 'sk-stranger'})
+			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
 			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			yield* Effect.forkScoped(
@@ -1082,8 +921,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Queue.offer(theirs, value)
 				)
 			)
-			assert.strictEqual((yield* Queue.take(mine)).report.totals.calls, 0)
-			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 0)
+			assert.deepStrictEqual((yield* Queue.take(mine)).report.byProvider, [])
+			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [])
 			const called = yield* send(gateway.web, '/ai/anthropic/json', {
 				body: '{"model":"test"}',
 				headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
@@ -1093,7 +932,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Effect.promise(() => called.text())
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
-			assert.strictEqual((yield* Queue.take(theirs)).report.totals.calls, 1)
+			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [
+				{costUsd: 0.123, name: 'anthropic', unknownCostCalls: 0}
+			])
 			// Another person's call never reaches this reader, not even as a tick.
 			assert.strictEqual(yield* Queue.size(mine), 0)
 		})
@@ -1107,8 +948,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					const gateway = yield* servers(home)
 					assert.strictEqual((yield* modern(gateway.web, '', 'tools/list')).status, 401)
 					assert.strictEqual(gateway.upstreamRequests.length, 0)
-					yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
-					yield* addMcp(gateway.web, 'https://public.example.com/mcp')
+					yield* gateway.add(PROVIDERS.mobbin.url)
+					yield* gateway.add('https://public.example.com/mcp')
 					const start = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 					const target = new URL(start.headers.get('location') ?? '')
 					assert.strictEqual(target.searchParams.get('code_challenge_method'), 'S256')
@@ -1202,7 +1043,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isTrue(String.includes('list_mcp_connections')(partialText))
 			assert.isTrue(String.includes('public__search')(partialText))
 			assert.strictEqual((yield* modern(gateway.web, TOKEN, 'tools/list')).status, 200)
-			assert.strictEqual((yield* post(gateway.web, '/servers/remove', SESSION, {id: 'mobbin'})).status, 204)
+			yield* gateway.remove('mobbin')
 			const disconnected = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'blocked'},
 				name: 'mobbin__search'
@@ -1221,7 +1062,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'forwards the browser and each agent token to a Deslop MCP without connecting',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			const added = yield* addMcp(gateway.web, 'https://stash.mp281x.xyz/mcp')
+			const added = yield* gateway.add('https://stash.mp281x.xyz/mcp')
 			assert.strictEqual(added.status, 'Connected')
 			assert.strictEqual(gateway.registrations.length, 0)
 			assert.strictEqual(gateway.grants.length, 0)
@@ -1252,7 +1093,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			}
 			assert.deepStrictEqual(
 				Array.map(
-					Array.filter(yield* listServers(gateway.web), server => server.id === added.id),
+					Array.filter(yield* gateway.list(), server => server.id === added.id),
 					server => server.icons
 				),
 				[[{src: 'https://example.com/icon.png', theme: 'dark'}]]
@@ -1263,7 +1104,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'never sends the caller’s token to a server outside Deslop that names Auth',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			assert.notStrictEqual((yield* addMcp(gateway.web, 'https://mimic.example.com/mcp')).status, 'Connected')
+			assert.notStrictEqual((yield* gateway.add('https://mimic.example.com/mcp')).status, 'Connected')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			assert.isFalse(
 				Array.some(
@@ -1277,16 +1118,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'reads a newly connected server’s tools at once, even while an agent’s read is still running',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			assert.deepStrictEqual(
-				Array.map(yield* listServers(gateway.web), server => [server.status, server.tools]),
-				[['Connected', [{description: 'Search example', name: 'search'}]]]
+				Array.map(yield* gateway.list(), server => [server.status, server.tools]),
+				[['Connected', 1]]
 			)
 			yield* Ref.set(gateway.stall, true)
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
 			yield* Queue.take(gateway.stallReady)
-			const other = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
+			const other = yield* gateway.add('https://mcp.example.com/mcp')
 			const connecting = yield* Effect.forkScoped(
 				connect(gateway.web, other.id, {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			)
@@ -1294,17 +1135,11 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* TestClock.adjust('21 seconds')
 			yield* Fiber.join(connecting)
 			yield* Fiber.join(agent)
-			const discovered = yield* send(gateway.web, '/servers/discovered', {headers: {cookie: SESSION}})
 			assert.deepStrictEqual(
-				Array.map(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
-						yield* Effect.promise(() => discovered.text())
-					),
-					server => [server.id, server.tools]
-				),
+				Array.map(yield* gateway.discovered(), server => [server.id, server.tools]),
 				[
-					['mobbin', [{description: 'Search example', name: 'search'}]],
-					[other.id, [{description: 'Search example', name: 'search'}]]
+					['mobbin', 1],
+					[other.id, 1]
 				]
 			)
 		})
@@ -1313,7 +1148,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'keeps a working connection and its client when a reconnect is abandoned',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
@@ -1334,7 +1169,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'does not retain the previous account’s refresh token when a new authorization omits one',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			for (const code of ['provider-code', 'no-refresh']) {
 				assert.strictEqual((yield* connect(gateway.web, 'mobbin', {code, iss: PROVIDERS.mobbin.issuer})).status, 302)
 			}
@@ -1345,23 +1180,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			})
 			assert.isTrue(String.includes('still valid')(yield* Effect.promise(() => shortLived.text())))
 			const requestsBeforeExpiry = MutableList.toArray(gateway.upstreamRequests)
+			const ready = yield* Queue.make<true>()
 			const updates = yield* pipe(
-				send(gateway.web, '/server-events', {headers: {cookie: SESSION}}),
-				Effect.flatMap(response => Effect.promise(() => response.text())),
+				gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}),
+				Stream.tap(() => Queue.offer(ready, true)),
+				Stream.take(2),
+				Stream.runCollect,
 				Effect.forkScoped
 			)
-			yield* Queue.take(gateway.ready)
+			yield* Queue.take(ready)
 			// The list is read again each minute, so the token's end at 30 seconds shows by the next read.
 			yield* TestClock.adjust('61 seconds')
 			assert.deepStrictEqual(
-				yield* Effect.forEach(
-					pipe(yield* Fiber.join(updates), String.trim, String.split('\n')),
-					line =>
-						pipe(
-							Schema.decodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(line),
-							Effect.map(snapshot => Array.map(snapshot, server => server.status))
-						),
-					{concurrency: 1}
+				Array.map(Array.fromIterable(yield* Fiber.join(updates)), snapshot =>
+					Array.map(snapshot, server => server.status)
 				),
 				[['Connected'], ['Expired']]
 			)
@@ -1377,7 +1209,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'rejects provider callbacks from another issuer and non-admin connection management',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* addMcp(gateway.web, PROVIDERS.mobbin.url)
+			yield* gateway.add(PROVIDERS.mobbin.url)
 			yield* connect(gateway.web, 'mobbin', {code: 'missing-issuer'})
 			assert.strictEqual(gateway.grants.length, 0)
 			assert.strictEqual(
@@ -1413,7 +1245,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual(gateway.grants.length, 0)
 			assert.deepStrictEqual(
-				Array.map(yield* listServers(gateway.web), server => server.error),
+				Array.map(yield* gateway.list(), server => server.error),
 				['The answer came from another authorization server']
 			)
 			params.set('iss', PROVIDERS.mobbin.issuer)
@@ -1425,25 +1257,26 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual(gateway.grants.length, 0)
 			// A provider cannot redirect metadata discovery to a different issuer.
-			assert.strictEqual((yield* post(gateway.web, '/servers', SESSION, {url: PROVIDERS.dual.url})).status, 400)
-			assert.strictEqual((yield* post(gateway.web, '/servers/remove', 'session=stranger', {id: 'mobbin'})).status, 400)
+			assert.isTrue(Schema.is(AuthError)(yield* gateway.addFailure(PROVIDERS.dual.url)))
+			const denied = yield* Effect.flip(gateway.remove('mobbin', 'session=stranger'))
+			assert.deepStrictEqual([Schema.is(AuthError)(denied), denied.error], [true, 'access_denied'])
 		})
 	)
 	test.effect(
 		'removes a shared MCP server through the MCP tool only as an admin',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			const first = yield* addMcp(gateway.web, 'https://public.example.com/mcp')
-			const second = yield* addMcp(gateway.web, 'https://mcp.example.com/mcp')
+			const first = yield* gateway.add('https://public.example.com/mcp')
+			const second = yield* gateway.add('https://mcp.example.com/mcp')
 			const denied = yield* callTool(gateway.web, 'agent.stranger.signature', 'remove_mcp_server', {server: first.id})
 			assert.include(yield* Effect.promise(() => denied.text()), 'Only an admin can manage MCP servers')
 			assert.deepStrictEqual(
-				Array.map(yield* listServers(gateway.web), server => server.id),
+				Array.map(yield* gateway.list(), server => server.id),
 				[first.id, second.id]
 			)
 			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_mcp_server', {server: first.id})).status, 200)
 			assert.deepStrictEqual(
-				Array.map(yield* listServers(gateway.web), server => server.id),
+				Array.map(yield* gateway.list(), server => server.id),
 				[second.id]
 			)
 			const unknown = yield* callTool(gateway.web, TOKEN, 'remove_mcp_server', {server: 'ghost'})
@@ -1454,16 +1287,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'removes only the caller’s own AI key through the MCP tool',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* post(gateway.web, '/ai/keys', SESSION, {provider: 'anthropic', secret: 'sk-octocat'})
-			yield* post(gateway.web, '/ai/keys', 'session=stranger', {provider: 'anthropic', secret: 'sk-stranger'})
+			yield* gateway.setKey(SESSION, 'anthropic', 'sk-octocat')
+			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
 			assert.deepStrictEqual(
-				Array.map(yield* listKeys(gateway.web, SESSION), key => key.last4),
+				Array.map(yield* gateway.keys(SESSION), key => key.last4),
 				['ocat']
 			)
 			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_ai_key', {provider: 'anthropic'})).status, 200)
-			assert.deepStrictEqual(yield* listKeys(gateway.web, SESSION), [])
+			assert.deepStrictEqual(yield* gateway.keys(SESSION), [])
 			assert.deepStrictEqual(
-				Array.map(yield* listKeys(gateway.web, 'session=stranger'), key => key.last4),
+				Array.map(yield* gateway.keys('session=stranger'), key => key.last4),
 				['nger']
 			)
 			assert.strictEqual((yield* callTool(gateway.web, '', 'remove_ai_key', {provider: 'anthropic'})).status, 401)

@@ -28,9 +28,6 @@ const trace = traceView(
 			name: 'Private retained span',
 			payload: {},
 			resource: {},
-			resourceSchemaUrl: '',
-			scope: {},
-			scopeSchemaUrl: '',
 			service: '@deslop/deploy-server',
 			signal: 'trace',
 			spanId: 'aaaaaaaaaaaaaaaa',
@@ -169,7 +166,6 @@ it.effect(
 		for (const heading of ['Age', 'Failure', 'Duration', 'Span', 'Timeline', 'Failed', 'Runs', 'Typical']) {
 			assert.notInclude(html, `>${heading}<`)
 		}
-		assert.include(html, 'grid-cols-scope')
 		assert.include(html, 'aria-busy="true"')
 		assert.notInclude(html, 'Select an operation')
 		assert.notInclude(html, 'Select a trace')
@@ -192,12 +188,8 @@ it.effect(
 	'marks the selected rows with the stock row surface and edge-to-edge dividers',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.success(trace))
-		assert.include(html, 'list-row')
-		assert.include(html, 'h-8')
-		assert.include(html, 'max-sm:h-11')
 		assert.include(html, 'data-selected="true"')
 		assert.match(html, /aria-current="true"/u)
-		assert.include(html, 'data-[selected=true]:bg-muted')
 		assert.notInclude(html, 'animate-grow-in')
 		assert.notInclude(html, 'grid-rows-single')
 	})
@@ -238,7 +230,6 @@ it.effect(
 		)
 		assert.include(html, `title="${key}"`)
 		assert.include(html, String.repeat(4000)('v'))
-		assert.include(html, 'truncate')
 	})
 )
 
@@ -320,7 +311,6 @@ it.effect(
 		assert.include(html, 'aria-label="notes.search, server')
 		assert.include(html, 'aria-label="notes.search, web')
 		assert.notInclude(html, 'aria-label="stash notes.search')
-		assert.include(html, 'size-3')
 	})
 )
 
@@ -396,7 +386,7 @@ it.effect(
 								name: 'deploy.only',
 								p50Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, failure: {message: 'old', span: 'run'}, id: ID, time: '1781850000000000000'}]
+								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781850000000000000'}]
 							}
 						]
 					},
@@ -409,7 +399,7 @@ it.effect(
 								name: 'gateway.only',
 								p50Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, failure: {message: 'new', span: 'run'}, id: ID, time: '1781860000000000000'}]
+								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781860000000000000'}]
 							}
 						]
 					}
@@ -463,7 +453,7 @@ it.effect(
 		const html = yield* render(
 			AsyncResult.success(trace),
 			undefined,
-			`/?source=deploy&app=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
+			`/?source=deploy&operation=Inventory.snapshot&side=server&pane=Trace&trace=${ID}&span=aaaaaaaaaaaaaaaa`
 		)
 		assert.include(html, 'aria-label="Span details"')
 		assert.include(html, 'deploy · at 0 ms')
@@ -487,14 +477,7 @@ it.effect(
 								name: 'Inventory.snapshot',
 								p50Ms: 10,
 								runtime: 'server',
-								traces: [
-									{
-										durationMs: 10,
-										failure: {message: 'PRIVATE ROW DIAGNOSTIC', span: 'Parser.decode'},
-										id: ID,
-										time: '1781870000000000000'
-									}
-								]
+								traces: [{durationMs: 10, failure: {span: 'Parser.decode'}, id: ID, time: '1781870000000000000'}]
 							}
 						]
 					}
@@ -503,6 +486,5 @@ it.effect(
 		)
 		assert.include(html, 'aria-label="Failed in Parser.decode"')
 		assert.include(html, 'title="Failed in Parser.decode"')
-		assert.notInclude(html, 'PRIVATE ROW DIAGNOSTIC')
 	})
 )

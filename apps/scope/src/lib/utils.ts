@@ -1,4 +1,20 @@
-import {Array, Clock, Effect, Number, Option, Order, Record, Schema, Stream, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Clock,
+	Effect,
+	Formatter,
+	Number,
+	Option,
+	Order,
+	Predicate,
+	Record,
+	Schema,
+	Stream,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -7,13 +23,29 @@ import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Operation} from '#services/telemetry/schema.ts'
-import type {Overview} from '#services/telemetry/schema.ts'
+import type {OperationTrace, Overview, Trace} from '#services/telemetry/schema.ts'
 
 // The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
 const UP: Record<string, Pane> = {Span: 'Trace', Trace: 'Traces'}
 
+// The HTTP attributes a failed span's error line already reads, so its details do not repeat them.
+const HTTP_ATTRIBUTES = [
+	'http.request.method',
+	'http.response.status_code',
+	'server.address',
+	'server.port',
+	'url.full',
+	'url.path',
+	'url.scheme'
+] as const
+
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['Traces', 'Trace', 'Span'])
+
+type Attributes = typeof Attributes.Type
+const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
+type Wrapped = typeof Wrapped.Type
+const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/RpcClient', {
 	group: RpcContracts,
@@ -37,7 +69,6 @@ export type NavigationEvent =
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
-	app: Schema.optionalKey(Schema.String),
 	operation: Schema.optionalKey(Schema.String),
 	pane: Schema.optionalKey(Pane),
 	side: Schema.optionalKey(Operation.fields.runtime),
@@ -54,7 +85,7 @@ export function navigationOf(search: Search) {
 				Option.fromUndefinedOr(search.side),
 				runtime =>
 					({
-						operation: {app: search.app ?? '', name: search.operation ?? '', runtime},
+						operation: {app: search.source ?? '', name: search.operation ?? '', runtime},
 						...Option.match(Option.fromUndefinedOr(search.trace), {onNone: () => ({}), onSome: traceId => ({traceId})}),
 						...Option.match(Option.fromUndefinedOr(search.span), {onNone: () => ({}), onSome: spanId => ({spanId})})
 					}) satisfies Selection
@@ -66,37 +97,26 @@ export function navigationOf(search: Search) {
 // The URL a selection produces in the given pane; a pick keeps the pane it was made in.
 function select(selection: Selection, pane?: Pane) {
 	return {
-		app: selection.operation.app,
 		operation: selection.operation.name,
-		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
 		side: selection.operation.runtime,
+		source: selection.operation.app,
+		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
 		...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})}),
 		...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})})
 	} satisfies Search
 }
 
-// The chosen app is a view rather than a selection: choosing a row keeps it.
-function sourceOf(search: Search, next: Search) {
-	return Option.match(Option.fromUndefinedOr(search.source), {
-		onNone: () => next,
-		onSome: source => ({...next, source})
-	})
-}
-
-// The bar chooses one app at a time and keeps a selection it contains; choosing the chosen app again changes nothing.
+// The bar chooses one app at a time and clears the selection it no longer contains; choosing the chosen app again changes nothing.
 function sourceSearch(search: Search, app: string) {
 	if (search.source === app) return search
-	if (search.app !== app) {
-		return {...Struct.omit(search, ['app', 'operation', 'pane', 'side', 'span', 'trace']), source: app}
-	}
-	return {...search, source: app}
+	return {...Struct.omit(search, ['operation', 'pane', 'side', 'span', 'trace']), source: app}
 }
 
 export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
-	if (event._tag === 'Operation') return sourceOf(search, select({operation: event.operation}, 'Traces'))
-	if (event._tag === 'Trace') return sourceOf(search, select(event.selection, 'Trace'))
-	if (event._tag === 'Span') return sourceOf(search, select(event.selection, 'Span'))
+	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
+	if (event._tag === 'Trace') return select(event.selection, 'Trace')
+	if (event._tag === 'Span') return select(event.selection, 'Span')
 	return Option.match(
 		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
 		{onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})}
@@ -104,7 +124,7 @@ export function nextSearch(search: Search, event: NavigationEvent) {
 }
 
 // The app a plain open lands on: the one whose newest failed trace is newest, else the first tab.
-export function openingApp(overview: Overview) {
+function openingApp(overview: Overview) {
 	const failed = Array.flatMap(overview.apps, app =>
 		Array.flatMap(app.operations, operation =>
 			Array.getSomes(
@@ -178,4 +198,154 @@ export function durationOf(ms: number) {
 	if (ms < 59_500) return `${Number.round(ms / 1000, 0)} s`
 	if (ms < 3_570_000) return `${Number.round(ms / 60_000, 0)} min`
 	return `${Number.round(ms / 3_600_000, 1)} h`
+}
+
+export type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
+
+// An attribute's value as OTLP wraps it, such as {stringValue: "…"}, shown as its one value.
+function valueOf(value: Schema.Json) {
+	return pipe(
+		Schema.decodeUnknownOption(Wrapped)(value),
+		Option.flatMap(wrapped => Array.head(Record.values(wrapped))),
+		Option.filter(inner => Predicate.isString(inner) || Predicate.isNumber(inner) || Predicate.isBoolean(inner)),
+		Option.match({onNone: () => Formatter.formatJson(value), onSome: inner => `${inner}`})
+	)
+}
+
+export function errorOf(span: Trace['spans'][number]) {
+	return pipe(
+		Option.liftPredicate(span, current => current.status === 2),
+		Option.flatMap(current => Option.fromNullishOr(current.payload['status'])),
+		Option.filter(Predicate.isObject),
+		Option.flatMap(status => Option.fromNullishOr(pipe(Record.get(status, 'message'), Option.getOrUndefined))),
+		Option.filter(String.isString),
+		Option.filter(String.isNonEmpty)
+	)
+}
+
+// Attributes, without anything that only repeats the row: its name, code.function, or the status code the error line carries.
+export function attributesOf(span: Trace['spans'][number]) {
+	if (span.payload['attributes'] === undefined) return []
+	return Option.match(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), {
+		onNone: () => [{key: 'attributes', value: 'Unreadable'}],
+		onSome: decoded => {
+			const failed = Option.isSome(errorOf(span))
+			const attributes = Array.map(
+				Array.filter(decoded, attribute => attribute.key !== 'service.name'),
+				attribute => ({key: attribute.key, value: valueOf(attribute.value)})
+			)
+			const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
+			return Array.filter(
+				attributes,
+				attribute =>
+					attribute.value !== span.name &&
+					!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
+					(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
+			)
+		}
+	})
+}
+
+// The most recent trace an operation started, which orders the list after failures.
+function latestOf(operation: Operation) {
+	return Array.match(operation.traces, {
+		onEmpty: () => 0n,
+		onNonEmpty: traces =>
+			BigInt(
+				Array.max(
+					traces,
+					Order.mapInput(Order.BigInt, (trace: OperationTrace) => BigInt(trace.time))
+				).time
+			)
+	})
+}
+
+// One app's operations: failing first, then most recent.
+export function operationsOf(overview: Overview, source?: string) {
+	return Array.sort(
+		Array.flatMap(
+			Array.filter(overview.apps, (app: Overview['apps'][number]) => app.name === source),
+			(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
+		),
+		Order.combine(
+			Order.mapInput(Order.flip(Order.Boolean), (row: ActiveOperation) => row.operation.failures > 0),
+			Order.mapInput(Order.flip(Order.BigInt), (row: ActiveOperation) => latestOf(row.operation))
+		)
+	)
+}
+
+function findOperation(overview: Overview, key: OperationKey) {
+	return Option.flatMap(
+		Array.findFirst(overview.apps, app => app.name === key.app),
+		app =>
+			Option.map(
+				Array.findFirst(app.operations, operation => operation.runtime === key.runtime && operation.name === key.name),
+				operation => ({app, operation})
+			)
+	)
+}
+
+// The span the URL picks, else where the failure broke, else the first span.
+export function focusOf(trace: Trace, pickedSpan?: string) {
+	return Option.orElse(
+		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
+		() =>
+			Option.orElse(
+				Option.flatMap(Option.fromUndefinedOr(trace.failureSpanId), id =>
+					Array.findFirst(trace.spans, span => span.spanId === id)
+				),
+				() => Array.findFirst(trace.spans, span => span.depth === 0)
+			)
+	)
+}
+
+// The app, operation, trace and span the URL selects; a desktop layout defaults to the app's first operation and phone starts empty.
+export function selectionOf(overview: Option.Option<Overview>, search: Search, mobile: boolean) {
+	const source = Option.getOrUndefined(
+		Option.orElse(
+			Option.filter(Option.fromUndefinedOr(search.source), name =>
+				Option.exists(overview, current => Array.some(current.apps, app => app.name === name))
+			),
+			() => Option.flatMap(overview, openingApp)
+		)
+	)
+	const selection = navigationOf(search).selection
+	const activeOperation = Option.orElse(
+		Option.filter(
+			Option.flatMap(Option.fromUndefinedOr(selection?.operation), key =>
+				Option.flatMap(overview, current => findOperation(current, key))
+			),
+			active => active.app.name === source
+		),
+		() =>
+			Boolean.match(mobile, {
+				onFalse: () =>
+					Option.flatMap(overview, current =>
+						Option.map(Array.head(operationsOf(current, source)), row => ({app: row.app, operation: row.operation}))
+					),
+				onTrue: () => Option.none<ActiveOperation>()
+			})
+	)
+	const activeKey = Option.map(activeOperation, active => ({
+		app: active.app.name,
+		name: active.operation.name,
+		runtime: active.operation.runtime
+	}))
+	const activeTrace = Option.flatMap(activeOperation, active =>
+		Option.orElse(
+			Option.flatMap(Option.fromUndefinedOr(selection?.traceId), selected =>
+				Array.findFirst(active.operation.traces, trace => trace.id === selected)
+			),
+			() => Array.head(active.operation.traces)
+		)
+	)
+	const pickedSpan = Option.getOrUndefined(
+		Option.flatMap(
+			Option.filter(Option.fromUndefinedOr(selection), selected =>
+				Option.exists(activeTrace, trace => selected.traceId === trace.id)
+			),
+			selected => Option.fromUndefinedOr(selected.spanId)
+		)
+	)
+	return {activeKey, activeOperation, activeTrace, pickedSpan, source}
 }

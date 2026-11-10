@@ -2,15 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array} from 'effect'
 
-import {
-	captureUrl,
-	commentFor,
-	findNotes,
-	hasVideo,
-	normalizeTags,
-	reconcileOrganization,
-	tagCounts
-} from '#services/notes/lib/utils.ts'
+import {captureUrl, commentFor, hasVideo, tagCounts} from '#services/notes/lib/utils.ts'
 import {Note} from '#services/notes/schema.ts'
 
 it('maps every share of the same post to one canonical link', () => {
@@ -66,36 +58,6 @@ it('reads the video of a TikTok, but not of its photo posts', () => {
 	)
 })
 
-it('makes each tag one lowercase token', () => {
-	assert.deepStrictEqual(normalizeTags(['#Web Design', 'web design', '  digital   marketing ', 'AI']), [
-		'web-design',
-		'digital-marketing',
-		'ai'
-	])
-})
-
-function organizedTags(tags: string[], inUse: string[]) {
-	return reconcileOrganization(
-		{body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''},
-		inUse,
-		{}
-	).organization.tags
-}
-
-it('takes a plural or separator variant of a tag in use as that tag, but keeps a narrower tag apart', () => {
-	assert.deepStrictEqual(
-		organizedTags(['databases', 'webdesign', 'load-testing', 'security'], ['database', 'web-design', 'testing']),
-		['database', 'web-design', 'load-testing', 'security']
-	)
-	assert.deepStrictEqual(organizedTags(['ios', 'c++', 'c#', 'aws', 'class'], ['io', 'c', 'aw', 'clas']), [
-		'ios',
-		'c++',
-		'c#',
-		'aws',
-		'class'
-	])
-})
-
 it('orders tags by how many notes use them, then by name', () => {
 	const note = Note.make({
 		author: 'Example',
@@ -115,40 +77,4 @@ it('orders tags by how many notes use them, then by name', () => {
 		{count: 1, tag: 'history'},
 		{count: 1, tag: 'quick meals'}
 	])
-})
-
-it('finds notes that contain every word and carry every #tag', () => {
-	const soup = Note.make({
-		author: 'Lisa Kitchen',
-		content: 'Lentils with cumin',
-		createdAt: 0,
-		id: '6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01',
-		source: 'TikTok',
-		status: 'ready',
-		summary: 'A quick dinner',
-		tags: ['cooking', 'quick meals'],
-		text: 'https://www.tiktok.com/@cook/video/123',
-		title: 'Lentil soup',
-		url: 'https://www.tiktok.com/@cook/video/123'
-	})
-	const article = Note.make({
-		...soup,
-		author: 'Spice Atlas',
-		content: 'Cumin history',
-		id: '6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02',
-		source: 'Website',
-		tags: ['history'],
-		text: 'https://example.com/cumin',
-		title: 'Spice routes',
-		url: 'https://example.com/cumin'
-	})
-	function found(query: string) {
-		return Array.map(findNotes([soup, article], query), note => note.id)
-	}
-	assert.deepStrictEqual(found(''), [soup.id, article.id])
-	assert.deepStrictEqual(found('CUMIN dinner'), [soup.id, article.id])
-	assert.deepStrictEqual(found('cumin #history'), [article.id])
-	assert.deepStrictEqual(found('#cook'), [])
-	assert.deepStrictEqual(found('@cook lentil'), [soup.id])
-	assert.deepStrictEqual(found('atlas'), [article.id])
 })

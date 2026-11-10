@@ -2,11 +2,10 @@ import {Array, Boolean, Function, MutableHashSet, Number, Option, Order, pipe} f
 
 import type {Process, ProcessLabel} from '#services/inventory/schema.ts'
 
-// A process with everything below it: `memory`, `cpu` and `count` cover the subtree; `cpu` stays unknown while no member reports one.
+// A process with everything below it: `memory` and `cpu` cover the subtree; `cpu` stays unknown while no member reports one.
 export type ProcessNode = {
 	children: readonly ProcessNode[]
 	command?: readonly string[]
-	count: number
 	cpu?: number
 	label: ProcessLabel
 	memory: number
@@ -21,7 +20,6 @@ function usage(nodes: readonly ProcessNode[]) {
 			onFalse: () => ({}),
 			onTrue: () => ({cpu: Number.sumAll(cpus)})
 		}),
-		count: Number.sumAll(Array.map(nodes, node => node.count)),
 		memory: Number.sumAll(Array.map(nodes, node => node.memory))
 	}
 }
@@ -73,7 +71,6 @@ export function processTree(rows: readonly Process[]) {
 		)
 		const self: ProcessNode = {
 			children: [],
-			count: 1,
 			...Option.match(Option.fromUndefinedOr(row.command), {onNone: () => ({}), onSome: command => ({command})}),
 			...Option.match(Option.fromUndefinedOr(row.cpu), {onNone: () => ({}), onSome: cpu => ({cpu})}),
 			label: row.label,

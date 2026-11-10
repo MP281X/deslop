@@ -70,6 +70,15 @@ function changeFailed<A, E>(effect: Effect.Effect<A, E>) {
 	})
 }
 
+// A worker's last saved history, windowed to the range the page asked for.
+function cachedHistory(query: HistoryQuery, time: number, saved?: MachineHistory) {
+	return {
+		...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
+		samples: history(saved?.samples ?? [], query.minutes, time),
+		time
+	}
+}
+
 export class Fleet extends Context.Service<
 	Fleet,
 	{
@@ -153,11 +162,9 @@ export class Fleet extends Context.Service<
 						...Array.map(workers, worker => {
 							const saved = cached[`${worker.name}:${query.minutes}`]
 							return {
-								...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
+								...cachedHistory(query, time, saved),
 								error: saved?.error ?? 'Waiting for worker',
-								samples: history(saved?.samples ?? [], query.minutes, time),
 								stale: saved === undefined || saved.stale || time - saved.time > 90_000,
-								time,
 								worker: worker.name
 							}
 						})
@@ -190,16 +197,14 @@ export class Fleet extends Context.Service<
 								Effect.map(value => ({...value, worker: worker.name})),
 								Effect.catch(
 									Effect.fnUntraced(function* (cause) {
-										const time = yield* Clock.currentTimeMillis
-										const all = yield* Ref.get(lastMetrics)
 										return {
-											...Record.getSomes({
-												cpuModel: Option.fromUndefinedOr(all[`${worker.name}:${query.minutes}`]?.cpuModel)
-											}),
+											...cachedHistory(
+												query,
+												yield* Clock.currentTimeMillis,
+												(yield* Ref.get(lastMetrics))[`${worker.name}:${query.minutes}`]
+											),
 											error: cause.message,
-											samples: history(all[`${worker.name}:${query.minutes}`]?.samples ?? [], query.minutes, time),
 											stale: true,
-											time,
 											worker: worker.name
 										}
 									})

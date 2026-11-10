@@ -505,6 +505,7 @@ it.layer(layer)(test => {
 			assert.strictEqual((yield* telemetry.spans(query)).total, 2)
 			const trace = yield* telemetry.trace(TRACE_ID)
 			assert.strictEqual(trace.spans.length, 2)
+			assert.strictEqual(trace.failureSpanId, '2222222222222222')
 			assert.deepStrictEqual(
 				Array.map(trace.spans, entry => entry.name),
 				['root', 'child']
@@ -514,8 +515,7 @@ it.layer(layer)(test => {
 					payload: {
 						attributes: [{key: 'big', value: {intValue: '9007199254740993'}}],
 						endTimeUnixNano: '1781870000001500001'
-					},
-					resourceSchemaUrl: 'https://opentelemetry.io/schemas/1.0.0'
+					}
 				}
 			])
 			assert.deepStrictEqual(yield* telemetry.traces(query), {
@@ -558,7 +558,7 @@ it.layer(layer)(test => {
 							scopeLogs: [
 								{
 									logRecords: [
-										{body: {stringValue: 'standalone'}, observedTimeUnixNano: '1781870000001000000'},
+										{body: {stringValue: 'standalone'}, timeUnixNano: '1781870000001000000'},
 										{
 											body: {kvlistValue: {values: [{key: 'bytes', value: {bytesValue: 'AAE='}}]}},
 											severityNumber: 17,
@@ -644,7 +644,7 @@ it.layer(layer)(test => {
 
 it.layer(layer)(test => {
 	test.effect(
-		'groups traces by app and operation, failures first, naming the span that broke',
+		'groups traces by app and operation, naming the span that broke',
 		Effect.fnUntraced(function* () {
 			const telemetry = yield* Telemetry
 			yield* telemetry.ingestTraces(
@@ -771,11 +771,7 @@ it.layer(layer)(test => {
 				['stash']
 			)
 			const stash = Option.getOrThrow(Array.head(apps))
-			// Failures lead, then the busiest; operations that ran as often keep no particular order.
-			assert.deepStrictEqual(
-				Array.map(Array.take(stash.operations, 2), operation => operation.name),
-				['share', 'GET (no route)']
-			)
+			// The page orders operations; the server only groups them.
 			assert.sameDeepMembers(
 				Array.map(stash.operations, operation => [
 					operation.runtime,
@@ -792,11 +788,14 @@ it.layer(layer)(test => {
 					['web', 'notes.watch', 1, 0]
 				]
 			)
-			// Slowest first, and only the root's operation lists the trace: its failing child is not a row.
+			// Only the root's operation lists the trace: its failing child is not a row.
 			assert.deepStrictEqual(
-				Array.map(stash.operations[0]?.traces ?? [], trace => [trace.id, trace.failure]),
+				Array.map(
+					Option.getOrThrow(Array.findFirst(stash.operations, operation => operation.name === 'share')).traces,
+					trace => [trace.id, trace.failure]
+				),
 				[
-					['dddddddddddddddddddddddddddddddd', {message: 'upstream returned 502', span: 'http.get'}],
+					['dddddddddddddddddddddddddddddddd', {span: 'http.get'}],
 					['eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', undefined]
 				]
 			)

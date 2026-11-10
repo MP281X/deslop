@@ -85,9 +85,7 @@ export const StoredPasskey = Schema.Struct({
 	...StoredOwner.fields,
 	addedFrom: Schema.String,
 	counter: Schema.Int,
-	createdAt: Schema.Finite,
 	id: Schema.NonEmptyString,
-	lastUsed: Schema.Finite,
 	publicKey: Schema.NonEmptyString,
 	synced: Schema.Boolean,
 	transports: Schema.Array(Transport)
@@ -97,13 +95,7 @@ export type StoredPasskeys = typeof StoredPasskeys.Type
 export const StoredPasskeys = Schema.Array(StoredPasskey)
 
 export type Passkey = typeof Passkey.Type
-export const Passkey = Schema.Struct({
-	addedFrom: Schema.String,
-	createdAt: Schema.Finite,
-	id: Schema.NonEmptyString,
-	lastUsed: Schema.Finite,
-	synced: Schema.Boolean
-})
+export const Passkey = Schema.Struct({addedFrom: Schema.String, id: Schema.NonEmptyString, synced: Schema.Boolean})
 
 export type PasskeyParams = typeof PasskeyParams.Type
 export const PasskeyParams = Schema.Struct({id: Schema.NonEmptyString})

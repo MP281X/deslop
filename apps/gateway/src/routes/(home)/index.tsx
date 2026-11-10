@@ -37,19 +37,15 @@ import {
 	setKeyAtom
 } from '#lib/utils.ts'
 import {FailureContent} from '#routes/(home)/-failure.tsx'
-import {AddKeyDialog, PROVIDER_NAMES, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
-import {providerCost, providerSeries, serverCalls, serverSeries} from '#routes/(home)/-usage.ts'
+import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
+import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
+import {PROVIDER_NAMES} from '#services/ai/schema.ts'
 import type {AiKeyInfo, AiProvider, AiUsageReport} from '#services/ai/schema.ts'
 import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-const PERIODS = [
-	{label: '24h', value: '24h'},
-	{label: '7d', value: '7d'},
-	{label: '30d', value: '30d'}
-] satisfies {label: string; value: Period}[]
 // Each app's identity hue; a server without one of these marks stays zinc grey.
 const IDENTITY_HUES: Record<string, string> = {
 	auth: 'var(--slate)',
@@ -61,6 +57,7 @@ const IDENTITY_HUES: Record<string, string> = {
 	stash: 'var(--amber)',
 	trips: 'var(--orange)'
 }
+const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 type Search = typeof Search.Type
 // The period is the page's only view state; the default is the last week.
@@ -176,6 +173,7 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	const needsUser = !connected || props.server.error !== undefined
 	const failed = props.server.status === 'Expired' || props.server.error !== undefined
 	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
+	const series = serverSeries(props.report, props.server.id, props.period)
 	function connect() {
 		setConnecting(true)
 		location.assign(connectUrl(props.server.id))
@@ -194,12 +192,12 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 					{failed && <StatusDot status="error" />}
 					{Boolean.match(needsUser, {
 						onFalse: () =>
-							Array.isReadonlyArrayNonEmpty(props.server.tools) && (
+							props.server.tools > 0 && (
 								<span
 									className="text-muted-foreground flex items-center gap-1.5 font-mono text-xs tabular-nums"
 									title="Tools"
 								>
-									{props.server.tools.length}
+									{props.server.tools}
 									<WrenchIcon className="size-3.5" />
 								</span>
 							),
@@ -215,12 +213,9 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 							</Button>
 						)
 					})}
-					<Sparkline
-						color={serverHue(props.server)}
-						values={serverSeries(props.report, props.server.id, props.period)}
-					/>
+					<Sparkline color={serverHue(props.server)} values={series} />
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-						{count.format(serverCalls(props.report, props.server.id))}
+						{count.format(Number.sumAll(series))}
 					</span>
 				</ItemActions>
 			</Item>

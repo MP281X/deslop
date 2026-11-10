@@ -1,68 +1,6 @@
-import {
-	Array,
-	Boolean,
-	HashMap,
-	HashSet,
-	Iterable,
-	Match,
-	Number,
-	Option,
-	Order,
-	Record,
-	String,
-	Tuple,
-	pipe
-} from 'effect'
+import {Array, Boolean, HashMap, HashSet, Option, Order, Record, String, Tuple, pipe} from 'effect'
 
 import type {InventoryItem} from '#services/inventory/schema.ts'
-
-const SIGNALS: Record<number, string> = {
-	1: 'SIGHUP',
-	2: 'SIGINT',
-	6: 'SIGABRT',
-	9: 'SIGKILL',
-	11: 'SIGSEGV',
-	15: 'SIGTERM'
-}
-
-export function socketLine(line: string) {
-	const fields = String.split(String.trim(line), /\s+/u)
-	const address = fields[4] ?? ''
-	return Option.map(Number.parse(Option.getOrElse(Array.last(String.split(address, ':')), () => '')), port => ({
-		address,
-		pid: Option.map(String.match(/pid=([0-9]+)/u)(line), match => match[1]),
-		port,
-		process: Option.map(String.match(/users:\(\("([^"]+)",pid=([0-9]+)/u)(line), match => ({
-			name: match[1] ?? '',
-			pid: match[2]
-		})),
-		protocol: fields[0],
-		state: fields[1] ?? 'listening'
-	}))
-}
-
-export function socketUnit(cgroup: string) {
-	return Option.getOrElse(
-		Option.map(
-			Iterable.findLast(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup), () => true),
-			match => match[1] ?? ''
-		),
-		() => ''
-	)
-}
-
-export function socketProcess(name: string, cwd: string) {
-	return Option.match(String.match(/\/apps\/([^/]+)(?:\/|$)/u)(cwd), {onNone: () => name, onSome: app => app[1] ?? ''})
-}
-
-export function probeSocket(listener: Option.Option.Value<ReturnType<typeof socketLine>>, process: string) {
-	return (
-		listener.protocol === 'tcp' &&
-		listener.port >= 1024 &&
-		Option.isSome(String.match(/^(?:127\.0\.0\.1|0\.0\.0\.0):/u)(listener.address)) &&
-		Option.isNone(String.match(/^(?:postgres|redis|ssh|cloudflared|tailscaled|caddy)$/u)(process))
-	)
-}
 
 // A loopback proxy can only reach these TCP listeners, not a tailnet-interface-only socket or UDP.
 function loopbackPort(item: InventoryItem) {
@@ -110,89 +48,8 @@ function ports(items: readonly InventoryItem[]) {
 	return pipe(
 		items,
 		Array.filter(item => appPort(item) && item.http === true && !String.startsWith('stale')(item.state)),
-		Array.sort(
-			Order.mapInput(
-				Order.String,
-				(item: InventoryItem) =>
-					`${Boolean.match(appPort(item), {onFalse: () => '1', onTrue: () => '0'})}:${item.worker}:${item.port}:${item.address}`
-			)
-		),
+		Array.sort(Order.mapInput(Order.String, (item: InventoryItem) => `${item.worker}:${item.port}:${item.address}`)),
 		Array.dedupeWith((a, b) => a.worker === b.worker && a.port === b.port)
-	)
-}
-
-function failureReason(result: string, status: number, ran: boolean) {
-	if (result === 'exit-code' && !ran) return 'Failed before starting'
-	const signal = SIGNALS[status] ?? `signal ${status}`
-	return pipe(
-		Match.value(result),
-		Match.when('exit-code', () =>
-			Option.match(Option.fromUndefinedOr(SIGNALS[status - 128]), {
-				onNone: () => `Exited with code ${status}`,
-				onSome: name => `Exited with code ${status} (${name})`
-			})
-		),
-		Match.when('signal', () => `Killed by ${signal}`),
-		Match.when('core-dump', () => `Crashed with ${signal}`),
-		Match.when('oom-kill', () => 'Killed for running out of memory'),
-		Match.when('timeout', () => 'Timed out'),
-		Match.when('watchdog', () => 'Stopped answering its watchdog'),
-		Match.when('start-limit-hit', () => 'Restarted too often'),
-		Match.orElse(() => `Failed: ${result}`)
-	)
-}
-
-// Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
-export function unitFailures(text: string) {
-	return Record.fromEntries(
-		Array.map(Array.filter(String.split(String.trim(text), /\n\s*\n/u), String.isNonEmpty), block => {
-			const fields = Record.fromEntries(
-				Array.map(Array.filter(String.split(block, '\n'), String.includes('=')), line => {
-					const [key, ...value] = String.split(line, '=')
-					return [key, Array.join(value, '=')] as const
-				})
-			)
-			return [
-				fields['Id'] ?? '',
-				{
-					...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
-						onNone: () => ({}),
-						onSome: seconds => ({at: seconds * 1000})
-					}),
-					// A unit whose start step failed never ran its main process, which leaves its code 0.
-					reason: failureReason(
-						fields['Result'] ?? '',
-						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
-						fields['ExecMainCode'] !== '0'
-					)
-				}
-			] as const
-		})
-	)
-}
-
-// The service or container a process or cgroup belongs to: `service:<scope>:<unit>` or `container:<short id>`. Under a user manager, `app-<name>.slice` holds what `<name>.service` started outside its own cgroup, like T3 Code's agents.
-export function processOwner(cgroup: string) {
-	const container = Option.getOrUndefined(
-		String.match(/\/(?:docker-|docker\/)([a-f0-9]{12,64})(?:\.scope)?(?:\/|\n|$)/u)(cgroup)
-	)?.[1]
-	if (container !== undefined) return `container:${String.slice(0, 12)(container)}`
-	const segments = String.split(cgroup, /[/\n]/u)
-	const service = Option.getOrElse(Array.findLastIndex(segments, String.endsWith('.service')), () => -1)
-	const manager = Option.getOrElse(
-		Array.findFirstIndex(segments, segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),
-		() => Infinity
-	)
-	return Option.match(
-		Option.flatMap(
-			Option.liftPredicate(Array.drop(segments, manager + 1), () => service <= manager),
-			below => Array.findFirst(below, segment => String.match(/^app-(.+)\.slice$/u)(segment))
-		),
-		{
-			onNone: () =>
-				`service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`,
-			onSome: match => `service:user:${match[1]}.service`
-		}
 	)
 }
 
@@ -381,9 +238,9 @@ export function workloads(items: readonly InventoryItem[]) {
 	)
 }
 
-export function availablePorts(items: readonly InventoryItem[]) {
+export function availablePorts(rows: ReturnType<typeof workloads>) {
 	return ports(
-		Array.flatMap(workloads(items), row =>
+		Array.flatMap(rows, row =>
 			Array.map(
 				Array.filter(
 					row.listeners,

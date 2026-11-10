@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Schema} from 'effect'
 
-import {availablePorts, processOwner, unitFailures, workloadName, workloads} from '#services/inventory/lib/utils.ts'
+import {availablePorts, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import {InventoryItem, WorkerList} from '#services/inventory/schema.ts'
 
 it('validates worker origins when parsing configuration', () => {
@@ -62,7 +62,7 @@ it('uses concise display names without changing service/container identifiers', 
 })
 
 it('keeps application listeners but excludes non-loopback, UDP, stale and privileged targets from publishing', () => {
-	assert.lengthOf(availablePorts([listener]), 1)
+	assert.lengthOf(availablePorts(workloads([listener])), 1)
 	for (const change of [
 		{protocol: 'udp' as const},
 		{address: '100.68.201.107:5173'},
@@ -70,9 +70,9 @@ it('keeps application listeners but excludes non-loopback, UDP, stale and privil
 		{state: 'stale · LISTEN'},
 		{port: 443}
 	]) {
-		assert.isEmpty(availablePorts([{...listener, ...change}]))
+		assert.isEmpty(availablePorts(workloads([{...listener, ...change}])))
 	}
-	assert.lengthOf(availablePorts([{...listener, address: '0.0.0.0:5173'}]), 1)
+	assert.lengthOf(availablePorts(workloads([{...listener, address: '0.0.0.0:5173'}])), 1)
 })
 
 it('keeps app activity and failures without nameless listeners or ordinary system daemons', () => {
@@ -109,11 +109,13 @@ it('keeps app activity and failures without nameless listeners or ordinary syste
 
 it('deduplicates listening ports per worker without losing identical port numbers on other workers', () => {
 	assert.strictEqual(
-		availablePorts([
-			listener,
-			{...listener, address: '0.0.0.0:5173', id: 'duplicate'},
-			{...listener, id: 'remote', worker: 'desktop'}
-		]).length,
+		availablePorts(
+			workloads([
+				listener,
+				{...listener, address: '0.0.0.0:5173', id: 'duplicate'},
+				{...listener, id: 'remote', worker: 'desktop'}
+			])
+		).length,
 		2
 	)
 })
@@ -129,7 +131,7 @@ it('offers only unexposed frontends, across both owned and observed routes and w
 	}
 	const endpoint = {...listener, ui: true, unit: service.name}
 	const remote = {...endpoint, id: 'remote', worker: 'desktop'}
-	assert.lengthOf(availablePorts([service, endpoint, remote]), 2)
+	assert.lengthOf(availablePorts(workloads([service, endpoint, remote])), 2)
 	for (const owned of [false, true]) {
 		const exposed = {
 			...listener,
@@ -139,12 +141,12 @@ it('offers only unexposed frontends, across both owned and observed routes and w
 			url: 'https://dev.tailnet.ts.net:5173/'
 		}
 		assert.deepStrictEqual(
-			Array.map(availablePorts([service, endpoint, remote, exposed]), item => item.worker),
+			Array.map(availablePorts(workloads([service, endpoint, remote, exposed])), item => item.worker),
 			['desktop']
 		)
 	}
-	assert.isEmpty(availablePorts([{...service, links: ['https://fixture.example.com']}, endpoint]))
-	assert.isEmpty(availablePorts([service, {...endpoint, http: false}]))
+	assert.isEmpty(availablePorts(workloads([{...service, links: ['https://fixture.example.com']}, endpoint])))
+	assert.isEmpty(availablePorts(workloads([service, {...endpoint, http: false}])))
 })
 
 it('puts service listeners and their tailnet URLs on one workload without mixing machines', () => {
@@ -217,41 +219,4 @@ it('keeps internal container namespaces, different host addresses and UDP separa
 	])
 	assert.lengthOf(mapped, 1)
 	assert.deepStrictEqual(mapped[0]?.exposures, [exposure])
-})
-
-it("counts what a user's service starts in its own app slice, like T3 Code's agents, as that service", () => {
-	const manager = '0::/user.slice/user-1000.slice/user@1000.service'
-	assert.strictEqual(
-		processOwner(
-			`${manager}/app.slice/app-t3code.slice/app-t3code-agents.slice/app-t3code-agents-1.slice/t3code-claude-2.scope\n`
-		),
-		'service:user:t3code.service'
-	)
-	assert.strictEqual(processOwner(`${manager}/app.slice/t3code.service\n`), 'service:user:t3code.service')
-	assert.strictEqual(
-		processOwner(`${manager}/app.slice/app-org.chromium.Chromium-1.scope\n`),
-		'service:system:user@1000.service'
-	)
-	assert.strictEqual(processOwner('0::/system.slice/app-other.slice/x.scope\n'), 'service:system:')
-})
-
-it('says why a failed service stopped and when, instead of repeating its command', () => {
-	const failures = unitFailures(
-		Array.join(
-			[
-				'Result=exit-code\nExecMainCode=1\nExecMainStatus=130\nId=e2e-auth.service\nStateChangeTimestamp=@1793639294',
-				'Result=signal\nExecMainStatus=9\nId=killed.service\nStateChangeTimestamp=',
-				'Result=oom-kill\nExecMainStatus=0\nId=heavy.service\nStateChangeTimestamp=@1',
-				'Result=exit-code\nExecMainCode=1\nExecMainStatus=1\nId=crash.service\nStateChangeTimestamp=@2',
-				'Result=exit-code\nExecMainCode=0\nExecMainStatus=0\nId=prestart.service\nStateChangeTimestamp=@3'
-			],
-			'\n\n'
-		)
-	)
-	assert.deepStrictEqual(failures['e2e-auth.service'], {at: 1_793_639_294_000, reason: 'Exited with code 130 (SIGINT)'})
-	assert.deepStrictEqual(failures['killed.service'], {reason: 'Killed by SIGKILL'})
-	assert.strictEqual(failures['heavy.service']?.reason, 'Killed for running out of memory')
-	assert.strictEqual(failures['crash.service']?.reason, 'Exited with code 1')
-	assert.strictEqual(failures['prestart.service']?.reason, 'Failed before starting')
-	assert.deepStrictEqual(unitFailures(''), {})
 })

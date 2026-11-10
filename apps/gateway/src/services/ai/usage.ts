@@ -1,7 +1,8 @@
 import {Array, Boolean, Number, Option, Order, Record, Result, Schema, String} from 'effect'
 
-import type {AiUsageEntry, AiUsageQuery} from '#services/ai/schema.ts'
+import type {AiUsageEntry} from '#services/ai/schema.ts'
 import {Usage} from '#services/ai/schema.ts'
+import type {UsageRange} from '#services/usage/schema.ts'
 
 export function readUsage(text: string, entry: AiUsageEntry) {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)
@@ -34,62 +35,29 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 	})
 }
 
-// judge-ignore no-reinvented-helper -- one pass folds eight fields; no library call sums a struct.
 function totals(rows: AiUsageEntry[]) {
-	return Array.reduce(
-		rows,
-		{
-			cacheReadTokens: 0,
-			cacheWriteTokens: 0,
-			calls: 0,
-			costUsd: 0,
-			inputTokens: 0,
-			outputTokens: 0,
-			tokens: 0,
-			unknownCostCalls: 0
-		},
-		(sum, row) => ({
-			cacheReadTokens: sum.cacheReadTokens + row.cacheReadTokens,
-			cacheWriteTokens: sum.cacheWriteTokens + row.cacheWriteTokens,
-			calls: sum.calls + 1,
-			costUsd: sum.costUsd + (row.costUsd ?? 0),
-			inputTokens: sum.inputTokens + row.inputTokens,
-			outputTokens: sum.outputTokens + row.outputTokens,
-			tokens: sum.tokens + row.inputTokens + row.outputTokens + row.cacheReadTokens + row.cacheWriteTokens,
-			unknownCostCalls:
-				sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
-		})
-	)
+	return Array.reduce(rows, {costUsd: 0, unknownCostCalls: 0}, (sum, row) => ({
+		costUsd: sum.costUsd + (row.costUsd ?? 0),
+		unknownCostCalls:
+			sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
+	}))
 }
 function grouped(rows: AiUsageEntry[], key: (entry: AiUsageEntry) => string) {
 	return Array.map(Record.toEntries(Array.groupBy(rows, key)), entry => ({name: entry[0], ...totals(entry[1])}))
 }
-export function report(entries: AiUsageEntry[], query: AiUsageQuery) {
-	const selected = Array.filter(entries, entry => entry.at >= query.from && entry.at < query.to)
-	const size = Boolean.match(query.bucket === 'hour', {onFalse: () => 86_400_000, onTrue: () => 3_600_000})
+export function report(entries: AiUsageEntry[], range: UsageRange) {
+	const selected = Array.filter(entries, entry => entry.at >= range.from && entry.at < range.to)
 	function bucket(entry: AiUsageEntry) {
-		return Math.floor(entry.at / size) * size
+		return Math.floor(entry.at / range.size) * range.size
 	}
 	return {
-		byApp: grouped(selected, entry => entry.app),
-		byModel: grouped(selected, entry => entry.model ?? 'unknown'),
 		byProvider: grouped(selected, entry => entry.provider),
-		// Each bucket, app and model on their own, so the page can narrow one breakdown by the other or by a bucket.
-		cells: Array.map(
-			Record.values(
-				Array.groupBy(selected, entry => `${bucket(entry)}\u0000${entry.app}\u0000${entry.model ?? 'unknown'}`)
-			),
-			group => ({app: group[0].app, at: bucket(group[0]), model: group[0].model ?? 'unknown', ...totals(group)})
-		),
 		series: Array.sort(
 			Array.map(Record.values(Array.groupBy(selected, entry => `${bucket(entry)}`)), group => ({
 				at: bucket(group[0]),
-				byApp: grouped(group, entry => entry.app),
-				byModel: grouped(group, entry => entry.model ?? 'unknown'),
 				byProvider: grouped(group, entry => entry.provider)
 			})),
 			Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
-		),
-		totals: totals(selected)
+		)
 	}
 }
