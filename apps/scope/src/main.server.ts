@@ -21,7 +21,8 @@ CliRuntime.runApp({
 			HttpHandlers,
 			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			ServerRuntime.layerMcp({
-				instructions: "Scope is the debugger for the user's Effect apps: their traces, spans and logs.",
+				instructions:
+					"Scope is the debugger for the user's Effect apps: start with list_operations to see what is failing or slow, then read_trace for one trace's spans and logs.",
 				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
 			})
 		),

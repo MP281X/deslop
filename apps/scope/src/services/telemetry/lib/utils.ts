@@ -1,7 +1,7 @@
 import {
 	Array,
 	Boolean,
-	Duration,
+	DateTime,
 	Function,
 	HashMap,
 	HashSet,
@@ -16,38 +16,27 @@ import {
 	pipe
 } from 'effect'
 
-import {Attribute, Nano, rangeStart, Runtime} from '#services/telemetry/schema.ts'
+import {Attribute, Nano, rangeStart, Runtime, Side, SpanLink} from '#services/telemetry/schema.ts'
 import type {
 	Entry,
-	Filters,
 	Operation,
 	OperationTrace,
 	Overview,
-	Query,
 	Range,
 	Resource,
-	Stats,
+	ServiceStatus,
 	Trace
 } from '#services/telemetry/schema.ts'
 
 // Each operation lists this many traces, its newest failures among them.
 const KEEP = 20
 
+const EMPTY_ENTRIES = Array.empty<Entry>()
+
 // Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
 const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
 )
-
-export function queryOf(filters: Filters & Partial<Pick<Query, 'limit' | 'offset' | 'sort'>>, now: number) {
-	return {
-		limit: 1000,
-		offset: 0,
-		sort: 'recent' as const,
-		...filters,
-		from: now - Duration.toMillis(filters.since),
-		to: now
-	}
-}
 
 function resourceString(resource: {readonly attributes?: readonly Attribute[]}, key: string) {
 	return pipe(
@@ -58,19 +47,52 @@ function resourceString(resource: {readonly attributes?: readonly Attribute[]}, 
 	)
 }
 
-// Effect names an HTTP span by its method alone: its route, or a client's path, says which request it was; unrouted server hits, mostly scanners, share one name.
+function spanAttributes(payload: Schema.JsonObject) {
+	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(Attribute))(payload['attributes']), () => [])
+}
+
+// An OTLP attribute's one primitive value: a string, number or boolean, wrapped as the protocol sends it.
+function primitiveOf(value: Schema.Json) {
+	if (Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return value
+	if (value === null || !Predicate.isObject(value) || Array.isArray(value)) return undefined
+	const integer = value['intValue']
+	if (Predicate.isNumber(integer)) return integer
+	if (Predicate.isString(integer)) {
+		return Option.getOrUndefined(Number.parse(integer))
+	}
+	const double = value['doubleValue']
+	if (Predicate.isNumber(double)) return double
+	const bool = value['boolValue']
+	if (Predicate.isBoolean(bool)) return bool
+	const string = value['stringValue']
+	if (Predicate.isString(string)) return string
+	return undefined
+}
+
+function attributePrimitive(attributes: readonly Attribute[], key: string) {
+	return pipe(
+		attributes,
+		Array.findFirst(attribute => attribute.key === key),
+		Option.flatMap(attribute => Option.fromUndefinedOr(primitiveOf(attribute.value)))
+	)
+}
+
+// Effect names an HTTP span by its method alone: its route, or a client's path, says which request it was; unrouted server hits, mostly scanners, share one name. A machine step is named for its source.
 export function spanName(span: Schema.JsonObject) {
 	const name = Option.getOrElse(Option.liftPredicate(span['name'], String.isString), () => '')
-	const attributes = {
-		attributes: Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(Attribute))(span['attributes']), () => [])
+	if (name === '') return name
+	const attributes = spanAttributes(span)
+	if (name === 'Machine.invoke') {
+		const source = resourceString({attributes}, 'machine.invoke.source')
+		if (String.isNonEmpty(source)) return `Machine.invoke ${source}`
 	}
-	if (name === '' || name !== resourceString(attributes, 'http.request.method')) return name
-	const route = resourceString(attributes, 'http.route')
+	if (name !== resourceString({attributes}, 'http.request.method')) return name
+	const route = resourceString({attributes}, 'http.route')
 	if (String.isNonEmpty(route)) return `${name} ${route}`
 	// OTLP's SpanKind 2 is a server answering a request.
 	if (span['kind'] === 2) return `${name} (no route)`
 	return pipe(
-		Option.liftPredicate(resourceString(attributes, 'url.path'), String.isNonEmpty),
+		Option.liftPredicate(resourceString({attributes}, 'url.path'), String.isNonEmpty),
 		Option.match({onNone: () => name, onSome: path => `${name} ${path}`})
 	)
 }
@@ -114,6 +136,19 @@ function isSuperseded(entry: Entry, newest: Record<string, string>) {
 	)
 }
 
+// A trace is dropped only when it has versioned entries and every one of them is old.
+function groupSuperseded(group: readonly Entry[], newest: Record<string, string>) {
+	if (Array.some(group, entry => releaseOf(entry) === '')) return false
+	const versioned = Array.filter(group, entry => releaseOf(entry) !== '')
+	if (Array.isReadonlyArrayEmpty(versioned)) return false
+	return Array.every(versioned, entry => isSuperseded(entry, newest))
+}
+
+function pruned(entry: Entry, traces: HashSet.HashSet<string>, prune: (entry: Entry) => boolean) {
+	if (entry.traceId === '') return prune(entry)
+	return HashSet.has(traces, entry.traceId)
+}
+
 export function retentionOf(
 	current: HashMap.HashMap<string, Entry>,
 	newest: Record<string, string>,
@@ -127,13 +162,42 @@ export function retentionOf(
 		Array.filter(entries, entry => entry.receivedAt === undefined && BigInt(entry.time) > now),
 		entry => ({...entry, receivedAt})
 	)
-	const expired = Array.filter(entries, entry => {
+	function expiredOne(entry: Entry) {
 		const received = Option.match(Option.fromUndefinedOr(entry.receivedAt), {
 			onNone: () => BigInt(entry.time),
 			onSome: time => BigInt(time) * 1_000_000n
 		})
-		return received < cutoff || isSuperseded(entry, newest)
-	})
+		return received < cutoff
+	}
+	// Expiry is whole-trace: when one entry outlives retention, its siblings go too. A release is too: keep the trace while any versioned entry is current or an unversioned sibling is present.
+	const traces = HashSet.union(
+		HashSet.fromIterable(
+			Array.map(
+				Array.filter(entries, entry => entry.traceId !== '' && expiredOne(entry)),
+				entry => entry.traceId
+			)
+		),
+		HashSet.fromIterable(
+			Array.getSomes(
+				Array.map(
+					Record.values(
+						Array.groupBy(
+							Array.filter(entries, entry => entry.traceId !== ''),
+							entry => entry.traceId
+						)
+					),
+					group =>
+						Boolean.match(groupSuperseded(group, newest), {
+							onFalse: () => Option.none<string>(),
+							onTrue: () => Option.some(Array.headNonEmpty(group).traceId)
+						})
+				)
+			)
+		)
+	)
+	const expired = Array.filter(entries, entry =>
+		pruned(entry, traces, candidate => expiredOne(candidate) || isSuperseded(candidate, newest))
+	)
 	return {
 		expired,
 		next: Array.reduce(
@@ -145,29 +209,50 @@ export function retentionOf(
 	}
 }
 
+// Save touches the traces it receives and, when a service's newest release moved, only that service's stored entries.
 export function reconcileReleases(
-	current: HashMap.HashMap<string, Entry>,
-	entries: Entry[],
+	entriesOf: (traceId: string) => readonly Entry[],
+	entriesOfService: (service: string) => readonly Entry[],
+	incoming: Entry[],
 	known: Record<string, string>
 ) {
-	const newest = newestVersions(entries, known)
-	const accepted = Array.filter(entries, entry => !isSuperseded(entry, newest))
-	const replaced = Array.filter(
-		Boolean.match(Record.isEmptyRecord(Record.filter(newest, (latest, name) => known[name] !== latest)), {
-			onFalse: () => Array.fromIterable(HashMap.values(current)),
-			onTrue: () => []
-		}),
-		entry => isSuperseded(entry, newest)
+	const newest = newestVersions(incoming, known)
+	const groups = Array.groupBy(
+		Array.filter(incoming, entry => entry.traceId !== ''),
+		entry => entry.traceId
 	)
-	return {
-		accepted,
-		newest,
-		next: Array.reduce(
-			accepted,
-			Array.reduce(replaced, current, (all, entry) => HashMap.remove(all, entry.id)),
-			(all, entry) => HashMap.set(all, entry.id, entry)
+	const changedEntries = Array.flatMap(
+		Array.filter(
+			Array.dedupe(Array.map(incoming, entry => entry.service)),
+			service =>
+				Option.getOrUndefined(Record.get(known, service)) !== Option.getOrUndefined(Record.get(newest, service))
 		),
-		replaced
+		(service: string) => entriesOfService(service)
+	)
+	const touched = HashSet.union(
+		HashSet.fromIterable(Record.keys(groups)),
+		HashSet.fromIterable(
+			Array.flatMap(changedEntries, entry =>
+				Boolean.match(entry.traceId === '', {onFalse: () => [entry.traceId], onTrue: () => []})
+			)
+		)
+	)
+	const outcomes = Array.map(Array.fromIterable(touched), traceId => {
+		const current = entriesOf(traceId)
+		const batch = Option.getOrElse(Record.get(groups, traceId), () => EMPTY_ENTRIES)
+		if (groupSuperseded([...current, ...batch], newest)) return {accepted: EMPTY_ENTRIES, replaced: current}
+		return {accepted: batch, replaced: EMPTY_ENTRIES}
+	})
+	return {
+		accepted: [
+			...Array.filter(incoming, entry => entry.traceId === '' && !isSuperseded(entry, newest)),
+			...Array.flatMap(outcomes, outcome => outcome.accepted)
+		],
+		newest,
+		replaced: [
+			...Array.filter(changedEntries, entry => entry.traceId === '' && isSuperseded(entry, newest)),
+			...Array.flatMap(outcomes, outcome => outcome.replaced)
+		]
 	}
 }
 
@@ -181,6 +266,19 @@ function runtime(resource: Resource) {
 	return 'unknown' as const
 }
 
+// The tool's side: the resource's runtime, else the suffix its service name already carries; unknown names omit it.
+export function sideFor(service: string, value: Runtime) {
+	if (Schema.is(Side)(value)) return value
+	if (String.endsWith('-server')(service)) return 'server' as const
+	if (String.endsWith('-client')(service)) return 'web' as const
+	if (String.endsWith('-ios')(service)) return 'mobile' as const
+	return undefined
+}
+
+export function sideOf(service: string, resource: Resource) {
+	return sideFor(service, runtime(resource))
+}
+
 function started(resource: Resource) {
 	const value = resourceString(resource, 'scope.run.started_unix_nano')
 	if (Schema.is(Nano)(value)) return BigInt(value)
@@ -191,28 +289,6 @@ function started(resource: Resource) {
 function runsOf(entries: Entry[]) {
 	const runs = Record.fromEntries(Array.map(entries, entry => [entry.id, started(entry.resource)] as const))
 	return (entry: Entry) => runs[entry.id] ?? 0n
-}
-
-function latestEntry(entries: Array.NonEmptyReadonlyArray<Entry>, run: (entry: Entry) => bigint) {
-	return Array.max(entries, Order.mapInput(Order.BigInt, run))
-}
-
-export function currentEntries(entries: Entry[]) {
-	const run = runsOf(entries)
-	const latest = Record.map(
-		Array.groupBy(entries, entry => entry.service),
-		group => run(latestEntry(group, run))
-	)
-	const stale = HashSet.fromIterable(
-		Array.map(
-			Array.filter(entries, entry => entry.traceId !== '' && run(entry) < (latest[entry.service] ?? 0n)),
-			entry => entry.traceId
-		)
-	)
-	return Array.filter(
-		entries,
-		entry => run(entry) === (latest[entry.service] ?? 0n) && !HashSet.has(stale, entry.traceId)
-	)
 }
 
 export function serviceName(resource: Resource) {
@@ -242,47 +318,134 @@ function percentile(times: readonly number[], ratio: number) {
 	return Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)), () => 0)
 }
 
-export function summary(entries: Entry[], query: Query) {
-	const times = Array.sort(
-		Array.map(entries, entry => entry.durationMs),
-		Order.Number
-	)
-	return {
-		count: entries.length,
-		errors: Array.countBy(entries, entry => entry.status === 2),
-		from: query.from,
-		maxMs: percentile(times, 1),
-		p50Ms: percentile(times, 0.5),
-		p95Ms: percentile(times, 0.95),
-		to: query.to
-	} satisfies Stats
+// A failed span whose only failures are a denied sign-in is not a failure: no count, dot or error filter includes it.
+export function failedEntry(entry: Pick<Entry, 'denied' | 'status'>) {
+	return entry.status === 2 && entry.denied !== true
 }
 
-export function filterEntries(entries: Entry[], query: Query, signal: Entry['signal'] | 'all') {
-	const text = String.toLowerCase(query.text)
-	const traceId = String.toLowerCase(query.traceId)
-	return Array.filter(entries, entry => {
-		const milliseconds = pipe(Number.parse(`${BigInt(entry.time) / 1_000_000n}`), Option.getOrThrow)
-		return (
-			(signal === 'all' || entry.signal === signal) &&
-			milliseconds >= query.from &&
-			milliseconds <= query.to &&
-			(query.service === '' || entry.service === query.service) &&
-			(query.operation === '' || entry.name === query.operation) &&
-			(traceId === '' || entry.traceId === traceId) &&
-			(!query.errors || entry.status === 2) &&
-			// Text searches the span name or log message, attributes, status and events, not ids, times or the resource.
-			(text === '' ||
-				String.includes(text)(
-					String.toLowerCase(
-						Array.join(
-							[entry.name, ...leaves(Struct.pick(entry.payload, ['attributes', 'body', 'events', 'status']))],
-							' '
-						)
-					)
-				))
-		)
+// A failed span is denied when every exception event is an AuthError, or its HTTP response is 401 or 403.
+export function deniedSpan(span: Schema.JsonObject) {
+	const status = span['status']
+	if (!Predicate.isObject(status) || status['code'] !== 2) return false
+	const code = Option.getOrUndefined(attributePrimitive(spanAttributes(span), 'http.response.status_code'))
+	if (code === 401 || code === 403) return true
+	const events = Option.getOrElse(
+		Schema.decodeUnknownOption(Schema.Array(Schema.JsonObject))(span['events']),
+		() => [] as const
+	)
+	return Array.match(
+		Array.filter(events, event => event['name'] === 'exception'),
+		{
+			onEmpty: () => false,
+			onNonEmpty: exceptions =>
+				Array.every(
+					exceptions,
+					event => resourceString({attributes: spanAttributes(event)}, 'exception.type') === 'AuthError'
+				)
+		}
+	)
+}
+
+// The diagnostic a span is remembered by: an exception's message or the status line, first line only, no stack trace.
+export function failureMessage(payload: Schema.JsonObject) {
+	const events = Option.getOrElse(
+		Schema.decodeUnknownOption(Schema.Array(Schema.JsonObject))(payload['events']),
+		() => [] as const
+	)
+	const status = Option.liftPredicate(payload['status'], Predicate.isObject)
+	const message = Option.orElse(
+		pipe(
+			Array.findFirst(events, event => event['name'] === 'exception'),
+			Option.flatMap(event => attributePrimitive(spanAttributes(event), 'exception.message')),
+			Option.filter(Predicate.isString),
+			Option.filter(String.isNonEmpty)
+		),
+		() =>
+			Option.flatMap(status, value =>
+				Option.liftPredicate(
+					value['message'],
+					(item): item is string => Predicate.isString(item) && String.isNonEmpty(item)
+				)
+			)
+	)
+	return pipe(
+		Option.getOrElse(message, () => ''),
+		value => Array.head(String.split(value, '\n')),
+		Option.getOrElse(() => ''),
+		String.trim,
+		String.slice(0, 300)
+	)
+}
+
+// One flat object of primitive attribute values, without keys that only repeat the span or carry no diagnosis.
+export function attributesFlat(payload: Schema.JsonObject, name: string, failedSpan: boolean) {
+	const entries = Array.flatMap(spanAttributes(payload), attribute => {
+		const value = primitiveOf(attribute.value)
+		if (value === undefined) return []
+		if (
+			attribute.key === 'service.name' ||
+			attribute.key === 'rpc.system.name' ||
+			attribute.key === 'url.scheme' ||
+			attribute.key === 'server.port' ||
+			// `url.full` already holds the path, query and host.
+			attribute.key === 'url.path' ||
+			attribute.key === 'url.query' ||
+			attribute.key === 'server.address'
+		) {
+			return []
+		}
+		if (String.startsWith('code.')(attribute.key)) return []
+		if (attribute.key === 'http.request.method' && String.startsWith(`${value}`)(name)) return []
+		if (attribute.key === 'client.address' && (value === '127.0.0.1' || value === '::1')) return []
+		if (attribute.key === 'rpc.method' && value === name) return []
+		if (attribute.key === 'user_agent.original' && !failedSpan) return []
+		if (value === name) return []
+		return [[attribute.key, value] as const]
 	})
+	if (Array.isReadonlyArrayEmpty(entries)) return undefined
+	return Record.fromEntries(entries)
+}
+
+export function isoTime(nano: string) {
+	return DateTime.formatIso(DateTime.makeUnsafe(Option.getOrThrow(Number.parse(`${BigInt(nano) / 1_000_000n}`))))
+}
+
+export function isoMillis(milliseconds: number) {
+	return DateTime.formatIso(DateTime.makeUnsafe(milliseconds))
+}
+
+export function rounded(ms: number) {
+	return Number.round(ms, 1)
+}
+
+function severityOf(entry: Pick<Entry, 'payload'>) {
+	if (Predicate.isNumber(entry.payload['severityNumber'])) return entry.payload['severityNumber']
+	const text = pipe(
+		Option.liftPredicate(entry.payload['severityText'], String.isString),
+		Option.getOrElse(() => ''),
+		String.toUpperCase
+	)
+	if (text === 'FATAL' || text === 'ERROR') return 17
+	if (text === 'WARN') return 13
+	if (text === 'INFO') return 9
+	if (text === 'DEBUG') return 5
+	return 0
+}
+
+export function levelOf(entry: Pick<Entry, 'payload'>) {
+	const severity = severityOf(entry)
+	if (severity >= 17) return 'error'
+	if (severity >= 13) return 'warn'
+	if (severity >= 9) return 'info'
+	if (severity >= 5) return 'debug'
+	return 'trace'
+}
+
+// What text searches in an entry: its name and what it says, never its ids or times.
+export function entryText(entry: Entry) {
+	return String.toLowerCase(
+		Array.join([entry.name, ...leaves(Struct.pick(entry.payload, ['attributes', 'body', 'events', 'status']))], ' ')
+	)
 }
 
 // OTLP timestamps are nanoseconds since the epoch, so they compare exactly as BigInts.
@@ -290,22 +453,12 @@ const byTime = Order.mapInput(Order.BigInt, (time: string) => BigInt(time))
 
 const byStart = Order.mapInput(byTime, (entry: {time: string}) => entry.time)
 
-export function orderEntries<A extends {durationMs: number; time: string}>(entries: A[], sort: Query['sort']) {
-	return Array.sort(
-		entries,
-		Boolean.match(sort === 'slowest', {
-			onFalse: () => Order.flip(byStart),
-			onTrue: () => Order.flip(Order.mapInput(Order.Number, (entry: A) => entry.durationMs))
-		})
-	)
-}
-
 export function serviceStatuses(entries: Entry[]) {
 	const runOf = runsOf(entries)
 	return Record.collect(
 		Array.groupBy(entries, entry => entry.service),
 		(name, group) => {
-			const latest = latestEntry(group, runOf)
+			const latest = Array.max(group, Order.mapInput(Order.BigInt, runOf))
 			const run = runOf(latest)
 			const current = Array.filter(group, entry => runOf(entry) === run)
 			return {
@@ -315,7 +468,7 @@ export function serviceStatuses(entries: Entry[]) {
 				runStartedAt: `${run}`,
 				runtime: runtime(latest.resource),
 				version: versionOf(latest)
-			}
+			} satisfies ServiceStatus
 		}
 	)
 }
@@ -343,23 +496,89 @@ function parentId(entry: Entry) {
 }
 
 // Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
-function brokeAt(spans: readonly Entry[]) {
-	const failed = Array.filter(spans, span => span.status === 2)
-	const parents = HashSet.fromIterable(Array.map(failed, parentId))
+export function brokeAt(spans: readonly Entry[]) {
+	const failedSpans = Array.filter(spans, failedEntry)
+	const parents = HashSet.fromIterable(Array.map(failedSpans, parentId))
 	return Array.match(
-		Array.filter(failed, span => !HashSet.has(parents, span.spanId)),
+		Array.filter(failedSpans, span => !HashSet.has(parents, span.spanId)),
 		{onEmpty: () => Option.none(), onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))}
 	)
 }
 
+// The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
+export function traceRoot(spans: Array.NonEmptyReadonlyArray<Entry>) {
+	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
+	return Array.min(
+		Array.match(
+			Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
+			{onEmpty: () => spans, onNonEmpty: Function.identity}
+		),
+		byStart
+	)
+}
+
+export function readLinks(payload: Schema.JsonObject) {
+	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(SpanLink))(payload['links']), () => [] as const)
+}
+
+function reached(
+	edges: readonly {from: string; to: string}[],
+	found: HashSet.HashSet<string>
+): HashSet.HashSet<string> {
+	const next = Array.dedupe(
+		Array.flatMap(edges, edge => {
+			if (HashSet.has(found, edge.from) && !HashSet.has(found, edge.to)) return [edge.to]
+			if (HashSet.has(found, edge.to) && !HashSet.has(found, edge.from)) return [edge.from]
+			return []
+		})
+	)
+	if (!Array.isReadonlyArrayNonEmpty(next)) return found
+	return reached(edges, HashSet.union(found, HashSet.fromIterable(next)))
+}
+
+// The trace and every trace a span link joins to it, either way, so the work a request started reads as part of it.
+export function linkedTraces(entries: readonly Entry[], id: string) {
+	return reached(
+		Array.flatMap(entries, entry =>
+			Array.flatMap(entry.links ?? [], link => {
+				if (link.traceId === entry.traceId) return []
+				return [{from: entry.traceId, to: link.traceId}]
+			})
+		),
+		HashSet.make(id)
+	)
+}
+
+// Each linked trace's root hangs under the span it links to, its own link first.
+function linkedParents(spans: readonly Entry[]) {
+	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
+	return Record.fromEntries(
+		Array.flatMap(Record.values(Array.groupBy(spans, span => span.traceId)), group => {
+			const root = traceRoot(group)
+			return Option.match(
+				Array.findFirst([root, ...group], span =>
+					Array.findFirst(span.links ?? [], link => link.traceId !== span.traceId && HashSet.has(ids, link.spanId))
+				),
+				{onNone: () => [], onSome: link => [[root.spanId, link.spanId] as const]}
+			)
+		})
+	)
+}
+
 export function traceView(entries: Entry[], id: string) {
-	const ordered = Array.reverse(orderEntries(entries, 'recent'))
+	const traces = linkedTraces(entries, id)
+	const records = Array.filter(entries, entry => HashSet.has(traces, entry.traceId))
+	const ordered = Array.sort(records, byStart)
 	const spans = Array.map(
 		Array.filter(ordered, entry => entry.signal === 'trace'),
 		(entry, index) => ({entry, index})
 	)
 	const byId = Record.fromEntries(Array.map(spans, span => [span.entry.spanId, span] as const))
-	const timing = traceTiming(entries)
+	const linked = linkedParents(Array.map(spans, span => span.entry))
+	function parentOf(entry: Entry) {
+		return Option.getOrElse(Record.get(linked, entry.spanId), () => parentId(entry))
+	}
+	const timing = traceTiming(records)
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const bySpan = Array.groupBy(logs, log => log.spanId)
 
@@ -369,7 +588,7 @@ export function traceView(entries: Entry[], id: string) {
 			const ancestors = Array.reverse(
 				Array.unfold({entry: span.entry, seen: HashSet.make(span.entry.spanId)}, current =>
 					pipe(
-						Record.get(byId, parentId(current.entry)),
+						Record.get(byId, parentOf(current.entry)),
 						Option.filter(parent => !HashSet.has(current.seen, parent.entry.spanId)),
 						Option.map(
 							parent => [parent, {entry: parent.entry, seen: HashSet.add(current.seen, parent.entry.spanId)}] as const
@@ -380,11 +599,11 @@ export function traceView(entries: Entry[], id: string) {
 			return {
 				path: [...Array.map(ancestors, parent => parent.index), span.index],
 				value: {
-					...span.entry,
+					...Struct.omit(span.entry, ['links']),
 					depth: ancestors.length,
 					logs: Option.getOrElse(Record.get(bySpan, span.entry.spanId), () => []),
 					offsetMs: durationMs(timing.time, span.entry.time),
-					parentSpanId: parentId(span.entry),
+					parentSpanId: parentOf(span.entry),
 					runtime: runtime(span.entry.resource)
 				}
 			}
@@ -405,43 +624,35 @@ export function traceView(entries: Entry[], id: string) {
 	} satisfies Trace
 }
 
-// The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
-function rootOf(spans: Array.NonEmptyReadonlyArray<Entry>) {
-	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
-	return Array.min(
-		Array.match(
-			Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
-			{onEmpty: () => spans, onNonEmpty: Function.identity}
-		),
-		byStart
-	)
-}
+export type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
 
-type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
-
-function spanAttributes(entry: Entry) {
-	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(Attribute))(entry.payload['attributes']), () => [])
-}
-
-function markedStream(entry: Entry) {
+export function markedStream(entry: Entry) {
 	return Array.some(
-		spanAttributes(entry),
+		spanAttributes(entry.payload),
 		attribute => attribute.key === 'rpc.stream' && attribute.value['boolValue'] === true
 	)
 }
 
 // A subscription's lifetime is not action latency. A nested subscription does not turn its owning action into one.
-function subscription(root: Entry, spans: readonly Entry[]) {
+export function subscription(root: Entry, spans: readonly Entry[]) {
 	if (markedStream(root)) return true
-	const method = resourceString({attributes: spanAttributes(root)}, 'rpc.method')
+	const method = resourceString({attributes: spanAttributes(root.payload)}, 'rpc.method')
 	return Array.some(
 		spans,
 		span =>
 			parentId(span) === root.spanId &&
 			((root.name === 'POST /mcp' && String.includes('/subscriptions/listen')(span.name)) ||
 				(method !== '' &&
-					method === resourceString({attributes: spanAttributes(span)}, 'rpc.method') &&
+					method === resourceString({attributes: spanAttributes(span.payload)}, 'rpc.method') &&
 					markedStream(span)))
+	)
+}
+
+// A machine's timer waits between steps; its lifetime is not the operation's latency.
+export function machineTimer(root: Entry) {
+	return (
+		root.payload['name'] === 'Machine.invoke' &&
+		Option.getOrUndefined(attributePrimitive(spanAttributes(root.payload), 'machine.invoke.kind')) === 'Timer'
 	)
 }
 
@@ -467,19 +678,30 @@ function traced(records: readonly Entry[], now: number) {
 					) >
 					60_000
 			if (!settled) return Option.none()
-			const root = rootOf(spans)
-			if (subscription(root, spans)) return Option.none()
+			const root = traceRoot(spans)
+			if (subscription(root, spans) || machineTimer(root)) return Option.none()
 			return Option.some({
 				app: appName(root.service),
 				name: root.name,
 				runtime: runtime(root.resource),
 				trace: {
 					durationMs: timing.durationMs,
-					...Option.match(brokeAt(spans), {onNone: () => ({}), onSome: span => ({failure: {span: span.name}})}),
+					...Option.match(brokeAt(spans), {
+						onNone: () => ({}),
+						onSome: span => {
+							const error = failureMessage(span.payload)
+							return {
+								failure: {
+									span: span.name,
+									...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
+								}
+							}
+						}
+					}),
 					id: root.traceId,
 					...Option.match(
 						Option.flatMap(
-							Array.findFirst(spanAttributes(root), attribute => attribute.key === 'trace.label'),
+							Array.findFirst(spanAttributes(root.payload), attribute => attribute.key === 'trace.label'),
 							attribute => Option.liftPredicate(attribute.value['stringValue'], String.isString)
 						),
 						{onNone: () => ({}), onSome: label => ({label})}
@@ -491,74 +713,71 @@ function traced(records: readonly Entry[], now: number) {
 	)
 }
 
-function operationsOf(group: readonly Traced[]) {
-	return Array.match(group, {
-		onEmpty: () => [],
-		onNonEmpty: rows =>
-			Array.map(Record.toEntries(Array.groupBy(rows, item => `${item.runtime} ${item.name}`)), entry => {
-				const times = Array.sort(
-					Array.map(entry[1], item => item.trace.durationMs),
-					Order.Number
+// Every trace in one snapshot, grouped once and shared by all its time frames.
+export function tracedOf(entries: readonly Entry[], now: number) {
+	return Array.getSomes(
+		Array.map(
+			Record.values(
+				Array.groupBy(
+					Array.filter(entries, entry => entry.traceId !== ''),
+					entry => entry.traceId
 				)
-				return {
-					count: entry[1].length,
-					failures: failureCount(entry[1]),
-					name: Array.headNonEmpty(entry[1]).name,
-					p50Ms: percentile(times, 0.5),
-					runtime: Array.headNonEmpty(entry[1]).runtime,
-					// The slowest first, with the newest failures always among them, since those are the traces worth opening.
-					traces: Array.map(
-						Array.sort(
-							Array.take(
-								Array.dedupeWith(
-									[
-										...Array.take(
-											Array.sort(
-												Array.filter(entry[1], item => item.trace.failure !== undefined),
-												Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
-											),
-											KEEP / 2
-										),
-										...Array.sort(
-											entry[1],
-											Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
-										)
-									],
-									(first: Traced, second: Traced) => first.trace.id === second.trace.id
+			),
+			records => traced(records, now)
+		)
+	)
+}
+
+function tracedOperations(group: readonly Traced[]) {
+	return Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
+		const times = Array.sort(
+			Array.map(entry[1], item => item.trace.durationMs),
+			Order.Number
+		)
+		return {
+			count: entry[1].length,
+			failures: failureCount(entry[1]),
+			name: Array.headNonEmpty(entry[1]).name,
+			p50Ms: percentile(times, 0.5),
+			p95Ms: percentile(times, 0.95),
+			runtime: Array.headNonEmpty(entry[1]).runtime,
+			// The slowest first, with the newest failures always among them, since those are the traces worth opening.
+			traces: Array.map(
+				Array.sort(
+					Array.take(
+						Array.dedupeWith(
+							[
+								...Array.take(
+									Array.sort(
+										Array.filter(entry[1], item => item.trace.failure !== undefined),
+										Order.flip(Order.mapInput(byTime, (item: Traced) => item.trace.time))
+									),
+									KEEP / 2
 								),
-								KEEP
-							),
-							Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+								...Array.sort(
+									entry[1],
+									Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+								)
+							],
+							(first: Traced, second: Traced) => first.trace.id === second.trace.id
 						),
-						item => item.trace
-					)
-				} satisfies Operation
-			})
+						KEEP
+					),
+					Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.durationMs)
+				),
+				item => item.trace
+			)
+		} satisfies Operation
 	})
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
-export function overview(entries: readonly Entry[], now: number, range: Range) {
+export function overviewOf(traces: readonly Traced[], now: number, range: Range) {
 	const cutoff = rangeStart(range, now)
 	return {
 		apps: Array.map(
 			Array.sort(
-				Record.values(
-					Array.groupBy(
-						Array.getSomes(
-							Array.map(
-								Record.values(
-									Array.groupBy(
-										Array.filter(entries, entry => entry.traceId !== ''),
-										entry => entry.traceId
-									)
-								),
-								records => traced(records, now)
-							)
-						),
-						item => item.app
-					)
-				),
+				Record.values(Array.groupBy(traces, item => item.app)),
 				Order.combine(
 					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => failureCount(group)),
 					Order.mapInput(Order.flip(Order.Number), (group: readonly Traced[]) => group.length)
@@ -567,7 +786,7 @@ export function overview(entries: readonly Entry[], now: number, range: Range) {
 			group => ({
 				ci: Array.every(group, item => item.runtime === 'ci'),
 				name: Array.headNonEmpty(group).app,
-				operations: operationsOf(Array.filter(group, item => BigInt(item.trace.time) >= cutoff))
+				operations: tracedOperations(Array.filter(group, item => BigInt(item.trace.time) >= cutoff))
 			})
 		)
 	} satisfies Overview

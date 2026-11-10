@@ -1,6 +1,6 @@
 import {Array, Boolean, Number, Option, Record, String} from 'effect'
 
-import {HardDrivesIcon} from '@phosphor-icons/react'
+import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
 import {appMarks} from '@deslop/components-web/apps'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
@@ -9,7 +9,7 @@ import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
 
 import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
-import {appName} from '#services/telemetry/lib/utils.ts'
+import {appName, failedEntry} from '#services/telemetry/lib/utils.ts'
 import type {Trace} from '#services/telemetry/schema.ts'
 
 const STATUS: Record<string, string> = {
@@ -85,7 +85,7 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(props.span.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+					Boolean.match(failedEntry(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
 				)}
 			>
 				{props.span.name}
@@ -113,8 +113,24 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 				onNone: () => null,
 				onSome: message => (
 					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-						<span className="text-muted-foreground truncate">error</span>
-						<span className="text-destructive min-w-0 truncate" title={message}>
+						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
+							{Boolean.match(props.span.denied === true, {
+								onFalse: () => 'error',
+								onTrue: () => (
+									<>
+										<LockIcon aria-hidden className="size-3 shrink-0" />
+										denied
+									</>
+								)
+							})}
+						</span>
+						<span
+							className={cn(
+								'block min-w-0 truncate',
+								Boolean.match(failedEntry(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+							)}
+							title={message}
+						>
 							<ErrorText message={message} />
 						</span>
 					</div>

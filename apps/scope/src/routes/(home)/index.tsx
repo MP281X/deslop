@@ -23,6 +23,7 @@ import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {
+	Search,
 	ageOf,
 	durationOf,
 	focusOf,
@@ -31,7 +32,6 @@ import {
 	nowAtom,
 	operationsOf,
 	overviewAtom,
-	Search,
 	selectionOf,
 	traceAtom,
 	traceLabel

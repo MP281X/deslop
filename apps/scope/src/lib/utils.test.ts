@@ -91,7 +91,15 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			{
 				name: 'stash',
 				operations: [
-					{count: 1, failures: 0, name: 'notes.search', p50Ms: 1, runtime: 'web', traces: [failureTrace('100', false)]}
+					{
+						count: 1,
+						failures: 0,
+						name: 'notes.search',
+						p50Ms: 1,
+						p95Ms: 1,
+						runtime: 'web',
+						traces: [failureTrace('100', false)]
+					}
 				]
 			},
 			{
@@ -102,6 +110,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						failures: 1,
 						name: 'Inventory.snapshot',
 						p50Ms: 1,
+						p95Ms: 1,
 						runtime: 'server',
 						traces: [failureTrace('300', true)]
 					}
@@ -110,7 +119,15 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			{
 				name: 'gateway',
 				operations: [
-					{count: 1, failures: 1, name: 'Request', p50Ms: 1, runtime: 'server', traces: [failureTrace('500', true)]}
+					{
+						count: 1,
+						failures: 1,
+						name: 'Request',
+						p50Ms: 1,
+						p95Ms: 1,
+						runtime: 'server',
+						traces: [failureTrace('500', true)]
+					}
 				]
 			}
 		]
@@ -142,19 +159,36 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						failures: 0,
 						name: 'deploy.idle',
 						p50Ms: 2,
+						p95Ms: 2,
 						runtime: 'server',
 						traces: [
 							{...failureTrace('300', false), id: traceId},
 							{...failureTrace('100', false), id: otherId}
 						]
 					},
-					{count: 1, failures: 1, name: 'deploy.fail', p50Ms: 1, runtime: 'server', traces: [failureTrace('200', true)]}
+					{
+						count: 1,
+						failures: 1,
+						name: 'deploy.fail',
+						p50Ms: 1,
+						p95Ms: 1,
+						runtime: 'server',
+						traces: [failureTrace('200', true)]
+					}
 				]
 			},
 			{
 				name: 'stash',
 				operations: [
-					{count: 1, failures: 0, name: 'notes.search', p50Ms: 1, runtime: 'web', traces: [failureTrace('400', false)]}
+					{
+						count: 1,
+						failures: 0,
+						name: 'notes.search',
+						p50Ms: 1,
+						p95Ms: 1,
+						runtime: 'web',
+						traces: [failureTrace('400', false)]
+					}
 				]
 			}
 		]
