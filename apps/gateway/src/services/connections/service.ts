@@ -88,7 +88,11 @@ function siteOf(url: URL) {
 function failed(message: string) {
 	return Effect.mapError((cause: unknown) => {
 		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message: `${message}: ${describe(cause)}`})
+		return AuthError.make({
+			cause,
+			error: 'temporarily_unavailable',
+			message: `${message}: ${describe(cause)}`
+		})
 	})
 }
 
@@ -456,7 +460,8 @@ export class Connections extends Context.Service<
 		const fail = Effect.fnUntraced(function* (connection: Connection, cause: unknown) {
 			const message = describe(cause)
 			yield* update(connection.id, connection.generation, found => ({...found, error: message}))
-			return yield* AuthError.make({cause, message})
+			if (Schema.is(AuthError)(cause)) return yield* cause
+			return yield* AuthError.make({cause, error: 'temporarily_unavailable', message})
 		})
 		const manage = Effect.fnUntraced(function* (
 			id: ServerId,

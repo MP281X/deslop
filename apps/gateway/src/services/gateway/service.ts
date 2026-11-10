@@ -29,6 +29,7 @@ import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 import type {Headers} from 'effect/http'
 
 import {AuthError} from '@deslop/runtime/auth/schema'
+import type {User} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
 import {bearerOf, isJwt} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
@@ -48,11 +49,20 @@ import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.
 
 type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
 
+// The tools/list middleware verifies the caller once and hands the answer to the MCP auth middleware for the same request.
+export const VerifiedCaller = Context.Reference<
+	Option.Option<{key: string; result: Result.Result<User & {client?: string}, AuthError>}>
+>('@deslop/gateway/services/gateway/service/VerifiedCaller', {defaultValue: () => Option.none()})
+
 // The failure keeps its cause for traces and names it for the MCP page and the calling agent.
 function rejected(server: Pick<Connection, 'name'>) {
 	return (cause: unknown) => {
 		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, message: `${server.name}: ${describe(cause)}`})
+		return AuthError.make({
+			cause,
+			error: 'temporarily_unavailable',
+			message: `${server.name}: ${describe(cause)}`
+		})
 	}
 }
 
@@ -61,8 +71,8 @@ export class Gateway extends Context.Service<
 	{
 		// A connection that was added or re-authorized: its tools are read now, even while another read runs.
 		readonly connected: (headers: Headers.Headers) => Effect.Effect<void>
-		// A tools/list: a first discovery under way is awaited so a just-added server's tools are listed; otherwise the registry answers alone.
-		readonly joinFirst: Effect.Effect<void>
+		// A tools/list: runs or joins the first discovery, so a fresh process lists its stored connections' tools.
+		readonly first: (headers: Headers.Headers) => Effect.Effect<void>
 		// A tools/list answered from the registry: a stale registry is refreshed in the background, and a changed tool set notifies clients.
 		readonly refresh: (headers: Headers.Headers) => Effect.Effect<void>
 		// A removed connection's tools leave the registry, and clients hear that their list changed.
@@ -255,7 +265,10 @@ export class Gateway extends Context.Service<
 				)
 				const latest = yield* connections.get(server.id)
 				if (latest.generation !== server.generation || latest.link._tag === 'Disconnected') {
-					return yield* AuthError.make({message: `${server.name} changed while its tools were read`})
+					return yield* AuthError.make({
+						error: 'temporarily_unavailable',
+						message: `${server.name} changed while its tools were read`
+					})
 				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
 				const names = MutableList.make<string>()
@@ -333,22 +346,21 @@ export class Gateway extends Context.Service<
 					Effect.catchCause(cause => Effect.logWarning('Reading the servers’ tools failed', cause))
 				)
 			})
-			const joinFirst = Effect.gen(function* () {
+			const first = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				if (Option.isSome(yield* Ref.get(lastRead))) return
 				const pending = Option.getOrUndefined(yield* Ref.get(inFlight))
-				if (pending === undefined) return
-				yield* pipe(Deferred.await(pending), Effect.timeoutOption('2 seconds'), Effect.asVoid)
+				if (pending !== undefined) {
+					yield* pipe(Deferred.await(pending), Effect.timeoutOption('2 seconds'), Effect.asVoid)
+					return
+				}
+				yield* settle(refreshes.withPermits(1)(read(headers)))
 			})
 			const refresh = Effect.fnUntraced(function* (headers: Headers.Headers) {
 				const now = yield* Clock.currentTimeMillis
 				const last = yield* Ref.get(lastRead)
+				if (Option.isNone(last)) return
 				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
-				if (Option.exists(last, readAt => now - readAt < 30_000)) return
-				if (Option.isNone(last)) {
-					// The first list waits for the first discovery, so a fresh registry answers with its tools.
-					yield* settle(refreshes.withPermits(1)(read(headers)))
-					return
-				}
+				if (now - Option.getOrThrow(last) < 30_000) return
 				yield* Effect.forkIn(
 					Effect.withSpan(refreshes.withPermitsIfAvailable(1)(read(headers)), 'Gateway.refresh'),
 					scope
@@ -356,7 +368,7 @@ export class Gateway extends Context.Service<
 			})
 			return Gateway.of({
 				connected: headers => Effect.withSpan(settle(refreshes.withPermits(1)(read(headers))), 'Gateway.connected'),
-				joinFirst,
+				first,
 				refresh,
 				removed: Effect.withSpan(prune, 'Gateway.removed')
 			})
@@ -364,10 +376,11 @@ export class Gateway extends Context.Service<
 	)
 }
 
-// A tools/list is answered from the registry: it waits only for a first discovery already under way, then a stale refresh follows the answer.
+// A tools/list verifies the bearer once, runs or joins the first discovery, then answers from the registry; a stale registry refreshes behind the answer.
 export const GatewayDiscovery = HttpRouter.middleware()(
 	Effect.gen(function* () {
 		const gateway = yield* Gateway
+		const auth = yield* Auth
 		return app =>
 			Effect.gen(function* () {
 				const request = yield* HttpServerRequest.HttpServerRequest
@@ -376,10 +389,16 @@ export const GatewayDiscovery = HttpRouter.middleware()(
 				}
 				const body = yield* Effect.result(request.json)
 				if (Result.isFailure(body) || !Schema.is(ToolRequest)(body.success)) return yield* app
-				yield* gateway.joinFirst
-				const response = yield* app
-				// A refusal or an Auth outage did not verify the bearer, so it starts no work with it.
-				if (response.status !== 401 && response.status !== 503) yield* gateway.refresh(request.headers)
+				// The MCP auth middleware reads this answer instead of verifying the same bearer again.
+				const verified = yield* Effect.result(auth.user(request.headers))
+				if (Result.isSuccess(verified)) yield* gateway.first(request.headers)
+				const response = yield* Effect.provideService(
+					app,
+					VerifiedCaller,
+					Option.some({key: request.headers['authorization'] ?? '', result: verified})
+				)
+				// A refusal or an Auth outage starts no work with the bearer it could not verify.
+				if (Result.isSuccess(verified)) yield* gateway.refresh(request.headers)
 				return response
 			})
 	})

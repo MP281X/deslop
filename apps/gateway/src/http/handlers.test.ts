@@ -29,6 +29,7 @@ import {
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {McpSchema, McpServer} from 'effect/ai'
 import {Cookies, FetchHttpClient, HttpClient, HttpClientResponse, HttpRouter} from 'effect/http'
+import {KeyValueStore} from 'effect/persistence'
 import {RpcTest} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
@@ -392,7 +393,30 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 		})
 	)
-	const store = ServerRuntime.layerKeyValueStore(directory)
+	const storageFails = yield* Ref.make(false)
+	const store = pipe(
+		Layer.effect(
+			KeyValueStore.KeyValueStore,
+			Effect.gen(function* () {
+				const base = yield* KeyValueStore.KeyValueStore
+				return KeyValueStore.KeyValueStore.of({
+					...base,
+					get: key =>
+						Effect.gen(function* () {
+							if (yield* Ref.get(storageFails)) {
+								return yield* new KeyValueStore.KeyValueStoreError({
+									key,
+									message: 'Storage unavailable',
+									method: 'get'
+								})
+							}
+							return yield* base.get(key)
+						})
+				})
+			})
+		),
+		Layer.provide(ServerRuntime.layerKeyValueStore(directory))
+	)
 	const platform = Layer.mergeAll(
 		NodeCrypto.layer,
 		NodeServices.layer,
@@ -483,6 +507,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			client('ai.setKey', {provider: aiProvider, secret: Redacted.make(secret)}, {headers: {cookie: session}}),
 		stall,
 		stallReady,
+		storageFails,
 		tokenGrants,
 		toolNames,
 		upstreamRequests,
@@ -813,6 +838,41 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					tool => tool.name === `${added.id}__search`
 				)
 			)
+		})
+	)
+	test.effect(
+		'lists a stored connection’s tools on the first request after a restart',
+		Effect.fnUntraced(function* () {
+			const home = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const gateway = yield* servers(home)
+					yield* gateway.add('https://public.example.com/mcp')
+				})
+			)
+			assert.isTrue(
+				Array.some(yield* toolsOf((yield* servers(home)).web, TOKEN), tool => tool.name === 'public__search')
+			)
+		})
+	)
+	test.effect(
+		'reports a storage failure as temporarily unavailable',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* Ref.set(gateway.storageFails, true)
+			const failure = yield* Effect.flip(gateway.keys(SESSION))
+			assert.isTrue(Schema.is(AuthError)(failure))
+			assert.strictEqual(failure.error, 'temporarily_unavailable')
+		})
+	)
+	test.effect(
+		'reports an upstream failure as temporarily unavailable',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* Ref.set(gateway.metadataUnavailable, true)
+			const failure = yield* gateway.addFailure('https://public.example.com/mcp')
+			assert.isTrue(Schema.is(AuthError)(failure))
+			assert.strictEqual(failure.error, 'temporarily_unavailable')
 		})
 	)
 	test.effect(

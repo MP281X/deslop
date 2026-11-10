@@ -58,7 +58,9 @@ const HOP_BY_HOP = [
 	'upgrade'
 ]
 const FORBIDDEN = ['authorization', 'x-api-key', 'cookie', 'host', ...HOP_BY_HOP]
-const failed = Effect.mapError((cause: unknown) => AuthError.make({cause, message: 'AI Gateway storage failed'}))
+const failed = Effect.mapError((cause: unknown) =>
+	AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI Gateway storage failed'})
+)
 
 const make = Effect.gen(function* () {
 	const kv = yield* KeyValueStore.KeyValueStore
@@ -271,7 +273,12 @@ const make = Effect.gen(function* () {
 					yield* pipe(
 						Stream.fromReadableStream({
 							evaluate: () => meter,
-							onError: cause => AuthError.make({cause, message: 'AI usage could not be read'})
+							onError: cause =>
+								AuthError.make({
+									cause,
+									error: 'temporarily_unavailable',
+									message: 'AI usage could not be read'
+								})
 						}),
 						Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
 						Stream.runForEach(chunk =>
