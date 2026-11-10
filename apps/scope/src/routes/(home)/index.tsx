@@ -41,7 +41,7 @@ import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import {Range, rangeStart} from '#services/telemetry/schema.ts'
-import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
+import type {Operation, OperationTrace, Overview, Runtime, Trace, TraceLink} from '#services/telemetry/schema.ts'
 
 // The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
@@ -75,6 +75,7 @@ type WorkspaceProps = {
 	activeKey?: OperationKey
 	activeTrace?: OperationTrace
 	now: number
+	onLink: (link: TraceLink) => void
 	onPickSpan: (id: string) => void
 	onSelectOperation: (app: string, operation: Operation) => void
 	onSelectTrace: (trace: OperationTrace) => void
@@ -429,13 +430,13 @@ function TracesPane(props: {
 }
 
 // The picked span's details alone, for the phone's pushed span screen.
-function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
+function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>; onLink: (link: TraceLink) => void}) {
 	return Option.match(props.focus, {
 		onNone: () => <EmptyState label="Select a span" icon={<ChartBarHorizontalIcon weight="light" />} />,
 		onSome: span => (
 			<ScrollArea className="min-h-0 flex-1">
 				<div className="flex flex-col">
-					<SpanDetail span={span} />
+					<SpanDetail onLink={props.onLink} span={span} />
 				</div>
 			</ScrollArea>
 		)
@@ -446,6 +447,7 @@ function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 function SpansList(props: {
 	focus: Option.Option<Trace['spans'][number]>
 	inlineDetails: boolean
+	onLink: (link: TraceLink) => void
 	onPick: (id: string) => void
 	trace: Trace
 }) {
@@ -464,7 +466,10 @@ function SpansList(props: {
 				onFalse: () => null,
 				onTrue: () => (
 					<div className="border-t">
-						{Option.match(props.focus, {onNone: () => null, onSome: span => <SpanDetail span={span} />})}
+						{Option.match(props.focus, {
+							onNone: () => null,
+							onSome: span => <SpanDetail onLink={props.onLink} span={span} />
+						})}
 					</div>
 				)
 			})}
@@ -486,6 +491,7 @@ function Spans(props: {
 	detailOnly?: boolean
 	id: string
 	inlineDetails?: boolean
+	onLink: (link: TraceLink) => void
 	onPick: (id: string) => void
 	pickedSpan?: string
 	range: Range
@@ -501,9 +507,15 @@ function Spans(props: {
 		onNone: () => null,
 		onSome: trace => {
 			const focus = focusOf(trace, props.pickedSpan)
-			if (props.detailOnly === true) return <SpanDetails focus={focus} />
+			if (props.detailOnly === true) return <SpanDetails focus={focus} onLink={props.onLink} />
 			return (
-				<SpansList focus={focus} inlineDetails={props.inlineDetails === true} onPick={props.onPick} trace={trace} />
+				<SpansList
+					focus={focus}
+					inlineDetails={props.inlineDetails === true}
+					onLink={props.onLink}
+					onPick={props.onPick}
+					trace={trace}
+				/>
 			)
 		}
 	})
@@ -515,6 +527,7 @@ function TracePane(props: {
 	detailOnly?: boolean
 	inlineDetails?: boolean
 	now: number
+	onLink: (link: TraceLink) => void
 	onPickSpan: (id: string) => void
 	pickedSpan?: string
 	range: Range
@@ -564,6 +577,7 @@ function TracePane(props: {
 										detailOnly={props.detailOnly}
 										id={current.id}
 										inlineDetails={props.inlineDetails}
+										onLink={props.onLink}
 										onPick={props.onPickSpan}
 										pickedSpan={props.pickedSpan}
 										range={props.range}
@@ -601,6 +615,7 @@ function NarrowWorkspace(props: WorkspaceProps) {
 			<TracePane
 				inlineDetails
 				now={props.now}
+				onLink={props.onLink}
 				onPickSpan={props.onPickSpan}
 				pickedSpan={props.pickedSpan}
 				range={props.range}
@@ -637,6 +652,7 @@ function WideWorkspace(props: WorkspaceProps) {
 				<TracePane
 					inlineDetails
 					now={props.now}
+					onLink={props.onLink}
 					onPickSpan={props.onPickSpan}
 					pickedSpan={props.pickedSpan}
 					range={props.range}
@@ -676,6 +692,7 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 						className="min-h-0 flex-1"
 						detailOnly={props.pane === 'Span'}
 						now={props.now}
+						onLink={props.onLink}
 						onPickSpan={props.onPickSpan}
 						pickedSpan={props.pickedSpan}
 						range={props.range}
@@ -768,6 +785,13 @@ function Home() {
 		Option.map(selection.activeKey, operation => send({_tag: 'Trace', selection: {operation, traceId: trace.id}}))
 	}
 
+	function selectLinkedTrace(link: TraceLink) {
+		send({
+			_tag: 'Trace',
+			selection: {operation: {app: link.app, name: link.name, runtime: link.runtime}, traceId: link.trace}
+		})
+	}
+
 	function selectSpan(id: string) {
 		Option.map(Option.all({operation: selection.activeKey, trace: selection.activeTrace}), selected =>
 			send({_tag: 'Span', selection: {operation: selected.operation, spanId: id, traceId: selected.trace.id}})
@@ -790,6 +814,7 @@ function Home() {
 		activeKey: Option.getOrUndefined(selection.activeKey),
 		activeTrace: Option.getOrUndefined(selection.activeTrace),
 		now,
+		onLink: selectLinkedTrace,
 		onPickSpan: selectSpan,
 		onSelectOperation: selectOperation,
 		onSelectTrace: selectTrace,

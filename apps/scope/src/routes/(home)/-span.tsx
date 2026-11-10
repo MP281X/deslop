@@ -8,9 +8,9 @@ import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
 
-import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
+import {attributesOf, durationOf, errorOf, failed} from '#lib/utils.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
-import type {Trace} from '#services/telemetry/schema.ts'
+import type {Trace, TraceLink} from '#services/telemetry/schema.ts'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -85,10 +85,7 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(props.span.status === 2 && props.span.denied !== true, {
-						onFalse: () => undefined,
-						onTrue: () => 'text-destructive'
-					})
+					Boolean.match(failed(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
 				)}
 			>
 				{props.span.name}
@@ -101,8 +98,8 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 	)
 }
 
-// The picked span's header, error, attributes and logs, as stock-height rows with no dividers between them.
-export function SpanDetail(props: {span: Trace['spans'][number]}) {
+// The picked span's header, error, links, attributes and logs, as stock-height rows with no dividers between them.
+export function SpanDetail(props: {onLink: (link: TraceLink) => void; span: Trace['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
 	return (
@@ -112,35 +109,53 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4 text-xs"
 		>
 			<SpanHeader span={props.span} />
-			{Boolean.match(props.span.denied === true, {
-				onFalse: () =>
-					Option.match(error, {
-						onNone: () => null,
-						onSome: message => (
-							<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-								<span className="text-muted-foreground truncate">error</span>
-								<span className="text-destructive min-w-0 truncate" title={message}>
-									<ErrorText message={message} />
-								</span>
-							</div>
-						)
-					}),
-				onTrue: () =>
-					Option.match(error, {
-						onNone: () => null,
-						onSome: message => (
-							<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-								<span className="text-muted-foreground flex items-center gap-1.5 truncate">
-									<LockIcon aria-hidden className="size-3 shrink-0" />
-									denied
-								</span>
-								<span className="block min-w-0 truncate" title={message}>
-									{message}
-								</span>
-							</div>
-						)
-					})
+			{Option.match(error, {
+				onNone: () => null,
+				onSome: message => (
+					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
+						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
+							{Boolean.match(props.span.denied === true, {
+								onFalse: () => 'error',
+								onTrue: () => (
+									<>
+										<LockIcon aria-hidden className="size-3 shrink-0" />
+										denied
+									</>
+								)
+							})}
+						</span>
+						<span
+							className={cn(
+								'block min-w-0 truncate',
+								Boolean.match(failed(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+							)}
+							title={message}
+						>
+							<ErrorText message={message} />
+						</span>
+					</div>
+				)
 			})}
+			{Array.map(
+				[
+					...Array.map(props.span.links ?? [], link => ({label: 'from' as const, link})),
+					...Array.map(props.span.followedBy ?? [], link => ({label: 'then' as const, link}))
+				],
+				(row, index) => (
+					<div key={`${row.label}:${row.link.trace}:${index}`} role="listitem" className="contents">
+						<button
+							type="button"
+							onClick={() => props.onLink(row.link)}
+							className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 text-left max-sm:h-11"
+						>
+							<span className="text-muted-foreground truncate">{row.label}</span>
+							<span className="block min-w-0 truncate" title={row.link.name}>
+								{row.link.name}
+							</span>
+						</button>
+					</div>
+				)
+			)}
 			{Array.map(attributes, (attribute, index) => (
 				<div
 					key={`${attribute.key}:${index}`}

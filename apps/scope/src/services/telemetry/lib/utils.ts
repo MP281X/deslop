@@ -16,7 +16,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Attribute, Nano, rangeStart, Runtime, Side} from '#services/telemetry/schema.ts'
+import {Attribute, Nano, rangeStart, Runtime, Side, SpanLink} from '#services/telemetry/schema.ts'
 import type {
 	Entry,
 	Operation,
@@ -25,7 +25,8 @@ import type {
 	Range,
 	Resource,
 	ServiceStatus,
-	Trace
+	Trace,
+	TraceLink
 } from '#services/telemetry/schema.ts'
 
 // Each operation lists this many traces, its newest failures among them.
@@ -134,12 +135,27 @@ function isSuperseded(entry: Entry, newest: Record<string, string>) {
 	)
 }
 
-// A trace is one request or action: when any of its entries is superseded or expires, its siblings go too, so a release never leaves one half on each side.
-function tracePruned(entries: readonly Entry[], prune: (entry: Entry) => boolean) {
+// A release is whole-trace too: keep the trace while any versioned entry is current or an unversioned sibling is present.
+function supersededTraces(entries: readonly Entry[], newest: Record<string, string>) {
 	return HashSet.fromIterable(
-		Array.map(
-			Array.filter(entries, entry => entry.traceId !== '' && prune(entry)),
-			entry => entry.traceId
+		Array.flatMap(
+			Array.fromIterable(
+				HashMap.values(
+					Array.reduce(
+						Array.filter(entries, entry => entry.traceId !== ''),
+						HashMap.empty<string, Entry[]>(),
+						(all, entry) =>
+							HashMap.set(all, entry.traceId, [...Option.getOrElse(HashMap.get(all, entry.traceId), () => []), entry])
+					)
+				)
+			),
+			group => {
+				if (Array.some(group, entry => releaseOf(entry) === '')) return []
+				const versioned = Array.filter(group, entry => releaseOf(entry) !== '')
+				if (Array.isReadonlyArrayEmpty(versioned)) return []
+				if (Array.some(versioned, entry => !isSuperseded(entry, newest))) return []
+				return [Option.getOrThrow(Array.head(group)).traceId]
+			}
 		)
 	)
 }
@@ -167,10 +183,21 @@ export function retentionOf(
 			onNone: () => BigInt(entry.time),
 			onSome: time => BigInt(time) * 1_000_000n
 		})
-		return received < cutoff || isSuperseded(entry, newest)
+		return received < cutoff
 	}
-	const traces = tracePruned(entries, expiredOne)
-	const expired = Array.filter(entries, entry => pruned(entry, traces, expiredOne))
+	// Expiry is whole-trace: when one entry outlives retention, its siblings go too.
+	const traces = HashSet.union(
+		HashSet.fromIterable(
+			Array.map(
+				Array.filter(entries, entry => entry.traceId !== '' && expiredOne(entry)),
+				entry => entry.traceId
+			)
+		),
+		supersededTraces(entries, newest)
+	)
+	const expired = Array.filter(entries, entry =>
+		pruned(entry, traces, candidate => expiredOne(candidate) || isSuperseded(candidate, newest))
+	)
 	return {
 		expired,
 		next: Array.reduce(
@@ -189,7 +216,7 @@ export function reconcileReleases(
 ) {
 	const newest = newestVersions(entries, known)
 	const stored = Array.fromIterable(HashMap.values(current))
-	const traces = tracePruned([...stored, ...entries], entry => isSuperseded(entry, newest))
+	const traces = supersededTraces([...stored, ...entries], newest)
 	const accepted = Array.filter(entries, entry => !pruned(entry, traces, candidate => isSuperseded(candidate, newest)))
 	const replaced = Array.filter(stored, entry => pruned(entry, traces, candidate => isSuperseded(candidate, newest)))
 	return {
@@ -267,7 +294,7 @@ function percentile(times: readonly number[], ratio: number) {
 }
 
 // A failed span whose only failures are a denied sign-in is not a failure: no count, dot or error filter includes it.
-export function failed(entry: Pick<Entry, 'denied' | 'status'>) {
+export function failedEntry(entry: Pick<Entry, 'denied' | 'status'>) {
 	return entry.status === 2 && entry.denied !== true
 }
 
@@ -445,7 +472,7 @@ function parentId(entry: Entry) {
 
 // Effect marks every span a failure passed through as failed, so where it broke is the failed span with no failed child.
 export function brokeAt(spans: readonly Entry[]) {
-	const failedSpans = Array.filter(spans, failed)
+	const failedSpans = Array.filter(spans, failedEntry)
 	const parents = HashSet.fromIterable(Array.map(failedSpans, parentId))
 	return Array.match(
 		Array.filter(failedSpans, span => !HashSet.has(parents, span.spanId)),
@@ -453,16 +480,98 @@ export function brokeAt(spans: readonly Entry[]) {
 	)
 }
 
+// The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
+export function traceRoot(spans: Array.NonEmptyReadonlyArray<Entry>) {
+	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
+	return Array.min(
+		Array.match(
+			Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
+			{onEmpty: () => spans, onNonEmpty: Function.identity}
+		),
+		byStart
+	)
+}
+
+export function readLinks(payload: Schema.JsonObject) {
+	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(SpanLink))(payload['links']), () => [] as const)
+}
+
+function traceLink(entry: Entry) {
+	return {
+		app: appName(entry.service),
+		name: entry.name,
+		runtime: runtime(entry.resource),
+		trace: entry.traceId
+	} satisfies TraceLink
+}
+
+function added(link: TraceLink, current?: readonly TraceLink[]) {
+	const links = Option.getOrElse(Option.fromUndefinedOr(current), () => [])
+	if (Array.some(links, value => value.trace === link.trace)) return links
+	return [...links, link]
+}
+
+// The traces each span follows from, and the traces following each span of this one, resolved to their root operation.
+function traceLinks(entries: readonly Entry[]) {
+	const spans = Array.filter(entries, entry => entry.signal === 'trace' && entry.traceId !== '')
+	const roots = Record.fromEntries(
+		Array.map(Record.values(Array.groupBy(spans, entry => entry.traceId)), group => {
+			const root = traceRoot(group)
+			return [root.traceId, traceLink(root)] as const
+		})
+	)
+	const linked = Record.fromEntries(
+		Array.map(
+			spans,
+			entry =>
+				[
+					`${entry.traceId}:${entry.spanId}`,
+					Array.dedupeWith(
+						Array.getSomes(
+							Array.map(readLinks(entry.payload), link =>
+								Boolean.match(link.traceId === entry.traceId, {
+									onFalse: () => Record.get(roots, link.traceId),
+									onTrue: () => Option.none<TraceLink>()
+								})
+							)
+						),
+						(left, right) => left.trace === right.trace
+					)
+				] as const
+		)
+	)
+	const followers = Array.reduce(
+		spans,
+		{bySpan: Record.empty<string, readonly TraceLink[]>(), byTrace: Record.empty<string, readonly TraceLink[]>()},
+		(all, entry) =>
+			Option.match(Record.get(roots, entry.traceId), {
+				onNone: () => all,
+				onSome: follower =>
+					Array.reduce(readLinks(entry.payload), all, (maps, link) => {
+						if (link.traceId === entry.traceId) return maps
+						const spanKey = `${link.traceId}:${link.spanId}`
+						return {
+							bySpan: Record.set(maps.bySpan, spanKey, added(follower, maps.bySpan[spanKey])),
+							byTrace: Record.set(maps.byTrace, link.traceId, added(follower, maps.byTrace[link.traceId]))
+						}
+					})
+			})
+	)
+	return {followers, linked}
+}
+
 export function traceView(entries: Entry[], id: string) {
-	const ordered = Array.sort(entries, byStart)
+	const records = Array.filter(entries, entry => entry.traceId === id)
+	const ordered = Array.sort(records, byStart)
 	const spans = Array.map(
 		Array.filter(ordered, entry => entry.signal === 'trace'),
 		(entry, index) => ({entry, index})
 	)
 	const byId = Record.fromEntries(Array.map(spans, span => [span.entry.spanId, span] as const))
-	const timing = traceTiming(entries)
+	const timing = traceTiming(records)
 	const logs = Array.filter(ordered, entry => entry.signal === 'log')
 	const bySpan = Array.groupBy(logs, log => log.spanId)
+	const links = traceLinks(entries)
 
 	const broken = brokeAt(Array.map(spans, span => span.entry))
 	const tree = pipe(
@@ -478,11 +587,17 @@ export function traceView(entries: Entry[], id: string) {
 					)
 				)
 			)
+			const key = `${span.entry.traceId}:${span.entry.spanId}` as const
 			return {
 				path: [...Array.map(ancestors, parent => parent.index), span.index],
 				value: {
 					...span.entry,
 					depth: ancestors.length,
+					...Option.match(Record.get(links.followers.bySpan, key), {
+						onNone: () => ({}),
+						onSome: followedBy => ({followedBy})
+					}),
+					...Option.match(Record.get(links.linked, key), {onNone: () => ({}), onSome: linked => ({links: linked})}),
 					logs: Option.getOrElse(Record.get(bySpan, span.entry.spanId), () => []),
 					offsetMs: durationMs(timing.time, span.entry.time),
 					parentSpanId: parentId(span.entry),
@@ -496,6 +611,10 @@ export function traceView(entries: Entry[], id: string) {
 	return {
 		durationMs: timing.durationMs,
 		...Option.match(broken, {onNone: () => ({}), onSome: span => ({failureSpanId: span.spanId})}),
+		...Option.match(Record.get(links.followers.byTrace, id), {
+			onNone: () => ({}),
+			onSome: followedBy => ({followedBy})
+		}),
 		id,
 		logs: Array.filter(logs, log => !Record.has(byId, log.spanId)),
 		services: Array.dedupeWith(
@@ -506,21 +625,9 @@ export function traceView(entries: Entry[], id: string) {
 	} satisfies Trace
 }
 
-// The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
-export function traceRoot(spans: Array.NonEmptyReadonlyArray<Entry>) {
-	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
-	return Array.min(
-		Array.match(
-			Array.filter(spans, span => !HashSet.has(ids, parentId(span))),
-			{onEmpty: () => spans, onNonEmpty: Function.identity}
-		),
-		byStart
-	)
-}
-
 export type Traced = {app: string; name: string; runtime: Runtime; trace: OperationTrace}
 
-function markedStream(entry: Entry) {
+export function markedStream(entry: Entry) {
 	return Array.some(
 		spanAttributes(entry.payload),
 		attribute => attribute.key === 'rpc.stream' && attribute.value['boolValue'] === true
@@ -528,7 +635,7 @@ function markedStream(entry: Entry) {
 }
 
 // A subscription's lifetime is not action latency. A nested subscription does not turn its owning action into one.
-function subscription(root: Entry, spans: readonly Entry[]) {
+export function subscription(root: Entry, spans: readonly Entry[]) {
 	if (markedStream(root)) return true
 	const method = resourceString({attributes: spanAttributes(root.payload)}, 'rpc.method')
 	return Array.some(
@@ -543,7 +650,7 @@ function subscription(root: Entry, spans: readonly Entry[]) {
 }
 
 // A machine's timer waits between steps; its lifetime is not the operation's latency.
-function machineTimer(root: Entry) {
+export function machineTimer(root: Entry) {
 	return (
 		root.payload['name'] === 'Machine.invoke' &&
 		Option.getOrUndefined(attributePrimitive(spanAttributes(root.payload), 'machine.invoke.kind')) === 'Timer'

@@ -36,14 +36,17 @@ import {
 	deniedSpan,
 	durationMs,
 	entryText,
-	failed,
+	failedEntry,
 	failureMessage,
 	isoMillis,
 	isoTime,
 	levelOf,
 	logMessage,
+	machineTimer,
+	markedStream,
 	newestVersions,
 	overviewOf,
+	readLinks,
 	reconcileReleases,
 	retentionOf,
 	rounded,
@@ -52,6 +55,7 @@ import {
 	sideFor,
 	sideOf,
 	spanName,
+	subscription,
 	traceRoot,
 	traceTiming,
 	traceView,
@@ -182,6 +186,7 @@ function findTracesAnswer(entries: readonly Entry[], input: FindTracesParams, no
 				const timing = traceTiming([...records])
 				if (BigInt(timing.time) < cutoff) return Option.none<Candidate>()
 				const root = traceRoot(spans)
+				if (subscription(root, spans) || machineTimer(root)) return Option.none<Candidate>()
 				const app = appName(root.service)
 				if (input.app !== undefined && app !== input.app) return Option.none<Candidate>()
 				if (input.operation !== undefined && root.name !== input.operation) return Option.none<Candidate>()
@@ -235,11 +240,18 @@ function compactLog(entry: Pick<Entry, 'name' | 'payload' | 'time'>) {
 }
 
 function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
-	const failedSpan = failed(span)
+	const failedSpan = failedEntry(span)
 	const error = Boolean.match(failedSpan, {onFalse: () => '', onTrue: () => failureMessage(span.payload)})
 	const attrs = attributesFlat(span.payload, span.name, failedSpan)
 	const side = sideOf(span.service, span.resource)
 	const logs = Array.map(span.logs, compactLog)
+	const links = Array.dedupeWith(
+		Array.map(
+			Array.filter(readLinks(span.payload), link => link.traceId !== span.traceId),
+			link => link.traceId
+		),
+		(left, right) => left === right
+	)
 	return {
 		app: appName(span.service),
 		at: rounded(span.offsetMs),
@@ -250,31 +262,35 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 		...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})}),
 		...Boolean.match(span.denied === true, {onFalse: () => ({}), onTrue: () => ({denied: true})}),
+		...Boolean.match(Array.isReadonlyArrayNonEmpty(links), {onFalse: () => ({}), onTrue: () => ({links})}),
 		...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})}),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})})
 	}
 }
 
-function readTraceAnswer(records: readonly Entry[], id: string, limit: number) {
-	const view = traceView([...records], id)
+function readTraceAnswer(entries: readonly Entry[], id: string, limit: number) {
+	const records = Array.filter(entries, entry => entry.traceId === id)
+	const view = traceView([...entries], id)
 	const timing = traceTiming([...records])
-	const failureSpan = Option.flatMap(Option.fromUndefinedOr(view.failureSpanId), spanId =>
-		Array.findFirst(view.spans, span => span.spanId === spanId)
+	const ancestors = Option.match(
+		Option.flatMap(Option.fromUndefinedOr(view.failureSpanId), spanId =>
+			Array.findFirst(view.spans, span => span.spanId === spanId)
+		),
+		{
+			onNone: () => HashSet.empty<string>(),
+			onSome: span =>
+				HashSet.fromIterable(
+					Array.unfold({id: span.spanId, seen: HashSet.empty<string>()}, current => {
+						if (current.id === '' || HashSet.has(current.seen, current.id)) return Option.none()
+						const seen = HashSet.add(current.seen, current.id)
+						return Option.map(
+							Array.findFirst(view.spans, found => found.spanId === current.id),
+							found => [found.spanId, {id: found.parentSpanId, seen}] as const
+						)
+					})
+				)
+		}
 	)
-	const ancestors = Option.match(failureSpan, {
-		onNone: () => HashSet.empty<string>(),
-		onSome: span =>
-			HashSet.fromIterable(
-				Array.unfold({id: span.spanId, seen: HashSet.empty<string>()}, current => {
-					if (current.id === '' || HashSet.has(current.seen, current.id)) return Option.none()
-					const seen = HashSet.add(current.seen, current.id)
-					return Option.map(
-						Array.findFirst(view.spans, found => found.spanId === current.id),
-						found => [found.spanId, {id: found.parentSpanId, seen}] as const
-					)
-				})
-			)
-	})
 	const kept = Array.reduce(
 		Array.sort(
 			view.spans,
@@ -294,21 +310,22 @@ function readTraceAnswer(records: readonly Entry[], id: string, limit: number) {
 	const omitted = view.spans.length - spans.length
 	return {
 		at: isoTime(timing.time),
+		...Option.match(Option.fromUndefinedOr(view.failureSpanId), {
+			onNone: () => ({}),
+			onSome: spanId => ({failure: spanId})
+		}),
+		...Option.match(Option.fromUndefinedOr(view.followedBy), {
+			onNone: () => ({}),
+			onSome: followedBy => ({
+				followedBy: Array.sort(
+					Array.map(followedBy, link => ({operation: link.name, trace: link.trace})),
+					Order.mapInput(Order.String, (row: {operation: string; trace: string}) => row.trace)
+				)
+			})
+		}),
 		id,
 		ms: rounded(timing.durationMs),
 		spans,
-		...Option.match(failureSpan, {
-			onNone: () => ({}),
-			onSome: span => {
-				const error = failureMessage(span.payload)
-				return {
-					failure: {
-						span: span.name,
-						...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
-					}
-				}
-			}
-		}),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})}),
 		...Boolean.match(omitted > 0, {onFalse: () => ({}), onTrue: () => ({omitted})})
 	} satisfies ReadTraceAnswer
@@ -373,6 +390,8 @@ function measureLatencyAnswer(entries: readonly Entry[], input: MeasureLatencyPa
 			entry.signal === 'trace' &&
 			entry.name === input.name &&
 			BigInt(entry.time) >= cutoff &&
+			!markedStream(entry) &&
+			!machineTimer(entry) &&
 			(input.app === undefined || appName(entry.service) === input.app)
 	)
 	const times = Array.sort(
@@ -381,7 +400,7 @@ function measureLatencyAnswer(entries: readonly Entry[], input: MeasureLatencyPa
 	)
 	return {
 		count: spans.length,
-		failures: Array.countBy(spans, failed),
+		failures: Array.countBy(spans, failedEntry),
 		maxMs: rounded(Option.getOrElse(Array.last(times), () => 0)),
 		p50Ms: rounded(percentile(times, 0.5)),
 		p95Ms: rounded(percentile(times, 0.95))
@@ -611,14 +630,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			overview: (range: Range) => Stream.map(live, current => overviewOf(current.traces, current.now, range)),
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (input: ReadTraceParams) {
 				const traceId = String.toLowerCase(input.id)
-				const records = Array.filter(yield* read, entry => entry.traceId === traceId)
-				if (Array.isReadonlyArrayEmpty(records)) {
+				const entries = yield* read
+				if (Array.isReadonlyArrayEmpty(Array.filter(entries, entry => entry.traceId === traceId))) {
 					return yield* TelemetryError.make({
 						message:
 							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
 					})
 				}
-				return readTraceAnswer(records, traceId, input.limit)
+				return readTraceAnswer(entries, traceId, input.limit)
 			}),
 			ready: Deferred.await(loaded),
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
@@ -633,14 +652,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			}),
 			trace: Effect.fn('Telemetry.trace')(function* (id: string) {
 				const traceId = String.toLowerCase(id)
-				const records = Array.filter(yield* read, entry => entry.traceId === traceId)
-				if (Array.isReadonlyArrayEmpty(records)) {
+				const entries = yield* read
+				if (Array.isReadonlyArrayEmpty(Array.filter(entries, entry => entry.traceId === traceId))) {
 					return yield* TelemetryError.make({
 						message:
 							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
 					})
 				}
-				return traceView(records, traceId)
+				return traceView([...entries], traceId)
 			})
 		}
 	}, failedSave)

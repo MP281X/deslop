@@ -7,7 +7,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 
 import {lanesOf} from '#lib/flame.ts'
-import {durationOf} from '#lib/utils.ts'
+import {durationOf, failed} from '#lib/utils.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {Trace} from '#services/telemetry/schema.ts'
 
@@ -217,10 +217,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 							data-flame-fill={Boolean.match(row.bar > 2, {onFalse: () => undefined, onTrue: () => '' as const})}
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
-								Boolean.match(row.span.status === 2 && row.span.denied !== true, {
-									onFalse: () => 'bg-(--app)',
-									onTrue: () => 'bg-destructive'
-								}),
+								Boolean.match(failed(row.span), {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'}),
 								Boolean.match(row.picked, {
 									onFalse: () => undefined,
 									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'

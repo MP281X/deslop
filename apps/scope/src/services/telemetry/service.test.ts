@@ -98,6 +98,7 @@ type SpanInput = {
 	end?: string
 	events?: readonly {attributes?: readonly AttributeInput[]; name: string; timeUnixNano: string}[]
 	kind?: number
+	links?: readonly {spanId: string; traceId: string}[]
 	name: string
 	parent?: string
 	spanId: string
@@ -115,6 +116,7 @@ function span(input: SpanInput) {
 		...Option.match(Option.fromUndefinedOr(input.end), {onNone: () => ({}), onSome: end => ({endTimeUnixNano: end})}),
 		...Option.match(Option.fromUndefinedOr(input.events), {onNone: () => ({}), onSome: events => ({events})}),
 		...Option.match(Option.fromUndefinedOr(input.kind), {onNone: () => ({}), onSome: kind => ({kind})}),
+		...Option.match(Option.fromUndefinedOr(input.links), {onNone: () => ({}), onSome: links => ({links})}),
 		name: input.name,
 		...Option.match(Option.fromUndefinedOr(input.parent), {
 			onNone: () => ({}),
@@ -149,6 +151,21 @@ function stored(index: number) {
 		time: START,
 		traceId
 	})
+}
+
+function versioned(service: string, version: string, spans: readonly ReturnType<typeof span>[]) {
+	return {
+		resource: {
+			attributes: [
+				{key: 'service.name', value: {stringValue: service}},
+				...Array.map(Array.filter([version], String.isNonEmpty), value => ({
+					key: 'service.version',
+					value: {stringValue: value}
+				}))
+			]
+		},
+		scopeSpans: [{spans}]
+	}
 }
 
 function request(
@@ -485,113 +502,82 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'prunes every entry of a trace when one entry is superseded, and drops its late sibling',
+		'keeps a trace while a versioned entry is current or an unversioned sibling is present',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
-			yield* Effect.scoped(
-				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
-					const trace = String.repeat(32)('a')
-					const next = String.repeat(32)('b')
-					yield* telemetry.ingestTraces(
-						TracesRequest.make({
-							resourceSpans: [
-								{
-									resource: {
-										attributes: [
-											{key: 'service.name', value: {stringValue: '@deslop/trips-server'}},
-											{key: 'service.version', value: {stringValue: '0.1.1'}}
-										]
-									},
-									scopeSpans: [
-										{
-											spans: [
-												{
-													endTimeUnixNano: `${BigInt(START) + 5_000_000n}`,
-													name: 'trips.list',
-													spanId: '1111111111111111',
-													startTimeUnixNano: START,
-													traceId: trace
-												}
-											]
-										}
-									]
-								},
-								{
-									resource: {
-										attributes: [
-											{key: 'service.name', value: {stringValue: '@deslop/trips-ios'}},
-											{key: 'service.version', value: {stringValue: '0.1.1'}}
-										]
-									},
-									scopeSpans: [
-										{
-											spans: [
-												{
-													endTimeUnixNano: `${BigInt(START) + 5_000_000n}`,
-													name: 'Trips.refresh',
-													spanId: '2222222222222222',
-													startTimeUnixNano: START,
-													traceId: trace
-												}
-											]
-										}
-									]
-								}
-							]
-						})
-					)
-					assert.strictEqual((yield* telemetry.trace(trace)).spans.length, 2)
-					yield* telemetry.ingestTraces(
-						TracesRequest.make({
-							resourceSpans: [
-								{
-									resource: {
-										attributes: [
-											{key: 'service.name', value: {stringValue: '@deslop/trips-server'}},
-											{key: 'service.version', value: {stringValue: '0.1.2'}}
-										]
-									},
-									scopeSpans: [
-										{
-											spans: [
-												{
-													endTimeUnixNano: `${BigInt(START) + 9_000_000n}`,
-													name: 'trips.list',
-													spanId: '3333333333333333',
-													startTimeUnixNano: START,
-													traceId: trace
-												},
-												{
-													endTimeUnixNano: `${BigInt(START) + 9_000_000n}`,
-													name: 'trips.create',
-													spanId: '4444444444444444',
-													startTimeUnixNano: START,
-													traceId: next
-												}
-											]
-										}
-									]
-								}
-							]
-						})
-					)
-					// The iOS half and the new release's late sibling of the pruned trace are gone; the new trace stays.
-					assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(trace))))
-					assert.deepStrictEqual(
-						Array.map(
-							(yield* telemetry.findTraces({errors: false, limit: 10, since: '3d', sort: 'recent'})).traces,
-							row => row.id
-						),
-						[next]
-					)
-					assert.deepStrictEqual(Array.sort(yield* fs.readDirectory(directory), Order.String), [
-						'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%3A4444444444444444'
-					])
+			const telemetry = yield* fresh()
+			const stale = String.repeat(32)('a')
+			const old = String.repeat(32)('b')
+			const ios = String.repeat(32)('c')
+			const current = String.repeat(32)('d')
+			const free = String.repeat(32)('e')
+			const late = String.repeat(32)('f')
+			yield* telemetry.ingestTraces(
+				TracesRequest.make({
+					resourceSpans: [
+						versioned('@deslop/trips-client', '0.1.1', [
+							span({name: 'trips.watch', spanId: '1111111111111111', start: START, traceId: stale})
+						]),
+						versioned('@deslop/trips-server', '0.1.2', [
+							span({name: 'trips.list', spanId: '2222222222222222', start: START, traceId: stale})
+						]),
+						versioned('@deslop/trips-client', '0.1.1', [
+							span({name: 'trips.watch', spanId: '3333333333333333', start: START, traceId: old})
+						]),
+						versioned('@deslop/trips-server', '0.1.1', [
+							span({name: 'trips.list', spanId: '4444444444444444', start: START, traceId: old})
+						]),
+						versioned('@deslop/trips-ios', '0.1.2', [
+							span({name: 'Trips.refresh', spanId: '5555555555555555', start: START, traceId: ios})
+						]),
+						versioned('@deslop/trips-server', '0.1.1', [
+							span({name: 'trips.list', spanId: '6666666666666666', start: START, traceId: ios})
+						]),
+						versioned('@deslop/trips-client', '0.1.1', [
+							span({name: 'trips.watch', spanId: '7777777777777777', start: START, traceId: free})
+						]),
+						versioned('@deslop/trips-server', '', [
+							span({name: 'trips.list', spanId: '8888888888888888', start: START, traceId: free})
+						]),
+						versioned('@deslop/trips-client', '0.1.2', [
+							span({name: 'trips.watch', spanId: '9999999999999999', start: START, traceId: current})
+						]),
+						versioned('@deslop/trips-server', '0.1.2', [
+							span({name: 'trips.list', spanId: 'aaaaaaaaaaaaaaa1', start: START, traceId: current})
+						])
+					]
 				})
 			)
+			// An old client tab keeps the new server's half, and an unversioned sibling keeps the trace whole.
+			assert.strictEqual((yield* telemetry.trace(stale)).spans.length, 2)
+			assert.strictEqual((yield* telemetry.trace(ios)).spans.length, 2)
+			assert.strictEqual((yield* telemetry.trace(free)).spans.length, 2)
+			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(old))))
+			assert.sameMembers(
+				Array.map(
+					(yield* telemetry.findTraces({errors: false, limit: 20, since: '3d', sort: 'recent'})).traces,
+					row => row.id
+				),
+				[stale, ios, free, current]
+			)
+			// An incoming stale client span joins its kept trace; a trace whose versioned entries are all old is dropped.
+			yield* telemetry.ingestTraces(
+				TracesRequest.make({
+					resourceSpans: [
+						versioned('@deslop/trips-client', '0.1.1', [
+							span({name: 'trips.watch', spanId: 'bbbbbbbbbbbbbbbb', start: START, traceId: stale})
+						]),
+						versioned('@deslop/trips-client', '0.1.1', [
+							span({name: 'trips.watch', spanId: 'cccccccccccccccc', start: START, traceId: late})
+						]),
+						versioned('@deslop/trips-server', '0.1.1', [
+							span({name: 'trips.list', spanId: 'dddddddddddddddd', start: START, traceId: late})
+						])
+					]
+				})
+			)
+			assert.strictEqual((yield* telemetry.trace(stale)).spans.length, 3)
+			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(late))))
 		})
 	)
 
@@ -658,8 +644,10 @@ it.layer(platform)(test => {
 			assert.strictEqual((yield* telemetry.trace(`0${String.repeat(31)('a')}`)).spans.length, 1)
 			assert.strictEqual(
 				(yield* telemetry.findTraces({errors: false, limit: 20, since: '3d', sort: 'recent'})).total,
-				6
+				2
 			)
+			assert.strictEqual((yield* telemetry.measureLatency({name: 'stream', since: '3d'})).count, 0)
+			assert.strictEqual((yield* telemetry.measureLatency({name: 'action', since: '3d'})).count, 1)
 		})
 	)
 
@@ -706,8 +694,9 @@ it.layer(platform)(test => {
 			assert.strictEqual((yield* telemetry.trace(source)).spans[0]?.name, 'Machine.invoke read')
 			assert.strictEqual(
 				(yield* telemetry.findTraces({errors: false, limit: 20, since: '3d', sort: 'recent'})).total,
-				3
+				2
 			)
+			assert.strictEqual((yield* telemetry.measureLatency({name: 'Machine.invoke', since: '3d'})).count, 1)
 		})
 	)
 
@@ -1486,7 +1475,7 @@ it.layer(platform)(test => {
 			)
 			assert.deepStrictEqual(yield* telemetry.readTrace({id: trace, limit: 100}), {
 				at: DateTime.formatIso(DateTime.makeUnsafe(NOW)),
-				failure: {error: 'Boom', span: 'db.query'},
+				failure: '2222222222222222',
 				id: trace,
 				logs: [{at: DateTime.formatIso(DateTime.makeUnsafe(NOW + 5)), level: 'warn', message: 'standalone line'}],
 				ms: 100,
@@ -1566,6 +1555,40 @@ it.layer(platform)(test => {
 				['deep.root', 'deep.mid', 'deep.fail']
 			)
 			assert.strictEqual(trimmed.omitted, 4)
+		})
+	)
+
+	test.effect(
+		'read_trace shows a span’s links and the traces following it',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.setTime(NOW)
+			const telemetry = yield* fresh()
+			const capture = String.repeat(32)('1')
+			const organize = String.repeat(32)('2')
+			yield* telemetry.ingestTraces(
+				request('@deslop/stash-server', [
+					span({
+						end: `${BigInt(START) + 10_000_000n}`,
+						name: 'POST /api/capture',
+						spanId: '1111111111111111',
+						start: START,
+						traceId: capture
+					}),
+					span({
+						end: `${BigInt(START) + 10_000_000n}`,
+						links: [{spanId: '1111111111111111', traceId: capture}],
+						name: 'Notes.organize',
+						spanId: '2222222222222222',
+						start: START,
+						traceId: organize
+					})
+				])
+			)
+			assert.deepStrictEqual((yield* telemetry.readTrace({id: organize, limit: 100})).spans[0]?.links, [capture])
+			assert.deepStrictEqual((yield* telemetry.readTrace({id: capture, limit: 100})).followedBy, [
+				{operation: 'Notes.organize', trace: organize}
+			])
+			assert.strictEqual((yield* telemetry.readTrace({id: organize, limit: 100})).followedBy, undefined)
 		})
 	)
 

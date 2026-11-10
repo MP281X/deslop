@@ -229,10 +229,18 @@ export const Overview = Schema.Struct({
 	)
 })
 
+export type SpanLink = typeof SpanLink.Type
+export const SpanLink = Schema.Struct({spanId: Schema.String, traceId: Schema.String})
+
+export type TraceLink = typeof TraceLink.Type
+export const TraceLink = Schema.Struct({app: Schema.String, name: Schema.String, runtime: Runtime, trace: TraceId})
+
 type TraceSpan = typeof TraceSpan.Type
 const TraceSpan = Schema.Struct({
 	...EntryItem.fields,
 	depth: Schema.Natural,
+	followedBy: Schema.optionalKey(Schema.Array(TraceLink)),
+	links: Schema.optionalKey(Schema.Array(TraceLink)),
 	logs: Schema.Array(EntryItem),
 	offsetMs: Schema.Finite,
 	parentSpanId: Schema.String,
@@ -243,6 +251,7 @@ export type Trace = typeof Trace.Type
 export const Trace = Schema.Struct({
 	durationMs: Schema.Finite,
 	failureSpanId: Schema.optionalKey(Schema.String),
+	followedBy: Schema.optionalKey(Schema.Array(TraceLink)),
 	id: TraceId,
 	logs: Schema.Array(EntryItem),
 	services: Schema.Array(Service),
@@ -406,6 +415,7 @@ export const ReadSpan = Schema.Struct({
 	denied: Schema.optionalKey(Schema.Boolean),
 	error: Schema.optionalKey(Schema.String),
 	id: Schema.String,
+	links: Schema.optionalKey(Schema.Array(TraceId)),
 	logs: Schema.optionalKey(Schema.Array(CompactLog)),
 	ms: Schema.Finite,
 	name: Schema.String,
@@ -416,7 +426,8 @@ export const ReadSpan = Schema.Struct({
 export type ReadTraceAnswer = typeof ReadTraceAnswer.Type
 export const ReadTraceAnswer = Schema.Struct({
 	at: Schema.String,
-	failure: Schema.optionalKey(Schema.Struct({error: Schema.optionalKey(Schema.String), span: Schema.String})),
+	failure: Schema.optionalKey(Schema.String),
+	followedBy: Schema.optionalKey(Schema.Array(Schema.Struct({operation: Schema.String, trace: TraceId}))),
 	id: TraceId,
 	logs: Schema.optionalKey(Schema.Array(CompactLog)),
 	ms: Schema.Finite,

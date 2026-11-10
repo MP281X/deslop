@@ -134,7 +134,7 @@ export function nextSearch(search: Search, event: NavigationEvent) {
 
 // The app a plain open lands on: the one whose newest failed trace is newest, else the first tab.
 function openingApp(overview: Overview) {
-	const failed = Array.flatMap(overview.apps, app =>
+	const failedTraces = Array.flatMap(overview.apps, app =>
 		Array.flatMap(app.operations, operation =>
 			Array.getSomes(
 				Array.map(operation.traces, trace =>
@@ -145,7 +145,7 @@ function openingApp(overview: Overview) {
 	)
 	return Option.orElse(
 		Option.map(
-			Array.match(failed, {
+			Array.match(failedTraces, {
 				onEmpty: () => Option.none<{app: string; time: bigint}>(),
 				onNonEmpty: entries =>
 					Option.some(
@@ -236,6 +236,11 @@ function valueOf(value: Schema.Json) {
 	)
 }
 
+// A span failed unless its only failure is a denied sign-in.
+export function failed(span: Trace['spans'][number]) {
+	return span.status === 2 && span.denied !== true
+}
+
 export function errorOf(span: Trace['spans'][number]) {
 	return pipe(
 		Option.liftPredicate(span, current => current.status === 2),
@@ -253,7 +258,7 @@ export function attributesOf(span: Trace['spans'][number]) {
 	return Option.match(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), {
 		onNone: () => [{key: 'attributes', value: 'Unreadable'}],
 		onSome: decoded => {
-			const failed = Option.isSome(errorOf(span))
+			const failing = failed(span)
 			const attributes = Array.map(
 				Array.filter(decoded, attribute => attribute.key !== 'service.name'),
 				attribute => ({key: attribute.key, value: valueOf(attribute.value)})
@@ -264,7 +269,7 @@ export function attributesOf(span: Trace['spans'][number]) {
 				attribute =>
 					attribute.value !== span.name &&
 					attribute.key !== 'trace.label' &&
-					!(failed && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
+					!(failing && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
 					(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
 			)
 		}
