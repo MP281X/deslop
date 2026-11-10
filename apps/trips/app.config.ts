@@ -1,12 +1,6 @@
 import * as ExpoRuntime from '@deslop/runtime/mobile/expo'
 
-const app = ExpoRuntime.make({
-	bundleIdentifier: 'xyz.mp281x.trips',
-	name: 'trips',
-	owner: 'mp281x.xyz',
-	projectId: '3778dc9f-a54b-454e-ae4e-4ef7f115e391',
-	slug: 'trips'
-})
+const app = ExpoRuntime.make({projectId: '3778dc9f-a54b-454e-ae4e-4ef7f115e391', slug: 'trips'})
 
 export default {
 	...app.config,
@@ -17,7 +11,6 @@ export default {
 	},
 	plugins: [
 		...app.config.plugins,
-		'expo-web-browser',
 		'expo-secure-store',
 		'expo-notifications',
 		['expo-calendar', {calendarPermission: 'Trips keeps your flights, trains and stays in a Trips calendar.'}],

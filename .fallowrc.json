@@ -65,7 +65,9 @@
 				"apps/*/fingerprint.config.js",
 				"apps/*/targets/**",
 				"packages/runtime/src/vite.ts",
-				"packages/runtime/src/mobile/expo.ts"
+				"packages/runtime/src/mobile/expo.ts",
+				"packages/runtime/src/mobile/fingerprint.js",
+				"packages/runtime/src/mobile/metro.ts"
 			]
 		}
 	},
@@ -82,7 +84,8 @@
 		// The runtime imports these; each app keeps them so autolinking includes their native modules.
 		"expo-auth-session",
 		"expo-secure-store",
-		"expo-updates"
+		"expo-updates",
+		"expo-web-browser"
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [

@@ -3,7 +3,7 @@ import {Boolean, Config, Effect, Option, pipe} from 'effect'
 import type {ExpoConfig} from 'expo/config'
 
 // EAS sets APP_VARIANT from the build profile; the simulator build gets its own bundle identifier and name.
-export function make(app: {bundleIdentifier: string; name: string; owner: string; projectId: string; slug: string}) {
+export function make(app: {projectId: string; slug: string}) {
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Expo loads the app config outside any Effect runtime.
 	return Effect.runSync(
 		Effect.gen(function* () {
@@ -16,11 +16,11 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 				)) === 'production'
 			const variant = Boolean.match(production, {
 				onFalse: () => ({
-					bundleIdentifier: `${app.bundleIdentifier}.dev`,
-					name: `${app.name} dev`,
+					bundleIdentifier: `xyz.mp281x.${app.slug}.dev`,
+					name: `${app.slug} dev`,
 					scheme: `${app.slug}-dev`
 				}),
-				onTrue: () => ({bundleIdentifier: app.bundleIdentifier, name: app.name, scheme: app.slug})
+				onTrue: () => ({bundleIdentifier: `xyz.mp281x.${app.slug}`, name: app.slug, scheme: app.slug})
 			})
 			return {
 				appGroup: `group.${variant.bundleIdentifier}`,
@@ -40,9 +40,9 @@ export function make(app: {bundleIdentifier: string; name: string; owner: string
 					},
 					name: variant.name,
 					orientation: 'portrait',
-					owner: app.owner,
+					owner: 'mp281x.xyz',
 					platforms: ['ios'],
-					plugins: [],
+					plugins: ['expo-web-browser'],
 					runtimeVersion: {policy: 'fingerprint'},
 					scheme: variant.scheme,
 					slug: app.slug,
