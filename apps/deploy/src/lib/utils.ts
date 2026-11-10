@@ -2,7 +2,7 @@ import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {isDenied, withoutDeniedData} from '@deslop/runtime/auth/utils'
+import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -18,7 +18,7 @@ export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
 
 export const inventoryAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		withoutDeniedData(
+		WebRuntime.live(
 			get,
 			pipe(
 				RpcClient,
@@ -31,8 +31,7 @@ export const inventoryAtom = Atom.keepAlive(
 						}
 					})
 				)
-			),
-			WebRuntime.reconnecting
+			)
 		)
 	)
 )
@@ -51,14 +50,13 @@ export const runAtom = Atom.family((_id: string) =>
 
 export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
 	RpcClient.runtime.atom(get =>
-		withoutDeniedData(
+		WebRuntime.live(
 			get,
 			pipe(
 				RpcClient,
 				Effect.map(client => client('deploy.metrics', {minutes})),
 				Stream.unwrap
-			),
-			WebRuntime.reconnecting
+			)
 		)
 	)
 )

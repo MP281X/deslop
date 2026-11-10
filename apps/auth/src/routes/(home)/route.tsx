@@ -1,6 +1,6 @@
-import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Number, Option, pipe} from 'effect'
+import {Array, Boolean, Match, Option, pipe} from 'effect'
 
 import {HourglassIcon, SignOutIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
@@ -10,7 +10,7 @@ import {Suspense, useEffect} from 'react'
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState, Error} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {StaleProblem} from '@deslop/components-web/problem'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signOutAtom} from '#lib/utils.ts'
@@ -62,36 +62,15 @@ function SigningOut() {
 	})
 }
 
-// The page shows staleness once, as the oldest stale reader; one retry refreshes them all.
 function PageProblem() {
-	const appsSince = useAtomValue(problemSinceAtom(appsAtom))
-	const catalogSince = useAtomValue(problemSinceAtom(catalogAtom))
-	const peopleSince = useAtomValue(problemSinceAtom(peopleAtom))
-	const refreshApps = useAtomRefresh(appsAtom)
-	const refreshCatalog = useAtomRefresh(catalogAtom)
-	const refreshPeople = useAtomRefresh(peopleAtom)
-	return Option.match(
-		Array.reduce(
-			Array.flatMap([appsSince, catalogSince, peopleSince], Option.toArray),
-			Option.none<number>(),
-			(oldest, value) =>
-				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
-		),
-		{
-			onNone: () => null,
-			onSome: value => (
-				<Problem
-					label="Out of date"
-					warning
-					since={value}
-					reset={() => {
-						refreshApps()
-						refreshCatalog()
-						refreshPeople()
-					}}
-				/>
-			)
-		}
+	return (
+		<StaleProblem
+			label="Out of date"
+			readers={Boolean.match(useMatchRoute()({to: '/people'}) !== false, {
+				onFalse: () => [appsAtom, catalogAtom],
+				onTrue: () => [appsAtom, catalogAtom, peopleAtom]
+			})}
+		/>
 	)
 }
 
@@ -117,7 +96,7 @@ function ShellPage() {
 	const signingOut = search['sign-out'] !== undefined
 	const account = useAtomSuspense(accountAtom).value
 	return (
-		<Page width="column">
+		<Page>
 			{signingOut && <SigningOut />}
 			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {

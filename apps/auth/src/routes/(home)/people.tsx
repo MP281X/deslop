@@ -1,6 +1,6 @@
-import {useAtom, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Option, pipe} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -13,6 +13,7 @@ import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import * as WebRuntime from '@deslop/runtime/web'
 
 import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
 import {accountAtom, admitAtom, peopleAtom, selectedRowAtom} from '#lib/utils.ts'
@@ -97,39 +98,49 @@ function MemberRow(props: {onSelect: () => void; person: Person; selected: boole
 
 // One card: whoever is asking for access first, then everyone with it.
 function Directory() {
+	const result = useAtomSuspense(peopleAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(peopleAtom)
 	const selected = useAtomValue(selectedRowAtom)
 	const setSelected = useAtomSet(selectedRowAtom)
+	const value = AsyncResult.value(result)
+	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+	}
 	return (
 		<>
 			<h1 className="sr-only">People</h1>
-			{Array.match(useAtomSuspense(peopleAtom).value, {
-				onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
-				onNonEmpty: rows => (
-					<Card size="list">
-						<div role="list" aria-label="People">
-							{Array.map(rows, person =>
-								Boolean.match(person.role === 'Waiting', {
-									onFalse: () => (
-										<MemberRow
-											key={person.id}
-											person={person}
-											selected={Option.contains(selected, `person-${person.id}`)}
-											onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-										/>
-									),
-									onTrue: () => (
-										<AskingRow
-											key={person.id}
-											person={person}
-											selected={Option.contains(selected, `person-${person.id}`)}
-											onSelect={() => setSelected(Option.some(`person-${person.id}`))}
-										/>
-									)
-								})
-							)}
-						</div>
-					</Card>
-				)
+			{Option.match(value, {
+				onNone: () => null,
+				onSome: rows =>
+					Array.match(rows, {
+						onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
+						onNonEmpty: entries => (
+							<Card size="list">
+								<div role="list" aria-label="People">
+									{Array.map(entries, person =>
+										Boolean.match(person.role === 'Waiting', {
+											onFalse: () => (
+												<MemberRow
+													key={person.id}
+													person={person}
+													selected={Option.contains(selected, `person-${person.id}`)}
+													onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+												/>
+											),
+											onTrue: () => (
+												<AskingRow
+													key={person.id}
+													person={person}
+													selected={Option.contains(selected, `person-${person.id}`)}
+													onSelect={() => setSelected(Option.some(`person-${person.id}`))}
+												/>
+											)
+										})
+									)}
+								</div>
+							</Card>
+						)
+					})
 			})}
 		</>
 	)

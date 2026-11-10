@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Number, Option, Order, Schema, String, type Record} from 'effect'
+import {Array, Boolean, Cause, Number, Option, Order, Schema, String} from 'effect'
 
 import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -9,18 +9,18 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
-import {AppBar} from '@deslop/components-web/app-bar'
-import {ItemListHeading} from '@deslop/components-web/item-list'
+import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
+import {APP_HUES, appMarks} from '@deslop/components-web/apps'
+import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
-import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
-import {cn} from '@deslop/components-web/utils'
+import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
@@ -36,7 +36,6 @@ import {
 	serversAtom,
 	setKeyAtom
 } from '#lib/utils.ts'
-import {FailureContent} from '#routes/(home)/-failure.tsx'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
@@ -46,17 +45,6 @@ import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-// Each app's identity hue; a server without one of these marks stays zinc grey.
-const IDENTITY_HUES: Record<string, string> = {
-	auth: 'var(--slate)',
-	deploy: 'var(--blue)',
-	gateway: 'var(--pink)',
-	opm: 'var(--ivory)',
-	portfolio: 'var(--coral)',
-	scope: 'var(--cyan)',
-	stash: 'var(--amber)',
-	trips: 'var(--orange)'
-}
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 type Search = typeof Search.Type
@@ -64,20 +52,12 @@ type Search = typeof Search.Type
 const Search = Schema.Struct({period: Schema.optionalKey(Period)})
 const route = getRouteApi('/(home)/')
 
-// Every app's canonical mark by its folder; Gateway's own mark joins by name.
-const APP_ICONS: Record<string, string> = {
-	...WebRuntime.appIcons(
-		import.meta.glob<string>('../../../../*/src/routes/icon.svg', {eager: true, import: 'default', query: '?url'})
-	),
-	gateway: icon
-}
 const count = new Intl.NumberFormat('en')
-const appKey = String.toLowerCase
 
 function serverHue(server: ConnectionInfo) {
-	const key = appKey(server.id)
-	if (APP_ICONS[key] === undefined) return 'var(--muted-foreground)'
-	return IDENTITY_HUES[key] ?? 'var(--muted-foreground)'
+	const key = String.toLowerCase(server.id)
+	if (appMarks[key] === undefined) return 'var(--muted-foreground)'
+	return APP_HUES[key] ?? 'var(--muted-foreground)'
 }
 function urgency(server: ConnectionInfo) {
 	if (server.error !== undefined || server.status === 'Expired') return 0
@@ -106,32 +86,23 @@ function Sparkline(props: {color: string; values: readonly number[]}) {
 	)
 }
 
-// A loading row's block, without the app's shared skeleton's pulse: Gateway animates nothing.
-function Bone(props: {className: string}) {
-	return <div aria-hidden className={cn('bg-muted', props.className)} />
-}
-
-// The rows a group will hold, at their own row and column geometry; only a server row has a tool count.
-function RowsSkeleton(props: {label: string; rows: number; tool?: boolean}) {
+// A loading row's blocks at its own row and column geometry; only a server row has a tool count.
+function RowBones(props: {tool?: boolean}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, props.rows), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia>
-						<Bone className="size-5" />
-					</ItemMedia>
-					<ItemContent>
-						<Bone className="h-3 w-24" />
-						<Bone className="h-3 w-16" />
-					</ItemContent>
-					<ItemActions>
-						{props.tool === true && <Bone className="h-3.5 w-7" />}
-						<Bone className="h-3.5 w-16 max-sm:hidden" />
-						<Bone className="h-3 w-12" />
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<>
+			<ItemMedia>
+				<Skeleton className="size-5" />
+			</ItemMedia>
+			<ItemContent>
+				<Skeleton className="h-3 w-24" />
+				<Skeleton className="h-3 w-16" />
+			</ItemContent>
+			<ItemActions>
+				{props.tool === true && <Skeleton className="h-3.5 w-7" />}
+				<Skeleton className="h-3.5 w-16 max-sm:hidden" />
+				<Skeleton className="h-3 w-12" />
+			</ItemActions>
+		</>
 	)
 }
 
@@ -230,7 +201,7 @@ function ServerUsage(props: {period: Period; servers: readonly ConnectionInfo[]}
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
@@ -249,13 +220,19 @@ function ServerRows(props: {period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	const servers = Option.getOrElse(AsyncResult.value(result), () => [])
 	if (Array.isReadonlyArrayEmpty(servers)) return null
 	const ordered = Array.sort(servers, byUrgency)
 	return (
-		<Suspense fallback={<RowsSkeleton label="MCP servers" rows={ordered.length} tool />}>
+		<Suspense
+			fallback={
+				<RowsSkeleton label="MCP servers" rows={ordered.length}>
+					<RowBones tool />
+				</RowsSkeleton>
+			}
+		>
 			<ServerUsage period={props.period} servers={ordered} />
 		</Suspense>
 	)
@@ -298,7 +275,7 @@ function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.getOrUndefined(
 		Option.map(AsyncResult.value(result), current =>
@@ -332,7 +309,7 @@ function KeyRows(props: {period: Period}) {
 		AsyncResult.isFailure(result) &&
 		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
 	) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	const keys = Array.filter(
 		Option.getOrElse(AsyncResult.value(result), () => []),
@@ -340,7 +317,13 @@ function KeyRows(props: {period: Period}) {
 	)
 	if (Array.isReadonlyArrayEmpty(keys)) return null
 	return (
-		<Suspense fallback={<RowsSkeleton label="AI keys" rows={keys.length} />}>
+		<Suspense
+			fallback={
+				<RowsSkeleton label="AI keys" rows={keys.length}>
+					<RowBones />
+				</RowsSkeleton>
+			}
+		>
 			<KeyUsage keys={keys} period={props.period} />
 		</Suspense>
 	)
@@ -352,14 +335,26 @@ function List(props: {period: Period}) {
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
 				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={FailureContent}>
-					<Suspense fallback={<RowsSkeleton label="MCP servers" rows={3} tool />}>
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={WebRuntime.Failure}>
+					<Suspense
+						fallback={
+							<RowsSkeleton label="MCP servers" rows={3}>
+								<RowBones tool />
+							</RowsSkeleton>
+						}
+					>
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
 				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'keys'} errorComponent={FailureContent}>
-					<Suspense fallback={<RowsSkeleton label="AI keys" rows={4} />}>
+				<CatchBoundary getResetKey={() => 'keys'} errorComponent={WebRuntime.Failure}>
+					<Suspense
+						fallback={
+							<RowsSkeleton label="AI keys" rows={4}>
+								<RowBones />
+							</RowsSkeleton>
+						}
+					>
 						<KeyRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
@@ -429,23 +424,17 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 
 function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period}) {
 	return (
-		<Tabs
+		<AppBarChoice
+			label="Period"
+			options={PERIODS}
 			value={props.period}
-			onValueChange={value =>
+			onChange={value =>
 				Option.map(
 					Array.findFirst(PERIODS, entry => entry.value === value),
 					entry => props.onPeriod(entry.value)
 				)
 			}
-		>
-			<TabsList aria-label="Period">
-				{Array.map(PERIODS, entry => (
-					<TabsTrigger key={entry.value} value={entry.value}>
-						{entry.label}
-					</TabsTrigger>
-				))}
-			</TabsList>
-		</Tabs>
+		/>
 	)
 }
 
@@ -466,39 +455,12 @@ function CopyEndpoint() {
 	)
 }
 
-// Staleness shows once, as the oldest stale reader; one retry refreshes them all.
 function GatewayProblem(props: {period: Period}) {
-	const serversSince = useAtomValue(problemSinceAtom(serversAtom))
-	const usageSince = useAtomValue(problemSinceAtom(mcpUsageAtom(props.period)))
-	const keysSince = useAtomValue(problemSinceAtom(aiKeysAtom))
-	const aiSince = useAtomValue(problemSinceAtom(aiUsageAtom(props.period)))
-	const refreshServers = useAtomRefresh(serversAtom)
-	const refreshUsage = useAtomRefresh(mcpUsageAtom(props.period))
-	const refreshKeys = useAtomRefresh(aiKeysAtom)
-	const refreshAi = useAtomRefresh(aiUsageAtom(props.period))
-	return Option.match(
-		Array.reduce(
-			Array.flatMap([serversSince, usageSince, keysSince, aiSince], Option.toArray),
-			Option.none<number>(),
-			(oldest, value) =>
-				Option.some(Option.match(oldest, {onNone: () => value, onSome: current => Number.min(current, value)}))
-		),
-		{
-			onNone: () => null,
-			onSome: value => (
-				<Problem
-					label="Out of date"
-					warning
-					since={value}
-					reset={() => {
-						refreshServers()
-						refreshUsage()
-						refreshKeys()
-						refreshAi()
-					}}
-				/>
-			)
-		}
+	return (
+		<StaleProblem
+			label="Out of date"
+			readers={[serversAtom, mcpUsageAtom(props.period), aiKeysAtom, aiUsageAtom(props.period)]}
+		/>
 	)
 }
 
@@ -535,7 +497,7 @@ function Home() {
 					</>
 				}
 			/>
-			<Page width="column">
+			<Page>
 				<h1 className="sr-only">Gateway</h1>
 				<AddField onKey={addKey} />
 				<List period={period} />

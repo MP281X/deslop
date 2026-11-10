@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Option, Order, Record, Schema, String} from 'effect'
+import {Array, Boolean, Cause, Option, Record, Schema, String} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -8,22 +8,22 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
+import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
-import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
+import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
-import {FailureContent, InventoryContent, ListPane, RunFailure} from '#routes/(home)/-list.tsx'
+import {InventoryContent, ListPane, RunFailure} from '#routes/(home)/-list.tsx'
 import {processTree} from '#routes/(home)/-process-tree.ts'
 import {Processes} from '#routes/(home)/-processes.tsx'
 import {type Row, failedFor, order, owner, rangeSet, ranged} from '#routes/(home)/-rows.ts'
@@ -54,23 +54,17 @@ function RangeTabs(props: {
 	ranges: readonly {label: string; minutes: HistoryQuery['minutes']}[]
 }) {
 	return (
-		<Tabs
+		<AppBarChoice
+			label="History range"
 			value={`${props.minutes}`}
-			onValueChange={(value: string) => {
+			options={Array.map(props.ranges, range => ({label: range.label, value: `${range.minutes}`}))}
+			onChange={value => {
 				Option.map(
 					Array.findFirst(props.ranges, range => `${range.minutes}` === value),
 					range => props.onChange(range.minutes)
 				)
 			}}
-		>
-			<TabsList aria-label="History range">
-				{Array.map(props.ranges, range => (
-					<TabsTrigger key={range.minutes} value={`${range.minutes}`}>
-						{range.label}
-					</TabsTrigger>
-				))}
-			</TabsList>
-		</Tabs>
+		/>
 	)
 }
 
@@ -137,27 +131,23 @@ function MachineTabs(props: {
 // The processes' loading rows: the real mark and name and detail bars, and its two meters right-aligned at the row's end.
 function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, props.rows), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia>
-						<Skeleton className="size-4" />
-					</ItemMedia>
-					<ItemContent>
-						<div className="flex min-w-0 flex-1 items-baseline gap-2">
-							<Skeleton className="h-3 w-24" />
-							<Skeleton className="h-3 w-2/5" />
-						</div>
-					</ItemContent>
-					<ItemActions>
-						<div className="flex items-center gap-1.5">
-							<Skeleton className="h-1.5 w-12" />
-							<Skeleton className="h-1.5 w-12" />
-						</div>
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={props.rows}>
+			<ItemMedia>
+				<Skeleton className="size-4" />
+			</ItemMedia>
+			<ItemContent>
+				<div className="flex min-w-0 flex-1 items-baseline gap-2">
+					<Skeleton className="h-3 w-24" />
+					<Skeleton className="h-3 w-2/5" />
+				</div>
+			</ItemContent>
+			<ItemActions>
+				<div className="flex items-center gap-1.5">
+					<Skeleton className="h-1.5 w-12" />
+					<Skeleton className="h-1.5 w-12" />
+				</div>
+			</ItemActions>
+		</RowsSkeleton>
 	)
 }
 
@@ -165,38 +155,17 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 	const result = useAtomSuspense(metricsAtom(props.minutes), {includeFailure: true})
 	const refresh = useAtomRefresh(metricsAtom(props.minutes))
 	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return (
-		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={FailureContent}>
+		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={WebRuntime.Failure}>
 			{props.children}
 		</CatchBoundary>
 	)
 }
 
-// Retained inventory or history that has gone stale: one mark in the bar, aged from the older reader, retried together.
 function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
-	const inventory = useAtomValue(inventoryAtom)
-	const metrics = useAtomValue(metricsAtom(props.minutes))
-	const inventorySince = useAtomValue(problemSinceAtom(inventoryAtom))
-	const metricsSince = useAtomValue(problemSinceAtom(metricsAtom(props.minutes)))
-	const refreshInventory = useAtomRefresh(inventoryAtom)
-	const refreshMetrics = useAtomRefresh(metricsAtom(props.minutes))
-	const denied =
-		Option.isSome(Option.filter(AsyncResult.error(inventory), isDenied)) ||
-		Option.isSome(Option.filter(AsyncResult.error(metrics), isDenied))
-	const stale =
-		(AsyncResult.isFailure(inventory) && Option.isSome(AsyncResult.value(inventory))) ||
-		(AsyncResult.isFailure(metrics) && Option.isSome(AsyncResult.value(metrics)))
-	const oldest = Option.getOrUndefined(
-		Array.head(Array.sort(Array.getSomes([inventorySince, metricsSince]), Order.Number))
-	)
-	function retry() {
-		refreshInventory()
-		refreshMetrics()
-	}
-	if (denied || !stale) return null
-	return <Problem label="Data out of date" warning reset={retry} since={oldest} />
+	return <StaleProblem label="Data out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
 }
 
 // The selected app's processes, or one job's, with what the row cannot show: its failure.
@@ -418,7 +387,7 @@ function Workspace(props: {
 				</div>
 			</div>
 		),
-		onSome: error => <FailureContent error={error} reset={props.retryFailed} />
+		onSome: error => <WebRuntime.Failure error={error} reset={props.retryFailed} />
 	})
 }
 
@@ -500,24 +469,21 @@ function Home() {
 	const pushed = Boolean.match(isPhone, {onFalse: () => false, onTrue: () => pane === 'process'})
 
 	// A phone's bar names the pushed app and backs out to the list; wider screens keep the wordmark.
-	const mobileTitle = Boolean.match(pushed, {
-		onFalse: () => undefined,
-		onTrue: () =>
-			Option.match(Option.fromUndefinedOr(selectedRow), {
-				onNone: () => 'Processes',
-				onSome: entry => workloadName(entry.item)
-			})
-	})
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				back={Boolean.match(pushed, {
+				heading={Boolean.match(pushed, {
 					onFalse: () => undefined,
-					onTrue: () => ({label: 'Back', onClick: () => view({pane: 'apps'})})
+					onTrue: () => ({
+						back: {label: 'Back', onClick: () => view({pane: 'apps'})},
+						title: Option.match(Option.fromUndefinedOr(selectedRow), {
+							onNone: () => 'Processes',
+							onSome: entry => workloadName(entry.item)
+						})
+					})
 				})}
 				icon={icon}
 				name="deploy"
-				title={mobileTitle}
 				controls={
 					<div className="flex items-center gap-1">
 						<DataProblem minutes={minutes} />

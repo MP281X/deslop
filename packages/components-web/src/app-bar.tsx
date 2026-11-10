@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Effect, Option, Schema, String, pipe} from 'effect'
+import {Array, Effect, Option, Schema, String, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
@@ -77,6 +77,26 @@ export function AppBarTabs(props: {children: ReactNode; value: string}) {
 	)
 }
 
+// A bar's segmented choice: the stock tabs over one list of options, named for assistive technology.
+export function AppBarChoice(props: {
+	label: string
+	onChange: (value: string) => void
+	options: readonly {label: string; value: string}[]
+	value: string
+}) {
+	return (
+		<Tabs value={props.value} onValueChange={props.onChange}>
+			<TabsList aria-label={props.label}>
+				{Array.map(props.options, option => (
+					<TabsTrigger key={option.value} value={option.value}>
+						{option.label}
+					</TabsTrigger>
+				))}
+			</TabsList>
+		</Tabs>
+	)
+}
+
 // A section the current URL can name: the tab navigates through `render`, a router link.
 export function AppBarTab(props: {children: ReactNode; render: ReactElement; value: string}) {
 	return (
@@ -89,16 +109,15 @@ export function AppBarTab(props: {children: ReactNode; render: ReactElement; val
 // The masthead: mark and name, sections, then the controls that choose what the page shows and the page's few actions.
 export function AppBar(props: {
 	account?: ReactNode
-	back?: {label: string; onClick: () => void}
 	controls?: ReactNode
+	heading?: {back: {label: string; onClick: () => void}; title: string}
 	icon: string
 	name: string
 	tabs?: ReactNode
-	title?: string
 }) {
 	return (
 		<header className="bg-background/90 supports-backdrop-filter:bg-background/80 sticky top-0 z-30 flex h-12 shrink-0 items-center gap-4 border-b px-4 backdrop-blur-md">
-			{Option.match(Option.fromUndefinedOr(props.title), {
+			{Option.match(Option.fromUndefinedOr(props.heading), {
 				onNone: () => (
 					<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
 						<img src={props.icon} alt="" className="pixelated size-6" />
@@ -106,31 +125,18 @@ export function AppBar(props: {
 					</a>
 				),
 				// The back caret sits on the rows' 16px mark column and the title on their name column, at 44px.
-				onSome: title => (
+				onSome: heading => (
 					<div className="flex min-w-0 shrink items-center gap-1">
-						{Option.match(Option.fromUndefinedOr(props.back), {
-							onNone: () => (
-								<a
-									href="/"
-									aria-label={props.name}
-									className="flex size-8 shrink-0 items-center justify-center max-sm:size-11"
-								>
-									<img src={props.icon} alt="" className="pixelated size-6" />
-								</a>
-							),
-							onSome: back => (
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									className="-ml-2 max-sm:-mr-1.5 max-sm:-ml-3.5 max-sm:size-11"
-									aria-label={back.label}
-									onClick={back.onClick}
-								>
-									<CaretLeftIcon className="size-4" />
-								</Button>
-							)
-						})}
-						<span className="font-heading max-w-48 min-w-0 truncate text-sm font-semibold">{title}</span>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="-ml-2 max-sm:-mr-1.5 max-sm:-ml-3.5 max-sm:size-11"
+							aria-label={heading.back.label}
+							onClick={heading.back.onClick}
+						>
+							<CaretLeftIcon className="size-4" />
+						</Button>
+						<span className="font-heading max-w-48 min-w-0 truncate text-sm font-semibold">{heading.title}</span>
 					</div>
 				)
 			})}

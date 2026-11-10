@@ -6,7 +6,6 @@ import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
 
 import {toast} from '@deslop/components-web/ui/toast'
 import {AuthError} from '@deslop/runtime/auth/schema'
-import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -27,11 +26,7 @@ export function connectUrl(id: string) {
 
 export const serversAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		withoutDeniedData(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))),
-			WebRuntime.reconnecting
-		)
+		WebRuntime.live(get, Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))))
 	)
 )
 
@@ -77,21 +72,27 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	})
 )
 
-export const aiKeysAtom = RpcClient.query('ai.keys', undefined, {reactivityKeys: ['ai-keys']})
+// Read like the live streams, so a refusal clears the keys too; saving a key rereads them.
+export const aiKeysAtom = pipe(
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai.keys', undefined))))
+	),
+	RpcClient.runtime.factory.withReactivity(['ai-keys'])
+)
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: Period) =>
 	Atom.keepAlive(
-		RpcClient.runtime.atom(() =>
-			Stream.unwrap(Effect.map(RpcClient, client => WebRuntime.reconnecting(client('ai.usage', period))))
+		RpcClient.runtime.atom(get =>
+			WebRuntime.live(get, Stream.unwrap(Effect.map(RpcClient, client => client('ai.usage', period))))
 		)
 	)
 )
 
 export const mcpUsageAtom = Atom.family((period: Period) =>
 	Atom.keepAlive(
-		RpcClient.runtime.atom(() =>
-			Stream.unwrap(Effect.map(RpcClient, client => WebRuntime.reconnecting(client('gateway.usage', period))))
+		RpcClient.runtime.atom(get =>
+			WebRuntime.live(get, Stream.unwrap(Effect.map(RpcClient, client => client('gateway.usage', period))))
 		)
 	)
 )

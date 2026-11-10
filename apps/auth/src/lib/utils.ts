@@ -125,24 +125,28 @@ export const linkedCodeAtom = Atom.family((code: string) =>
 )
 
 export const peopleAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.people', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.people', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
 
 // Live, so a new sign-in, each refresh and a disconnect from another page show here.
 export const appsAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.apps', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.apps', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
@@ -195,12 +199,14 @@ export function approveLink(id: string) {
 
 // Live, so an app shows once its server announces itself to Auth.
 export const catalogAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.catalog', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.catalog', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )
@@ -307,12 +313,14 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 )
 
 export const passkeysAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(
-		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.passkeys', undefined)),
-			Stream.unwrap,
-			WebRuntime.reconnecting
+	RpcClient.runtime.atom(get =>
+		WebRuntime.live(
+			get,
+			pipe(
+				RpcClient,
+				Effect.map(client => client('auth.passkeys', undefined)),
+				Stream.unwrap
+			)
 		)
 	)
 )

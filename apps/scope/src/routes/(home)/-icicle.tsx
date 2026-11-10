@@ -2,6 +2,7 @@ import {Array, Boolean, Match, Number, Option, String, pipe} from 'effect'
 
 import {useEffect, useLayoutEffect, useRef, useState} from 'react'
 
+import {APP_HUES} from '@deslop/components-web/apps'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 
@@ -142,11 +143,16 @@ export function Icicle(props: {focus?: string; onPick: (id: string) => void; tra
 						data-icicle-box=""
 						data-span-id={row.span.spanId}
 						className="has-[:focus-visible]:outline-ring absolute top-(--span-top) left-(--span-left) h-5.5 w-(--span-width) min-w-px has-[:focus-visible]:outline-2"
-						style={{'--span-left': `${row.left}%`, '--span-top': `${row.top}px`, '--span-width': `${row.width}%`}}
+						// A span's box takes the hue of the app that ran it; a source without a Deslop mark stays zinc.
+						style={{
+							'--app': APP_HUES[appName(row.span.service)] ?? 'var(--muted-foreground)',
+							'--span-left': `${row.left}%`,
+							'--span-top': `${row.top}px`,
+							'--span-width': `${row.width}%`
+						}}
 					>
 						<span
 							aria-hidden
-							data-app={appName(row.span.service)}
 							className={cn(
 								'text-background absolute inset-0 flex items-center overflow-hidden text-xs',
 								Boolean.match(row.labelled, {onFalse: () => undefined, onTrue: () => 'px-1.5'}),

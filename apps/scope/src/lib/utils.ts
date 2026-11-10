@@ -18,7 +18,6 @@ import {
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {withoutDeniedData} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -154,14 +153,13 @@ function openingApp(overview: Overview) {
 
 export const overviewAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		withoutDeniedData(
+		WebRuntime.live(
 			get,
 			pipe(
 				RpcClient,
 				Effect.map(client => client('scope.overview', undefined)),
 				Stream.unwrap
-			),
-			WebRuntime.reconnecting
+			)
 		)
 	)
 )
@@ -170,7 +168,7 @@ export const overviewAtom = Atom.keepAlive(
 export const traceAtom = Atom.family((id: string) =>
 	RpcClient.runtime.atom(get => {
 		get(overviewAtom)
-		return withoutDeniedData(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id}))))
+		return WebRuntime.live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id}))))
 	})
 )
 

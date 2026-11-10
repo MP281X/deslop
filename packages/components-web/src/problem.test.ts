@@ -4,7 +4,7 @@ import {Cause, Effect, Option} from 'effect'
 
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 
-import {problemSinceAtom} from '#components/problem.tsx'
+import {problemSinceAtom, staleSinceAtom} from '#components/problem.tsx'
 
 it.layer(AtomRegistry.layer)(test => {
 	test.effect(
@@ -57,6 +57,73 @@ it.layer(AtomRegistry.layer)(test => {
 			unmount()
 			yield* Effect.yieldNow
 			assert.isFalse(registry.getNodes().has(problem))
+		})
+	)
+
+	test.effect(
+		'counts a reader only while its failure still carries its previous value',
+		Effect.fnUntraced(function* () {
+			const registry = yield* AtomRegistry.AtomRegistry
+			const reader = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(1))
+			const aggregate = staleSinceAtom([reader])
+			const unmount = registry.mount(aggregate)
+			registry.set(reader, AsyncResult.fail('failure'))
+			assert.isTrue(Option.isNone(registry.get(aggregate)))
+			registry.set(
+				reader,
+				AsyncResult.failureWithPrevious(Cause.fail('failure'), {previous: Option.some(AsyncResult.success(1))})
+			)
+			assert.isTrue(Option.isSome(registry.get(aggregate)))
+			unmount()
+		})
+	)
+
+	test.effect(
+		'ages the one mark from the oldest reader that is still stale',
+		Effect.fnUntraced(function* () {
+			const registry = yield* AtomRegistry.AtomRegistry
+			const first = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(1))
+			const second = Atom.make<AsyncResult.AsyncResult<number, string>>(AsyncResult.success(2))
+			registry.ensureNode(problemSinceAtom(first)).setInitialValue(Option.some(1000))
+			registry.ensureNode(problemSinceAtom(second)).setInitialValue(Option.some(2000))
+			const aggregate = staleSinceAtom([first, second])
+			const unmount = registry.mount(aggregate)
+			registry.set(
+				first,
+				AsyncResult.failureWithPrevious(Cause.fail('first'), {previous: Option.some(AsyncResult.success(1))})
+			)
+			registry.set(
+				second,
+				AsyncResult.failureWithPrevious(Cause.fail('second'), {previous: Option.some(AsyncResult.success(2))})
+			)
+			assert.strictEqual(Option.getOrThrow(registry.get(aggregate)), 1000)
+			unmount()
+		})
+	)
+
+	test.effect(
+		'refreshes every reader through the one retry',
+		Effect.fnUntraced(function* () {
+			const registry = yield* AtomRegistry.AtomRegistry
+			const reads = {first: 0, second: 0}
+			const first = Atom.make<AsyncResult.AsyncResult<number, string>>(() => {
+				reads.first += 1
+				return AsyncResult.success(1)
+			})
+			const second = Atom.make<AsyncResult.AsyncResult<number, string>>(() => {
+				reads.second += 1
+				return AsyncResult.success(2)
+			})
+			const aggregate = staleSinceAtom([first, second])
+			const unmount = registry.mount(aggregate)
+			registry.get(aggregate)
+			reads.first = 0
+			reads.second = 0
+			registry.refresh(aggregate)
+			registry.get(aggregate)
+			assert.isAtLeast(reads.first, 1)
+			assert.isAtLeast(reads.second, 1)
+			unmount()
 		})
 	)
 })

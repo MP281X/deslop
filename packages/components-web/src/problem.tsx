@@ -1,6 +1,6 @@
-import {useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Clock, DateTime, Effect, Number, Option, Predicate, Stream} from 'effect'
+import {Array, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -9,10 +9,10 @@ import {useId, useRef, useState} from 'react'
 import {StatusDot} from '#components/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'
-import {cn} from '#lib/utils.ts'
 
 // The page keeps this reader mounted even when its pane is offscreen.
 // judge-ignore no-silent-fallback -- now is when the problem began, not a stand-in for a failed read.
+// fallow-ignore-next-line unused-export -- the tests drive the age this atom keeps directly.
 export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>) =>
 	Atom.make(get => {
 		if (!AsyncResult.isFailure(get(source))) return Option.none<number>()
@@ -20,6 +20,24 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 			Option.some(DateTime.toEpochMillis(DateTime.nowUnsafe()))
 		)
 	})
+)
+
+// fallow-ignore-next-line unused-export -- the oldest reader still showing content, whose tests drive the age and retry protocol directly.
+export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
+	Atom.readable(
+		get =>
+			Array.head(
+				Array.sort(
+					Array.flatMap(readers, reader => {
+						const result = get(reader)
+						if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return []
+						return Option.toArray(get(problemSinceAtom(reader)))
+					}),
+					Order.Number
+				)
+			),
+		refresh => Array.forEach(readers, reader => refresh(reader))
+	)
 )
 
 const ageAtom = Atom.family((identity: number | string) =>
@@ -46,13 +64,7 @@ const ageAtom = Atom.family((identity: number | string) =>
 )
 
 // The popup works with hover, keyboard and touch.
-export function Problem(props: {
-	className?: string
-	label: string
-	reset?: () => void
-	since?: number
-	warning?: boolean
-}) {
+function Problem(props: {label: string; reset?: () => void; since?: number}) {
 	const id = useId()
 	const age = useAtomValue(ageAtom(props.since ?? id))
 	const [open, setOpen] = useState(false)
@@ -78,7 +90,7 @@ export function Problem(props: {
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className={cn('h-8 w-16 max-sm:h-11', props.className)}
+				className="h-8 w-16 max-sm:h-11"
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false
@@ -95,7 +107,7 @@ export function Problem(props: {
 					returning.current = false
 				}}
 			>
-				<StatusDot status={Boolean.match(props.warning === true, {onFalse: () => 'error', onTrue: () => 'warning'})} />
+				<StatusDot status="warning" />
 				<span aria-hidden className="text-muted-foreground font-mono tabular-nums">
 					{Option.getOrElse(AsyncResult.value(age), () => '0s')}
 				</span>
@@ -120,4 +132,17 @@ export function Problem(props: {
 			</PopoverContent>
 		</Popover>
 	)
+}
+
+// One stale mark per page: the oldest reader still showing content, and its retry refreshes them all.
+export function StaleProblem(props: {
+	label: string
+	readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]
+}) {
+	const since = useAtomValue(staleSinceAtom(props.readers))
+	const retry = useAtomRefresh(staleSinceAtom(props.readers))
+	return Option.match(since, {
+		onNone: () => null,
+		onSome: value => <Problem label={props.label} reset={retry} since={value} />
+	})
 }

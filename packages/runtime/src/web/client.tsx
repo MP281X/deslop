@@ -7,7 +7,6 @@ import {
 	MutableRef,
 	Option,
 	Predicate,
-	Record,
 	Schedule,
 	Schema,
 	Stream,
@@ -25,11 +24,12 @@ import {Socket} from 'effect/socket'
 import {StrictMode} from 'react'
 import {createRoot} from 'react-dom/client'
 
-import {Error, NotFound} from '@deslop/components-web/fallbacks'
+import {Denied, Error, NotFound, SignIn} from '@deslop/components-web/fallbacks'
 
 import {RPC_PATH} from '#schema.ts'
 import {layerWebTelemetry} from '#telemetry.ts'
 
+import {isDenied, needsSignIn, signInUrl, withoutDeniedData} from '#auth/lib/utils.ts'
 import {AuthError} from '#auth/schema.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
@@ -61,12 +61,19 @@ const errorAtom = Atom.fn(
 	}
 )
 
+// Every failed read: sign in without a session, a lock on a refusal, otherwise the one destructive retry.
+export function Failure(props: {error: unknown; reset: () => void}) {
+	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
+	if (isDenied(props.error)) return <Denied />
+	return <Error error={props.error} reset={props.reset} />
+}
+
 export function mount<TRouteTree extends AnyRoute & {types: {routerContext: AnyContext}}>(routeTree: TRouteTree) {
 	const root = document.querySelector('#root')
 	if (Predicate.isNull(root)) throw new TypeError('Missing application mount element with id "root"')
 	const router = createRouter({
 		context: {},
-		defaultErrorComponent: Error,
+		defaultErrorComponent: Failure,
 		defaultNotFoundComponent: NotFound,
 		defaultPreload: 'intent',
 		routeTree,
@@ -109,13 +116,6 @@ export function searchOf<S extends Schema.Decoder<object>>(schema: S) {
 		Option.getOrElse(Schema.decodeOption(schema)(search), () => Schema.decodeSync(schema)({}))
 }
 
-// Every app's icon by its folder, from the icon glob a page runs four levels above its own routes.
-export function appIcons(icons: Record<string, string>) {
-	return Record.fromEntries(
-		Array.map(Record.toEntries(icons), entry => [String.split(entry[0], '/')[4] ?? '', entry[1]] as const)
-	)
-}
-
 // A live stream recovers from transport and authorization outages, never a refusal or domain failure.
 export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stream<A, E, R>) {
 	return pipe(
@@ -131,6 +131,11 @@ export function reconnecting<A, E extends {_tag: string}, R>(stream: Stream.Stre
 			)
 		)
 	)
+}
+
+// The one way to read a live RPC stream: an outage keeps its content, a refusal clears it, and a transport miss reconnects.
+export function live<A, E extends {_tag: string}, R>(get: Atom.AtomContext, stream: Stream.Stream<A, E, R>) {
+	return withoutDeniedData(get, stream, reconnecting)
 }
 
 // The RPC socket alone, without the page's telemetry, so Scope's page never traces itself.

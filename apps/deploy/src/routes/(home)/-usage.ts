@@ -1,19 +1,9 @@
 import {Array, Boolean, Number, Option, Order, Record, String} from 'effect'
 
+import {APP_HUES} from '@deslop/components-web/apps'
+
 import {chartWindow, resolution} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
-
-// Each Deslop app's icon hue, as the theme names it; a service without one stays zinc grey.
-const APP_HUES: Record<string, string> = {
-	auth: 'var(--slate)',
-	deploy: 'var(--blue)',
-	gateway: 'var(--pink)',
-	opm: 'var(--ivory)',
-	portfolio: 'var(--coral)',
-	scope: 'var(--cyan)',
-	stash: 'var(--amber)',
-	trips: 'var(--orange)'
-}
 
 // One stacked band, in % of the whole machine at each sample: an app, the small apps together, or what the machine holds beyond the apps.
 export type Band = {

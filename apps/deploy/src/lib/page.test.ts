@@ -171,9 +171,7 @@ it.effect(
 	'keeps authorization failures above every pane even when another read succeeded',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
-			AsyncResult.failWithPrevious(AuthError.make({error: 'access_denied', message: 'Access denied'}), {
-				previous: Option.some(AsyncResult.success(snapshot))
-			}),
+			AsyncResult.fail(AuthError.make({error: 'access_denied', message: 'Access denied'})),
 			AsyncResult.success(readings)
 		)
 		assert.include(html, 'Access denied')

@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Match, Number, Option, Order, Predicate, Record, String, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Match, Number, Option, Record, String, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -9,16 +9,17 @@ import {Suspense, useEffect} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import {Denied, EmptyState, Error, SignIn} from '@deslop/components-web/fallbacks'
-import {ItemListHeading} from '@deslop/components-web/item-list'
-import {Problem, problemSinceAtom} from '@deslop/components-web/problem'
+import {appMarks} from '@deslop/components-web/apps'
+import {EmptyState} from '@deslop/components-web/fallbacks'
+import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
+import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
-import {isDenied, needsSignIn, signInUrl} from '@deslop/runtime/auth/utils'
+import {isDenied} from '@deslop/runtime/auth/utils'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {
@@ -36,7 +37,7 @@ import {
 } from '#lib/utils.ts'
 import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
 import {Icicle, SpansSkeleton, TimeAxis} from '#routes/(home)/-icicle.tsx'
-import {CiMark, DetailSkeleton, marks, SpanDetail} from '#routes/(home)/-span.tsx'
+import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
 
@@ -86,57 +87,43 @@ function EmptyIcon() {
 // The operations rows' geometry while the overview loads: the name at the gutter, then the same figure columns.
 function OperationsSkeleton(props: {label: string}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 8), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemContent>
-						<Skeleton className="h-3 w-2/5" />
-					</ItemContent>
-					<ItemActions>
-						<span className="grid-cols-operation grid items-center gap-x-3">
-							<Skeleton className="h-3 w-full" />
-							<Skeleton className="h-3 w-full" />
-							<Skeleton className="h-3 w-full" />
-						</span>
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={8}>
+			<ItemContent>
+				<Skeleton className="h-3 w-2/5" />
+			</ItemContent>
+			<ItemActions>
+				<span className="grid-cols-operation grid items-center gap-x-3">
+					<Skeleton className="h-3 w-full" />
+					<Skeleton className="h-3 w-full" />
+					<Skeleton className="h-3 w-full" />
+				</span>
+			</ItemActions>
+		</RowsSkeleton>
 	)
 }
 
 // The trace rows' geometry while the overview loads: the age slot, the short id where names sit, and the duration column.
 function TracesSkeleton(props: {label: string}) {
 	return (
-		<div aria-busy="true" aria-label={props.label} role="status">
-			{Array.map(Array.range(1, 8), row => (
-				<Item key={row} aria-hidden size="row">
-					<ItemMedia className="w-8">
-						<Skeleton className="h-3 w-6" />
-					</ItemMedia>
-					<ItemContent>
-						<Skeleton className="h-3 w-14" />
-					</ItemContent>
-					<ItemActions>
-						<span className="flex w-12 justify-end">
-							<Skeleton className="h-3 w-10" />
-						</span>
-					</ItemActions>
-				</Item>
-			))}
-		</div>
+		<RowsSkeleton label={props.label} rows={8}>
+			<ItemMedia className="w-8">
+				<Skeleton className="h-3 w-6" />
+			</ItemMedia>
+			<ItemContent>
+				<Skeleton className="h-3 w-14" />
+			</ItemContent>
+			<ItemActions>
+				<span className="flex w-12 justify-end">
+					<Skeleton className="h-3 w-10" />
+				</span>
+			</ItemActions>
+		</RowsSkeleton>
 	)
-}
-
-function FailureContent(props: {error: unknown; reset: () => void}) {
-	if (needsSignIn(props.error)) return <SignIn href={signInUrl(location.href)} />
-	if (isDenied(props.error)) return <Denied />
-	return <Error error={props.error} reset={props.reset} />
 }
 
 // An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
 function AppMark(props: {app: Overview['apps'][number]}) {
-	return Option.match(Option.fromUndefinedOr(marks[props.app.name]), {
+	return Option.match(Option.fromUndefinedOr(appMarks[props.app.name]), {
 		onNone: () =>
 			Boolean.match(
 				Array.every(props.app.operations, operation => operation.runtime === 'ci'),
@@ -469,66 +456,11 @@ function SpansList(props: {
 	)
 }
 
-// A failed refresh keeps its last data; an authorization failure never does.
-function retained(result: AsyncResult.AsyncResult<unknown, unknown>) {
-	return (
-		AsyncResult.isFailure(result) &&
-		Option.isSome(AsyncResult.value(result)) &&
-		!Option.exists(AsyncResult.error(result), error => isDenied(error) || needsSignIn(error))
-	)
-}
-
-// The operations reader alone, before a trace is open.
-function OverviewStale() {
-	const result = useAtomValue(overviewAtom)
-	const since = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
-	const refresh = useAtomRefresh(overviewAtom)
-	if (!retained(result)) return null
-	return <Problem label="Out of date" warning reset={refresh} since={since} />
-}
-
-// The page's readers as one mark: the oldest age among those still showing retained data, and one retry for both.
-function TraceStale(props: {trace: OperationTrace}) {
-	const overview = useAtomValue(overviewAtom)
-	const traceResult = useAtomValue(traceAtom(props.trace.id))
-	const overviewSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(overviewAtom)))
-	const traceSince = Option.getOrUndefined(useAtomValue(problemSinceAtom(traceAtom(props.trace.id))))
-	const refreshOverview = useAtomRefresh(overviewAtom)
-	const refreshTrace = useAtomRefresh(traceAtom(props.trace.id))
-	const overviewStale = retained(overview)
-	const traceStale = retained(traceResult)
-	if (!overviewStale && !traceStale) return null
-	const since = Option.getOrUndefined(
-		Array.head(
-			Array.sort(
-				Array.filter(
-					[
-						Boolean.match(overviewStale, {onFalse: () => undefined, onTrue: () => overviewSince}),
-						Boolean.match(traceStale, {onFalse: () => undefined, onTrue: () => traceSince})
-					],
-					Predicate.isNumber
-				),
-				Order.Number
-			)
-		)
-	)
-	return (
-		<Problem
-			label="Out of date"
-			warning
-			reset={() => {
-				refreshOverview()
-				refreshTrace()
-			}}
-			since={since}
-		/>
-	)
-}
-
+// The page's readers as one mark: the oldest age among those still showing content, and one retry for them all.
 function StaleMark(props: {trace?: OperationTrace}) {
 	return Option.match(Option.fromUndefinedOr(props.trace), {
-		onNone: () => <OverviewStale />,
-		onSome: trace => <TraceStale trace={trace} />
+		onNone: () => <StaleProblem label="Out of date" readers={[overviewAtom]} />,
+		onSome: trace => <StaleProblem label="Out of date" readers={[overviewAtom, traceAtom(trace.id)]} />
 	})
 }
 
@@ -544,7 +476,7 @@ function Spans(props: {
 	const refresh = useAtomRefresh(atom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
-		return <FailureContent error={Cause.squash(result.cause)} reset={refresh} />
+		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.match(value, {
 		onNone: () => null,
@@ -789,15 +721,23 @@ function Home() {
 			}),
 		onTrue: () => <MobileWorkspace {...workspaceProps} pane={pane} />
 	})
+	// A phone pushes one pane at a time: the bar names it and its caret goes back up the tree.
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				icon={icon}
-				name="scope"
-				title={Boolean.match(isMobile && pane !== 'Operations', {
+				heading={Boolean.match(isMobile && pane !== 'Operations', {
 					onFalse: () => undefined,
-					onTrue: () =>
-						pipe(
+					onTrue: () => ({
+						back: {
+							label: pipe(
+								Match.value(pane),
+								Match.when('Span', () => 'Trace'),
+								Match.when('Trace', () => 'Traces'),
+								Match.orElse(() => 'Operations')
+							),
+							onClick: () => send({_tag: 'Back'})
+						},
+						title: pipe(
 							Match.value(pane),
 							Match.when('Traces', () =>
 								Option.match(selection.activeOperation, {
@@ -808,19 +748,10 @@ function Home() {
 							Match.when('Span', () => 'Span'),
 							Match.orElse(() => 'Trace')
 						)
-				})}
-				back={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => undefined,
-					onTrue: () => ({
-						label: pipe(
-							Match.value(pane),
-							Match.when('Span', () => 'Trace'),
-							Match.when('Trace', () => 'Traces'),
-							Match.orElse(() => 'Operations')
-						),
-						onClick: () => send({_tag: 'Back'})
 					})
 				})}
+				icon={icon}
+				name="scope"
 				controls={<StaleMark trace={Option.getOrUndefined(selection.activeTrace)} />}
 				tabs={Option.match(value, {
 					onNone: () => undefined,
@@ -835,9 +766,9 @@ function Home() {
 				onNone: () =>
 					Option.match(blockingFailure, {
 						onNone: () => renderPage(workspace),
-						onSome: cause => renderPage(<FailureContent error={Cause.squash(cause)} reset={refresh} />)
+						onSome: cause => renderPage(<WebRuntime.Failure error={Cause.squash(cause)} reset={refresh} />)
 					}),
-				onSome: error => renderPage(<FailureContent error={error} reset={refresh} />)
+				onSome: error => renderPage(<WebRuntime.Failure error={error} reset={refresh} />)
 			})}
 		</div>
 	)
