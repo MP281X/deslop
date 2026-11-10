@@ -1,5 +1,7 @@
 import {Duration, Effect, Schema, Struct, pipe} from 'effect'
 
+const RANGE_MS: Record<Range, number> = {'1h': 3_600_000, '3d': 259_200_000, '10m': 600_000, '24h': 86_400_000}
+
 export class TelemetryError extends Schema.TaggedError<TelemetryError>()('TelemetryError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
@@ -155,6 +157,19 @@ export const Entry = Schema.Struct({
 type EntryItem = typeof EntryItem.Type
 const EntryItem = Entry.mapFields(Struct.omit(['resource']))
 
+export type Range = typeof Range.Type
+// The page's time frame; three days is what the store keeps.
+export const Range = Schema.Literals(['10m', '1h', '24h', '3d'])
+
+export function rangeMs(range: Range) {
+	return RANGE_MS[range]
+}
+
+// The oldest start a frame holds, in nanoseconds.
+export function rangeStart(range: Range, now: number) {
+	return BigInt(now - rangeMs(range)) * 1_000_000n
+}
+
 export type Query = typeof Query.Type
 export const Query = Schema.Struct({
 	errors: Schema.Boolean,
@@ -242,7 +257,9 @@ export const Operation = Schema.Struct({
 
 export type Overview = typeof Overview.Type
 export const Overview = Schema.Struct({
-	apps: Schema.Array(Schema.Struct({name: Schema.String, operations: Schema.Array(Operation)}))
+	apps: Schema.Array(
+		Schema.Struct({ci: Schema.optionalKey(Schema.Boolean), name: Schema.String, operations: Schema.Array(Operation)})
+	)
 })
 
 export type Stats = typeof Stats.Type

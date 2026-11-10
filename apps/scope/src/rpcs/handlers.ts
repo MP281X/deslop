@@ -7,7 +7,7 @@ export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const telemetry = yield* Telemetry
 		return RpcContracts.of({
-			'scope.overview': () => telemetry.overview,
+			'scope.overview': range => telemetry.overview(range),
 			'scope.trace': input => telemetry.trace(input.id)
 		})
 	})

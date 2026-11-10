@@ -31,7 +31,7 @@ const TRACE_ID = '1234567890abcdef1234567890abcdef'
 
 const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
 
-function release(version: string, id: string) {
+function release(version: string, id: string, start = 1_781_870_000_000_000_000n) {
 	return TracesRequest.make({
 		resourceSpans: [
 			{
@@ -48,10 +48,10 @@ function release(version: string, id: string) {
 					{
 						spans: [
 							{
-								endTimeUnixNano: '1781870000010000000',
+								endTimeUnixNano: `${start + 10_000_000n}`,
 								name: 'share',
 								spanId: String.repeat(16)(id),
-								startTimeUnixNano: '1781870000000000000',
+								startTimeUnixNano: `${start}`,
 								traceId: String.repeat(32)(id)
 							}
 						]
@@ -93,22 +93,27 @@ it.layer(platform)(test => {
 			yield* TestClock.adjust('2 seconds')
 			assert.strictEqual(yield* Ref.get(reads), idle)
 			const pushed = yield* Queue.unbounded<Overview>()
-			const first = yield* Effect.forkScoped(Stream.runForEach(telemetry.overview, value => Queue.offer(pushed, value)))
-			const second = yield* Effect.forkScoped(
-				Stream.runForEach(telemetry.overview, value => Queue.offer(pushed, value))
+			const first = yield* Effect.forkScoped(
+				Stream.runForEach(telemetry.overview('3d'), value => Queue.offer(pushed, value))
 			)
-			assert.strictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
+			const second = yield* Effect.forkScoped(
+				Stream.runForEach(telemetry.overview('3d'), value => Queue.offer(pushed, value))
+			)
+			assert.deepStrictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
 			assert.strictEqual(yield* Ref.get(reads), idle + 1)
 			yield* telemetry.ingestTraces(release('0.1.1', 'b'))
 			yield* TestClock.adjust('2 seconds')
-			assert.strictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
+			assert.deepStrictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
 			yield* Fiber.interrupt(first)
 			yield* Fiber.interrupt(second)
 			yield* telemetry.ingestTraces(release('0.1.1', 'c'))
 			const closed = yield* Ref.get(reads)
 			yield* TestClock.adjust('2 seconds')
 			assert.strictEqual(yield* Ref.get(reads), closed)
-			assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps[0]?.operations[0]?.count, 3)
+			assert.strictEqual(
+				Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations[0]?.count,
+				3
+			)
 		})
 	)
 	test.effect(
@@ -279,7 +284,7 @@ it.layer(platform)(test => {
 					yield* telemetry.ingestTraces(release('a3f9c21', 'e'))
 					assert.deepStrictEqual(yield* kept(telemetry), ['b', 'd', 'e'])
 					yield* TestClock.adjust('2 seconds')
-					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps.length, 1)
+					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps.length, 1)
 				})
 			)
 			assert.deepStrictEqual(yield* kept(Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)), [
@@ -343,7 +348,7 @@ it.layer(layer)(test => {
 			})
 			yield* TestClock.adjust('2 seconds')
 			assert.sameMembers(
-				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps, app =>
+				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps, app =>
 					Array.map(app.operations, operation => operation.name)
 				),
 				['nested', 'action']
@@ -765,7 +770,7 @@ it.layer(layer)(test => {
 			)
 			// The page's overview recomputes at most once a second, so the clock moves past that pause.
 			yield* TestClock.adjust('2 seconds')
-			const apps = Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps
+			const apps = Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps
 			assert.deepStrictEqual(
 				Array.map(apps, app => app.name),
 				['stash']

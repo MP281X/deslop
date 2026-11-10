@@ -89,7 +89,7 @@ it.layer(layer)(test => {
 			yield* telemetry.ingestTraces(runTrace({...run, action: 'in_progress'}))
 			yield* telemetry.ingestTraces(runTrace(run))
 			yield* TestClock.adjust('2 seconds')
-			const app = Option.getOrThrow(Array.head(Option.getOrThrow(yield* Stream.runHead(telemetry.overview)).apps))
+			const app = Option.getOrThrow(Array.head(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps))
 			assert.strictEqual(app.name, 'MP281X/deslop')
 			assert.deepStrictEqual(
 				Array.map(app.operations, operation => [

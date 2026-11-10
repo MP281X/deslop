@@ -16,9 +16,10 @@ import {overviewAtom, traceAtom} from '#lib/utils.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceView} from '#services/telemetry/lib/utils.ts'
 import {Entry, TelemetryError} from '#services/telemetry/schema.ts'
-import type {Overview, Trace} from '#services/telemetry/schema.ts'
+import type {Overview, Range, Trace} from '#services/telemetry/schema.ts'
 
 const ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const RANGE: Range = '1h'
 beforeAll(() => Route.options.component?.preload?.())
 const trace = traceView(
 	[
@@ -51,7 +52,7 @@ function render(
 					AtomRegistry.make({
 						initialValues: [
 							[
-								overviewAtom,
+								overviewAtom(RANGE),
 								overview ??
 									AsyncResult.success({
 										apps: [
@@ -72,15 +73,15 @@ function render(
 									}),
 								{skipInitialRun: true}
 							],
-							[traceAtom(ID), result, {skipInitialRun: true}]
+							[traceAtom(RANGE, ID), result, {skipInitialRun: true}]
 						]
 					})
 				),
 				value => Effect.sync(() => value.dispose())
 			)
-			registry.get(traceAtom(ID))
-			registry.ensureNode(traceAtom(ID)).setInitialValue(result)
-			if (overview !== undefined) registry.ensureNode(overviewAtom).setInitialValue(overview)
+			registry.get(traceAtom(RANGE, ID))
+			registry.ensureNode(traceAtom(RANGE, ID)).setInitialValue(result)
+			if (overview !== undefined) registry.ensureNode(overviewAtom(RANGE)).setInitialValue(overview)
 			const router = createRouter({history: createMemoryHistory({initialEntries: [path]}), routeTree})
 			yield* Effect.promise(() => router.load())
 			return renderToString(
@@ -176,7 +177,7 @@ it.effect(
 	'replaces loading rows with honest empty panes',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.success({apps: []}))
-		for (const label of ['No traces yet', 'Select an operation', 'Select a trace']) {
+		for (const label of ['No traces in this frame', 'Select an operation', 'Select a trace']) {
 			assert.include(html, `aria-label="${label}"`)
 			assert.notInclude(html, `>${label}<`)
 		}

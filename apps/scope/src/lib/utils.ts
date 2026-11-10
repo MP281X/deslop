@@ -21,7 +21,7 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 import * as WebRuntime from '@deslop/runtime/web'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {Operation} from '#services/telemetry/schema.ts'
+import {Operation, Range} from '#services/telemetry/schema.ts'
 import type {OperationTrace, Overview, Trace} from '#services/telemetry/schema.ts'
 
 // The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
@@ -62,6 +62,7 @@ const Selection = Schema.Struct({
 export type NavigationEvent =
 	| {readonly _tag: 'Back'}
 	| {readonly _tag: 'Operation'; readonly operation: OperationKey}
+	| {readonly _tag: 'Range'; readonly keepTrace: boolean; readonly range: Range}
 	| {readonly _tag: 'Source'; readonly app: string}
 	| {readonly _tag: 'Span'; readonly selection: {operation: OperationKey; spanId: string; traceId: string}}
 	| {readonly _tag: 'Trace'; readonly selection: {operation: OperationKey; traceId: string}}
@@ -70,6 +71,7 @@ export type Search = typeof Search.Type
 export const Search = Schema.Struct({
 	operation: Schema.optionalKey(Schema.String),
 	pane: Schema.optionalKey(Pane),
+	range: Schema.optionalKey(Range),
 	side: Schema.optionalKey(Operation.fields.runtime),
 	source: Schema.optionalKey(Schema.String),
 	span: Schema.optionalKey(Schema.String),
@@ -93,10 +95,11 @@ export function navigationOf(search: Search) {
 	}
 }
 
-// The URL a selection produces in the given pane; a pick keeps the pane it was made in.
-function select(selection: Selection, pane?: Pane) {
+// The URL a selection produces in the given pane; a pick keeps the pane it was made in and the page's time frame.
+function select(selection: Selection, frame?: Range, pane?: Pane) {
 	return {
 		operation: selection.operation.name,
+		...Option.match(Option.fromUndefinedOr(frame), {onNone: () => ({}), onSome: range => ({range})}),
 		side: selection.operation.runtime,
 		source: selection.operation.app,
 		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
@@ -113,12 +116,19 @@ function sourceSearch(search: Search, app: string) {
 
 export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
-	if (event._tag === 'Operation') return select({operation: event.operation}, 'Traces')
-	if (event._tag === 'Trace') return select(event.selection, 'Trace')
-	if (event._tag === 'Span') return select(event.selection, 'Span')
+	if (event._tag === 'Operation') return select({operation: event.operation}, search.range, 'Traces')
+	if (event._tag === 'Trace') return select(event.selection, search.range, 'Trace')
+	if (event._tag === 'Span') return select(event.selection, search.range, 'Span')
+	if (event._tag === 'Range') {
+		const kept = Boolean.match(event.keepTrace, {
+			onFalse: () => Struct.omit(search, ['span', 'trace']),
+			onTrue: () => search
+		})
+		return {...kept, range: event.range} satisfies Search
+	}
 	return Option.match(
 		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
-		{onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})}
+		{onNone: () => ({...Struct.omit(search, ['pane']), pane: undefined}), onSome: up => ({...search, pane: up})}
 	) satisfies Search
 }
 
@@ -151,26 +161,37 @@ function openingApp(overview: Overview) {
 	)
 }
 
-export const overviewAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
-			get,
-			pipe(
-				RpcClient,
-				Effect.map(client => client('scope.overview', undefined)),
-				Stream.unwrap
+export const overviewAtom = Atom.family((range: Range) =>
+	Atom.keepAlive(
+		RpcClient.runtime.atom(get =>
+			WebRuntime.live(
+				get,
+				pipe(
+					RpcClient,
+					Effect.map(client => client('scope.overview', range)),
+					Stream.unwrap
+				)
 			)
 		)
 	)
 )
 
-// An open trace follows arrivals, including late children and logs that do not change its duration.
-export const traceAtom = Atom.family((id: string) =>
-	RpcClient.runtime.atom(get => {
-		get(overviewAtom)
-		return WebRuntime.live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id}))))
-	})
+const traceAtoms = Atom.family((range: Range) =>
+	Atom.family((_id: string) =>
+		RpcClient.runtime.atom(get => {
+			get(overviewAtom(range))
+			return WebRuntime.live(
+				get,
+				Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id: _id})))
+			)
+		})
+	)
 )
+
+// An open trace follows arrivals, including late children and logs that do not change its duration.
+export function traceAtom(range: Range, id: string) {
+	return traceAtoms(range)(id)
+}
 
 // The page's clock, so ages keep counting on a quiet page.
 export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick('30 seconds'), () => Clock.currentTimeMillis))

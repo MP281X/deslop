@@ -1,10 +1,11 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Array, Effect, Option, Schema, String, pipe} from 'effect'
+import {Array, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
+import {useEffect, useRef} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
@@ -68,12 +69,25 @@ function AccountMenu() {
 	)
 }
 
-// The app's sections as one segmented control in the masthead; `value` names the current one.
+// The app's sections as one segmented control in the masthead; `value` names the current one. A bar narrow enough to need it scrolls this control sideways, keeping the chosen tab in view.
 export function AppBarTabs(props: {children: ReactNode; value: string}) {
+	const sections = useRef<HTMLDivElement>(null)
+	// Tabs can arrive after the bar, so every render places the chosen one again; one already in view stays put.
+	useEffect(() => {
+		const active = sections.current?.querySelector<HTMLElement>('[data-active]')
+		const view = sections.current?.parentElement
+		if (Predicate.isNullish(active) || Predicate.isNullish(view)) return
+		const tab = active.getBoundingClientRect()
+		const bounds = view.getBoundingClientRect()
+		if (tab.left >= bounds.left - 1 && tab.right <= bounds.right + 1) return
+		active.scrollIntoView({block: 'nearest', inline: 'nearest'})
+	})
 	return (
-		<Tabs value={props.value}>
-			<TabsList>{props.children}</TabsList>
-		</Tabs>
+		<div ref={sections}>
+			<Tabs value={props.value}>
+				<TabsList>{props.children}</TabsList>
+			</Tabs>
+		</div>
 	)
 }
 
@@ -141,7 +155,10 @@ export function AppBar(props: {
 				)
 			})}
 			{props.tabs !== undefined && (
-				<nav aria-label="Sections" className="flex shrink-0 items-center">
+				<nav
+					aria-label="Sections"
+					className="flex min-w-0 flex-1 scrollbar-none items-center overflow-x-auto overscroll-x-contain"
+				>
 					{props.tabs}
 				</nav>
 			)}
