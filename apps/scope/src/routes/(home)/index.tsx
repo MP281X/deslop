@@ -170,8 +170,14 @@ function OverviewContent(props: {children: (overview: Overview) => ReactNode}) {
 	})
 }
 
-// One operation: its name and side when two rows share it, then errors, runs and typical duration.
-function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () => void; operation: Operation}) {
+// One operation: its name and side when two rows share it, then errors while any row in its list has them, runs and typical duration.
+function OperationRow(props: {
+	active: boolean
+	duplicate: boolean
+	failing: boolean
+	onSelect: () => void
+	operation: Operation
+}) {
 	const side = SIDES[props.operation.runtime]
 	return (
 		<div role="listitem">
@@ -200,25 +206,32 @@ function OperationRow(props: {active: boolean; duplicate: boolean; onSelect: () 
 				}
 			>
 				<ItemContent>
-					<ItemTitle title={props.operation.name}>
-						{props.operation.name}
+					<ItemTitle className="w-full" title={props.operation.name}>
+						<span className="min-w-0 truncate">{props.operation.name}</span>
 						{props.duplicate && KINDS[props.operation.runtime]}
 					</ItemTitle>
 				</ItemContent>
 				<ItemActions>
-					<span className="grid-cols-operation grid items-center gap-x-3">
-						<span
-							className="text-destructive text-right tabular-nums"
-							title={Boolean.match(props.operation.failures > 0, {
-								onFalse: () => undefined,
-								onTrue: () => `${count.format(props.operation.failures)} failed`
-							})}
-						>
-							{Boolean.match(props.operation.failures > 0, {
-								onFalse: () => null,
-								onTrue: () => count.format(props.operation.failures)
-							})}
-						</span>
+					<span
+						className={cn(
+							'grid items-center gap-x-3',
+							Boolean.match(props.failing, {onFalse: () => 'grid-cols-runs', onTrue: () => 'grid-cols-operation'})
+						)}
+					>
+						{props.failing && (
+							<span
+								className="text-destructive text-right tabular-nums"
+								title={Boolean.match(props.operation.failures > 0, {
+									onFalse: () => undefined,
+									onTrue: () => `${count.format(props.operation.failures)} failed`
+								})}
+							>
+								{Boolean.match(props.operation.failures > 0, {
+									onFalse: () => null,
+									onTrue: () => count.format(props.operation.failures)
+								})}
+							</span>
+						)}
 						<span className="text-muted-foreground text-right tabular-nums" title={runsOf(props.operation.count)}>
 							{compact.format(props.operation.count)}
 						</span>
@@ -248,6 +261,7 @@ function OperationsPane(props: {
 							onEmpty: () => <EmptyState label="No traces yet" icon={<ChartBarHorizontalIcon weight="light" />} />,
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)
+								const failing = Array.some(rows, row => row.operation.failures > 0)
 								return (
 									<ScrollArea className="min-h-0 flex-1">
 										<div role="list">
@@ -261,6 +275,7 @@ function OperationsPane(props: {
 														props.activeKey.name === row.operation.name
 													}
 													duplicate={Option.exists(Record.get(names, row.operation.name), group => group.length > 1)}
+													failing={failing}
 													onSelect={() => props.onSelect(row.app.name, row.operation)}
 													operation={row.operation}
 												/>

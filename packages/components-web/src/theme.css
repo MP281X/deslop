@@ -217,6 +217,13 @@
 		touch-action: pan-x pan-y;
 	}
 
+	/* iOS sizes a home-screen web app's viewport short by the status bar, leaving a strip under the page; a full-screen root makes it take the whole screen. */
+	@media (display-mode: standalone) {
+		html {
+			height: 100lvh;
+		}
+	}
+
 	::selection {
 		background: var(--selection);
 		color: var(--selection-foreground);

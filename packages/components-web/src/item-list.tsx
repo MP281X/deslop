@@ -25,7 +25,7 @@ export function ItemListHeading(props: {children: ReactNode; icon: ReactNode}) {
 			className="list-row text-muted-foreground flex h-8 items-center gap-3 px-4 text-xs max-sm:h-11 [&_svg]:size-4 [&_svg]:shrink-0"
 		>
 			{props.icon}
-			{props.children}
+			<span className="min-w-0 truncate">{props.children}</span>
 		</div>
 	)
 }
