@@ -1,6 +1,6 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -46,16 +46,17 @@ import {
 	tint
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
-import {useState} from 'react'
+import {Suspense, useState} from 'react'
 import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {Item, ItemContent, ItemGroup, ItemMedia, ItemTitle, itemRow} from '@deslop/components-mobile/ui/item'
+import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {isDenied} from '@deslop/runtime/auth/utils'
@@ -267,6 +268,107 @@ function Outages() {
 	)
 }
 
+function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (name?: string) => void; tag?: string}) {
+	const remove = useAtomSet(removeAtom)
+	const regenerate = useAtomSet(regenerateAtom)
+	const paste = useAtomSet(clipboard.atom.send)
+	const query = String.trim(useAtomValue(queryAtom))
+	const search = useAtomValue(searchAtom)
+	const refreshSearch = useAtomRefresh(searchAtom)
+	const found = pipe(search, AsyncResult.value, Option.flatten)
+	const [limit, setLimit] = useState(80)
+	return (
+		<Loaded atom={notesAtom} name="Notes">
+			{all => {
+				if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
+					return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} />
+				}
+				const notes = Array.filter(
+					all,
+					note =>
+						Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
+						(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
+						(props.kind === undefined || kindOf(note) === props.kind)
+				)
+				const tags = Array.map(tagCounts(all), entry => entry.tag)
+				const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
+				return (
+					<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
+						<Outages />
+						{Array.match(all, {
+							onEmpty: () => (
+								<Empty>
+									<EmptyAction
+										label="Paste Link"
+										systemImage="link"
+										onPress={() => paste({_tag: 'Returned'})}
+										tint={primary}
+									/>
+								</Empty>
+							),
+							onNonEmpty: () => (
+								// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
+								<Overlay>
+									<ItemGroup>
+										{/* "all" clears the tag, and choosing the chosen tag again does too. */}
+										<ToggleGroup
+											value={props.tag ?? 'all'}
+											onValueChange={value =>
+												Boolean.match(value === 'all' || value === props.tag, {
+													onFalse: () => props.onTag(value),
+													onTrue: () => props.onTag()
+												})
+											}
+											tint={primary}
+											modifiers={[
+												listRowSeparator('hidden'),
+												listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
+											]}
+										>
+											<ToggleGroupItem value="all" systemImage="tray">
+												all
+											</ToggleGroupItem>
+											{Array.map(tags, name => (
+												<ToggleGroupItem key={name} value={name}>
+													{name}
+												</ToggleGroupItem>
+											))}
+										</ToggleGroup>
+										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
+										{Array.map(Array.take(notes, limit), (note, position) => (
+											<NoteRow
+												key={note.id}
+												note={note}
+												onAppear={() => {
+													if (position === limit - 1) setLimit(limit + 80)
+												}}
+												onOpen={props.onOpen}
+												onRegenerate={id => regenerate(id)}
+												onRemove={id => remove(id)}
+											/>
+										))}
+									</ItemGroup>
+									{filtered && Array.isReadonlyArrayEmpty(notes) && (
+										<Overlay.Content>
+											<Empty
+												systemImage={Boolean.match(String.isEmpty(query), {
+													onFalse: () => 'magnifyingglass',
+													onTrue: () => 'tray'
+												})}
+												label="No notes match"
+											/>
+										</Overlay.Content>
+									)}
+								</Overlay>
+							)
+						})}
+					</VStack>
+				)
+			}}
+		</Loaded>
+	)
+}
+
 export function HomeRoute(props: {
 	kind?: Kind
 	onCompose: () => void
@@ -277,33 +379,6 @@ export function HomeRoute(props: {
 	query: ReturnType<typeof useNativeState<string>>
 	tag?: string
 }) {
-	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(notesAtom)
-	const remove = useAtomSet(removeAtom)
-	const regenerate = useAtomSet(regenerateAtom)
-	const paste = useAtomSet(clipboard.atom.send)
-	const query = String.trim(useAtomValue(queryAtom))
-	const search = useAtomValue(searchAtom)
-	const refreshSearch = useAtomRefresh(searchAtom)
-	const found = pipe(search, AsyncResult.value, Option.flatten)
-	const [limit, setLimit] = useState(80)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Notes" onRetry={refresh} />
-	}
-	if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
-		return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} />
-	}
-	const notes = Array.filter(
-		shown.success,
-		note =>
-			Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
-			(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
-			(props.kind === undefined || kindOf(note) === props.kind)
-	)
-	const tags = Array.map(tagCounts(shown.success), entry => entry.tag)
-	const filtered = String.isNonEmpty(query) || props.tag !== undefined || props.kind !== undefined
-
 	return (
 		<Toolbar
 			modifiers={[
@@ -314,76 +389,17 @@ export function HomeRoute(props: {
 			]}
 		>
 			<PasteSheet clipboard={clipboard}>
-				<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
-					<Outages />
-					{Array.match(shown.success, {
-						onEmpty: () => (
-							<Empty>
-								<EmptyAction
-									label="Paste Link"
-									systemImage="link"
-									onPress={() => paste({_tag: 'Returned'})}
-									tint={primary}
-								/>
-							</Empty>
-						),
-						onNonEmpty: () => (
-							// The empty state sits over the list, centered on the screen, as SwiftUI's own apps show it.
-							<Overlay>
-								<ItemGroup>
-									{/* "all" clears the tag, and choosing the chosen tag again does too. */}
-									<ToggleGroup
-										value={props.tag ?? 'all'}
-										onValueChange={value =>
-											Boolean.match(value === 'all' || value === props.tag, {
-												onFalse: () => props.onTag(value),
-												onTrue: () => props.onTag()
-											})
-										}
-										tint={primary}
-										modifiers={[
-											listRowSeparator('hidden'),
-											listRowInsets({bottom: space[1], leading: space[4], top: space[1], trailing: space[4]})
-										]}
-									>
-										<ToggleGroupItem value="all" systemImage="tray">
-											all
-										</ToggleGroupItem>
-										{Array.map(tags, name => (
-											<ToggleGroupItem key={name} value={name}>
-												{name}
-											</ToggleGroupItem>
-										))}
-									</ToggleGroup>
-									{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-									{Array.map(Array.take(notes, limit), (note, position) => (
-										<NoteRow
-											key={note.id}
-											note={note}
-											onAppear={() => {
-												if (position === limit - 1) setLimit(limit + 80)
-											}}
-											onOpen={props.onOpen}
-											onRegenerate={id => regenerate(id)}
-											onRemove={id => remove(id)}
-										/>
-									))}
-								</ItemGroup>
-								{filtered && Array.isReadonlyArrayEmpty(notes) && (
-									<Overlay.Content>
-										<Empty
-											systemImage={Boolean.match(String.isEmpty(query), {
-												onFalse: () => 'magnifyingglass',
-												onTrue: () => 'tray'
-											})}
-											label="No notes match"
-										/>
-									</Overlay.Content>
-								)}
-							</Overlay>
-						)
-					})}
-				</VStack>
+				<Suspense
+					fallback={
+						<ItemGroupSkeleton
+							rows={10}
+							descriptionLines={1}
+							media={<Skeleton modifiers={[frame({height: 64, width: 64})]} />}
+						/>
+					}
+				>
+					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
+				</Suspense>
 			</PasteSheet>
 			<Toolbar.Content>
 				<ToolbarItem placement="topBarTrailing">

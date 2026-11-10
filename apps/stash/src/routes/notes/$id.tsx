@@ -151,6 +151,22 @@ function Placeholder() {
 	)
 }
 
+export function NoteSkeleton() {
+	return (
+		<VStack
+			alignment="leading"
+			spacing={space[4]}
+			modifiers={[
+				padding({bottom: space[8], horizontal: space[4], top: space[2]}),
+				frame({alignment: 'leading', maxHeight: Infinity, maxWidth: Infinity})
+			]}
+		>
+			<Skeleton modifiers={[frame({height: 28}), frame({maxWidth: 320})]} />
+			<Placeholder />
+		</VStack>
+	)
+}
+
 // The summary and body a note shows once Stash has read its link.
 function Reading() {
 	return (
