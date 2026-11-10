@@ -8,11 +8,10 @@ import {Suspense, useState} from 'react'
 
 import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
-import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
-import {ReaderRoute} from '#routes/chapters/$number.tsx'
+import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterPath} from '#services/chapters/schema.ts'
@@ -60,7 +59,7 @@ function AppRoutes() {
 						onNone: () => undefined,
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
-								<Suspense fallback={<ItemGroupSkeleton rows={10} />}>
+								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
 									<Destination number={target[2]} series={target[0]} start={resumePage} />
 								</Suspense>
 							</NavigationDestination>
