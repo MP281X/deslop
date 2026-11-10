@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Function, Option} from 'effect'
+import {Array, Function, HashSet, Option} from 'effect'
 
-import {appHue, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
+import {bandFill, bands, focusedBand, lowImpactIds, runs} from '#routes/(home)/-usage.ts'
 import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
@@ -61,15 +61,32 @@ it('stacks every recorded app heaviest first, stopped ones too, then the small o
 	assert.strictEqual(result[4]?.cpu[0], 5)
 })
 
-it('tints a Deslop app with its icon hue and leaves a service without one grey', () => {
-	assert.deepStrictEqual(appHue('deploy preview'), Option.some('var(--blue)'))
-	assert.deepStrictEqual(appHue('stash'), Option.some('var(--amber)'))
-	assert.deepStrictEqual(appHue('preview gateway'), Option.some('var(--pink)'))
-	assert.isTrue(Option.isNone(appHue('t3code')))
-	assert.isTrue(Option.isNone(appHue('postgres')))
+it('fills a Deslop app in its hue, another process in the page primary, and the aggregates grey', () => {
+	assert.deepStrictEqual(bandFill('app', 0.4, 't3code'), {color: 'var(--primary)', opacity: 0.4})
+	assert.deepStrictEqual(bandFill('app', 0.4, 'scope'), {color: 'var(--cyan)', opacity: 0.9})
+	assert.deepStrictEqual(bandFill('other', 0.35, 'Low impact'), {color: 'var(--input)', opacity: 1})
+	assert.deepStrictEqual(bandFill('system', 0.18, 'System'), {color: 'var(--muted)', opacity: 1})
+	assert.deepStrictEqual(bandFill('disk', 1, 'Disk'), {color: 'var(--muted-foreground)', opacity: 0.6})
 })
 
-it('focuses the selected app, the small apps’ block when it shares that, and nothing when the range never recorded it', () => {
+it('puts an app in the low-impact set only when both peak memory and peak CPU stay under 5%', () => {
+	const lowImpact = lowImpactIds(
+		machine([
+			sample(60_000, [
+				{cpu: 4, id: 'service:user:near.service', memory: 1024},
+				{cpu: 5, id: 'service:user:cpu.service', memory: 1024},
+				{cpu: 0, id: 'service:user:memory.service', memory: 0.5 * GIB},
+				{cpu: 0, id: 'service:user:tiny.service', memory: 1024}
+			])
+		])
+	)
+	assert.isTrue(HashSet.has(lowImpact, 'service:user:tiny.service'))
+	assert.isTrue(HashSet.has(lowImpact, 'service:user:near.service'))
+	assert.isFalse(HashSet.has(lowImpact, 'service:user:cpu.service'))
+	assert.isFalse(HashSet.has(lowImpact, 'service:user:memory.service'))
+})
+
+it('focuses the selected app, the low-impact block when it shares that, and nothing when the range never recorded it', () => {
 	const history = machine([
 		sample(60_000, [
 			{cpu: 10, id: 'service:user:t3code.service', memory: 3 * GIB},

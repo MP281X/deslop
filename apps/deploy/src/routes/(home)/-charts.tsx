@@ -11,7 +11,7 @@ import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bandName, bytes, rate} from '#routes/(home)/-rows.ts'
-import {appHue, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
+import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
 import {chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
@@ -54,21 +54,6 @@ function nearest(history: MachineHistory, minutes: number, at: number) {
 	}).index
 }
 
-// A band's colour: a Deslop app in its icon's hue, a service without one a zinc step, small apps and the rest two darker greys.
-function fillOf(
-	band: {kind: ChartLayer['kind']; opacity: number},
-	name: string,
-	hue: (name: string) => Option.Option<string>
-) {
-	if (band.kind === 'other') return {color: 'var(--input)', opacity: 1}
-	if (band.kind === 'system') return {color: 'var(--muted)', opacity: 1}
-	if (band.kind === 'disk') return {color: 'var(--muted-foreground)', opacity: 0.6}
-	return Option.match(hue(name), {
-		onNone: () => ({color: 'var(--muted-foreground)', opacity: band.opacity}),
-		onSome: color => ({color, opacity: 0.9})
-	})
-}
-
 // The machine's share each band holds over time, stacked on the whole machine's 0–100%, with a tooltip and cursor on the hovered band.
 function UsageChart(props: {
 	className?: string
@@ -76,7 +61,6 @@ function UsageChart(props: {
 	focus?: string
 	format: (value: number) => string
 	history: MachineHistory
-	hue: (name: string) => Option.Option<string>
 	label: string
 	layers: readonly ChartLayer[]
 	minutes: number
@@ -152,7 +136,7 @@ function UsageChart(props: {
 								}
 							)[1],
 							layer => {
-								const fill = fillOf(layer.band, props.names(layer.band.id), props.hue)
+								const fill = bandFill(layer.band.kind, layer.band.opacity, props.names(layer.band.id))
 								const isFocused = Option.exists(focused, focus => focus === layer.band.id)
 								const dimmed = Option.isSome(focused) && !isFocused
 								return Array.map(allRuns, run => (
@@ -441,7 +425,6 @@ export function ChartBlock(props: {
 							focus={chart.focus}
 							format={chart.format}
 							history={props.history}
-							hue={appHue}
 							label={chart.label}
 							layers={chart.layers}
 							minutes={props.minutes}
