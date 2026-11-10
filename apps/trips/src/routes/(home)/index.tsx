@@ -111,7 +111,8 @@ function Gutter(props: {countdown: Countdown}) {
 }
 
 function BookingRow(props: {booking: Booking; countdown: Countdown; now: number; onOpen: (id: string) => void}) {
-	const machine = removal(props.booking.id)
+	const machine = removal.machine(props.booking.id)
+	const remove = useAtomSet(removal.removeAtom)
 	const send = useAtomSet(machine.send)
 	const status = statusOf(props.booking, props.now)
 	return (
@@ -142,7 +143,7 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 							})}
 						</Item>
 						<SwipeActions.Actions edge="trailing">
-							<Button label="Delete" systemImage="trash" role="destructive" onPress={() => send({_tag: 'Removed'})} />
+							<Button label="Delete" systemImage="trash" role="destructive" onPress={() => remove(props.booking.id)} />
 						</SwipeActions.Actions>
 					</SwipeActions>
 				)}

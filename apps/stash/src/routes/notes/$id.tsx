@@ -317,7 +317,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 }
 
 export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
-	const remove = useAtomSet(removal(props.id).send)
+	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
 	const loaded = useAtomSuspense(notesAtom, {includeFailure: true})
 	const refresh = useAtomRefresh(notesAtom)
@@ -374,7 +374,7 @@ export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (t
 									systemImage="trash"
 									role="destructive"
 									onPress={() => {
-										remove({_tag: 'Removed'})
+										remove(props.id)
 										props.onClose()
 									}}
 									modifiers={[tint(colors.destructive)]}

@@ -13,20 +13,18 @@ class Removal extends Context.Service<
 	{readonly notRemoved: string; readonly remove: (id: string) => Effect.Effect<void, RemovalError>}
 >()('@deslop/components-mobile/lib/removal') {}
 
-// A removal reaches the server only after eight seconds; until then its row can restore it, and an unseen row keeps counting.
+// A removal reaches the server only after eight seconds; until then its row can restore it.
 export function makeRemoval<E extends {_tag: string; message: string}>(options: {
 	notRemoved: string
 	remove: (id: string, context: Atom.AtomContext) => Effect.Effect<void, E>
 }) {
-	return Atom.family((id: string) => {
-		const machine = AtomMachine.bind(
-			Atom.runtime(get =>
-				Layer.succeed(
-					Removal,
-					Removal.of({notRemoved: options.notRemoved, remove: removedId => options.remove(removedId, get)})
-				)
-			)
-		).make(
+	const bound = AtomMachine.bind(
+		Atom.runtime(get =>
+			Layer.succeed(Removal, Removal.of({notRemoved: options.notRemoved, remove: id => options.remove(id, get)}))
+		)
+	)
+	const machine = Atom.family((id: string) =>
+		bound.make(
 			Machine.make({
 				effects: {
 					remove: Effect.gen(function* () {
@@ -47,17 +45,17 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 				}
 			})
 		)
-		const ref = Atom.keepAlive(Atom.readable(get => get(machine.ref)))
-		return {
-			...machine,
-			ref,
-			send: Atom.writable(
-				get => get(machine.send),
-				(context, event: Parameters<typeof machine.send.write>[1]) => {
-					context.get(ref)
-					context.set(machine.send, event)
-				}
-			)
-		}
-	})
+	)
+	// A removal outlives its row, which a search, a folded section or a closing detail unmounts.
+	const held = Atom.family((id: string) => Atom.keepAlive(Atom.readable(get => get(machine(id).ref))))
+	return {
+		machine,
+		removeAtom: Atom.writable(
+			() => undefined,
+			(context, id: string) => {
+				context.get(held(id))
+				context.set(machine(id).send, {_tag: 'Removed'})
+			}
+		)
+	}
 }

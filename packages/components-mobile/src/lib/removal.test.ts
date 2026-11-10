@@ -10,6 +10,8 @@ import {vi} from 'vite-plus/test'
 
 import {makeRemoval} from '#lib/removal.ts'
 
+const ID = '2f1c1f6e-6a39-4a4e-9a2a-0a6e5d7c9b11'
+
 vi.mock('@expo/ui/swift-ui/modifiers', () => ({createModifier: () => undefined}))
 vi.mock('expo', () => ({requireNativeModule: () => ({})}))
 vi.mock('expo-asset', () => ({Asset: {}}))
@@ -33,26 +35,22 @@ function harness(failure = false) {
 				return Ref.update(calls, count => count + 1)
 			}
 		})
-		return {atom: removal('2f1c1f6e-6a39-4a4e-9a2a-0a6e5d7c9b11'), calls}
+		return {calls, machine: removal.machine(ID), removeAtom: removal.removeAtom}
 	})
 }
 
 it.layer(AtomRegistry.layer)(test => {
 	test.effect(
-		'removes once when the row is gone and the eight seconds pass',
+		'removes once after eight seconds with no row mounted, through the machine atom a row renders',
 		Effect.fnUntraced(function* () {
 			Atom.runtime.addGlobalLayer(Layer.succeed(Clock.Clock, yield* Clock.Clock))
 			const scenario = yield* harness()
-			yield* Effect.scoped(
-				Effect.gen(function* () {
-					yield* Atom.mount(AtomMachine.selectSnapshot(scenario.atom, 'Pending'))
-					yield* Atom.set(scenario.atom.send, {_tag: 'Removed'})
-				})
-			)
+			assert.isTrue(AtomMachine.isMachineAtom(scenario.machine))
+			yield* Atom.set(scenario.removeAtom, ID)
 			yield* TestClock.adjust('8 seconds')
 			yield* Effect.yieldNow
 			assert.strictEqual(yield* Ref.get(scenario.calls), 1)
-			assert.isTrue(Option.isSome(yield* Atom.getResult(AtomMachine.selectSnapshot(scenario.atom, 'Removed'))))
+			assert.isTrue(Option.isSome(yield* Atom.getResult(AtomMachine.selectSnapshot(scenario.machine, 'Removed'))))
 		})
 	)
 
@@ -61,17 +59,12 @@ it.layer(AtomRegistry.layer)(test => {
 		Effect.fnUntraced(function* () {
 			Atom.runtime.addGlobalLayer(Layer.succeed(Clock.Clock, yield* Clock.Clock))
 			const scenario = yield* harness()
-			yield* Effect.scoped(
-				Effect.gen(function* () {
-					yield* Atom.mount(AtomMachine.selectSnapshot(scenario.atom, 'Pending'))
-					yield* Atom.set(scenario.atom.send, {_tag: 'Removed'})
-					yield* Atom.set(scenario.atom.send, {_tag: 'Restored'})
-				})
-			)
+			yield* Atom.set(scenario.removeAtom, ID)
+			yield* Atom.set(scenario.machine.send, {_tag: 'Restored'})
 			yield* TestClock.adjust('16 seconds')
 			yield* Effect.yieldNow
 			assert.strictEqual(yield* Ref.get(scenario.calls), 0)
-			assert.isTrue(Option.isSome(yield* Atom.getResult(AtomMachine.selectSnapshot(scenario.atom, 'Idle'))))
+			assert.isTrue(Option.isSome(yield* Atom.getResult(AtomMachine.selectSnapshot(scenario.machine, 'Idle'))))
 		})
 	)
 
@@ -80,15 +73,10 @@ it.layer(AtomRegistry.layer)(test => {
 		Effect.fnUntraced(function* () {
 			Atom.runtime.addGlobalLayer(Layer.succeed(Clock.Clock, yield* Clock.Clock))
 			const scenario = yield* harness(true)
-			yield* Effect.scoped(
-				Effect.gen(function* () {
-					yield* Atom.mount(AtomMachine.selectSnapshot(scenario.atom, 'Pending'))
-					yield* Atom.set(scenario.atom.send, {_tag: 'Removed'})
-				})
-			)
+			yield* Atom.set(scenario.removeAtom, ID)
 			yield* TestClock.adjust('8 seconds')
 			yield* Effect.yieldNow
-			assert.isTrue(Option.isSome(yield* Atom.getResult(AtomMachine.selectSnapshot(scenario.atom, 'Idle'))))
+			assert.isTrue(Option.isSome(yield* Atom.getResult(AtomMachine.selectSnapshot(scenario.machine, 'Idle'))))
 		})
 	)
 })

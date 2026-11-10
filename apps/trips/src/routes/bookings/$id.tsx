@@ -237,7 +237,7 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
 }
 
 export function BookingRoute(props: {bookings: BookingList; id: string; onClose: () => void}) {
-	const remove = useAtomSet(removal(props.id).send)
+	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	return Option.match(
@@ -302,7 +302,7 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 										systemImage="trash"
 										role="destructive"
 										onPress={() => {
-											remove({_tag: 'Removed'})
+											remove(props.id)
 											props.onClose()
 										}}
 									/>

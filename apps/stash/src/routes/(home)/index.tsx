@@ -182,7 +182,8 @@ function NoteRow(props: {
 	onOpen: (id: Note['id']) => void
 	onRegenerate: (id: Note['id']) => void
 }) {
-	const machine = removal(props.note.id)
+	const machine = removal.machine(props.note.id)
+	const remove = useAtomSet(removal.removeAtom)
 	const send = useAtomSet(machine.send)
 	return (
 		<>
@@ -224,11 +225,11 @@ function NoteRow(props: {
 									systemImage="arrow.clockwise"
 									onPress={() => props.onRegenerate(props.note.id)}
 								/>
-								<DeleteButton onPress={() => send({_tag: 'Removed'})} />
+								<DeleteButton onPress={() => remove(props.note.id)} />
 							</ContextMenu.Items>
 						</ContextMenu>
 						<SwipeActions.Actions edge="trailing">
-							<DeleteButton onPress={() => send({_tag: 'Removed'})} />
+							<DeleteButton onPress={() => remove(props.note.id)} />
 						</SwipeActions.Actions>
 					</SwipeActions>
 				)}
