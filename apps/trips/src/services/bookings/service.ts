@@ -1,5 +1,5 @@
 import type {Stream} from 'effect'
-import {Array, Boolean, Context, Effect, HashSet, Layer, Option, Struct, SubscriptionRef, Tuple} from 'effect'
+import {Array, Boolean, Context, Effect, Layer, Option, Struct, SubscriptionRef, Tuple} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
@@ -26,7 +26,7 @@ export class Bookings extends Context.Service<
 		readonly events: Stream.Stream<BookingsEvent>
 		readonly list: Effect.Effect<BookingList>
 		readonly remove: (id: Booking['id']) => Effect.Effect<void, BookingsError>
-		readonly save: (userId: string, source: BookingSource) => Effect.Effect<BookingList, BookingsError>
+		readonly save: (userId: string, source: BookingSource) => Effect.Effect<void, BookingsError>
 		readonly update: (id: Booking['id'], change: (booking: Booking) => Booking) => Effect.Effect<void, BookingsError>
 	}
 >()('@deslop/trips/services/bookings/service/Bookings') {
@@ -154,12 +154,7 @@ export class Bookings extends Context.Service<
 							)
 						})
 					}
-					const ids = yield* transact(current => {
-						const result = upsert(current, Array.getSuccesses(resolved))
-						return Tuple.make(result.ids, result.bookings)
-					})
-					const touched = HashSet.fromIterable(ids)
-					return Array.filter(yield* SubscriptionRef.get(state), booking => HashSet.has(touched, booking.id))
+					yield* transact(current => Tuple.make(undefined, upsert(current, Array.getSuccesses(resolved))))
 				}),
 				update: Effect.fn('Bookings.update')(function* (bookingId, change) {
 					yield* transact(current =>

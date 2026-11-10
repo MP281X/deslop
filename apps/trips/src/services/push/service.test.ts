@@ -87,7 +87,7 @@ function open(
 								events: Stream.never,
 								list: Effect.succeed(list),
 								remove: () => Effect.void,
-								save: () => Effect.succeed([]),
+								save: () => Effect.void,
 								update: () => Effect.void
 							})
 						)

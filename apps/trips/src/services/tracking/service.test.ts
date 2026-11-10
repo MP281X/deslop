@@ -59,7 +59,7 @@ function bookingsAt(state: Ref.Ref<BookingList>) {
 		events: Stream.never,
 		list: Ref.get(state),
 		remove: () => Effect.void,
-		save: () => Ref.get(state),
+		save: () => Effect.void,
 		update: (id, change) =>
 			Ref.update(
 				state,

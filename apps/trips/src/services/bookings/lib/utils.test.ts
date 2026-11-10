@@ -47,10 +47,8 @@ it('reads a printed time in the place zone and an offset as given', () => {
 it('merges a reservation seen again and keeps live data unless the service moved', () => {
 	const tracked = {...flight, live: {checkedAt: 1, departureGate: 'B12', state: 'scheduled' as const}}
 	const again = Flight.make({...flight, id: 'aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f', seat: '14A'})
-	const merged = upsert([tracked], [again])
-	assert.deepStrictEqual(merged.ids, [flight.id])
 	assert.deepStrictEqual(
-		Array.map(merged.bookings, booking => [
+		Array.map(upsert([tracked], [again]), booking => [
 			booking.id,
 			booking._tag === 'flight' && booking.seat,
 			booking._tag === 'flight' && booking.live?.departureGate
@@ -59,13 +57,13 @@ it('merges a reservation seen again and keeps live data unless the service moved
 	)
 	assert.deepStrictEqual(
 		Array.map(
-			upsert([tracked], [Flight.make({...again, departs: DEPARTS + 3 * HOUR})]).bookings,
+			upsert([tracked], [Flight.make({...again, departs: DEPARTS + 3 * HOUR})]),
 			booking => booking._tag === 'flight' && booking.live
 		),
 		[undefined]
 	)
 
-	assert.strictEqual(upsert([tracked], [Flight.make({...again, number: '555'})]).bookings.length, 2)
+	assert.strictEqual(upsert([tracked], [Flight.make({...again, number: '555'})]).length, 2)
 })
 
 it('keeps the two legs of one flight number apart', () => {
@@ -78,7 +76,7 @@ it('keeps the two legs of one flight number apart', () => {
 		id: 'bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
 		to: {city: 'Sydney', code: 'SYD', name: 'Kingsford Smith', timeZone: 'Australia/Sydney'}
 	})
-	assert.strictEqual(upsert([first], [second]).bookings.length, 2)
+	assert.strictEqual(upsert([first], [second]).length, 2)
 })
 
 it('splits a flight longer than an activity may live into departure and arrival', () => {

@@ -3,7 +3,6 @@ import {Array, Boolean, DateTime, Number, Option, Order, Record, String, Struct,
 import {ActivityProps} from '#services/bookings/schema.ts'
 import type {
 	Booking,
-	BookingId,
 	BookingList,
 	Chip,
 	Flight,
@@ -184,23 +183,21 @@ function combine(existing: Booking, incoming: Booking) {
 }
 
 export function upsert(current: BookingList, incoming: BookingList) {
-	return Array.reduce(incoming, {bookings: current, ids: Array.empty<BookingId>()}, (state, booking) =>
+	return Array.mapAccum(incoming, current, (bookings, booking) =>
 		Option.match(
-			Array.findFirst(state.bookings, existing => sameReservation(existing, booking)),
+			Array.findFirst(bookings, existing => sameReservation(existing, booking)),
 			{
-				onNone: () => ({bookings: [...state.bookings, booking], ids: [...state.ids, booking.id]}),
+				onNone: () => [[...bookings, booking], undefined] as const,
 				onSome: existing => {
 					const merged = combine(existing, booking)
-					return {
-						bookings: Array.map(state.bookings, item =>
-							Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})
-						),
-						ids: [...state.ids, merged.id]
-					}
+					return [
+						Array.map(bookings, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
+						undefined
+					] as const
 				}
 			}
 		)
-	)
+	)[0]
 }
 
 type ActivityWindow = {end: number; leg: Leg; start: number}
