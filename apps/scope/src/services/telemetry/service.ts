@@ -17,7 +17,6 @@ import {
 	Predicate,
 	Record,
 	Ref,
-	Schedule,
 	Stream,
 	String,
 	SubscriptionRef,
@@ -492,10 +491,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'}),
 			Effect.andThen(Deferred.succeed(loaded, undefined)),
 			Effect.andThen(
-				pipe(
-					prune,
-					Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'}),
-					Effect.repeat(Schedule.spaced('1 hour'))
+				Effect.forever(
+					pipe(
+						Effect.sleep('1 hour'),
+						Effect.andThen(prune),
+						Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'})
+					)
 				)
 			),
 			Effect.forkScoped

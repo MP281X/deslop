@@ -218,12 +218,17 @@ function logs(service: string, records: readonly ReturnType<typeof log>[], runti
 	})
 }
 
+function loaded(directory: string) {
+	return Effect.gen(function* () {
+		const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+		yield* telemetry.ready
+		return telemetry
+	})
+}
+
 function fresh() {
 	return Effect.gen(function* () {
-		return Context.get(
-			yield* Layer.build(Telemetry.layer(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())),
-			Telemetry
-		)
+		return yield* loaded(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
 	})
 }
 
@@ -379,7 +384,7 @@ it.layer(platform)(test => {
 			yield* TestClock.setTime(NOW)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					const telemetry = yield* loaded(directory)
 					yield* telemetry.ingestTraces({
 						resourceSpans: [
 							{
@@ -429,14 +434,12 @@ it.layer(platform)(test => {
 			}
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-					yield* telemetry.ready
+					const telemetry = yield* loaded(directory)
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.receivedAt, NOW)
 				})
 			)
 			yield* TestClock.adjust('4 days')
-			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-			yield* telemetry.ready
+			const telemetry = yield* loaded(directory)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
 			assert.isEmpty(yield* fs.readDirectory(directory))
 		})
@@ -450,7 +453,7 @@ it.layer(platform)(test => {
 			yield* TestClock.setTime(NOW)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					const telemetry = yield* loaded(directory)
 					yield* telemetry.ingestTraces({
 						resourceSpans: [
 							{
@@ -470,15 +473,13 @@ it.layer(platform)(test => {
 			yield* TestClock.adjust('2 days')
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-					yield* telemetry.ready
+					const telemetry = yield* loaded(directory)
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
 				})
 			)
 			assert.isFalse(yield* fs.exists(`${directory}/broken`))
 			yield* TestClock.adjust('2 days')
-			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-			yield* telemetry.ready
+			const telemetry = yield* loaded(directory)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
 		})
 	)
@@ -491,7 +492,7 @@ it.layer(platform)(test => {
 			const directory = yield* fs.makeTempDirectoryScoped()
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					const telemetry = yield* loaded(directory)
 					const trace = String.repeat(32)('a')
 					const next = String.repeat(32)('b')
 					yield* telemetry.ingestTraces(
@@ -718,7 +719,7 @@ it.layer(platform)(test => {
 			yield* TestClock.setTime(NOW + 10_000)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					const telemetry = yield* loaded(directory)
 					yield* telemetry.ingestTraces(release('0.1.999', 'a'))
 					yield* telemetry.ingestTraces(release('', 'b'))
 					yield* telemetry.ingestTraces(release('0.1.998', 'c'))
@@ -734,9 +735,7 @@ it.layer(platform)(test => {
 					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps.length, 1)
 				})
 			)
-			const reopened = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-			yield* reopened.ready
-			assert.deepStrictEqual(yield* kept(reopened), ['b', 'd', 'e'])
+			assert.deepStrictEqual(yield* kept(yield* loaded(directory)), ['b', 'd', 'e'])
 			assert.deepStrictEqual(Array.sort(yield* fs.readDirectory(directory), Order.String), [
 				'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%3Abbbbbbbbbbbbbbbb',
 				'dddddddddddddddddddddddddddddddd%3Adddddddddddddddd',
@@ -1008,7 +1007,7 @@ it.layer(platform)(test => {
 			yield* TestClock.setTime(NOW)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					const telemetry = yield* loaded(directory)
 					yield* telemetry.ingestTraces(
 						request('@deslop/auth-server', [
 							span({
@@ -1034,8 +1033,7 @@ it.layer(platform)(test => {
 			}
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-					yield* telemetry.ready
+					const telemetry = yield* loaded(directory)
 					assert.strictEqual((yield* telemetry.readTrace({id: TRACE_ID, limit: 100})).spans[0]?.denied, true)
 					yield* TestClock.adjust('2 seconds')
 					assert.strictEqual(
