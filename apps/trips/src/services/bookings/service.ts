@@ -1,5 +1,5 @@
 import type {Stream} from 'effect'
-import {Array, Boolean, Clock, Context, Effect, HashSet, Layer, Option, Struct, SubscriptionRef, Tuple} from 'effect'
+import {Array, Boolean, Context, Effect, HashSet, Layer, Option, Struct, SubscriptionRef, Tuple} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
@@ -77,12 +77,7 @@ export class Bookings extends Context.Service<
 
 			// Airports and stations resolve from their datasets, so a time reads in the right zone and a ride has coordinates.
 			const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
-				const base = {
-					createdAt: yield* Clock.currentTimeMillis,
-					id: yield* random.uuidV4(),
-					sources: ['pasted'],
-					status: item.status
-				}
+				const base = {id: yield* random.uuidV4(), status: item.status}
 				if (item.kind === 'flight') {
 					const from = yield* places.airport(item.from)
 					const to = yield* places.airport(item.to)

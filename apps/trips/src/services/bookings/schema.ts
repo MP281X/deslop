@@ -64,14 +64,12 @@ export const Flight = Schema.TaggedStruct('flight', {
 	boardingAt: Schema.optionalKey(Schema.Finite),
 	boardingGroup: Schema.optionalKey(Schema.String),
 	confirmation: Schema.optionalKey(Schema.String),
-	createdAt: Schema.Finite,
 	departs: Schema.Finite,
 	from: BookedPlace,
 	id: BookingId,
 	live: Schema.optionalKey(FlightTracking),
 	number: Schema.String,
 	seat: Schema.optionalKey(Schema.String),
-	sources: Schema.Array(Schema.String),
 	status: ReservationStatus,
 	to: BookedPlace
 })
@@ -96,7 +94,6 @@ export const Train = Schema.TaggedStruct('train', {
 	arrives: Schema.Finite,
 	coach: Schema.optionalKey(Schema.String),
 	confirmation: Schema.optionalKey(Schema.String),
-	createdAt: Schema.Finite,
 	departs: Schema.Finite,
 	from: BookedPlace,
 	id: BookingId,
@@ -105,7 +102,6 @@ export const Train = Schema.TaggedStruct('train', {
 	operator: TrainOperator,
 	operatorName: Schema.String,
 	seat: Schema.optionalKey(Schema.String),
-	sources: Schema.Array(Schema.String),
 	status: ReservationStatus,
 	to: BookedPlace
 })
@@ -115,11 +111,9 @@ export const Stay = Schema.TaggedStruct('stay', {
 	checkIn: Schema.Finite,
 	checkOut: Schema.Finite,
 	confirmation: Schema.optionalKey(Schema.String),
-	createdAt: Schema.Finite,
 	id: BookingId,
 	name: Schema.String,
 	place: BookedPlace,
-	sources: Schema.Array(Schema.String),
 	status: ReservationStatus
 })
 
@@ -167,14 +161,12 @@ export const ActivityProps = Schema.Struct({
 	chip: Schema.optionalKey(Chip),
 	countdown: Schema.optionalKey(Schema.Finite),
 	delay: Schema.Finite,
-	departs: Schema.Finite,
 	departureNote: Schema.String,
 	departureTime: Schema.String,
 	departureTone: Tone,
 	detail: Schema.String,
 	from: Schema.String,
 	headline: Schema.String,
-	id: BookingId,
 	kind: Schema.Literals(['flight', 'train']),
 	label: Schema.String,
 	note: Schema.String,

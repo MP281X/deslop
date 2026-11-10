@@ -159,12 +159,10 @@ it.layer(NodeCrypto.layer)(test => {
 				airline: 'British Airways',
 				airlineCode: 'BA',
 				arrives: now + 4 * HOUR,
-				createdAt: now,
 				departs: now + 2 * HOUR,
 				from: {code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'},
 				id: RECORD.bookingId,
 				number: '553',
-				sources: [],
 				status: 'confirmed',
 				to: {code: 'LHR', name: 'London', timeZone: 'Europe/London'}
 			})

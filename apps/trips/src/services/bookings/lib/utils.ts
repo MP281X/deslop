@@ -160,13 +160,9 @@ function sameReservation(existing: Booking, incoming: Booking) {
 	return false
 }
 
-// The newer ticket wins field by field; the id, the first sighting and every source stay, and live data survives only while it describes the same service.
+// The newer ticket wins field by field; the id stays, and live data survives only while it describes the same service.
 function combine(existing: Booking, incoming: Booking) {
-	const kept = {
-		createdAt: existing.createdAt,
-		id: existing.id,
-		sources: Array.dedupe([...existing.sources, ...incoming.sources])
-	}
+	const kept = {id: existing.id}
 	if (existing._tag === 'flight' && incoming._tag === 'flight') {
 		const merged = {...existing, ...incoming, ...kept}
 		if (
@@ -350,14 +346,12 @@ function flightActivity(flight: Flight, bookings: BookingList, now: number) {
 		arrivalTone: 'plain',
 		arrives: arrivalOf(flight),
 		delay,
-		departs: departureOf(flight),
 		departureNote: departureNote(phase, delay),
 		departureTime: clockAt(departureOf(flight), flight.from.timeZone),
 		departureTone: Boolean.match(delay >= 5, {onFalse: () => 'plain', onTrue: () => 'warn'}),
 		detail: flightDetail(flight, bookings, phase),
 		from: flight.from.code ?? flight.from.name,
 		headline: flightHeadline(flight, phase),
-		id: flight.id,
 		kind: 'flight',
 		label: flightLabel(phase),
 		note: line([labelled('Seat', flight.seat)]),
@@ -435,14 +429,12 @@ function trainActivity(train: Train, now: number) {
 		arrivalTone: tone,
 		arrives: arrivalOf(train),
 		delay,
-		departs: departureOf(train),
 		departureNote: '',
 		departureTime: clockAt(departureOf(train), train.from.timeZone),
 		departureTone: tone,
 		detail: line([labelled('Coach', train.coach), labelled('Seat', train.seat), trainDelayNote(phase, delay)]),
 		from: train.from.name,
 		headline: trainHeadline(train, phase),
-		id: train.id,
 		kind: 'train',
 		label: trainLabel(phase, delay),
 		note: '',

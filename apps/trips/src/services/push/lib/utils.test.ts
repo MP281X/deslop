@@ -12,12 +12,10 @@ const flight = Flight.make({
 	airline: 'British Airways',
 	airlineCode: 'BA',
 	arrives: DEPARTS + 2.5 * HOUR,
-	createdAt: 0,
 	departs: DEPARTS,
 	from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
 	id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
 	number: '553',
-	sources: ['mail:a'],
 	status: 'confirmed',
 	to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
 })
@@ -25,14 +23,12 @@ const flight = Flight.make({
 const train = Train.make({
 	arrives: DEPARTS + 3 * HOUR,
 	coach: '5',
-	createdAt: 0,
 	departs: DEPARTS,
 	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
 	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
 	number: '9541',
 	operator: 'trenitalia',
 	operatorName: 'Frecciarossa',
-	sources: ['mail:b'],
 	status: 'confirmed',
 	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
 })
