@@ -217,7 +217,10 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 							data-flame-fill={Boolean.match(row.bar > 2, {onFalse: () => undefined, onTrue: () => '' as const})}
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
-								Boolean.match(row.span.status === 2, {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'}),
+								Boolean.match(row.span.status === 2 && row.span.denied !== true, {
+									onFalse: () => 'bg-(--app)',
+									onTrue: () => 'bg-destructive'
+								}),
 								Boolean.match(row.picked, {
 									onFalse: () => undefined,
 									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'

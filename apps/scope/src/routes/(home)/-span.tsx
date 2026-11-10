@@ -1,6 +1,6 @@
 import {Array, Boolean, Number, Option, Record, String} from 'effect'
 
-import {HardDrivesIcon} from '@phosphor-icons/react'
+import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
 import {appMarks} from '@deslop/components-web/apps'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
@@ -85,7 +85,10 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(props.span.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+					Boolean.match(props.span.status === 2 && props.span.denied !== true, {
+						onFalse: () => undefined,
+						onTrue: () => 'text-destructive'
+					})
 				)}
 			>
 				{props.span.name}
@@ -109,16 +112,34 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 			className="grid-cols-detail max-sm:grid-cols-detail-phone grid px-4 text-xs"
 		>
 			<SpanHeader span={props.span} />
-			{Option.match(error, {
-				onNone: () => null,
-				onSome: message => (
-					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
-						<span className="text-muted-foreground truncate">error</span>
-						<span className="text-destructive min-w-0 truncate" title={message}>
-							<ErrorText message={message} />
-						</span>
-					</div>
-				)
+			{Boolean.match(props.span.denied === true, {
+				onFalse: () =>
+					Option.match(error, {
+						onNone: () => null,
+						onSome: message => (
+							<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
+								<span className="text-muted-foreground truncate">error</span>
+								<span className="text-destructive min-w-0 truncate" title={message}>
+									<ErrorText message={message} />
+								</span>
+							</div>
+						)
+					}),
+				onTrue: () =>
+					Option.match(error, {
+						onNone: () => null,
+						onSome: message => (
+							<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
+								<span className="text-muted-foreground flex items-center gap-1.5 truncate">
+									<LockIcon aria-hidden className="size-3 shrink-0" />
+									denied
+								</span>
+								<span className="block min-w-0 truncate" title={message}>
+									{message}
+								</span>
+							</div>
+						)
+					})
 			})}
 			{Array.map(attributes, (attribute, index) => (
 				<div

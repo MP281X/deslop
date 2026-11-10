@@ -64,6 +64,7 @@ function render(
 														failures: 0,
 														name: 'Inventory.snapshot',
 														p50Ms: 10,
+														p95Ms: 10,
 														runtime: 'server',
 														traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
 													}
@@ -249,6 +250,7 @@ it.effect(
 								failures: 0,
 								name: 'deploy.idle',
 								p50Ms: 4,
+								p95Ms: 4,
 								runtime: 'server',
 								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
 							}
@@ -262,6 +264,7 @@ it.effect(
 								failures: 0,
 								name: 'gateway.idle',
 								p50Ms: 40,
+								p95Ms: 40,
 								runtime: 'server',
 								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
 							},
@@ -270,6 +273,7 @@ it.effect(
 								failures: 3,
 								name: 'gateway.fail',
 								p50Ms: 12,
+								p95Ms: 12,
 								runtime: 'server',
 								traces: [{durationMs: 10, id: ID, time: '1781850000000000000'}]
 							}
@@ -283,6 +287,7 @@ it.effect(
 								failures: 0,
 								name: 'notes.search',
 								p50Ms: 48,
+								p95Ms: 48,
 								runtime: 'server',
 								traces: [{durationMs: 10, id: ID, time: '1781840000000000000'}]
 							},
@@ -291,6 +296,7 @@ it.effect(
 								failures: 0,
 								name: 'notes.search',
 								p50Ms: 60,
+								p95Ms: 60,
 								runtime: 'web',
 								traces: [{durationMs: 10, id: ID, time: '1781830000000000000'}]
 							}
@@ -330,6 +336,7 @@ it.effect(
 								failures: 0,
 								name: 'deploy.only',
 								p50Ms: 4,
+								p95Ms: 4,
 								runtime: 'server',
 								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
 							}
@@ -343,6 +350,7 @@ it.effect(
 								failures: 0,
 								name: 'stash.only',
 								p50Ms: 4,
+								p95Ms: 4,
 								runtime: 'server',
 								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
 							}
@@ -373,6 +381,7 @@ it.effect(
 								failures: 0,
 								name: 'stash.only',
 								p50Ms: 1,
+								p95Ms: 1,
 								runtime: 'server',
 								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
 							}
@@ -386,6 +395,7 @@ it.effect(
 								failures: 1,
 								name: 'deploy.only',
 								p50Ms: 1,
+								p95Ms: 1,
 								runtime: 'server',
 								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781850000000000000'}]
 							}
@@ -399,6 +409,7 @@ it.effect(
 								failures: 1,
 								name: 'gateway.only',
 								p50Ms: 1,
+								p95Ms: 1,
 								runtime: 'server',
 								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781860000000000000'}]
 							}
@@ -422,6 +433,7 @@ it.effect(
 								failures: 0,
 								name: 'stash.only',
 								p50Ms: 1,
+								p95Ms: 1,
 								runtime: 'server',
 								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
 							}
@@ -435,6 +447,7 @@ it.effect(
 								failures: 0,
 								name: 'deploy.only',
 								p50Ms: 1,
+								p95Ms: 1,
 								runtime: 'server',
 								traces: [{durationMs: 1, id: ID, time: '1781850000000000000'}]
 							}
@@ -477,6 +490,7 @@ it.effect(
 								failures: 1,
 								name: 'Inventory.snapshot',
 								p50Ms: 10,
+								p95Ms: 10,
 								runtime: 'server',
 								traces: [{durationMs: 10, failure: {span: 'Parser.decode'}, id: ID, time: '1781870000000000000'}]
 							}

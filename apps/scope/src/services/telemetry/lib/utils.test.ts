@@ -1,8 +1,8 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option, String} from 'effect'
+import {Array, HashMap, Option, Order, String} from 'effect'
 
-import {overview} from '#services/telemetry/lib/utils.ts'
+import {overview, retentionOf} from '#services/telemetry/lib/utils.ts'
 import {Entry} from '#services/telemetry/schema.ts'
 
 const NOW = 1_781_870_000_000
@@ -58,4 +58,37 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 		Array.map(appOf(day, 'gateway').operations, operation => [operation.name, operation.count]),
 		[['share', 1]]
 	)
+})
+
+it('expires every entry of a trace when one entry outlives retention', () => {
+	const trace = String.repeat(32)('a')
+	const root = {
+		...span(trace, '@deslop/stash-server', NOW - 71 * HOUR, 10),
+		id: 'root',
+		receivedAt: NOW,
+		spanId: '1111111111111111'
+	}
+	const child = {
+		...span(trace, '@deslop/stash-ios', NOW - 11 * HOUR, 10),
+		id: 'child',
+		receivedAt: NOW + 60 * HOUR,
+		spanId: '2222222222222222'
+	}
+	const retention = retentionOf(
+		HashMap.fromIterable([
+			['root', root],
+			['child', child]
+		]),
+		{},
+		NOW + 73 * HOUR,
+		3 * 24 * HOUR
+	)
+	assert.deepStrictEqual(
+		Array.sort(
+			Array.map(retention.expired, entry => entry.id),
+			Order.String
+		),
+		['child', 'root']
+	)
+	assert.isTrue(HashMap.isEmpty(retention.next))
 })

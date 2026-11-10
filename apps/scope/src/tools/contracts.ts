@@ -1,49 +1,60 @@
-import {Schema, pipe} from 'effect'
-
 import {Tool, Toolkit} from 'effect/ai'
 
 import {
-	Filters,
-	IngestionStatus,
-	Page,
-	SortFilters,
-	Stats,
+	FindTracesParams,
+	IngestionAnswer,
+	LatencyAnswer,
+	ListOperationsParams,
+	LogsAnswer,
+	MeasureLatencyParams,
+	OperationsAnswer,
+	ReadTraceAnswer,
+	ReadTraceParams,
+	SearchLogsParams,
 	TelemetryError,
-	Trace,
-	TraceId,
-	TracesPage
+	TracesAnswer
 } from '#services/telemetry/schema.ts'
 
 export const Tools = Toolkit.make(
-	Tool.make('list_services', {
+	Tool.make('list_operations', {
 		description:
-			"Start here: each service with its latest run, release, last event and entry count, plus rejected exports. Only each service's newest release is kept, so nothing here predates it. A service missing here sent nothing in the last three days.",
+			'Start here to see what is failing or slow in an app: the page’s own operations for the chosen window, failing first, with runs, failures, p50 and p95 milliseconds, the slowest trace and one failure. Denied sign-ins are not failures.',
 		failure: TelemetryError,
-		success: IngestionStatus
+		parameters: ListOperationsParams,
+		success: OperationsAnswer
 	}).annotate(Tool.Readonly, true),
-	Tool.make('find', {
+	Tool.make('find_traces', {
 		description:
-			'Find traces (one request or action each), single spans with their attributes, or logs, newest or slowest first; searches the latest run of each service unless runs is "all". Open a trace with read_trace.',
+			'Search for traces of a request, action or job by app, operation, span name, error or text, newest or slowest first. Each row is one line with its full id, operation, app, side, start time, duration, span count and failing span with its message.',
 		failure: TelemetryError,
-		parameters: Schema.Struct({
-			...SortFilters.fields,
-			kind: Schema.Literals(['traces', 'spans', 'logs']).annotate({description: 'What to find.'})
-		}),
-		success: Schema.Union([TracesPage, Page])
+		parameters: FindTracesParams,
+		success: TracesAnswer
 	}).annotate(Tool.Readonly, true),
 	Tool.make('read_trace', {
-		description: 'One trace whole: every span in order with its depth, offset, duration and logs.',
+		description:
+			'Open one trace to see where its time went or why it failed: spans in tree order with offsets, durations, errors, denied spans, attributes and logs, keeping the failing span’s ancestors and the longest spans when over the limit. Logs outside a span follow the spans.',
 		failure: TelemetryError,
-		parameters: Schema.Struct({
-			id: pipe(TraceId, Schema.annotateEncoded({description: 'The 32-character id from find.'}))
-		}),
-		success: Trace
+		parameters: ReadTraceParams,
+		success: ReadTraceAnswer
+	}).annotate(Tool.Readonly, true),
+	Tool.make('search_logs', {
+		description:
+			'Find log lines by text, app, level or trace, newest first, with time, app, side, level, message and correlation ids. Use it when a trace explains what failed but not why.',
+		failure: TelemetryError,
+		parameters: SearchLogsParams,
+		success: LogsAnswer
 	}).annotate(Tool.Readonly, true),
 	Tool.make('measure_latency', {
 		description:
-			'Count, errors and p50, p95 and max milliseconds of the matching spans; run it before and after a change to compare.',
+			'Measure a span’s latency before and after a change: count, failures, p50, p95 and max milliseconds for spans with this exact name over the chosen window. Denied sign-ins are not failures.',
 		failure: TelemetryError,
-		parameters: Filters,
-		success: Stats
+		parameters: MeasureLatencyParams,
+		success: LatencyAnswer
+	}).annotate(Tool.Readonly, true),
+	Tool.make('check_ingestion', {
+		description:
+			'Use when an app’s telemetry is missing or stale: each service’s app, side, release, run start, last event and entry count, plus rejected exports. A service absent here sent nothing in the last three days.',
+		failure: TelemetryError,
+		success: IngestionAnswer
 	}).annotate(Tool.Readonly, true)
 )
