@@ -19,7 +19,14 @@ import {
 } from '@deslop/components-web/ui/dropdown-menu'
 
 import {AccountAvatar} from '#lib/components.tsx'
-import {ADDING_PASSKEY, addPasskeyAtom, confirmForPasskeyAtom, menuSignOutAtom, passkeysAtom} from '#lib/utils.ts'
+import {
+	ADDING_PASSKEY,
+	accountMenuOpenAtom,
+	addPasskeyAtom,
+	confirmForPasskeyAtom,
+	menuSignOutAtom,
+	passkeysAtom
+} from '#lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
@@ -77,14 +84,17 @@ export function AccountMenu(props: {account: SignedAccount}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
 	const add = useAtomSet(addPasskeyAtom)
+	const [open, setOpen] = useAtom(accountMenuOpenAtom)
 	// Back from GitHub, the passkey it went for starts at once, and only once.
 	useEffect(() => {
 		if (sessionStorage.getItem(ADDING_PASSKEY) === null) return
 		sessionStorage.removeItem(ADDING_PASSKEY)
-		if (props.account.via !== 'Code') add()
-	}, [add, props.account.via])
+		if (props.account.via === 'Code') return
+		setOpen(true)
+		add()
+	}, [add, props.account.via, setOpen])
 	return (
-		<DropdownMenu>
+		<DropdownMenu open={open} onOpenChange={setOpen}>
 			<DropdownMenuTrigger
 				aria-label="Account"
 				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}

@@ -81,7 +81,7 @@ it.effect(
 			'https://stranger.example.com',
 			'https://missing.mp281x.xyz'
 		]) {
-			assert.isTrue((yield* Effect.exit(apps.register(origin)))._tag === 'Failure', origin)
+			assert.strictEqual((yield* Effect.flip(apps.register(origin)))._tag, 'AuthError', origin)
 		}
 		assert.deepStrictEqual(yield* Effect.flatMap(Stream.runHead(apps.catalog), Effect.fromOption), [])
 	})

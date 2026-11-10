@@ -335,6 +335,9 @@ export const addPasskeyAtom = Atom.keepAlive(
 // The tab remembers the passkey it went to GitHub for, so the page it lands on adds it.
 export const ADDING_PASSKEY = 'adding-passkey'
 
+// The account menu's open state, which the return from GitHub also sets so the passkey's outcome shows on its action.
+export const accountMenuOpenAtom = Atom.make(false)
+
 // A code may have been approved for someone else's browser, so a code session signs in with GitHub first.
 export const confirmForPasskeyAtom = Atom.fn(() =>
 	Effect.try({

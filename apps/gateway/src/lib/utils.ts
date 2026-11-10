@@ -112,7 +112,14 @@ export const copiedAtom = Atom.make(false)
 export const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		pipe(
-			Effect.tryPromise({catch: cause => UpstreamError.make({cause}), try: () => navigator.clipboard.writeText(value)}),
+			// A press inside the check's moment starts over, so a copy that now fails does not keep the check.
+			Atom.set(copiedAtom, false),
+			Effect.andThen(
+				Effect.tryPromise({
+					catch: cause => UpstreamError.make({cause}),
+					try: () => navigator.clipboard.writeText(value)
+				})
+			),
 			Effect.andThen(Atom.set(copiedAtom, true)),
 			Effect.andThen(Effect.sleep('1500 millis')),
 			Effect.andThen(Atom.set(copiedAtom, false))
