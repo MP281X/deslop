@@ -5,6 +5,7 @@ import {McpSchema, McpServer} from 'effect/ai'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {DEVELOPER, localAuth} from '@deslop/runtime/auth/utils'
 
+import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
@@ -42,12 +43,16 @@ export const layerMcpOwner = Layer.unwrap(
 
 export const ToolHandlers = Tools.toLayer(
 	Effect.gen(function* () {
+		const passkeys = yield* Passkeys
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		return Tools.of({
 			answer_request: Effect.fnUntraced(function* (input) {
 				return yield* signIns.answer(input, yield* CurrentOwner, 'Token')
+			}),
+			list_passkeys: Effect.fnUntraced(function* () {
+				return {passkeys: Option.getOrElse(yield* Stream.runHead(passkeys.list(yield* CurrentOwner)), () => [])}
 			}),
 			list_sessions: Effect.fnUntraced(function* () {
 				return {
@@ -56,6 +61,19 @@ export const ToolHandlers = Tools.toLayer(
 						app => ({...Struct.pick(app, ['address', 'client', 'device', 'lastActive']), id: app.family})
 					)
 				}
+			}),
+			remove_passkey: Effect.fnUntraced(function* (input) {
+				const owner = yield* CurrentOwner
+				yield* pipe(
+					Array.findFirst(
+						Option.getOrElse(yield* Stream.runHead(passkeys.list(owner)), () => []),
+						found => found.id === input.id
+					),
+					Effect.fromOption,
+					Effect.mapError(() => AuthError.make({message: 'No passkey of yours has that id'}))
+				)
+				yield* passkeys.remove(input.id, owner)
+				return {id: input.id}
 			}),
 			remove_person: Effect.fnUntraced(function* (input) {
 				const owner = yield* CurrentOwner

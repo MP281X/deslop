@@ -356,15 +356,6 @@ export const confirmForPasskeyAtom = Atom.fn(() =>
 	})
 )
 
-export const removePasskeyAtom = Atom.keepAlive(
-	RpcClient.runtime.fn((id: string) =>
-		pipe(
-			Effect.flatMap(RpcClient, client => client('auth.removePasskey', {id})),
-			failedWith('Cannot remove the passkey')
-		)
-	)
-)
-
 export const signInAtom = Atom.fn(() =>
 	Effect.try({
 		catch: cause => AuthError.make({cause, message: 'Cannot start GitHub sign-in'}),

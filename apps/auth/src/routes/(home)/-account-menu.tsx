@@ -14,22 +14,12 @@ import {
 	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
-	DropdownMenuSub,
-	DropdownMenuSubContent,
-	DropdownMenuSubTrigger,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 
 import {AccountAvatar} from '#lib/components.tsx'
-import {
-	ADDING_PASSKEY,
-	addPasskeyAtom,
-	confirmForPasskeyAtom,
-	menuSignOutAtom,
-	passkeysAtom,
-	removePasskeyAtom
-} from '#lib/utils.ts'
+import {ADDING_PASSKEY, addPasskeyAtom, confirmForPasskeyAtom, menuSignOutAtom, passkeysAtom} from '#lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
@@ -39,7 +29,6 @@ function PasskeyItems(props: {via: SessionVia}) {
 	const read = useAtomValue(passkeysAtom)
 	const passkeys = AsyncResult.getOrElse(read, () => [])
 	const [adding, add] = useAtom(addPasskeyAtom)
-	const [removing, remove] = useAtom(removePasskeyAtom)
 	const [confirming, confirm] = useAtom(confirmForPasskeyAtom)
 	return (
 		<DropdownMenuGroup>
@@ -53,25 +42,13 @@ function PasskeyItems(props: {via: SessionVia}) {
 				)
 			})}
 			{Array.map(passkeys, passkey => (
-				<DropdownMenuSub key={passkey.id}>
-					<DropdownMenuSubTrigger>
-						<KeyIcon />
-						<span className="truncate">{passkey.addedFrom}</span>
-						<span className="text-muted-foreground ml-auto pl-3 text-xs">
-							{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
-						</span>
-					</DropdownMenuSubTrigger>
-					<DropdownMenuSubContent>
-						<DropdownMenuItem
-							variant="destructive"
-							className="max-sm:h-11"
-							disabled={AsyncResult.isWaiting(removing)}
-							onClick={() => remove(passkey.id)}
-						>
-							Remove
-						</DropdownMenuItem>
-					</DropdownMenuSubContent>
-				</DropdownMenuSub>
+				<DropdownMenuItem key={passkey.id} disabled>
+					<KeyIcon />
+					<span className="truncate">{passkey.addedFrom}</span>
+					<span className="text-muted-foreground ml-auto pl-3 text-xs">
+						{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
+					</span>
+				</DropdownMenuItem>
 			))}
 			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
 			<DropdownMenuItem

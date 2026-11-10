@@ -36,14 +36,7 @@ import * as ServerRuntime from '@deslop/runtime/server'
 import {HttpHandlers} from '#http/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
-import {
-	AddPasskeyParams,
-	CreationOptions,
-	Passkey,
-	PasskeyParams,
-	PasskeySignIn,
-	RequestOptions
-} from '#services/passkeys/schema.ts'
+import {AddPasskeyParams, CreationOptions, Passkey, PasskeySignIn, RequestOptions} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {AdmitParams, Person} from '#services/people/schema.ts'
 import {People, layerIssuerAuth} from '#services/people/service.ts'
@@ -287,18 +280,6 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 											)
 										)
 									})
-								),
-								HttpRouter.add(
-									'POST',
-									'/remove-passkey',
-									pipe(
-										Effect.gen(function* () {
-											const input = yield* HttpServerRequest.schemaBodyJson(PasskeyParams)
-											yield* (yield* Passkeys).remove(input.id, yield* requestOwner)
-											return HttpServerResponse.empty()
-										}),
-										refused
-									)
 								),
 								HttpRouter.add(
 									'POST',
@@ -1172,11 +1153,11 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				'Sign in with GitHub or a passkey on this browser to add a passkey'
 			)
-			yield* send(web.issuer, '/remove-passkey', {
-				body: yield* Schema.encodeEffect(Schema.fromJsonString(PasskeyParams))({id: assertion.id}),
-				headers: {...json, cookie: session},
-				method: 'POST'
-			})
+			assert.strictEqual(
+				(yield* callTool(web.issuer, yield* agentToken(web.issuer, session), 'remove_passkey', {id: assertion.id}))
+					.status,
+				200
+			)
 			const again = yield* Schema.decodeEffect(Schema.fromJsonString(RequestOptions))(
 				yield* Effect.flatMap(send(web.issuer, '/auth/passkey'), response => Effect.promise(() => response.text()))
 			)
@@ -2288,6 +2269,52 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			const unknown = yield* callTool(web.issuer, agent, 'sign_out_session', {id: 'aaaaaaaaaaaaaaaa'})
 			assert.include(yield* Effect.promise(() => unknown.text()), 'This sign-in has already ended')
+		})
+	)
+
+	test.effect(
+		"lists and removes a passkey through the MCP tools, only its owner's",
+		Effect.fnUntraced(function* () {
+			const web = yield* servers()
+			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
+			const member = cookie(yield* signIn(web.issuer, 'stranger'))
+			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
+			const key = yield* authenticator()
+			const options = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: admin}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			const added = yield* key.register(options)
+			assert.strictEqual((yield* post(web.issuer, '/add-passkey', admin, {response: added})).status, 204)
+			const memberKey = yield* authenticator()
+			const memberOptions = yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
+				yield* Effect.flatMap(send(web.issuer, '/passkey-options', {headers: {cookie: member}}), response =>
+					Effect.promise(() => response.text())
+				)
+			)
+			const memberAdded = yield* memberKey.register(memberOptions)
+			assert.strictEqual((yield* post(web.issuer, '/add-passkey', member, {response: memberAdded})).status, 204)
+			const agent = yield* agentToken(web.issuer, admin)
+			assert.strictEqual((yield* callTool(web.issuer, '', 'list_passkeys', {})).status, 401)
+			const listed = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey)}))(
+				yield* toolResult(yield* callTool(web.issuer, agent, 'list_passkeys', {}))
+			)
+			assert.deepStrictEqual(listed.passkeys, [{addedFrom: 'Safari · iPhone', id: added.id, synced: false}])
+			const denied = yield* callTool(web.issuer, agent, 'remove_passkey', {id: memberAdded.id})
+			assert.include(yield* Effect.promise(() => denied.text()), 'No passkey of yours has that id')
+			const memberAgent = yield* agentToken(web.issuer, member)
+			const remaining = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey)}))(
+				yield* toolResult(yield* callTool(web.issuer, memberAgent, 'list_passkeys', {}))
+			)
+			assert.deepStrictEqual(remaining.passkeys, [{addedFrom: 'Safari · iPhone', id: memberAdded.id, synced: false}])
+			assert.deepStrictEqual(yield* toolResult(yield* callTool(web.issuer, agent, 'remove_passkey', {id: added.id})), {
+				id: added.id
+			})
+			const emptied = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey)}))(
+				yield* toolResult(yield* callTool(web.issuer, agent, 'list_passkeys', {}))
+			)
+			assert.deepStrictEqual(emptied.passkeys, [])
 		})
 	)
 
