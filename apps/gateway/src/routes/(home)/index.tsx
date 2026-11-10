@@ -1,4 +1,4 @@
-import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Cause, Number, Option, Order, Schema, String} from 'effect'
 
@@ -438,16 +438,21 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 	)
 }
 
-// Copies the gateway's MCP URL; the button shows a check for a moment after a copy.
+// Copies the gateway's MCP URL; the button shows a check for a moment after a copy and turns destructive when it fails.
 function CopyEndpoint() {
-	const copy = useAtomSet(copyAtom(ENDPOINT))
+	const [result, copy] = useAtom(copyAtom(ENDPOINT))
 	const copied = useAtomValue(copiedAtom)
+	const failed = AsyncResult.isFailure(result)
 	return (
 		<Button
-			variant="ghost"
+			variant={Boolean.match(failed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
 			size="icon-sm"
 			className="max-sm:size-11"
-			aria-label={Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'})}
+			aria-label={Boolean.match(failed, {
+				onFalse: () => Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'}),
+				onTrue: () => 'Cannot copy'
+			})}
+			title={Boolean.match(failed, {onFalse: () => undefined, onTrue: () => 'Cannot copy'})}
 			onClick={() => copy()}
 		>
 			{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon />})}
