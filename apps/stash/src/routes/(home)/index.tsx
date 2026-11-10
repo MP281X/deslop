@@ -63,7 +63,7 @@ import {isDenied} from '@deslop/runtime/auth/utils'
 import {clipboard} from '#lib/clipboard.ts'
 import {Byline} from '#lib/components.tsx'
 import {BrandIcon, BrandLogo} from '#lib/icons.tsx'
-import {appOf, brandOf, kindOf, kinds} from '#lib/kinds.ts'
+import {appOf, brandOf, kindOf, kinds, subjectOf} from '#lib/kinds.ts'
 import {imageAtom, notesAtom, queryAtom, regenerateAtom, removeAtom, searchAtom} from '#lib/notes.ts'
 import {primary, session} from '#lib/session.ts'
 import {tagCounts} from '#services/notes/lib/utils.ts'
@@ -83,13 +83,13 @@ function Lines(props: {note: NoteItem}) {
 						modifiers={[accessibilityElement('combine'), foregroundStyle(colors.mutedForeground)]}
 					>
 						<Image systemName="sparkles" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>Reading this link</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>{`Reading this ${subjectOf(props.note)}`}</Text>
 					</HStack>
 				)),
 				Match.when('failed', () => (
 					<HStack spacing={space[1]} modifiers={[accessibilityElement('combine'), foregroundStyle(colors.destructive)]}>
 						<Image systemName="exclamationmark.triangle.fill" modifiers={[text.caption, accessibilityHidden(true)]} />
-						<Text modifiers={[text.detail, lineLimit(1)]}>Couldn’t read this link</Text>
+						<Text modifiers={[text.detail, lineLimit(1)]}>{`Couldn’t read this ${subjectOf(props.note)}`}</Text>
 					</HStack>
 				)),
 				Match.orElse(() => <Byline note={props.note} />)

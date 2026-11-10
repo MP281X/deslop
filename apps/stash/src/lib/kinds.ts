@@ -33,6 +33,12 @@ export function siteOf(note: NoteItem) {
 	)
 }
 
+export function subjectOf(note: NoteItem) {
+	if (note.file === 'image/jpeg') return 'photo'
+	if (note.file !== undefined) return 'video'
+	return 'link'
+}
+
 export function brandOf(note: NoteItem) {
 	return Option.liftPredicate(kindOf(note), Schema.is(Brand))
 }

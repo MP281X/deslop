@@ -49,7 +49,7 @@ import {AuthError} from '@deslop/runtime/auth/schema'
 
 import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'
-import {appOf, brandOf, kinds} from '#lib/kinds.ts'
+import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
 import {imageAtom, noteAtom, notesAtom, regenerateAtom, removeAtom} from '#lib/notes.ts'
 import {primary} from '#lib/session.ts'
 import type {Note, NoteItem} from '#services/notes/schema.ts'
@@ -168,7 +168,7 @@ export function NoteSkeleton() {
 }
 
 // The summary and body a note shows once Stash has read its link.
-function Reading() {
+function Reading(props: {note: NoteItem}) {
 	return (
 		<VStack
 			alignment="leading"
@@ -176,7 +176,7 @@ function Reading() {
 			modifiers={[
 				frame({alignment: 'leading', maxWidth: Infinity}),
 				accessibilityElement('ignore'),
-				accessibilityLabel('Reading this link')
+				accessibilityLabel(`Reading this ${subjectOf(props.note)}`)
 			]}
 		>
 			<Skeleton modifiers={[frame({height: 14}), frame({maxWidth: 300})]} />
@@ -229,6 +229,9 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
 	}
+	const issue = Option.getOrElse(Option.fromUndefinedOr(props.note.issue), () => 'Can’t Read This Link')
+	const kept =
+		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => note.body !== undefined)
 	return (
 		<ScrollView>
 			<VStack
@@ -252,23 +255,38 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				{props.note.image !== undefined && <Cover note={props.note} />}
 				{pipe(
 					Match.value(props.note.status),
-					Match.when('organizing', () => <Reading />),
-					Match.when('failed', () => (
-						<Empty>
-							<Button
-								label="Can’t Read This Link"
-								systemImage="arrow.clockwise"
-								role="destructive"
-								onPress={props.onRetry}
-								modifiers={[
-									buttonStyle('glassProminent'),
-									buttonBorderShape('capsule'),
-									controlSize('large'),
-									tint(colors.destructive)
-								]}
-							/>
-						</Empty>
-					)),
+					Match.when('organizing', () => <Reading note={props.note} />),
+					Match.when('failed', () =>
+						Boolean.match(kept, {
+							onFalse: () => (
+								<Empty>
+									<Button
+										label={issue}
+										systemImage="arrow.clockwise"
+										role="destructive"
+										onPress={props.onRetry}
+										modifiers={[
+											buttonStyle('glassProminent'),
+											buttonBorderShape('capsule'),
+											controlSize('large'),
+											tint(colors.destructive)
+										]}
+									/>
+								</Empty>
+							),
+							onTrue: () => (
+								<VStack alignment="leading" spacing={space[4]}>
+									<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
+										<Problem label={issue} onRetry={props.onRetry} />
+									</HStack>
+									{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
+									<Suspense fallback={<Placeholder />}>
+										<FullBody note={props.note} />
+									</Suspense>
+								</VStack>
+							)
+						})
+					),
 					Match.orElse(() => (
 						<VStack alignment="leading" spacing={space[4]}>
 							{String.isNonEmpty(props.note.summary) && <Text modifiers={lede}>{props.note.summary}</Text>}
