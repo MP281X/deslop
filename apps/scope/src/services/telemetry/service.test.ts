@@ -267,6 +267,7 @@ it.layer(platform)(test => {
 				),
 				Telemetry
 			)
+			yield* telemetry.ready
 			yield* TestClock.adjust('2 seconds')
 			yield* telemetry.ingestTraces(release('0.1.1', 'a'))
 			const idle = yield* Ref.get(reads)
