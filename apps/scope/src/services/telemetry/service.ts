@@ -3,6 +3,7 @@ import {
 	Boolean,
 	Clock,
 	Context,
+	Deferred,
 	Duration,
 	Effect,
 	FileSystem,
@@ -418,6 +419,13 @@ function ingestionAnswer(entries: readonly Entry[], rejections: readonly Rejecti
 	} satisfies IngestionAnswer
 }
 
+// Stored spans are named and judged as new ones are, so the previous release's files read the same.
+function deriveEntry(entry: Entry) {
+	const derived = {...entry, denied: deniedSpan(entry.payload)}
+	if (entry.signal === 'log') return derived
+	return {...derived, name: spanName(entry.payload)}
+}
+
 export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/services/telemetry/service/Telemetry', {
 	make: Effect.fnUntraced(function* (directory: string) {
 		const fs = yield* FileSystem.FileSystem
@@ -425,43 +433,20 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
 		const random = yield* SecureRandom.SecureRandom
 		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
-		const saved = yield* Effect.forEach(
-			yield* fs.readDirectory(directory),
-			file =>
-				pipe(
-					Effect.try({
-						catch: cause => TelemetryError.make({cause, message: `${file} has no readable name.`}),
-						try: () => decodeURIComponent(file)
-					}),
-					Effect.filterOrFail(key => !String.endsWith('.tmp')(key)),
-					Effect.flatMap(key => store.get(key)),
-					// A write cut short or an entry of an older shape is dropped rather than keeping Scope from starting.
-					Effect.catch(() => Effect.as(fs.remove(path.join(directory, file), {force: true}), Option.none()))
-				),
-			{concurrency: 8}
-		)
-		// Bumped when traces arrive or expire, so the live page recomputes only when its rows can change.
+		// Bumped when traces arrive, expire or finish loading, so the live page recomputes only when its rows can change.
 		const version = yield* SubscriptionRef.make(0)
+		// Completed once the previous run's store has loaded and settled.
+		const loaded = yield* Deferred.make<void>()
 		// Each service's newest release seen: what an older one sent may describe a bug since fixed, so it goes.
-		const releases = yield* Ref.make(newestVersions(Array.getSomes(saved), Record.empty()))
-		// Spans kept from an older release are named and judged as new ones are, so the previous release's files read the same.
-		const state = yield* SynchronizedRef.make<HashMap.HashMap<string, Entry>>(
-			HashMap.fromIterable(
-				Array.map(Array.getSomes(saved), entry => {
-					const derived = {...entry, denied: deniedSpan(entry.payload)}
-					if (entry.signal === 'log') return [entry.id, derived] as const
-					return [entry.id, {...derived, name: spanName(entry.payload)}] as const
-				})
-			)
-		)
+		const releases = yield* Ref.make(Record.empty<string, string>())
+		const state = yield* SynchronizedRef.make<HashMap.HashMap<string, Entry>>(HashMap.empty())
 		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
 		const prune = Effect.gen(function* () {
 			const receivedAt = yield* Clock.currentTimeMillis
-			const newest = yield* Ref.get(releases)
 			yield* SynchronizedRef.updateEffect(
 				state,
 				Effect.fnUntraced(function* (current) {
-					const retention = retentionOf(current, newest, receivedAt, Duration.toMillis(RETENTION))
+					const retention = retentionOf(current, yield* Ref.get(releases), receivedAt, Duration.toMillis(RETENTION))
 					yield* Effect.forEach(retention.repaired, entry => store.set(entry.id, entry), {
 						concurrency: 1,
 						discard: true
@@ -472,11 +457,47 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			)
 			yield* SubscriptionRef.update(version, Number.increment)
 		})
-		yield* prune
+		// The layer answers at once; the stores of the previous run arrive in the background and merge under any ingest that lands meanwhile.
 		yield* pipe(
-			prune,
+			Effect.gen(function* () {
+				const entries = Array.getSomes(
+					yield* Effect.forEach(
+						yield* fs.readDirectory(directory),
+						file =>
+							pipe(
+								Effect.try({
+									catch: cause => TelemetryError.make({cause, message: `${file} has no readable name.`}),
+									try: () => decodeURIComponent(file)
+								}),
+								Effect.filterOrFail(key => !String.endsWith('.tmp')(key)),
+								Effect.flatMap(key => store.get(key)),
+								// A write cut short or an entry of an older shape is dropped rather than keeping Scope from starting.
+								Effect.catch(() => Effect.as(fs.remove(path.join(directory, file), {force: true}), Option.none()))
+							),
+						{concurrency: 8}
+					)
+				)
+				// An ingest during the load already replaced what the disk holds; its newer entry stays.
+				yield* SynchronizedRef.update(state, current =>
+					Array.reduce(entries, current, (all, entry) => {
+						const derived = deriveEntry(entry)
+						if (HashMap.has(all, derived.id)) return all
+						return HashMap.set(all, derived.id, derived)
+					})
+				)
+				yield* Ref.update(releases, known => newestVersions(entries, known))
+			}),
+			Effect.ignore({log: 'Warn', message: 'Stored telemetry could not be loaded'}),
+			Effect.andThen(prune),
 			Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'}),
-			Effect.repeat(Schedule.spaced('1 hour')),
+			Effect.andThen(Deferred.succeed(loaded, undefined)),
+			Effect.andThen(
+				pipe(
+					prune,
+					Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'}),
+					Effect.repeat(Schedule.spaced('1 hour'))
+				)
+			),
 			Effect.forkScoped
 		)
 		const read = Effect.map(SynchronizedRef.get(state), entries => Array.fromIterable(HashMap.values(entries)))
@@ -598,6 +619,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				}
 				return readTraceAnswer(records, traceId, input.limit)
 			}),
+			ready: Deferred.await(loaded),
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis
 				const key = `${input.route}:${input.status}:${input.credential}`

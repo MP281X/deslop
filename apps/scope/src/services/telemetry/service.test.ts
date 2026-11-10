@@ -6,6 +6,7 @@ import {
 	Clock,
 	Context,
 	DateTime,
+	Deferred,
 	Effect,
 	Exit,
 	FileSystem,
@@ -23,6 +24,7 @@ import {
 	pipe
 } from 'effect'
 
+import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {Entry, LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
@@ -123,6 +125,30 @@ function span(input: SpanInput) {
 		...Option.match(Option.fromUndefinedOr(input.status), {onNone: () => ({}), onSome: status => ({status})}),
 		traceId: input.traceId
 	}
+}
+
+function stored(index: number) {
+	const traceId = String.padStart(32, '0')((index + 1).toString(16))
+	const spanId = String.padStart(16, '0')((index + 1).toString(16))
+	return Entry.make({
+		durationMs: 1,
+		id: `${traceId}:${spanId}`,
+		name: 'stored.op',
+		payload: span({end: `${BigInt(START) + 1_000_000n}`, name: 'stored.op', spanId, start: START, traceId}),
+		receivedAt: NOW,
+		resource: {
+			attributes: [
+				{key: 'service.name', value: {stringValue: '@deslop/stored-server'}},
+				{key: 'scope.runtime', value: {stringValue: 'server'}}
+			]
+		},
+		service: '@deslop/stored-server',
+		signal: 'trace',
+		spanId,
+		status: 0,
+		time: START,
+		traceId
+	})
 }
 
 function request(
@@ -272,6 +298,79 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
+		'answers before stored entries load, keeps an ingest made meanwhile and shows both afterwards',
+		Effect.fnUntraced(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const directory = yield* fs.makeTempDirectoryScoped()
+			yield* TestClock.setTime(NOW)
+			const entries = Array.makeBy(32, stored)
+			const memory = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
+			const store = KeyValueStore.toSchemaStore(memory, Entry)
+			yield* Effect.forEach(
+				entries,
+				entry =>
+					Effect.andThen(
+						store.set(entry.id, entry),
+						fs.writeFileString(`${directory}/${encodeURIComponent(entry.id)}`, '')
+					),
+				{concurrency: 1}
+			)
+			const gate = yield* Deferred.make<void>()
+			const firstGet = yield* Deferred.make<void>()
+			const slow = Layer.succeed(KeyValueStore.KeyValueStore, {
+				...memory,
+				get: key =>
+					Effect.andThen(Deferred.succeed(firstGet, undefined), Effect.andThen(Deferred.await(gate), memory.get(key)))
+			})
+			const telemetry = Context.get(
+				yield* Layer.build(pipe(Layer.effect(Telemetry, Telemetry.make(directory)), Layer.provide(slow))),
+				Telemetry
+			)
+			yield* Deferred.await(firstGet)
+			yield* telemetry.ingestTraces(
+				request(
+					'@deslop/live-server',
+					[
+						span({
+							end: `${BigInt(START) + 1_000_000n}`,
+							name: 'live.op',
+							spanId: 'ffffffffffffffff',
+							start: START,
+							traceId: String.repeat(32)('f')
+						})
+					],
+					{runtime: 'server'}
+				)
+			)
+			assert.deepStrictEqual(
+				Array.map((yield* telemetry.checkIngestion()).services, service => service.app),
+				['live']
+			)
+			yield* Deferred.succeed(gate, undefined)
+			const frame = yield* pipe(
+				telemetry.overview('3d'),
+				Stream.filter(current => current.apps.length === 2),
+				Stream.runHead,
+				Effect.forkChild
+			)
+			yield* TestClock.adjust('2 seconds')
+			assert.deepStrictEqual(
+				Array.map(
+					Array.sort(
+						Option.getOrThrow(yield* Fiber.join(frame)).apps,
+						Order.mapInput(Order.String, (app: Overview['apps'][number]) => app.name)
+					),
+					app => [app.name, app.operations[0]?.name, app.operations[0]?.count]
+				),
+				[
+					['live', 'live.op', 1],
+					['stored', 'stored.op', 32]
+				]
+			)
+		})
+	)
+
+	test.effect(
 		'retains by receipt time without changing future client timestamps',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
@@ -330,11 +429,13 @@ it.layer(platform)(test => {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					yield* telemetry.ready
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.receivedAt, NOW)
 				})
 			)
 			yield* TestClock.adjust('4 days')
 			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+			yield* telemetry.ready
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
 			assert.isEmpty(yield* fs.readDirectory(directory))
 		})
@@ -369,12 +470,14 @@ it.layer(platform)(test => {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					yield* telemetry.ready
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
 				})
 			)
 			assert.isFalse(yield* fs.exists(`${directory}/broken`))
 			yield* TestClock.adjust('2 days')
 			const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+			yield* telemetry.ready
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
 		})
 	)
@@ -630,11 +733,9 @@ it.layer(platform)(test => {
 					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps.length, 1)
 				})
 			)
-			assert.deepStrictEqual(yield* kept(Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)), [
-				'b',
-				'd',
-				'e'
-			])
+			const reopened = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+			yield* reopened.ready
+			assert.deepStrictEqual(yield* kept(reopened), ['b', 'd', 'e'])
 			assert.deepStrictEqual(Array.sort(yield* fs.readDirectory(directory), Order.String), [
 				'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%3Abbbbbbbbbbbbbbbb',
 				'dddddddddddddddddddddddddddddddd%3Adddddddddddddddd',
@@ -933,6 +1034,7 @@ it.layer(platform)(test => {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
+					yield* telemetry.ready
 					assert.strictEqual((yield* telemetry.readTrace({id: TRACE_ID, limit: 100})).spans[0]?.denied, true)
 					yield* TestClock.adjust('2 seconds')
 					assert.strictEqual(
