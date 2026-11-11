@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: "Load before delegating work on a codebase and before integrating its results: which model takes each step, how units run in parallel, where, and what a brief says. Not for schedules, T3 workflows or questions."
+description: "Load when planning, delegating or integrating work on a codebase, questions about it that need workers included: which model takes each step, how units run in parallel, where, and what a brief says. Not for schedules or T3 workflows."
 ---
 
 # Orchestrator
@@ -27,18 +27,17 @@ description: "Load before delegating work on a codebase and before integrating i
 - **Fan out.** Split the work into units that own different files and start every ready unit in the same turn; a unit waits only for a result it needs.
 - **Writers.** Each writing unit works in its own worktree and commits there; the main thread merges. Read-only units share the checkout.
 - **Follow up** in the unit's own thread with `t3_thread_send`, which keeps its context; a new unit gets a new delegate.
-- **`desktop`** is the stronger machine and is sometimes off: use it whenever `t3_environment_links` shows it reachable, for Verify, tests, builds, captures and writing units. Push the head, then `t3_thread_launch` one thread per unit there, with that machine's `projectId` and a worktree from the branch; read each with `t3_thread_wait` and settle it. A `delegate_task` sent there lands in its `main` checkout, so it suits only work that needs no branch.
+- **`desktop`** is the stronger machine and is sometimes off. While `t3_environment_links` shows it reachable, send it Verify, tests, builds and captures, and writing units when this worker is busy; unreachable, everything runs here. Work on a branch there is a `t3_thread_launch` with that machine's `projectId` and a worktree from the pushed branch, read with `t3_thread_wait` and settled; a `delegate_task` sent there lands in its `main` checkout.
 
 ## Brief
 
-A worker has your instructions, skills and repository, and nothing of this thread. Its brief says what only the thread knows: the objective, the decisions already made, the files it owns, what to leave alone, the command that proves it done and the report you want back. Never "based on your findings".
-
+- **Context.** A worker loads the same instructions, skills and repository; it lacks only this thread. Brief it on what the thread knows: the objective, the settled decisions, the files it owns, what to leave alone, the command that proves it done and the report you want back. Never restate standing rules, and never "based on your findings".
 - **Writers** are also told: edit only the owned files, run the checks named here, commit on the branch.
 - **Reports** open with `PASS`, `ISSUES` or `BLOCKED`, then the evidence: command, exit code, SHA, `path:line`.
 
 ## Integrate
 
 - **Plan first.** A data model, a screen, an architecture change or work across several PRs starts with a plan the user approves before the build.
-- **Steers re-plan.** A message that changes an entity, screen, unit or acceptance criterion is planned again; rewrite the unmerged layer rather than stacking a fix.
+- **Steers re-plan.** A message that changes an entity, a screen or a unit is planned again, carrying every settled decision forward.
 - **Diffs, not summaries.** Read each worker's diff against the plan. A missing proof is a gap, not a pass.
 - **Order.** Merge in stack order, then prove the integrated head.

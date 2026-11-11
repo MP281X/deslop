@@ -10,7 +10,7 @@ Lint owns what a parser can check. This skill covers running behaviour, the user
 ## Diagnose
 
 1. **Reproduce** on base: a failing check, request or capture of the broken state. No theory before it exists.
-2. **Name the mechanism** in one sentence and rank 3 hypotheses; change one variable per probe.
+2. **Name the mechanism** in one sentence and test it, changing one variable per probe.
 3. **Fix where the wrong state starts**, not where it shows. A guard, retry, clamp or swallowed error fixes only a state that is legitimate.
 4. **Sweep the class.** Fix every other instance in the same change; a mistake that can recur becomes a shared component or a lint rule.
 5. **Two strikes.** The same check failing after two edits means the hypothesis is wrong: stop editing and form a new one.
@@ -22,8 +22,8 @@ Lint owns what a parser can check. This skill covers running behaviour, the user
 - **Capture** representative data, after a condition holds rather than a delay. Command output supports a capture, never replaces it; a mock is never proof.
 - **Fresh.** The preview runs the head: confirm it before the first capture, and name the short commit in each caption. A later commit retakes the captures whose screen or flow it changed; an amend, rebase or restack retakes them all.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
-- **Journeys.** Walk each journey the change touches from its input to its outcome; an app's `AGENTS.md` lists its main ones under `## Journeys`. A backend change is proved through the screen that uses it, with Scope's traces where the app exports them.
-- **Each touched screen**, and every screen it reaches by navigation, on real or planted data:
+- **Journeys.** Walk each user journey the change touches from its input to its outcome, failures included; an app's `AGENTS.md` lists its main ones under `## Journeys`. Scope's traces show what the backend did.
+- **Each touched screen**, and the navigation its journeys need, on real or planted data:
   - cold first open, reload of a deep link, the first request failing, and on native background then resume;
   - hover, focus and keyboard on changed controls;
   - a phone and a desktop, T3's `iphone-12-pro` and 1440×900, and the widest layout the repository targets when the change reaches it; light and dark when colour changed;
@@ -49,4 +49,5 @@ Lint owns what a parser can check. This skill covers running behaviour, the user
 
 ## Tests
 
-Keep a reproducing probe only under the repository's test choices, at the narrowest public seam; a deleted test names its reason in the commit message.
+- **Keep** a reproducing probe only under the repository's test choices, at the narrowest public seam.
+- **Delete** a test with its reason in the commit message.
