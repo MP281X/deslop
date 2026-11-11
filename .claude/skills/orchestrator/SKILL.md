@@ -27,7 +27,9 @@ description: 'Load when planning, delegating or integrating work on a codebase, 
 - **Fan out.** Split the work into units that own different files and start every ready unit in the same turn; a unit waits only for a result it needs.
 - **Writers.** Each writing unit works in its own worktree and commits there; the main thread merges. Read-only units share the checkout.
 - **Follow up** in the unit's own thread with `t3_thread_send`, which keeps its context; a new unit gets a new delegate.
-- **`desktop`** is the stronger machine and is sometimes off. While `t3_environment_links` shows it reachable, send it Verify, tests, builds and captures, and writing units when this worker is busy; unreachable, everything runs here. Work on a branch there is a `t3_thread_launch` with that machine's `projectId` and a worktree from the pushed branch, read with `t3_thread_wait` and settled; a `delegate_task` sent there lands in its `main` checkout.
+- **`desktop`** is the worker machine while `t3_environment_links` shows it reachable; `dev` holds the main threads and takes the workers when it is off.
+  - **On a branch.** Push it, then `t3_thread_launch` one thread per unit there, with that machine's `projectId` and a worktree from `origin/<branch>`. Nothing wakes you: read each with `t3_thread_wait`, then settle it. A writer pushes its own branch; fetch it, merge it and delete it.
+  - **Off a branch** (research, logs, the web, machine work). `delegate_task` with `target.environmentId`: it runs in that machine's project checkout and wakes you like a local delegate.
 
 ## Brief
 
