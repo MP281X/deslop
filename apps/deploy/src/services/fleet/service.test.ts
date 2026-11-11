@@ -165,6 +165,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const stale = yield* fleet.snapshot
 				assert.strictEqual(stale.items[0]?.id, current.items[0]?.id)
 				assert.strictEqual(stale.items[0]?.state, 'stale · active')
+				assert.strictEqual(stale.sources[0]?.name, 'desktop · Snapshot')
 				assert.include(stale.sources[0]?.error ?? '', 'worker unavailable')
 			})
 		)

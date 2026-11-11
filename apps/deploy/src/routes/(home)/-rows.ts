@@ -1,6 +1,7 @@
 import {Array, Boolean, HashSet, Number, Option, Order, String} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
+import {sourceBelongsToWorker} from '#services/inventory/lib/page.ts'
 import {appUsage, dot, itemOwner, type Row, status} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
@@ -89,10 +90,7 @@ export function failedFor(
 	return (
 		inventoryFailure ||
 		history?.stale === true ||
-		Array.some(
-			sources,
-			source => source.error !== '' && (source.name === worker || String.startsWith(`${worker} · `)(source.name))
-		)
+		Array.some(sources, source => source.error !== '' && sourceBelongsToWorker(source, worker))
 	)
 }
 
