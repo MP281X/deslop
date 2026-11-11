@@ -12,7 +12,7 @@ description: 'Load before planning, delegating or integrating work on a codebase
 | Step | Model | Returns |
 | --- | --- | --- |
 | Find, read, search, logs, web | Luna | Cited findings with absolute paths; excerpts, never whole files |
-| Scoped edit: owned files, fixed decisions, one proof command | Luna; Sol when it spans packages; Sonnet 5.5 for UI | A commit and its proof |
+| Scoped edit: owned files, fixed decisions, one proof command | DeepSeek; Sol when it spans packages; Sonnet 5.5 for UI | A commit and its proof |
 | Build where the architecture or the UI/UX is still open | Opus 5.5 | A commit and its proof |
 | Verify, tests, builds | Luna | Exit code and the failing lines |
 | Browser, device and computer use, captures | Sol | One line per capture it read |
@@ -23,11 +23,11 @@ description: 'Load before planning, delegating or integrating work on a codebase
 | --- | --- | --- | --- |
 | Fable 5.2 | `claudeAgent` / `claude-fable-5-2` | `effort: high` | Smartest and costliest: the main thread when the user picks it |
 | Opus 5.5 | `claudeAgent` / `claude-opus-5-5` | `effort: high` | Best all-round: the best code and the best decisions |
-| Sonnet 5.5 | `claudeAgent` / `claude-sonnet-5-5` | `effort: medium`; `high` when the brief leaves decisions open | Claude's taste on a settled design |
+| Sonnet 5.5 | `claudeAgent` / `claude-sonnet-5-5` | `effort: xhigh` | Claude's taste on a settled design |
 | Haiku 5.5 | `claudeAgent` / `claude-haiku-5-5` | `effort: high` | Luna's steps when Codex runs short |
 | GPT-6.1 Sol | `codex` / `gpt-6.1-sol` | `reasoningEffort: xhigh` | Complete and deep by brute force |
-| GPT-6 Luna | `codex` / `gpt-6-luna` | `reasoningEffort: xhigh` | The default for bulk work |
-| DeepSeek V4.1 Flash | `opencode-zen` / `deepseek-v4.1-flash` | none to set | Between smart and cheap: the fallback, and less restricted on security work |
+| GPT-6 Luna | `codex` / `gpt-6-luna` | `reasoningEffort: xhigh` | The default for reading, searching and running |
+| DeepSeek V4.1 Flash | `opencode-zen` / `deepseek-v4.1-flash` | none to set | Between smart and cheap: scoped edits, the fallback, and less restricted on security work |
 
 - **Cost.** Every main-thread call re-reads the whole thread, about 300k tokens, and what it reads stays for every later call. A delegate starts from about 15k tokens and costs the main thread two calls, one to brief it and one to read its report. So batch: one delegate per piece of work with all its questions, never one per file.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`.
