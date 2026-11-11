@@ -6,4 +6,4 @@
 ## Journeys
 
 - **Import.** Copy a booking's text or screenshot, return to Trips and accept the clipboard offer; it joins the list.
-- **Delete.** Remove a booking by swipe or from its detail; verify removal and Undo.
+- **Delete.** Remove a booking by swipe or from its detail; Undo stays in the row.

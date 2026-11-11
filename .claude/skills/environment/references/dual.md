@@ -22,7 +22,7 @@
 
 Project `DOS`, board 1053, `datapizza.atlassian.net`; the user's account ID `712020:87e4f57e-6b5d-40ab-8dfa-faf159ead71a`.
 
-- **Tools.** Use Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own tools (`atlassian-api.*`), not `acli`. It uses a service account: `currentUser()` and `@me` aren't the user, so name the account ID. `To Do` is `status = "To Do"` (`statusCategory` also returns Backlog); `Doing` is transition `21`. A slow or confusing step is a Dual defect for the final reply.
+- **Tools.** Use Dual's MCP `execute` (`dualos__execute` through the gateway), which finds its own tools (`atlassian-api.*`), not `acli`. Jira access uses a service account: `currentUser()` and `@me` aren't the user, so name the account ID. `To Do` is `status = "To Do"` (`statusCategory` also returns Backlog); `Doing` is transition `21`. A slow or confusing step is a Dual defect for the final reply.
 - **Picking.** On "what to work on": rank only unassigned `To Do` Epics, Tasks, Stories and Bugs by priority (`P1` highest), size and fit with the code. After approval, assign each to the user and move it to `Doing`: the only Jira writes.
 - **Assigned.** A ticket key in a request, branch or commit is work the user started: read it, quote the requirements used.
 - **Link.** `https://datapizza.atlassian.net/browse/<key>`.

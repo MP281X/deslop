@@ -7,4 +7,4 @@
 
 - **Share.** Sign in, then share a link from Safari: the extension saves it with the app's session and it joins the list.
 - **Retry.** Open an unreadable note: it says why, keeps what was read and offers retry.
-- **Delete.** Remove a note by swipe, menu or from its detail; verify removal and Undo.
+- **Delete.** Remove a note by swipe, menu or from its detail; Undo stays in the row.

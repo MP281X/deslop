@@ -12,7 +12,7 @@
 | sshd     | `/etc/ssh/sshd_config`, with drop-ins                                                     | Debian's                                               |
 | GPU      | None                                                                                      | NVIDIA GeForce RTX 5070, 12 GB; [setup](#desktop-gpu)  |
 
-- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, btop (never htop), ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code in `~/.local/bin`. `~/.bashrc`'s first lines, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`. `swapon`, `sshd` and `ufw` live in `/usr/sbin`, off a non-login `PATH`.
+- **Toolchain.** Docker with Compose and Buildx, `gh` with `github/gh-stack`, `glab`, git, build tools, rsync, ripgrep, jq, sqlite3, lsof, btop (never htop), ffmpeg, ImageMagick, `dig`, `psql`. Vite+ in `~/.vite-plus` holds Codex and `t3@nightly`; Claude Code in `~/.local/bin`. `~/.bashrc`'s first lines, above its interactive guard, put `$HOME/.local/bin:$HOME/.vite-plus/bin` on `PATH`. `swapon`, `sshd` and `ufw` live in `/usr/sbin`, off a non-login `PATH`, so call them by path.
 - **T3 versions.** The service runs `activeVersion` from `~/.t3/runtime/versions`; the global `t3` in `~/.vite-plus`, which runs `t3 doctor` and `t3 service restart`, is a separate install. A stale CLI prints "unknown to this build" migration warnings against the newer database.
 - **Sign-ins.** Per worker, show the user each link: `gh auth login`, `glab auth login --hostname git.datapizza.tech`, `claude auth login`, `codex login --device-auth`, [MCP](#mcp-sign-in).
 - **Repositories.** `~/dual`: credential helper `!glab auth git-credential` for `https://git.datapizza.tech`; GitHub: `gh auth setup-git`; [Git identity](#git-identity).
@@ -21,7 +21,7 @@
 - **Firewall.** Tailscale's `ts-input` accepts tailnet traffic before ufw; dev's web ports serve Deploy's Caddy user service. `/etc/sysctl.d/90-quiet-console.conf` keeps `[UFW BLOCK]` off dev's console.
 - **TCP on dev.** `/etc/sysctl.d/90-tcp.conf`: `fq`, `bbr`, `tcp_slow_start_after_idle = 0`, for lossy phones and idle keep-alive or WebSocket connections.
 - **Access.** One ED25519 pair as `~/.ssh/id_ed25519` everywhere; `authorized_keys` holds only its public key; no `~/.ssh/config`; `known_hosts` from `ssh-keyscan -H dev desktop macbook-pro`. Disable a login method only after the other worked from another machine.
-- **sshd.** `UsePAM yes` supplies `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, including non-interactive SSH; without it, `systemctl --user` fails with "Failed to connect to user scope bus" and `t3 service restart` with `BootServiceCommandError`. dev includes `/etc/ssh/sshd_config.d/*.conf`; `10-keys-only.conf` disables password, keyboard-interactive and root login. Trust `sudo sshd -T`.
+- **sshd.** `UsePAM yes` supplies `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, including non-interactive SSH; without it, `systemctl --user` fails with "Failed to connect to user scope bus" and `t3 service restart` with `BootServiceCommandError`. dev's `sshd_config` includes `/etc/ssh/sshd_config.d/*.conf`; `10-keys-only.conf` disables password, keyboard-interactive and root login. Trust `sudo sshd -T`.
 - **Hostname.** Set T3's displayed name with `sudo hostnamectl set-hostname --pretty <name>`, then restart T3.
 
 ## Agent configuration
@@ -76,8 +76,6 @@ new=$(jq --argjson src "$(sqlite3 -readonly -json ~/.t3/userdata/statev2.sqlite 
 ### Deep pass
 
 - **Disk.** Capture `df -B1` on Debian, `df -k` on the Mac, and `df -i` on both, per disk-backed mount before and after; `du -xhd1` under the home, `/var/lib`, `/var/cache`, `/var/log` and `/tmp`. Measure containerd's snapshot store as well as `/var/lib/docker`. Compare `du`, `df` and `sudo lsof -l +L1 -nP` for deleted-but-open disk files; `-l` avoids UID lookup warnings. Chromium memfd and shared-memory files are not disk leaks. Report a deleted Deploy Caddy binary: `caddy reload` leaves it running until unit restart or reboot.
-
-- **SSH.** Call `/usr/sbin` tools by path.
 
 - **Ownership.** Inventory from the local SQLite projection, not T3's first thread page. Join owners to `lineage.rootThreadId`, inspect user side chats separately, cross-check `/proc/*/cwd`, and re-read ownership immediately before removal. Preserve and report unknown ownership, history, credentials, production data and running jobs separately from garbage.
 
