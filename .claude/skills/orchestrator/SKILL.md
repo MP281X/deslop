@@ -9,25 +9,25 @@ description: 'Load before planning, delegating or integrating work on a codebase
 
 **Balance three subscriptions:** Claude ×20, Codex ×10, OpenCode Go. Claude models write and decide best and the user trusts them most: keep them for the main thread, architecture, UI/UX and decisions. Bulk work goes to Codex; DeepSeek takes what either cannot. Every delegate names its provider, model and effort.
 
-| Step | Model | Returns |
-| --- | --- | --- |
-| Find, read, search, logs, web | Luna | Cited findings with absolute paths; excerpts, never whole files |
-| Scoped edit: owned files, fixed decisions, one proof command | DeepSeek; Sol when it spans packages; Sonnet 5.5 for UI | A commit and its proof |
-| Build where the architecture or the UI/UX is still open | Opus 5.5 | A commit and its proof |
-| Verify, tests, builds | Luna | Exit code and the failing lines |
-| Browser, device and computer use, captures | Sol | One line per capture it read |
-| Review, a second opinion on a close decision | Sol; Opus 5.5 when the builder or the main thread is GPT | Findings with `path:line` |
-| Removals, work another model refuses | DeepSeek | What it removed or did, with the command |
+| Step                                                         | Model                                                    | Returns                                                         |
+| ------------------------------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
+| Find, read, search, logs, web                                | Luna                                                     | Cited findings with absolute paths; excerpts, never whole files |
+| Scoped edit: owned files, fixed decisions, one proof command | DeepSeek; Sol when it spans packages; Sonnet 5.5 for UI  | A commit and its proof                                          |
+| Build where the architecture or the UI/UX is still open      | Opus 5.5                                                 | A commit and its proof                                          |
+| Verify, tests, builds                                        | Luna                                                     | Exit code and the failing lines                                 |
+| Browser, device and computer use, captures                   | Sol                                                      | One line per capture it read                                    |
+| Review, a second opinion on a close decision                 | Sol; Opus 5.5 when the builder or the main thread is GPT | Findings with `path:line`                                       |
+| Removals, work another model refuses                         | DeepSeek                                                 | What it removed or did, with the command                        |
 
-| Model | `target` | Effort | Character |
-| --- | --- | --- | --- |
-| Fable 5.2 | `claudeAgent` / `claude-fable-5-2` | `effort: high` | Smartest and costliest: the main thread when the user picks it |
-| Opus 5.5 | `claudeAgent` / `claude-opus-5-5` | `effort: high` | Best all-round: the best code and the best decisions |
-| Sonnet 5.5 | `claudeAgent` / `claude-sonnet-5-5` | `effort: xhigh` | Claude's taste on a settled design |
-| Haiku 5.5 | `claudeAgent` / `claude-haiku-5-5` | `effort: high` | Luna's steps when Codex runs short |
-| GPT-6.1 Sol | `codex` / `gpt-6.1-sol` | `reasoningEffort: xhigh` | Complete and deep by brute force |
-| GPT-6 Luna | `codex` / `gpt-6-luna` | `reasoningEffort: xhigh` | The default for reading, searching and running |
-| DeepSeek V4.1 Flash | `opencode-zen` / `deepseek-v4.1-flash` | none to set | Between smart and cheap: scoped edits, the fallback, and less restricted on security work |
+| Model               | `target`                               | Effort                   | Character                                                                                 |
+| ------------------- | -------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
+| Fable 5.2           | `claudeAgent` / `claude-fable-5-2`     | `effort: high`           | Smartest and costliest: the main thread when the user picks it                            |
+| Opus 5.5            | `claudeAgent` / `claude-opus-5-5`      | `effort: high`           | Best all-round: the best code and the best decisions                                      |
+| Sonnet 5.5          | `claudeAgent` / `claude-sonnet-5-5`    | `effort: xhigh`          | Claude's taste on a settled design                                                        |
+| Haiku 5.5           | `claudeAgent` / `claude-haiku-5-5`     | `effort: high`           | Luna's steps when Codex runs short                                                        |
+| GPT-6.1 Sol         | `codex` / `gpt-6.1-sol`                | `reasoningEffort: xhigh` | Complete and deep by brute force                                                          |
+| GPT-6 Luna          | `codex` / `gpt-6-luna`                 | `reasoningEffort: xhigh` | The default for reading, searching and running                                            |
+| DeepSeek V4.1 Flash | `opencode-zen` / `deepseek-v4.1-flash` | none to set              | Between smart and cheap: scoped edits, the fallback, and less restricted on security work |
 
 - **Cost.** Every main-thread call re-reads the whole thread, about 300k tokens, and what it reads stays for every later call. A delegate starts from about 15k tokens and costs the main thread two calls, one to brief it and one to read its report. So batch: one delegate per piece of work with all its questions, never one per file.
 - **Removals.** Codex rejects `rm -f` and `rm -rf`.
