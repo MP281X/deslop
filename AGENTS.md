@@ -4,15 +4,15 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Scope
 
-- No issue tracker: the request is the whole task.
-- Apps are English-only.
-- This is one user's software on these two workers. Do not add portability or compatibility code or turn the apps into a general multi-user platform. Apps and MCP endpoints use the shared sign-in at `auth.mp281x.xyz`, except the public Portfolio. Admins in `GITHUB_ADMINS` let other GitHub accounts in; everyone with access shares each app's data except Gateway's person-owned AI keys and usage.
-- Releases are linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
-- Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
+- **Task.** No issue tracker: the request is the whole task.
+- **Language.** Apps are English-only.
+- **Users.** One user on these two workers; no portability, compatibility code or general multi-user platform. Apps and MCP endpoints share sign-in at `auth.mp281x.xyz`, except the public Portfolio. Admins in `GITHUB_ADMINS` let other GitHub accounts in; everyone with access shares app data except Gateway's person-owned AI keys and usage.
+- **Releases.** Linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
+- **Data retention.** Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 
 ## Commands
 
-- **Verify**: `vp run verify`, defined in `vite.config.ts`.
+- **Verify.** `vp run verify`, defined in `vite.config.ts`.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `.github/releasing.md`, **Publish an iOS app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: Simulator builds, deploy, native tools, publishing packages and iOS apps.
@@ -21,29 +21,29 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Patterns
 
-- To refresh primitives, run `vpx shadcn@latest add --all --overwrite` in `packages/components-web`, point `cn` imports at `#lib/utils.ts`, drop the `cn` dependency and fix only what the compiler rejects.
-- To add a software mark, run `vpx shadcn@latest add @svgl/<name>` there; move generated `src/components/ui/svgs/` files into canonical `src/ui/svgs/`, keeping registry artwork.
+- **Primitives.** Run `vpx shadcn@latest add --all --overwrite` in `packages/components-web`, point `cn` imports at `#lib/utils.ts`, drop the `cn` dependency and fix only what the compiler rejects.
+- **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move generated `src/components/ui/svgs/` files into canonical `src/ui/svgs/`, keeping registry artwork.
 
 ## Choices
 
 Decisions only the whole codebase can check, so review weighs them; lint owns what one file shows.
 
-- **AI** through the Effect AI provider module, called in the service using it, over Gateway's `AiGateway`; no wrapper package.
-- **Data** in Effect KeyValueStore under `ServerRuntime.dataDirectory` (`~/.deslop/<app>/` installed, `.deslop/<app>/` in a checkout); settings as flags, secrets in `~/.deslop/<app>.env`, defaults through `Config.withDefault`.
-- **Processes** with named states and events (a sign-in, an import, a playback) are `@typeonce/effect-machine` machines: `Machine.start` in the owning service, `AtomMachine` on a client, `MachineState` to render.
+- **AI.** Use the Effect AI provider module in the consuming service, over Gateway's `AiGateway`; no wrapper package.
+- **Data.** Use Effect KeyValueStore under `ServerRuntime.dataDirectory` (`~/.deslop/<app>/` installed, `.deslop/<app>/` in a checkout); settings as flags, secrets in `~/.deslop/<app>.env`, defaults through `Config.withDefault`.
+- **Processes.** Named states and events (a sign-in, an import, a playback) use `@typeonce/effect-machine`: `Machine.start` in the owning service, `AtomMachine` from `@typeonce/effect-machine/reactivity` on a client, `MachineState` from `@typeonce/effect-machine-react` to render.
 - **Clients.** React reads an `AtomRpc.Service` over `WebRuntime.layer` (Scope's page: `layerProtocol`, so it never traces itself) or its `MobileSession`'s `protocol`; a stream syncs one keep-alive atom; a command line uses a scoped `RpcClient.make`.
 - **Ownership.** An outside source's answer belongs to the service consuming it; page-private pieces stay with their page; shared behavior has one owner; a new abstraction adds a capability or lightens what a reader holds, never just shorter files. Domain names and plain control flow over wrappers and configuration languages.
-- **Imports** through wildcard `#` aliases with extensions, such as `#services/notes/service.ts`; a service package exports only `./schema`, `./service` and `./utils`. `readonly` only where a type needs it.
+- **Imports.** Use wildcard `#` aliases with extensions, such as `#services/notes/service.ts`; a service package exports only `./schema`, `./service` and `./utils`. `readonly` only where a type needs it.
 - **Arguments.** Short, independent arguments stay positional; a parameter list is never wrapped in one object just to name them.
-- **Personal tools** are npm app CLIs with `service` subcommands, every dependency bundled and native tools in `bin/`, persistent HTTP MCP and a small web UI through `CliRuntime.runApp`; no stdio bridge, container or download command. Telemetry goes to Scope's public OTLP/HTTP JSON receiver, with no Collector.
-- **MCP tools** serve what an agent needs, not every page action, shaped for the fewest calls and tokens: a description leads with when to call it, inputs take only what they need, and outputs omit empty keys, use ISO-8601 times, never duplicate a field and carry only the id the next call takes. Apps whose work an agent does not need, such as Trips, OPM and Portfolio, serve none.
-- **Auth** is browser sign-in and standard OAuth with credentials the client manages, never a pasted key. Without `--auth` everyone is the developer behind the loopback, IP and `--url` allowlist; an explicit `--auth` is always enforced; one origin check lives in the runtime. Auth signs one short-lived access token every app, Gateway included, verifies itself, never calling Auth per request; each app's server keeps its own sign-in for its browser and iOS clients. A code approves one sign-in, from a signed-in browser or by the agent through Auth's `answer_request`; a command-line tool such as `coding-standards` signs in with a device code approved that way.
-- **Tests** keep owned runtime behavior that fails when it breaks and survives an equivalent implementation: E2E from the input to its outcome and failures, no test a fix alone earns.
-- **Dependencies** live in their owning packages on `latest`, pinned only where a peer, the Expo SDK or Vite+ fixes them, and coupled packages update together. Tools run through their own flags and defaults, with no wrapper scripts. Libraries only through published releases: no patches, forks, overrides or shims, shadcn registry components excepted; a release's wrong metadata may be corrected with `packageExtensions` beside a comment naming the upstream defect.
+- **Personal tools.** npm app CLIs with `service` subcommands, every dependency bundled and native tools in `bin/`, persistent HTTP MCP and a small web UI through `CliRuntime.runApp`; no stdio bridge, container or download command. Telemetry goes to Scope's public OTLP/HTTP JSON receiver, with no Collector.
+- **MCP tools.** Serve what an agent needs, not every page action, with the fewest calls and tokens: descriptions lead with when to call, inputs take only what they need, and outputs omit empty keys, use ISO-8601 times, never duplicate a field and carry only the id the next call takes. Apps whose work an agent does not need, such as Trips, OPM and Portfolio, serve none.
+- **Auth.** Browser sign-in and standard OAuth with client-managed credentials, never a pasted key. Without `--auth` everyone is the developer behind the loopback, IP and `--url` allowlist; an explicit `--auth` is always enforced; one origin check lives in the runtime. Auth signs one short-lived access token every app, Gateway included, verifies itself, never calling Auth per request; each app's server keeps its own sign-in for its browser and iOS clients. A code approves one sign-in, from a signed-in browser or by the agent through Auth's `answer_request`; a command-line tool such as `coding-standards` signs in with a device code approved that way.
+- **Tests.** Keep owned runtime behavior that fails when it breaks and survives an equivalent implementation: E2E from the input to its outcome and failures, no test a fix alone earns.
+- **Dependencies.** Keep them in their owning packages on `latest`, pinned only where a peer, the Expo SDK or Vite+ fixes them, and update coupled packages together. Tools run through their own flags and defaults, with no wrapper scripts. Libraries only through published releases: no patches, forks, overrides or shims, shadcn registry components excepted; a release's wrong metadata may be corrected with `packageExtensions` beside a comment naming the upstream defect.
 
 ## Design
 
-Personal tools for a power user: compact, few clicks, fast once learned. Icons, position and colour lead; explanation appears on hover or focus; anything adding little goes. Portfolio, the public page, is exempt and keeps its own fonts, hotkeys and presence text.
+Personal tools for a power user: compact, few clicks, fast once learned. Icons, position and colour lead; explanation appears on hover or focus; anything adding little goes. Portfolio is exempt: its own fonts, hotkeys, presence text and artwork, including a 504×504 touch icon on `#fafafa`.
 
 - **Targets.** The 3440×1440 ultrawide (multi-pane tools fill it; a list keeps a centred column), 1920×1080 and the ~1512×982 MacBook; iPhone Air at 420×912pt with safe areas and Dynamic Type. Neutrals are shadcn's zinc in both appearances; app and status hues are Kanagawa's in P3, chroma unboosted; check the appearance actually shown.
 - **Colour.** Only app identity and status carry hue. Each app's primary is its icon's hue, and that hue marks the app wherever another app charts or lists it; a service without a Deslop icon stays zinc grey, except Deploy's usage bands, where it takes Deploy's primary at its size's opacity so processes read as one family against the grey low-impact and system blocks. Every view updates in real time, so nothing says it is live, connected, running normally or up to date; only staleness shows, as a dot and its age. Dots mark problems, never healthy state or a kind, which takes a tinted icon; magnitude steps the opacity of one hue. Static chrome stays low-luminance against burn-in.
@@ -52,7 +52,7 @@ Personal tools for a power user: compact, few clicks, fast once learned. Icons, 
 - **Behavior.** The URL holds the view (selection, pane, range); memory holds only transient input such as an open dialog. The whole row opens its content; its other actions sit at its end: one action as its icon button, several behind one … menu button; the web has no removal controls, since agents remove through the app's MCP tools; the web has no context menus, while iOS keeps its native long-press menu and swipe actions. There is no command palette and no hotkeys. Nothing destructive asks first: an iOS removal waits eight seconds in its row with Undo before it reaches the server. Each fact shows once. Bars, navigation and pane geometry stay mounted while geometry-matched skeletons load the content.
 - **Recovery.** Authorised content stays through an outage, and the page shows it once: one status dot and the age of its oldest stale reader in the bar, whose one retry refreshes them all; rows and panes stay unmarked; a blocking failure is one destructive button, its retry icon and a short reason; a denial is a lock; diagnostics belong in Scope. Authorisation denial clears retained content. A failed mutation stays on its action and says whether a destructive one committed.
 - **Components.** Compose the shipped shadcn `base-lyra` primitives, each for its job; a new look is a variant on the primitive, added here first. A call site may place a primitive, pick a variant or compose it, never repaint it. A segmented choice is the stock default Tabs. Every state is one centred thing: a symbol, or a first run's one action; only a failure's button carries words. Skeletons stand only where the server's content will be, never for bars, controls or axes. Split workspaces remain resizable. A transient failure stays beside the content, not in a toast or a banner that moves the page. Use one icon set per surface. Native components mirror their names over `@expo/ui` SwiftUI. Nothing animates: presses, popups, panes and rows change instantly; loading shows geometry-matched skeletons and a pending action keeps its label, disabled, with no spinner.
-- **Artwork** stays canonical and transparent, never redrawn or recoloured in a UI pass: `icon.svg` serves the favicon, bar, `/icon` and MCP clients, `app.icon/` Icon Composer, `icon.png` the native sign-in and an indexed `public/apple-touch-icon.png` the home screen; `ServerRuntime.layerWeb` owns the manifest. The Kanagawa pixel-art family is copied unchanged (`crispEdges`, integer scaling, touch icons cropped from 192 to 180px on `#0d0c0c`).
+- **Artwork.** Keep it canonical and transparent, never redrawn or recoloured in a UI pass: `icon.svg` serves the favicon, bar, `/icon` and MCP clients, `app.icon/` Icon Composer, `icon.png` the native sign-in and an indexed `public/apple-touch-icon.png` the home screen; `ServerRuntime.layerWeb` owns the manifest. Copy the Kanagawa pixel-art family unchanged (`crispEdges`, integer scaling, touch icons cropped from 192 to 180px on `#0d0c0c`).
 
 ## Documents
 

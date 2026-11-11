@@ -16,10 +16,10 @@ Two headless Debian workers in one tailnet, same user and paths.
 
 - **Names.** MagicDNS short names; `<name>.tailnet-8c4c.ts.net` has HTTPS certificates. SSH as `mp281x@dev`, `mp281x@desktop`, `matteopaludgnach@macbook-pro`.
 - **Tools.** `vp` and `vpx` on `PATH`, also over SSH; systemd units need `~/.vite-plus/bin`. `gh`, `glab` and the MCP gateway signed in.
-- **Scratch** under `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
+- **Scratch.** Use `/tmp/<task>/`, on disk, emptied at boot and of files unused for 7 days.
 - **Git refs.** T3 checkpoints under `refs/t3/`; search history with `--branches --remotes`.
-- **Task-local auxiliary services** run as temporary containers, not host installs.
-- **Agent sign-in:** [MCP sign-in](references/maintenance.md#mcp-sign-in).
+- **Auxiliary services.** Run task-local ones as temporary containers, not host installs.
+- **Agent sign-in.** [MCP sign-in](references/maintenance.md#mcp-sign-in).
 
 | Reference                                | For                                                       |
 | ---------------------------------------- | --------------------------------------------------------- |
@@ -30,26 +30,25 @@ Two headless Debian workers in one tailnet, same user and paths.
 
 ## Previews
 
-Rerun the project's preview script after edits.
-
-- **One per worktree:** the systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it only through the project's `preview` script from the worktree root, which prints the stable HTTPS URL and replaces the previous run; the repository's own preview command or a background task bypasses the unit and dies with the turn.
+- **One per worktree.** The systemd user unit `preview-<worktree name>`, shared over tailnet HTTPS. Start or restart it after edits through the project's `preview` script from the worktree root, which prints the stable HTTPS URL and replaces the previous run; the repository's own preview command or a background task bypasses the unit and dies with the turn.
 
   Read the saved command with `t3_project_read`. Deslop selects a changed web app, or Portfolio; set `PREVIEW_APP=<app>` when checking another app in the same change. Invalid selections leave the existing preview running.
 
-- **Share** only after the URL loads sign-in, assets and API calls.
-- **Keep** it running: a turn that touched an app ends with that app's preview up on the latest code, started if it wasn't; where the app has no worktree preview, use its scratch run.
+  A turn that touched an app ends with its preview running the latest code; where no worktree preview exists, use its scratch run.
+
+- **Share.** Only after the URL loads sign-in, assets and API calls.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
 ## Tools
 
 One chain per trigger; no data means report it and investigate further, not verification.
 
-| Missing fact                             | First call                                                                                                                                                        |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime error, trace or latency          | Call Scope's `list_operations`, then `find_traces`, then `read_trace` or `measure_latency`.                                                                       |
-| Runtime service, port or container state | Call Deploy's `list_apps` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`; check unit health with the maintenance check's `systemctl --failed`. |
-| Sign-in blocked                          | Call Auth's `answer_request`.                                                                                                                                     |
-| Saved article, video or post             | Call Stash's `search_notes` or `read_note`.                                                                                                                       |
-| Design reference                         | Call Mobbin's `search_screens`, `search_flows` or `save_content`.                                                                                                 |
-| Dual behavior or skill                   | Call DualOS's `dual_context`, then `read_skill`, then `execute`.                                                                                                  |
-| A tool seems missing                     | Call `list_mcp_connections` before assuming it is absent.                                                                                                         |
+| Missing fact                             | First call                                                                                                                                                                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime error, trace or latency          | Call Scope's `list_operations`, then `find_traces`, then `read_trace` or `measure_latency`.                                                                                                                                      |
+| Runtime service, port or container state | Call Deploy's `list_apps` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`. Use the full worker name, such as `dev.mp281x.xyz`, not `dev`; check unit health with the maintenance check's `systemctl --failed`. |
+| Sign-in blocked                          | Call Auth's `answer_request`.                                                                                                                                                                                                    |
+| Saved article, video or post             | Call Stash's `search_notes` or `read_note`.                                                                                                                                                                                      |
+| Design reference                         | Call Mobbin's `search_screens`, `search_flows` or `save_content`.                                                                                                                                                                |
+| Dual behavior or skill                   | Call DualOS's `dual_context`, then `read_skill`, then `execute`.                                                                                                                                                                 |
+| A tool seems missing                     | Call `list_mcp_connections` before assuming it is absent.                                                                                                                                                                        |
