@@ -1,6 +1,6 @@
 ---
 name: output
-description: Load before every reply, PR body, plan card, mock or page. A substantive reply is its visual, with no prose restating it, never a wall of text.
+description: Load before every final reply, PR body, plan card, mock or page. The reply is its visual; prose only carries what the visual cannot.
 ---
 
 # Output
@@ -25,21 +25,22 @@ If removing color and labels leaves the same information as a list of sentences,
 
 - Color encodes a category, state or value with a legend; one accent for the selected path; no decorative color.
 - Interaction reveals detail without hiding the overview: hover or focus highlights connected marks and shows exact values; click pins. No tabs, hidden panes or separate detail cards.
-- One visual, one screen at 390px. If it needs a second visual, it is two outputs.
+- One visual, one screen at the thread's width. If it needs a second visual, it is two outputs.
 
 ## Budget
 
-- One phone screen at 390px; a plan card may take two.
+- One screen at the thread's width; a plan card may take two.
 - Cut anything that repeats the visual, describes the process or already lives in the PR.
 
 ## Design
 
 - Use the app's tokens, font, radius and neutrals; never introduce a second palette.
+- Fill the thread's width; only a list keeps a narrow column.
 - Real content and one worked example. No gradients, shadows, glow or animation.
 
 ## Check
 
-1. Render; open at 390 and 1440.
+1. Render at 728px; the page fills the frame.
 2. Hover and focus every mark; the tooltip and highlight work.
 3. Every hue has a meaning in the legend.
 4. Cover the text: the visual alone answers what changed, what to do and the one thing. If not, fix the visual; do not add a line.

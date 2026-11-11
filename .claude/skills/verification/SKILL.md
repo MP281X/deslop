@@ -5,7 +5,7 @@ description: Load before editing code for a bug or a failed check, before claimi
 
 # Verification
 
-The repository's code-quality tool owns lint rules. This skill covers running behavior, the user's experience and codebase-wide decisions. A bug or failed check starts at Diagnose; finished work passes Verify, then Prove, then Review. The output skill owns the shape of the reply, page and PR body.
+The repository's code-quality tool owns lint rules. This skill covers running behavior, the user's experience and codebase-wide decisions. A bug or failed check starts at Diagnose; finished work passes Verify, then Prove, then Review.
 
 ## Diagnose
 
@@ -23,15 +23,15 @@ The repository's code-quality tool owns lint rules. This skill covers running be
 - **Fresh.** The preview runs the latest commit; confirm it before the first capture. Each caption, in the thread and in the PR body, names its short commit; retake a capture whose screen or flow changed since.
 - **Final head.** Capture after the last commit. An amend, rebase or restack changes the head: delete the old media and capture again.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
-- **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with the environment's tracing tools where the app exports traces.
+- **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with Scope's tracing tools where the app exports traces.
 - **Each touched screen**, in the running app on real or planted data, and every screen it reaches by navigation:
   - cold first open, reload of a deep link, the first request failing, and on native background then resume;
   - hover, focus and keyboard on changed controls;
   - 390 and 1440 wide (T3's phone `iphone-12-pro` and desktop 1440×900), 3440 for wide layouts; light and dark when color changed;
   - an app with web and iOS clients: the same screen on both, side by side, with the same content, actions and identity, each in its platform's own controls.
 - **Read every capture as a page**, one line per capture: it matches the plan card or chosen variant; nothing appears twice; nothing is cut, misaligned or overflowing; loading, empty and error states tell the truth; every word is needed.
-- **Audit** every captured web state: load `environment` and pass its page-audit reference to `preview_evaluate`; fix or give a reason for each entry, and apply its `design` group only where the app has design rules. On iOS, read the `agent-device` snapshot the same way: a label or button twice, a control without a name, a missing navigation title.
-- **Performance.** Compare the same workload over repeated runs, reporting p50, p95 and resource costs. Use the environment's tracing tools.
+- **Audit** every captured web state with `preview_evaluate` and [references/page-audit.js](references/page-audit.js); fix or give a reason for each entry, and apply its `design` group only where the app has design rules. On iOS, read the `agent-device` snapshot the same way: a label or button twice, a control without a name, a missing navigation title.
+- **Performance.** Compare the same workload over repeated runs, reporting p50, p95 and resource costs. Use Scope's tracing tools.
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review

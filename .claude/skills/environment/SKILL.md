@@ -39,10 +39,6 @@ Rerun the project's preview script after edits.
 - **Keep** it running: a turn that touched an app ends with that app's preview up on the latest code, started if it wasn't; where the app has no worktree preview, use its scratch run.
 - **Webhooks.** Funnel exposes a whole port: pick a free one of 443, 8443, 10000 and run `sudo tailscale funnel --bg --https=<port> --set-path <path> http://127.0.0.1:<api port><path>`; remove it with `... --set-path <path> off`.
 
-## Page audit
-
-On a captured web page, pass [references/page-audit.js](references/page-audit.js) to `preview_evaluate`; its `design` group applies only where the app has design rules.
-
 ## Tools
 
 One chain per trigger; no data means report it and investigate further, not verification.

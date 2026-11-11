@@ -16,7 +16,7 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Publish
 
 1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
-2. **Describe** with the repository's PR or MR template and the output skill: the template is the structure, the skill is the budget.
+2. **Describe** with the repository's PR or MR template: the template is the structure; the body carries the evidence.
    - **Figures** stand in for an `html_render` page, which a PR cannot hold: lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
 
      ```bash
