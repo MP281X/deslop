@@ -8,8 +8,8 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Branches
 
 - **Review units.** Each PR is coherent and runnable on its target, with generated files beside their source.
-- **One PR per thing.** An unmerged PR is edited in place: more work on the same thing goes into the PR that owns it, never into a new PR on top. Split only what is independent, or a different layer of the same thing.
-- **Stacks** make review easier; they are not for merging in steps. PRs that depend on each other or merge together form one stack: one branch per layer on the layer below, each readable alone. Unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
+- **One PR per thing.** An unmerged PR is edited in place: more work on the same thing goes into the PR that owns it, never a new PR on top. Split only what is independent, or a different layer of the same thing.
+- **Stacks** ease review, not stepwise merging. PRs that depend on each other or merge together form one stack: one branch per layer on the layer below, each readable alone. Unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
 - **Reshape.** Remove a rejected approach from every unmerged layer rather than introducing it below and undoing it above.
 - **Integration.** Batch corrections into their owning layers, then restack onto the latest default branch before the final Verify and proof.
 - **Before.** When a before/after is claimed, capture the Before state on base before the first edit.

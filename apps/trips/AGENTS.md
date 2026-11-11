@@ -1,6 +1,5 @@
 # Trips intent
 
-- **Bookings.** Group Now, Upcoming and Past; delays and cancellations carry problem dots. A booking detail's header shows departure, gate and seat.
 - **Updates.** Flights, trains and stays keep live gates, platforms, delays and belts; the next journey also appears in the Live Activity and widget.
 
 ## Journeys

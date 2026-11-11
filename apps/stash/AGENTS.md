@@ -1,7 +1,7 @@
 # Stash intent
 
-- **Queue.** Each row opens its article; a first run offers Paste Link. The share extension, clipboard and compose screen save into the same list.
-- **Article.** Title, cover, summary and full body; Stash reads and tags each saved link once.
+- **Queue.** One list: the share extension, clipboard and compose screen all save into it.
+- **Article.** Stash reads and tags each saved link once.
 
 ## Journeys
 
