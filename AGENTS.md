@@ -12,7 +12,7 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 
 ## Commands
 
-- **Verify.** `vp run verify`, defined in `vite.config.ts`.
+- **Verify.** `vp run fix`, then `vp run test`, defined in `vite.config.ts`; `fix` formats, fixes and runs every check CI's `vp run check` makes.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `.github/releasing.md`, **Publish an iOS app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: Simulator builds, deploy, native tools, publishing packages and iOS apps.
