@@ -88,7 +88,7 @@
 		"expo-updates",
 		"expo-web-browser"
 	],
-	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**", ".agents/**"],
+	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [
 		// Test fixtures choose an isolated AI usage directory; production uses AiProxy.layer.
 		{"exports": ["layerAiProxy"], "file": "apps/*/src/services/*/service.ts"},

@@ -10,8 +10,12 @@ description: Load at task start, when the user changes direction, before a plan 
 The main thread is the orchestrator: it owns the plan, the decisions, the integrated diff and the proof. Wide reads, inventories, logs, searches and web facts go to a worker, which returns a cited report.
 
 - **One thread per task.** Never suggest a new top-level thread. Subagents extend this thread's context; they never replace it. The task list holds units and status; the thread holds decisions and reasons. After compaction, read both before asking anything.
+- **Delegate by default.** The main thread writes only the plan, decisions, diff review and proof. Every unit that can be specified goes to a worker, even a small one; write it yourself only when a brief would cost more than the change.
 - **One persistent worker per unit.** Start it with a brief; send follow-ups to the same thread; a new unit gets a new worker. Start independent units together and integrate when a result is needed.
+- **One level.** A worker never starts a subagent. If it needs one, it returns with the evidence and the orchestrator starts a peer. Root threads may start workers; workers do not.
 - **Workers.** Only `opencode-zen` / `deepseek-v4.1-flash`. A read-only audit shares this checkout; a writing unit gets `isolation:'worktree'`.
+- **Where.** Run on the current worker by default. Check `t3_environment_links`; send a heavy writing unit to `desktop` only when it is reachable. If it is down or the delegate fails for the target, retry the same brief on this worker; never block on a sleeping desktop.
+- **Quota.** `orchestrator_capabilities` lists providers and models but no remaining quota; a quota failure appears only when a run fails. Retry the same brief once on the next allowed provider, then take the unit over. Never retry an exhausted provider.
 - **Brief.** Objective, plan card path, owned files, fixed decisions, exclusions, done command, report format. Write the spec yourself; never "based on your findings".
 - **Worker rules**, in every writing brief: edit only owned files; run scoped checks (`vp lint <paths>`, `vp test <files>`), never `vp run verify`, `vp run fix` or another repo-wide fix; commit on the branch; clone only under `/tmp/repos/`; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with command, exit code, capture path and commit SHA.
 - **Context budget.** Keep decisions, reviewed diffs and proof in the main thread; keep reports and logs out of it.

@@ -16,7 +16,7 @@ export default defineConfig({
 	},
 	fmt: {
 		// Icon Composer writes and reads its own JSON layout.
-		ignorePatterns: ['**/*.gen.ts', '**/*.icon/**', 'packages/components-web/src/ui/**', '.agents/**'],
+		ignorePatterns: ['**/*.gen.ts', '**/*.icon/**', 'packages/components-web/src/ui/**'],
 
 		arrowParens: 'avoid',
 		bracketSpacing: false,
@@ -61,7 +61,7 @@ export default defineConfig({
 	lint: {
 		env: {browser: true, builtin: true, node: true},
 		extends: [lint],
-		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**', '.agents/**'],
+		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 		overrides: [
 			{
 				// Skill scripts run inside an app's page through preview_evaluate, with no Effect runtime and no type information.
