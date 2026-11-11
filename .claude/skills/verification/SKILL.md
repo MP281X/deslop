@@ -10,11 +10,8 @@ Lint owns what a parser can check. This skill covers running behaviour, the user
 ## Diagnose
 
 1. **Reproduce** on base: a failing check, request or capture of the broken state. No theory before it exists.
-2. **Name the mechanism** in one sentence and test it, changing one variable per probe.
-3. **Fix where the wrong state starts**, not where it shows. A guard, retry, clamp or swallowed error fixes only a state that is legitimate.
-4. **Sweep the class.** Fix every other instance in the same change; a mistake that can recur becomes a shared component or a lint rule.
-5. **Two strikes.** The same check failing after two edits means the hypothesis is wrong: stop editing and form a new one.
-6. **Suspect the instrument** first when a result surprises: stale preview, old build, fixture data, the wrong viewport.
+2. **Fix where the wrong state starts**, not where it shows. A guard, retry, clamp or swallowed error fixes only a state that is legitimate.
+3. **Two strikes.** The same check failing after two edits means the hypothesis is wrong: stop editing and form a new one.
 
 ## Prove
 

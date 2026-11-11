@@ -41,14 +41,8 @@ Two headless Debian workers in one tailnet, same user and paths.
 
 ## Tools
 
-One chain per trigger; no data means report it and investigate further, not verification.
+No data means report it and investigate further, not verification.
 
-| Missing fact                             | First call                                                                                                                                                                                                                       |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime error, trace or latency          | Call Scope's `list_operations`, then `find_traces`, then `read_trace` or `measure_latency`.                                                                                                                                      |
-| Runtime service, port or container state | Call Deploy's `list_apps` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`. Use the full worker name, such as `dev.mp281x.xyz`, not `dev`; check unit health with the maintenance check's `systemctl --failed`. |
-| Sign-in blocked                          | Call Auth's `answer_request`.                                                                                                                                                                                                    |
-| Saved article, video or post             | Call Stash's `search_notes` or `read_note`.                                                                                                                                                                                      |
-| Design reference                         | Call Mobbin's `search_screens`, `search_flows` or `save_content`.                                                                                                                                                                |
-| Dual behavior or skill                   | Call DualOS's `dual_context`, then `read_skill`, then `execute`.                                                                                                                                                                 |
-| A tool seems missing                     | Call `list_mcp_connections` before assuming it is absent.                                                                                                                                                                        |
+- **Runtime state.** Call Deploy's `list_apps` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`. Use the full worker name, such as `dev.mp281x.xyz`, not `dev`; check unit health with the maintenance check's `systemctl --failed`.
+- **Missing tool.** Call `list_mcp_connections` before assuming it is absent.
+- **Runtime error, trace or latency.** Call Scope's `list_operations`, then `find_traces`, then `read_trace` or `measure_latency`.
