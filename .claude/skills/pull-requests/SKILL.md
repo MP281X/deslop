@@ -24,7 +24,7 @@ description: 'Load before the first commit of a task, before the first edit when
      ```
 
    - **Videos:** record the real journey.
-3. **Read back** the rendered body: every image and video loads under its claim, captured on the pushed head.
+3. **Read back** the rendered body: every image and video loads under its claim.
 4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify, fresh captures where they changed, and one push.
 5. **Hand back** once the required jobs pass and no P1 or P2 finding is open.
 6. **Ready** only when the user asks; mark a ready PR draft again before editing its layer.

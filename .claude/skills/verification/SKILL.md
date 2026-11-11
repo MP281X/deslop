@@ -21,7 +21,7 @@ The repository's code-quality tool owns lint rules. This skill covers running be
 - **Surface.** Any change to rendered UI, and any backend change a screen shows, is proved in the T3 browser or Device panel.
 - **Capture.** Use representative data. Capture native apps from a simulator, after a condition holds rather than a delay. Command output supports a capture, never replaces it; a mock is never proof.
 - **Fresh.** The preview runs the latest commit; confirm it before the first capture. Each caption, in the thread and in the PR body, names its short commit; retake a capture whose screen or flow changed since.
-- **Final head.** Capture after the last commit. An amend, rebase or restack changes the head: delete the old media and capture again.
+- **Final head.** Capture the result after the last commit. An amend, rebase or restack changes the head: delete the old media and capture again.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
 - **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with Scope's tracing tools where the app exports traces.
 - **Each touched screen**, in the running app on real or planted data, and every screen it reaches by navigation:
