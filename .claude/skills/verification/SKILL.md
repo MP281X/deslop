@@ -5,7 +5,7 @@ description: Load before editing code for a bug or a failed check, before claimi
 
 # Verification
 
-The repository's code-quality tool owns lint rules. This skill covers running behavior, the user's experience and codebase-wide decisions. A bug or failed check starts at Diagnose; finished work passes Verify, then Prove, then Review.
+Lint owns what a parser can check. This skill covers running behaviour, the user's experience and decisions only the whole codebase shows. A bug or failed check starts at Diagnose; finished work passes Verify, then Prove, then Review.
 
 ## Diagnose
 
@@ -18,25 +18,28 @@ The repository's code-quality tool owns lint rules. This skill covers running be
 
 ## Prove
 
-- **Surface.** Any change to rendered UI, and any backend change a screen shows, is proved in the T3 browser or Device panel.
-- **Capture.** Use representative data. Capture native apps from a simulator, after a condition holds rather than a delay. Command output supports a capture, never replaces it; a mock is never proof.
-- **Fresh.** The preview runs the latest commit; confirm it before the first capture. Each caption, in the thread and in the PR body, names its short commit; retake a capture whose screen or flow changed since.
-- **Final head.** Capture the result after the last commit. An amend, rebase or restack changes the head: delete the old media and capture again.
+- **Surface.** The user wants every change to rendered UI, and every backend change a screen shows, proved in the T3 browser, and a native change in the Device panel. This standing request covers the preview tools.
+- **Capture** representative data, after a condition holds rather than a delay. Command output supports a capture, never replaces it; a mock is never proof.
+- **Fresh.** The preview runs the head: confirm it before the first capture, and name the short commit in each caption. A later commit retakes the captures whose screen or flow it changed; an amend, rebase or restack retakes them all.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
-- **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with Scope's tracing tools where the app exports traces.
-- **Each touched screen**, in the running app on real or planted data, and every screen it reaches by navigation:
+- **Journeys.** Walk each journey the change touches from its input to its outcome; an app's `AGENTS.md` lists its main ones under `## Journeys`. A backend change is proved through the screen that uses it, with Scope's traces where the app exports them.
+- **Each touched screen**, and every screen it reaches by navigation, on real or planted data:
   - cold first open, reload of a deep link, the first request failing, and on native background then resume;
   - hover, focus and keyboard on changed controls;
-  - 390 and 1440 wide (T3's phone `iphone-12-pro` and desktop 1440×900), 3440 for wide layouts; light and dark when color changed;
+  - a phone and a desktop, T3's `iphone-12-pro` and 1440×900, and the widest layout the repository targets when the change reaches it; light and dark when colour changed;
   - an app with web and iOS clients: the same screen on both, side by side, with the same content, actions and identity, each in its platform's own controls.
-- **Read every capture as a page**, one line per capture: it matches the approved plan; nothing appears twice; nothing is cut, misaligned or overflowing; loading, empty and error states tell the truth; every word is needed.
-- **Audit** every captured web state with `preview_evaluate` and [references/page-audit.js](references/page-audit.js); fix or give a reason for each entry, and apply its `design` group only where the app has design rules. On iOS, read the `agent-device` snapshot the same way: a label or button twice, a control without a name, a missing navigation title.
-- **Performance.** Compare the same workload over repeated runs, reporting p50, p95 and resource costs. Use Scope's tracing tools.
+- **Read every capture as a page**, one line each: it matches the approved plan; nothing appears twice; nothing is cut, misaligned or overflowing; loading, empty and error states tell the truth; every word is needed.
+- **Audit** every captured web state with `preview_evaluate` and [references/page-audit.js](references/page-audit.js): fix or give a reason for each entry, and apply its `design` group only where the repository records design rules. On iOS, read the `agent-device` snapshot the same way: a label or button twice, a control without a name, a missing navigation title.
+- **Performance.** Compare the same workload over repeated runs: p50, p95 and resource costs, from Scope's traces.
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review
 
-One reviewer in a fresh context, read-only. Its brief holds the approved plan, the user's acceptance criteria in their own words, the immutable head and the captures. It looks only where Verify cannot: architecture and ownership against the repository's recorded choices, data and migrations, caller and user contracts, and the experience in the running app (a UI reviewer opens its own preview tab, since reading source is not evidence). It reports what a person would fix, grouped by class, each with the input, the observed result and `path:line`; "no findings" lists the probes it ran and one attempt to break the change. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; a third round means the approach is wrong. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
+- **Who.** One reviewer in a fresh context, read-only.
+- **Brief.** The approved plan, the user's acceptance criteria in their own words, the immutable head and the captures.
+- **Where.** Only where Verify cannot look: architecture and ownership against the repository's recorded choices, data and migrations, caller and user contracts, and the experience in the running app. A UI reviewer opens its own preview tab, since reading source is not evidence.
+- **Findings** are what a person would fix, grouped by class, each with the input, the observed result and `path:line`. "No findings" lists the probes run and one attempt to break the change; blocked, the answer is `NOT VERIFIED` and what stopped it. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
+- **Rounds.** One round, then one recheck after fixes; a third means the approach is wrong.
 
 | Severity | Meaning                                                                                    |
 | -------- | ------------------------------------------------------------------------------------------ |

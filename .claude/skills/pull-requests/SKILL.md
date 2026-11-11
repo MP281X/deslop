@@ -8,24 +8,25 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Branches
 
 - **Review units.** Each PR is coherent and runnable on its target, with generated files beside their source.
-- **Stacks.** PRs that depend on each other, change the same thing or merge together form one stack: one branch per layer on the layer below, each readable alone. Only unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
-- **Reshape.** Remove a rejected approach from every unmerged layer; reuse the surviving PRs rather than introducing it below and undoing it above.
-- **Integration.** Batch corrections into their owning layers, then restack onto the latest default branch before the final proof and Verify. Publish that integrated state; revalidate if it changes.
+- **One PR per thing.** An unmerged PR is edited in place: more work on the same thing goes into the PR that owns it, never into a new PR on top. Split only what is independent, or a different layer of the same thing.
+- **Stacks** make review easier; they are not for merging in steps. PRs that depend on each other or merge together form one stack: one branch per layer on the layer below, each readable alone. Unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
+- **Reshape.** Remove a rejected approach from every unmerged layer rather than introducing it below and undoing it above.
+- **Integration.** Batch corrections into their owning layers, then restack onto the latest default branch before the final proof and Verify.
 - **Before.** When a before/after is claimed, capture the Before state on base before the first edit.
 
 ## Publish
 
-1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
-2. **Describe** with the repository's PR or MR template: the template is the structure; the body carries the evidence.
+1. **Push** as a draft. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
+2. **Describe** with the repository's PR or MR template.
    - **Figures** stand in for an `html_render` page, which a PR cannot hold: lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
 
      ```bash
      magick <figure>.png -fuzz 1% -transparent "$(magick <figure>.png -format '%[pixel:p{0,0}]' info:)" <figure>.png
      ```
 
-   - **Videos:** record the real journey.
+   - **Videos** record the real journey.
 3. **Read back** the rendered body: every image and video loads under its claim.
-4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify, fresh captures where they changed, and one push.
+4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify and fresh captures where they changed.
 5. **Hand back** once the required jobs pass and no P1 or P2 finding is open.
 6. **Ready** only when the user asks; mark a ready PR draft again before editing its layer.
 
@@ -39,9 +40,12 @@ gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EO
 EOF
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
 gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
+glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
+glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
+glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 
-**Stacks** act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
+**GitHub stacks** act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
 
 ```bash
 gh stack init <bottom> [<next> …]    # start, or adopt existing branches bottom first
@@ -52,3 +56,15 @@ gh stack push                        # later rounds
 gh stack sync --prune                # after a merge below
 gh stack unstack --local             # drop tracking of a stack that was never submitted
 ```
+
+**GitLab stacks** act on the stack selected in this worktree: one commit per diff on its own branch, whose first message line is the MR title (`Draft: ` opens a draft). Every MR of a stack comes from `sync`, which never edits an existing MR.
+
+```bash
+git commit -m 'Draft: <title>'
+script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> <default>..HEAD" /dev/null
+git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
+glab stack sync --skip-push                          # restack locally before Verify
+glab stack sync --update-base                        # each push and after a merge below: rebase, drop merged diffs, force-push, open missing MRs
+```
+
+`infer` needs a TTY and an editor, and its range starts at `origin/<default>` since the local default branch can lag; `glab stack create` cannot run in a worktree. `glab stack reorder` takes the same `script` and editor shape, one branch per line, then `glab stack sync`.
