@@ -8,6 +8,7 @@ import {NetAddress} from 'effect/net'
 
 import {AuthError, ClientInfo} from '@deslop/runtime/auth/schema'
 import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
+import {isPrivateAddress} from '@deslop/runtime/net'
 
 import type {
 	AuthorizeClient,
@@ -116,11 +117,6 @@ function parsedAddress(address: string) {
 	)
 }
 
-function isPrivateOrUniqueLocal(ip: NetAddress.IpAddress) {
-	if (NetAddress.isIpv4Address(ip)) return NetAddress.isPrivate(ip)
-	return NetAddress.isUniqueLocal(ip)
-}
-
 // Whoever holds an IPv6 address holds its whole /64, so limits count the /64.
 export function addressGroup(address: string) {
 	return Option.match(parsedAddress(address), {
@@ -195,7 +191,7 @@ export function deviceLabel(origin: Origin) {
 			if (
 				Option.exists(
 					parsedAddress(address),
-					ip => NetAddress.isLinkLocal(ip) || NetAddress.isLoopback(ip) || isPrivateOrUniqueLocal(ip)
+					ip => NetAddress.isLinkLocal(ip) || NetAddress.isLoopback(ip) || isPrivateAddress(ip)
 				)
 			) {
 				return Option.some('dev')

@@ -35,8 +35,8 @@ import {bearerOf, isJwt} from '@deslop/runtime/auth/utils'
 import {MCP_PATH} from '@deslop/runtime/schema'
 
 import {
+	connectionFailure,
 	connectionStatus,
-	describe,
 	endSession,
 	gatewayUrl,
 	mcpClient,
@@ -53,14 +53,6 @@ type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
 export const VerifiedCaller = Context.Reference<
 	Option.Option<{key: string; result: Result.Result<User & {client?: string}, AuthError>}>
 >('@deslop/gateway/services/gateway/service/VerifiedCaller', {defaultValue: () => Option.none()})
-
-// The failure keeps its cause for traces and names it for the MCP page and the calling agent.
-function rejected(server: Pick<Connection, 'name'>) {
-	return (cause: unknown) => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, error: 'temporarily_unavailable', message: `${server.name}: ${describe(cause)}`})
-	}
-}
 
 export class Gateway extends Context.Service<
 	Gateway,
@@ -188,12 +180,15 @@ export class Gateway extends Context.Service<
 							requestInit: {redirect: 'error'}
 						})
 						const client = yield* Effect.acquireRelease(Effect.sync(mcpClient), acquired =>
-							endSession(transport, acquired, rejected(server), 'upstream')
+							endSession(transport, acquired, connectionFailure(server.name), 'upstream')
 						)
-						yield* Effect.tryPromise({catch: rejected(server), try: signal => client.connect(transport, {signal})})
+						yield* Effect.tryPromise({
+							catch: connectionFailure(server.name),
+							try: signal => client.connect(transport, {signal})
+						})
 						return yield* run(client)
 					}),
-					Effect.mapError(rejected(server)),
+					Effect.mapError(connectionFailure(server.name)),
 					Effect.scoped
 				)
 			}
@@ -208,11 +203,11 @@ export class Gateway extends Context.Service<
 					return yield* withClient(server, request.headers, client =>
 						pipe(
 							Effect.tryPromise({
-								catch: rejected(server),
+								catch: connectionFailure(server.name),
 								try: signal => client.callTool({arguments: args, name: tool}, {signal})
 							}),
 							Effect.flatMap(Schema.decodeUnknownEffect(McpSchema.CallToolResult)),
-							Effect.mapError(rejected(server))
+							Effect.mapError(connectionFailure(server.name))
 						)
 					)
 				},
@@ -225,7 +220,7 @@ export class Gateway extends Context.Service<
 								McpSchema.CallToolResult.make({
 									content: [
 										{
-											text: `${rejected(server)(cause).message}. list_mcp_connections shows its state; reconnect it at ${url}.`,
+											text: `${connectionFailure(server.name)(cause).message}. list_mcp_connections shows its state; reconnect it at ${url}.`,
 											type: 'text'
 										}
 									],
@@ -241,14 +236,17 @@ export class Gateway extends Context.Service<
 				const found = yield* pipe(
 					withClient(server, headers, client =>
 						pipe(
-							Effect.tryPromise({catch: rejected(server), try: signal => client.listTools(undefined, {signal})}),
+							Effect.tryPromise({
+								catch: connectionFailure(server.name),
+								try: signal => client.listTools(undefined, {signal})
+							}),
 							Effect.flatMap(result =>
 								Schema.decodeUnknownEffect(RemoteTools)(
 									Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 								)
 							),
 							Effect.mapBoth({
-								onFailure: rejected(server),
+								onFailure: connectionFailure(server.name),
 								onSuccess: tools => ({
 									icons: serverIcons(client.getServerVersion()),
 									instructions: client.getInstructions(),
@@ -318,7 +316,7 @@ export class Gateway extends Context.Service<
 										Effect.catch(cause =>
 											connections.report(server.id, server.generation, {
 												_tag: 'Failed',
-												error: rejected(server)(cause).message
+												error: connectionFailure(server.name)(cause).message
 											})
 										)
 									),

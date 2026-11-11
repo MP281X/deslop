@@ -136,6 +136,14 @@ export function describe(cause: unknown): string {
 	return 'It failed for an unknown reason'
 }
 
+// A connection failure keeps its Auth error as it is; anything else becomes an outage the page can retry.
+export function connectionFailure(prefix: string) {
+	return (cause: unknown) => {
+		if (Schema.is(AuthError)(cause)) return cause
+		return AuthError.make({cause, error: 'temporarily_unavailable', message: `${prefix}: ${describe(cause)}`})
+	}
+}
+
 export function serverName(url: string) {
 	return pipe(
 		new URL(url).hostname,
