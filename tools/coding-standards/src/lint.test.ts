@@ -72,7 +72,13 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	return {
 		exitCode: result.exitCode,
 		sources: yield* read,
-		stderr: result.stderr,
+		// Rolldown appends a plugin timing warning on a loaded host; it is not a lint diagnostic.
+		stderr: pipe(
+			String.split(result.stderr, '\n'),
+			Array.takeWhile(line => !String.includes('[PLUGIN_TIMINGS]')(line)),
+			Array.join('\n'),
+			String.trim
+		),
 		stdout: yield* Schema.decodeEffect(Schema.fromJsonString(OxlintOutput))(result.stdout)
 	}
 })
