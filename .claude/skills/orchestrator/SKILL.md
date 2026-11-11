@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: "Load when planning, delegating or integrating work on a codebase, questions about it that need workers included: which model takes each step, how units run in parallel, where, and what a brief says. Not for schedules or T3 workflows."
+description: 'Load when planning, delegating or integrating work on a codebase, questions about it that need workers included: which model takes each step, how units run in parallel, where, and what a brief says. Not for schedules or T3 workflows.'
 ---
 
 # Orchestrator
@@ -9,13 +9,13 @@ description: "Load when planning, delegating or integrating work on a codebase, 
 
 **Cheapest capable model.** Every delegate names its provider, model and effort; unset, it inherits the main thread's.
 
-| Step                                                         | Model                                             | Returns                                                     |
-| ------------------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------- |
-| Find, read, search, logs, web                                | Cheap                                             | A cited report with absolute paths, never file contents     |
-| Scoped edit: owned files, fixed decisions, one proof command | Cheap; strong when it needs judgment across files | A commit and its proof                                      |
-| Complex build: the design is still open in the code          | Opus 5.5 medium or high                           | A commit and its proof                                      |
-| Verify, tests, builds, captures                              | Cheap                                             | Exit code, the failing lines, one line per capture it read  |
-| Final review, a close decision                               | Strong, another family than the builder           | Findings with `path:line`                                   |
+| Step                                                         | Model                                             | Returns                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------------- |
+| Find, read, search, logs, web                                | Cheap                                             | A cited report with absolute paths, never file contents    |
+| Scoped edit: owned files, fixed decisions, one proof command | Cheap; strong when it needs judgment across files | A commit and its proof                                     |
+| Complex build: the design is still open in the code          | Opus 5.5 medium or high                           | A commit and its proof                                     |
+| Verify, tests, builds, captures                              | Cheap                                             | Exit code, the failing lines, one line per capture it read |
+| Final review, a close decision                               | Strong, another family than the builder           | Findings with `path:line`                                  |
 
 - **Cheap:** DeepSeek V4.1 Flash (`opencode-zen` / `deepseek-v4.1-flash`), GPT-6 Luna high (`codex` / `gpt-6-luna`, `reasoningEffort: high`), Haiku 5.5 high (`claudeAgent` / `claude-haiku-5-5`, `effort: high`).
 - **Strong:** GPT-6.1 Sol (`codex` / `gpt-6.1-sol`), Sonnet 5.5 (`claudeAgent` / `claude-sonnet-5-5`), Opus 5.5 (`claude-opus-5-5`), Fable 5.2 (`claude-fable-5-2`).
