@@ -5,6 +5,17 @@ description: Load at task start, when the user changes direction, before a plan 
 
 # Workflow
 
+## Orchestrate
+
+The main thread is the orchestrator: it owns the plan, the decisions, the integrated diff and the proof. Wide reads, inventories, logs, searches and web facts go to a worker, which returns a cited report.
+
+- **One thread per task.** Never suggest a new top-level thread. Subagents extend this thread's context; they never replace it. The task list holds units and status; the thread holds decisions and reasons. After compaction, read both before asking anything.
+- **One persistent worker per unit.** Start it with a brief; send follow-ups to the same thread; a new unit gets a new worker. Start independent units together and integrate when a result is needed.
+- **Workers.** Only `opencode-zen` / `deepseek-v4.1-flash`. A read-only audit shares this checkout; a writing unit gets `isolation:'worktree'`.
+- **Brief.** Objective, plan card path, owned files, fixed decisions, exclusions, done command, report format. Write the spec yourself; never "based on your findings".
+- **Worker rules**, in every writing brief: edit only owned files; run scoped checks (`vp lint <paths>`, `vp test <files>`), never `vp run verify`, `vp run fix` or another repo-wide fix; commit on the branch; clone only under `/tmp/repos/`; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with command, exit code, capture path and commit SHA.
+- **Context budget.** Keep decisions, reviewed diffs and proof in the main thread; keep reports and logs out of it.
+
 ## Plan card
 
 A data model, a screen, an architecture change, or work spanning more than one PR starts with a plan card: one `html_render` page in this thread that the user approves before the real build.
@@ -18,21 +29,11 @@ A data model, a screen, an architecture change, or work spanning more than one P
 
 Map causes before showing options. Approval freezes the card; an unanswered card is unapproved, never called approved or chosen. Record durable app decisions in the app's `AGENTS.md`.
 
-**Steers re-plan.** A message that changes an entity, a screen or a unit is planned like the first request: redraw the card around it, carry every settled decision over without asking it again, and rewrite the unmerged layers it reshapes rather than stacking a fix on top. A screen change shows its mock before any edit. Workers on parts the steer doesn't touch keep going.
+**Steers re-plan.** A message that changes an entity, a screen, a unit or an acceptance criterion is planned like the first request: redraw the card around it, carry every settled decision over without asking it again, and rewrite the unmerged layers it reshapes rather than stacking a fix on top. A steered screen shows its mock before any edit. Workers on parts the steer doesn't touch keep going.
 
 ## Decide
 
-A middle decision has a better answer that more evidence reveals; taste and product stay with the user. Gather the deciding source, probe or a time-boxed spike in `/tmp/<task>/`. If it is still close, give one model from another family the question, the evidence and the criteria without your verdict, and adopt its answer unless it shows a flaw you can check. No rounds, votes or scores.
-
-## Split and delegate
-
-- **Units.** Each owns files and a proof command. Units touching the same file are one; dependent units form a stack.
-- **Who.** A cheap model from another provider than the main thread's for clear units: DeepSeek V4.1 Flash (`opencode-zen`), GPT-6 Luna (`codex`) or Haiku 5.5 (`claudeAgent`), for building to an approved card, sweeps, codemods, tests, inventories, exploration and research. GPT-6.1 Sol (`codex`) or Opus 5.5 (`claudeAgent`) for units that need judgment and as the other family for review. The main thread writes a unit itself only when briefing it costs more than doing it, and never reads logs, the web or a wide code search itself: a cheap worker reads them and returns a cited report.
-- **Where.** `isolation:'worktree'` for a unit that writes; `target.environmentId` of `dev` to run it on the other worker. Read-only units share the checkout.
-- **Brief.** Objective, card or its path, owned files, fixed decisions, exclusions, done command, report format. Write the spec yourself; never "based on your findings".
-- **Worker rules**, copied into every writing brief: edit only the owned files; run checks scoped to them (`vp lint <paths>`, `vp test <files>`), never `vp run verify`, `vp run fix` or another repo-wide fix; commit on the branch; clone only under `/tmp/repos/`; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with evidence: command and exit code, capture paths, commit SHA.
-- **Persistent.** A follow-up for the same unit goes to its thread with `t3_thread_send`; the worker keeps its context and its completion wakes you. A new unit gets a new delegate.
-- **Overlap.** Work independently until a result is needed.
+A middle decision has a better answer that more evidence reveals; taste and product stay with the user. If the repository, thread or an installed dependency answers it, it is not a question. Otherwise gather the deciding source, probe or a time-boxed spike in `/tmp/<task>/`. If it is still close, give one fresh-context worker the question, the evidence and the criteria without your verdict, and adopt its answer unless it shows a flaw you can check. No rounds, votes or scores.
 
 ## Integrate
 

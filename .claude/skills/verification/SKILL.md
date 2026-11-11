@@ -21,6 +21,7 @@ Verify owns code-level quality; see `tools/coding-standards/README.md`. This ski
 - **Surface.** Any change to rendered UI, and any backend change a screen shows, is proved in the T3 browser or Device panel.
 - **Capture.** Use representative data. Capture native apps from a simulator, after a condition holds rather than a delay. Command output supports a capture, never replaces it; a mock is never proof.
 - **Fresh.** The preview runs the latest commit; confirm it before the first capture. Each caption, in the thread and in the PR body, names its short commit; retake a capture whose screen or flow changed since.
+- **Final head.** Capture after the last commit. An amend, rebase or restack changes the head: delete the old media, capture again, and read the rendered PR body back before handback.
 - **Fixed means flipped.** A bug fix shows the probe that failed on base passing on the integrated head.
 - **Journeys.** The app's `AGENTS.md` lists its main journeys under `## Journeys`; add the ones the change touches when missing. Backend changes are proved through the screen that uses them, with the Scope trace where the app exports traces.
 - **Each touched screen**, in the running app on real or planted data, and every screen it reaches by navigation:
@@ -35,13 +36,17 @@ Verify owns code-level quality; see `tools/coding-standards/README.md`. This ski
 
 ## Review
 
-One reviewer from another model family, in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It looks only where Verify cannot: architecture and ownership against the repository's recorded choices, data and migrations, caller and user contracts, and the experience in the running app (a UI reviewer opens its own preview tab, since reading source is not evidence). It reports what a person would fix, grouped by class, each with the input, the observed result and `path:line`; "no findings" lists the probes it ran and one attempt to break the change. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; a third round means the approach is wrong. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
+One reviewer in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It looks only where Verify cannot: architecture and ownership against the repository's recorded choices, data and migrations, caller and user contracts, and the experience in the running app (a UI reviewer opens its own preview tab, since reading source is not evidence). It reports what a person would fix, grouped by class, each with the input, the observed result and `path:line`; "no findings" lists the probes it ran and one attempt to break the change. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; a third round means the approach is wrong. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
 
 | Severity | Meaning                                                                                    |
 | -------- | ------------------------------------------------------------------------------------------ |
 | P1       | Broken user or caller contract, data loss, secret exposure, missing migration, false claim |
 | P2       | Architecture, ownership or boundary violation; an abstraction that adds no capability      |
 | P3       | A flow, layout or wording that works but reads worse than the recorded design              |
+
+## Judge
+
+Run one `vp run judge` pass after the final fix batch. Fix each finding, or add a `judge-ignore` with a reason where the question does not apply; a stale suppression is a finding. The judge never runs in CI and never replaces Verify.
 
 ## Tests
 

@@ -13,10 +13,11 @@ Personal software for one user on two workers: Effect apps, their MCP tools and 
 ## Commands
 
 - **Verify**: `vp run verify`, defined in `vite.config.ts`.
+- **Judge**: `vp run judge` once after the final fix batch, never in CI; fix each finding or add a reasoned `judge-ignore`.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `.github/releasing.md`, **Publish an iOS app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: Simulator builds, deploy, native tools, publishing packages and iOS apps.
-- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down. Skills live in `.claude/skills`; the environment skill owns installation and infrastructure. Change the installed `~/deslop` only through a merged PR, never while other threads use it.
+- **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down. Skills live in `.claude/skills`; `.agents/skills` links to them so Codex loads the same files. All delegates run on `opencode-zen` / `deepseek-v4.1-flash`; no other model. The environment skill owns installation and infrastructure. Change the installed `~/deslop` only through a merged PR, never while other threads use it.
 - **Standards policy.** Each policy is defined once. Only custom rules have tests; a tool upgrade must not opt into new rules, and a declined rule is left out. Each check belongs to the tool that covers it best, proven with the custom rule's failing cases; the compiler and the Effect rules own theirs. A check a parser can make is a static rule; one that needs a single unit read with judgment is a judge question; one that needs the whole codebase belongs to code review. Do not add per-package typecheck scripts. Keep only checks that can fire in the codebases using them, including preventive checks for patterns already encountered. Custom rules earn their place with coverage or a safe fix no native rule offers, and intended forms stay accepted while fixes converge.
 
 ## Patterns
