@@ -56,10 +56,7 @@ function index(links: Record<string, string>) {
 function warningLayer(queue: Queue.Queue<void>, prefix: string) {
 	return Logger.layer([
 		Logger.make(options => {
-			for (const message of Option.getOrElse(
-				Schema.decodeUnknownOption(Schema.Array(Schema.Unknown))(options.message),
-				() => []
-			)) {
+			for (const message of Schema.decodeUnknownSync(Schema.Array(Schema.Unknown))(options.message)) {
 				if (Predicate.isString(message) && String.startsWith(prefix)(message)) {
 					Queue.offerUnsafe(queue, undefined)
 				}

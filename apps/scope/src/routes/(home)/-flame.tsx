@@ -128,6 +128,8 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			)
 		)
 	)
+	const spansById = Record.fromEntries(Array.map(props.trace.spans, span => [span.spanId, span] as const))
+	const placedByLane = Array.groupBy(placed, entry => `${entry.lane}`)
 	const lanes = Array.reduce(placed, 0, (deepest, entry) => Number.max(deepest, entry.lane + 1))
 	const rows = Array.map(placed, entry => {
 		const span = entry.span
@@ -143,19 +145,20 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			!inside &&
 			width > 0 &&
 			labelRight <= width &&
-			Array.every(placed, other => {
-				if (other.span.spanId === span.spanId || other.lane !== entry.lane) return true
-				const otherLeft = (other.span.offsetMs / total) * width
-				const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
-				return labelRight <= otherLeft || otherRight <= labelLeft
-			})
+			Array.every(
+				Option.getOrElse(Record.get(placedByLane, `${entry.lane}`), () => []),
+				other => {
+					if (other.span.spanId === span.spanId) return true
+					const otherLeft = (other.span.offsetMs / total) * width
+					const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
+					return labelRight <= otherLeft || otherRight <= labelLeft
+				}
+			)
 		return {
 			after,
 			bar,
 			description: Option.match(
-				Option.flatMap(Option.fromUndefinedOr(span.parentSpanId), id =>
-					Array.findFirst(props.trace.spans, other => other.spanId === id)
-				),
+				Option.flatMap(Option.fromUndefinedOr(span.parentSpanId), id => Record.get(spansById, id)),
 				{onNone: () => `${span.name} ${duration}`, onSome: parent => `${parent.name} · ${span.name} ${duration}`}
 			),
 			duration,

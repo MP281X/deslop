@@ -868,7 +868,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (input: ReadTraceParams) {
 				const traceId = String.toLowerCase(input.id)
 				const entries = yield* read
-				if (Array.isReadonlyArrayEmpty(Array.filter(entries, entry => entry.traceId === traceId))) {
+				if (!Array.some(entries, entry => entry.traceId === traceId)) {
 					return yield* TelemetryError.make({
 						message:
 							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
