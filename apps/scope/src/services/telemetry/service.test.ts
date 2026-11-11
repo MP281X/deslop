@@ -325,6 +325,106 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
+		'derives a trace again when an ingest touches it while reusing the others',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.setTime(NOW)
+			const telemetry = yield* fresh()
+			const first = String.repeat(32)('a')
+			const second = String.repeat(32)('b')
+			yield* telemetry.ingestTraces(
+				request('@deslop/stash-server', [
+					span({
+						end: `${BigInt(START) + 10_000_000n}`,
+						name: 'op',
+						spanId: '1111111111111111',
+						start: START,
+						traceId: first
+					})
+				])
+			)
+			yield* TestClock.adjust('2 seconds')
+			assert.strictEqual(
+				Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations[0]?.p95Ms,
+				10
+			)
+			yield* telemetry.ingestTraces(
+				request('@deslop/stash-server', [
+					span({
+						end: `${BigInt(START) + 40_000_000n}`,
+						name: 'step',
+						parent: '1111111111111111',
+						spanId: '2222222222222222',
+						start: `${BigInt(START) + 10_000_000n}`,
+						traceId: first
+					}),
+					span({
+						end: `${BigInt(START) + 25_000_000n}`,
+						name: 'op',
+						spanId: '3333333333333333',
+						start: `${BigInt(START) + 20_000_000n}`,
+						traceId: second
+					})
+				])
+			)
+			yield* TestClock.adjust('2 seconds')
+			assert.deepStrictEqual(
+				Array.map(
+					Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations ?? [],
+					operation => [operation.name, operation.count, operation.p95Ms]
+				),
+				[['op', 2, 40]]
+			)
+		})
+	)
+
+	test.effect(
+		'shows a trace whose root never arrives once an ingest recomputes the frame',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.setTime(NOW)
+			const telemetry = yield* fresh()
+			const rootless = String.repeat(32)('a')
+			const other = String.repeat(32)('b')
+			yield* telemetry.ingestTraces(
+				request('@deslop/stash-server', [
+					span({
+						end: `${BigInt(START) + 10_000_000n}`,
+						name: 'step',
+						parent: 'ffffffffffffffff',
+						spanId: '1111111111111111',
+						start: START,
+						traceId: rootless
+					})
+				])
+			)
+			yield* TestClock.adjust('2 seconds')
+			assert.lengthOf(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps, 0)
+			yield* TestClock.adjust('61 seconds')
+			yield* telemetry.ingestTraces(
+				request('@deslop/stash-server', [
+					span({
+						end: `${BigInt(START) + 61_001_000_000n}`,
+						name: 'other',
+						spanId: '2222222222222222',
+						start: `${BigInt(START) + 61_000_000_000n}`,
+						traceId: other
+					})
+				])
+			)
+			yield* TestClock.adjust('2 seconds')
+			assert.deepStrictEqual(
+				Array.sort(
+					Array.map(
+						Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations ?? [],
+						operation => operation.name
+					),
+					Order.String
+				),
+				['other', 'step']
+			)
+		})
+	)
+
+	test.effect(
 		'answers before stored entries load, keeps an ingest made meanwhile and shows both afterwards',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
@@ -908,6 +1008,38 @@ it.layer(platform)(test => {
 				[['attached']]
 			)
 			assert.strictEqual(trace.logs.length, 1)
+		})
+	)
+
+	test.effect(
+		'dedupes a retried log export into one record',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.setTime(NOW)
+			const telemetry = yield* fresh()
+			const trace = String.repeat(32)('1')
+			const retried = logs('@deslop/stash-server', [
+				log('saved', `${BigInt(START) + 1_000_000n}`, {
+					attributes: [{key: 'note', value: {stringValue: 'keep'}}],
+					severityNumber: 9,
+					spanId: '1111111111111111',
+					traceId: trace
+				})
+			])
+			yield* telemetry.ingestTraces(
+				request('@deslop/stash-server', [
+					span({
+						end: `${BigInt(START) + 10_000_000n}`,
+						name: 'op',
+						spanId: '1111111111111111',
+						start: START,
+						traceId: trace
+					})
+				])
+			)
+			yield* telemetry.ingestLogs(retried)
+			yield* telemetry.ingestLogs(retried)
+			assert.strictEqual((yield* telemetry.searchLogs({limit: 100, since: '3d'})).total, 1)
+			assert.strictEqual((yield* telemetry.trace(trace)).spans[0]?.logs.length, 1)
 		})
 	)
 

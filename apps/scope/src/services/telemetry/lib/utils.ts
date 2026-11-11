@@ -16,7 +16,7 @@ import {
 	pipe
 } from 'effect'
 
-import {Attribute, Nano, rangeStart, Runtime, Side, SpanLink} from '#services/telemetry/schema.ts'
+import {Nano, rangeStart, Runtime, Side, SpanLink} from '#services/telemetry/schema.ts'
 import type {
 	Entry,
 	Operation,
@@ -38,21 +38,36 @@ const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 	Array.map(String.split(version, '.'), part => Option.getOrElse(Number.parse(part), () => 0))
 )
 
-function resourceString(resource: {readonly attributes?: readonly Attribute[]}, key: string) {
+type StoredAttribute = {key: string; value: unknown}
+
+function resourceString(resource: {readonly attributes?: readonly StoredAttribute[]}, key: string) {
 	return pipe(
 		resource.attributes ?? [],
 		Array.findFirst(attribute => attribute.key === key),
-		Option.flatMap(attribute => Option.liftPredicate(attribute.value['stringValue'], String.isString)),
+		Option.flatMap(attribute => Option.liftPredicate(attribute.value, Predicate.isObject)),
+		Option.flatMap(value => Option.liftPredicate(value['stringValue'], String.isString)),
 		Option.getOrElse(() => '')
 	)
 }
 
+// Stored payloads already hold OTLP attributes, so a lookup reads them instead of decoding the array on every span and snapshot.
 function spanAttributes(payload: Schema.JsonObject) {
-	return Option.getOrElse(Schema.decodeUnknownOption(Schema.Array(Attribute))(payload['attributes']), () => [])
+	const attributes = payload['attributes']
+	if (!Array.isArray(attributes)) return []
+	const found = Array.map(attributes, attribute =>
+		Option.flatMap(Option.liftPredicate(attribute, Predicate.isObject), object =>
+			Option.all({
+				key: Option.liftPredicate(object['key'], Predicate.isString),
+				value: Option.liftPredicate(object['value'], Predicate.isObject)
+			})
+		)
+	)
+	if (Array.some(found, Option.isNone)) return []
+	return Array.getSomes(found)
 }
 
 // An OTLP attribute's one primitive value: a string, number or boolean, wrapped as the protocol sends it.
-function primitiveOf(value: Schema.Json) {
+function primitiveOf(value: unknown) {
 	if (Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return value
 	if (value === null || !Predicate.isObject(value) || Array.isArray(value)) return undefined
 	const integer = value['intValue']
@@ -69,7 +84,7 @@ function primitiveOf(value: Schema.Json) {
 	return undefined
 }
 
-function attributePrimitive(attributes: readonly Attribute[], key: string) {
+function attributePrimitive(attributes: readonly StoredAttribute[], key: string) {
 	return pipe(
 		attributes,
 		Array.findFirst(attribute => attribute.key === key),
@@ -285,12 +300,6 @@ function started(resource: Resource) {
 	return 0n
 }
 
-// Each entry's run, read once per query: finding the marker searches the resource's attributes.
-function runsOf(entries: Entry[]) {
-	const runs = Record.fromEntries(Array.map(entries, entry => [entry.id, started(entry.resource)] as const))
-	return (entry: Entry) => runs[entry.id] ?? 0n
-}
-
 export function serviceName(resource: Resource) {
 	const value = resourceString(resource, 'service.name')
 	if (String.isNonEmpty(value)) return value
@@ -453,24 +462,33 @@ const byTime = Order.mapInput(Order.BigInt, (time: string) => BigInt(time))
 
 const byStart = Order.mapInput(byTime, (entry: {time: string}) => entry.time)
 
+// Each service's latest run counted in one pass; the first entry of the newest run names its runtime and release.
 export function serviceStatuses(entries: Entry[]) {
-	const runOf = runsOf(entries)
-	return Record.collect(
-		Array.groupBy(entries, entry => entry.service),
-		(name, group) => {
-			const latest = Array.max(group, Order.mapInput(Order.BigInt, runOf))
-			const run = runOf(latest)
-			const current = Array.filter(group, entry => runOf(entry) === run)
-			return {
-				entries: current.length,
-				lastEventAt: Array.max(['0', ...Array.map(current, entry => entry.time)], byTime),
-				name,
-				runStartedAt: `${run}`,
-				runtime: runtime(latest.resource),
-				version: versionOf(latest)
-			} satisfies ServiceStatus
+	type Run = {count: number; lastEventAt: string; latest: Entry; run: bigint; service: string}
+	const runs: Record<string, Run> = {}
+	for (const entry of entries) {
+		const run = started(entry.resource)
+		const current = runs[entry.service]
+		if (current === undefined) {
+			runs[entry.service] = {count: 1, lastEventAt: entry.time, latest: entry, run, service: entry.service}
+		} else if (run > current.run) {
+			current.count = 1
+			current.lastEventAt = entry.time
+			current.latest = entry
+			current.run = run
+		} else if (run === current.run) {
+			current.count += 1
+			if (BigInt(entry.time) > BigInt(current.lastEventAt)) current.lastEventAt = entry.time
 		}
-	)
+	}
+	return Array.map(Record.values(runs), current => ({
+		entries: current.count,
+		lastEventAt: current.lastEventAt,
+		name: current.service,
+		runStartedAt: `${current.run}`,
+		runtime: runtime(current.latest.resource),
+		version: versionOf(current.latest)
+	})) satisfies ServiceStatus[]
 }
 
 // A trace's start and length, without assembling its tree.
@@ -629,7 +647,7 @@ export type Traced = {app: string; name: string; runtime: Runtime; trace: Operat
 export function markedStream(entry: Entry) {
 	return Array.some(
 		spanAttributes(entry.payload),
-		attribute => attribute.key === 'rpc.stream' && attribute.value['boolValue'] === true
+		attribute => attribute.key === 'rpc.stream' && primitiveOf(attribute.value) === true
 	)
 }
 
@@ -661,7 +679,7 @@ function failureCount(group: readonly Traced[]) {
 }
 
 // A trace is a row once its root has arrived, since children export first; one whose root never comes shows after a minute.
-function traced(records: readonly Entry[], now: number) {
+export function tracedTrace(records: readonly Entry[], now: number) {
 	return Option.flatMap(
 		Array.match(
 			Array.filter(records, entry => entry.signal === 'trace'),
@@ -702,7 +720,10 @@ function traced(records: readonly Entry[], now: number) {
 					...Option.match(
 						Option.flatMap(
 							Array.findFirst(spanAttributes(root.payload), attribute => attribute.key === 'trace.label'),
-							attribute => Option.liftPredicate(attribute.value['stringValue'], String.isString)
+							attribute =>
+								Option.flatMap(Option.liftPredicate(attribute.value, Predicate.isObject), value =>
+									Option.liftPredicate(value['stringValue'], String.isString)
+								)
 						),
 						{onNone: () => ({}), onSome: label => ({label})}
 					),
@@ -723,7 +744,7 @@ export function tracedOf(entries: readonly Entry[], now: number) {
 					entry => entry.traceId
 				)
 			),
-			records => traced(records, now)
+			records => tracedTrace(records, now)
 		)
 	)
 }
