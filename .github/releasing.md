@@ -28,9 +28,9 @@ To update Stash's FFmpeg, ffprobe or yt-dlp or Deploy's Caddy, take the upstream
 
 Release publishes every app and tool as `0.1.<run>` with npm trusted publishing, which npm accepts only for a package that already exists.
 
-1. **Shape.** Copy `tools/coding-standards/package.json`'s publish fields and its `pack.deps`, using version `0.1.0` and keeping `repository.url` unchanged for provenance: bundle everything except native-binary packages, packages sharing a module instance with them, and packages resolved by name at run time, which go in `dependencies`.
-2. **Prove** the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`. An app builds, runs `npm pkg delete dependencies devDependencies scripts main`, packs with `npm pack` and restores its `package.json`.
-3. **First publish** by hand from the branch that adds it. Each command prints an npmjs.com URL for the account owner to approve within about five minutes: run it in the background and post the URL.
+1. **Shape.** Copy the publish fields from `tools/coding-standards/package.json` and `pack.deps` from its `vite.config.ts`. Use version `0.1.0` and keep `repository.url` unchanged for provenance: bundle everything except native-binary packages, packages sharing a module instance with them, and packages resolved by name at run time, which go in `dependencies`.
+2. **Prove.** Use the packed tarball, never the source: `PACK=$(mktemp -d) && vp -C tools/<name> run build && vp -C tools/<name> pm pack --pack-destination "$PACK" && vpx --package "$PACK"/deslop-<name>-0.1.0.tgz <bin> --help`. An app builds, runs `npm pkg delete dependencies devDependencies scripts main`, packs with `npm pack` and restores its `package.json`.
+3. **First publish.** By hand from the branch that adds it. Each command prints an npmjs.com URL for the account owner to approve within about five minutes: run it in the background and post the URL.
 
    ```bash
    npm whoami || script -qfc 'npm login --auth-type=web' /dev/null
@@ -38,23 +38,23 @@ Release publishes every app and tool as `0.1.<run>` with npm trusted publishing,
    script -qfc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
    ```
 
-4. A new tool joins Release's Build and Package steps beside `tools/coding-standards`; apps are discovered from `apps/*/package.json`.
+4. **Discovery.** A new tool joins Release's Build and Package steps beside `tools/coding-standards`; apps are discovered from `apps/*/package.json`.
 
 ## Publish an iOS app
 
 1. **Register before pushing.** Check `npx --yes eas-cli@latest whoami` (`login --device` if needed). The generator's all-zero project ID counts as linked, so temporarily replace `app.config.ts` with a plain `{name, owner: 'mp281x.xyz', slug}`, run `init` in `apps/<name>`, and restore the config with the real UUID. Add `<name>://auth/callback` and `<name>-dev://auth/callback` to `allowedRedirect`.
-2. **Prove the app** on the branch's Simulator build: sign in through both callback schemes, then complete a real action.
+2. **Prove.** On the branch's Simulator build, sign in through both callback schemes, then complete a real action.
 3. **Resolve production.** Every standalone build, credentials, submit or metadata command takes `APP_VARIANT=production` and an unused `RELEASE_NUMBER`; check the result before creating Apple records:
 
    ```bash
    APP_VARIANT=production RELEASE_NUMBER=<n> vp exec expo config --type public --json | jq '{name, scheme, version, ios, extra}'
    ```
 
-4. **Bootstrap before the PR merges**, since the merge is the first non-interactive release. On the team's existing certificate and keys:
-   - **Signing:** an App Store profile for the app and each extension target (`credentials -p ios`).
-   - **Submission key:** the team's App Store Connect API key.
-   - **App record:** only an interactive `submit` creates it; pass any existing file as the archive, copy the printed `ASC App ID` into `submit.production.ios.ascAppId` in `eas.json`, and stop it.
-   - **Channel:** `channel:create production`.
+4. **Bootstrap.** Before the PR merges, the first non-interactive release. Use the team's existing certificate and keys:
+   - **Signing.** An App Store profile for the app and each extension target (`credentials -p ios`).
+   - **Submission key.** The team's App Store Connect API key.
+   - **App record.** Only an interactive `submit` creates it; pass any existing file as the archive, copy the printed `ASC App ID` into `submit.production.ios.ascAppId` in `eas.json`, and stop it.
+   - **Channel.** `channel:create production`.
 
    Drive the interactive commands through a pipe, answering each prompt; a cached Apple session answers Apple's:
 

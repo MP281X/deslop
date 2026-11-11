@@ -133,19 +133,21 @@ export default defineConfig({
 			fix: {
 				cache: false,
 				command: [
+					// The tactics print first, so a step that fails below leaves them above its diagnostics, for the agent fixing it.
+					'coding-standards',
 					'vp fmt',
-					// A leftover autofix cannot clear, from lint or Fallow, ends with the tactics, for the agent fixing it.
-					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**" && vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off && vp run fallow || { node tools/coding-standards/src/main.cli.ts; exit 1; }'
+					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
+					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
+					'vp run fallow'
 				]
 			},
-			// Jev's questions over the repository after `fix`, run by hand: each costs a model call and its answers live in the user's own cache, so `verify` and CI never judge.
+			// Jev's questions over the repository after `fix`, run by hand: each costs a model call and its answers live in the user's own cache, so Verify and CI never judge.
 			judge: {
 				cache: false,
 				command:
-					"node tools/coding-standards/src/main.cli.ts --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
+					"coding-standards --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
 			},
-			test: 'vp run -r --parallel test',
-			verify: {cache: false, command: ['vp run check', 'vp run test']}
+			test: 'vp run -r --parallel test'
 		}
 	},
 	// Each package's test script runs Vitest with this config from its own directory; a package's config holds no test settings.

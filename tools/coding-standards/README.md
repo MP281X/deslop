@@ -39,11 +39,11 @@ Add your own ignores and opt into `deslopRules` for Deslop's own choices.
 
 ## Judge
 
-Run `--judge` after `fix`, never in CI. Jev answers through a Deslop Gateway that spends the signed-in person's own OpenRouter key.
+`--judge` runs by hand, only on request, after `fix` and never in CI. Jev answers through a Deslop Gateway that spends the signed-in person's own OpenRouter key.
 
 ```bash
 coding-standards sign-in                           # once per machine; approve its code in Auth or with answer_request
-coding-standards --judge --ignore '**/*.gen.ts'    # its own task after fix; never in CI
+coding-standards --judge --ignore '**/*.gen.ts'    # by hand, on request; never in CI
 ```
 
 Questions address a single function, component or test case, not codebase-wide decisions. The judge prints `path:line question message score` for findings and exits 1 on any finding or unanswered unit. To suppress a finding, put `// judge-ignore <question> -- <reason>` in the comment lines above the unit; stale suppressions are reported. Cached answers are shared by every checkout and repository.

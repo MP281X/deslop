@@ -8,14 +8,15 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Branches
 
 - **Review units.** Each PR is coherent and runnable on its target, with generated files beside their source.
-- **Stacks.** PRs that depend on each other, change the same thing or merge together form one stack: one branch per layer on the layer below, each readable alone. Only unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
-- **Reshape.** Remove a rejected approach from every unmerged layer; reuse the surviving PRs rather than introducing it below and undoing it above.
-- **Integration.** Batch corrections into their owning layers, then restack onto the latest default branch before the final proof and Verify. Publish that integrated state; revalidate if it changes.
+- **One PR per thing.** An unmerged PR is edited in place: more work on the same thing goes into the PR that owns it, never a new PR on top. Split only what is independent, or a different layer of the same thing.
+- **Stacks** ease review, not stepwise merging. PRs that depend on each other or merge together form one stack: one branch per layer on the layer below, each readable alone. Unrelated PRs branch from the default branch. Restack with the host's stack commands, never by retargeting by hand.
+- **Reshape.** Remove a rejected approach from every unmerged layer rather than introducing it below and undoing it above.
+- **Integration.** Batch corrections into their owning layers, then restack onto the latest default branch before the final Verify and proof.
 - **Before.** When a before/after is claimed, capture the Before state on base before the first edit.
 
 ## Publish
 
-1. **Push** a draft once Verify passes. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
+1. **Push** as a draft. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
 2. **Describe** with the repository's PR or MR template.
    - **Figures** stand in for an `html_render` page, which a PR cannot hold: lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
 
@@ -23,9 +24,9 @@ description: 'Load before the first commit of a task, before the first edit when
      magick <figure>.png -fuzz 1% -transparent "$(magick <figure>.png -format '%[pixel:p{0,0}]' info:)" <figure>.png
      ```
 
-   - **Videos:** [references/video.md](references/video.md).
+   - **Videos** record the real journey.
 3. **Read back** the rendered body: every image and video loads under its claim.
-4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify, fresh captures where they changed, and one push.
+4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify and fresh captures where they changed.
 5. **Hand back** once the required jobs pass and no P1 or P2 finding is open.
 6. **Ready** only when the user asks; mark a ready PR draft again before editing its layer.
 
