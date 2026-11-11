@@ -93,7 +93,7 @@ Close with `dpkg --audit`, held and upgradable packages after refreshing apt, ru
 
 ## Clean
 
-- **Owners** of a worktree: threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children judged by their root thread; a process whose `/proc/<pid>/cwd` is inside it.
+- **Owners** of a worktree: threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children counted by their root thread; a process whose `/proc/<pid>/cwd` is inside it.
 - **Keep** unattached volumes, the production `deslop-*` user services and their inactive `-update` oneshots, which run every 15 minutes.
 
 1. **Orphans.** Compose projects whose `com.docker.compose.project.working_dir` is gone; containers exited for more than three days; scratch leftovers; processes with a deleted working directory; Serve mappings meeting **Deep pass**'s ownership and obsolescence rule (`tailscale serve status --json`, then `sudo tailscale serve --https=<port> off`); `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.

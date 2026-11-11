@@ -9,8 +9,7 @@ description: Load at task start, when the user changes direction, before a plan 
 
 The main thread is the orchestrator: it owns the plan, the decisions, the integrated diff and the proof. Wide reads, inventories, logs, searches and web facts go to a worker, which returns a cited report.
 
-- **One thread per task.** Never suggest a new top-level thread. Subagents extend this thread's context; they never replace it. The task list holds units and status; the thread holds decisions and reasons. After compaction, read both before asking anything.
-- **Delegate by default.** The main thread writes only the plan, decisions, diff review and proof. Every unit that can be specified goes to a worker, even a small one; write it yourself only when a brief would cost more than the change.
+- **Delegate by default.** Every unit that can be specified goes to a worker, even a small one; write it yourself only when a brief would cost more than the change.
 - **One persistent worker per unit.** Start it with a brief; send follow-ups to the same thread; a new unit gets a new worker. Start independent units together and integrate when a result is needed.
 - **One level.** A worker never starts a subagent. If it needs one, it returns with the evidence and the orchestrator starts a peer. Root threads may start workers; workers do not.
 - **Workers.** Only `opencode-zen` / `deepseek-v4.1-flash`. A read-only audit shares this checkout; a writing unit gets `isolation:'worktree'`.
@@ -37,11 +36,11 @@ Map causes before showing options. Approval freezes the card; an unanswered card
 
 ## Decide
 
-A middle decision has a better answer that more evidence reveals; taste and product stay with the user. If the repository, thread or an installed dependency answers it, it is not a question. Otherwise gather the deciding source, probe or a time-boxed spike in `/tmp/<task>/`. If it is still close, give one fresh-context worker the question, the evidence and the criteria without your verdict, and adopt its answer unless it shows a flaw you can check. No rounds, votes or scores.
+A middle decision has a better answer that more evidence reveals. Gather the deciding source, probe or a time-boxed spike in `/tmp/<task>/`. If it is still close, give one fresh-context worker the question, the evidence and the criteria without your verdict, and adopt its answer unless it shows a flaw you can check. No rounds, votes or scores.
 
 ## Integrate
 
-Read each worker's diff once against the card, not its summary, for what Verify cannot judge: the card, ownership and behavior; a missing proof is a gap, not a pass. Send a gap back once with the failing evidence, then take the unit over. Merge units in stack order, run full Verify once, then prove the integrated head with the verification skill.
+Read each worker's diff once against the card, not its summary, for what Verify cannot check: the card, ownership and behavior; a missing proof is a gap, not a pass. Send a gap back once with the failing evidence, then take the unit over. Merge units in stack order, run full Verify once, then prove the integrated head with the verification skill.
 
 ## Research
 

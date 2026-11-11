@@ -52,7 +52,3 @@ One chain per trigger; no data means report it and investigate further, not veri
 | Design reference                         | Call Mobbin's `search_screens`, `search_flows` or `save_content`.                                                                                                 |
 | Dual behavior or skill                   | Call DualOS's `dual_context`, then `read_skill`, then `execute`.                                                                                                  |
 | A tool seems missing                     | Call `list_mcp_connections` before assuming it is absent.                                                                                                         |
-
-## Diagnostics
-
-- **Primary viewports** in T3: desktop 1440×900, phone `iphone-12-pro`.
