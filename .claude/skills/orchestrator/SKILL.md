@@ -18,7 +18,8 @@ description: 'Load when planning, delegating or integrating work on a codebase, 
 | Final review, a close decision                               | Strong, another family than the builder           | Findings with `path:line`                                  |
 
 - **Cheap:** DeepSeek V4.1 Flash (`opencode-zen` / `deepseek-v4.1-flash`), GPT-6 Luna high (`codex` / `gpt-6-luna`, `reasoningEffort: high`), Haiku 5.5 high (`claudeAgent` / `claude-haiku-5-5`, `effort: high`).
-- **Strong:** GPT-6.1 Sol (`codex` / `gpt-6.1-sol`), Sonnet 5.5 (`claudeAgent` / `claude-sonnet-5-5`), Opus 5.5 (`claude-opus-5-5`), Fable 5.2 (`claude-fable-5-2`).
+- **Strong:** GPT-6.1 Sol medium (`codex` / `gpt-6.1-sol`, `reasoningEffort: medium`), Sonnet 5.5 medium (`claudeAgent` / `claude-sonnet-5-5`, `effort: medium`), Opus 5.5 medium (`claude-opus-5-5`), Fable 5.2 high (`claude-fable-5-2`).
+- **Effort.** Medium for a well-specified unit; high for a final review or a close decision.
 - **Step up.** A worker that fails or returns without its deliverable is rerun on another model; a second failure goes to a strong one. A quota failure moves the unit to another provider.
 - **Captures.** The main thread opens only the ones that go into the PR.
 
