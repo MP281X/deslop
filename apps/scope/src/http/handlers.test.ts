@@ -1,7 +1,7 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Clock, ConfigProvider, Context, DateTime, Effect, FileSystem, Layer, pipe} from 'effect'
+import {Array, Clock, ConfigProvider, Context, DateTime, Effect, FileSystem, Layer, pipe, Schema, String} from 'effect'
 
 import {Mac} from 'effect/crypto'
 import {Hex} from 'effect/encoding'
@@ -18,7 +18,7 @@ import {Telemetry} from '#services/telemetry/service.ts'
 
 const SECRET = 'webhook-secret'
 const NOW = 1_781_870_000_000
-const TRACE_ID = 'a'.repeat(32)
+const TRACE_ID = String.repeat(32)('a')
 
 function iso(millis: number) {
 	return DateTime.formatIso(DateTime.makeUnsafe(millis))
@@ -33,7 +33,7 @@ function runEvent(start: number, action: string) {
 			display_title: 'CI',
 			event: 'push',
 			head_branch: 'main',
-			head_sha: 'a'.repeat(40),
+			head_sha: String.repeat(40)('a'),
 			html_url: 'https://github.com/MP281X/deslop/actions/runs/42',
 			id: 42,
 			name: 'CI',
@@ -74,7 +74,7 @@ function jobEvent(start: number, conclusion: string) {
 }
 
 function otlp(start: number) {
-	return JSON.stringify({
+	return Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))({
 		resourceSpans: [
 			{
 				resource: {
@@ -171,7 +171,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				const server = yield* serve(telemetry)
 				const start = NOW - 5 * 60_000
 				const signed = Effect.fnUntraced(function* (event: string, payload: unknown) {
-					const body = JSON.stringify(payload)
+					const body = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(payload)
 					return yield* send(server.web, '/v1/github', {
 						body,
 						headers: {
@@ -219,14 +219,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				yield* TestClock.setTime(NOW)
 				const telemetry = yield* openTelemetry()
 				const server = yield* serve(telemetry)
-				const body = JSON.stringify(runEvent(NOW - 5 * 60_000, 'completed'))
+				const body = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+					runEvent(NOW - 5 * 60_000, 'completed')
+				)
 				const headers = {'content-type': 'application/json', 'x-github-event': 'workflow_run'}
 				function sign(bytes: Uint8Array) {
 					return Effect.map(server.mac.sign(server.key, bytes), signature => `sha256=${Hex.encode(signature)}`)
 				}
 				for (const signature of [
 					`sha256=${Hex.encode(yield* server.mac.sign(yield* Mac.key(Mac.hmacSha256, new TextEncoder().encode('another-secret')), new TextEncoder().encode(body)))}`,
-					`sha256=${'g'.repeat(64)}`,
+					`sha256=${String.repeat(64)('g')}`,
 					yield* sign(new TextEncoder().encode(`${body} `))
 				]) {
 					const response = yield* send(server.web, '/v1/github', {

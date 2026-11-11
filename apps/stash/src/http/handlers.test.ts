@@ -1,7 +1,7 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, FileSystem, Layer, Option, Stream, pipe} from 'effect'
+import {Array, Context, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
 
 import {HttpRouter} from 'effect/http'
 
@@ -96,7 +96,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash HTTP routes',
 				const server = yield* serve()
 				const text = 'Remember to read the new article'
 				const response = yield* send(server.web, '/api/capture', {
-					body: JSON.stringify({id: ID, text}),
+					body: yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({id: ID, text}),
 					headers: {'content-type': 'application/json'},
 					method: 'POST'
 				})

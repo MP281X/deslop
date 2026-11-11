@@ -1,7 +1,7 @@
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Effect, FileSystem, Path, Schema} from 'effect'
+import {Array, Effect, FileSystem, Path, Schema} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -18,7 +18,7 @@ it.layer(NodeServices.layer)(test => {
 				{donor: 'portfolio', kind: 'web'},
 				{donor: 'stash', kind: 'mobile'}
 			]) {
-				const names = ['template-app', 'my-template-app', 'template-app-x']
+				const names = ['template-app', 'my-template-app', 'template-app-x'] as const
 				for (const name of names) {
 					const target = path.join(temporary, app.kind, name)
 					const child = yield* ChildProcess.make(
@@ -45,7 +45,7 @@ it.layer(NodeServices.layer)(test => {
 					)
 				}
 				// One typecheck per kind: the name variants only change package.json, which the assertions above cover.
-				const target = path.join(temporary, app.kind, names[0])
+				const target = path.join(temporary, app.kind, Array.headNonEmpty(names))
 				yield* fs.remove(path.join(target, 'node_modules'), {force: true, recursive: true})
 				yield* fs.symlink(path.join(root, 'apps', app.donor, 'node_modules'), path.join(target, 'node_modules'))
 				const checked = yield* ChildProcess.make(
