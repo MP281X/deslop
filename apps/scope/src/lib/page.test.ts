@@ -477,7 +477,7 @@ it.effect(
 )
 
 it.effect(
-	'marks a failed trace without repeating its diagnostic on the row or its hover name',
+	'marks a failed trace in its row and hover name without repeating the diagnostic as visible text',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
