@@ -477,7 +477,7 @@ it.effect(
 )
 
 it.effect(
-	'marks a failed trace without repeating its diagnostic on the row or its hover name',
+	'marks a failed trace in its row and hover name without repeating the diagnostic as visible text',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
@@ -502,5 +502,7 @@ it.effect(
 		)
 		assert.include(html, 'aria-label="Failed in Parser.decode"')
 		assert.include(html, 'title="Failed in Parser.decode"')
+		assert.strictEqual(Array.length(String.split('Failed in Parser.decode')(html)) - 1, 2)
+		assert.notInclude(html, '>Failed in Parser.decode<')
 	})
 )

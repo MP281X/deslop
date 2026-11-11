@@ -36,7 +36,7 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Destructive, true),
 	Tool.make('hide_exposure', {
 		description:
-			'Use to remove an HTTPS URL Deploy owns, stopping only the URL, not the backend. target names another configured worker; externally changed Tailscale mappings are refused.',
+			'Use to remove an HTTPS URL Deploy owns, by the name list_apps shows, stopping only the URL, not the backend. target names another configured worker; externally changed Tailscale mappings are refused.',
 		failure: DeployError,
 		parameters: HideRequest
 	}).annotate(Tool.Destructive, true),

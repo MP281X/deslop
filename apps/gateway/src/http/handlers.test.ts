@@ -43,7 +43,7 @@ import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {AiProvider, AiUsageReport} from '#services/ai/schema.ts'
-import {AiProxy} from '#services/ai/service.ts'
+import {layerAiProxy} from '#services/ai/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
 import {ConnectionInfo} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
@@ -431,7 +431,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const services = yield* Layer.buildWithMemoMap(
 		pipe(
 			Gateway.layer,
-			Layer.provideMerge(Layer.mergeAll(Connections.layer, AiProxy.layer)),
+			Layer.provideMerge(Layer.mergeAll(Connections.layer, layerAiProxy(directory))),
 			Layer.provide(McpServer.McpServer.layer),
 			Layer.provide(store),
 			Layer.provide(platform),
@@ -1213,6 +1213,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(MutableList.toArray(gateway.grants), grant => grant.refresh),
 				['refresh-authorization_code-1', 'refresh-refresh_token-1']
 			)
+			// Joining the read in flight settles it, so the stall below starts a new read instead of waiting for the permit.
+			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Ref.set(gateway.stall, true)
 			yield* TestClock.adjust('30 seconds')
 			const slowList = yield* Effect.forkScoped(modern(gateway.web, second, 'tools/list'))
@@ -1304,6 +1306,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* gateway.list(), server => [server.status, server.tools]),
 				[['Connected', 1]]
 			)
+			// Settling the connect read frees the permit, so the agent's read below is the one the stall holds.
+			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Ref.set(gateway.stall, true)
 			yield* TestClock.adjust('30 seconds')
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))

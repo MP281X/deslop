@@ -187,6 +187,7 @@ export const ListJob = Schema.Struct({
 export type ListExposure = typeof ListExposure.Type
 export const ListExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
+	name: Schema.String,
 	port: Schema.optionalKey(Schema.Int),
 	url: Schema.String
 })

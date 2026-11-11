@@ -26,15 +26,13 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
 	Atom.readable(
 		get =>
-			Array.head(
-				Array.sort(
-					Array.flatMap(readers, reader => {
-						const result = get(reader)
-						if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return []
-						return Option.toArray(get(problemSinceAtom(reader)))
-					}),
-					Order.Number
-				)
+			Array.match(
+				Array.flatMap(readers, reader => {
+					const result = get(reader)
+					if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return []
+					return Option.toArray(get(problemSinceAtom(reader)))
+				}),
+				{onEmpty: () => Option.none<number>(), onNonEmpty: ages => Option.some(Array.min(ages, Order.Number))}
 			),
 		refresh => Array.forEach(readers, reader => refresh(reader))
 	)

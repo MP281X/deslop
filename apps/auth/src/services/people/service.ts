@@ -7,7 +7,7 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER, adminIds, bearerOf, isAdmin, localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {DEVELOPER, adminIds, bearerOf, isAdmin, localAuth, rejected, requireAdmin} from '@deslop/runtime/auth/utils'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -85,11 +85,9 @@ export class People extends Context.Service<
 				if (local) return developer
 				return yield* allowed(yield* tokens.session(headers))
 			})
-			const admin = Effect.fnUntraced(function* (user: User) {
-				if (!isAdmin(admins, user.id)) {
-					return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage people'})
-				}
-			})
+			function admin(user: User) {
+				return requireAdmin(admins, user, 'Only an admin can manage people')
+			}
 			// The accounts asking for access first, then admins, then members, each newest first.
 			const list = Effect.fn('People.list')(function* (user: User) {
 				yield* admin(user)

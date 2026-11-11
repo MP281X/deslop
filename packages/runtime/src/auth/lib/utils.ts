@@ -91,6 +91,11 @@ export function isAdmin(admins: readonly string[], id: string) {
 	return Array.contains(admins, String.replace('github:', '')(id))
 }
 
+export function requireAdmin(admins: readonly string[], user: User, message: string) {
+	if (isAdmin(admins, user.id)) return Effect.void
+	return Effect.fail(AuthError.make({error: 'access_denied', message}))
+}
+
 export function signInUrl(next: string) {
 	return `${new URL(next).origin}/auth/sign-in?${new URLSearchParams({next})}`
 }

@@ -168,10 +168,8 @@ export class Metrics extends Context.Service<
 					const time = yield* Clock.currentTimeMillis
 					const files = yield* Effect.all(
 						{
-							disk: fs.readFileString('/proc/diskstats'),
 							load: fs.readFileString('/proc/loadavg'),
 							memory: fs.readFileString('/proc/meminfo'),
-							network: fs.readFileString('/proc/net/dev'),
 							stat: fs.readFileString('/proc/stat'),
 							uptime: fs.readFileString('/proc/uptime')
 						},
@@ -180,7 +178,7 @@ export class Metrics extends Context.Service<
 					const current = yield* pipe(
 						Effect.try({
 							catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}),
-							try: () => counters(files.stat, files.network, files.disk, files.uptime, time)
+							try: () => counters(files.stat, files.uptime, time)
 						}),
 						Effect.flatMap(Schema.decodeEffect(Counters))
 					)

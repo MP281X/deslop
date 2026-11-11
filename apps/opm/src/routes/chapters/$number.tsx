@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, HashSet, Number, Option, pipe} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, pipe} from 'effect'
 
 import {Toolbar} from '@expo/ui/swift-ui'
 import {
@@ -10,6 +10,7 @@ import {
 	navigationTitle,
 	padding
 } from '@expo/ui/swift-ui/modifiers'
+import type {ViewModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {useRef, useState} from 'react'
 
@@ -25,18 +26,24 @@ import type {ChapterList, Series} from '#services/chapters/schema.ts'
 // Immutable, so every reader starts from this one value and replaces it as chapters finish.
 const NOTHING_FINISHED = HashSet.empty<number>()
 
-// The reader's full-page skeleton, also used while the chapter list itself loads behind a notification.
-export function ReaderSkeleton(props: {number: number}) {
+// The reader's content skeleton; the full-page fallback adds the chapter title.
+function ReaderLoading(props: {modifiers?: ViewModifier[]}) {
 	return (
 		<Skeleton
 			modifiers={[
 				frame({maxHeight: Infinity, maxWidth: Infinity}),
 				padding({all: space[4]}),
-				navigationTitle(`Chapter ${props.number}`),
-				navigationBarTitleDisplayMode('inline'),
-				accessibilityLabel('Loading chapter')
+				accessibilityLabel('Loading chapter'),
+				...(props.modifiers ?? [])
 			]}
 		/>
+	)
+}
+
+// The reader's full-page skeleton, also used while the chapter list itself loads behind a notification.
+export function ReaderSkeleton(props: {number: number}) {
+	return (
+		<ReaderLoading modifiers={[navigationTitle(`Chapter ${props.number}`), navigationBarTitleDisplayMode('inline')]} />
 	)
 }
 
@@ -51,24 +58,11 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 	const previous = useRef(props.number)
 	// What this reader finished, so a page turn before the server's copy of the list arrives cannot unfinish it.
 	const finished = useRef(NOTHING_FINISHED)
-	const shown = Array.take(following, length)
-	const chapterStartOffsets = Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+	const visible = Array.take(following, length)
+	const chapterStartOffsets = Array.scan(visible, 0, (total, chapter) => total + chapter.pages.length)
 	const gaveUp = AsyncResult.isSuccess(useAtomValue(unreachableAtom(`${props.series}:${props.number}`)))
 
 	// A notification can open a chapter the copy on the iPhone does not have yet; the server's list brings it, unless it is out of reach.
-	if (!Array.isReadonlyArrayNonEmpty(shown)) {
-		if (gaveUp) {
-			return (
-				<Empty
-					systemImage="book.closed"
-					label="Chapter Unavailable"
-					modifiers={[navigationTitle(`Chapter ${props.number}`), navigationBarTitleDisplayMode('inline')]}
-				/>
-			)
-		}
-		return <ReaderSkeleton number={props.number} />
-	}
-
 	return (
 		<Toolbar
 			modifiers={[
@@ -76,59 +70,73 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 				navigationBarTitleDisplayMode('inline')
 			]}
 		>
-			<PageStrip
-				pages={Array.flatMap(shown, chapter => chapter.pages)}
-				start={Number.clamp(
-					props.start ??
-						pipe(
-							Option.fromUndefinedOr(Array.headNonEmpty(shown).reading),
-							Option.filter(reading => !reading.done),
-							Option.match({onNone: () => 0, onSome: reading => reading.page})
-						),
-					{maximum: Number.max(Array.headNonEmpty(shown).pages.length - 1, 0), minimum: 0}
-				)}
-				onPage={event =>
-					Option.match(
-						Array.findFirst(
-							Array.zip(shown, chapterStartOffsets),
-							pair => event.nativeEvent.index < pair[1] + pair[0].pages.length
-						),
-						{
-							onNone: () => undefined,
-							onSome: pair => {
-								const chapter = pair[0]
-								const page = event.nativeEvent.index - pair[1]
-								// Passing into the next chapter finishes every page of the one before it.
-								Option.match(
-									Array.findFirst(shown, item => item.number === previous.current && item.number < chapter.number),
-									{
-										onNone: () => undefined,
-										onSome: before => {
-											finished.current = HashSet.add(finished.current, before.number)
-											read({done: true, number: before.number, page: before.pages.length - 1, series: before.series})
+			{Array.match(visible, {
+				onEmpty: () =>
+					Boolean.match(gaveUp, {
+						onFalse: () => <ReaderLoading />,
+						onTrue: () => <Empty systemImage="book.closed" label="Chapter Unavailable" />
+					}),
+				onNonEmpty: shown => (
+					<PageStrip
+						pages={Array.flatMap(shown, chapter => chapter.pages)}
+						start={Number.clamp(
+							props.start ??
+								pipe(
+									Option.fromUndefinedOr(Array.headNonEmpty(shown).reading),
+									Option.filter(reading => !reading.done),
+									Option.match({onNone: () => 0, onSome: reading => reading.page})
+								),
+							{maximum: Number.max(Array.headNonEmpty(shown).pages.length - 1, 0), minimum: 0}
+						)}
+						onPage={event =>
+							Option.match(
+								Array.findFirst(
+									Array.zip(shown, chapterStartOffsets),
+									pair => event.nativeEvent.index < pair[1] + pair[0].pages.length
+								),
+								{
+									onNone: () => undefined,
+									onSome: pair => {
+										const chapter = pair[0]
+										const page = event.nativeEvent.index - pair[1]
+										// Passing into the next chapter finishes every page of the one before it.
+										Option.match(
+											Array.findFirst(shown, item => item.number === previous.current && item.number < chapter.number),
+											{
+												onNone: () => undefined,
+												onSome: before => {
+													finished.current = HashSet.add(finished.current, before.number)
+													read({
+														done: true,
+														number: before.number,
+														page: before.pages.length - 1,
+														series: before.series
+													})
+												}
+											}
+										)
+										previous.current = chapter.number
+										// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
+										if (page === chapter.pages.length - 1 || chapter.reading?.done === true) {
+											finished.current = HashSet.add(finished.current, chapter.number)
+										}
+										read({
+											done: HashSet.has(finished.current, chapter.number),
+											number: chapter.number,
+											page,
+											series: chapter.series
+										})
+										setScrolledTo(Option.some(chapter.number))
+										if (chapter.number === Array.lastNonEmpty(shown).number && length < following.length) {
+											setLength(length + 1)
 										}
 									}
-								)
-								previous.current = chapter.number
-								// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
-								if (page === chapter.pages.length - 1 || chapter.reading?.done === true) {
-									finished.current = HashSet.add(finished.current, chapter.number)
 								}
-								read({
-									done: HashSet.has(finished.current, chapter.number),
-									number: chapter.number,
-									page,
-									series: chapter.series
-								})
-								setScrolledTo(Option.some(chapter.number))
-								if (chapter.number === Array.lastNonEmpty(shown).number && length < following.length) {
-									setLength(length + 1)
-								}
-							}
+							)
 						}
-					)
-				}
-			/>
+					/>
+				)
+			})}
 		</Toolbar>
 	)
 }

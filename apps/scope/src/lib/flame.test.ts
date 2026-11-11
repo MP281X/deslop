@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Option} from 'effect'
+import {Array, Boolean, MutableList, Number, Option, Order, Record} from 'effect'
 
 import {lanesOf} from '#lib/flame.ts'
 
@@ -9,6 +9,130 @@ type Span = {depth: number; durationMs: number; offsetMs: number; spanId: string
 function span(spanId: string, depth: number, offsetMs: number, durationMs: number) {
 	return {depth, durationMs, offsetMs, spanId}
 }
+
+function byStart() {
+	return Order.combine(
+		Order.mapInput(Order.Number, (item: Span) => item.offsetMs),
+		Order.mapInput(Order.flip(Order.Number), (item: Span) => item.durationMs)
+	)
+}
+
+// The quadratic lane search the packer replaced, kept as the reference its lane choices must keep matching.
+function referenceLanesOf(spans: readonly Span[], reservations: Record<string, number> = {}) {
+	const root = Option.getOrUndefined(Array.findFirst(spans, item => item.depth === 0))
+	const jobs = Array.sort(
+		Array.filter(spans, item => item.depth === 1),
+		byStart()
+	)
+	const rest = Array.sort(
+		Array.filter(spans, item => item.depth > 1 || (item.depth === 0 && item !== root)),
+		byStart()
+	)
+	const placed = MutableList.make<{lane: number; span: Span}>()
+	const intervals = MutableList.make<{end: number; lane: number; start: number}>()
+	function laneCount() {
+		return Array.reduce(MutableList.toArray(placed), 0, (deepest, entry) => Number.max(deepest, entry.lane + 1))
+	}
+	function add(item: Span, lane: number) {
+		MutableList.append(placed, {lane, span: item})
+		MutableList.append(intervals, {end: item.offsetMs + item.durationMs, lane, start: item.offsetMs})
+		return lane
+	}
+	if (root !== undefined) add(root, 0)
+	Array.forEach(jobs, item => {
+		const lane = add(item, laneCount())
+		Option.match(Record.get(reservations, item.spanId), {
+			onNone: () => undefined,
+			onSome: reserve =>
+				MutableList.append(intervals, {
+					end: item.offsetMs + item.durationMs + reserve,
+					lane,
+					start: item.offsetMs + item.durationMs
+				})
+		})
+	})
+	Array.forEach(rest, item => {
+		const end = item.offsetMs + item.durationMs
+		const lanes = laneCount()
+		Option.match(
+			Array.findFirst(Array.range(0, lanes - 1), lane =>
+				Array.every(
+					Array.filter(MutableList.toArray(intervals), interval => interval.lane === lane),
+					interval => {
+						if (item.durationMs === 0) return !(interval.start <= item.offsetMs && item.offsetMs <= interval.end)
+						return !(item.offsetMs < interval.end && interval.start < end)
+					}
+				)
+			),
+			{onNone: () => add(item, lanes), onSome: lane => add(item, lane)}
+		)
+	})
+	return MutableList.toArray(placed)
+}
+
+// A stateless hash, so the same seed and index always give the same trace.
+function noise(seed: number, index: number) {
+	return ((Math.imul(seed * 31 + index, 2_654_435_761) ^ Math.imul(index + 1, 40_503)) >>> 0) / 4_294_967_296
+}
+
+function depthOf(index: number, size: number, seed: number) {
+	if (index === 0) return 0
+	if (index < Number.min(size, 20)) return 1
+	return 2 + Math.floor(noise(seed, index) * 5)
+}
+
+function durationOf(index: number, seed: number) {
+	if (index === 0) return 5000
+	if (index % 6 === 0) return 0
+	return Math.floor(noise(seed, index + 2) * 300)
+}
+
+function reservationOf(index: number) {
+	if (index % 8 === 0) return 0
+	return 30
+}
+
+// A trace-shaped input: a root, sequential jobs, then deeper spans inside the jobs' span, with repeated offsets and zero-length ticks.
+function randomSpans(size: number, seed: number) {
+	const [, spans] = Array.mapAccum(Array.range(0, size - 1), 0, (jobOffset, index) => {
+		const depth = depthOf(index, size, seed)
+		return [
+			Boolean.match(depth === 1, {
+				onFalse: () => jobOffset,
+				onTrue: () => jobOffset + Math.floor(noise(seed, index + 3) * 40)
+			}),
+			span(
+				`s${index}`,
+				depth,
+				Boolean.match(depth === 1, {
+					onFalse: () => Math.floor(noise(seed, index + 1) * Number.max(jobOffset, 1)),
+					onTrue: () => jobOffset
+				}),
+				durationOf(index, seed)
+			)
+		]
+	})
+	return spans
+}
+
+it('matches the quadratic lane search on random traces', () => {
+	Array.forEach(Array.range(1, 40), seed =>
+		Array.forEach([12, 40, 120] as const, size => {
+			const spans = randomSpans(size, seed)
+			const reservations = Record.fromEntries(
+				Array.flatMap(spans, (item, index) => {
+					if (item.depth !== 1 || index % 4 !== 0) return []
+					return [[item.spanId, reservationOf(index)] as const]
+				})
+			)
+			assert.deepStrictEqual(
+				lanesOf(spans, reservations),
+				referenceLanesOf(spans, reservations),
+				`seed ${seed}, size ${size}`
+			)
+		})
+	)
+})
 
 function laneOf(placed: readonly {lane: number; span: Span}[], spanId: string) {
 	return Option.getOrUndefined(Array.findFirst(placed, entry => entry.span.spanId === spanId))?.lane

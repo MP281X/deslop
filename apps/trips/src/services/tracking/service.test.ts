@@ -235,7 +235,7 @@ it.layer(
 	)
 
 	test.effect(
-		'treats a malformed run lookup as no answer and makes no paid request',
+		'retries a malformed train run lookup three times, then fails without storing an answer',
 		Effect.fnUntraced(function* () {
 			const now = yield* Clock.currentTimeMillis
 			const train = Train.make({...TRAIN, arrives: now + 2 * HOUR, departs: now + HOUR})

@@ -1,4 +1,17 @@
-import {Array, Cause, Effect, FiberHandle, Function, Option, Schema, Stream, String, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	Cause,
+	DateTime,
+	Effect,
+	FiberHandle,
+	Function,
+	Option,
+	Schema,
+	Stream,
+	String,
+	pipe
+} from 'effect'
 
 import {createModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -14,6 +27,18 @@ class DeviceError extends Schema.TaggedError<DeviceError>()('DeviceError', {
 	cause: Schema.Defect(),
 	message: Schema.String
 }) {}
+
+// "21 Oct" this year, "21 Oct 2025" before it.
+export function shortDate(time: number) {
+	const date = DateTime.makeUnsafe(time)
+	return DateTime.formatLocal(
+		date,
+		Boolean.match(DateTime.getPartUtc(date, 'year') === DateTime.getPartUtc(DateTime.nowUnsafe(), 'year'), {
+			onFalse: () => ({day: 'numeric', month: 'short', year: 'numeric'}) as const,
+			onTrue: () => ({day: 'numeric', month: 'short'}) as const
+		})
+	)
+}
 
 export function clipboardChangeCount() {
 	return requireNativeModule<{clipboardChangeCount: () => number}>('DeslopComponents').clipboardChangeCount()

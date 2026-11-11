@@ -101,3 +101,10 @@ it.layer(NodeServices.layer)('Resource history', test => {
 		})
 	)
 })
+
+it('decodes samples saved before the unused counters were removed', () => {
+	const saved = Schema.decodeSync(Schema.fromJsonString(Sample))(
+		'{"diskRead":1,"diskWrite":2,"disks":[],"memoryAvailable":3,"memoryBuffers":4,"memoryCached":5,"memoryTotal":1024,"memoryUsed":512,"networkReceive":6,"networkSend":7,"swapTotal":8,"swapUsed":9,"time":0}'
+	)
+	assert.strictEqual(saved.memoryUsed, 512)
+})

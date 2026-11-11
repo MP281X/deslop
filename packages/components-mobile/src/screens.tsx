@@ -91,6 +91,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 }
 
 // One gate for a screen's content: a blocking failure is the retry card, and the value renders where it stands.
+// judge-ignore no-dropped-content -- shownOf keeps a retained value for children, so FailureContent only renders with no value.
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode

@@ -1,5 +1,6 @@
 import {Array, Boolean, DateTime, Effect, Function, Number, Option, Order, Record, String, pipe} from 'effect'
 
+import {sourceBelongsToWorker} from '#services/inventory/lib/page.ts'
 import {
 	appUsage,
 	dot,
@@ -30,7 +31,7 @@ function workerNames(snapshot: Snapshot) {
 
 function sourceWorker(source: {readonly name: string}, workers: readonly string[], local: string) {
 	return Option.getOrElse(
-		Array.findFirst(workers, worker => String.startsWith(`${worker} · `)(source.name)),
+		Array.findFirst(workers, worker => sourceBelongsToWorker(source, worker)),
 		() => local
 	)
 }
@@ -119,6 +120,7 @@ function exposureOf(item: InventoryItem) {
 			onFalse: () => 'tailnet' as const,
 			onTrue: () => 'public' as const
 		}),
+		name: item.name,
 		...Record.getSomes({port: Option.fromUndefinedOr(item.port)}),
 		url: item.url
 	} satisfies ListExposure
@@ -195,6 +197,7 @@ export function listApps(snapshot: Snapshot, input: ListAppsInput) {
 
 // Each app's history name, keyed the way its samples are: `service:<scope>:<unit>` or `container:<short id>`, named as the page's rows name it.
 export function ownerNames(snapshot: Snapshot) {
+	const byWorker = Array.groupBy(snapshot.items, item => item.worker)
 	return Record.fromEntries(
 		Array.map(
 			workerNames(snapshot),
@@ -203,11 +206,7 @@ export function ownerNames(snapshot: Snapshot) {
 					worker,
 					Record.fromEntries(
 						Array.flatMap(
-							Array.filter(
-								snapshot.items,
-								(item: InventoryItem) =>
-									item.worker === worker && (item.kind === 'service' || item.kind === 'container')
-							),
+							Array.filter(byWorker[worker] ?? [], item => item.kind === 'service' || item.kind === 'container'),
 							(item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const]
 						)
 					)

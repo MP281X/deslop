@@ -154,9 +154,12 @@ export default defineConfig({
 		hookTimeout: 60_000,
 		// The first glob serves each package's own run, the second a run from the root, such as one test file by path.
 		include: ['src/**/*.test.ts', '{apps,packages,tools}/*/src/**/*.test.ts'],
+		// Only the lint rule suite runs concurrently; eight measured fastest without starving the rest.
+		maxConcurrency: 8,
 		passWithNoTests: true,
 		reporters: ['dot'],
 		silent: 'passed-only',
-		testTimeout: 60_000
+		// The generator test builds and typechecks two generated apps; 120s covers a loaded host without hiding a hang.
+		testTimeout: 120_000
 	}
 })

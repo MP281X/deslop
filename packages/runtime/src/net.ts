@@ -33,7 +33,7 @@ const BLOCKED = Array.map(
 	source => Result.getOrThrow(IpNetwork.fromString(source))
 )
 
-function isPrivateAddress(ip: NetAddress.IpAddress) {
+export function isPrivateAddress(ip: NetAddress.IpAddress) {
 	if (NetAddress.isIpv4Address(ip)) return NetAddress.isPrivate(ip)
 	return NetAddress.isUniqueLocal(ip)
 }

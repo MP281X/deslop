@@ -1,12 +1,27 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, HashMap, Option, Order, String} from 'effect'
+import {Array, HashMap, Option, Order, Record, String} from 'effect'
 
-import {overviewOf, retentionOf, tracedOf} from '#services/telemetry/lib/utils.ts'
+import {overviewOf, retentionOf, serviceStatuses, tracedTrace} from '#services/telemetry/lib/utils.ts'
 import {Entry} from '#services/telemetry/schema.ts'
 
 const NOW = 1_781_870_000_000
 const HOUR = 3_600_000
+
+// Every trace in one snapshot, grouped once for the frame assertions.
+function tracedOf(entries: readonly Entry[], now: number) {
+	return Array.getSomes(
+		Array.map(
+			Record.values(
+				Array.groupBy(
+					Array.filter(entries, entry => entry.traceId !== ''),
+					entry => entry.traceId
+				)
+			),
+			records => tracedTrace(records, now)
+		)
+	)
+}
 
 function span(id: string, service: string, start: number, durationMs: number) {
 	return Entry.make({
@@ -57,6 +72,64 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 	assert.deepStrictEqual(
 		Array.map(appOf(day, 'gateway').operations, operation => [operation.name, operation.count]),
 		[['share', 1]]
+	)
+})
+
+function event(id: string, service: string, run: number, time: number, version = '') {
+	return Entry.make({
+		durationMs: 0,
+		id,
+		name: 'event',
+		payload: {},
+		resource: {
+			attributes: [
+				{key: 'service.name', value: {stringValue: service}},
+				{key: 'scope.runtime', value: {stringValue: 'server'}},
+				{key: 'scope.run.started_unix_nano', value: {stringValue: `${run}`}},
+				...Array.map(Array.filter([version], String.isNonEmpty), value => ({
+					key: 'service.version',
+					value: {stringValue: value}
+				}))
+			]
+		},
+		service,
+		signal: 'log',
+		spanId: '',
+		status: 0,
+		time: `${BigInt(time) * 1_000_000n}`,
+		traceId: ''
+	})
+}
+
+it('counts each service’s latest run once and names it by that run’s first entry', () => {
+	const older = NOW - 30_000
+	const first = NOW - 20_000
+	const last = NOW - 10_000
+	assert.deepStrictEqual(
+		serviceStatuses([
+			event('a1', '@deslop/a-server', 1000, older, '0.1.1'),
+			event('a2', '@deslop/a-server', 2000, first, '0.1.2'),
+			event('a3', '@deslop/a-server', 2000, last),
+			event('b1', '@deslop/b-server', 3000, NOW)
+		]),
+		[
+			{
+				entries: 2,
+				lastEventAt: `${BigInt(last) * 1_000_000n}`,
+				name: '@deslop/a-server',
+				runStartedAt: '2000',
+				runtime: 'server',
+				version: '0.1.2'
+			},
+			{
+				entries: 1,
+				lastEventAt: `${BigInt(NOW) * 1_000_000n}`,
+				name: '@deslop/b-server',
+				runStartedAt: '3000',
+				runtime: 'server',
+				version: ''
+			}
+		]
 	)
 })
 

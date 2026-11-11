@@ -177,6 +177,13 @@ function severityOf(command: string) {
 	return 9
 }
 
+// Steps run in time order, so a line advances the pointer past every step that had already ended.
+function stepIndexAfter(steps: readonly {end: number}[], index: number, time: number): number {
+	const step = steps[index]
+	if (step === undefined || time <= step.end) return index
+	return stepIndexAfter(steps, index + 1, time)
+}
+
 // The job's log as one log record per line, on the step whose time holds it and the job otherwise, so a trace's steps show their own output.
 export function jobLogs(event: WorkflowJob, log: string) {
 	const traceId = traceIdOf(event.workflow_job.run_id, event.workflow_job.run_attempt)
@@ -185,42 +192,44 @@ export function jobLogs(event: WorkflowJob, log: string) {
 		spanId: stepSpanId(event.workflow_job.id, step.number),
 		start: DateTime.toEpochMillis(DateTime.makeUnsafe(step.started))
 	}))
-	const records = Array.getSomes(
-		Array.map(String.split('\n')(log), raw =>
-			pipe(
-				raw,
-				String.replaceAll(ANSI, ''),
-				String.trim,
-				String.match(LOG_LINE),
-				Option.flatMap(match => {
-					const message = match[2] ?? ''
-					return Option.map(DateTime.make(match[1] ?? ''), date => ({
-						...Option.match(String.match(LOG_COMMAND)(message), {
-							onNone: () => ({command: '', message}),
-							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
-						}),
-						time: DateTime.toEpochMillis(date)
-					}))
-				}),
-				Option.filter(
-					line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup'
-				),
-				Option.map(line => ({
-					body: {stringValue: line.message},
-					severityNumber: severityOf(line.command),
-					spanId: Option.getOrElse(
-						Option.map(
-							Array.findFirst(steps, step => line.time >= step.start && line.time <= step.end),
-							step => step.spanId
-						),
-						() => jobSpanId(event.workflow_job.id)
-					),
-					timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
-					traceId
+	// Log lines and steps both arrive in time order, so one pointer moves through the steps once.
+	const [, lines] = Array.mapAccum(String.split('\n')(log), 0, (stepIndex, raw) => {
+		const entry = pipe(
+			raw,
+			String.replaceAll(ANSI, ''),
+			String.trim,
+			String.match(LOG_LINE),
+			Option.flatMap(match => {
+				const message = match[2] ?? ''
+				return Option.map(DateTime.make(match[1] ?? ''), date => ({
+					...Option.match(String.match(LOG_COMMAND)(message), {
+						onNone: () => ({command: '', message}),
+						onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
+					}),
+					time: DateTime.toEpochMillis(date)
 				}))
-			)
+			}),
+			Option.filter(line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup')
 		)
-	)
+		const next = Option.match(entry, {
+			onNone: () => stepIndex,
+			onSome: line => stepIndexAfter(steps, stepIndex, line.time)
+		})
+		return [
+			next,
+			Option.map(entry, line => ({
+				body: {stringValue: line.message},
+				severityNumber: severityOf(line.command),
+				spanId: Option.match(
+					Option.filter(Option.fromUndefinedOr(steps[next]), step => line.time >= step.start),
+					{onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId}
+				),
+				timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
+				traceId
+			}))
+		] as const
+	})
+	const records = Array.getSomes(lines)
 	return LogsRequest.make({
 		resourceLogs: [
 			{

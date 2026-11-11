@@ -17,6 +17,7 @@ import {
 	Predicate,
 	Record,
 	Ref,
+	Schema,
 	Stream,
 	String,
 	SubscriptionRef,
@@ -24,7 +25,7 @@ import {
 	pipe
 } from 'effect'
 
-import {SecureRandom} from 'effect/crypto'
+import {Digest} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 
 import {layerKeyValueStore} from '@deslop/runtime/server'
@@ -60,7 +61,7 @@ import {
 	traceTiming,
 	linkedTraces,
 	traceView,
-	tracedOf
+	tracedTrace
 } from '#services/telemetry/lib/utils.ts'
 import type {Traced} from '#services/telemetry/lib/utils.ts'
 import type {
@@ -435,9 +436,13 @@ function deriveEntry(entry: Entry) {
 
 type State = {
 	entries: HashMap.HashMap<string, Entry>
-	// Entry ids by service and by trace, so a save reads only the traces it touches and current reads stay whole-store scans.
+	// Each settled trace derived once, shared by every live snapshot until an ingest touches that trace.
+	settled: HashMap.HashMap<string, Traced>
+	// Entry ids by service and by trace, so a save reads only the traces it touches and one open trace reads its own rows.
 	services: HashMap.HashMap<string, HashSet.HashSet<string>>
 	traces: HashMap.HashMap<string, HashSet.HashSet<string>>
+	// Span-linked traces either way by edge count, so one open trace loads the traces it joins instead of the store.
+	links: HashMap.HashMap<string, HashMap.HashMap<string, number>>
 }
 
 function attach(index: HashMap.HashMap<string, HashSet.HashSet<string>>, key: string, id: string) {
@@ -460,10 +465,39 @@ function detach(index: HashMap.HashMap<string, HashSet.HashSet<string>>, key: st
 	return HashMap.set(index, key, remaining)
 }
 
-function removeEntry(state: State, entry: Pick<Entry, 'id' | 'service' | 'traceId'>) {
+function bumpLink(
+	links: HashMap.HashMap<string, HashMap.HashMap<string, number>>,
+	from: string,
+	to: string,
+	step: number
+) {
+	const current = Option.getOrElse(HashMap.get(links, from), () => HashMap.empty<string, number>())
+	const count = Option.getOrElse(HashMap.get(current, to), () => 0) + step
+	const remaining = Boolean.match(count > 0, {
+		onFalse: () => HashMap.remove(current, to),
+		onTrue: () => HashMap.set(current, to, count)
+	})
+	if (HashMap.isEmpty(remaining)) return HashMap.remove(links, from)
+	return HashMap.set(links, from, remaining)
+}
+
+// A span link joins two traces either way, so both directions count until the entry that carries it goes.
+function shiftedLinks(links: HashMap.HashMap<string, HashMap.HashMap<string, number>>, entry: Entry, step: number) {
+	return Array.reduce(entry.links ?? [], links, (current, link) => {
+		if (link.traceId === entry.traceId) return current
+		return bumpLink(bumpLink(current, entry.traceId, link.traceId, step), link.traceId, entry.traceId, step)
+	})
+}
+
+function removeEntry(state: State, entry: Entry) {
 	return {
 		entries: HashMap.remove(state.entries, entry.id),
+		links: shiftedLinks(state.links, entry, -1),
 		services: detach(state.services, entry.service, entry.id),
+		settled: Boolean.match(entry.traceId === '', {
+			onFalse: () => HashMap.remove(state.settled, entry.traceId),
+			onTrue: () => state.settled
+		}),
 		traces: Boolean.match(entry.traceId === '', {
 			onFalse: () => detach(state.traces, entry.traceId, entry.id),
 			onTrue: () => state.traces
@@ -478,7 +512,12 @@ function addEntry(state: State, entry: Entry) {
 	})
 	return {
 		entries: HashMap.set(base.entries, entry.id, entry),
+		links: shiftedLinks(base.links, entry, 1),
 		services: attach(base.services, entry.service, entry.id),
+		settled: Boolean.match(entry.traceId === '', {
+			onFalse: () => HashMap.remove(base.settled, entry.traceId),
+			onTrue: () => base.settled
+		}),
 		traces: Boolean.match(entry.traceId === '', {
 			onFalse: () => attach(base.traces, entry.traceId, entry.id),
 			onTrue: () => base.traces
@@ -486,12 +525,80 @@ function addEntry(state: State, entry: Entry) {
 	}
 }
 
+function traceIdsOf(entries: readonly Entry[]) {
+	return Array.flatMap(entries, entry =>
+		Boolean.match(entry.traceId === '', {onFalse: () => [entry.traceId], onTrue: () => []})
+	)
+}
+
+function traceRecords(state: State, traceId: string) {
+	return Array.getSomes(
+		Array.map(
+			Array.fromIterable(Option.getOrElse(HashMap.get(state.traces, traceId), () => HashSet.empty<string>())),
+			id => HashMap.get(state.entries, id)
+		)
+	)
+}
+
+function linkedFrom(
+	links: HashMap.HashMap<string, HashMap.HashMap<string, number>>,
+	frontier: readonly string[],
+	found: HashSet.HashSet<string>
+): HashSet.HashSet<string> {
+	return Array.match(
+		Array.dedupe(
+			Array.flatMap(frontier, traceId =>
+				Array.filter(
+					Array.fromIterable(
+						HashMap.keys(Option.getOrElse(HashMap.get(links, traceId), () => HashMap.empty<string, number>()))
+					),
+					linked => !HashSet.has(found, linked)
+				)
+			)
+		),
+		{
+			onEmpty: () => found,
+			onNonEmpty: reached => linkedFrom(links, reached, HashSet.union(found, HashSet.fromIterable(reached)))
+		}
+	)
+}
+
+function settleTrace(state: State, traceId: string, now: number) {
+	return Option.match(tracedTrace(traceRecords(state, traceId), now), {
+		onNone: () => state,
+		onSome: row => ({...state, settled: HashMap.set(state.settled, traceId, row)})
+	})
+}
+
+function settleTraces(state: State, traceIds: readonly string[], now: number) {
+	return Array.reduce(traceIds, state, (current, traceId) => settleTrace(current, traceId, now))
+}
+
+// Every cached row, plus the rows that only become visible with age; the live stream calls this once per version.
+function snapshotOf(state: State, now: number) {
+	const [cached, rows] = Array.mapAccum(
+		Array.fromIterable(HashMap.keys(state.traces)),
+		state.settled,
+		(settled, traceId) =>
+			Option.match(HashMap.get(settled, traceId), {
+				onNone: () =>
+					Option.match(tracedTrace(traceRecords(state, traceId), now), {
+						onNone: () => [settled, Option.none<Traced>()] as const,
+						onSome: row => [HashMap.set(settled, traceId, row), Option.some(row)] as const
+					}),
+				onSome: row => [settled, Option.some(row)] as const
+			})
+	)
+	return {rows: Array.getSomes(rows), state: {...state, settled: cached}}
+}
+
 export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/services/telemetry/service/Telemetry', {
 	make: Effect.fnUntraced(function* (directory: string) {
 		const fs = yield* FileSystem.FileSystem
 		const path = yield* Path.Path
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
-		const random = yield* SecureRandom.SecureRandom
+		const digest = yield* Digest.Digest
+		const utf8 = new TextEncoder()
 		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
 		// Bumped when traces arrive, expire or finish loading, so the live page recomputes only when its rows can change.
 		const version = yield* SubscriptionRef.make(0)
@@ -501,7 +608,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const releases = yield* Ref.make(Record.empty<string, string>())
 		const state = yield* SynchronizedRef.make<State>({
 			entries: HashMap.empty(),
+			links: HashMap.empty(),
 			services: HashMap.empty(),
+			settled: HashMap.empty(),
 			traces: HashMap.empty()
 		})
 		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
@@ -521,7 +630,23 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						discard: true
 					})
 					yield* Effect.forEach(retention.expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-					return Array.reduce(retention.expired, Array.reduce(retention.repaired, current, addEntry), removeEntry)
+					// Retention only repairs receipt times and removes whole expired traces, so the indexes stay as they are.
+					return {
+						entries: retention.next,
+						links: Array.reduce(retention.expired, current.links, (links, entry) => shiftedLinks(links, entry, -1)),
+						services: Array.reduce(retention.expired, current.services, (index, entry) =>
+							detach(index, entry.service, entry.id)
+						),
+						settled: Array.reduce(Array.dedupe(traceIdsOf(retention.expired)), current.settled, (settled, traceId) =>
+							HashMap.remove(settled, traceId)
+						),
+						traces: Array.reduce(retention.expired, current.traces, (index, entry) =>
+							Boolean.match(entry.traceId === '', {
+								onFalse: () => detach(index, entry.traceId, entry.id),
+								onTrue: () => index
+							})
+						)
+					}
 				})
 			)
 			yield* SubscriptionRef.update(version, Number.increment)
@@ -547,13 +672,15 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					)
 				)
 				// An ingest during the load already replaced what the disk holds; its newer entry stays.
-				yield* SynchronizedRef.update(state, current =>
-					Array.reduce(entries, current, (all, entry) => {
+				const now = yield* Clock.currentTimeMillis
+				yield* SynchronizedRef.update(state, current => {
+					const merged = Array.reduce(entries, current, (all, entry) => {
 						const derived = deriveEntry(entry)
 						if (HashMap.has(all.entries, derived.id)) return all
 						return addEntry(all, derived)
 					})
-				)
+					return settleTraces(merged, Array.fromIterable(HashMap.keys(merged.traces)), now)
+				})
 				yield* Ref.update(releases, known => newestVersions(entries, known))
 			}),
 			Effect.ignore({log: 'Warn', message: 'Stored telemetry could not be loaded'}),
@@ -573,7 +700,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		)
 		const read = Effect.map(SynchronizedRef.get(state), current => Array.fromIterable(HashMap.values(current.entries)))
 		// What an older release sends is dropped; a newer release's first entries delete everything its service's older ones sent.
-		const save = Effect.fnUntraced(function* (entries: Entry[]) {
+		const save = Effect.fnUntraced(function* (entries: Entry[], receivedAt: number) {
 			yield* Effect.uninterruptible(
 				SynchronizedRef.updateEffect(
 					state,
@@ -609,27 +736,39 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							discard: true
 						})
 						yield* Ref.set(releases, reconciliation.newest)
-						return Array.reduce(
-							reconciliation.accepted,
-							Array.reduce(reconciliation.replaced, current, removeEntry),
-							addEntry
+						return settleTraces(
+							Array.reduce(
+								reconciliation.accepted,
+								Array.reduce(reconciliation.replaced, current, removeEntry),
+								addEntry
+							),
+							Array.dedupe(traceIdsOf([...reconciliation.accepted, ...reconciliation.replaced])),
+							receivedAt
 						)
 					})
 				)
 			)
 			yield* SubscriptionRef.update(version, Number.increment)
 		}, failedSave)
-		// Open pages share one snapshot, grouped by trace once; without a viewer there is no scan. Changes coalesce during the one-second pause.
+		// Open pages share one snapshot of the settled rows; only a trace an ingest touched is derived again. Changes coalesce during the one-second pause.
 		const live = yield* pipe(
 			SubscriptionRef.changes(version),
 			Stream.buffer({capacity: 1, strategy: 'sliding'}),
 			Stream.flatMap(() =>
 				Stream.concat(
-					Stream.fromEffect(Effect.all({entries: read, now: Clock.currentTimeMillis}, {concurrency: 'unbounded'})),
+					Stream.fromEffect(
+						Effect.gen(function* () {
+							const now = yield* Clock.currentTimeMillis
+							const traces = yield* SynchronizedRef.modify(state, current => {
+								const snapshot = snapshotOf(current, now)
+								return [snapshot.rows, snapshot.state]
+							})
+							return {now, traces}
+						})
+					),
 					Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
 				)
 			),
-			Stream.map(current => ({...current, traces: tracedOf(current.entries, current.now)})),
 			Stream.share({capacity: 1, replay: 1, strategy: 'sliding'})
 		)
 		return {
@@ -649,27 +788,46 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							)
 						),
 						item =>
-							Effect.map(random.uuidV4(), id =>
-								deriveEntry({
-									durationMs: 0,
-									id,
-									name: logMessage(item.log.body ?? {}),
-									payload: item.log,
-									receivedAt,
-									resource: item.group.resource ?? {},
-									service: serviceName(item.group.resource ?? {}),
-									signal: 'log' as const,
-									spanId: String.toLowerCase(item.log.spanId ?? ''),
-									status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {
-										onFalse: () => 0 as const,
-										onTrue: () => 2 as const
+							Effect.flatMap(
+								// A log record has no id of its own, so the identity is what it carries: a retried export replaces its entry instead of adding one.
+								pipe(
+									Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+										attributes: item.log.attributes ?? [],
+										body: item.log.body ?? {},
+										observedTimeUnixNano: item.log.observedTimeUnixNano ?? '',
+										resource: item.group.resource ?? {},
+										severityNumber: item.log.severityNumber,
+										severityText: item.log.severityText ?? '',
+										spanId: item.log.spanId ?? '',
+										timeUnixNano: item.log.timeUnixNano,
+										traceId: item.log.traceId ?? ''
 									}),
-									time: item.log.timeUnixNano,
-									traceId: String.toLowerCase(item.log.traceId ?? '')
-								})
+									Effect.mapError(cause => TelemetryError.make({cause, message: 'A log record could not be encoded.'}))
+								),
+								encoded =>
+									Effect.map(digest.digestHex(Digest.sha256, utf8.encode(encoded)), id =>
+										deriveEntry({
+											durationMs: 0,
+											id,
+											name: logMessage(item.log.body ?? {}),
+											payload: item.log,
+											receivedAt,
+											resource: item.group.resource ?? {},
+											service: serviceName(item.group.resource ?? {}),
+											signal: 'log' as const,
+											spanId: String.toLowerCase(item.log.spanId ?? ''),
+											status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {
+												onFalse: () => 0 as const,
+												onTrue: () => 2 as const
+											}),
+											time: item.log.timeUnixNano,
+											traceId: String.toLowerCase(item.log.traceId ?? '')
+										})
+									)
 							),
 						{concurrency: 1}
-					)
+					),
+					receivedAt
 				)
 			}),
 			ingestTraces: Effect.fn('Telemetry.ingestTraces')(function* (payload: TracesRequest) {
@@ -694,7 +852,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								})
 							)
 						)
-					)
+					),
+					receivedAt
 				)
 			}),
 			listOperations: Effect.fn('Telemetry.listOperations')(function* (input: ListOperationsParams) {
@@ -709,7 +868,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (input: ReadTraceParams) {
 				const traceId = String.toLowerCase(input.id)
 				const entries = yield* read
-				if (Array.isReadonlyArrayEmpty(Array.filter(entries, entry => entry.traceId === traceId))) {
+				if (!Array.some(entries, entry => entry.traceId === traceId)) {
 					return yield* TelemetryError.make({
 						message:
 							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
@@ -730,14 +889,20 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			}),
 			trace: Effect.fn('Telemetry.trace')(function* (id: string) {
 				const traceId = String.toLowerCase(id)
-				const entries = yield* read
-				if (Array.isReadonlyArrayEmpty(Array.filter(entries, entry => entry.traceId === traceId))) {
+				const current = yield* SynchronizedRef.get(state)
+				if (Array.isReadonlyArrayEmpty(traceRecords(current, traceId))) {
 					return yield* TelemetryError.make({
 						message:
 							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
 					})
 				}
-				return traceView([...entries], traceId)
+				// The trace and every trace a span link joins to it, either way, read from the link index.
+				return traceView(
+					Array.flatMap(Array.fromIterable(linkedFrom(current.links, [traceId], HashSet.make(traceId))), linked =>
+						traceRecords(current, linked)
+					),
+					traceId
+				)
 			})
 		}
 	}, failedSave)

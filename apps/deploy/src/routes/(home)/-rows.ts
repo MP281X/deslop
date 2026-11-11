@@ -1,6 +1,7 @@
 import {Array, Boolean, HashSet, Number, Option, Order, String} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
+import {sourceBelongsToWorker} from '#services/inventory/lib/page.ts'
 import {appUsage, dot, itemOwner, type Row, status} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
@@ -49,18 +50,19 @@ export const order = Order.combine(
 	Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
 )
 
-function isLowImpact(row: Row, lowImpact: HashSet.HashSet<string>) {
-	return dot(row.item, status(row.item)) === 'quiet' && Option.exists(owner(row), id => HashSet.has(lowImpact, id))
-}
-
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
 export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 	const lowImpact = Option.match(Option.fromUndefinedOr(history), {
 		onNone: () => HashSet.empty<string>(),
 		onSome: lowImpactIds
 	})
-	const low = Array.filter(rows, row => isLowImpact(row, lowImpact))
-	return {high: Array.filter(rows, row => !isLowImpact(row, lowImpact)), low}
+	const groups = Array.groupBy(rows, row =>
+		Boolean.match(
+			dot(row.item, status(row.item)) === 'quiet' && Option.exists(owner(row), id => HashSet.has(lowImpact, id)),
+			{onFalse: () => 'high' as const, onTrue: () => 'low' as const}
+		)
+	)
+	return {high: groups.high ?? [], low: groups.low ?? []}
 }
 
 export function ranged(rows: readonly Row[], minutes: number, history?: MachineHistory) {
@@ -89,10 +91,7 @@ export function failedFor(
 	return (
 		inventoryFailure ||
 		history?.stale === true ||
-		Array.some(
-			sources,
-			source => source.error !== '' && (source.name === worker || String.startsWith(`${worker} · `)(source.name))
-		)
+		Array.some(sources, source => source.error !== '' && sourceBelongsToWorker(source, worker))
 	)
 }
 

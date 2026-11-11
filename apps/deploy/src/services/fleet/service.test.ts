@@ -41,7 +41,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const history = MachineHistory.make({
 					cpuModel: 'Fixture CPU',
 					error: '',
-					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, swapTotal: 0, swapUsed: 0, time: 0})],
+					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, time: 0})],
 					stale: false,
 					time: 0,
 					worker: 'worker'
@@ -165,6 +165,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const stale = yield* fleet.snapshot
 				assert.strictEqual(stale.items[0]?.id, current.items[0]?.id)
 				assert.strictEqual(stale.items[0]?.state, 'stale · active')
+				assert.strictEqual(stale.sources[0]?.name, 'desktop · Snapshot')
 				assert.include(stale.sources[0]?.error ?? '', 'worker unavailable')
 			})
 		)

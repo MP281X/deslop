@@ -8,16 +8,7 @@ import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 const GIB = 1024 ** 3
 
 function sample(time: number, apps: Sample['apps']) {
-	return {
-		apps,
-		cpu: 50,
-		disks: [],
-		memoryTotal: 10 * GIB,
-		memoryUsed: 6 * GIB,
-		swapTotal: 0,
-		swapUsed: 0,
-		time
-	} satisfies Sample
+	return {apps, cpu: 50, disks: [], memoryTotal: 10 * GIB, memoryUsed: 6 * GIB, time} satisfies Sample
 }
 
 function machine(samples: Sample[]) {
@@ -61,7 +52,7 @@ it('stacks every recorded app heaviest first, stopped ones too, then the small o
 	assert.strictEqual(result[4]?.cpu[0], 5)
 })
 
-it('fills a Deslop app in its hue, another process in the page primary, and the aggregates grey', () => {
+it('fills a Deslop app in its hue, another process in the page primary, and the aggregates and disk in their greys', () => {
 	assert.deepStrictEqual(bandFill('app', 0.4, 't3code'), {color: 'var(--primary)', opacity: 0.4})
 	assert.deepStrictEqual(bandFill('app', 0.4, 'scope'), {color: 'var(--cyan)', opacity: 0.9})
 	assert.deepStrictEqual(bandFill('other', 0.35, 'Low impact'), {color: 'var(--input)', opacity: 1})

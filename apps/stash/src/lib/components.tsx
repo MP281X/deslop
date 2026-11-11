@@ -1,25 +1,15 @@
-import {Array, Boolean, DateTime, Match, Option, Schema, pipe} from 'effect'
+import {Array, Match, Option, Schema, pipe} from 'effect'
 
 import {HStack, Image, Text} from '@expo/ui/swift-ui'
 import {accessibilityElement, accessibilityHidden, foregroundStyle, lineLimit} from '@expo/ui/swift-ui/modifiers'
 
 import {colors, space, text} from '@deslop/components-mobile/theme'
+import {shortDate} from '@deslop/components-mobile/utils'
 
 import {BrandLogo} from '#lib/icons.tsx'
 import {kindOf, kinds, siteOf} from '#lib/kinds.ts'
 import type {Kind, NoteItem} from '#services/notes/schema.ts'
 import {Brand} from '#services/notes/schema.ts'
-
-function savedOn(createdAt: number) {
-	const saved = DateTime.makeUnsafe(createdAt)
-	return DateTime.formatLocal(
-		saved,
-		Boolean.match(DateTime.getPartUtc(saved, 'year') === DateTime.getPartUtc(DateTime.nowUnsafe(), 'year'), {
-			onFalse: () => ({day: 'numeric', month: 'short', year: 'numeric'}) as const,
-			onTrue: () => ({day: 'numeric', month: 'short'}) as const
-		})
-	)
-}
 
 // The source mark is decoration; the byline's text names the source.
 function SourceIcon(props: {kind: Kind}) {
@@ -44,7 +34,7 @@ export function Byline(props: {note: NoteItem}) {
 				{pipe(
 					[
 						Option.orElse(Option.fromUndefinedOr(props.note.author), () => siteOf(props.note)),
-						Option.some(savedOn(props.note.createdAt))
+						Option.some(shortDate(props.note.createdAt))
 					],
 					Array.getSomes,
 					Array.join(' · ')

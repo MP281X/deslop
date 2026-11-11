@@ -90,6 +90,8 @@
 	],
 	"ignorePatterns": ["**/*.gen.ts", "tools/*/template/**"],
 	"ignoreExports": [
+		// Test fixtures choose an isolated AI usage directory; production uses AiProxy.layer.
+		{"exports": ["layerAiProxy"], "file": "apps/*/src/services/*/service.ts"},
 		{"exports": ["default"], "file": "apps/*/app.config.ts"},
 		{"exports": ["*"], "file": "apps/*/fingerprint.config.js"},
 		{"exports": ["module.exports"], "file": "apps/*/targets/*/expo-target.config.js"},

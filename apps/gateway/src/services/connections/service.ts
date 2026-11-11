@@ -37,10 +37,11 @@ import {KeyValueStore} from 'effect/persistence'
 import type {User} from '@deslop/runtime/auth/schema'
 import {AuthError} from '@deslop/runtime/auth/schema'
 import {Auth} from '@deslop/runtime/auth/service'
-import {ISSUER_PATH, adminIds, isAdmin} from '@deslop/runtime/auth/utils'
+import {ISSUER_PATH, adminIds, requireAdmin} from '@deslop/runtime/auth/utils'
 
 import {
 	clientMetadata,
+	connectionFailure,
 	connectionInfo,
 	describe,
 	endSession,
@@ -86,10 +87,7 @@ function siteOf(url: URL) {
 }
 
 function failed(message: string) {
-	return Effect.mapError((cause: unknown) => {
-		if (Schema.is(AuthError)(cause)) return cause
-		return AuthError.make({cause, error: 'temporarily_unavailable', message: `${message}: ${describe(cause)}`})
-	})
+	return Effect.mapError(connectionFailure(message))
 }
 
 function usageKey(id: ServerId) {
@@ -176,11 +174,9 @@ export class Connections extends Context.Service<
 		}, failed('MCP usage storage failed'))
 		// Auth's admins, named by the same setting: only they manage the servers everyone with access shares.
 		const admins = yield* adminIds
-		const admin = Effect.fnUntraced(function* (user: User) {
-			if (!isAdmin(admins, user.id)) {
-				return yield* AuthError.make({error: 'access_denied', message: 'Only an admin can manage MCP servers'})
-			}
-		})
+		function admin(user: User) {
+			return requireAdmin(admins, user, 'Only an admin can manage MCP servers')
+		}
 		// Each server's token is read and refreshed one call at a time, so concurrent calls never spend its refresh token twice.
 		const locks = yield* Cache.make<string, Semaphore.Semaphore>({capacity: 256, lookup: () => Semaphore.make(1)})
 		const client = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)

@@ -265,7 +265,7 @@ export class Fleet extends Context.Service<
 													detail: `${item.detail}\nLast successful sample: ${rows[worker.name]?.time}`,
 													state: `stale · ${item.state}`
 												})),
-												sources: [{error: cause.message, name: worker.name}],
+												sources: [{error: cause.message, name: `${worker.name} · Snapshot`}],
 												time: 0
 											})
 										),
