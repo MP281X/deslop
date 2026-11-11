@@ -5,7 +5,7 @@ description: Load before editing code for a bug or a failed check, before claimi
 
 # Verification
 
-Verify owns code-level quality; see `tools/coding-standards/README.md`. This skill covers running behavior, the user's experience and codebase-wide decisions. A bug or failed check starts at Diagnose; finished work passes Verify, then Prove, then Review.
+Verify owns code-level quality; see `tools/coding-standards/README.md`. This skill covers running behavior, the user's experience and codebase-wide decisions. A bug or failed check starts at Diagnose; finished work passes Verify, then Prove, then Review. The output skill owns the shape of the reply, page and PR body.
 
 ## Diagnose
 
