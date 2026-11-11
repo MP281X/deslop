@@ -5,20 +5,11 @@ import {Array, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {useEffect, useRef} from 'react'
-import type {ReactElement, ReactNode} from 'react'
+import {useEffect, useRef, useState} from 'react'
+import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
 
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger
-} from '#components/ui/dropdown-menu.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
 
 type Account = typeof Account.Type
@@ -33,39 +24,88 @@ const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 	)
 )
 
+// The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
+async function loadMenu() {
+	return await import('#components/ui/dropdown-menu.tsx')
+}
+
+function AccountAvatar(props: {account: Account}) {
+	return (
+		<Avatar size="sm" variant="plain">
+			<AvatarImage
+				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.account.id)}?s=96`}
+				alt={props.account.name}
+			/>
+			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.account.name))}</AvatarFallback>
+		</Avatar>
+	)
+}
+
 // Signing out goes through Auth, which ends the session every app shares.
 function AccountMenu() {
 	const account = useAtomValue(accountAtom)
+	const [menu, setMenu] = useState<Awaited<ReturnType<typeof loadMenu>>>()
+	const [open, setOpen] = useState<boolean>()
+
+	async function load() {
+		setMenu(await loadMenu())
+	}
+
+	async function activate() {
+		setOpen(true)
+		await load()
+	}
+
+	async function activateWithKey(event: KeyboardEvent<HTMLButtonElement>) {
+		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+		event.preventDefault()
+		setOpen(true)
+		await load()
+	}
+
 	if (!AsyncResult.isSuccess(account)) return null
+	if (menu === undefined || open === undefined) {
+		return (
+			<Button
+				variant="ghost"
+				size="icon-sm"
+				className="max-sm:size-11"
+				aria-label="Account"
+				aria-haspopup="menu"
+				aria-expanded={open ?? false}
+				onPointerEnter={load}
+				onPointerDown={load}
+				onFocus={load}
+				onClick={activate}
+				onKeyDown={activateWithKey}
+			>
+				<AccountAvatar account={account.value} />
+			</Button>
+		)
+	}
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger
+		<menu.DropdownMenu open={open} onOpenChange={setOpen}>
+			<menu.DropdownMenuTrigger
 				aria-label="Account"
 				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
 			>
-				<Avatar size="sm" variant="plain">
-					<AvatarImage
-						src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(account.value.id)}?s=96`}
-						alt={account.value.name}
-					/>
-					<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(account.value.name))}</AvatarFallback>
-				</Avatar>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-auto min-w-48">
-				<DropdownMenuGroup>
-					<DropdownMenuLabel>@{account.value.name}</DropdownMenuLabel>
-				</DropdownMenuGroup>
-				<DropdownMenuSeparator />
-				<DropdownMenuItem
+				<AccountAvatar account={account.value} />
+			</menu.DropdownMenuTrigger>
+			<menu.DropdownMenuContent align="end" className="w-auto min-w-48">
+				<menu.DropdownMenuGroup>
+					<menu.DropdownMenuLabel>@{account.value.name}</menu.DropdownMenuLabel>
+				</menu.DropdownMenuGroup>
+				<menu.DropdownMenuSeparator />
+				<menu.DropdownMenuItem
 					variant="destructive"
 					className="max-sm:h-11"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
 					Sign out
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
+				</menu.DropdownMenuItem>
+			</menu.DropdownMenuContent>
+		</menu.DropdownMenu>
 	)
 }
 
