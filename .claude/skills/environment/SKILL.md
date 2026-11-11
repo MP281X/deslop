@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Load before worker operations, previews, devices, tracing, deployment, publishing, sign-in, runtime errors, saved reading, design references, reading an outside repository or Dual.
+description: Load before worker operations, previews, devices, tracing, deployment, publishing, sign-in, runtime errors, saved reading, design references, reading a reference or outside repository, or Dual.
 ---
 
 # Environment

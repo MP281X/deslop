@@ -31,7 +31,7 @@
 - **Personal tools.** No stdio bridge, container, download command or telemetry Collector.
 - **MCP tools.** Serve agent work, not every page action; none for apps agents do not need, including Trips, OPM and Portfolio.
 - **Auth.** Never a pasted key.
-- **Tests.** No test a fix alone earns.
+- **Tests.** A fix alone earns no test.
 - **Dependencies.** Keep dependencies in their owning packages on `latest`; pin only for peers, the Expo SDK or Vite+; update coupled packages together. Tools use their own flags and defaults, no wrapper scripts. Libraries only through published releases: no patches, forks, overrides or shims, except shadcn registry components. Correct wrong metadata with `packageExtensions` and a comment naming the upstream defect.
 
 ## Design
