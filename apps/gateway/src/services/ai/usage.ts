@@ -1,8 +1,29 @@
-import {Array, Boolean, Number, Option, Order, Record, Result, Schema, String} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Effect,
+	FileSystem,
+	MutableHashMap,
+	MutableHashSet,
+	MutableList,
+	Number,
+	Option,
+	Order,
+	Path,
+	Record,
+	Result,
+	Schema,
+	Semaphore,
+	String
+} from 'effect'
 
-import type {AiUsageEntry} from '#services/ai/schema.ts'
-import {Usage} from '#services/ai/schema.ts'
+import {KeyValueStore} from 'effect/persistence'
+
+import {AiUsageEntry, AiUsageLine, Usage} from '#services/ai/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
+
+const OLD_PREFIX = 'ai-usage/'
 
 export function readUsage(text: string, entry: AiUsageEntry) {
 	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)
@@ -60,4 +81,150 @@ export function report(entries: AiUsageEntry[], range: UsageRange) {
 			Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
 		)
 	}
+}
+
+function dayOf(at: number) {
+	return DateTime.formatIsoDateUtc(DateTime.makeUnsafe(at))
+}
+function monthsOf(range: UsageRange) {
+	const months = MutableList.make<string>()
+	const cursor = {date: DateTime.startOf(DateTime.makeUnsafe(range.from), 'month')}
+	while (DateTime.toEpochMillis(cursor.date) < range.to) {
+		MutableList.append(months, String.slice(0, 7)(DateTime.formatIsoDateUtc(cursor.date)))
+		cursor.date = DateTime.add(cursor.date, {months: 1})
+	}
+	return MutableList.toArray(months)
+}
+
+// One append-only NDJSON file per person and day, with each month read once into memory for reports.
+export function makeUsage(directory: string) {
+	return Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem
+		const path = yield* Path.Path
+		const kv = yield* KeyValueStore.KeyValueStore
+		const root = path.join(directory, 'ai-usage')
+		const lock = yield* Semaphore.make(1)
+		const months = MutableHashMap.empty<string, MutableList.MutableList<AiUsageEntry>>()
+		const loaded = MutableHashSet.empty<string>()
+		const known = MutableHashSet.empty<string>()
+
+		function directoryOf(person: string) {
+			return path.join(root, encodeURIComponent(person))
+		}
+		function fileOf(person: string, day: string) {
+			return path.join(directoryOf(person), `${day}.ndjson`)
+		}
+
+		const remember = Effect.fnUntraced(function* (person: string) {
+			if (MutableHashSet.has(known, person)) return
+			yield* fs.makeDirectory(directoryOf(person), {mode: 0o700, recursive: true})
+			MutableHashSet.add(known, person)
+		})
+
+		// Runs once per process: each stored monthly array becomes day files, and its key is removed after they are written.
+		const migrate = yield* Effect.cached(
+			Effect.gen(function* () {
+				yield* Effect.forEach(
+					Array.filter(yield* kv.keys, key => String.startsWith(OLD_PREFIX)(key)),
+					Effect.fnUntraced(function* (key) {
+						const text = yield* kv.get(key)
+						if (text === undefined) return
+						const entries = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(AiUsageEntry)))(text)
+						const person = Option.getOrThrow(Array.head(String.split('/')(String.slice(OLD_PREFIX.length)(key))))
+						yield* Effect.forEach(
+							Record.toEntries(Array.groupBy(entries, entry => dayOf(entry.at))),
+							day =>
+								Effect.gen(function* () {
+									const file = fileOf(person, day[0])
+									// An interrupted conversion wrote this day before the key was removed.
+									if (yield* fs.exists(file)) return
+									yield* remember(person)
+									yield* fs.writeFileString(
+										`${file}.tmp`,
+										`${Array.join(
+											Array.map(day[1], entry => Schema.encodeSync(AiUsageLine)(entry)),
+											'\n'
+										)}\n`,
+										{mode: 0o600}
+									)
+									yield* fs.rename(`${file}.tmp`, file)
+								}),
+							{concurrency: 1, discard: true}
+						)
+						yield* kv.remove(key)
+					}),
+					{concurrency: 1, discard: true}
+				)
+			})
+		)
+
+		const load = Effect.fnUntraced(function* (person: string, month: string) {
+			const key = `${person}/${month}`
+			if (MutableHashSet.has(loaded, key)) return
+			const personDirectory = directoryOf(person)
+			const files = yield* Boolean.match(yield* fs.exists(personDirectory), {
+				onFalse: () => Effect.succeed(Array.empty<string>()),
+				onTrue: () => fs.readDirectory(personDirectory)
+			})
+			const entries = MutableList.make<AiUsageEntry>()
+			yield* Effect.forEach(
+				Array.sort(
+					Array.filter(files, file => String.startsWith(`${month}-`)(file) && String.endsWith('.ndjson')(file)),
+					String.Order
+				),
+				file =>
+					Effect.gen(function* () {
+						const text = yield* fs.readFileString(path.join(personDirectory, file))
+						const lines = Array.filter(String.split(/\r?\n/u)(text), String.isNonEmpty)
+						MutableList.appendAll(
+							entries,
+							yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(AiUsageEntry)))(
+								`[${Array.join(lines, ',')}]`
+							)
+						)
+					}),
+				{concurrency: 1, discard: true}
+			)
+			MutableHashMap.set(months, key, entries)
+			MutableHashSet.add(loaded, key)
+		})
+
+		const save = Effect.fnUntraced(function* (person: string, entry: AiUsageEntry) {
+			yield* migrate
+			yield* lock.withPermit(
+				Effect.gen(function* () {
+					const day = dayOf(entry.at)
+					yield* remember(person)
+					yield* fs.writeFileString(fileOf(person, day), `${yield* Schema.encodeEffect(AiUsageLine)(entry)}\n`, {
+						flag: 'a',
+						mode: 0o600
+					})
+					Option.match(MutableHashMap.get(months, `${person}/${String.slice(0, 7)(day)}`), {
+						onNone: () => undefined,
+						onSome: month => MutableList.append(month, entry)
+					})
+				})
+			)
+		})
+
+		const read = Effect.fnUntraced(function* (person: string, range: UsageRange) {
+			yield* migrate
+			return yield* lock.withPermit(
+				Effect.gen(function* () {
+					yield* Effect.forEach(monthsOf(range), month => load(person, month), {concurrency: 1, discard: true})
+					return report(
+						Array.flatMap(monthsOf(range), month =>
+							Option.match(MutableHashMap.get(months, `${person}/${month}`), {
+								onNone: () => Array.empty<AiUsageEntry>(),
+								onSome: MutableList.toArray
+							})
+						),
+						range
+					)
+				})
+			)
+		})
+
+		return {read, save}
+	})
 }

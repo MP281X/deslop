@@ -1,6 +1,6 @@
 import {gzipSync} from 'node:zlib'
 
-import {NodeCrypto, NodeHttpServer} from '@effect/platform-node'
+import {NodeCrypto, NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -10,9 +10,10 @@ import {
 	ConfigProvider,
 	Context,
 	Effect,
+	FileSystem,
 	Layer,
 	Option,
-	Predicate,
+	Path,
 	Queue,
 	Redacted,
 	Ref,
@@ -31,8 +32,9 @@ import {Auth} from '@deslop/runtime/auth/service'
 import {Sessions} from '@deslop/runtime/auth/sessions'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
-import {AiUsageEntry} from '#services/ai/schema.ts'
-import {AiProxy} from '#services/ai/service.ts'
+import type {AiUsageEntry} from '#services/ai/schema.ts'
+import {AiUsageLine} from '#services/ai/schema.ts'
+import {AiProxy, layerAiProxy} from '#services/ai/service.ts'
 
 const APP = 'Stash'
 const JSON_BODY = '{ "model": "test", "usage": {"input_tokens": 10, "output_tokens": 5} }'
@@ -75,22 +77,23 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	})
 	const saved = yield* Queue.unbounded<AiUsageEntry>()
 	const calls = yield* Queue.unbounded<{key: string; url: string; body: string}>()
+	const pricingDown = yield* Ref.make(false)
 	const base = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
-	const store = KeyValueStore.make({
-		...base,
-		set: Effect.fnUntraced(function* (key, value) {
-			return yield* pipe(
-				base.set(key, value),
-				Effect.tap(() => {
-					if (String.startsWith('ai-usage/')(key) && Predicate.isString(value)) {
-						return Queue.offer(
-							saved,
-							Option.getOrThrow(Array.last(Schema.decodeSync(Schema.fromJsonString(Schema.Array(AiUsageEntry)))(value)))
-						)
-					}
-					return Effect.void
+	const platform = yield* Layer.build(NodeServices.layer)
+	const system = Context.get(platform, FileSystem.FileSystem)
+	const directory = yield* system.makeTempDirectoryScoped()
+	// The usage ledger appends a line for each recorded call; the test reads that line back as it is written.
+	const files = FileSystem.FileSystem.of({
+		...system,
+		writeFileString: Effect.fnUntraced(function* (file, text, options) {
+			const written = yield* system.writeFileString(file, text, options)
+			if (options?.flag === 'a' && String.includes('/ai-usage/')(file)) {
+				yield* Option.match(Schema.decodeOption(AiUsageLine)(String.trim(text)), {
+					onNone: () => Effect.void,
+					onSome: entry => Queue.offer(saved, entry)
 				})
-			)
+			}
+			return written
 		})
 	})
 	const client = HttpClient.make(request =>
@@ -101,6 +104,9 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 			}
 			if (compressed !== undefined && String.includes('/gzip')(request.url)) return yield* compressed.get('/gzip')
 			if (request.url === 'https://models.dev/api.json') {
+				if (yield* Ref.get(pricingDown)) {
+					return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 503}))
+				}
 				return HttpClientResponse.fromWeb(
 					request,
 					Response.json({anthropic: {models: {test: {cost: {input: 2, output: 4}}}}})
@@ -133,12 +139,14 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		})
 	)
 	const services = pipe(
-		AiProxy.layer,
+		layerAiProxy(directory),
 		Layer.provide(Auth.layer),
 		Layer.provide(Sessions.layer),
 		Layer.provide(
 			Layer.mergeAll(
-				Layer.succeed(KeyValueStore.KeyValueStore, store),
+				Layer.succeed(FileSystem.FileSystem, files),
+				Layer.succeed(Path.Path, Context.get(platform, Path.Path)),
+				Layer.succeed(KeyValueStore.KeyValueStore, base),
 				Layer.succeed(HttpClient.HttpClient, client),
 				NodeCrypto.layer
 			)
@@ -165,6 +173,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		ai: Context.get(context, AiProxy),
 		calls,
 		down,
+		pricingDown,
 		request: (path: string, options?: RequestInit) =>
 			Effect.promise(() => web.handler(new Request(`https://gateway.mp281x.xyz${path}`, options))),
 		saved,
@@ -217,6 +226,42 @@ it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its 
 			const missing = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(missing.status, 402)
 			assert.include(yield* Effect.promise(() => missing.text()), 'Add your Anthropic key in Gateway')
+		}),
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
+		Effect.provide(
+			ConfigProvider.layer(
+				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+			)
+		)
+	)
+)
+
+it.live('retries a failed pricing refresh on the next call instead of pricing a day as unknown', () =>
+	pipe(
+		Effect.gen(function* () {
+			const f = yield* fixture()
+			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
+			const token = yield* f.sign()
+			yield* Ref.set(f.pricingDown, true)
+			const first = yield* f.request('/ai/anthropic/json', {
+				body: '{"model":"test"}',
+				headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
+				method: 'POST'
+			})
+			assert.equal(first.status, 201)
+			yield* Effect.promise(() => first.text())
+			assert.equal((yield* Queue.take(f.saved)).costSource, 'unknown')
+			yield* Ref.set(f.pricingDown, false)
+			const second = yield* f.request('/ai/anthropic/json', {
+				body: '{"model":"test"}',
+				headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
+				method: 'POST'
+			})
+			assert.equal(second.status, 201)
+			yield* Effect.promise(() => second.text())
+			const priced = yield* Queue.take(f.saved)
+			assert.equal(priced.costSource, 'models.dev')
+			assert.equal(priced.costUsd, 0.00004)
 		}),
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(

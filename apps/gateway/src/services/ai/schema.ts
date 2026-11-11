@@ -32,6 +32,8 @@ export const AiUsageEntry = Schema.Struct({
 	outputTokens: Schema.Finite,
 	provider: AiProvider
 })
+export type AiUsageLine = typeof AiUsageLine.Type
+export const AiUsageLine = Schema.fromJsonString(AiUsageEntry)
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
 export const AiUsageBreakdown = Schema.Struct({
 	costUsd: Schema.Finite,
