@@ -1,80 +1,52 @@
 ---
 name: output
-description: Load before every final reply, PR body, plan card, mock or rendered page. Forces one real visualization with meaningful color, not cards or prose, and checks it before sending.
+description: Load before every reply, PR body, plan card, mock or page. Every substantive reply is one visual plus at most three short lines, never a wall of text.
 ---
 
 # Output
 
-The user reads the result, not the process. Every visual output carries one idea.
+The user reads the result, not the process.
+
+## Gate
+
+Before sending, look at the reply. If it is more than three lines, or it contains a comparison, decision, sequence, state, choice or number, it must carry a visual. The visual is the answer; the text is its caption. A prose-only reply is a failure.
+
+The only exception is a direct one-line answer to a direct one-line question.
 
 ## One idea
 
-- The first line is the outcome or the decision, in plain words, named as the user sees it.
-- One output, one idea. A second idea belongs in the PR body or a link.
-- The visual carries the relationship or the number; text only labels it.
+- Write the one sentence the reader must understand or the one action to take. The first line says it.
+- One visual, one idea. A second idea belongs in another output.
+- Text labels the visual; it does not explain it.
 
-## A visualization, not decoration
+## Make it visible
 
-Call it a visualization only if it is one of: a node-link graph, Sankey, timeline, Gantt, flame graph, heatmap, matrix, treemap, bar/line/scatter chart, map, annotated screenshot, state machine, or a flow with a spatial layout.
+Start from the relationship, not a chart name. Ask what changes between the marks: position on a shared scale, distance, area, time, direction, containment or connection. Choose the encoding that makes that difference visible; derive the marks from the data. Do not pick from a catalog of chart types or copy a stock template.
 
-Cards, bullet lists, tables, tabs, progress bars, a row of colored dots and a headline with colored words are not visualizations. They may support the one visual; they never replace it.
+If removing color and labels leaves the same information as a list of sentences, it is not a visualization. If the reader has to read the prose to find the point, rebuild it.
 
-- Color encodes a category, value or state, with a legend. At least three meaningful hues when the data has three categories; one accent for the selected path. No decorative color.
-- Interaction belongs to the visual: hover or focus highlights connected nodes or series and shows a tooltip; click pins. No tabs, no hidden panes, no separate detail card.
-- One visual, one idea, one screen at 390px. If it needs a second visual, it is two outputs.
-
-## Pick the visual
-
-| The fact is                  | The visual                 |
-| ---------------------------- | -------------------------- |
-| A rule, path or dependency   | Node-link graph            |
-| Volume moving between stages | Sankey                     |
-| Time, spans or steps         | Timeline, Gantt or flame   |
-| People × resources           | Heatmap or matrix          |
-| A number over time or groups | Bar, line or scatter       |
-| A screen or behavior         | Annotated screenshot, mock |
-| Named states and events      | State machine              |
-
-## Pattern
-
-A node-link graph is the default for a rule or path. Keep the SVG in a 360×360 viewBox, one hue per node kind, one accent for the selected path, and a tooltip that names the rule.
-
-```html
-<svg viewBox="0 0 360 360">
-	<g class="edge" data-edge="group-space" data-from="group" data-to="space">
-		<path d="M90 70V136" />
-		<text x="96" y="106">View + Use</text>
-	</g>
-	<g class="node" data-node="group" tabindex="0">
-		<rect x="20" y="16" width="140" height="54" />
-		<text x="34" y="47">Group "Sales team"</text>
-	</g>
-</svg>
-<script>
-	// pointerenter/focus a node: add .active to it and its edges, dim the rest, fill the tooltip.
-</script>
-```
+- Color encodes a category, state or value with a legend; one accent for the selected path; no decorative color.
+- Interaction reveals detail without hiding the overview: hover or focus highlights connected marks and shows exact values; click pins. No tabs, hidden panes or separate detail cards.
+- One visual, one screen at 390px. If it needs a second visual, it is two outputs.
 
 ## Budget
 
 - One phone screen at 390px; a plan card may take two.
 - At most 80 visible words outside the visual's labels; 25 in a paragraph.
 - One h1, one visual, at most three supporting rows.
-- Cut anything that repeats the visual, describes the process, or is already in the PR.
+- Cut anything that repeats the visual, describes the process or is already in the PR.
 
 ## Design
 
-- The app's tokens and font. Deslop: JetBrains Mono, square, hairlines, zinc neutrals, Kanagawa identity hues. Dual: its own tokens.
-- One accent for the selected path; one radius; no boxes inside boxes, gradients, shadows or glow.
-- Real content and one worked example.
-- Nothing animates; interaction changes instantly.
+- Use the app's tokens, font, radius and neutrals; never introduce a second palette.
+- Real content and one worked example. No gradients, shadows, glow or animation.
 
-## Before sending
+## Check
 
-1. Render the page; open it at 390px and 1440px.
-2. Hover and focus every node or series; the tooltip and highlight must work.
-3. Check color: every hue maps to a category or value in the legend; no decorative color.
-4. Read it as the user: what changed, what do I do, what is the one thing? Cut until that takes five seconds.
-5. If it is cards, a table or prose with color, it is not a visualization; rebuild it.
+1. Render; open at 390 and 1440.
+2. Hover and focus every mark; the tooltip and highlight work.
+3. Every hue has a meaning in the legend.
+4. Read it in five seconds: what changed, what do I do, what is the one thing?
+5. If the visual disappears when color is removed, or the reply is still prose with a picture, rebuild.
 
-If the page cannot be rendered, use GFM and say `unverified: page not rendered`.
+If the page cannot be rendered, use a Mermaid diagram or a compact GFM flow, never prose.

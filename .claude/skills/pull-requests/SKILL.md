@@ -23,7 +23,7 @@ description: 'Load before the first commit of a task, before the first edit when
      magick <figure>.png -fuzz 1% -transparent "$(magick <figure>.png -format '%[pixel:p{0,0}]' info:)" <figure>.png
      ```
 
-   - **Videos:** [references/video.md](references/video.md).
+   - **Videos:** record the real journey; use the hyperframes skill for the edit.
 3. **Read back** the rendered body: every image and video loads under its claim, captured on the pushed head (verification, **Final head**).
 4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify, fresh captures where they changed, and one push.
 5. **Hand back** once the required jobs pass and no P1 or P2 finding is open.
@@ -39,12 +39,9 @@ gh pr edit <n> --title '<title>' --body-file - --attach './shot.png#<alt>' <<'EO
 EOF
 gh pr edit <n> --attach './proof.mp4'    # appends the video URL: move it under its claim, alone in its paragraph
 gh api repos/<owner>/<repo>/pulls/<n> -H 'Accept: application/vnd.github.html+json' --jq .body_html
-glab mr update <n> --description-file - --attach ./shot.png <<'EOF'   # appends the reference: move it under its claim
-glab api "projects/:id/merge_requests/<n>?render_html=true" | jq -r .description_html
-glab api "projects/:id/pipelines/<pipeline>/jobs?scope[]=failed" | jq -r '.[] | "\(.id) \(.name)"'; glab ci trace <job id>
 ```
 
-**GitHub stacks** act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
+**Stacks** act on the checked-out branch's stack; GitHub rebases the next layer when the one below merges.
 
 ```bash
 gh stack init <bottom> [<next> …]    # start, or adopt existing branches bottom first
@@ -55,15 +52,3 @@ gh stack push                        # later rounds
 gh stack sync --prune                # after a merge below
 gh stack unstack --local             # drop tracking of a stack that was never submitted
 ```
-
-**GitLab stacks** act on the stack selected in this worktree: one commit per diff on its own branch, whose first message line is the MR title (`Draft: ` opens a draft). Every MR of a stack comes from `sync`, which never edits an existing MR.
-
-```bash
-git commit -m 'Draft: <title>'
-script -qec "GLAB_EDITOR='sh -c \"git rev-list --reverse origin/<default>..HEAD > \\\$1\" -' glab stack infer --name <stack> <default>..HEAD" /dev/null
-git add -A && glab stack save -m 'Draft: <title>'    # a new layer; `amend` folds into the checked-out one
-glab stack sync --skip-push                          # restack locally before Verify
-glab stack sync --update-base                        # each push and after a merge below: rebase, drop merged diffs, force-push, open missing MRs
-```
-
-`infer` needs a TTY and an editor, and its range starts at `origin/<default>` since the local default branch can lag; `glab stack create` cannot run in a worktree. `glab stack reorder` takes the same `script` and editor shape, one branch per line, then `glab stack sync`.
