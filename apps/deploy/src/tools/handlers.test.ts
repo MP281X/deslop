@@ -221,8 +221,6 @@ function machineOf(worker: string, options?: {error?: string; stale?: boolean}) 
 				memoryTotal: 16 * GIB,
 				memoryUsed: (6 + index / 10) * GIB,
 				storageUsed: (200 + index) * GIB,
-				swapTotal: 0,
-				swapUsed: 0,
 				time: start + index * 60_000 + 30_000
 			}) satisfies Sample
 	)

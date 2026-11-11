@@ -14,49 +14,26 @@ import {
 	sample
 } from '#services/metrics/lib/utils.ts'
 
-const MEMORY = 'MemTotal: 1024 kB\nMemAvailable: 256 kB\nSwapTotal: 512 kB\nSwapFree: 128 kB'
+const MEMORY = 'MemTotal: 1024 kB\nMemAvailable: 256 kB'
 const STORAGE = 'Mounted on 1B-blocks Used\n/ 1000000 750000'
 
-it('measures deltas, excludes virtual interfaces and partitions, and leaves reset/gap rates absent', () => {
-	const first = counters(
-		'cpu 100 0 100 600 0 0 0 0 999 999',
-		'eth0: 30000 0 0 0 0 0 0 0 60000\nlo: 999999 0 0 0 0 0 0 0 999999\ntailscale0: 999999 0 0 0 0 0 0 0 999999',
-		'8 0 sda 0 0 100 0 0 0 200\n8 1 sda1 0 0 100 0 0 0 200',
-		'100 0',
-		30_000
-	)
+it('measures CPU deltas and leaves reset or gap readings absent', () => {
+	const first = counters('cpu 100 0 100 600 0 0 0 0 999 999', '100 0', 30_000)
 	assert.strictEqual(first.cpuTotal, 800)
-	assert.strictEqual(first.diskRead, 51_200)
-	assert.strictEqual(first.networkReceive, 30_000)
-	const current = {
-		...first,
-		cpuIdle: 700,
-		cpuTotal: 1000,
-		diskRead: 81_200,
-		diskWrite: 162_400,
-		networkReceive: 60_000,
-		networkSend: 120_000,
-		time: 60_000,
-		uptime: 130
-	}
+	const current = {...first, cpuIdle: 700, cpuTotal: 1000, time: 60_000, uptime: 130}
 	const value = sample(current, MEMORY, STORAGE, first)
 	assert.strictEqual(value.cpu, 50)
-	assert.strictEqual(value.networkReceive, 1000)
-	assert.strictEqual(value.networkSend, 2000)
-	assert.strictEqual(value.diskRead, 1000)
 	assert.strictEqual(value.memoryUsed, 768 * 1024)
-	assert.strictEqual(value.swapUsed, 384 * 1024)
 	assert.strictEqual(value.storageUsed, 750_000)
 	assert.deepStrictEqual(value.disks, [{mount: '/', total: 1_000_000, used: 750_000}])
 	assert.isUndefined(sample(current, MEMORY, '').storageUsed)
 	assert.isUndefined(sample(current, MEMORY, STORAGE).cpu)
 	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cpu)
-	assert.isUndefined(sample({...current, networkReceive: 1}, MEMORY, STORAGE, first).networkReceive)
-	assert.isUndefined(sample({...current, time: 150_001}, MEMORY, STORAGE, first).networkReceive)
+	assert.isUndefined(sample({...current, time: 150_001}, MEMORY, STORAGE, first).cpu)
 })
 
 it('bounds history by the chosen time window and response size without synthesizing measurements', () => {
-	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '100 0', 0), MEMORY, STORAGE)
 	const samples = Array.makeBy(20_161, index => ({...value, time: index * 30_000}))
 	const now = 168 * 3_600_000
 	const selected = history(samples, 60, now)
@@ -73,26 +50,15 @@ it('bounds history by the chosen time window and response size without synthesiz
 	assert.deepStrictEqual(compact(retained, now), retained)
 })
 
-it('measures individual logical cores, memory detail, load and uptime without bridging resets', () => {
-	const first = counters('cpu 100 0 100 600 0 0 0 0\ncpu0 100 0 100 600 0 0 0 0', '', '', '100 0', 0)
+it('measures individual logical cores, load and uptime without bridging resets', () => {
+	const first = counters('cpu 100 0 100 600 0 0 0 0\ncpu0 100 0 100 600 0 0 0 0', '100 0', 0)
 	const current = counters(
 		'cpu 150 0 150 700 0 0 0 0\ncpu0 150 0 150 700 0 0 0 0\ncpu1 10 0 10 20 0 0 0 0',
-		'',
-		'',
 		'130 0',
 		30_000
 	)
-	const value = sample(
-		current,
-		`${MEMORY}\nCached: 32 kB\nSReclaimable: 16 kB\nBuffers: 8 kB`,
-		STORAGE,
-		first,
-		'1.5 2.5 3.5 1/20 123'
-	)
+	const value = sample(current, MEMORY, STORAGE, first, '1.5 2.5 3.5 1/20 123')
 	assert.deepStrictEqual(value.cores, [{id: 'cpu0', usage: 50}, {id: 'cpu1'}])
-	assert.strictEqual(value.memoryCached, 48 * 1024)
-	assert.strictEqual(value.memoryAvailable, 256 * 1024)
-	assert.strictEqual(value.memoryBuffers, 8 * 1024)
 	assert.deepStrictEqual(value.load, [1.5, 2.5, 3.5])
 	assert.strictEqual(value.uptime, 130)
 	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cores?.[0]?.usage)
@@ -102,17 +68,18 @@ it('measures individual logical cores, memory detail, load and uptime without br
 	)
 })
 
-it('keeps mounts on the newest point and a missing rate unmeasured', () => {
-	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
-	const selected = history([value, {...value, cpu: 12.3456, networkReceive: 1234.5678, time: 60_000}], 60, 60_000)
+it('keeps mounts on the newest point and a missing reading unmeasured', () => {
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '100 0', 0), MEMORY, STORAGE)
+	const selected = history([value, {...value, cpu: 12.3456, time: 60_000}], 60, 60_000)
 	assert.isEmpty(selected[0]?.disks ?? [])
 	assert.strictEqual(selected[0]?.storageUsed, 750_000)
 	assert.isUndefined(selected[0]?.cpu)
+	assert.strictEqual(selected[1]?.cpu, 12.3456)
 	assert.deepStrictEqual(selected[1]?.disks, value.disks)
 })
 
 it('retains new-agent samples while displaying the entire requested window without fabricating recordings', () => {
-	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '100 0', 0), MEMORY, STORAGE)
 	const fresh = Array.makeBy(21, index => ({...value, time: index * 30_000}))
 	assert.lengthOf(history(fresh, 10_080, 600_000), 2)
 	assert.strictEqual(Option.getOrThrow(Array.last(history(fresh, 10_080, 600_000))).time, 600_000)
@@ -125,7 +92,7 @@ it('retains new-agent samples while displaying the entire requested window witho
 })
 
 it('does not introduce interior gaps when sleeping-worker history is read again on a later clock-aligned grid', () => {
-	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '100 0', 0), MEMORY, STORAGE)
 	const now = 168 * 3_600_000
 	const retained = compact(
 		Array.makeBy(20_161, index => ({...value, time: index * 30_000})),
@@ -145,7 +112,7 @@ it('does not introduce interior gaps when sleeping-worker history is read again 
 })
 
 it('averages a merged bucket so a short spike still counts, and merges each bucket once, complete', () => {
-	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '100 0', 0), MEMORY, STORAGE)
 	function second(index: number) {
 		return {
 			...value,
@@ -183,7 +150,7 @@ it('averages a merged bucket so a short spike still counts, and merges each buck
 })
 
 it('weights each sample by the time it covers, across a clock jump and a slot where spacings meet', () => {
-	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '', '', '100 0', 0), MEMORY, STORAGE)
+	const value = sample(counters('cpu 100 0 100 600 0 0 0 0', '100 0', 0), MEMORY, STORAGE)
 	// Ten idle seconds, then ten busy ones already merged into one sample, all in one minute that a sleep left behind.
 	const mixed = [
 		...Array.makeBy(10, index => ({...value, cpu: 0, time: (index + 1) * 1000})),

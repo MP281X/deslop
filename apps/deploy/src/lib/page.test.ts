@@ -45,8 +45,6 @@ const readings = [
 				disks: [],
 				memoryTotal: 100,
 				memoryUsed: 1,
-				swapTotal: 0,
-				swapUsed: 0,
 				time: 1
 			})
 		],

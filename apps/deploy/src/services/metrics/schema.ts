@@ -50,10 +50,6 @@ export const Counters = Schema.Struct({
 	),
 	cpuIdle: Schema.Finite,
 	cpuTotal: Schema.Finite,
-	diskRead: Schema.Finite,
-	diskWrite: Schema.Finite,
-	networkReceive: Schema.Finite,
-	networkSend: Schema.Finite,
 	time: Schema.Finite,
 	uptime: Schema.Finite
 })
@@ -66,22 +62,13 @@ export const Sample = Schema.Struct({
 	),
 	cores: Schema.optionalKey(Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optionalKey(Schema.Finite)}))),
 	cpu: Schema.optionalKey(Schema.Finite),
-	diskRead: Schema.optionalKey(Schema.Finite),
-	diskWrite: Schema.optionalKey(Schema.Finite),
 	disks: Schema.Array(Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})),
 	load: Schema.optionalKey(Schema.Array(Schema.Finite)),
-	memoryAvailable: Schema.optionalKey(Schema.Finite),
-	memoryBuffers: Schema.optionalKey(Schema.Finite),
-	memoryCached: Schema.optionalKey(Schema.Finite),
 	memoryTotal: Schema.Finite,
 	memoryUsed: Schema.Finite,
-	networkReceive: Schema.optionalKey(Schema.Finite),
-	networkSend: Schema.optionalKey(Schema.Finite),
 	since: Schema.optionalKey(Schema.Finite),
 	// The machine's used space in bytes, summed over its mounted disks.
 	storageUsed: Schema.optionalKey(Schema.Finite),
-	swapTotal: Schema.Finite,
-	swapUsed: Schema.Finite,
 	time: Schema.Finite,
 	uptime: Schema.optionalKey(Schema.Finite)
 })

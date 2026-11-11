@@ -17,7 +17,7 @@ function cpuFields(fields: readonly string[]) {
 	)
 }
 
-export function counters(stat: string, network: string, disk: string, uptime: string, time: number) {
+export function counters(stat: string, uptime: string, time: number) {
 	const values = cpuFields(
 		pipe(
 			stat,
@@ -27,18 +27,6 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 			String.trim,
 			String.split(/\s+/u)
 		)
-	)
-	const interfaces = pipe(
-		network,
-		String.split('\n'),
-		Array.filter(line => Option.isSome(String.match(/^\s*(?:eth|en|wl)[^:]*:/u)(line))),
-		Array.map(line => String.split(String.trim(line), /\s+/u))
-	)
-	const devices = pipe(
-		disk,
-		String.split('\n'),
-		Array.map(line => String.split(String.trim(line), /\s+/u)),
-		Array.filter(fields => Option.isSome(String.match(/^(?:[svh]d[a-z]+|nvme[0-9]+n[0-9]+)$/u)(fields[2] ?? '')))
 	)
 	return {
 		cores: pipe(
@@ -53,34 +41,9 @@ export function counters(stat: string, network: string, disk: string, uptime: st
 		),
 		cpuIdle: (values[3] ?? 0) + (values[4] ?? 0),
 		cpuTotal: Number.sumAll(values),
-		diskRead: Array.reduce(
-			devices,
-			0,
-			(total, fields) => total + Schema.decodeSync(Schema.FiniteFromString)(fields[5] ?? '') * 512
-		),
-		diskWrite: Array.reduce(
-			devices,
-			0,
-			(total, fields) => total + Schema.decodeSync(Schema.FiniteFromString)(fields[9] ?? '') * 512
-		),
-		networkReceive: Array.reduce(
-			interfaces,
-			0,
-			(total, fields) => total + Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '')
-		),
-		networkSend: Array.reduce(
-			interfaces,
-			0,
-			(total, fields) => total + Schema.decodeSync(Schema.FiniteFromString)(fields[9] ?? '')
-		),
 		time,
 		uptime: Schema.decodeSync(Schema.FiniteFromString)(String.split(uptime, ' ')[0])
 	}
-}
-
-function rate(current: number, seconds: number, previous?: number) {
-	if (previous === undefined || current < previous || seconds <= 0 || seconds > 90) return Option.none<number>()
-	return Option.some((current - previous) / seconds)
 }
 
 function cpuUsage(current: {idle: number; total: number}, seconds: number, previous?: {idle: number; total: number}) {
@@ -134,31 +97,21 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	const used = Array.reduce(disks, 0, (sum, entry) => sum + entry.used)
 	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
 	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
-	const old = Option.getOrUndefined(baseline)
 	const reading: Sample = {
-		cores: coreUsages(current, seconds, old),
+		cores: coreUsages(current, seconds, Option.getOrUndefined(baseline)),
 		...Record.getSomes({
 			cpu: cpuUsage(
 				{idle: current.cpuIdle, total: current.cpuTotal},
 				seconds,
 				Option.getOrUndefined(Option.map(baseline, value => ({idle: value.cpuIdle, total: value.cpuTotal})))
-			),
-			diskRead: rate(current.diskRead, seconds, old?.diskRead),
-			diskWrite: rate(current.diskWrite, seconds, old?.diskWrite),
-			networkReceive: rate(current.networkReceive, seconds, old?.networkReceive),
-			networkSend: rate(current.networkSend, seconds, old?.networkSend)
+			)
 		}),
 		disks,
 		load: Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
 			Array.take(Array.filter(String.split(String.trim(load ?? ''), /\s+/u), String.isNonEmpty), 3)
 		),
-		memoryAvailable: values['MemAvailable:'] ?? 0,
-		memoryBuffers: values['Buffers:'] ?? 0,
-		memoryCached: (values['Cached:'] ?? 0) + (values['SReclaimable:'] ?? 0),
 		memoryTotal: values['MemTotal:'] ?? 0,
 		memoryUsed: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0),
-		swapTotal: values['SwapTotal:'] ?? 0,
-		swapUsed: (values['SwapTotal:'] ?? 0) - (values['SwapFree:'] ?? 0),
 		time: current.time,
 		uptime: current.uptime
 	}
@@ -236,13 +189,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 				)
 			})
 		})),
-		...Record.getSomes({
-			cpu: mean(bucket, point => point.cpu),
-			diskRead: mean(bucket, point => point.diskRead),
-			diskWrite: mean(bucket, point => point.diskWrite),
-			networkReceive: mean(bucket, point => point.networkReceive),
-			networkSend: mean(bucket, point => point.networkSend)
-		}),
+		...Record.getSomes({cpu: mean(bucket, point => point.cpu)}),
 		memoryUsed: Option.getOrElse(
 			mean(bucket, point => point.memoryUsed),
 			() => last.memoryUsed

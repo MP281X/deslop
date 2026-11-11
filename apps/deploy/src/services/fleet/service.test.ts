@@ -41,7 +41,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const history = MachineHistory.make({
 					cpuModel: 'Fixture CPU',
 					error: '',
-					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, swapTotal: 0, swapUsed: 0, time: 0})],
+					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, time: 0})],
 					stale: false,
 					time: 0,
 					worker: 'worker'
