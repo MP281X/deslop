@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: 'Load when planning, delegating or integrating work on a codebase, questions about it that need workers included: which model takes each step, how units run in parallel, where, and what a brief says. Not for schedules or T3 workflows.'
+description: 'Load when planning, delegating or integrating work on a codebase, questions about it that need workers included: which model takes each step, how units run in parallel and what a brief says. Not for schedules or T3 workflows.'
 ---
 
 # Orchestrator
@@ -27,9 +27,6 @@ description: 'Load when planning, delegating or integrating work on a codebase, 
 - **Fan out.** Split the work into units that own different files and start every ready unit in the same turn; a unit waits only for a result it needs.
 - **Writers.** Each writing unit works in its own worktree and commits there; the main thread merges. Read-only units share the checkout.
 - **Follow up** in the unit's own thread with `t3_thread_send`, which keeps its context; a new unit gets a new delegate.
-- **`desktop`** is the worker machine while `t3_environment_links` shows it reachable; `dev` holds the main threads and takes the workers when it is off.
-  - **On a branch.** Push it, then `t3_thread_launch` one thread per unit there, with that machine's `projectId` and a worktree from `origin/<branch>`. Nothing wakes you: read each with `t3_thread_wait`, then settle it. A writer pushes its own branch; fetch it, merge it and delete it.
-  - **Off a branch** (research, logs, the web, machine work). `delegate_task` with `target.environmentId`: it runs in that machine's project checkout and wakes you like a local delegate.
 
 ## Brief
 
