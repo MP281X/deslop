@@ -43,7 +43,7 @@ import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {AiProvider, AiUsageReport} from '#services/ai/schema.ts'
-import {AiProxy} from '#services/ai/service.ts'
+import {layerAiProxy} from '#services/ai/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
 import {ConnectionInfo} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
@@ -431,7 +431,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const services = yield* Layer.buildWithMemoMap(
 		pipe(
 			Gateway.layer,
-			Layer.provideMerge(Layer.mergeAll(Connections.layer, AiProxy.layer)),
+			Layer.provideMerge(Layer.mergeAll(Connections.layer, layerAiProxy(directory))),
 			Layer.provide(McpServer.McpServer.layer),
 			Layer.provide(store),
 			Layer.provide(platform),
