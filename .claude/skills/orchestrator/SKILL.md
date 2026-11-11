@@ -21,7 +21,7 @@ Each step goes to the cheapest model that does it well. Every delegate names its
 - **Strong:** GPT-6.1 Sol (`codex` / `gpt-6.1-sol`), Sonnet 5.5 (`claudeAgent` / `claude-sonnet-5-5`), Opus 5.5 (`claude-opus-5-5`), Fable 5.2 (`claude-fable-5-2`).
 - **Step up.** A worker that fails or returns without its deliverable is rerun on another model; a second failure goes to a strong one. A quota failure moves the unit to another provider.
 - **Captures.** The worker that captures reads each one; the main thread opens only those that go into the PR.
-- **Where.** Main threads and their delegates run on `dev`; a delegate sent to `desktop` lands in that machine's `main` checkout, not this thread's branch. Verify, tests, builds and captures of a pushed head run on `desktop` while `t3_environment_links` shows it reachable: `t3_thread_launch` there with a worktree from the branch, then `t3_thread_wait`. Unreachable, they run here.
+- **Where.** Main threads and their delegates run on `dev`; a delegate sent to `desktop` lands in that machine's `main` checkout, not this thread's branch. Verify, tests, builds and captures of a pushed head run on `desktop` while `t3_environment_links` shows it reachable: `t3_thread_launch` there with that machine's `projectId` and a worktree from the branch, then `t3_thread_wait`, and settle the thread once read. Unreachable, they run here.
 
 ## Brief
 
