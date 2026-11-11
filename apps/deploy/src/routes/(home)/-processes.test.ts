@@ -40,4 +40,5 @@ it('pins a parent row while its children scroll under it, and leaves a leaf unpi
 		1
 	)
 	assert.match(html, /<div class="tree-sticky"><div[^>]*aria-level="1"/u)
+	assert.notMatch(html, /<div class="tree-sticky"><div[^>]*aria-level="2"/u)
 })

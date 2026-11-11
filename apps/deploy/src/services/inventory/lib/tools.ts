@@ -197,6 +197,7 @@ export function listApps(snapshot: Snapshot, input: ListAppsInput) {
 
 // Each app's history name, keyed the way its samples are: `service:<scope>:<unit>` or `container:<short id>`, named as the page's rows name it.
 export function ownerNames(snapshot: Snapshot) {
+	const byWorker = Array.groupBy(snapshot.items, item => item.worker)
 	return Record.fromEntries(
 		Array.map(
 			workerNames(snapshot),
@@ -205,11 +206,7 @@ export function ownerNames(snapshot: Snapshot) {
 					worker,
 					Record.fromEntries(
 						Array.flatMap(
-							Array.filter(
-								snapshot.items,
-								(item: InventoryItem) =>
-									item.worker === worker && (item.kind === 'service' || item.kind === 'container')
-							),
+							Array.filter(byWorker[worker] ?? [], item => item.kind === 'service' || item.kind === 'container'),
 							(item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const]
 						)
 					)

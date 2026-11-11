@@ -12,7 +12,7 @@ function diskUsed(sample: Sample) {
 	const recorded = Option.fromUndefinedOr(sample.storageUsed)
 	if (Option.isSome(recorded)) return recorded
 	if (Array.isReadonlyArrayNonEmpty(sample.disks)) {
-		return Option.some(Array.reduce(sample.disks, 0, (sum, disk) => sum + disk.used))
+		return Option.some(Number.sumAll(Array.map(sample.disks, disk => disk.used)))
 	}
 	return Option.none()
 }
@@ -20,7 +20,7 @@ function diskUsed(sample: Sample) {
 function diskTotal(machine: MachineHistory) {
 	return Option.map(
 		Array.findLast(machine.samples, sample => Array.isReadonlyArrayNonEmpty(sample.disks)),
-		sample => Array.reduce(sample.disks, 0, (sum, disk) => sum + disk.total)
+		sample => Number.sumAll(Array.map(sample.disks, disk => disk.total))
 	)
 }
 

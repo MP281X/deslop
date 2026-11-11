@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array, HashMap, Option} from 'effect'
 
 import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai/schema.ts'
 import type {McpUsageServer} from '#services/connections/schema.ts'
@@ -26,18 +26,15 @@ function seriesOf(range: UsageRange, value: (at: number) => number) {
 	return Array.map(Array.range(0, range.count - 1), index => value(range.from + index * range.size))
 }
 export function providerSeries(report: AiUsageReport, provider: AiProvider, range: UsageRange) {
-	return seriesOf(range, at =>
-		Option.getOrElse(
-			Option.map(
-				Option.flatMap(
-					Array.findFirst(report.series, bucket => bucket.at === at),
-					bucket => Array.findFirst(bucket.byProvider, sum => sum.name === provider)
-				),
-				sum => sum.costUsd
-			),
-			() => 0
+	const costs = HashMap.fromIterable(
+		Array.flatMap(report.series, bucket =>
+			Array.map(
+				Array.filter(bucket.byProvider, sum => sum.name === provider),
+				sum => [bucket.at, sum.costUsd] as const
+			)
 		)
 	)
+	return seriesOf(range, at => Option.getOrElse(HashMap.get(costs, at), () => 0))
 }
 export function providerCost(report: AiUsageReport, provider: AiProvider) {
 	return Option.getOrElse(

@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Match, Number, Option, String, pipe, type Record} from 'effect'
+import {Array, Boolean, DateTime, Match, Number, Option, Order, String, pipe, type Record} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
@@ -47,11 +47,17 @@ function x(history: MachineHistory, minutes: number, at: number) {
 
 // The sample nearest the pointer's horizontal place on the chart.
 function nearest(history: MachineHistory, minutes: number, at: number) {
-	return Array.reduce(history.samples, {distance: 101, index: 0}, (best, sample, index) => {
-		const distance = Math.abs(x(history, minutes, sample.time) - at)
-		if (distance < best.distance) return {distance, index}
-		return best
-	}).index
+	return Array.match(
+		Array.map(history.samples, (sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
+		{
+			onEmpty: () => 0,
+			onNonEmpty: entries =>
+				Array.min(
+					entries,
+					Order.mapInput(Order.Number, entry => entry.distance)
+				).index
+		}
+	)
 }
 
 // The machine's share each band holds over time, stacked on the whole machine's 0–100%, with a tooltip and cursor on the hovered band.

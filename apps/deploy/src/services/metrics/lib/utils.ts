@@ -129,10 +129,10 @@ export function chartWindow(minutes: number, now: number) {
 }
 
 // The readings of a bucket's samples averaged over the time each covers, skipping missing ones: a merged point counts for its span, a second point for its second.
-function mean(bucket: readonly Sample[], read: (point: Sample) => unknown) {
+function mean(bucket: readonly Sample[], read: (point: Sample, index: number) => unknown) {
 	const known = Array.getSomes(
-		Array.map(bucket, point =>
-			Option.map(Option.liftPredicate(read(point), Predicate.isNumber), value => ({
+		Array.map(bucket, (point, index) =>
+			Option.map(Option.liftPredicate(read(point, index), Predicate.isNumber), value => ({
 				value,
 				weight: point.time - (point.since ?? point.time) + 1000
 			}))
@@ -145,14 +145,16 @@ function mean(bucket: readonly Sample[], read: (point: Sample) => unknown) {
 	)
 }
 
-function appEntry(point: Sample, id: string) {
-	return Array.findFirst(point.apps ?? [], app => app.id === id)
-}
-
 // A bucket's samples as one point: its use averaged over the bucket, so a short spike still counts; sizes, totals and disks from the latest.
 function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 	if (bucket.length === 1) return bucket[0]
 	const reported = Array.filter(bucket, value => value.apps !== undefined)
+	const appsById = Array.map(reported, point =>
+		Record.fromEntries(Array.map(point.apps ?? [], app => [app.id, app] as const))
+	)
+	function appAt(index: number, id: string) {
+		return Option.fromUndefinedOr(appsById[index]?.[id])
+	}
 	const last = Array.lastNonEmpty(bucket)
 	const merged: Sample = {
 		...last,
@@ -164,13 +166,15 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 					Array.dedupe(Array.flatMap(reported, value => Array.map(value.apps ?? [], app => app.id))),
 					id => ({
 						...Record.getSomes({
-							cpu: mean(reported, point => Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.cpu}))
+							cpu: mean(reported, (_point, index) =>
+								Option.match(appAt(index, id), {onNone: () => 0, onSome: app => app.cpu})
+							)
 						}),
 						id,
 						memory: Number.round(
 							Option.getOrElse(
-								mean(reported, point =>
-									Option.match(appEntry(point, id), {onNone: () => 0, onSome: app => app.memory})
+								mean(reported, (_point, index) =>
+									Option.match(appAt(index, id), {onNone: () => 0, onSome: app => app.memory})
 								),
 								() => 0
 							),

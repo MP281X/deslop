@@ -68,7 +68,7 @@ const byUrgency = Order.mapInput(Order.Number, urgency)
 
 // A 64×14 line of the period's figures in the row's own hue; zeros rest on the baseline.
 function Sparkline(props: {color: string; values: readonly number[]}) {
-	const high = Array.reduce(props.values, 0, (maximum, value) => Number.max(maximum, value))
+	const high = Array.match(props.values, {onEmpty: () => 0, onNonEmpty: values => Array.max(values, Order.Number)})
 	const points = Array.map(props.values, (value, index) => {
 		const x = (index / Number.max(1, props.values.length - 1)) * 64
 		const y = Boolean.match(high === 0, {onFalse: () => 13 - (value / high) * 12, onTrue: () => 13})

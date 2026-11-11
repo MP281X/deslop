@@ -97,15 +97,11 @@ function MachineTabs(props: {
 	workers: readonly string[]
 }) {
 	if (props.workers.length < 2) return null
+	const histories = Record.fromEntries(Array.map(props.histories, machine => [machine.worker, machine] as const))
 	return (
 		<AppBarTabs value={props.active ?? props.workers[0] ?? ''}>
 			{Array.map(props.workers, worker => {
-				const failed = failedFor(
-					worker,
-					props.inventoryFailure,
-					props.sources,
-					Option.getOrUndefined(Array.findFirst(props.histories, machine => machine.worker === worker))
-				)
+				const failed = failedFor(worker, props.inventoryFailure, props.sources, histories[worker])
 				return (
 					<AppBarTab
 						key={worker}

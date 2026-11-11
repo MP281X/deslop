@@ -4,11 +4,11 @@ import {
 	Config,
 	Effect,
 	Match,
-	MutableHashMap,
 	Number,
 	Option,
 	Order,
 	Predicate,
+	Record,
 	Schema,
 	String,
 	Struct,
@@ -83,19 +83,15 @@ export function connectionInfo(connection: Connection, now: number) {
 
 // Usage is stored by hour; the page's day view sums each day's hours.
 export function usageSeries(buckets: readonly McpUsageBucket[], range: UsageRange) {
-	const sums = MutableHashMap.empty<number, number>()
-	for (const bucket of buckets) {
-		if (bucket.at >= range.from && bucket.at < range.to) {
-			const at = Math.floor(bucket.at / range.size) * range.size
-			MutableHashMap.set(sums, at, Option.getOrElse(MutableHashMap.get(sums, at), () => 0) + bucket.calls)
-		}
-	}
-	return Array.sort(
-		Array.map(Array.fromIterable(MutableHashMap.keys(sums)), at => ({
-			at,
-			calls: Option.getOrElse(MutableHashMap.get(sums, at), () => 0)
+	return pipe(
+		Array.filter(buckets, bucket => bucket.at >= range.from && bucket.at < range.to),
+		Array.groupBy(bucket => `${Math.floor(bucket.at / range.size) * range.size}`),
+		Record.values,
+		Array.map(entries => ({
+			at: Math.floor(entries[0].at / range.size) * range.size,
+			calls: Number.sumAll(Array.map(entries, bucket => bucket.calls))
 		})),
-		Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
+		Array.sort(Order.mapInput(Number.Order, (entry: {at: number}) => entry.at))
 	)
 }
 
