@@ -7,8 +7,9 @@ import {KeyValueStore} from 'effect/persistence'
 
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
+import {report} from '#services/ai/lib/utils.ts'
 import {AiUsageEntry} from '#services/ai/schema.ts'
-import {makeUsage, readUsage, report} from '#services/ai/usage.ts'
+import {makeUsage, readUsage} from '#services/ai/usage.ts'
 
 const EMPTY: AiUsageEntry = {
 	app: 'https://stash.mp281x.xyz',
