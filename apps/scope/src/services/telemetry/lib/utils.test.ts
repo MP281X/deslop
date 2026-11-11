@@ -1,12 +1,27 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, HashMap, Option, Order, String} from 'effect'
+import {Array, HashMap, Option, Order, Record, String} from 'effect'
 
-import {overviewOf, retentionOf, serviceStatuses, tracedOf} from '#services/telemetry/lib/utils.ts'
+import {overviewOf, retentionOf, serviceStatuses, tracedTrace} from '#services/telemetry/lib/utils.ts'
 import {Entry} from '#services/telemetry/schema.ts'
 
 const NOW = 1_781_870_000_000
 const HOUR = 3_600_000
+
+// Every trace in one snapshot, grouped once for the frame assertions.
+function tracedOf(entries: readonly Entry[], now: number) {
+	return Array.getSomes(
+		Array.map(
+			Record.values(
+				Array.groupBy(
+					Array.filter(entries, entry => entry.traceId !== ''),
+					entry => entry.traceId
+				)
+			),
+			records => tracedTrace(records, now)
+		)
+	)
+}
 
 function span(id: string, service: string, start: number, durationMs: number) {
 	return Entry.make({

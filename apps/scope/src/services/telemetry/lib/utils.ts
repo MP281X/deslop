@@ -734,21 +734,6 @@ export function tracedTrace(records: readonly Entry[], now: number) {
 	)
 }
 
-// Every trace in one snapshot, grouped once and shared by all its time frames.
-export function tracedOf(entries: readonly Entry[], now: number) {
-	return Array.getSomes(
-		Array.map(
-			Record.values(
-				Array.groupBy(
-					Array.filter(entries, entry => entry.traceId !== ''),
-					entry => entry.traceId
-				)
-			),
-			records => tracedTrace(records, now)
-		)
-	)
-}
-
 function tracedOperations(group: readonly Traced[]) {
 	return Array.map(Record.toEntries(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), entry => {
 		const times = Array.sort(

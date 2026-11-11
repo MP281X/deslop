@@ -159,6 +159,7 @@ export default defineConfig({
 		passWithNoTests: true,
 		reporters: ['dot'],
 		silent: 'passed-only',
-		testTimeout: 60_000
+		// The generator test builds and typechecks two generated apps; 120s covers a loaded host without hiding a hang.
+		testTimeout: 120_000
 	}
 })
