@@ -1,9 +1,11 @@
-import {NodeCrypto} from '@effect/platform-node'
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Layer, Option, Ref, Result, pipe} from 'effect'
+import {Array, Context, Effect, FileSystem, Layer, Option, Ref, Result, pipe} from 'effect'
 
 import {KeyValueStore} from 'effect/persistence'
+
+import {layerKeyValueStore} from '@deslop/runtime/server'
 
 import {Extractor} from '#services/bookings/lib/extraction.ts'
 import {Places} from '#services/bookings/lib/places.ts'
@@ -37,7 +39,7 @@ const places = Layer.succeed(
 	})
 )
 
-it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
+it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.layerMemory))(test => {
 	test.effect(
 		'saves text and screenshots through the same reservation merge and persists the result',
 		Effect.fnUntraced(function* () {
@@ -101,6 +103,40 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 				Result.fail(failure)
 			)
 			assert.deepStrictEqual(yield* bookings.list, saved)
+		})
+	)
+
+	test.effect(
+		'removes a booking from memory and from the store a restart reads',
+		Effect.fnUntraced(function* () {
+			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const extractor = Extractor.of({read: () => Effect.succeed([FLIGHT])})
+			function open(path: string) {
+				return Layer.build(
+					pipe(
+						Bookings.layer,
+						Layer.provide(places),
+						Layer.provide(Layer.succeed(Extractor, extractor)),
+						Layer.provide(layerKeyValueStore(path))
+					)
+				)
+			}
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const bookings = Context.get(yield* open(directory), Bookings)
+					yield* bookings.save(USER, {text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00'})
+					const saved = yield* bookings.list
+					assert.lengthOf(saved, 1)
+					yield* bookings.remove(Option.getOrThrow(Array.head(saved)).id)
+					assert.deepStrictEqual(yield* bookings.list, [])
+				})
+			)
+			const store = KeyValueStore.toSchemaStore(
+				Context.get(yield* Layer.build(layerKeyValueStore(directory)), KeyValueStore.KeyValueStore),
+				BookingList
+			)
+			assert.deepStrictEqual(yield* store.get('bookings'), Option.some([]))
+			assert.deepStrictEqual(yield* Context.get(yield* open(directory), Bookings).list, [])
 		})
 	)
 })

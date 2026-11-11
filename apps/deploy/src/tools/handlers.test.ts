@@ -3,7 +3,15 @@ import {assert, it} from '@effect/vitest'
 import {Array, Boolean, DateTime, Effect, Formatter, Layer, Option, Ref, Schema, Stream, String, pipe} from 'effect'
 
 import {Fleet} from '#services/fleet/service.ts'
-import {ListApps, Snapshot, type InventoryItem, type Process, type RunRequest} from '#services/inventory/schema.ts'
+import {
+	ListApps,
+	Snapshot,
+	type ExposeRequest,
+	type HideRequest,
+	type InventoryItem,
+	type Process,
+	type RunRequest
+} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {ResourceHistory, type MachineHistory, type Sample} from '#services/metrics/schema.ts'
 import {Tools} from '#tools/contracts.ts'
@@ -404,6 +412,36 @@ it.effect('runs a scheduled job through the deploy.run path', () =>
 				{started: true}
 			)
 			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(started)), {name: 'backup-1.service', scope: 'user'})
+		})
+	)
+)
+
+it.effect('exposes and hides a port through the composed MCP tools', () =>
+	Effect.scoped(
+		Effect.gen(function* () {
+			const exposed = yield* Ref.make(Option.none<ExposeRequest>())
+			const hidden = yield* Ref.make(Option.none<HideRequest>())
+			const toolkit = yield* toolkitFor(
+				fleetOf({
+					expose: input => Effect.as(Ref.set(exposed, Option.some(input)), 'https://desktop.tailnet-8c4c.ts.net:4000'),
+					hide: input => Ref.set(hidden, Option.some(input))
+				})
+			)
+			const request = {
+				hostname: 'desktop.tailnet-8c4c.ts.net',
+				kind: 'tailnet' as const,
+				name: 'preview',
+				port: 4000,
+				publicAccess: false,
+				target: 'desktop'
+			}
+			const answer = Option.getOrThrow(
+				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('expose_port', request))))
+			)
+			assert.deepStrictEqual(answer.encodedResult, {url: 'https://desktop.tailnet-8c4c.ts.net:4000'})
+			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(exposed)), request)
+			yield* Stream.runDrain(yield* toolkit.handle('hide_exposure', {name: 'preview', target: 'desktop'}))
+			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(hidden)), {name: 'preview', target: 'desktop'})
 		})
 	)
 )
