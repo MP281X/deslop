@@ -1213,6 +1213,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(MutableList.toArray(gateway.grants), grant => grant.refresh),
 				['refresh-authorization_code-1', 'refresh-refresh_token-1']
 			)
+			// Joining the read in flight settles it, so the stall below starts a new read instead of waiting for the permit.
+			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Ref.set(gateway.stall, true)
 			yield* TestClock.adjust('30 seconds')
 			const slowList = yield* Effect.forkScoped(modern(gateway.web, second, 'tools/list'))
@@ -1304,6 +1306,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* gateway.list(), server => [server.status, server.tools]),
 				[['Connected', 1]]
 			)
+			// Settling the connect read frees the permit, so the agent's read below is the one the stall holds.
+			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Ref.set(gateway.stall, true)
 			yield* TestClock.adjust('30 seconds')
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
