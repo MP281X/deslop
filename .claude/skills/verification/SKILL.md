@@ -29,14 +29,14 @@ The repository's code-quality tool owns lint rules. This skill covers running be
   - hover, focus and keyboard on changed controls;
   - 390 and 1440 wide (T3's phone `iphone-12-pro` and desktop 1440×900), 3440 for wide layouts; light and dark when color changed;
   - an app with web and iOS clients: the same screen on both, side by side, with the same content, actions and identity, each in its platform's own controls.
-- **Read every capture as a page**, one line per capture: it matches the plan card or chosen variant; nothing appears twice; nothing is cut, misaligned or overflowing; loading, empty and error states tell the truth; every word is needed.
+- **Read every capture as a page**, one line per capture: it matches the approved plan; nothing appears twice; nothing is cut, misaligned or overflowing; loading, empty and error states tell the truth; every word is needed.
 - **Audit** every captured web state with `preview_evaluate` and [references/page-audit.js](references/page-audit.js); fix or give a reason for each entry, and apply its `design` group only where the app has design rules. On iOS, read the `agent-device` snapshot the same way: a label or button twice, a control without a name, a missing navigation title.
 - **Performance.** Compare the same workload over repeated runs, reporting p50, p95 and resource costs. Use Scope's tracing tools.
 - **Unproved** claims say `unverified: <what was not run>`.
 
 ## Review
 
-One reviewer in a fresh context, read-only. Its brief holds the plan card, the user's acceptance criteria in their own words, the immutable head and the captures. It looks only where Verify cannot: architecture and ownership against the repository's recorded choices, data and migrations, caller and user contracts, and the experience in the running app (a UI reviewer opens its own preview tab, since reading source is not evidence). It reports what a person would fix, grouped by class, each with the input, the observed result and `path:line`; "no findings" lists the probes it ran and one attempt to break the change. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; a third round means the approach is wrong. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
+One reviewer in a fresh context, read-only. Its brief holds the approved plan, the user's acceptance criteria in their own words, the immutable head and the captures. It looks only where Verify cannot: architecture and ownership against the repository's recorded choices, data and migrations, caller and user contracts, and the experience in the running app (a UI reviewer opens its own preview tab, since reading source is not evidence). It reports what a person would fix, grouped by class, each with the input, the observed result and `path:line`; "no findings" lists the probes it ran and one attempt to break the change. Blocked, it answers `NOT VERIFIED` and what stopped it. One round, one recheck after fixes; a third round means the approach is wrong. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
 
 | Severity | Meaning                                                                                    |
 | -------- | ------------------------------------------------------------------------------------------ |

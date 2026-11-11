@@ -1,42 +1,38 @@
 ---
 name: orchestrator
-description: Load for code work only: before planning, splitting, delegating, integrating or proving a code change.
+description: "Load before the first delegate of a task and before integrating workers' results. Holds which model takes which step, where it runs and what a brief carries."
 ---
 
 # Orchestrator
 
-This skill is for code. Schedules, workflows, general research and non-code tasks use T3's own tools, not this loop.
+## Route
 
-The main thread owns ambiguous design, user interaction, diff review, integration and proof. Cheap workers own small, well-defined units.
+Each step goes to the cheapest model that does it well. Every delegate names its provider, model and effort: left unset, it inherits the main thread's.
 
-## Thread and plan
+| Step                                                         | Model                                             | Returns                                                          |
+| ------------------------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------------------- |
+| Find, read, search, logs, web                                | Cheap                                             | A cited report with absolute paths, never file contents          |
+| Scoped edit: owned files, fixed decisions, one proof command | Cheap; strong when it needs judgment across files | `PASS`, `ISSUES` or `BLOCKED` with command, exit code and SHA    |
+| Complex build: the design is still open in the code          | Opus 5.5 medium or high                           | The same                                                         |
+| Verify, tests, builds, captures                              | Cheap                                             | Exit code, the failing lines, one line per capture with its path |
+| Final review, a close decision                               | Strong, another family than the builder           | Findings with `path:line`                                        |
 
-- **One code thread.** One thread per code task; never suggest a new one for context. After compaction, read the task list, this thread and every live worker's latest result before re-planning.
-- **Plan card.** A data model, screen, architecture change or multi-PR task starts with one plan card, approved before the build. The card is one rendered page; it shows the choices and units.
+- **Cheap:** DeepSeek V4.1 Flash (`opencode-zen` / `deepseek-v4.1-flash`), GPT-6 Luna high (`codex` / `gpt-6-luna`, `reasoningEffort: high`), Haiku 5.5 high (`claudeAgent` / `claude-haiku-5-5`, `effort: high`).
+- **Strong:** GPT-6.1 Sol (`codex` / `gpt-6.1-sol`), Sonnet 5.5 (`claudeAgent` / `claude-sonnet-5-5`), Opus 5.5 (`claude-opus-5-5`), Fable 5.2 (`claude-fable-5-2`).
+- **Step up once.** A worker that fails or returns without its deliverable is rerun on another model; a second failure goes to a strong one. A quota failure moves the unit to another provider.
+- **Captures.** The worker that captures reads each one; the main thread opens only those that go into the PR.
+- **Where.** Main threads stay on `dev`. Verify, tests, builds and captures run on `desktop` while `t3_environment_links` shows it reachable, through the delegate's `target.environmentId`; otherwise here. An unreachable target never blocks the task.
+
+## Brief
+
+A worker starts with no history, so its brief carries everything: objective, owned files, fixed decisions, exclusions, the done command, the report's format and its line limit. Never "based on your findings".
+
+- One worker takes a batch of small units. Units that touch the same file are one unit; parallel writers each get `isolation: 'worktree'`.
+- Copied into every writing brief: edit only the owned files; run only the checks named here; commit on the branch; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with command, exit code and SHA.
+
+## Integrate
+
+- **Plan first.** A data model, a screen, an architecture change or work across several PRs starts with a plan the user approves before the build.
 - **Steers re-plan.** A message that changes an entity, screen, unit or acceptance criterion is planned again; rewrite the unmerged layer rather than stacking a fix.
-
-## Split by strength
-
-- The main thread keeps ambiguous work, architecture, user interaction, diff review, integration and proof.
-- A worker gets a bounded file set, one objective and one proof command. One worker handles a batch of small units and stays alive for follow-ups; a new batch gets a new worker only when it needs a different proof.
-- Workers never talk to the user and never spawn. If one needs a peer, it returns; the main thread starts it.
-- Workers: cheap models own bounded units: DeepSeek V4.1 Flash (`opencode-zen` / `deepseek-v4.1-flash`), GPT-6 Luna high (`codex` / `gpt-6-luna`, `reasoningEffort: high`) or Haiku 5.5 high (`claudeAgent` / `claude-haiku-5-5`, `effort: high`); prefer a provider other than the main thread's. A unit that needs cross-file judgment, a final review or repeated correction runs on a stronger model (`gpt-6.1-sol`, `claude-sonnet-5-5`, `claude-opus-5-5` or `claude-fable-5-2`). A quota failure is not retried on the same provider; take the unit over.
-- Write the brief: objective, owned files, fixed decisions, exclusions, done command, report format. Never "based on your findings".
-- Worker rules: edit only owned files; run only the checks the brief names; commit; reply `PASS`, `ISSUES` or `BLOCKED` in at most 15 lines with command, exit code and SHA.
-- Use the desktop only when it is reachable; a failed target never blocks the task.
-
-## Integrate and prove
-
-- Read each worker's diff against the card, not its summary. A missing proof is a gap, not a pass.
-- Merge in stack order, run the repository's Verify once, then prove the integrated head.
-- Before handback every worker is settled; no worker outlives the answer. A late completion that changes nothing gets no reply.
-- Remove scratch files, servers, worktrees and finished workers; keep the shared preview.
-
-## Decide
-
-- The user owns taste, product, access, money and irreversible actions. If the repository, thread or an installed dependency answers a middle decision, don't ask. Otherwise gather the deciding source or run a time-boxed probe in `/tmp/<task>/`.
-- If it is still close, give a fresh-context worker on a stronger model the question, the evidence and the criteria without your verdict; adopt its answer unless it shows a flaw you can check. No rounds, votes or scores.
-
-## Research
-
-- Read the installed dependency's source; versions differ. Do not rely on memory or a web summary when the source is available.
+- **Diffs, not summaries.** Read each worker's diff against the plan. A missing proof is a gap, not a pass.
+- **Order.** Merge in stack order, then prove the integrated head.

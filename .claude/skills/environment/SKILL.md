@@ -1,6 +1,6 @@
 ---
 name: environment
-description: Load before worker operations, previews, devices, tracing, deployment, publishing, sign-in, runtime errors, saved reading, design references or Dual.
+description: Load before worker operations, previews, devices, tracing, deployment, publishing, sign-in, runtime errors, saved reading, design references, reading an outside repository or Dual.
 ---
 
 # Environment
@@ -26,6 +26,7 @@ Two headless Debian workers in one tailnet, same user and paths.
 | [Deslop](references/deslop.md)           | Production, Stash data, npm, Apple and EAS, tracing       |
 | [Dual](references/dual.md)               | Accounts, merges, preview, Jira, Google, VPN, tracing     |
 | [Maintenance](references/maintenance.md) | Machines, setup, agent links, T3 settings, updates, clean |
+| [Repositories](references/repos.md)      | Outside repositories to read when no example exists here  |
 
 ## Previews
 

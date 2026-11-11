@@ -15,7 +15,7 @@ Commands, data and standards: Dual's `AGENTS.md`.
 ## Workers
 
 - **Accounts.** Writes only to GitHub `MP281X`, GitLab `matteopaludgnach` and the user's Discord test channel. Saved preview tokens are read-only; write tokens from `gh auth token` and the `glab` configuration.
-- **Merge requests**: squash-merged, stacks included; source branch deleted on merge; restack per pull-requests.
+- **Merge requests**: squash-merged, stacks included; source branch deleted on merge.
 - **Preview**: T3's `preview` script runs `bun run preview`: the worktree's database, sandbox, API, worker and app, without `.env` files, AWS or model keys. It prints its URL; sign in with username `admin@dual.local` and password `preview-password`.
   - **Restart** after changing a published package; `settle` destroys its data.
   - **Webhooks**: funnel `/api/webhooks` to the preview port, which proxies `/api` to the API (environment, Previews).
