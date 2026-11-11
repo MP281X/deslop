@@ -135,7 +135,7 @@ T3 desktop and iOS Simulator; builds from CI. No Docker.
 
 - **MDM.** Keep the user's organization's policies.
 - **Reachability.** System sleep off, so reachable with the display off; a closed lid isn't. When `ssh matteopaludgnach@macbook-pro true` fails, ask the user to wake it.
-- **Sudo.** Needs the user's password: apps, updates and permissions are the user's, from a guide. Agents run only maintenance mutations: `vp upgrade`, `softwareupdate -l` and `xcrun simctl delete unavailable`; read-only checks and device setup below are separate.
+- **Sudo.** Needs the user's password: apps, updates and permissions are the user's, from a guide. Agents run only Clean state's maintenance mutations; read-only checks and device setup below are separate.
 
 **Device host.**
 
@@ -185,12 +185,12 @@ for u in 'https://git.datapizza.tech/**' 'git@git.datapizza.tech:**' 'ssh://git@
 
 ## Clean state
 
-Update, Clean, Check, in that order. End by reporting what waits on the user's restart: a kernel, a macOS update, a T3 update.
+Update, Clean, Check, in that order. End by reporting what waits on the user's restart: a kernel or macOS update. Do not report pending T3 updates.
 
 ### Update
 
 1. **Packages.** `sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y && sudo apt-get clean`, `vp upgrade`, `gh extension upgrade --all` (`gh-stack` lags per worker). glab: when `curl -fsSL https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest` names a newer `tag_name`, `curl -fLo /tmp/glab.deb` `https://gitlab.com/gitlab-org/cli/-/releases/<tag>/downloads/glab_<version>_linux_amd64.deb` then `sudo dpkg -i /tmp/glab.deb`.
-2. **T3.** The user updates the service from T3's UI. Per worker, the global CLI only: `vp install -g t3@nightly`. A pending service update waits on the user.
+2. **T3.** The user updates the service from T3's UI. Per worker, the global CLI only: `vp install -g t3@nightly`.
 3. **Mac.** `vp upgrade` ([Mac](#mac)); a pending macOS update is the user's, labelled from `softwareupdate -l`.
 
 ### Clean
@@ -199,7 +199,7 @@ Update, Clean, Check, in that order. End by reporting what waits on the user's r
 
 - **Owners.** Threads in `orchestration_v2_projection_threads.payload_json` (`worktreePath`, `settledAt`) with `archived_at` and `deleted_at`, delegated children counted by their root thread; a process whose `/proc/<pid>/cwd` is inside the worktree. Inventory from the local SQLite projection, not T3's first thread page; join owners to `lineage.rootThreadId`, inspect user side chats separately, and re-read ownership immediately before removal.
 - **Keep.** Worktrees an unsettled thread owns; the default branch; a branch checked out in a kept worktree or with an OPEN pull or merge request; production `deslop-*` user services and their inactive `-update` oneshots (every 15 minutes); `t3code`, `minecraft`, `deploy-caddy`; a container stopped on purpose.
-- **Never.** Conversation databases or sessions from T3, Codex or Claude as cache. Report unknown ownership, history, credentials, production data and running jobs separately from garbage.
+- **History stays**, whatever its size or age: T3's databases and logs, `~/.claude/projects`, `~/.codex/sessions`, opencode's storage and every app's usage data. Report unknown ownership, credentials, production data and running jobs separately from garbage.
 
 1. **Worktrees.** Those no unsettled thread owns and no process uses, uncommitted changes included. Run its settle script ("Unit … not loaded" for an already stopped preview is harmless); for an Alchemy preview, run `preview:destroy` first. Then `git worktree remove --force --force <path>` and `git worktree prune`.
 2. **Containers.** Remove each container that serves no kept worktree and no deliberate service, running ones included. Owners: a Compose container's `com.docker.compose.project.working_dir`; an Alchemy preview container's `dual.preview` label (`wt-<id>`) and the worktree holding `infra/saas/.alchemy/preview/wt-<id>` in its bind mounts; an OpenSandbox `sandbox-*` container (no Compose label) belongs to the `dualos-local-sandboxes-wt-<id>-*` network it joins. Then their networks and the unattached volumes.
@@ -238,11 +238,48 @@ Update, Clean, Check, in that order. End by reporting what waits on the user's r
 
    Deploy: `list_apps` per worker; an entry with a `url` and a `failure`, or a port `ss -ltn` does not list, gets `hide_exposure`.
 
-5. **Orphans.** Processes with a deleted working directory; scratch leftovers; `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.
-6. **Caches.** No `docker build` or Compose build in progress: `docker image prune -a -f`, `docker builder prune -a -f`; long-lived preview watchers do not block these. No install running: `vp pm cache clean` in both repositories, `bun pm cache rm`, `npm cache clean --force`, `journalctl --vacuum-size=100M`.
-7. **Versions.** Keep executables in `/proc/*/exe`, the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`), each Node major's newest patch under `~/.vite-plus/js_runtime/node`, and the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
+5. **Orphans.** Processes with a deleted working directory; stale scratch under `/tmp` no kept thread or process uses, never `/tmp/repos`; `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.
+6. **Caches every pass.** Re-downloading is cheap on both workers. No `docker build` or Compose build in progress: `docker image prune -a -f`, `docker builder prune -a -f`; long-lived preview watchers do not block these. No install running: `vp pm cache clean` in both repositories, then:
+
+   ```bash
+   rm -rf ~/.cache/{ms-playwright,node-gyp,puppeteer,google-chrome-for-testing-headless} ~/.npm/_npx
+   pnpm store prune
+   bun pm cache rm
+   npm cache clean --force
+   ```
+
+   Remove other identified tool downloads under `~/.cache` too.
+
+7. **Worker versions.** Keep executables in `/proc/*/exe`, the current `~/.vite-plus/<version>` (`readlink ~/.vite-plus/current`), each Node major's newest patch under `~/.vite-plus/js_runtime/node`, and the Claude Code version `claude --version` reports under `~/.local/share/claude/versions`.
 8. **T3 releases.** Skip while `~/.t3/runtime/service-state.json` shows an uncommitted update. Delete every `~/.t3/runtime/versions/<version>` except `activeVersion` (the running server), the one the unit's `ExecStart` names (the launcher), and a newer download.
-9. **Mac.** `xcrun simctl delete unavailable`.
+9. **Mac caches.** Every pass, remove updater and browser caches, T3 desktop's `Cache` and `Code Cache`, and Codex runtime downloads:
+
+   ```bash
+   find ~/Library/Caches -maxdepth 1 -type d \( -iname '*updater*' -o -name '*.ShipIt' -o -name 'com.apple.Safari*' -o -name 'com.t3tools.t3code*' \) -exec rm -r -- {} +
+   rm -rf ~/Library/Caches/Google/Chrome ~/.cache/codex-runtimes
+   for app in t3code t3code-v2; do
+     rm -rf "$HOME/Library/Application Support/$app/Cache" "$HOME/Library/Application Support/$app/Code Cache"
+   done
+   ```
+
+10. **Mac versions.** Keep only the active Claude, Node and Vite+ versions, plus any still in use (`lsof -nP | grep -F '<old-version-path>'`). Read the active versions, then remove the older ones:
+
+    ```bash
+    claude --version
+    node --version
+    readlink ~/.vite-plus/current
+    rm -r -- ~/.local/share/claude/versions/<old-version> ~/.vite-plus/js_runtime/node/<old-version> ~/.vite-plus/<old-version>
+    ```
+
+11. **Simulators.** Delete every device no unsettled thread uses, available or not. Match names to worktrees and UDIDs to T3 device sessions on both workers, applying **Owners** to delegated children. On the Mac, request logs map session names to UDIDs; a session name is `t3-` plus the first 24 hex characters of SHA-256 of JSON `[threadId, hostId, deviceId]` (no spaces). Re-read ownership before removal; an unknown owner stays for investigation.
+
+    ```bash
+    xcrun simctl list devices --json
+    find ~/.t3/device/hosts -path '*/requests/*.ndjson' -exec jq -r 'select(.phase == "resolve_target_device" and .data.udid) | [.session, .data.udid] | @tsv' {} + | sort -u
+    xcrun simctl shutdown <UDID>  # only if booted
+    xcrun simctl delete <UDID>
+    xcrun simctl delete unavailable  # only when every unavailable device passed the ownership check
+    ```
 
 ### Check
 

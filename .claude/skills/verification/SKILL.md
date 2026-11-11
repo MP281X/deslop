@@ -34,7 +34,7 @@ Lint owns what a parser can check. This skill covers running behaviour, the user
 
 - **Who.** One reviewer, read-only, in a fresh context.
 - **Brief.** The approved plan, the user's acceptance criteria in their own words, the immutable head and the captures.
-- **Where.** Only where Verify cannot look: architecture and ownership against the recorded choices, data and migrations, caller and user contracts, and the experience in the running app. A UI reviewer opens its own preview tab; reading source is not evidence.
+- **Focus.** Architecture, UI/UX and functionality against the recorded choices and user contracts. Lint owns the lines: no findings on style, naming or anything a lint rule decides. A UI reviewer opens its own preview tab; reading source is not evidence.
 - **Findings** are what a person would fix, grouped by class, each with the input, the observed result and `path:line`. "No findings" lists the probes run and one attempt to break the change; blocked, the answer is `NOT VERIFIED` and what stopped it. Not findings: anything Verify reports, taste without a rule, hypothetical callers.
 - **Rounds.** One round, then one recheck after fixes; a third means the approach is wrong.
 
