@@ -2,7 +2,7 @@ import {Array, Boolean} from 'effect'
 
 import type {CSSProperties, ReactNode} from 'react'
 
-import {Item, ItemActions, ItemContent, ItemMedia} from '#components/ui/item.tsx'
+import {Item, ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 
 // One row of a tree: what it shows and the rows nested below it; the row itself is a stock Item.
 export type TreeRow = {

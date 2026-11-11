@@ -1,10 +1,10 @@
 import {Array, Option} from 'effect'
 
-import {Tree} from '@deslop/components-web/tree'
-import type {TreeRow} from '@deslop/components-web/tree'
 import {cn} from '@deslop/components-web/utils'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
+import {Tree} from '#routes/(home)/-tree.tsx'
+import type {TreeRow} from '#routes/(home)/-tree.tsx'
 import type {ProcessNode} from '#services/inventory/lib/utils.ts'
 
 const mib = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
