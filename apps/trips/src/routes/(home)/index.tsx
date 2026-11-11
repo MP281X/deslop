@@ -51,8 +51,8 @@ import {bottomBarSearch} from '@deslop/components-mobile/utils'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {session} from '#lib/session.ts'
-import {daysUntil, primary, problemOf, statusOf, timeAt, tones} from '#lib/status.ts'
-import {DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {daysUntil, primary, problemOf, statusOf, tones} from '#lib/status.ts'
+import {clockAt, DAY, endOf, HOUR, startOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 
 function zoneOf(booking: Booking) {
@@ -68,10 +68,10 @@ function headingOf(booking: Booking) {
 function scheduleOf(booking: Booking) {
 	if (booking._tag === 'stay') {
 		const nights = Number.round((booking.checkOut - booking.checkIn) / DAY, 0)
-		return `${nights} ${Boolean.match(nights === 1, {onFalse: () => 'nights', onTrue: () => 'night'})} · check-in ${timeAt(booking.checkIn, booking.place.timeZone)}`
+		return `${nights} ${Boolean.match(nights === 1, {onFalse: () => 'nights', onTrue: () => 'night'})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
 	}
-	const departs = timeAt(startOf(booking), booking.from.timeZone)
-	const arrives = timeAt(endOf(booking), booking.to.timeZone)
+	const departs = clockAt(startOf(booking), booking.from.timeZone)
+	const arrives = clockAt(endOf(booking), booking.to.timeZone)
 	if (booking._tag === 'train') return `${titleOf(booking)} ${departs} → ${arrives}`
 	return `${titleOf(booking)} · ${booking.from.code ?? booking.from.name} ${departs} → ${booking.to.code ?? booking.to.name} ${arrives}`
 }

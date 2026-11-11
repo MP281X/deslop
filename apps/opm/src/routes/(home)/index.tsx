@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Order, Result, String, pipe} from 'effect'
+import {Array, Boolean, Number, Option, Order, Result, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -49,7 +49,7 @@ import {
 	itemRow
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {bottomBarSearch} from '@deslop/components-mobile/utils'
+import {bottomBarSearch, shortDate} from '@deslop/components-mobile/utils'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
@@ -57,17 +57,10 @@ import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
 
-// "21 Oct" this year, "21 Oct 2025" before it.
+// "21 Oct" this year, "21 Oct 2025" before it; a chapter without a posted time shows none.
 function postedOn(postedAt: number) {
 	if (postedAt <= 0) return ''
-	const posted = DateTime.makeUnsafe(postedAt)
-	return DateTime.formatLocal(
-		posted,
-		Boolean.match(DateTime.getPartUtc(posted, 'year') === DateTime.getPartUtc(DateTime.nowUnsafe(), 'year'), {
-			onFalse: () => ({day: 'numeric', month: 'short', year: 'numeric'}) as const,
-			onTrue: () => ({day: 'numeric', month: 'short'}) as const
-		})
-	)
+	return shortDate(postedAt)
 }
 
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.

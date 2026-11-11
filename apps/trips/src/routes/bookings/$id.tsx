@@ -35,8 +35,8 @@ import {Empty} from '@deslop/components-mobile/ui/empty'
 
 import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
 import {mapsAtom, placeLine, ridesFor, uberAtom} from '#lib/rides.ts'
-import {dayAt, primary, problemOf, statusOf, timeAt, tones} from '#lib/status.ts'
-import {arrivalOf, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
+import {dayAt, primary, problemOf, statusOf, tones} from '#lib/status.ts'
+import {arrivalOf, clockAt, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, FlightTracking, Stay, Tone, Train} from '#services/bookings/schema.ts'
 
 function colorOf(tone?: Tone) {
@@ -59,8 +59,8 @@ function Field(props: {label: string; tone?: Tone; value?: string}) {
 }
 
 function moved(scheduled: number, current: number, timeZone: string) {
-	if (Math.abs(current - scheduled) < MINUTE) return timeAt(scheduled, timeZone)
-	return `${timeAt(current, timeZone)} (${timeAt(scheduled, timeZone)})`
+	if (Math.abs(current - scheduled) < MINUTE) return clockAt(scheduled, timeZone)
+	return `${clockAt(current, timeZone)} (${clockAt(scheduled, timeZone)})`
 }
 
 function gateOf(live?: FlightTracking) {
@@ -78,7 +78,7 @@ function FlightFields(props: {flight: Flight}) {
 				<Field
 					label="Boarding"
 					value={Option.getOrUndefined(
-						Option.map(Option.fromUndefinedOr(props.flight.boardingAt), at => timeAt(at, props.flight.from.timeZone))
+						Option.map(Option.fromUndefinedOr(props.flight.boardingAt), at => clockAt(at, props.flight.from.timeZone))
 					)}
 				/>
 			</Section>
@@ -108,7 +108,7 @@ function TrainFields(props: {train: Train}) {
 					value={Option.getOrUndefined(
 						Option.map(
 							Option.fromUndefinedOr(props.train.live?.lastSeen),
-							seen => `${seen.station} at ${timeAt(seen.at, props.train.from.timeZone)}`
+							seen => `${seen.station} at ${clockAt(seen.at, props.train.from.timeZone)}`
 						)
 					)}
 				/>
@@ -158,7 +158,7 @@ function Departs(props: {journey: Flight | Train}) {
 		<Essential
 			label="Departs"
 			tone={toneIf(departureOf(props.journey) - props.journey.departs >= 5 * MINUTE, 'warn')}
-			value={timeAt(departureOf(props.journey), props.journey.from.timeZone)}
+			value={clockAt(departureOf(props.journey), props.journey.from.timeZone)}
 		/>
 	)
 }
@@ -210,11 +210,11 @@ function StayEssentials(props: {stay: Stay}) {
 		<HStack alignment="top" spacing={space[3]}>
 			<Essential
 				label="Check-in"
-				value={`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${timeAt(props.stay.checkIn, props.stay.place.timeZone)}`}
+				value={`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${clockAt(props.stay.checkIn, props.stay.place.timeZone)}`}
 			/>
 			<Essential
 				label="Check-out"
-				value={`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${timeAt(props.stay.checkOut, props.stay.place.timeZone)}`}
+				value={`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${clockAt(props.stay.checkOut, props.stay.place.timeZone)}`}
 			/>
 		</HStack>
 	)

@@ -3,13 +3,9 @@ import type {Record} from 'effect'
 
 import {colors, hues} from '@deslop/components-mobile/theme'
 
-import {DAY, departureOf, labelled, MINUTE} from '#services/bookings/lib/utils.ts'
+import {clockAt, DAY, departureOf, labelled, MINUTE} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, Stay, Tone, Train} from '#services/bookings/schema.ts'
 import {isStale} from '#services/tracking/lib/utils.ts'
-
-export function timeAt(time: number, timeZone: string) {
-	return DateTime.format(DateTime.makeUnsafe(time), {hour: '2-digit', hourCycle: 'h23', minute: '2-digit', timeZone})
-}
 
 export function dayAt(time: number, timeZone: string) {
 	return DateTime.format(DateTime.makeUnsafe(time), {day: 'numeric', month: 'short', timeZone, weekday: 'short'})
@@ -76,7 +72,7 @@ function trainStatus(train: Train, now: number) {
 	if (train.operator !== 'trenitalia') return statusLine('plain', Option.none())
 	if (train.live === undefined) return statusLine('plain', Option.none())
 	if (isStale(train, now)) {
-		return problemLine(`Updated ${timeAt(train.live.checkedAt, train.from.timeZone)}`, 'warn', platformOf(train))
+		return problemLine(`Updated ${clockAt(train.live.checkedAt, train.from.timeZone)}`, 'warn', platformOf(train))
 	}
 	if (train.live.state === 'arrived') return statusLine('plain', platformOf(train))
 	if (train.live.delayMinutes >= 5) return problemLine(`+${train.live.delayMinutes} min`, 'warn', platformOf(train))
@@ -99,7 +95,7 @@ function flightStatus(flight: Flight, now: number) {
 	if (state === 'diverted') return problemLine('Diverted', 'bad', Option.none())
 	if (flight.live === undefined) return statusLine('plain', Option.none())
 	if (isStale(flight, now)) {
-		return problemLine(`Updated ${timeAt(flight.live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(flight))
+		return problemLine(`Updated ${clockAt(flight.live.checkedAt, flight.from.timeZone)}`, 'warn', gateOf(flight))
 	}
 	if (state === 'arrived' || state === 'landed') {
 		return statusLine('good', whereOf(labelled('Belt', flight.live.belt), false))
