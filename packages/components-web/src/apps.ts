@@ -2,6 +2,7 @@ import {Array, Option, Record, String} from 'effect'
 
 // Each Deslop app's icon hue, as the theme names it; a service without one stays zinc grey.
 export const APP_HUES: Record<string, string> = {
+	atlas: 'var(--purple)',
 	auth: 'var(--slate)',
 	deploy: 'var(--blue)',
 	gateway: 'var(--pink)',
