@@ -1,17 +1,17 @@
-import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {NodeCrypto} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, FileSystem, Layer, Option, Ref, Result, pipe} from 'effect'
+import {Array, Context, Effect, Layer, Option, Queue, Ref, Result, Schema, Stream, Struct, pipe} from 'effect'
 
-import {KeyValueStore} from 'effect/persistence'
-
-import {layerDataStore} from '@deslop/runtime/server/store'
+import {Reactivity} from 'effect/reactivity'
+import {SqlClient} from 'effect/sql'
 
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingList, BookingsError} from '#services/bookings/schema.ts'
+import {BookingsError, BookingsEvent, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 
 const USER = 'github:1'
@@ -29,34 +29,66 @@ const FLIGHT = {
 	to: 'LHR'
 } as const
 
-const places = Layer.succeed(
-	Places,
-	Places.of({
-		airport: code => {
-			if (code === 'BAD') return BookingsError.make({message: 'Unknown airport code.'})
-			return Effect.succeed({code, name: code, timeZone: 'UTC'})
-		},
-		station: name => Effect.succeed({name, timeZone: 'UTC'})
-	})
-)
+const places = Places.of({
+	airport: code => {
+		if (code === 'BAD') return BookingsError.make({message: 'Unknown airport code.'})
+		return Effect.succeed({code, name: code, timeZone: 'UTC'})
+	},
+	station: name => Effect.succeed({name, timeZone: 'UTC'})
+})
 
-it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.layerMemory))(test => {
+const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)
+
+type Database = Layer.Success<typeof memory>
+
+// A restart builds the service again over the same database.
+const open = Effect.fnUntraced(function* (database: Context.Context<Database>, extractor: typeof Extractor.Service) {
+	return Context.get(
+		yield* Layer.build(
+			pipe(
+				Bookings.layer,
+				Layer.provide(Layer.succeedContext(database)),
+				Layer.provide(Layer.succeed(Places, places)),
+				Layer.provide(Layer.succeed(Extractor, extractor))
+			)
+		),
+		Bookings
+	)
+})
+
+// The events the phone reads, collected from now on.
+const watch = Effect.fnUntraced(function* (bookings: typeof Bookings.Service) {
+	const events = yield* Queue.unbounded<BookingsEvent>()
+	yield* Effect.forkScoped(Stream.runForEach(bookings.events, event => Queue.offer(events, event)))
+	return events
+})
+
+// The next event, as the wire carries it.
+function next(events: Queue.Dequeue<BookingsEvent>) {
+	return Effect.flatMap(Queue.take(events), Schema.encodeEffect(BookingsEvent))
+}
+
+function tracked(flight: Flight) {
+	return Flight.make({
+		...Struct.pick(flight, Struct.keys(Flight.fields)),
+		live: Option.some({checkedAt: 1, departureGate: 'B12', state: 'scheduled' as const})
+	})
+}
+
+it.layer(NodeCrypto.layer)('Bookings', test => {
 	test.effect(
 		'saves text and screenshots through the same reservation merge and persists the result',
 		Effect.fnUntraced(function* () {
 			const seen = yield* Ref.make<BookingSource[]>([])
-			const extractor = Extractor.of({
-				read: Effect.fnUntraced(function* (userId: string, source: BookingSource) {
-					assert.strictEqual(userId, USER)
-					yield* Ref.update(seen, Array.append(source))
-					return [FLIGHT]
+			const bookings = yield* open(
+				yield* Layer.build(memory),
+				Extractor.of({
+					read: Effect.fnUntraced(function* (userId: string, source: BookingSource) {
+						assert.strictEqual(userId, USER)
+						yield* Ref.update(seen, Array.append(source))
+						return [FLIGHT]
+					})
 				})
-			})
-			const bookings = Context.get(
-				yield* Layer.build(
-					pipe(Bookings.layer, Layer.provide(places), Layer.provide(Layer.succeed(Extractor, extractor)))
-				),
-				Bookings
 			)
 			const first: BookingSource = {_tag: 'text', text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'}
 			const second: BookingSource = {_tag: 'image', image: new Uint8Array([255, 216, 255, 217])}
@@ -64,8 +96,6 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 			yield* bookings.save(USER, second)
 			assert.deepStrictEqual(yield* Ref.get(seen), [first, second])
 			assert.lengthOf(yield* bookings.list, 1)
-			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, BookingList)
-			assert.deepStrictEqual(yield* store.get('bookings'), Option.some(yield* bookings.list))
 		})
 	)
 
@@ -75,17 +105,14 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 			const items = yield* Ref.make<ExtractedItems>([FLIGHT])
 			const rejected = yield* Ref.make(false)
 			const failure = BookingsError.make({message: 'The screenshot could not be read.'})
-			const extractor = Extractor.of({
-				read: Effect.fnUntraced(function* () {
-					if (yield* Ref.get(rejected)) return yield* failure
-					return yield* Ref.get(items)
+			const bookings = yield* open(
+				yield* Layer.build(memory),
+				Extractor.of({
+					read: Effect.fnUntraced(function* () {
+						if (yield* Ref.get(rejected)) return yield* failure
+						return yield* Ref.get(items)
+					})
 				})
-			})
-			const bookings = Context.get(
-				yield* Layer.build(
-					pipe(Bookings.layer, Layer.provide(places), Layer.provide(Layer.succeed(Extractor, extractor)))
-				),
-				Bookings
 			)
 			yield* bookings.save(USER, {_tag: 'text', text: 'Existing booking'})
 			const saved = yield* bookings.list
@@ -112,34 +139,56 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 	test.effect(
 		'removes a booking from memory and from the store a restart reads',
 		Effect.fnUntraced(function* () {
-			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			const extractor = Extractor.of({read: () => Effect.succeed([FLIGHT])})
-			function open(path: string) {
-				return Layer.build(
-					pipe(
-						Bookings.layer,
-						Layer.provide(places),
-						Layer.provide(Layer.succeed(Extractor, extractor)),
-						Layer.provide(layerDataStore(path))
-					)
-				)
-			}
-			yield* Effect.scoped(
+			const id = yield* Effect.scoped(
 				Effect.gen(function* () {
-					const bookings = Context.get(yield* open(directory), Bookings)
-					yield* bookings.save(USER, {_tag: 'text', text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00'})
-					const saved = yield* bookings.list
-					assert.lengthOf(saved, 1)
-					yield* bookings.remove(Option.getOrThrow(Array.head(saved)).id)
-					assert.deepStrictEqual(yield* bookings.list, [])
+					const bookings = yield* open(database, extractor)
+					const events = yield* watch(bookings)
+					assert.deepStrictEqual(yield* next(events), {removed: [], reset: true, upserted: []})
+					yield* bookings.save(USER, {_tag: 'text', text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'})
+					const written = yield* next(events)
+					assert.containsSubset(written, {
+						removed: [],
+						reset: false,
+						upserted: [{_tag: 'flight', airlineCode: 'BA', number: '553', seat: '12A', status: 'confirmed'}]
+					})
+					return Option.getOrThrow(Array.head(written.upserted)).id
 				})
 			)
-			const store = KeyValueStore.toSchemaStore(
-				Context.get(yield* Layer.build(layerDataStore(directory)), KeyValueStore.KeyValueStore),
-				BookingList
+			const rows = yield* Effect.provideContext(
+				Effect.flatMap(SqlClient.SqlClient, sql => sql<{id: string; number: string}>`SELECT id, number FROM flights`),
+				database
 			)
-			assert.deepStrictEqual(yield* store.get('bookings'), Option.some([]))
-			assert.deepStrictEqual(yield* Context.get(yield* open(directory), Bookings).list, [])
+			assert.deepStrictEqual(rows, [{id, number: '553'}])
+			const bookings = yield* open(database, extractor)
+			const events = yield* watch(bookings)
+			assert.containsSubset(yield* next(events), {reset: true, upserted: [{id, number: '553'}]})
+			yield* bookings.remove(id)
+			assert.deepStrictEqual(yield* next(events), {removed: [id], reset: false, upserted: []})
+		})
+	)
+
+	test.effect(
+		'keeps a live answer only for the booking it was read from',
+		Effect.fnUntraced(function* () {
+			const seat = yield* Ref.make('12A')
+			const bookings = yield* open(
+				yield* Layer.build(memory),
+				Extractor.of({read: () => Effect.map(Ref.get(seat), found => [{...FLIGHT, seat: found}])})
+			)
+			const stored = Effect.map(bookings.list, list =>
+				Option.getOrThrow(Array.findFirst(list, (booking): booking is Flight => booking._tag === 'flight'))
+			)
+			yield* bookings.save(USER, {text: 'BA553'})
+			const read = yield* stored
+			yield* Ref.set(seat, '14A')
+			yield* bookings.save(USER, {text: 'BA553, now seat 14A'})
+			yield* bookings.replace(read, tracked(read))
+			assert.isTrue(Option.isNone((yield* stored).live))
+			const current = yield* stored
+			yield* bookings.replace(current, tracked(current))
+			assert.isTrue(Option.isSome((yield* stored).live))
 		})
 	)
 })

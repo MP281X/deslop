@@ -1,3 +1,6 @@
+// oxlint-disable-next-line import/no-unassigned-import -- Importing registers the layout the server's Live Activity pushes name.
+import '#lib/activities.tsx'
+
 import {useAtomMount, useAtomSubscribe, useAtomValue} from '@effect/atom-react'
 
 import {Array, Option} from 'effect'
@@ -14,7 +17,6 @@ import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bookingsAtom} from '#lib/bookings.ts'
 import {calendarAtom} from '#lib/calendar.ts'
 import {openedAtom} from '#lib/deep-links.ts'
-import '#lib/activities.tsx'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
 import {primary} from '#lib/status.ts'

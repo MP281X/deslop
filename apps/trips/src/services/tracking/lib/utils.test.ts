@@ -17,18 +17,43 @@ const ANSWER: FaFlight = {
 	terminal_origin: '3'
 }
 
+// A ticket without coach, seat or confirmation, not yet tracked.
+const ROME_TO_MILAN = {
+	arrives: 0,
+	coach: Option.none(),
+	confirmation: Option.none(),
+	departs: 0,
+	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
+	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+	live: Option.none(),
+	number: '9541',
+	operator: 'trenitalia',
+	operatorName: 'Frecciarossa',
+	seat: Option.none(),
+	status: 'confirmed',
+	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
+} as const
+
 it('keeps the gate a flight left for the change it shows', () => {
-	const first = flightTracking({...ANSWER, gate_origin: 'A3'}, 1)
-	const changed = flightTracking(ANSWER, 2, first)
+	const first = flightTracking({...ANSWER, gate_origin: 'A3'}, 1, Option.none())
+	const changed = flightTracking(ANSWER, 2, Option.some(first))
 	assert.deepStrictEqual(
-		[first.previousGate, changed.departureGate, changed.previousGate, flightTracking(ANSWER, 3, changed).previousGate],
+		[
+			first.previousGate,
+			changed.departureGate,
+			changed.previousGate,
+			flightTracking(ANSWER, 3, Option.some(changed)).previousGate
+		],
 		[undefined, 'B12', 'A3', 'A3']
 	)
 	assert.deepStrictEqual(
 		[changed.state, changed.departureEstimated],
 		['scheduled', DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T16:00:00Z'))]
 	)
-	assert.strictEqual(flightTracking({...ANSWER, actual_off: '2026-10-28T16:10:00Z'}, 4).state, 'airborne')
+	assert.strictEqual(
+		flightTracking({...ANSWER, actual_off: '2026-10-28T16:10:00Z'}, 4, Option.none()).state,
+		'airborne'
+	)
 })
 
 it('finds the booked stops by Trenitalia code, else by their printed names', () => {
@@ -46,14 +71,8 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 			]
 		},
 		Train.make({
-			arrives: 0,
-			departs: 0,
+			...ROME_TO_MILAN,
 			from: {code: 'it-trenitalia_08409:station', name: 'Roma', timeZone: 'Europe/Rome'},
-			id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-			number: '9541',
-			operator: 'trenitalia',
-			operatorName: 'Frecciarossa',
-			status: 'confirmed',
 			to: {name: 'Bologna Centrale', timeZone: 'Europe/Rome'}
 		}),
 		1
@@ -65,17 +84,7 @@ it('finds the booked stops by Trenitalia code, else by their printed names', () 
 })
 
 it('reads the platform, the delay it left with and the delay it runs with at the booked stop', () => {
-	const train = Train.make({
-		arrives: 0,
-		departs: 0,
-		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
-		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-		number: '9541',
-		operator: 'trenitalia',
-		operatorName: 'Frecciarossa',
-		status: 'confirmed',
-		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
-	})
+	const train = Train.make(ROME_TO_MILAN)
 	const waiting = trainTracking(
 		{
 			fermate: [
@@ -120,31 +129,31 @@ it('reads the platform, the delay it left with and the delay it runs with at the
 
 it('checks a train each minute near departure and calls live data stale after two missed checks', () => {
 	const departs = DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T15:40:00Z'))
-	const train = Train.make({
-		arrives: departs + 3 * HOUR,
-		departs,
-		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
-		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-		number: '9541',
-		operator: 'trenitalia',
-		operatorName: 'Frecciarossa',
-		status: 'confirmed',
-		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
-	})
+	const timetable = {...ROME_TO_MILAN, arrives: departs + 3 * HOUR, departs}
+	const train = Train.make(timetable)
 	const flight = Flight.make({
 		airline: 'British Airways',
 		airlineCode: 'BA',
 		arrives: departs + 2.5 * HOUR,
+		boardingAt: Option.none(),
+		boardingGroup: Option.none(),
+		confirmation: Option.none(),
 		departs,
 		from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
 		id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
+		live: Option.none(),
 		number: '553',
+		seat: Option.none(),
 		status: 'confirmed',
 		to: {city: 'London', code: 'LHR', name: 'Heathrow', timeZone: 'Europe/London'}
 	})
 	const now = departs - 30 * MINUTE
-	function live(checkedAt: number) {
-		return Train.make({...train, live: {checkedAt, delayMinutes: 0, state: 'scheduled'}})
+	function live(checkedAt: number, operator: Train['operator'] = 'trenitalia') {
+		return Train.make({
+			...timetable,
+			live: Option.some({checkedAt, delayMinutes: 0, state: 'scheduled' as const}),
+			operator
+		})
 	}
 	assert.deepStrictEqual(
 		[checkEvery(train, now), checkEvery(train, departs - 3 * HOUR), checkEvery(flight, departs - 3 * HOUR)],
@@ -155,32 +164,22 @@ it('checks a train each minute near departure and calls live data stale after tw
 	assert.deepStrictEqual(
 		[
 			isStale(live(now), train.arrives + HOUR),
-			isStale(Train.make({...train, live: {checkedAt: now, delayMinutes: 0, state: 'arrived'}}), train.arrives + HOUR)
+			isStale(
+				Train.make({...timetable, live: Option.some({checkedAt: now, delayMinutes: 0, state: 'arrived' as const})}),
+				train.arrives + HOUR
+			)
 		],
 		[true, false]
 	)
 	// A timetable-only train is never checked, so its last answer is not stale.
 	assert.deepStrictEqual(
-		[
-			checkEvery(Train.make({...train, operator: 'other'}), now),
-			isStale(Train.make({...live(0), operator: 'other'}), now)
-		],
+		[checkEvery(Train.make({...timetable, operator: 'other'}), now), isStale(live(0, 'other'), now)],
 		[Option.none(), false]
 	)
 })
 
 it("answers nothing for another day's run of the number or a run that does not call at the booked station", () => {
-	const train = Train.make({
-		arrives: 0,
-		departs: 0,
-		from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
-		id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-		number: '9541',
-		operator: 'trenitalia',
-		operatorName: 'Frecciarossa',
-		status: 'confirmed',
-		to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
-	})
+	const train = Train.make(ROME_TO_MILAN)
 	assert.deepStrictEqual(
 		[
 			trainTracking({fermate: [{id: 'S08409', programmata: 5 * HOUR, stazione: 'ROMA TERMINI'}], ritardo: 0}, train, 1),

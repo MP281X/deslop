@@ -1,11 +1,10 @@
-import {Array, Number, Option, Record, Result, String} from 'effect'
+import {Array, Number, Option, Result, String} from 'effect'
 
 import {
 	ACTIVITY_LIFETIME,
 	activeWindow,
 	arrivalOf,
 	clockAt,
-	DAY,
 	departureOf,
 	HOUR,
 	labelled,
@@ -15,15 +14,15 @@ import {
 	titleOf
 } from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, Leg, Train} from '#services/bookings/schema.ts'
-import type {ActivityRecord, Device, PushState} from '#services/push/schema.ts'
+import type {Activity, Device} from '#services/push/schema.ts'
 
 export type Span = {end: number; start: number}
-type ShowAction = {_tag: 'launch'; target: Device} | {_tag: 'refresh'; target: ActivityRecord}
+type ShowAction = {_tag: 'launch'; target: Device} | {_tag: 'refresh'; target: Activity}
 
-export function holds(record: ActivityRecord, window: Span, now: number) {
-	if (record.claimedAt + ACTIVITY_LIFETIME < window.end) return false
-	if (record.endedAt !== undefined) return record.endedAt >= window.start
-	return record.token !== undefined || record.channel !== undefined || now - record.claimedAt < 2 * MINUTE
+// An activity covers the window while ActivityKit keeps it alive, unless it ended before the window began.
+export function holds(activity: Activity, window: Span) {
+	if (activity.startedAt + ACTIVITY_LIFETIME < window.end) return false
+	return Option.match(activity.endedAt, {onNone: () => true, onSome: ended => ended >= window.start})
 }
 
 export function alertKey(alert: Alert) {
@@ -31,7 +30,8 @@ export function alertKey(alert: Alert) {
 	return `${alert.category}:${alert.value}`
 }
 
-export function announced(sent: PushState['sent'][string], alert: Alert) {
+// `sent` holds the keys sent for the booking, oldest first.
+export function announced(sent: readonly string[], alert: Alert) {
 	if (alert.value === undefined || alert.category === 'delay') return Array.contains(sent, alertKey(alert))
 	return Option.exists(
 		Array.findLast(sent, found => String.startsWith(`${alert.category}:`)(found)),
@@ -39,67 +39,72 @@ export function announced(sent: PushState['sent'][string], alert: Alert) {
 	)
 }
 
-export function showPlan(current: PushState, journey: Flight | Train, window: Span & {leg: Leg}, now: number) {
-	const starters = Array.filter(current.devices, device => device.kind === 'start')
-	const records = Array.filter(
-		current.activities,
-		item => item.bookingId === journey.id && item.leg === window.leg && holds(item, window, now)
+// Per app: refresh the activity that covers the leg, or start one with the app's push-to-start token; an ended one stays ended.
+export function showPlan(
+	devices: readonly Device[],
+	activities: readonly Activity[],
+	journey: Flight | Train,
+	window: Span & {leg: Leg}
+) {
+	const starters = Array.filter(devices, device => device.kind === 'start')
+	const covering = Array.filter(
+		activities,
+		item => item.bookingId === journey.id && item.leg === window.leg && holds(item, window)
 	)
 	const startersByBundle = Array.groupBy(starters, device => device.bundle)
-	const recordsByBundle = Array.groupBy(records, item => item.bundle)
+	const coveringByBundle = Array.groupBy(covering, item => item.bundle)
 	return Array.filterMap(
-		Array.dedupe([...Array.map(starters, device => device.bundle), ...Array.map(records, item => item.bundle)]),
+		Array.dedupe([...Array.map(starters, device => device.bundle), ...Array.map(covering, item => item.bundle)]),
 		bundle =>
-			Option.match(Array.head(recordsByBundle[bundle] ?? []), {
+			Option.match(Array.head(coveringByBundle[bundle] ?? []), {
 				onNone: () =>
 					Option.match(Array.head(startersByBundle[bundle] ?? []), {
 						onNone: () => Result.failVoid,
 						onSome: target => Result.succeed<ShowAction>({_tag: 'launch', target})
 					}),
 				onSome: target => {
-					if (target.endedAt !== undefined || (target.token === undefined && target.channel === undefined)) {
-						return Result.failVoid
-					}
+					if (Option.isSome(target.endedAt)) return Result.failVoid
 					return Result.succeed<ShowAction>({_tag: 'refresh', target})
 				}
 			})
 	)
 }
 
-export function expiredActivities(current: PushState, all: BookingList, now: number) {
+// Running activities whose leg is no longer in its window, or whose booking is gone.
+export function expiredActivities(activities: readonly Activity[], all: BookingList, now: number) {
 	const byId = Array.groupBy(all, booking => booking.id)
 	return Array.filter(
-		current.activities,
-		record =>
-			record.endedAt === undefined &&
-			!Option.exists(Array.head(byId[record.bookingId] ?? []), found =>
-				Option.exists(activeWindow(found, now), window => window.leg === record.leg)
+		activities,
+		activity =>
+			Option.isNone(activity.endedAt) &&
+			!Option.exists(Array.head(byId[activity.bookingId] ?? []), found =>
+				Option.exists(activeWindow(found, now), window => window.leg === activity.leg)
 			)
 	)
-}
-
-export function retainPushState(current: PushState, all: BookingList, now: number) {
-	const byId = Array.groupBy(all, booking => booking.id)
-	return {
-		...current,
-		activities: Array.filter(
-			current.activities,
-			record => record.endedAt === undefined || now - record.endedAt < 2 * DAY
-		),
-		sent: Record.filter(current.sent, (_keys, id) => Record.has(byId, id))
-	} satisfies PushState
 }
 
 // The notification that comes with an activity the server starts; iOS shows none without one.
 export function startAlert(journey: Flight | Train) {
 	if (journey._tag === 'flight') {
 		return {
-			body: line([Option.some(routeOf(journey)), labelled('Gate', journey.live?.departureGate)]),
+			body: line([
+				Option.some(routeOf(journey)),
+				labelled(
+					'Gate',
+					Option.flatMapNullishOr(journey.live, live => live.departureGate)
+				)
+			]),
 			title: titleOf(journey)
 		}
 	}
 	return {
-		body: line([Option.some(routeOf(journey)), labelled('Platform', journey.live?.departurePlatform)]),
+		body: line([
+			Option.some(routeOf(journey)),
+			labelled(
+				'Platform',
+				Option.flatMapNullishOr(journey.live, live => live.departurePlatform)
+			)
+		]),
 		title: titleOf(journey)
 	}
 }
@@ -125,7 +130,10 @@ function trainAlerts(train: Train) {
 		),
 		Option.map(
 			// Worth a notification only while the train is still to board.
-			Option.filter(Option.fromUndefinedOr(train.live?.departurePlatform), () => train.live?.state === 'scheduled'),
+			Option.flatMapNullishOr(
+				Option.filter(train.live, live => live.state === 'scheduled'),
+				live => live.departurePlatform
+			),
 			platform =>
 				({
 					body: line([Option.some(`${train.from.name} at ${departure}`), labelled('coach', train.coach)]),
@@ -135,7 +143,10 @@ function trainAlerts(train: Train) {
 				}) satisfies Alert
 		),
 		Option.map(
-			Option.filter(Option.fromUndefinedOr(train.live?.delayMinutes), delay => delay >= 10),
+			Option.filter(
+				Option.map(train.live, live => live.delayMinutes),
+				delay => delay >= 10
+			),
 			delay =>
 				({
 					body: `Now leaves ${train.from.name} at ${departure}`,
@@ -151,7 +162,8 @@ function flightAlerts(flight: Flight, now: number) {
 	const title = titleOf(flight)
 	const departure = clockAt(departureOf(flight), flight.from.timeZone)
 	const delay = Number.round((departureOf(flight) - flight.departs) / MINUTE, 0)
-	const cancelled = flight.status === 'cancelled' || flight.live?.state === 'cancelled'
+	const live = Option.getOrUndefined(flight.live)
+	const cancelled = flight.status === 'cancelled' || live?.state === 'cancelled'
 	return Array.getSomes([
 		Option.filter(
 			Option.some<Alert>({
@@ -163,14 +175,17 @@ function flightAlerts(flight: Flight, now: number) {
 		),
 		Option.filter(
 			Option.some<Alert>({body: routeOf(flight), category: 'diverted', title: `${title} is diverted`}),
-			() => flight.live?.state === 'diverted'
+			() => live?.state === 'diverted'
 		),
 		Option.map(
-			Option.fromUndefinedOr(flight.live?.departureGate),
+			Option.fromUndefinedOr(live?.departureGate),
 			gate =>
 				({
-					body: Option.getOrElse(labelled('Changed from', flight.live?.previousGate), () =>
-						line([Option.some(`Departs ${departure}`), labelled('Terminal', flight.live?.departureTerminal)])
+					body: Option.getOrElse(labelled('Changed from', Option.fromUndefinedOr(live?.previousGate)), () =>
+						line([
+							Option.some(`Departs ${departure}`),
+							labelled('Terminal', Option.fromUndefinedOr(live?.departureTerminal))
+						])
 					),
 					category: 'gate',
 					title: `${title} · Gate ${gate}`,
@@ -187,14 +202,11 @@ function flightAlerts(flight: Flight, now: number) {
 			() => delay >= 15 && !cancelled
 		),
 		Option.map<number, Alert>(
-			Option.filter(
-				Option.fromUndefinedOr(flight.boardingAt),
-				at => now >= at - 10 * MINUTE && now < departureOf(flight)
-			),
+			Option.filter(flight.boardingAt, at => now >= at - 10 * MINUTE && now < departureOf(flight)),
 			at =>
 				({
 					body: line([
-						Option.orElseSome(labelled('Gate', flight.live?.departureGate), () => 'Check the gate'),
+						Option.orElseSome(labelled('Gate', Option.fromUndefinedOr(live?.departureGate)), () => 'Check the gate'),
 						labelled('group', flight.boardingGroup)
 					]),
 					category: 'boarding',
@@ -202,7 +214,7 @@ function flightAlerts(flight: Flight, now: number) {
 				}) satisfies Alert
 		),
 		Option.map(
-			Option.fromUndefinedOr(flight.live?.belt),
+			Option.fromUndefinedOr(live?.belt),
 			belt =>
 				({body: flight.to.name, category: 'belt', title: `${title} bags on belt ${belt}`, value: belt}) satisfies Alert
 		)

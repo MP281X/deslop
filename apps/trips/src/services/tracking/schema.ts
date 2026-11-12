@@ -1,5 +1,7 @@
 import {Schema} from 'effect'
 
+import {Model} from 'effect/schema'
+
 function Nullable<S extends Schema.Top>(schema: S) {
 	return Schema.optionalKey(Schema.NullOr(schema))
 }
@@ -58,5 +60,7 @@ export const VtStatus = Schema.Struct({
 	stazioneUltimoRilevamento: Nullable(Schema.String)
 })
 
-export type Usage = typeof Usage.Type
-export const Usage = Schema.Struct({calls: Schema.Finite, month: Schema.String})
+// FlightAware lookups made in a month, so the monthly allowance holds across restarts; only the current month is kept.
+export class Lookups extends Model.Class<Lookups>('Lookups')({calls: Schema.Int, month: Schema.String}) {
+	static readonly table = 'lookups'
+}
