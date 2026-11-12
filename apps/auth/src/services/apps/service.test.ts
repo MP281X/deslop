@@ -1,9 +1,10 @@
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Context, Effect, Layer, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Fiber, Layer, Stream, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
 
 import {Apps} from '#services/apps/service.ts'
 
@@ -38,7 +39,8 @@ const layer = pipe(
 	Apps.layer,
 	Layer.provide(
 		Layer.mergeAll(
-			KeyValueStore.layerMemory,
+			SqliteClient.layer({filename: ':memory:'}),
+			Reactivity.layer,
 			Layer.succeed(HttpClient.HttpClient, servers),
 			ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://auth.mp281x.xyz'}))
 		)
@@ -60,14 +62,21 @@ it.effect(
 	'lists an app whose server names this Auth',
 	Effect.fnUntraced(function* () {
 		const apps = Context.get(yield* Layer.build(layer), Apps)
+		const watching = yield* Effect.forkScoped(Stream.runCollect(Stream.take(apps.catalog, 4)))
+		yield* Effect.yieldNow
 		yield* apps.register('https://stash.mp281x.xyz')
 		yield* apps.register('https://scope.mp281x.xyz')
 		// Announcing again, as each restart does, keeps one row.
 		yield* apps.register('https://scope.mp281x.xyz')
-		assert.deepStrictEqual(yield* Effect.flatMap(Stream.runHead(apps.catalog), Effect.fromOption), [
-			{name: 'scope', origin: 'https://scope.mp281x.xyz'},
-			{name: 'stash', origin: 'https://stash.mp281x.xyz'}
-		])
+		assert.deepStrictEqual(
+			Array.map(yield* Fiber.join(watching), catalog => Array.map(catalog, app => app.origin)),
+			[
+				[],
+				['https://stash.mp281x.xyz'],
+				['https://scope.mp281x.xyz', 'https://stash.mp281x.xyz'],
+				['https://scope.mp281x.xyz', 'https://stash.mp281x.xyz']
+			]
+		)
 	})
 )
 

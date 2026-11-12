@@ -177,7 +177,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				pipe(
 					Effect.gen(function* () {
 						const params = yield* pipe(HttpServerRequest.schemaBodyJson(AppParams), rejected('Send the app’s origin'))
-						return yield* HttpServerResponse.schemaJson(App)(yield* apps.register(params.origin))
+						return yield* HttpServerResponse.schemaJson(App.json)(yield* apps.register(params.origin))
 					}),
 					Effect.catchIf(Schema.is(AuthError), failure =>
 						Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))

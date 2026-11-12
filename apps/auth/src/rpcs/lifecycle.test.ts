@@ -1,25 +1,29 @@
 import {NodeCrypto} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, Ref, Schema, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, Stream, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {Headers} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
 import {RpcTest} from 'effect/rpc'
+import {SqlClient} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {SESSION_COOKIE} from '@deslop/runtime/shared/auth'
+import {SESSION_COOKIE, isDenied} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
+import {Member} from '#services/people/schema.ts'
 import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import type {ClientRequest} from '#services/tokens/schema.ts'
+import {BrowserSession} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const ADMIN = {id: 'github:42', name: 'admin'}
@@ -27,31 +31,8 @@ const PROFILE = {id: 7, login: 'member'}
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 
 const open = Effect.gen(function* () {
-	const base = Context.get(yield* Layer.build(Layer.fresh(KeyValueStore.layerMemory)), KeyValueStore.KeyValueStore)
-	yield* base.set(
-		'members',
-		yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))([
-			{...ADMIN, fullName: '', incarnation: 'admin', since: 0, status: 'Allowed'}
-		])
-	)
-	const failing = yield* Ref.make(Option.none<string>())
-	const holding = yield* Ref.make(Option.none<string>())
-	const reached = yield* Deferred.make<void>()
-	const release = yield* Deferred.make<void>()
-	const store = KeyValueStore.make({
-		...base,
-		set: (key, value) =>
-			Effect.gen(function* () {
-				if (Option.contains(yield* Ref.get(holding), key)) {
-					yield* Deferred.succeed(reached, undefined)
-					yield* Deferred.await(release)
-				}
-				if (Option.contains(yield* Ref.get(failing), key)) {
-					return yield* new KeyValueStore.KeyValueStoreError({key, message: 'Disk unavailable', method: 'set'})
-				}
-				yield* base.set(key, value)
-			})
-	})
+	const database = yield* Layer.build(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer))
+	const sql = Context.get(database, SqlClient.SqlClient)
 	const layer = pipe(
 		RpcHandlers,
 		Layer.provideMerge(layerIssuerAuth),
@@ -72,7 +53,7 @@ const open = Effect.gen(function* () {
 				)
 			)
 		),
-		Layer.provide(Layer.succeed(KeyValueStore.KeyValueStore, store)),
+		Layer.provide(Layer.succeedContext(database)),
 		Layer.provide(
 			Layer.succeed(Apps, Apps.of({catalog: Stream.succeed([]), register: () => Effect.die('Unused app registration')}))
 		),
@@ -97,7 +78,14 @@ const open = Effect.gen(function* () {
 			tokens: Context.get(context, Tokens)
 		}
 	})
-	return {...(yield* reload), failing, holding, reached, release, reload}
+	return {
+		...(yield* reload),
+		// The database refuses to delete from a table, as a full disk would, until `recover`.
+		fail: (table: string) =>
+			sql`CREATE TEMP TRIGGER refuse BEFORE DELETE ON ${sql(table)} BEGIN SELECT RAISE(ABORT, 'Disk unavailable'); END`,
+		recover: sql`DROP TRIGGER temp.refuse`,
+		reload
+	}
 })
 
 const request = Effect.gen(function* () {
@@ -177,7 +165,7 @@ it.layer(NodeCrypto.layer)(test => {
 			)
 			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
 			const unspent = yield* fixture.tokens.issue(asked, owner)
-			yield* Ref.set(fixture.failing, Option.some('sign-ins'))
+			yield* fixture.fail(BrowserSession.table)
 			assert.strictEqual(
 				(yield* Effect.flip(fixture.people.remove(owner.user.id, ADMIN))).error,
 				'temporarily_unavailable'
@@ -186,7 +174,7 @@ it.layer(NodeCrypto.layer)(test => {
 				(yield* Effect.flip(Stream.runCollect(Stream.take(fixture.people.account(headers), 1)))).error,
 				'invalid_grant'
 			)
-			yield* Ref.set(fixture.failing, Option.none())
+			yield* fixture.recover
 			const renewed = yield* fixture.people.register(PROFILE)
 			assert.notStrictEqual(renewed.incarnation, owner.incarnation)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
@@ -253,40 +241,49 @@ it.layer(NodeCrypto.layer)(test => {
 	)
 
 	test.effect(
-		'limits delayed cleanup to the removed incarnation during concurrent registration',
+		'shows an admin by their GitHub profile before their first sign-in, live',
+		Effect.fnUntraced(function* () {
+			assert.deepStrictEqual(
+				Array.map(
+					yield* first(
+						Stream.filter((yield* open).people.people(ADMIN), listed =>
+							Array.some(listed, person => person.name === 'admin')
+						)
+					),
+					person => `${person.name}:${person.role}`
+				),
+				['admin:Admin']
+			)
+		})
+	)
+
+	test.effect(
+		'limits a cleanup that runs after a new registration to the removed incarnation',
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
 			const old = yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')
-			yield* Ref.set(fixture.holding, Option.some('sign-ins'))
-			const removing = yield* Effect.forkScoped(fixture.people.remove(owner.user.id, ADMIN))
-			yield* Effect.addFinalizer(() => Deferred.succeed(fixture.release, undefined))
-			yield* Deferred.await(fixture.reached)
+			yield* fixture.people.remove(owner.user.id, ADMIN)
 			const fresh = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: fresh.user.id}, ADMIN)
-			assert.strictEqual(
-				(yield* Effect.flip(fixture.auth.user(Headers.fromInput({cookie: `${SESSION_COOKIE}=${old.token}`})))).error,
-				'invalid_grant'
+			assert.isTrue(
+				isDenied(yield* Effect.flip(fixture.auth.user(Headers.fromInput({cookie: `${SESSION_COOKIE}=${old.token}`}))))
 			)
-			const starting = yield* Effect.forkScoped(fixture.tokens.startSession(fresh, {}, 'GitHub', ''))
-			yield* Deferred.succeed(fixture.release, undefined)
-			yield* Fiber.join(removing)
-			assert.deepStrictEqual(
-				yield* fixture.auth.user(
-					Headers.fromInput({cookie: `${SESSION_COOKIE}=${(yield* Fiber.join(starting)).token}`})
-				),
-				fresh.user
-			)
-			// A retried obsolete cleanup also leaves all credentials of the new lifetime alone.
+			const started = yield* fixture.tokens.startSession(fresh, {}, 'GitHub', '')
+			// The removed registration's cleanup, run again late, leaves every credential of the new one alone.
 			yield* fixture.tokens.forget(owner)
 			yield* fixture.passkeys.forget(owner)
+			assert.deepStrictEqual(
+				yield* fixture.auth.user(Headers.fromInput({cookie: `${SESSION_COOKIE}=${started.token}`})),
+				fresh.user
+			)
 			assert.strictEqual((yield* first(fixture.tokens.apps(fresh))).length, 1)
 		})
 	)
 
 	test.effect(
-		'keeps a failed membership removal valid and an interrupted committed removal revoked',
+		'keeps a failed membership removal valid and a committed one revoked across re-registration',
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
@@ -294,24 +291,17 @@ it.layer(NodeCrypto.layer)(test => {
 			const headers = Headers.fromInput({
 				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
 			})
-			yield* Ref.set(fixture.failing, Option.some('members'))
+			yield* fixture.fail(Member.table)
 			assert.strictEqual(
 				(yield* Effect.flip(fixture.people.remove(owner.user.id, ADMIN))).error,
 				'temporarily_unavailable'
 			)
 			assert.deepStrictEqual(yield* fixture.auth.user(headers), owner.user)
-			yield* Ref.set(fixture.failing, Option.none())
-			yield* Ref.set(fixture.holding, Option.some('members'))
-			const removing = yield* Effect.forkScoped(fixture.people.remove(owner.user.id, ADMIN))
-			yield* Effect.addFinalizer(() => Deferred.succeed(fixture.release, undefined))
-			yield* Deferred.await(fixture.reached)
-			const interrupting = yield* Effect.forkScoped(Fiber.interrupt(removing))
-			yield* Effect.yieldNow
-			yield* Deferred.succeed(fixture.release, undefined)
-			yield* Fiber.join(interrupting)
+			yield* fixture.recover
+			yield* fixture.people.remove(owner.user.id, ADMIN)
 			const fresh = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: fresh.user.id}, ADMIN)
-			assert.strictEqual((yield* Effect.flip(fixture.auth.user(headers))).error, 'invalid_grant')
+			assert.isTrue(isDenied(yield* Effect.flip(fixture.auth.user(headers))))
 			assert.notStrictEqual(fresh.incarnation, owner.incarnation)
 		})
 	)
