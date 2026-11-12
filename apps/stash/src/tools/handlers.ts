@@ -7,14 +7,14 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 import {findNotes} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
-import type {NoteItem} from '#tools/contracts.ts'
+import type {NoteSummary} from '#tools/contracts.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
 function row(note: Note) {
 	return {
 		...Struct.pick(note, ['id', 'status', 'summary', 'tags', 'title', 'url']),
 		saved: DateTime.formatIsoDateUtc(DateTime.makeUnsafe(note.createdAt))
-	} satisfies NoteItem
+	} satisfies NoteSummary
 }
 
 export const ToolHandlers = ToolContracts.toLayer(
