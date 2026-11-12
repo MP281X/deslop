@@ -1,5 +1,5 @@
 import {cpus, hostname} from 'node:os'
-import {pid as collectorPid, platform} from 'node:process'
+import {pid, platform} from 'node:process'
 
 import {
 	Array,
@@ -307,9 +307,9 @@ export class Inventory extends Context.Service<
 						'Listening ports',
 						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
 							portItems(Array.getSomes(Array.map(String.split(String.trim(text), '\n'), socketLine)), worker, http, {
-								cwd: pid => Effect.option(fs.readLink(`/proc/${pid}/cwd`)),
-								unit: pid =>
-									Effect.map(Effect.option(fs.readFileString(`/proc/${pid}/cgroup`)), cgroup =>
+								cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
+								unit: processId =>
+									Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
 										socketUnit(Option.getOrElse(cgroup, () => ''))
 									)
 							})
@@ -338,12 +338,12 @@ export class Inventory extends Context.Service<
 								Array.getSomes(
 									Array.map(
 										Result.getOrElse(launchd.agents, () => []),
-										agent => Option.map(agent.pid, pid => [`${pid}`, agent.label] as const)
+										agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
 									)
 								)
 							)
 						),
-						record => record.process.parent !== collectorPid
+						record => record.process.parent !== pid
 					)
 				)
 				const owned = Result.getOrElse(records, () => [])
@@ -382,21 +382,21 @@ export class Inventory extends Context.Service<
 							'Listening ports',
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
 								portItems(lsofSockets(text), worker, http, {
-									cwd: Effect.fnUntraced(function* (pid) {
+									cwd: Effect.fnUntraced(function* (processId) {
 										const lines = String.split(
 											Option.getOrElse(
-												yield* Effect.option(command('lsof', ['-nP', '-a', '-p', pid, '-d', 'cwd', '-Fn'])),
+												yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
 												() => ''
 											),
 											'\n'
 										)
 										return Option.map(Array.findFirst(lines, String.startsWith('n')), String.slice(1))
 									}),
-									unit: pid =>
+									unit: processId =>
 										Effect.succeed(
 											Option.getOrElse(
 												Option.map(
-													Array.findFirst(owned, record => `${record.process.pid}` === pid),
+													Array.findFirst(owned, record => `${record.process.pid}` === processId),
 													record => record.unit
 												),
 												() => ''
