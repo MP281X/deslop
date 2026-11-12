@@ -1,4 +1,4 @@
-import {Clock, Effect, Stream, pipe} from 'effect'
+import {Boolean, Clock, Effect, Schedule, Stream, pipe} from 'effect'
 
 import {type Period, type UsageRange, periodRange} from '#services/usage/schema.ts'
 
@@ -8,14 +8,13 @@ export function usageWindow<A, E, R>(
 	changed: Stream.Stream<void, E, R>,
 	read: (range: UsageRange) => Effect.Effect<A, E, R>
 ) {
-	function boundaries(now: number) {
-		return Stream.unfold(now, time => {
-			const next = periodRange(period, time).to
-			return Effect.map(Effect.sleep(next - time), () => [undefined, next] as const)
-		})
-	}
 	return pipe(
-		Stream.concat(Stream.fromEffect(Effect.void), Stream.unwrap(Effect.map(Clock.currentTimeMillis, boundaries))),
+		Stream.fromEffectSchedule(
+			Effect.void,
+			Schedule.cron(Boolean.match(period === '24h', {onFalse: () => '0 0 * * *', onTrue: () => '0 * * * *'}), 'UTC')
+		),
+		// Only parsing the fixed cron expressions can fail here, not reading a report below.
+		Stream.orDie,
 		Stream.switchMap(() =>
 			Stream.unwrap(
 				Effect.gen(function* () {
