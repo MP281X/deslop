@@ -32,6 +32,9 @@ import {TestClock} from 'effect/testing'
 
 import {layerKeyValueStore} from '@deslop/runtime/server'
 
+import onePunchMan from './fixtures/one-punch-man.xml?raw'
+import opmFolk from './fixtures/opm-folk.xml?raw'
+
 import {openStore} from '#services/chapters/lib/store.ts'
 import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import {Chapter, Series} from '#services/chapters/schema.ts'
@@ -127,7 +130,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			for (const received of [0, 1, 3, 2]) {
 				yield* Ref.set(count, received)
-				if (received !== 0) yield* TestClock.adjust('6 hours')
+				if (received !== 0) yield* TestClock.adjust('1 hour')
 				yield* Queue.take(rounds)
 				assert.strictEqual((yield* store.load)[0]?.notified, received === 2)
 			}
@@ -156,7 +159,7 @@ it.layer(NodeServices.layer)(test => {
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
 					// r/OPMFolk alone posts some releases, numbered its own way and listing several translations.
-					if (String.includes('/r/OPMFolk/search.rss')(request.url)) {
+					if (String.includes('/r/OPMFolk/new/.rss')(request.url)) {
 						return HttpClientResponse.fromWeb(
 							request,
 							new Response(
@@ -164,7 +167,7 @@ it.layer(NodeServices.layer)(test => {
 							)
 						)
 					}
-					if (String.includes('search.rss')(request.url)) {
+					if (String.includes('/new/.rss')(request.url)) {
 						const entries = [
 							{slug: 'manga', title: 'Chapter 2 [English]'},
 							{slug: 'webcomic', title: '[Webcomic] Chapter 2 [English]'},
@@ -263,13 +266,13 @@ it.layer(NodeServices.layer)(test => {
 				Option.map(Array.last(first), chapter => chapter.postedAt),
 				Option.some(0)
 			)
-			// The next round's six-hour wait starts only once this round has announced its new chapters.
+			// The next round's hourly wait starts only once this round has announced its new chapters.
 			// oxlint-disable-next-line @deslop/coding-standards/no-polling-test -- the round marks chapters announced through file writes that no event or service reports, so only the store shows it.
 			yield* Effect.repeat(store.load, {until: saved => Array.every(saved, chapter => chapter.notified)})
 			yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
 			yield* chapters.read({done: false, number: 1, page: 0, series: 'webcomic'})
 			yield* Ref.set(revised, true)
-			yield* TestClock.adjust('6 hours')
+			yield* TestClock.adjust('1 hour')
 			yield* pipe(
 				chapters.changes,
 				Stream.filter(event =>
@@ -325,7 +328,7 @@ it.layer(NodeServices.layer)(test => {
 					if (String.endsWith('/gist/series/JYHJU/')(request.url)) {
 						return HttpClientResponse.fromWeb(request, index({'158': 'https://example.test/158.png'}))
 					}
-					if (String.includes('search.rss')(request.url)) {
+					if (String.includes('/new/.rss')(request.url)) {
 						return HttpClientResponse.fromWeb(request, new Response('<feed></feed>'))
 					}
 					return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
@@ -342,7 +345,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* Queue.take(reported)
 			assert.isFalse(Array.some(yield* store.load, item => item.number === 229))
 			yield* Ref.set(later, true)
-			yield* TestClock.adjust('6 hours')
+			yield* TestClock.adjust('1 hour')
 			yield* Queue.take(reported)
 			const saved = yield* store.load
 			assert.deepStrictEqual(
@@ -389,7 +392,7 @@ it.layer(NodeServices.layer)(test => {
 					if (String.endsWith('/gist/series/JYHJU/')(request.url)) {
 						return HttpClientResponse.fromWeb(request, index({'158': 'https://example.test/158.png'}))
 					}
-					if (String.includes('/r/OnePunchMan/search.rss')(request.url)) {
+					if (String.includes('/r/OnePunchMan/new/.rss')(request.url)) {
 						return HttpClientResponse.fromWeb(
 							request,
 							new Response(
@@ -397,7 +400,7 @@ it.layer(NodeServices.layer)(test => {
 							)
 						)
 					}
-					if (String.includes('search.rss')(request.url)) {
+					if (String.includes('/new/.rss')(request.url)) {
 						return HttpClientResponse.fromWeb(request, new Response('<feed></feed>'))
 					}
 					return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
@@ -413,7 +416,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			yield* Queue.take(reported)
 			assert.strictEqual(yield* Ref.get(fetches), 1)
-			yield* TestClock.adjust('6 hours')
+			yield* TestClock.adjust('1 hour')
 			yield* Queue.take(reported)
 			assert.strictEqual(yield* Ref.get(fetches), 1)
 			assert.isFalse(Array.some(yield* store.load, item => keyOf(item) === 'manga:229'))
@@ -421,36 +424,26 @@ it.layer(NodeServices.layer)(test => {
 	)
 
 	test.effect(
-		'fetches both subreddit feeds concurrently',
+		'fetches both recent-post feeds concurrently and discovers chapter 243 from their real Atom entries',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const starts = yield* Ref.make(Array.empty<number>())
 			const arrivals = yield* Queue.unbounded<void>()
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
-					if (String.includes('/r/OnePunchMan/search.rss')(request.url)) {
+					if (String.includes('/r/OnePunchMan/new/.rss')(request.url)) {
 						const started = yield* Clock.currentTimeMillis
 						yield* Ref.update(starts, times => [...times, started])
 						yield* Queue.offer(arrivals, undefined)
 						yield* Effect.sleep('1 second')
-						return HttpClientResponse.fromWeb(
-							request,
-							new Response(
-								`<feed><entry><title>Chapter 100 [English]</title><published>1969-12-30T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/first/1/1/"&gt;Read&lt;/a&gt;</content></entry></feed>`
-							)
-						)
+						return HttpClientResponse.fromWeb(request, new Response(onePunchMan))
 					}
-					if (String.includes('/r/OPMFolk/search.rss')(request.url)) {
+					if (String.includes('/r/OPMFolk/new/.rss')(request.url)) {
 						const started = yield* Clock.currentTimeMillis
 						yield* Ref.update(starts, times => [...times, started])
 						yield* Queue.offer(arrivals, undefined)
 						yield* Effect.sleep('1 second')
-						return HttpClientResponse.fromWeb(
-							request,
-							new Response(
-								`<feed><entry><title>Chapter 101 [English]</title><published>1969-12-30T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/second/1/1/"&gt;Read&lt;/a&gt;</content></entry></feed>`
-							)
-						)
+						return HttpClientResponse.fromWeb(request, new Response(opmFolk))
 					}
 					if (
 						String.endsWith('/gist/series/OPM/')(request.url) ||
@@ -479,9 +472,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* TestClock.adjust('10 seconds')
 			yield* pipe(
 				chapters.changes,
-				Stream.filter(event =>
-					Array.every(['manga:100', 'manga:101'], key => Array.some(event.upserted, item => keyOf(item) === key))
-				),
+				Stream.filter(event => Array.some(event.upserted, item => keyOf(item) === 'manga:243')),
 				Stream.runHead
 			)
 			const startedAt = yield* Ref.get(starts)
@@ -529,7 +520,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* Queue.take(failed)
 			assert.strictEqual(Array.length(sessions.current), 8)
 			assert.strictEqual(Array.length(Array.dedupe(sessions.current)), 8)
-			yield* TestClock.adjust('6 hours')
+			yield* TestClock.adjust('1 hour')
 			yield* Queue.take(failed)
 			assert.strictEqual(Array.length(sessions.current), 16)
 			assert.strictEqual(Array.length(Array.dedupe(sessions.current)), 16)
