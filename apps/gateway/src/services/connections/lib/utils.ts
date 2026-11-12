@@ -82,6 +82,7 @@ export function connectionInfo(connection: Connection, now: number) {
 }
 
 // Usage is stored by hour; the page's day view sums each day's hours.
+// judge-ignore no-roundtrip -- the string key only groups and is never parsed back: each bucket's time comes from its first entry's number
 export function usageSeries(buckets: readonly McpUsageBucket[], range: UsageRange) {
 	return pipe(
 		Array.filter(buckets, bucket => bucket.at >= range.from && bucket.at < range.to),

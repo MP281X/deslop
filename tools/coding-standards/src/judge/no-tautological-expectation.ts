@@ -4,6 +4,8 @@ export const noTautologicalExpectation = question(
 	'test',
 	'Does the test in `code` compute its expected value with the same logic as the code under test, instead of stating the expected outcome?',
 	{
+		// A test without a recognised assertion, or one comparing two computed values.
+		gate: unit => unit.assertions === 0 || unit.comparesComputed,
 		message: 'Write the expected outcome out, so the test can disagree with the code.',
 		no: {
 			cases: [

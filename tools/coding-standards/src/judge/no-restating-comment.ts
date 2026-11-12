@@ -4,6 +4,7 @@ export const noRestatingComment = question(
 	'code',
 	'Does a comment in `code` say what the code or its names already show, or describe a past edit?',
 	{
+		gate: unit => unit.comment,
 		message:
 			'Delete the comment; if the code needs it, rename or restructure until it explains itself. Comment only a reason the code cannot show, in one short sentence; history lives in git.',
 		no: {

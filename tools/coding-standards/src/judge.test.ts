@@ -6,6 +6,7 @@ import {assert, describe, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	Context,
 	Effect,
 	FileSystem,
@@ -23,6 +24,7 @@ import {
 import {HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
+import {features} from '#lib/features.ts'
 import type {Question} from '#lib/question.ts'
 
 const QUESTIONS = Record.fromEntries(
@@ -33,6 +35,10 @@ const QUESTIONS = Record.fromEntries(
 		)
 	)
 )
+// Every yes example is asked, and each no example its own gate admits.
+const EXAMPLE_CALLS =
+	Record.size(QUESTIONS) +
+	Array.countBy(Record.values(QUESTIONS), question => question.gate(features(question.no.example, '')))
 
 type Asked = typeof Asked.Type
 const Asked = Schema.Struct({
@@ -40,7 +46,7 @@ const Asked = Schema.Struct({
 	state: Schema.Struct({code: Schema.String})
 })
 
-// Jev's stand-in: each question's own examples answer as written unless the question is `misjudged`; otherwise only a component named Flagged or Ignored fetches its own data, and one named Wavering sits between a stale ignore and a finding.
+// Jev's stand-in: each question's own examples answer as written unless the question is `misjudged`; otherwise only a component named Flagged or Ignored fetches its own data, one named Wavering sits between a stale ignore and a finding, and code naming Partial is left without its first answer.
 function score(name: string, code: string, misjudged: string) {
 	const question = QUESTIONS[name]
 	if (code === question?.yes.example && name === misjudged) return 0.1
@@ -80,7 +86,7 @@ function functionSource(name: string, suffix: string) {
 const fixture = Effect.fnUntraced(function* (misjudged: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
-	const calls = yield* Ref.make(0)
+	const calls = yield* Ref.make(Array.empty<{code: string; questions: string[]}>())
 	const server = yield* Layer.build(
 		pipe(
 			HttpRouter.serve(
@@ -90,9 +96,20 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 					pipe(
 						Effect.gen(function* () {
 							const asked = yield* HttpServerRequest.schemaBodyJson(Asked)
-							yield* Ref.update(calls, count => count + 1)
+							yield* Ref.update(calls, made => [
+								...made,
+								{code: asked.state.code, questions: Record.keys(asked.questions)}
+							])
+							const answers = Record.toEntries(
+								Record.map(asked.questions, (_, name) => ({noul: score(name, asked.state.code, misjudged)}))
+							)
 							return yield* HttpServerResponse.json({
-								answers: Record.map(asked.questions, (_, name) => ({noul: score(name, asked.state.code, misjudged)})),
+								answers: Record.fromEntries(
+									Boolean.match(String.includes('Partial')(asked.state.code), {
+										onFalse: () => answers,
+										onTrue: () => Array.drop(answers, 1)
+									})
+								),
 								usage: {cost: 0.0001}
 							})
 						}),
@@ -126,7 +143,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 		return directory
 	})
 	const judge = Effect.fnUntraced(function* (directory: string) {
-		yield* Ref.set(calls, 0)
+		yield* Ref.set(calls, [])
 		const handle = yield* ChildProcess.make(
 			'node',
 			[path.join(import.meta.dirname, 'main.cli.ts'), '--judge', '--gateway', gateway],
@@ -151,8 +168,10 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 			String.split('\n')(output[0]),
 			line => String.isNonEmpty(line) && !String.startsWith('[')(line)
 		)
+		const made = yield* Ref.get(calls)
 		return {
-			calls: yield* Ref.get(calls),
+			asked: made,
+			calls: made.length,
 			exitCode: output[2],
 			findings: pipe(
 				printed,
@@ -162,6 +181,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 					return Array.join([...Array.take(words, 2), ...Option.toArray(Array.last(words))], ' ')
 				})
 			),
+			printed,
 			tactics: Option.exists(Array.last(printed), String.includes('judge-ignore <question> -- <reason>'))
 		}
 	}, Effect.scoped)
@@ -218,7 +238,7 @@ describe('coding-standards --judge', () => {
 				const cold = yield* f.judge(directory)
 				assert.deepStrictEqual(
 					{calls: cold.calls, exitCode: cold.exitCode},
-					{calls: 2 + Record.size(QUESTIONS) * 2, exitCode: ChildProcessSpawner.ExitCode(0)}
+					{calls: 2 + EXAMPLE_CALLS, exitCode: ChildProcessSpawner.ExitCode(0)}
 				)
 				assert.strictEqual((yield* f.judge(directory)).calls, 0)
 				assert.strictEqual((yield* f.judge(yield* f.checkout(files))).calls, 0)
@@ -240,6 +260,62 @@ describe('coding-standards --judge', () => {
 					]
 				})
 				assert.strictEqual((yield* f.judge(edited)).calls, 1)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'asks a unit only the questions its gates admit, and reports a judge-ignore its gate now skips',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const result = yield* f.judge(
+					yield* f.checkout({
+						'page.tsx': [
+							'// judge-ignore no-self-fetching-component -- the view lives in a parent route',
+							'export function Static(props: {name: string}) {',
+							'\tconst title = props.name',
+							'\treturn (',
+							'\t\t<div>',
+							'\t\t\t<p>{title}</p>',
+							'\t\t</div>',
+							'\t)',
+							'}'
+						]
+					})
+				)
+				const asked = Array.flatMap(result.asked, call => {
+					if (!String.includes('Static')(call.code)) return []
+					return call.questions
+				})
+				assert.deepStrictEqual(
+					{
+						printed: Array.take(result.printed, 1),
+						selfFetching: Array.contains(asked, 'no-self-fetching-component'),
+						vagueName: Array.contains(asked, 'no-vague-name')
+					},
+					{
+						printed: [
+							'page.tsx:2 no-self-fetching-component Its gate skips this code; remove its judge-ignore comment.'
+						],
+						selfFetching: false,
+						vagueName: true
+					}
+				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'remembers nothing from a call missing an answer',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
+				const directory = yield* f.checkout({
+					'src/text.ts': ["import {Array, String} from 'effect'", '', ...functionSource('Partial', 'a')]
+				})
+				const first = yield* f.judge(directory)
+				assert.deepStrictEqual(
+					{calls: first.calls, exitCode: first.exitCode},
+					{calls: 1 + EXAMPLE_CALLS, exitCode: ChildProcessSpawner.ExitCode(1)}
+				)
+				assert.strictEqual((yield* f.judge(directory)).calls, 1)
 			}, Effect.scoped)
 		)
 

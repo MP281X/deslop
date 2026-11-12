@@ -57,6 +57,7 @@ import {noUnrelatedJobs} from '#judge/no-unrelated-jobs.ts'
 import {noVacuousAssertion} from '#judge/no-vacuous-assertion.ts'
 import {noVagueName} from '#judge/no-vague-name.ts'
 import {noViewStateInMemory} from '#judge/no-view-state-in-memory.ts'
+import {features} from '#lib/features.ts'
 import type {Question} from '#lib/question.ts'
 import {JudgeError, accessToken} from '#lib/session.ts'
 import type {Urls} from '#lib/session.ts'
@@ -109,9 +110,6 @@ const QUESTIONS = {
 	'no-view-state-in-memory': noViewStateInMemory
 }
 
-type Verdicts = typeof Verdicts.Type
-const Verdicts = Schema.Record(Schema.String, Schema.Finite)
-
 type Decision = typeof Decision.Type
 const Decision = Schema.Struct({
 	answers: Schema.Record(Schema.String, Schema.Struct({noul: Schema.Finite})),
@@ -125,7 +123,15 @@ class Failed extends Schema.TaggedError<Failed>()('Failed', {}) {
 	override readonly [Runtime.errorReported] = false
 }
 
-type Asked = {code: string; file: string; imports: string; kind: Question['kind']; questions: [string, Question][]}
+// A question with `key`, the digest of everything Jev reads of it.
+type Named = {key: string; name: string; question: Question}
+
+// One unit's questions with no remembered answer, asked together in one call; `key` digests the unit's kind, imports and code.
+type Asked = {code: string; file: string; imports: string; key: string; kind: Question['kind']; questions: Named[]}
+
+// One unit's remembered answers by the digest of the question each answers, so rewording or adding a question asks only that question again.
+type Verdicts = typeof Verdicts.Type
+const Verdicts = Schema.Record(Schema.String, Schema.Finite)
 
 // One cache per user, shared by every worktree and repository, so code judged in one is never asked again in another.
 export const layerCache = pipe(
@@ -137,24 +143,9 @@ export const layerCache = pipe(
 	Layer.provide(UserDirectories.layer)
 )
 
-// The answers change with the code, the imports it uses and everything Jev reads of each question asked, so rewording one question asks only its kind again.
-const withKey = Effect.fnUntraced(function* (asked: Asked) {
+const digestOf = Effect.fnUntraced(function* (parts: readonly string[]) {
 	const digest = yield* Digest.Digest
-	const parts = [
-		asked.kind,
-		asked.imports,
-		asked.code,
-		...Array.flatMap(asked.questions, entry => [
-			entry[0],
-			entry[1].question,
-			...entry[1].yes.cases,
-			'\u0001',
-			...entry[1].no.cases,
-			entry[1].yes.example,
-			entry[1].no.example
-		])
-	]
-	return {...asked, key: yield* digest.digestHex(Digest.sha256, new TextEncoder().encode(Array.join(parts, '\u0000')))}
+	return yield* digest.digestHex(Digest.sha256, new TextEncoder().encode(Array.join(parts, '\u0000')))
 })
 
 // A call missing one answer leaves the code unjudged.
@@ -169,9 +160,13 @@ const decide = Effect.fnUntraced(function* (
 		{
 			model: 'typesafe/jev-1.14',
 			questions: Record.fromEntries(
-				Array.map(asked.questions, entry => [
-					entry[0],
-					{criteria: {false: entry[1].no, true: entry[1].yes}, instructions: entry[1].question, type: 'noul'}
+				Array.map(asked.questions, named => [
+					named.name,
+					{
+						criteria: {false: named.question.no, true: named.question.yes},
+						instructions: named.question.question,
+						type: 'noul'
+					}
 				])
 			),
 			state: {code: asked.code, file: asked.file, imports: asked.imports}
@@ -208,7 +203,7 @@ const decide = Effect.fnUntraced(function* (
 		cost: decision.usage?.cost ?? 0,
 		verdicts: Option.liftPredicate(
 			Record.map(decision.answers, answer => answer.noul),
-			found => Array.every(asked.questions, entry => Record.has(found, entry[0]))
+			found => Array.every(asked.questions, named => Record.has(found, named.name))
 		)
 	}
 })
@@ -232,23 +227,23 @@ const trackedFiles = Effect.fnUntraced(function* (ignore: readonly string[]) {
 	return Array.filter(String.split('\n')(yield* Stream.mkString(Stream.decodeText(handle.stdout))), String.isNonEmpty)
 }, Effect.scoped)
 
-function verdictOf(
-	judged: {asked: Asked & {key: string}; unit: Unit}[],
-	examples: {asked: Asked & {key: string}; question: [string, Question]; side: 'no' | 'yes'; yes: boolean}[],
-	answers: Record<string, Option.Option<Verdicts>>
-) {
+type Judged = Asked & {skipped: Named[]; unit: Unit}
+
+type Example = Asked & {side: 'no' | 'yes'; yes: boolean}
+
+function verdictOf(judged: Judged[], examples: Example[], scores: Record<string, number>) {
 	function scoreOf(key: string, name: string) {
-		return Option.flatMap(Option.flatten(Record.get(answers, key)), Record.get(name))
+		return Record.get(scores, `${key}-${name}`)
 	}
 	return {
-		findings: Array.flatMap(judged, entry =>
-			Array.flatMap(entry.asked.questions, question => {
-				const where = `${entry.asked.file}:${entry.unit.line} ${question[0]}`
-				const ignored = HashSet.has(entry.unit.ignores, question[0])
-				return Option.match(scoreOf(entry.asked.key, question[0]), {
+		findings: Array.flatMap(judged, entry => [
+			...Array.flatMap(entry.questions, named => {
+				const where = `${entry.file}:${entry.unit.line} ${named.name}`
+				const ignored = HashSet.has(entry.unit.ignores, named.name)
+				return Option.match(scoreOf(entry.key, named.name), {
 					onNone: () => [],
 					onSome: score => {
-						if (score >= THRESHOLD && !ignored) return [`${where} ${question[1].message} ${Number.round(score, 2)}`]
+						if (score >= THRESHOLD && !ignored) return [`${where} ${named.question.message} ${Number.round(score, 2)}`]
 						// An ignore goes stale only once Jev clearly answers no: a unit asked again scores within about 0.06, so one near the threshold would otherwise flip between a finding and a stale ignore.
 						if (score < 0.5 && ignored) {
 							return [`${where} This now passes; remove its judge-ignore comment. ${Number.round(score, 2)}`]
@@ -256,26 +251,97 @@ function verdictOf(
 						return []
 					}
 				})
+			}),
+			...Array.flatMap(entry.skipped, named => {
+				if (!HashSet.has(entry.unit.ignores, named.name)) return []
+				return [
+					`${entry.file}:${entry.unit.line} ${named.name} Its gate skips this code; remove its judge-ignore comment.`
+				]
 			})
-		),
+		]),
 		misjudged: Array.flatMap(examples, example =>
-			Option.match(scoreOf(example.asked.key, example.question[0]), {
-				onNone: () => [],
-				onSome: score => {
-					if (score >= THRESHOLD === example.yes) return []
-					return [`${example.question[0]} misjudges its ${example.side} example. ${Number.round(score, 2)}`]
-				}
-			})
-		),
-		unjudged: Array.countBy(Record.values(answers), Option.isNone)
+			Array.flatMap(example.questions, named =>
+				Option.match(scoreOf(example.key, named.name), {
+					onNone: () => [],
+					onSome: score => {
+						if (score >= THRESHOLD === example.yes) return []
+						return [`${named.name} misjudges its ${example.side} example. ${Number.round(score, 2)}`]
+					}
+				})
+			)
+		)
 	}
 }
+
+// The questions the unit's record does not answer go to Jev in one call; only a complete answer is written back, merged with the record.
+const answer = Effect.fnUntraced(function* <R>(
+	asked: Asked,
+	store: KeyValueStore.SchemaStore<typeof Verdicts>,
+	decided: (asked: Asked) => Effect.Effect<Option.Option<Record<string, number>>, JudgeError, R>
+) {
+	// Two judges writing one record at once can interleave into text neither wrote; such a record is reported, asked again and rewritten.
+	const record = Option.getOrElse(
+		yield* Effect.catchTag(store.get(asked.key), 'SchemaError', () =>
+			Effect.as(
+				Effect.logWarning(`${asked.file}: its remembered answers are unreadable, so it is asked again`),
+				Option.none()
+			)
+		),
+		() => Record.empty<string, number>()
+	)
+	const remembered = Array.flatMap(asked.questions, named =>
+		Option.toArray(Option.map(Record.get(record, named.key), score => ({named, score})))
+	)
+	const missing = Array.filter(asked.questions, named => !Record.has(record, named.key))
+	const fresh = yield* Array.match(missing, {
+		onEmpty: () => Effect.succeed(Array.empty()),
+		onNonEmpty: questions =>
+			Effect.flatMap(decided({...asked, questions}), found =>
+				Option.match(found, {
+					onNone: () => Effect.succeed(Array.empty()),
+					onSome: answers => {
+						const scored = Array.flatMap(questions, named =>
+							Option.toArray(Option.map(Record.get(answers, named.name), score => ({named, score})))
+						)
+						return Effect.as(
+							store.set(asked.key, {
+								...record,
+								...Record.fromEntries(Array.map(scored, entry => [entry.named.key, entry.score]))
+							}),
+							scored
+						)
+					}
+				})
+			)
+	})
+	return {
+		asked: missing.length,
+		remembered: remembered.length,
+		scores: Array.map([...remembered, ...fresh], entry => [`${asked.key}-${entry.named.name}`, entry.score] as const)
+	}
+})
 
 export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly string[]) {
 	const fs = yield* FileSystem.FileSystem
 	const started = yield* Clock.currentTimeMillis
 	const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Verdicts)
-	const named = Record.toEntries(QUESTIONS)
+	const named = yield* Effect.forEach(
+		Record.toEntries(QUESTIONS),
+		entry =>
+			Effect.map(
+				digestOf([
+					entry[0],
+					entry[1].question,
+					...entry[1].yes.cases,
+					'\u0001',
+					...entry[1].no.cases,
+					entry[1].yes.example,
+					entry[1].no.example
+				]),
+				key => ({key, name: entry[0], question: entry[1]})
+			),
+		{concurrency: 'unbounded'}
+	)
 	const judged = Array.flatten(
 		yield* Effect.forEach(
 			yield* trackedFiles(ignore),
@@ -287,93 +353,105 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 							onNone: () => [],
 							onSome: source => units(file, source)
 						}),
-						unit =>
-							Effect.map(
-								withKey({
-									code: unit.text,
-									file,
-									imports: unit.imports,
-									kind: unit.kind,
-									questions: Array.filter(named, entry => Array.contains(ASKED[unit.kind], entry[1].kind))
-								}),
-								asked => ({asked, unit})
-							),
+						unit => {
+							const read = features(unit.text, unit.imports)
+							const kind = Array.filter(named, entry => Array.contains(ASKED[unit.kind], entry.question.kind))
+							return Effect.map(digestOf([unit.kind, unit.imports, unit.text]), key => ({
+								code: unit.text,
+								file,
+								imports: unit.imports,
+								key,
+								kind: unit.kind,
+								questions: Array.filter(kind, entry => entry.question.gate(read)),
+								skipped: Array.filter(kind, entry => !entry.question.gate(read)),
+								unit
+							}))
+						},
 						{concurrency: 'unbounded'}
 					)
 				}),
 			{concurrency: CONCURRENCY}
 		)
 	)
-	// A reworded question shows it still answers its own examples.
-	const examples = yield* Effect.forEach(
+	// A reworded question shows it still answers its own examples, and its gate admits its yes example.
+	const allExamples = yield* Effect.forEach(
 		Array.flatMap(
 			named,
-			question =>
+			entry =>
 				[
-					{question, side: 'yes', yes: true},
-					{question, side: 'no', yes: false}
+					{entry, side: 'yes', yes: true},
+					{entry, side: 'no', yes: false}
 				] as const
 		),
-		example =>
-			Effect.map(
-				withKey({
-					code: example.question[1][example.side].example,
-					file: EXAMPLE_FILES[example.question[1].kind],
-					imports: '',
-					kind: example.question[1].kind,
-					questions: [example.question]
-				}),
-				asked => ({...example, asked})
+		example => {
+			const code = example.entry.question[example.side].example
+			return Effect.map(digestOf([example.entry.question.kind, '', code]), key => ({
+				admitted: example.entry.question.gate(features(code, '')),
+				code,
+				file: EXAMPLE_FILES[example.entry.question.kind],
+				imports: '',
+				key,
+				kind: example.entry.question.kind,
+				questions: [example.entry],
+				side: example.side,
+				yes: example.yes
+			}))
+		},
+		{concurrency: CONCURRENCY}
+	)
+	const examples = Array.filter(allExamples, example => example.admitted)
+	const spent = yield* Ref.make({calls: 0, cost: 0})
+	// Signs in only once some code has no remembered answer.
+	const token = yield* Effect.cached(Effect.flatMap(accessToken(urls, false), SynchronizedRef.make))
+	function decided(asked: Asked) {
+		return pipe(
+			Effect.flatMap(token, current => decide(urls, current, asked)),
+			Effect.tap(found => Ref.update(spent, current => ({calls: current.calls + 1, cost: current.cost + found.cost}))),
+			Effect.map(found => found.verdicts),
+			// Code Gateway or Jev could not answer stays unjudged and is asked again on the next run.
+			Effect.catchIf(
+				error => error._tag !== 'JudgeError',
+				error => Effect.as(Effect.logWarning(`${asked.file}: ${error.message}`), Option.none<Record<string, number>>())
+			)
+		)
+	}
+	// Code that appears twice, or an example that is also a unit, is asked once with every question either needs.
+	const answered = yield* Effect.forEach(
+		Record.values(Array.groupBy([...judged, ...examples], asked => asked.key)),
+		group =>
+			answer(
+				{
+					...Array.headNonEmpty(group),
+					questions: Array.dedupeWith(
+						Array.flatMap(group, asked => asked.questions),
+						(first, second) => first.name === second.name
+					)
+				},
+				store,
+				decided
 			),
 		{concurrency: CONCURRENCY}
 	)
-	const spent = yield* Ref.make({calls: 0, cost: 0})
-	// Signs in only once some code has no cached answer.
-	const token = yield* Effect.cached(Effect.flatMap(accessToken(urls, false), SynchronizedRef.make))
-	const answers = Record.fromEntries(
-		yield* Effect.forEach(
-			pipe(
-				[...Array.map(judged, entry => entry.asked), ...Array.map(examples, entry => entry.asked)],
-				Array.dedupeWith((first, second) => first.key === second.key)
-			),
-			asked =>
-				pipe(
-					Effect.gen(function* () {
-						const cached = yield* store.get(asked.key)
-						if (Option.isSome(cached)) return cached
-						const decided = yield* decide(urls, yield* token, asked)
-						yield* Ref.update(spent, current => ({calls: current.calls + 1, cost: current.cost + decided.cost}))
-						yield* Option.match(decided.verdicts, {
-							onNone: () => Effect.void,
-							onSome: verdicts => store.set(asked.key, verdicts)
-						})
-						return decided.verdicts
-					}),
-					// Code Gateway or Jev could not answer stays unjudged and is asked again on the next run.
-					Effect.catchIf(
-						error => error._tag !== 'JudgeError',
-						error => Effect.as(Effect.logWarning(`${asked.file}: ${error.message}`), Option.none<Verdicts>())
-					),
-					Effect.map(verdicts => [asked.key, verdicts] as const)
-				),
-			{concurrency: CONCURRENCY}
-		)
-	)
-	const verdict = verdictOf(judged, examples, answers)
+	const scores = Record.fromEntries(Array.flatMap(answered, found => found.scores))
+	const verdict = verdictOf(judged, examples, scores)
+	const misjudged = [
+		...Array.flatMap(allExamples, example => {
+			if (!example.yes || example.admitted) return []
+			return Array.map(example.questions, entry => `${entry.name}'s gate skips its yes example.`)
+		}),
+		...verdict.misjudged
+	]
+	const asked = Number.sumAll(Array.map(answered, found => found.asked))
+	const remembered = Number.sumAll(Array.map(answered, found => found.remembered))
+	const unjudged = asked + remembered - Record.size(scores)
 	const totals = yield* Ref.get(spent)
-	yield* Effect.forEach([...verdict.findings, ...verdict.misjudged], line => Console.log(line), {
-		concurrency: 1,
-		discard: true
-	})
+	yield* Effect.forEach([...verdict.findings, ...misjudged], line => Console.log(line), {concurrency: 1, discard: true})
 	if (Array.isReadonlyArrayNonEmpty(verdict.findings)) yield* Console.log(TACTICS)
+	const distinct = Array.dedupeWith(judged, (first, second) => first.key === second.key)
 	yield* Effect.log(
-		`judge: ${Array.dedupe(Array.map(judged, entry => entry.asked.key)).length} units, ${totals.calls} calls, $${Number.round(totals.cost, 4)}, ${Number.round(((yield* Clock.currentTimeMillis) - started) / 1000, 1)}s; ${verdict.findings.length + verdict.misjudged.length} findings, ${verdict.unjudged} unjudged`
+		`judge: ${distinct.length} units; ${asked} questions asked, ${remembered} answered from memory, ${Number.sumAll(Array.map(distinct, entry => entry.skipped.length))} skipped by gates; ${totals.calls} calls, $${Number.round(totals.cost, 4)}, ${Number.round(((yield* Clock.currentTimeMillis) - started) / 1000, 1)}s; ${verdict.findings.length + misjudged.length} findings, ${unjudged} unjudged`
 	)
-	if (
-		Array.isReadonlyArrayNonEmpty(verdict.findings) ||
-		Array.isReadonlyArrayNonEmpty(verdict.misjudged) ||
-		verdict.unjudged > 0
-	) {
+	if (Array.isReadonlyArrayNonEmpty(verdict.findings) || Array.isReadonlyArrayNonEmpty(misjudged) || unjudged > 0) {
 		return yield* Failed.make({})
 	}
 })

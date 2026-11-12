@@ -4,6 +4,7 @@ export const noRepeatedSearch = question(
 	'code',
 	'Does `code` search the same unchanged collection by key once per item of a loop, where an index built once would do?',
 	{
+		gate: unit => unit.searches,
 		message: 'Build the index once (a set, a map, or Array.groupBy) instead of searching the list for each item.',
 		no: {
 			cases: [

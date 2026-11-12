@@ -80,7 +80,7 @@ function stationMatch(name: string, matches: StopMatches) {
 				name: pipe(
 					String.toLowerCase(match.name),
 					String.split(' '),
-					Array.map(word => `${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}`),
+					Array.map(word => String.capitalize(word)),
 					Array.join(' ')
 				)
 			}) satisfies Place

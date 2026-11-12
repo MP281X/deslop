@@ -12,7 +12,8 @@ export const noMisleadingName = question(
 				'A lint check that reports diagnostics or fixes: reporting is part of checking',
 				'A noun-named atom, effect or service that performs the activity it names',
 				'Names inside source text used as test fixtures',
-				'Parameters of short callbacks'
+				'Parameters of short callbacks',
+				'An is, has, can or should name given or returning a literal, template, object, array, arithmetic or new value: lint reports it'
 			],
 			example: `
 				function isExpired(session: Session, now: number) {
@@ -23,13 +24,13 @@ export const noMisleadingName = question(
 		yes: {
 			cases: [
 				'A get, find, is, has or to function `code` declares that changes domain state, or returns something other than its name says',
-				'An is, has, can or should name whose value is not a boolean',
+				'An is, has, can or should name holding a value that is not a boolean, such as a list or a count a call returns',
 				'A plural name for one item, or a singular name for a collection',
 				'A name stating a unit, type or source the value does not have, such as seconds holding milliseconds'
 			],
 			example: `
-				function isExpired(session: Session, now: number) {
-					return session.expiresAt - now
+				function isExpired(sessions: Session[], now: number) {
+					return Array.filter(sessions, session => session.expiresAt < now)
 				}
 			`
 		}

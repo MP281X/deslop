@@ -4,6 +4,7 @@ export const noStaleComment = question(
 	'code',
 	'Does a comment inside `code` state something the code next to it visibly contradicts?',
 	{
+		gate: unit => unit.comment,
 		message: 'Fix the comment or the code: the comment says something the code does not do.',
 		no: {
 			cases: [

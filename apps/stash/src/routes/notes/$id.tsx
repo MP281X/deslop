@@ -244,7 +244,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
 	}
-	const issue = Option.getOrElse(Option.fromUndefinedOr(props.note.issue), () => 'Can’t Read This Link')
+	const issue = props.note.issue ?? 'Can’t Read This Link'
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => note.body !== undefined)
 	return (

@@ -14,7 +14,7 @@ it('names a blocking failure on the one button that retries it, without exposing
 	assert.notInclude(html, 'PRIVATE DIAGNOSTIC')
 })
 
-it('shows the safe reason supplied by the owning reader', () => {
+it('names the failure on its retry button with the label its caller supplies instead of the default', () => {
 	const html = renderToStaticMarkup(
 		createElement(Error, {error: undefined, label: 'Can’t reach desktop', reset: () => undefined})
 	)

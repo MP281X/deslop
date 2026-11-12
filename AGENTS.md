@@ -11,6 +11,7 @@
 ## Commands
 
 - **Verify.** `vp run fix`, then `vp run test`; `fix` covers CI's `vp run check` in `vite.config.ts`.
+- **Judge.** `vp run judge` after Verify passes; it spends the signed-in person's OpenRouter key, so never in CI. The agent configuration says who runs it and when.
 - **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `.github/releasing.md`, **Publish an iOS app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
 - **Releases.** `.github/releasing.md`: Simulator builds, deploy, native tools, publishing packages and iOS apps.

@@ -4,6 +4,8 @@ export const noRepeatedTextAction = question(
 	'component',
 	'Does `code` render a list row with two or more text buttons for different actions on its item?',
 	{
+		// Two actions render two pressables, or one inside a row rendered per item.
+		gate: unit => unit.pressables >= 2 || unit.nestedPressables >= 1,
 		message:
 			'The whole row opens the item; its other actions sit at its end: one as its icon button, several behind one … menu button.',
 		no: {

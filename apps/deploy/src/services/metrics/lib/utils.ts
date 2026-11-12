@@ -143,7 +143,7 @@ export function reading(
 	load: readonly number[],
 	previous?: Counters
 ) {
-	const used = Array.reduce(disks, 0, (sum, entry) => sum + entry.used)
+	const used = Number.sumAll(Array.map(disks, entry => entry.used))
 	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
 	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
 	const value: Sample = {
@@ -308,9 +308,7 @@ export function compact(samples: readonly Sample[], now: number) {
 
 // The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
 export function usedStorage(point: Sample) {
-	return Option.getOrElse(Option.fromUndefinedOr(point.storageUsed), () =>
-		Array.reduce(point.disks, 0, (sum, disk) => sum + disk.used)
-	)
+	return point.storageUsed ?? Array.reduce(point.disks, 0, (sum, disk) => sum + disk.used)
 }
 
 export function history(samples: readonly Sample[], minutes: number, now: number) {
