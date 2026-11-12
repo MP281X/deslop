@@ -1,9 +1,11 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {Array, Context, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
 
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {Reactivity} from 'effect/reactivity'
+
 import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {Media} from '#services/media/service.ts'
@@ -50,11 +52,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash tools', test 
 		Effect.fnUntraced(function* () {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 					const context = yield* Layer.build(
 						pipe(
-							Notes.layer(directory),
-							Layer.provide(layerKeyValueStore(directory)),
+							Notes.layer(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()),
+							Layer.provide(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
 							Layer.provide(Layer.succeed(Sources, sources)),
 							Layer.provide(Layer.succeed(Media, media)),
 							Layer.provide(Layer.succeed(Organizer, organizer))
@@ -71,13 +72,14 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash tools', test 
 					)
 					assert.isFalse(saved.isFailure)
 					const note = yield* Schema.decodeUnknownEffect(Schema.Struct({id: NoteId}))(saved.encodedResult)
-					assert.strictEqual((yield* notes.list).length, 1)
+					const all = {cursor: Option.none(), limit: 10, query: ''}
+					assert.strictEqual((yield* notes.list(all)).total, 1)
 					yield* pipe(
 						toolkit.handle('remove_note', {id: note.id}, '2'),
 						Effect.flatMap(Stream.runDrain),
 						Effect.provideService(CurrentUser, USER)
 					)
-					assert.deepStrictEqual(yield* notes.list, [])
+					assert.strictEqual((yield* notes.list(all)).total, 0)
 				})
 			)
 		})

@@ -1,5 +1,9 @@
 import {Schema, Struct, pipe} from 'effect'
 
+import {Model} from 'effect/schema'
+
+import {User} from '@deslop/runtime/shared/auth'
+
 export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String,
@@ -7,10 +11,17 @@ export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 }) {}
 
 export type NoteId = typeof NoteId.Type
-export const NoteId = pipe(Schema.String, Schema.check(Schema.isUUID()))
+export const NoteId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('NoteId'))
 
-export type Tag = typeof Tag.Type
-export const Tag = pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40)))
+export type TagName = typeof TagName.Type
+export const TagName = pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40)))
+
+// A tag and what belongs under it, as the AI defines it.
+export type TagDefinition = typeof TagDefinition.Type
+export const TagDefinition = Schema.Struct({
+	definition: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(240))),
+	tag: TagName
+})
 
 export type Source = typeof Source.Type
 export const Source = Schema.Literals(['TikTok', 'X', 'Website', 'Note'])
@@ -33,41 +44,61 @@ export const Picture = Schema.Struct({...Image.fields, label: Schema.String})
 export type FileType = typeof FileType.Type
 export const FileType = Schema.Literals(['image/jpeg', 'video/mp4', 'video/quicktime'])
 
-export type Note = typeof Note.Type
-export const Note = Schema.Struct({
-	author: Schema.optionalKey(Schema.String),
-	body: Schema.optionalKey(Schema.String),
+// One row of `notes`, and what the server, the web and the phone know a note by: absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
+export class Note extends Model.Class<Note>('Note')({
+	author: Model.FieldOption(Schema.String),
+	body: Model.FieldOption(Schema.String),
 	content: Schema.String,
-	createdAt: Schema.Finite,
-	file: Schema.optionalKey(FileType),
+	createdAt: Model.DateTimeInsertFromNumber,
+	file: Model.FieldOption(FileType),
+	// A capture brings the id its device made, so a retried upload saves one note.
 	id: NoteId,
-	image: Schema.optionalKey(ImageType),
-	issue: Schema.optionalKey(Schema.String),
-	// Whose AI keys organize the note, so a restart resumes it on their behalf.
-	requester: Schema.optionalKey(Schema.String),
-	screenText: Schema.optionalKey(Schema.String),
+	image: Model.FieldOption(ImageType),
+	issue: Model.FieldOption(Schema.String),
+	// Whose AI keys organize the note, so a restart resumes it on their behalf; it never leaves the server.
+	requester: Model.Sensitive(User.fields.id),
+	screenText: Model.FieldOption(Schema.String),
 	source: Source,
 	status: Schema.Literals(['organizing', 'ready', 'failed']),
 	summary: Schema.String,
-	tags: Schema.Array(Tag),
 	text: Schema.String,
 	title: Schema.String,
-	topics: Schema.optionalKey(Schema.String),
-	transcript: Schema.optionalKey(Schema.String),
-	url: Schema.optionalKey(Schema.String)
-})
+	topics: Model.FieldOption(Schema.String),
+	transcript: Model.FieldOption(Schema.String),
+	url: Model.FieldOption(Schema.String)
+}) {
+	static readonly table = 'notes'
+}
 
-export type NoteItem = typeof NoteItem.Type
-export const NoteItem = Note.mapFields(
-	Struct.omit(['body', 'content', 'requester', 'screenText', 'text', 'transcript'])
-)
+// A tag and what belongs under it, so the AI reuses tags by meaning; the definition is the first one the tag was given.
+export class Tag extends Model.Class<Tag>('Tag')({
+	definition: Model.FieldOption(TagDefinition.fields.definition),
+	name: TagName
+}) {
+	static readonly table = 'tags'
+}
+
+// A note's tag, at the place the AI gave it.
+export class NoteTag extends Model.Class<NoteTag>('NoteTag')({noteId: NoteId, position: Schema.Int, tag: TagName}) {
+	static readonly table = 'note_tags'
+}
+
+// What the list shows per note: the note without its long texts and requester, and its tags in the order the AI gave them.
+export class NoteItem extends Model.Class<NoteItem>('NoteItem')({
+	...Struct.omit(Model.fields(Note), ['body', 'content', 'requester', 'screenText', 'text', 'transcript']),
+	tags: Model.Field({json: Schema.Array(TagName), select: Schema.fromJsonString(Schema.Array(TagName))})
+}) {}
 
 export type NotesEvent = typeof NotesEvent.Type
 export const NotesEvent = Schema.Struct({
 	removed: Schema.Array(NoteId),
 	reset: Schema.Boolean,
-	upserted: Schema.Array(NoteItem)
+	upserted: Schema.Array(NoteItem.json)
 })
+
+// Where a page of notes, newest first, continues.
+export type NotesCursor = typeof NotesCursor.Type
+export const NotesCursor = Schema.Struct(Struct.pick(Note.json.fields, ['createdAt', 'id']))
 
 export type Capture = typeof Capture.Type
 export const Capture = Schema.Struct({
@@ -86,15 +117,9 @@ export const Extraction = Schema.Struct({
 	video: Schema.optionalKey(Schema.String)
 })
 
-// A tag in use, with what belongs under it, so the AI reuses tags by meaning instead of by name.
+// A tag in use and how many notes carry it, so the AI reuses tags by meaning instead of by name.
 export type TagEntry = typeof TagEntry.Type
-export const TagEntry = Schema.Struct({count: Schema.Int, definition: Schema.optionalKey(Schema.String), tag: Tag})
-
-export type TagDefinition = typeof TagDefinition.Type
-export const TagDefinition = Schema.Struct({
-	definition: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(240))),
-	tag: Tag
-})
+export const TagEntry = Schema.Struct({...Tag.fields, count: Schema.Int})
 
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
@@ -102,7 +127,7 @@ export const Organization = Schema.Struct({
 	definitions: Schema.Array(TagDefinition),
 	screenText: Schema.String,
 	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(400))),
-	tags: pipe(Schema.Array(Tag), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
+	tags: pipe(Schema.Array(TagName), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
 	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(90))),
 	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(1000)))
 })

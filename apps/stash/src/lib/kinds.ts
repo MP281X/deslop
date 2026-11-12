@@ -16,17 +16,17 @@ export const kinds = {
 } as const satisfies Record<Kind, unknown>
 
 export function kindOf(note: NoteItem) {
-	if (note.file !== undefined) return 'file'
+	if (Option.isSome(note.file)) return 'file'
 	if (note.source === 'TikTok') return 'tiktok'
 	if (note.source === 'X') return 'x'
 	if (note.source === 'Note') return 'note'
-	if (Option.exists(Option.fromNullishOr(note.url), isYouTube)) return 'youtube'
+	if (Option.exists(note.url, isYouTube)) return 'youtube'
 	return 'web'
 }
 
 export function siteOf(note: NoteItem) {
 	return pipe(
-		Option.fromNullishOr(note.url),
+		note.url,
 		Option.filter(() => kindOf(note) === 'web'),
 		Option.flatMap(url => Option.liftThrowable(() => new URL(url).hostname)()),
 		Option.map(String.replace(/^www\./u, ''))
@@ -34,8 +34,8 @@ export function siteOf(note: NoteItem) {
 }
 
 export function subjectOf(note: NoteItem) {
-	if (note.file === 'image/jpeg') return 'photo'
-	if (note.file !== undefined) return 'video'
+	if (Option.contains(note.file, 'image/jpeg')) return 'photo'
+	if (Option.isSome(note.file)) return 'video'
 	return 'link'
 }
 

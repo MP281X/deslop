@@ -1,35 +1,27 @@
-import {Effect, Schema, pipe} from 'effect'
+import {Effect, Schema, Struct, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
 import {CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {Capture, Note, NoteId, NotesError, Tag} from '#services/notes/schema.ts'
+import {Capture, NoteId, NoteItem, NotesCursor, NotesError} from '#services/notes/schema.ts'
 
 export type NoteSummary = typeof NoteSummary.Type
 const NoteSummary = Schema.Struct({
-	id: NoteId,
-	saved: Schema.String,
-	status: Note.fields.status,
-	summary: Schema.String,
-	tags: Schema.Array(Tag),
-	title: Schema.String,
-	url: Schema.optionalKey(Schema.String)
+	...Struct.pick(NoteItem.json.fields, ['id', 'status', 'summary', 'tags', 'title', 'url']),
+	saved: Schema.String
 })
 
-type Cursor = typeof Cursor.Type
-const Cursor = Schema.Struct({createdAt: Schema.Finite, id: NoteId})
 type SavedNote = typeof SavedNote.Type
 const SavedNote = Schema.Struct({
 	...NoteSummary.fields,
-	author: Note.fields.author,
+	...Struct.pick(NoteItem.json.fields, ['author', 'issue']),
 	body: Schema.optionalKey(Schema.String),
 	content: Schema.optionalKey(Schema.String),
-	issue: Note.fields.issue,
 	nextOffset: Schema.optionalKey(Schema.Natural),
 	screenText: Schema.optionalKey(Schema.String),
 	text: Schema.optionalKey(Schema.String),
-	topics: Note.fields.topics,
+	topics: Schema.optionalKey(Schema.String),
 	transcript: Schema.optionalKey(Schema.String)
 })
 
@@ -37,8 +29,9 @@ export const ToolContracts = Toolkit.make(
 	Tool.make('search_notes', {
 		description:
 			'Find saved reading by words or #tag, newest first; omit query for recent notes. Pass nextCursor unchanged to continue, or read_note(id) for the selected note.',
+		failure: NotesError,
 		parameters: Schema.Struct({
-			cursor: Schema.optionalKey(Cursor),
+			cursor: Schema.optionalKey(NotesCursor),
 			limit: pipe(
 				Schema.Int,
 				Schema.check(Schema.isBetween({maximum: 50, minimum: 1})),
@@ -50,7 +43,7 @@ export const ToolContracts = Toolkit.make(
 			)
 		}),
 		success: Schema.Struct({
-			nextCursor: Schema.optionalKey(Cursor),
+			nextCursor: Schema.optionalKey(NotesCursor),
 			notes: Schema.Array(NoteSummary),
 			total: Schema.Int
 		})

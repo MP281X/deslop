@@ -1,5 +1,7 @@
 import {assert, it} from '@effect/vitest'
 
+import {Array} from 'effect'
+
 import {normalizeTags, reconcileOrganization} from './tags.ts'
 
 it('makes each tag one lowercase token', () => {
@@ -11,11 +13,11 @@ it('makes each tag one lowercase token', () => {
 })
 
 function organizedTags(tags: string[], inUse: string[]) {
-	return reconcileOrganization(
-		{body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''},
-		inUse,
-		{}
-	).organization.tags
+	return Array.map(
+		reconcileOrganization({body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''}, inUse)
+			.tags,
+		tag => tag.name
+	)
 }
 
 it('takes a plural or separator variant of a tag in use as that tag, but keeps a narrower tag apart', () => {

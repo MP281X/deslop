@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, HashSet, Option, Order, Stream, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, HashSet, Option, Order, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {randomUUID} from 'expo-crypto'
@@ -13,11 +13,11 @@ import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, SERVER, session} from '#lib/session.ts'
 import type {Note} from '#services/notes/schema.ts'
-import {NoteItem, NotesError} from '#services/notes/schema.ts'
+import {NoteId, NoteItem, NotesError} from '#services/notes/schema.ts'
 
 const listFile = new File(Paths.document, 'list.json')
 
-const newestFirst = Order.flip(Order.mapInput(Order.Number, (item: NoteItem) => item.createdAt))
+const newestFirst = Order.flip(Order.mapInput(DateTime.Order, (item: NoteItem) => item.createdAt))
 
 const apply = listReducer(newestFirst)
 
@@ -28,7 +28,7 @@ export const notesAtom = Atom.keepAlive(
 		return cachedList(
 			get,
 			listFile,
-			NoteItem,
+			NoteItem.json,
 			pipe(liveStream(RpcClient, 'notes.events'), Stream.scan(Array.empty<NoteItem>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
@@ -101,12 +101,12 @@ export const removal = makeRemoval({
 		provideRuntimeOnce(
 			get,
 			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('notes.remove', {id}))
+			Effect.flatMap(RpcClient, client => client('notes.remove', {id: NoteId.make(id)}))
 		)
 })
 
 export function capture(text: string) {
-	return Effect.flatMap(RpcClient, client => client('notes.capture', {id: randomUUID(), text}))
+	return Effect.flatMap(RpcClient, client => client('notes.capture', {id: NoteId.make(randomUUID()), text}))
 }
 
 const draftFile = new File(Paths.document, 'draft.txt')

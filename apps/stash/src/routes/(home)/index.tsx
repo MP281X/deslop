@@ -160,7 +160,7 @@ function NoteMedia(props: {note: NoteItem}) {
 					<Image systemName={kinds[other].symbol} size={24} modifiers={[foregroundStyle(colors.mutedForeground)]} />
 				))
 			)}
-			{props.note.image !== undefined && <Thumbnail id={props.note.id} />}
+			{Option.isSome(props.note.image) && <Thumbnail id={props.note.id} />}
 		</ZStack>
 	)
 }
@@ -204,7 +204,7 @@ function NoteRow(props: {
 								</Item>
 							</ContextMenu.Trigger>
 							<ContextMenu.Items>
-								{Option.match(Option.fromNullishOr(props.note.url), {
+								{Option.match(props.note.url, {
 									onNone: () => undefined,
 									onSome: url => (
 										<Button onPress={() => Linking.openURL(url)}>
