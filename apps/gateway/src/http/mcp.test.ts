@@ -10,6 +10,7 @@ import {
 	FileSystem,
 	Layer,
 	Option,
+	Record,
 	Redacted,
 	Schema,
 	Struct,
@@ -17,6 +18,7 @@ import {
 } from 'effect'
 
 import {Client, StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
+import type {Tool} from '@modelcontextprotocol/client'
 import {McpClient, McpProtocol, McpSchema, McpServer} from 'effect/ai'
 import {FetchHttpClient, Headers, HttpRouter} from 'effect/http'
 
@@ -53,6 +55,11 @@ const FAILURE = McpSchema.CallToolResult.make({
 	isError: true,
 	structuredContent: {reason: 'refused'}
 })
+const CASES = [
+	{name: 'packet', result: PACKET},
+	{name: 'document', result: DOCUMENT},
+	{name: 'failure', result: FAILURE}
+]
 
 it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP relay', test => {
 	test.effect(
@@ -65,16 +72,18 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			const scope = yield* Effect.scope
 			function captureCall(name: string, descriptor: unknown, result: unknown) {
 				if (capture === undefined) return Effect.void
-				return Effect.gen(function* () {
-					yield* fs.writeFileString(
-						`${capture}/${name}.list.json`,
-						yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(descriptor)
-					)
-					yield* fs.writeFileString(
-						`${capture}/${name}.call.json`,
-						yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(result)
-					)
-				})
+				return Effect.forEach(
+					[
+						{part: 'list', value: descriptor},
+						{part: 'call', value: result}
+					],
+					entry =>
+						pipe(
+							Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(entry.value),
+							Effect.flatMap(encoded => fs.writeFileString(`${capture}/${name}.${entry.part}.json`, encoded))
+						),
+					{concurrency: 1, discard: true}
+				)
 			}
 			const upstream = yield* Effect.acquireRelease(
 				Effect.sync(() =>
@@ -86,11 +95,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 							registrations: Layer.effectDiscard(
 								Effect.gen(function* () {
 									const registry = yield* McpServer.McpServer
-									for (const entry of [
-										{name: 'packet', result: PACKET},
-										{name: 'document', result: DOCUMENT},
-										{name: 'failure', result: FAILURE}
-									]) {
+									for (const entry of CASES) {
 										yield* registry.addTool({
 											annotations: Context.empty(),
 											handle: () => Effect.succeed(entry.result),
@@ -160,28 +165,13 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 					)
 			)
 			yield* Effect.promise(() => client.connect(transport))
-			const listed = yield* Effect.promise(() => client.listTools())
+
+			const sdkTools = pipe(
+				(yield* Effect.promise(() => client.listTools())).tools,
+				Array.groupBy(tool => tool.name),
+				Record.map(Array.headNonEmpty)
+			)
 			if (capture !== undefined) yield* fs.makeDirectory(capture, {recursive: true})
-			for (const entry of [
-				{name: 'packet', result: PACKET},
-				{name: 'document', result: DOCUMENT},
-				{name: 'failure', result: FAILURE}
-			]) {
-				const name = `${added.id}__${entry.name}`
-				const descriptor = Option.getOrThrow(Array.findFirst(listed.tools, tool => tool.name === name))
-				assert.deepStrictEqual(
-					descriptor.outputSchema,
-					Option.getOrUndefined(Option.liftPredicate(OUTPUT, () => entry.name !== 'document'))
-				)
-				const result = yield* Effect.promise(() => client.callTool({arguments: {}, name}))
-				const expected = yield* Schema.encodeEffect(McpSchema.CallToolResult)(entry.result)
-				assert.deepStrictEqual(
-					Struct.pick(result, ['content', 'isError', 'structuredContent']),
-					Struct.pick(expected, ['content', 'isError', 'structuredContent'])
-				)
-				if (entry.name === 'packet') assert.strictEqual(result._meta?.['fixture'], 'preserved')
-				yield* captureCall(`relay-${entry.name}`, descriptor, result)
-			}
 			const effectServices = yield* Layer.buildWithMemoMap(
 				pipe(
 					McpClient.layerHttp({
@@ -199,29 +189,51 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 				scope
 			)
 			const effectClient = Context.get(effectServices, McpClient.McpClient)
-			const effectTools = yield* effectClient.listTools()
-			for (const entry of [
-				{name: 'packet', result: PACKET},
-				{name: 'document', result: DOCUMENT},
-				{name: 'failure', result: FAILURE}
-			]) {
-				const descriptor = Option.getOrThrow(
-					Array.findFirst(effectTools, tool => tool.name === `${added.id}__${entry.name}`)
-				)
-				const result = yield* effectClient.callTool({arguments: {}, tool: descriptor})
-				assert.deepStrictEqual(
-					Struct.pick(result, ['content', 'isError', 'structuredContent']),
-					Struct.pick(entry.result, ['content', 'isError', 'structuredContent'])
-				)
-				yield* captureCall(
-					`effect-relay-${entry.name}`,
-					yield* Schema.encodeEffect(McpSchema.Tool)(descriptor),
-					yield* Schema.encodeEffect(McpSchema.CallToolResult)(result)
-				)
-			}
-			const connectionsTool = Option.getOrThrow(
-				Array.findFirst(effectTools, tool => tool.name === 'list_mcp_connections')
+			const effectTools = pipe(
+				yield* effectClient.listTools(),
+				Array.groupBy(tool => tool.name),
+				Record.map(Array.headNonEmpty)
 			)
+			const encodedEffectTools = yield* Schema.encodeEffect(Schema.Record(Schema.String, McpSchema.Tool))(effectTools)
+			for (const probe of [
+				{
+					call: (name: string) => Effect.promise(() => client.callTool({arguments: {}, name})),
+					label: 'relay',
+					tools: sdkTools
+				},
+				{
+					call: Effect.fnUntraced(function* (name: string) {
+						const result = yield* effectClient.callTool({
+							arguments: {},
+							tool: pipe(effectTools, Record.get(name), Option.getOrThrow)
+						})
+						return yield* Schema.encodeEffect(McpSchema.CallToolResult)(result)
+					}),
+					label: 'effect-relay',
+					tools: encodedEffectTools
+				}
+			]) {
+				for (const entry of CASES) {
+					const name = `${added.id}__${entry.name}`
+					const descriptor = pipe(
+						Record.get<string, Tool | typeof McpSchema.Tool.Encoded>(probe.tools, name),
+						Option.getOrThrow
+					)
+					assert.deepStrictEqual(
+						descriptor.outputSchema,
+						Option.getOrUndefined(Option.liftPredicate(OUTPUT, () => entry.name !== 'document'))
+					)
+					const result = yield* probe.call(name)
+					const expected = yield* Schema.encodeEffect(McpSchema.CallToolResult)(entry.result)
+					assert.deepStrictEqual(
+						Struct.pick(result, ['content', 'isError', 'structuredContent']),
+						Struct.pick(expected, ['content', 'isError', 'structuredContent'])
+					)
+					if (entry.name === 'packet') assert.strictEqual(result._meta?.['fixture'], 'preserved')
+					yield* captureCall(`${probe.label}-${entry.name}`, descriptor, result)
+				}
+			}
+			const connectionsTool = pipe(effectTools, Record.get('list_mcp_connections'), Option.getOrThrow)
 			const connectionsResult = yield* effectClient.callTool({
 				arguments: {},
 				schema: Schema.Struct({servers: Schema.Array(Schema.Struct({id: Schema.String, tools: Schema.Int}))}),
@@ -236,7 +248,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 				{arguments: {provider: 'openrouter'}, name: 'remove_ai_key'},
 				{arguments: {server: added.id}, name: 'remove_mcp_server'}
 			]) {
-				const descriptor = Option.getOrThrow(Array.findFirst(listed.tools, tool => tool.name === entry.name))
+				const descriptor = pipe(sdkTools, Record.get(entry.name), Option.getOrThrow)
 				const result = yield* Effect.promise(() => client.callTool(entry))
 				assert.isFalse(result.isError)
 				assert.deepStrictEqual(result.content, [])
