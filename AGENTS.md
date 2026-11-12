@@ -4,9 +4,10 @@
 
 - **Task.** No issue tracker: the request is the whole task.
 - **Language.** Apps are English-only.
-- **Users.** One user on three workers: two Debian ones and a Mac whose only Deslop app is Deploy; no portability, compatibility code or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage. Portfolio is public.
-- **Releases.** Linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
-- **Data retention.** Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
+- **Users.** One user on three workers: two Debian ones and a Mac whose only Deslop app is Deploy; no portability or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage. Portfolio is public.
+- **Compatibility.** Never considered: the apps are personal software that their one user also develops. A change may break any URL, route, RPC or tool name, environment key, wire format, stored shape or installed build; keep no alias, redirect, fallback, version check, conversion or transition window for the old one, and delete any that exists.
+- **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included, except Stash's notes until they are loaded into their tables by hand.
+- **Releases.** Linear and squash-merged; a newer merge cancels an older release run.
 
 ## Commands
 
