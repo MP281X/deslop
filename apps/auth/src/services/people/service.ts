@@ -111,6 +111,11 @@ export class People extends Context.Service<
 				function member(id: string) {
 					return Effect.catchNoSuchElement(members.findById(id))
 				}
+				// A local install's developer account keeps the one registration its sessions name; any other gets a fresh one.
+				function incarnationOf(profile: GitHubUser) {
+					if (local && profile.id === 0) return Effect.succeed(developer.incarnation)
+					return randomToken(32)
+				}
 				function existing(id: string) {
 					return Effect.flatMap(member(id), Effect.fromOption)
 				}
@@ -157,7 +162,7 @@ export class People extends Context.Service<
 								addAdmin({
 									fullName: Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty),
 									id: `github:${profile.id}`,
-									incarnation: yield* randomToken(32),
+									incarnation: yield* incarnationOf(profile),
 									name: profile.login,
 									since: yield* Clock.currentTimeMillis,
 									status: 'Allowed'
@@ -235,23 +240,18 @@ export class People extends Context.Service<
 								Effect.flatMap(
 									Option.match({
 										onNone: () =>
-											Effect.flatMap(
-												Boolean.match(local && profile.id === 0, {
-													onFalse: () => randomToken(32),
-													onTrue: () => Effect.succeed('local')
-												}),
-												incarnation =>
-													members.insert({
-														fullName,
-														id,
-														incarnation,
-														name: profile.login,
-														since,
-														status: Boolean.match(isAdmin(admins, id), {
-															onFalse: () => 'Waiting' as const,
-															onTrue: () => 'Allowed' as const
-														})
+											Effect.flatMap(incarnationOf(profile), incarnation =>
+												members.insert({
+													fullName,
+													id,
+													incarnation,
+													name: profile.login,
+													since,
+													status: Boolean.match(isAdmin(admins, id), {
+														onFalse: () => 'Waiting' as const,
+														onTrue: () => 'Allowed' as const
 													})
+												})
 											),
 										onSome: () => renameMember({fullName, id, name: profile.login})
 									})
