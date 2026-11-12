@@ -21,6 +21,7 @@ import {RpcSerialization, RpcServer} from 'effect/rpc'
 import type {Rpc, RpcGroup} from 'effect/rpc'
 
 import {Auth, layerMcpAuth, localAuth} from '#server/auth.ts'
+import {layerStructuredTools} from '#server/mcp.ts'
 import {appName, packageMetadata} from '#server/package.ts'
 import {APPS_PATH, ISSUER_PATH, failureOptions} from '#shared/auth.ts'
 import {RpcStream, layerRpcStream} from '#shared/rpc.ts'
@@ -240,7 +241,7 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 					name: yield* appName,
 					path: MCP_PATH,
 					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
-					registrations: options.registrations,
+					registrations: Layer.provide(options.registrations, layerStructuredTools),
 					version: metadata.version
 				}),
 				Layer.provide(layerMcpAuth(resource))

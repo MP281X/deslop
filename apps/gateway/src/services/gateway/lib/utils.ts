@@ -39,7 +39,7 @@ function quiet(property: Readonly<Record<string, unknown>> | boolean) {
 
 export function compact(tool: McpSchema.Tool) {
 	return {
-		...Struct.omit(tool, ['outputSchema']),
+		...Struct.omit(tool, []),
 		inputSchema: {
 			...Record.filter(
 				tool.inputSchema,

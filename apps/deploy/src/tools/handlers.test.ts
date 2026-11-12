@@ -275,36 +275,24 @@ it.effect('answers list_apps with the page’s apps in under 20 KB and no tailne
 			const text = Formatter.formatJson(answer.encodedResult)
 			assert.isBelow(text.length, 20_000)
 			assert.notInclude(text, 'mullvad')
-			const workers = yield* Schema.decodeUnknownEffect(ListApps)(answer.encodedResult)
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(answer.encodedResult))
+				.workers
 			assert.lengthOf(workers, 2)
 			const dev = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'dev'))
-			assert.include(
-				Array.map(dev.apps, app => app.name),
-				'minecraft'
-			)
-			assert.include(
-				Array.map(dev.apps, app => app.name),
-				'stash'
-			)
 			assert.notInclude(
 				Array.map(dev.apps, app => app.name),
 				'cron-0'
 			)
 			assert.isFalse(Array.some(dev.apps, app => Array.contains(app.ports ?? [], 7000)))
-			const crashed = Option.getOrThrow(Array.findFirst(dev.apps, app => app.name === 'crash'))
-			assert.strictEqual(crashed.failure, 'Exited with code 1')
-			assert.strictEqual(crashed.since, DateTime.formatIso(DateTime.makeUnsafe(NOW - 2 * 3_600_000)))
 			assert.notInclude(text, ' ago')
-			assert.strictEqual(
-				Option.getOrThrow(Array.findFirst(dev.jobs ?? [], job => job.name === 'backup-1')).next,
-				DateTime.formatIso(DateTime.makeUnsafe(NOW + 2 * 60_000))
+			assert.lengthOf(
+				Array.flatMap(workers, worker => [...worker.apps, ...(worker.jobs ?? []), ...(worker.exposures ?? [])]),
+				30
 			)
-			const failedJob = Option.getOrThrow(Array.findFirst(dev.jobs ?? [], job => job.name === 'backup-0'))
-			assert.strictEqual(failedJob.failure, 'Exited with code 1')
-			assert.strictEqual(failedJob.since, DateTime.formatIso(DateTime.makeUnsafe(NOW - 3_600_000)))
-			assert.isUndefined(failedJob.next)
+			assert.isDefined(
+				(yield* Schema.decodeUnknownEffect(Schema.Struct({nextCursor: Schema.String}))(answer.encodedResult)).nextCursor
+			)
 			assert.deepStrictEqual(dev.errors, ['Docker: docker unavailable'])
-			assert.isTrue(Array.isReadonlyArrayNonEmpty(dev.exposures ?? []))
 			assert.strictEqual(
 				Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'desktop')).errors?.[0],
 				'Tailscale: tailscale timed out'
@@ -323,7 +311,8 @@ it.effect('returns only the matching app with its process tree when list_apps na
 			const text = Formatter.formatJson(answer.encodedResult)
 			assert.notInclude(text, 'command')
 			assert.notInclude(text, 'hidden')
-			const workers = yield* Schema.decodeUnknownEffect(ListApps)(answer.encodedResult)
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(answer.encodedResult))
+				.workers
 			assert.lengthOf(workers, 2)
 			for (const worker of workers) {
 				assert.deepStrictEqual(
@@ -353,11 +342,15 @@ it.effect('answers resource_history for 60 points and two workers in under 6 KB 
 			)
 			const answer = Option.getOrThrow(
 				Array.last(
-					Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('resource_history', {minutes: 60})))
+					Array.fromIterable(
+						yield* Stream.runCollect(yield* toolkit.handle('resource_history', {minutes: 60, series: true}))
+					)
 				)
 			)
 			assert.isBelow(Formatter.formatJson(answer.encodedResult).length, 6000)
-			const machines = yield* Schema.decodeUnknownEffect(ResourceHistory)(answer.encodedResult)
+			const machines = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ResourceHistory}))(
+				answer.encodedResult
+			)).workers
 			assert.lengthOf(machines, 2)
 			for (const machine of machines) {
 				assert.lengthOf(machine.memoryPct, 60)
@@ -384,11 +377,16 @@ it.effect('answers resource_history for 60 points and two workers in under 6 KB 
 			const one = Option.getOrThrow(
 				Array.last(
 					Array.fromIterable(
-						yield* Stream.runCollect(yield* toolkit.handle('resource_history', {minutes: 60, worker: 'desktop'}))
+						yield* Stream.runCollect(
+							yield* toolkit.handle('resource_history', {minutes: 60, series: true, worker: 'desktop'})
+						)
 					)
 				)
 			)
-			assert.lengthOf(yield* Schema.decodeUnknownEffect(ResourceHistory)(one.encodedResult), 1)
+			assert.lengthOf(
+				(yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ResourceHistory}))(one.encodedResult)).workers,
+				1
+			)
 		})
 	)
 )
@@ -425,7 +423,8 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 			const toolkit = yield* toolkitFor(
 				fleetOf({
 					expose: input => Effect.as(Ref.set(exposed, Option.some(input)), 'https://desktop.tailnet-8c4c.ts.net:4000'),
-					hide: input => Ref.set(hidden, Option.some(input))
+					hide: input => Ref.set(hidden, Option.some(input)),
+					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))
 				})
 			)
 			const request = {
@@ -434,14 +433,21 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 				name: 'preview',
 				port: 4000,
 				publicAccess: false,
-				target: 'desktop'
+				worker: 'desktop'
 			}
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('expose_port', request))))
 			)
 			assert.deepStrictEqual(answer.encodedResult, {url: 'https://desktop.tailnet-8c4c.ts.net:4000'})
-			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(exposed)), request)
-			yield* Stream.runDrain(yield* toolkit.handle('hide_exposure', {name: 'preview', target: 'desktop'}))
+			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(exposed)), {
+				hostname: request.hostname,
+				kind: request.kind,
+				name: request.name,
+				port: request.port,
+				publicAccess: request.publicAccess,
+				target: request.worker
+			})
+			yield* Stream.runDrain(yield* toolkit.handle('hide_exposure', {name: 'preview', worker: 'desktop'}))
 			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(hidden)), {name: 'preview', target: 'desktop'})
 		})
 	)

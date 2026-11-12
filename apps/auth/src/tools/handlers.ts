@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Effect, Layer, Option, Stream, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Effect, Layer, Option, Order, Stream, String, Struct, pipe} from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
 
@@ -12,6 +12,24 @@ import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {Tools} from '#tools/contracts.ts'
+
+function page<A>(rows: readonly A[], key: (row: A) => string, input: {cursor?: string; limit: number}) {
+	const remaining = pipe(
+		rows,
+		Array.sort(Order.mapInput(Order.String, key)),
+		Array.filter(row => input.cursor === undefined || key(row) > input.cursor)
+	)
+	const items = Array.take(remaining, input.limit)
+	return {
+		items,
+		...pipe(
+			items,
+			Array.last,
+			Option.filter(() => remaining.length > input.limit),
+			Option.match({onNone: () => ({}), onSome: last => ({nextCursor: key(last)})})
+		)
+	}
+}
 
 export const layerMcpOwner = Layer.unwrap(
 	Effect.gen(function* () {
@@ -51,32 +69,36 @@ export const ToolHandlers = Tools.toLayer(
 			answer_request: Effect.fnUntraced(function* (input) {
 				return yield* signIns.answer(input, yield* CurrentOwner, 'Token')
 			}),
-			list_passkeys: Effect.fnUntraced(function* () {
-				return {passkeys: Option.getOrElse(yield* Stream.runHead(passkeys.list(yield* CurrentOwner)), () => [])}
+			list_passkeys: Effect.fnUntraced(function* (input) {
+				const found = page(
+					Option.getOrElse(yield* Stream.runHead(passkeys.list(yield* CurrentOwner)), () => []),
+					passkey => passkey.id,
+					input
+				)
+				return {...Struct.omit(found, ['items']), passkeys: found.items}
 			}),
-			list_people: Effect.fnUntraced(function* () {
+			list_people: Effect.fnUntraced(function* (input) {
+				const found = page(yield* people.list((yield* CurrentOwner).user), person => person.name, input)
 				return {
-					people: Array.map(yield* people.list((yield* CurrentOwner).user), person => ({
-						login: person.name,
-						role: person.role
-					}))
+					...Struct.omit(found, ['items']),
+					people: Array.map(found.items, person => ({login: person.name, role: person.role}))
 				}
 			}),
-			list_sessions: Effect.fnUntraced(function* () {
+			list_sessions: Effect.fnUntraced(function* (input) {
+				const found = page(
+					withChildActivity(Option.getOrElse(yield* Stream.runHead(tokens.apps(yield* CurrentOwner)), () => [])),
+					app => app.family,
+					input
+				)
 				return {
-					sessions: Array.map(
-						withChildActivity(Option.getOrElse(yield* Stream.runHead(tokens.apps(yield* CurrentOwner)), () => [])),
-						app => ({
-							...Option.match(Option.fromUndefinedOr(app.address), {
-								onNone: () => ({}),
-								onSome: address => ({address})
-							}),
-							client: app.client,
-							...Boolean.match(app.device === app.address, {onFalse: () => ({device: app.device}), onTrue: () => ({})}),
-							id: app.family,
-							lastActive: DateTime.formatIso(DateTime.makeUnsafe(app.lastActive))
-						})
-					)
+					...Struct.omit(found, ['items']),
+					sessions: Array.map(found.items, app => ({
+						...Option.match(Option.fromUndefinedOr(app.address), {onNone: () => ({}), onSome: address => ({address})}),
+						client: app.client,
+						...Boolean.match(app.device === app.address, {onFalse: () => ({device: app.device}), onTrue: () => ({})}),
+						id: app.family,
+						lastActive: DateTime.formatIso(DateTime.makeUnsafe(app.lastActive))
+					}))
 				}
 			}),
 			remove_passkey: Effect.fnUntraced(function* (input) {
@@ -87,7 +109,11 @@ export const ToolHandlers = Tools.toLayer(
 						found => found.id === input.id
 					),
 					Effect.fromOption,
-					Effect.mapError(() => AuthError.make({message: 'No passkey of yours has that id'}))
+					Effect.mapError(() =>
+						AuthError.make({
+							message: 'No passkey of yours has that id; list_passkeys shows valid ids. Nothing changed.'
+						})
+					)
 				)
 				yield* passkeys.remove(input.id, owner)
 				return {id: input.id}
@@ -99,12 +125,28 @@ export const ToolHandlers = Tools.toLayer(
 					yield* people.list(owner.user),
 					Array.findFirst(row => String.toLowerCase(row.name) === wanted),
 					Effect.fromOption,
-					Effect.mapError(() => AuthError.make({message: `No GitHub account ${input.login} is listed in Auth`}))
+					Effect.mapError(() =>
+						AuthError.make({
+							message: `No GitHub account ${input.login} is listed in Auth; list_people shows valid logins. Nothing changed.`
+						})
+					)
 				)
 				return {login: (yield* people.remove(person.id, owner.user)).name}
 			}),
 			sign_out_session: Effect.fnUntraced(function* (input) {
-				yield* tokens.disconnect(input.id, yield* CurrentOwner)
+				const owner = yield* CurrentOwner
+				if (
+					!Array.some(
+						Option.getOrElse(yield* Stream.runHead(tokens.apps(owner)), () => []),
+						session => session.family === input.id
+					)
+				) {
+					return yield* AuthError.make({
+						message:
+							'This sign-in has already ended or no session of yours has that id; list_sessions shows valid ids. Nothing changed.'
+					})
+				}
+				yield* tokens.disconnect(input.id, owner)
 				return {id: input.id}
 			})
 		})

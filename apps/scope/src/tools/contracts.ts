@@ -1,60 +1,136 @@
+import {Effect, Schema, Struct, pipe} from 'effect'
+
 import {Tool, Toolkit} from 'effect/ai'
 
 import {
 	FindTracesParams,
 	IngestionAnswer,
+	IngestionService,
 	LatencyAnswer,
 	ListOperationsParams,
 	LogsAnswer,
+	LogRow,
 	MeasureLatencyParams,
 	OperationsAnswer,
 	ReadTraceAnswer,
 	ReadTraceParams,
+	ReadSpan,
 	SearchLogsParams,
 	TelemetryError,
 	TracesAnswer
 } from '#services/telemetry/schema.ts'
 
+type TextWindow = typeof TextWindow.Type
+const TextWindow = Schema.Struct({
+	textLimit: pipe(
+		Schema.Int.check(Schema.isBetween({maximum: 8000, minimum: 1})),
+		Schema.withDecodingDefaultTypeKey(Effect.succeed(2000))
+	),
+	textOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
+})
+
+type AttributeWindow = typeof AttributeWindow.Type
+const AttributeWindow = Schema.Struct({
+	attribute: Schema.optionalKey(Schema.String),
+	attributeCursor: Schema.optionalKey(Schema.String)
+})
+
 export const Tools = Toolkit.make(
 	Tool.make('list_operations', {
 		description:
-			'Start here to see what is failing or slow in an app: the page’s own operations for the chosen window, failing first, with runs, failures, p50 and p95 milliseconds, the slowest trace and one failure. Denied sign-ins are not failures.',
+			'Inspect root operations failure-first with runs and latency; denied sign-ins are not failures. Use a failure or slowest trace id with read_trace, or continue the live list with nextCursor.',
 		failure: TelemetryError,
-		parameters: ListOperationsParams,
-		success: OperationsAnswer
-	}).annotate(Tool.Readonly, true),
+		parameters: Schema.Struct({
+			...ListOperationsParams.fields,
+			cursor: Schema.optionalKey(Schema.String),
+			limit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+			),
+			operation: Schema.optionalKey(Schema.String)
+		}),
+		success: Schema.Struct({...OperationsAnswer.fields, nextCursor: Schema.optionalKey(Schema.String)})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('find_traces', {
 		description:
-			'Search for traces of a request, action or job by app, operation, span name, error or text, newest or slowest first. Each row is one line with its full id, operation, app, side, start time, duration, span count and failing span with its message.',
+			'Find requests, actions or jobs by app, operation, span or text, newest or slowest first; rows include MCP server/tool identity when recorded. Continue with nextCursor and the same filters, or read_trace(id) for a selected trace.',
 		failure: TelemetryError,
 		parameters: FindTracesParams,
 		success: TracesAnswer
-	}).annotate(Tool.Readonly, true),
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('read_trace', {
 		description:
-			'Open one trace, with the traces its spans link to or from, to see where its time went or why it failed: spans in tree order with offsets, durations, errors, denied spans, attributes and logs, keeping the failing span’s ancestors and the longest spans when over the limit. Logs outside a span follow the spans.',
+			'Read a trace’s spans (at=offset ms, ms=duration), longest first selection in tree order, plus failing ancestors; pass nextOffset to continue. Select section=logs or attributes and optional span id for bounded details; nextTextOffset/nextAttribute continue truncated fields.',
 		failure: TelemetryError,
-		parameters: ReadTraceParams,
-		success: ReadTraceAnswer
-	}).annotate(Tool.Readonly, true),
+		parameters: Schema.Struct({
+			...ReadTraceParams.fields,
+			...TextWindow.fields,
+			...AttributeWindow.fields,
+			logLimit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed(20))
+			),
+			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
+			section: pipe(
+				Schema.Literals(['spans', 'logs', 'attributes']),
+				Schema.withDecodingDefaultTypeKey(Effect.succeed('spans' as const))
+			),
+			span: Schema.optionalKey(Schema.String)
+		}),
+		success: Schema.Struct({
+			...Struct.omit(ReadTraceAnswer.fields, ['spans']),
+			attributes: Schema.optionalKey(ReadSpan.fields.attrs.schema),
+			nextAttribute: Schema.optionalKey(Schema.String),
+			nextOffset: Schema.optionalKey(Schema.Natural),
+			nextTextOffset: Schema.optionalKey(Schema.Natural),
+			spans: Schema.Array(ReadSpan.mapFields(fields => Struct.omit(fields, ['attrs', 'logs'])))
+		})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('search_logs', {
 		description:
-			'Find log lines by text, app, level or trace, newest first, with time, app, side, level, message and correlation ids. Use it when a trace explains what failed but not why.',
+			'Find logs by text, app, severity or trace, newest first, including correlation ids for read_trace. Continue with nextCursor; textOffset and attributeCursor resume bounded messages and attributes with the same filters.',
 		failure: TelemetryError,
-		parameters: SearchLogsParams,
-		success: LogsAnswer
-	}).annotate(Tool.Readonly, true),
+		parameters: Schema.Struct({...SearchLogsParams.fields, ...TextWindow.fields, ...AttributeWindow.fields}),
+		success: Schema.Struct({
+			...LogsAnswer.fields,
+			logs: Schema.Array(
+				LogRow.mapFields(fields => ({
+					...fields,
+					nextAttribute: Schema.optionalKey(Schema.String),
+					nextTextOffset: Schema.optionalKey(Schema.Natural)
+				}))
+			)
+		})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('measure_latency', {
 		description:
-			'Measure a span’s latency before and after a change: count, failures, p50, p95 and max milliseconds for spans with this exact name over the chosen window. Denied sign-ins are not failures.',
+			'Measure count, failures and p50/p95/max milliseconds for an exact span name in one rolling window; save this result before a change to compare later. Zero samples is no evidence of success; find_traces locates individual requests.',
 		failure: TelemetryError,
 		parameters: MeasureLatencyParams,
 		success: LatencyAnswer
-	}).annotate(Tool.Readonly, true),
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true),
 	Tool.make('check_ingestion', {
 		description:
-			'Use when an app’s telemetry is missing or stale: each service’s app, side, release, run start, last event and entry count, plus rejected exports. A service absent here sent nothing in the last three days.',
+			'Check missing or stale exporters by app, release, run start and last event; an absent service sent nothing in three days. Rejections are global because unauthenticated exports cannot be assigned to an app; use list_operations after ingestion resumes.',
 		failure: TelemetryError,
-		success: IngestionAnswer
-	}).annotate(Tool.Readonly, true)
+		parameters: Schema.Struct({app: Schema.optionalKey(Schema.String)}),
+		success: Schema.Struct({
+			...IngestionAnswer.fields,
+			services: Schema.Array(
+				IngestionService.mapFields(fields => ({...fields, runStarted: Schema.optionalKey(Schema.String)}))
+			)
+		})
+	})
+		.annotate(Tool.Readonly, true)
+		.annotate(Tool.Strict, true)
 )
