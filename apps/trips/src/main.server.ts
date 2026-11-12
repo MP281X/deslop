@@ -1,7 +1,7 @@
 import {Layer, Schema, pipe} from 'effect'
 
-import * as CliRuntime from '@deslop/runtime/server/cli'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {runApp} from '@deslop/runtime/server/cli'
+import {layerRpc} from '@deslop/runtime/server/http'
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -10,10 +10,10 @@ import {layerBookings} from '#services/bookings/service.ts'
 import {Push, layerApnsClient} from '#services/push/service.ts'
 import {Tracker} from '#services/tracking/service.ts'
 
-CliRuntime.runApp({
+runApp({
 	icon,
 	routes: pipe(
-		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+		layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracker.layer)),
 		Layer.provide(layerBookings)
 	),

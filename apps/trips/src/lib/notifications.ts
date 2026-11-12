@@ -1,4 +1,4 @@
-import {Effect, Queue, Schema, Stream, pipe} from 'effect'
+import {Effect, Queue, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {applicationId} from 'expo-application'
 import {getDevicePushTokenAsync, requestPermissionsAsync, setNotificationHandler} from 'expo-notifications'
@@ -8,7 +8,7 @@ import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 import {Bundle} from '#services/push/schema.ts'
 
-export const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
+const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
 
 setNotificationHandler({
 	handleNotification: () =>
@@ -32,12 +32,14 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				yield* client('push.register', {
 					...target,
 					kind: 'alert',
-					token: `${
-						(yield* Effect.tryPromise({
-							catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
-							try: () => getDevicePushTokenAsync()
-						})).data
-					}`
+					token: Redacted.make(
+						`${
+							(yield* Effect.tryPromise({
+								catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
+								try: () => getDevicePushTokenAsync()
+							})).data
+						}`
+					)
 				})
 			}
 			// iOS hands out the push-to-start token and its rotations whenever it likes, for as long as the app runs.
@@ -53,7 +55,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					)
 				),
 				Stream.runForEach(token =>
-					Effect.ignore(client('push.register', {...target, kind: 'start', token}), {
+					Effect.ignore(client('push.register', {...target, kind: 'start', token: Redacted.make(token)}), {
 						log: 'Warn',
 						message: 'The Live Activity token was not registered'
 					})

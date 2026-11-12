@@ -3,20 +3,17 @@ import {assert, it} from '@effect/vitest'
 import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {Places} from './places.ts'
 
-it.layer(KeyValueStore.layerMemory)(test => {
+it.layer(Layer.empty)(test => {
 	test.effect(
-		'retries airport initialization after failure, expires saved data and keeps stale data during an outage',
+		'retries the airport list after a failure, keeps it a month, then fetches it again',
 		Effect.fnUntraced(function* () {
 			const available = yield* Ref.make(false)
 			const calls = yield* Ref.make(0)
 			const name = yield* Ref.make('Rome')
-			const reads = yield* Ref.make(0)
-			const store = yield* KeyValueStore.KeyValueStore
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
 					yield* Ref.update(calls, count => count + 1)
@@ -40,18 +37,7 @@ it.layer(KeyValueStore.layerMemory)(test => {
 				})
 			)
 			const places = Context.get(
-				yield* Layer.build(
-					pipe(
-						Places.layer,
-						Layer.provide([
-							Layer.succeed(HttpClient.HttpClient, client),
-							Layer.succeed(KeyValueStore.KeyValueStore, {
-								...store,
-								get: key => Effect.tap(store.get(key), () => Ref.update(reads, count => count + 1))
-							})
-						])
-					)
-				),
+				yield* Layer.build(pipe(Places.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
 				Places
 			)
 			const first = yield* Effect.forkScoped(Effect.exit(places.airport('FCO')))
@@ -60,22 +46,12 @@ it.layer(KeyValueStore.layerMemory)(test => {
 			yield* Ref.set(available, true)
 			assert.strictEqual((yield* places.airport('FCO')).name, 'Rome')
 			const fetched = yield* Ref.get(calls)
-			const loaded = yield* Ref.get(reads)
 			assert.strictEqual((yield* places.airport(' fco ')).code, 'FCO')
 			assert.strictEqual(yield* Ref.get(calls), fetched)
-			assert.strictEqual(yield* Ref.get(reads), loaded)
 			yield* Ref.set(name, 'Fiumicino')
 			yield* TestClock.adjust('30 days')
 			assert.strictEqual((yield* places.airport('FCO')).name, 'Fiumicino')
 			assert.strictEqual(yield* Ref.get(calls), fetched + 1)
-			yield* Ref.set(available, false)
-			yield* TestClock.adjust('31 days')
-			const stale = yield* Effect.forkScoped(places.airport('FCO'))
-			yield* TestClock.adjust('10 seconds')
-			assert.strictEqual((yield* Fiber.join(stale)).name, 'Fiumicino')
-			yield* Ref.set(available, true)
-			yield* Ref.set(name, 'Recovered airport')
-			assert.strictEqual((yield* places.airport('FCO')).name, 'Recovered airport')
 		})
 	)
 	test.effect(

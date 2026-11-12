@@ -1,5 +1,7 @@
 import {Schema, pipe} from 'effect'
 
+import {Model} from 'effect/schema'
+
 export class BookingsError extends Schema.TaggedError<BookingsError>()('BookingsError', {
 	cause: Schema.optional(Schema.Defect()),
 	message: Schema.String
@@ -56,23 +58,38 @@ export const FlightTracking = Schema.Struct({
 	takeoffActual: Schema.optionalKey(Schema.Finite)
 })
 
-export type Flight = typeof Flight.Type
-export const Flight = Schema.TaggedStruct('flight', {
+// Each kind of booking is its own table, so a row leaves its kind out and decoding fills it in; the wire keeps it, so the phone tells kinds apart.
+function kind<const Tag extends string>(tag: Tag) {
+	return Model.Field({
+		insert: Schema.tagDefaultOmit(tag),
+		json: Schema.tag(tag),
+		jsonCreate: Schema.tag(tag),
+		jsonUpdate: Schema.tag(tag),
+		select: Schema.tagDefaultOmit(tag),
+		update: Schema.tagDefaultOmit(tag)
+	})
+}
+
+// One row of `flights`; places and the provider's latest report are values of the flight, kept as JSON.
+export class Flight extends Model.Class<Flight>('Flight')({
+	_tag: kind('flight'),
 	airline: Schema.String,
 	airlineCode: Schema.String,
-	arrives: Schema.Finite,
-	boardingAt: Schema.optionalKey(Schema.Finite),
-	boardingGroup: Schema.optionalKey(Schema.String),
-	confirmation: Schema.optionalKey(Schema.String),
-	departs: Schema.Finite,
-	from: BookedPlace,
+	arrives: Schema.Int,
+	boardingAt: Model.FieldOption(Schema.Int),
+	boardingGroup: Model.FieldOption(Schema.String),
+	confirmation: Model.FieldOption(Schema.String),
+	departs: Schema.Int,
+	from: Model.JsonFromString(BookedPlace),
 	id: BookingId,
-	live: Schema.optionalKey(FlightTracking),
+	live: Model.FieldOption(Model.JsonFromString(FlightTracking)),
 	number: Schema.String,
-	seat: Schema.optionalKey(Schema.String),
+	seat: Model.FieldOption(Schema.String),
 	status: ReservationStatus,
-	to: BookedPlace
-})
+	to: Model.JsonFromString(BookedPlace)
+}) {
+	static readonly table = 'flights'
+}
 
 export type TrainOperator = typeof TrainOperator.Type
 export const TrainOperator = Schema.Literals(['trenitalia', 'italo', 'other'])
@@ -89,45 +106,51 @@ export const TrainTracking = Schema.Struct({
 	state: Schema.Literals(['scheduled', 'departed', 'arrived'])
 })
 
-export type Train = typeof Train.Type
-export const Train = Schema.TaggedStruct('train', {
-	arrives: Schema.Finite,
-	coach: Schema.optionalKey(Schema.String),
-	confirmation: Schema.optionalKey(Schema.String),
-	departs: Schema.Finite,
-	from: BookedPlace,
+// One row of `trains`.
+export class Train extends Model.Class<Train>('Train')({
+	_tag: kind('train'),
+	arrives: Schema.Int,
+	coach: Model.FieldOption(Schema.String),
+	confirmation: Model.FieldOption(Schema.String),
+	departs: Schema.Int,
+	from: Model.JsonFromString(BookedPlace),
 	id: BookingId,
-	live: Schema.optionalKey(TrainTracking),
+	live: Model.FieldOption(Model.JsonFromString(TrainTracking)),
 	number: Schema.String,
 	operator: TrainOperator,
 	operatorName: Schema.String,
-	seat: Schema.optionalKey(Schema.String),
+	seat: Model.FieldOption(Schema.String),
 	status: ReservationStatus,
-	to: BookedPlace
-})
+	to: Model.JsonFromString(BookedPlace)
+}) {
+	static readonly table = 'trains'
+}
 
-export type Stay = typeof Stay.Type
-export const Stay = Schema.TaggedStruct('stay', {
-	checkIn: Schema.Finite,
-	checkOut: Schema.Finite,
-	confirmation: Schema.optionalKey(Schema.String),
+// One row of `stays`.
+export class Stay extends Model.Class<Stay>('Stay')({
+	_tag: kind('stay'),
+	checkIn: Schema.Int,
+	checkOut: Schema.Int,
+	confirmation: Model.FieldOption(Schema.String),
 	id: BookingId,
 	name: Schema.String,
-	place: BookedPlace,
+	place: Model.JsonFromString(BookedPlace),
 	status: ReservationStatus
-})
+}) {
+	static readonly table = 'stays'
+}
 
+// What the server, the phone and the wire know a booking by: absent is `Option.none()` in code, NULL in the row and a missing key on the wire.
 export type Booking = typeof Booking.Type
-export const Booking = Schema.Union([Flight, Train, Stay])
+export const Booking = Model.Union([Flight, Train, Stay])
 
-export type BookingList = typeof BookingList.Type
-export const BookingList = Schema.Array(Booking)
+export type BookingList = readonly Booking[]
 
 export type BookingsEvent = typeof BookingsEvent.Type
 export const BookingsEvent = Schema.Struct({
 	removed: Schema.Array(BookingId),
 	reset: Schema.Boolean,
-	upserted: Schema.Array(Booking)
+	upserted: Schema.Array(Booking.json)
 })
 
 export type Tone = typeof Tone.Type
@@ -260,9 +283,6 @@ export const Airport = Schema.Struct({
 	name: Schema.String,
 	tz: Schema.String
 })
-
-export type AirportIndex = typeof AirportIndex.Type
-export const AirportIndex = Schema.Struct({airports: Schema.Record(Schema.String, Airport), fetchedAt: Schema.Finite})
 
 export type StopMatches = typeof StopMatches.Type
 export const StopMatches = Schema.Array(
