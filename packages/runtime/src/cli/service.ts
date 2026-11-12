@@ -5,9 +5,6 @@ import {Array, Boolean, Config, Effect, FileSystem, Path, String, pipe} from 'ef
 import {execute} from '#cli/command.ts'
 import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#cli/launchd.ts'
 
-// oxlint-disable-next-line @deslop/coding-standards/no-barrel-module -- Preserve the public service API while launchd uses the lower-level command module.
-export {execute} from '#cli/command.ts'
-
 // systemd expands percent specifiers even inside a quoted argument.
 function systemdArgument(value: string) {
 	return `"${pipe(value, String.replaceAll('\\', '\\\\'), String.replaceAll('"', '\\"'), String.replaceAll('%', '%%'), String.replaceAll('$', '$$$$'), String.replaceAll('\n', '\\n'), String.replaceAll('\r', '\\r'))}"`

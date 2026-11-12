@@ -6,8 +6,9 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 
 import {AppVersion} from '#schema.ts'
 
+import {execute} from '#cli/command.ts'
 import {AppError} from '#cli/schema.ts'
-import {execute, restart} from '#cli/service.ts'
+import {restart} from '#cli/service.ts'
 
 const serviceDirectory = Effect.fnUntraced(function* (name: string) {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', name)

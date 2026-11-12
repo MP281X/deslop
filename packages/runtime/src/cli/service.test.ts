@@ -22,7 +22,8 @@ import {
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {execute, install, installUpdates, status, uninstall} from '#cli/service.ts'
+import {execute} from '#cli/command.ts'
+import {install, installUpdates, status, uninstall} from '#cli/service.ts'
 
 it.effect('releases an interrupted command before its caller scope closes', () =>
 	Effect.scoped(
