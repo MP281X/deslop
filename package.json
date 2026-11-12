@@ -15,7 +15,7 @@
 		"effect": "latest",
 		"fallow": "latest",
 		"scheduler": "^0.27.0",
-		"tsrs": "0.23.0-ts7.1.0-beta",
+		"tsrs": "0.24.0-ts7.1.0-beta",
 		"vite": "catalog:",
 		"vite-plus": "catalog:",
 		"vitest": "5.1.0"

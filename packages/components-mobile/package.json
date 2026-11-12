@@ -19,15 +19,15 @@
 	"dependencies": {
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
-		"@expo/ui": "^58.0",
+		"@expo/ui": "^58.0.28",
 		"@typeonce/effect-machine": "latest",
 		"@typeonce/effect-machine-react": "latest",
 		"effect": "latest",
-		"expo-asset": "^58.0",
-		"expo-file-system": "^58.0"
+		"expo-asset": "^58.0.21",
+		"expo-file-system": "^58.0.13"
 	},
 	"devDependencies": {
-		"expo": "^58.0",
+		"expo": "^58.0.24",
 		"react-native": "0.88.1"
 	},
 	"peerDependencies": {
