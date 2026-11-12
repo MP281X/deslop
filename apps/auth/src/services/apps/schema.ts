@@ -1,12 +1,16 @@
 import {Schema} from 'effect'
 
+import {Model} from 'effect/schema'
+
 import {SecureOrigin} from '@deslop/runtime/shared/schema'
 
-export type App = typeof App.Type
-export const App = Schema.Struct({name: Schema.NonEmptyString, origin: SecureOrigin})
+// One row of `apps`, and what the sign-in page lists: an app whose own server named this Auth.
+export class App extends Model.Class<App>('App')({name: Schema.NonEmptyString, origin: SecureOrigin}) {
+	static readonly table = 'apps'
+}
 
 export type Catalog = typeof Catalog.Type
-export const Catalog = Schema.Array(App)
+export const Catalog = Schema.Array(App.json)
 
 export type AppParams = typeof AppParams.Type
 export const AppParams = Schema.Struct({origin: SecureOrigin})

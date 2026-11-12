@@ -144,7 +144,11 @@ export function isDenied(error: unknown) {
 export function rejected(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
-		if (Predicate.isTagged(cause, 'KeyValueStoreError') || HttpClient.isTransientError(cause)) {
+		if (
+			Predicate.isTagged(cause, 'KeyValueStoreError') ||
+			Predicate.isTagged(cause, 'SqlError') ||
+			HttpClient.isTransientError(cause)
+		) {
 			return AuthError.make({cause, error: 'temporarily_unavailable', message})
 		}
 		return AuthError.make({cause, message})
