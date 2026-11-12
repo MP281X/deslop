@@ -41,7 +41,7 @@ import {AppError} from '#server/process.ts'
 import {install, installUpdates, status, uninstall} from '#server/services.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
-import {layerDataStore} from '#server/store.ts'
+import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activate, update} from '#server/update.ts'
 import type {RpcAuth} from '#shared/auth.ts'
 import {Origin, Port, SecureOrigin} from '#shared/schema.ts'
@@ -104,7 +104,7 @@ export type Provided =
 	| Auth
 	| AiGateway
 	| RpcAuth
-	| Layer.Success<typeof layerDataStore>
+	| Layer.Success<ReturnType<typeof layerDataStore>>
 	| Layer.Success<typeof layerProtocol>
 
 export type Routes<A, E> = Layer.Layer<
@@ -119,7 +119,7 @@ export type App<A, E> = {
 	readonly auth?: Layer.Layer<
 		Auth | RpcAuth,
 		E,
-		Layer.Success<typeof layerPlatform> | Layer.Success<typeof layerDataStore>
+		Layer.Success<typeof layerPlatform> | Layer.Success<ReturnType<typeof layerDataStore>>
 	>
 	readonly icon: string
 	readonly routes: Routes<A, E>
@@ -150,7 +150,7 @@ function server<A, E>(app: App<A, E>) {
 				}),
 				Layer.provideMerge(AiGateway.layer),
 				Layer.provide(Sessions.layer),
-				Layer.provide(layerDataStore)
+				Layer.provide(Layer.unwrap(Effect.map(dataDirectory, layerDataStore)))
 			),
 			{disableLogger: true, middleware: guard}
 		),

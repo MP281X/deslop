@@ -23,7 +23,7 @@ import {McpClient, McpProtocol, McpSchema, McpServer} from 'effect/ai'
 import {FetchHttpClient, Headers, HttpRouter} from 'effect/http'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 import {DEVELOPER} from '@deslop/runtime/shared/auth'
 
 import {AiProxy, layerAiProxy} from '#services/ai/service.ts'
@@ -124,7 +124,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 				Layer.mergeAll(
 					ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://gateway.example'})),
 					Layer.succeed(FetchHttpClient.Fetch, (input, init) => upstream.handler(new Request(input, init))),
-					layerKeyValueStore(directory),
+					layerDataStore(directory),
 					auth
 				),
 				Layer.provideMerge(NodeServices.layer)

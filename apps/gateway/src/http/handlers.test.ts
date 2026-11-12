@@ -34,7 +34,7 @@ import {RpcTest} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
@@ -408,7 +408,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 				})
 			})
 		),
-		Layer.provide(layerKeyValueStore(directory))
+		Layer.provide(layerDataStore(directory))
 	)
 	const platform = Layer.mergeAll(
 		NodeCrypto.layer,

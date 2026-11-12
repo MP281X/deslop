@@ -31,7 +31,7 @@ import {Auth} from '#server/auth.ts'
 import {guard, layerAnnounce, layerRoutes} from '#server/http.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
-import {layerKeyValueStore} from '#server/store.ts'
+import {layerDataStore} from '#server/store.ts'
 import {AccessClaims, AuthError, SESSION_COOKIE, clientIdOf} from '#shared/auth.ts'
 
 const handler = Effect.fnUntraced(function* (
@@ -99,7 +99,7 @@ it.layer(NodeServices.layer)(test => {
 			const store = Context.get(
 				yield* Layer.build(
 					pipe(
-						layerKeyValueStore(directory),
+						layerDataStore(directory),
 						Layer.provide(
 							Layer.succeed(
 								FileSystem.FileSystem,

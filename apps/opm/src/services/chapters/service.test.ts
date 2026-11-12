@@ -30,7 +30,7 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 
 import onePunchMan from './fixtures/one-punch-man.xml?raw'
 import opmFolk from './fixtures/opm-folk.xml?raw'
@@ -73,7 +73,7 @@ it.layer(NodeServices.layer)(test => {
 		'keeps a chapter in the outbox until Expo returns exactly one ticket per device',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerDataStore(directory)))
 			yield* store.save([
 				Chapter.make({
 					notified: false,
@@ -92,7 +92,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* Layer.build(
 				pipe(
 					Chapters.layer,
-					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(layerDataStore(directory)),
 					Layer.provide(
 						Layer.succeed(
 							HttpClient.HttpClient,
@@ -141,7 +141,7 @@ it.layer(NodeServices.layer)(test => {
 		'backfills the webcomic beside existing manga and scopes releases, revisions and reading by series',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerDataStore(directory)))
 			yield* store.save([
 				Chapter.make({
 					notified: true,
@@ -225,7 +225,7 @@ it.layer(NodeServices.layer)(test => {
 				yield* Layer.build(
 					pipe(
 						Chapters.layer,
-						Layer.provide(layerKeyValueStore(directory)),
+						Layer.provide(layerDataStore(directory)),
 						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
 					)
 				),
@@ -302,7 +302,7 @@ it.layer(NodeServices.layer)(test => {
 		'fills a chapter gap from the community index on a later sync',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerDataStore(directory)))
 			yield* store.save([
 				...Array.map([228, 233, 234, 235, 236, 237], number => chapterAt('manga', number)),
 				chapterAt('webcomic', 158)
@@ -337,7 +337,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* Layer.build(
 				pipe(
 					Chapters.layer,
-					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(layerDataStore(directory)),
 					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
 					Layer.provide(warningLayer(reported, 'No readable source for'))
 				)
@@ -370,7 +370,7 @@ it.layer(NodeServices.layer)(test => {
 		'fetches a dead reader link once across two syncs',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerDataStore(directory)))
 			yield* store.save([
 				...Array.map([228, 233, 234, 235, 236, 237], number => chapterAt('manga', number)),
 				chapterAt('webcomic', 158)
@@ -409,7 +409,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* Layer.build(
 				pipe(
 					Chapters.layer,
-					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(layerDataStore(directory)),
 					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
 					Layer.provide(warningLayer(reported, 'No readable source for'))
 				)
@@ -461,7 +461,7 @@ it.layer(NodeServices.layer)(test => {
 				yield* Layer.build(
 					pipe(
 						Chapters.layer,
-						Layer.provide(layerKeyValueStore(directory)),
+						Layer.provide(layerDataStore(directory)),
 						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
 					)
 				),
@@ -501,7 +501,7 @@ it.layer(NodeServices.layer)(test => {
 			yield* Layer.build(
 				pipe(
 					Chapters.layer,
-					Layer.provide(layerKeyValueStore(directory)),
+					Layer.provide(layerDataStore(directory)),
 					Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
 					Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({OPM_PROXY: 'http://127.0.0.1:9'}))),
 					Layer.provide(warningLayer(failed, 'The chapter sync failed')),
@@ -535,7 +535,7 @@ it.layer(NodeServices.layer)(test => {
 			const second = 'ExpoPushToken[device00000002]'
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+					const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerDataStore(directory)))
 					yield* store.save(
 						Array.flatMap(Series.literals, series =>
 							Array.map([1, 2], number =>
@@ -557,7 +557,7 @@ it.layer(NodeServices.layer)(test => {
 						yield* Layer.build(
 							pipe(
 								Chapters.layer,
-								Layer.provide(layerKeyValueStore(directory)),
+								Layer.provide(layerDataStore(directory)),
 								Layer.provide(
 									Layer.succeed(
 										HttpClient.HttpClient,
@@ -586,7 +586,7 @@ it.layer(NodeServices.layer)(test => {
 					yield* chapters.read({done: false, number: 1, page: 0, series: 'webcomic'})
 				})
 			)
-			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerKeyValueStore(directory)))
+			const store = yield* Effect.provideContext(openStore(), yield* Layer.build(layerDataStore(directory)))
 			assert.deepStrictEqual(
 				Array.map(
 					Array.filter(yield* store.load, chapter => chapter.reading !== undefined),

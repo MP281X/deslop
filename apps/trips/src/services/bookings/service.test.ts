@@ -5,7 +5,7 @@ import {Array, Context, Effect, FileSystem, Layer, Option, Ref, Result, pipe} fr
 
 import {KeyValueStore} from 'effect/persistence'
 
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
@@ -118,7 +118,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 						Bookings.layer,
 						Layer.provide(places),
 						Layer.provide(Layer.succeed(Extractor, extractor)),
-						Layer.provide(layerKeyValueStore(path))
+						Layer.provide(layerDataStore(path))
 					)
 				)
 			}
@@ -133,7 +133,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 				})
 			)
 			const store = KeyValueStore.toSchemaStore(
-				Context.get(yield* Layer.build(layerKeyValueStore(directory)), KeyValueStore.KeyValueStore),
+				Context.get(yield* Layer.build(layerDataStore(directory)), KeyValueStore.KeyValueStore),
 				BookingList
 			)
 			assert.deepStrictEqual(yield* store.get('bookings'), Option.some([]))
