@@ -7,7 +7,7 @@ import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 import {AiProvider} from '#services/ai/schema.ts'
 import {ServerId} from '#services/connections/schema.ts'
 
-export const Tools = Toolkit.make(
+export const ToolContracts = Toolkit.make(
 	Tool.make('list_mcp_connections', {
 		description:
 			"Use when an MCP tool is missing or failing, or to see each server's state; returns each server's id, status, tool count and error, and one server's own instructions when named.",

@@ -2,7 +2,7 @@ import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {DeployError, Exposure, WorkerApps, ListApp, ListAppsInput, RunJobInput} from '#services/inventory/schema.ts'
+import {DeployError, Exposure, WorkerInventory, App, InventoryQuery, RunJobInput} from '#services/inventory/schema.ts'
 import {HistoryToolInput, WorkerHistory} from '#services/metrics/schema.ts'
 
 type MetricSummary = typeof MetricSummary.Type
@@ -19,13 +19,13 @@ const WorkerSummary = WorkerHistory.mapFields(fields => ({
 	memoryPct: MetricSummary
 }))
 
-export const Tools = Toolkit.make(
+export const ToolContracts = Toolkit.make(
 	Tool.make('list_apps', {
 		description:
 			'Inspect worker apps, jobs and owned HTTPS exposures; app focuses on matching names and includes process trees. Continue with nextCursor; processOffset pages a focused app’s tree, retaining ancestors of selected nodes.',
 		failure: DeployError,
 		parameters: Schema.Struct({
-			...ListAppsInput.fields,
+			...InventoryQuery.fields,
 			cursor: Schema.optionalKey(Schema.String),
 			limit: pipe(
 				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
@@ -40,11 +40,11 @@ export const Tools = Toolkit.make(
 		success: Schema.Struct({
 			nextCursor: Schema.optionalKey(Schema.String),
 			workers: Schema.Array(
-				WorkerApps.mapFields(fields => ({
+				WorkerInventory.mapFields(fields => ({
 					...fields,
 					apps: Schema.Array(
 						Schema.Struct({
-							...ListApp.fields,
+							...App.fields,
 							nextProcessOffset: Schema.optionalKey(Schema.Natural),
 							processesOmitted: Schema.optionalKey(Schema.Natural)
 						})
@@ -55,7 +55,7 @@ export const Tools = Toolkit.make(
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
-	Tool.make('resource_history', {
+	Tool.make('read_resource_history', {
 		description:
 			'Inspect current capacity, memory-ranked consumers and min/max/last resource percentages with sample coverage. Set series=true for the aligned 60-point history with null gaps when timing or spikes matter.',
 		failure: DeployError,
@@ -67,7 +67,7 @@ export const Tools = Toolkit.make(
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
-	Tool.make('expose_port', {
+	Tool.make('create_exposure', {
 		description:
 			'Give a local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
 		failure: DeployError,
@@ -76,7 +76,7 @@ export const Tools = Toolkit.make(
 	})
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true),
-	Tool.make('hide_exposure', {
+	Tool.make('remove_exposure', {
 		description:
 			'Remove an HTTPS exposure Deploy owns by name and optional worker from list_apps, not its backend. Externally changed Tailscale mappings are refused; inspect list_apps after an uncertain failure.',
 		failure: DeployError,

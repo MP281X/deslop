@@ -7,21 +7,21 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 import {findNotes} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
-import type {NoteRow} from '#tools/contracts.ts'
-import {Tools} from '#tools/contracts.ts'
+import type {NoteItem} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
 function row(note: Note) {
 	return {
 		...Struct.pick(note, ['id', 'status', 'summary', 'tags', 'title', 'url']),
 		saved: DateTime.formatIsoDateUtc(DateTime.makeUnsafe(note.createdAt))
-	} satisfies NoteRow
+	} satisfies NoteItem
 }
 
-export const ToolHandlers = Tools.toLayer(
+export const ToolHandlers = ToolContracts.toLayer(
 	Effect.gen(function* () {
 		const notes = yield* Notes
 		const random = yield* SecureRandom.SecureRandom
-		return Tools.of({
+		return ToolContracts.of({
 			read_note: input =>
 				Effect.map(notes.get(input), note => {
 					const metadata = {...row(note), ...Struct.pick(note, ['author', 'issue'])}

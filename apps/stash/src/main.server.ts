@@ -5,8 +5,8 @@ import {Layer, pipe} from 'effect'
 import {McpServer} from 'effect/ai'
 
 import {HttpAuth} from '@deslop/runtime/server/auth'
-import * as CliRuntime from '@deslop/runtime/server/cli'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {runApp} from '@deslop/runtime/server/cli'
+import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 import {ToolPath} from '@deslop/runtime/server/process'
 
 import {HttpHandlers} from '#http/handlers.ts'
@@ -15,19 +15,19 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Media} from '#services/media/service.ts'
 import {layerNotes} from '#services/notes/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
-CliRuntime.runApp({
+runApp({
 	icon,
 	routes: pipe(
 		Layer.mergeAll(
-			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			pipe(HttpHandlers, Layer.provide(HttpAuth.layer)),
-			ServerRuntime.layerMcp({
+			layerMcp({
 				instructions:
-					'Stash holds the reading list of articles, videos and posts the user saved or asks to keep; start with search_notes.',
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+					'Stash holds saved articles, videos and posts. Use search_notes when the id is unknown, or read_note directly with a known id; source sections are explicit.',
+				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
 			})
 		),
 		Layer.provide(layerNotes),

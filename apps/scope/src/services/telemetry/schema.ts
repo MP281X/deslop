@@ -328,7 +328,7 @@ export type ReadTraceParams = typeof ReadTraceParams.Type
 export const ReadTraceParams = Schema.Struct({
 	id: pipe(
 		TraceId,
-		Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or find_traces.'})
+		Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or search_traces.'})
 	),
 	limit: pipe(
 		Schema.Int,

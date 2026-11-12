@@ -35,7 +35,7 @@ const AttributeWindow = Schema.Struct({
 	attributeCursor: Schema.optionalKey(Schema.String)
 })
 
-export const Tools = Toolkit.make(
+export const ToolContracts = Toolkit.make(
 	Tool.make('list_operations', {
 		description:
 			'Inspect root operations failure-first with runs and latency; denied sign-ins are not failures. Use a failure or slowest trace id with read_trace, or continue the live list with nextCursor.',
@@ -53,7 +53,7 @@ export const Tools = Toolkit.make(
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
-	Tool.make('find_traces', {
+	Tool.make('search_traces', {
 		description:
 			'Find requests, actions or jobs by app, operation, span or text, newest or slowest first; rows include MCP server/tool identity when recorded. Continue with nextCursor and the same filters, or read_trace(id) for a selected trace.',
 		failure: TelemetryError,
@@ -112,7 +112,7 @@ export const Tools = Toolkit.make(
 		.annotate(Tool.Strict, true),
 	Tool.make('measure_latency', {
 		description:
-			'Measure count, failures and p50/p95/max milliseconds for an exact span name in one rolling window; save this result before a change to compare later. Zero samples is no evidence of success; find_traces locates individual requests.',
+			'Measure count, failures and p50/p95/max milliseconds for an exact span name in one rolling window; save this result before a change to compare later. Zero samples is no evidence of success; search_traces locates individual requests.',
 		failure: TelemetryError,
 		parameters: MeasureLatencyParams,
 		success: LatencyAnswer

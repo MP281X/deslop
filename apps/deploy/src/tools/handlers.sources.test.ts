@@ -3,9 +3,9 @@ import {assert, it} from '@effect/vitest'
 import {Array, Effect, Formatter, Layer, Option, Ref, Schema, Stream, pipe} from 'effect'
 
 import {Fleet} from '#services/fleet/service.ts'
-import {type HideRequest, type InventoryItem, ListApps, Snapshot} from '#services/inventory/schema.ts'
+import {type HideRequest, type InventoryItem, Inventory, Snapshot} from '#services/inventory/schema.ts'
 import {MachineHistory} from '#services/metrics/schema.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
 const NOW = Date.UTC(2026, 10, 10, 12)
@@ -28,7 +28,7 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 
 function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
 	return Effect.flatMap(Layer.build(pipe(ToolHandlers, Layer.provide(Layer.succeed(Fleet, fleet)))), context =>
-		Effect.provideContext(Tools, context)
+		Effect.provideContext(ToolContracts, context)
 	)
 }
 
@@ -49,7 +49,7 @@ it.effect('attributes a bare remote source to its own worker, never the local on
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(answer.encodedResult))
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(answer.encodedResult))
 				.workers
 			const dev = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'dev'))
 			const desktop = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'desktop'))
@@ -82,7 +82,7 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 			const listed = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(listed.encodedResult))
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(listed.encodedResult))
 				.workers
 			assert.lengthOf(workers, 1)
 			const dev = Option.getOrThrow(Array.head(workers))
@@ -93,7 +93,7 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 			const answer = Option.getOrThrow(
 				Array.last(
 					Array.fromIterable(
-						yield* Stream.runCollect(yield* toolkit.handle('hide_exposure', {name: listedExposure.name}))
+						yield* Stream.runCollect(yield* toolkit.handle('remove_exposure', {name: listedExposure.name}))
 					)
 				)
 			)

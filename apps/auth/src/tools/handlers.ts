@@ -11,7 +11,7 @@ import {SignIns} from '#services/sign-ins/service.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
 function page<A>(rows: readonly A[], key: (row: A) => string, input: {cursor?: string; limit: number}) {
 	const remaining = pipe(
@@ -59,14 +59,14 @@ export const layerMcpOwner = Layer.unwrap(
 	})
 )
 
-export const ToolHandlers = Tools.toLayer(
+export const ToolHandlers = ToolContracts.toLayer(
 	Effect.gen(function* () {
 		const passkeys = yield* Passkeys
 		const people = yield* People
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
-		return Tools.of({
-			answer_request: Effect.fnUntraced(function* (input) {
+		return ToolContracts.of({
+			answer_sign_in: Effect.fnUntraced(function* (input) {
 				return yield* signIns.answer(input, yield* CurrentOwner, 'Token')
 			}),
 			list_passkeys: Effect.fnUntraced(function* (input) {

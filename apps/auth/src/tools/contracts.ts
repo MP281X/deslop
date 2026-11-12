@@ -18,8 +18,8 @@ const Page = Schema.Struct({
 })
 
 // The tool acts as the signed-in caller, which the MCP sign-in middleware provides per request.
-export const Tools = Toolkit.make(
-	Tool.make('answer_request', {
+export const ToolContracts = Toolkit.make(
+	Tool.make('answer_sign_in', {
 		dependencies: [CurrentOwner],
 		description:
 			'Approve or deny an app or agent sign-in you started, by the code its page or authorize redirect shows (WDJB-MJHT). Never answer a code you did not start; browser sign-ins are approved only in a browser.',

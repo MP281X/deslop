@@ -6,8 +6,8 @@ import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {Capture, Note, NoteId, NotesError, Tag} from '#services/notes/schema.ts'
 
-export type NoteRow = typeof NoteRow.Type
-const NoteRow = Schema.Struct({
+export type NoteItem = typeof NoteItem.Type
+const NoteItem = Schema.Struct({
 	id: NoteId,
 	saved: Schema.String,
 	status: Note.fields.status,
@@ -19,9 +19,9 @@ const NoteRow = Schema.Struct({
 
 type Cursor = typeof Cursor.Type
 const Cursor = Schema.Struct({createdAt: Schema.Finite, id: NoteId})
-type NoteView = typeof NoteView.Type
-const NoteView = Schema.Struct({
-	...NoteRow.fields,
+type SavedNote = typeof SavedNote.Type
+const SavedNote = Schema.Struct({
+	...NoteItem.fields,
 	author: Note.fields.author,
 	body: Schema.optionalKey(Schema.String),
 	content: Schema.optionalKey(Schema.String),
@@ -33,7 +33,7 @@ const NoteView = Schema.Struct({
 	transcript: Schema.optionalKey(Schema.String)
 })
 
-export const Tools = Toolkit.make(
+export const ToolContracts = Toolkit.make(
 	Tool.make('search_notes', {
 		description:
 			'Find saved reading by words or #tag, newest first; omit query for recent notes. Pass nextCursor unchanged to continue, or read_note(id) for the selected note.',
@@ -49,7 +49,7 @@ export const Tools = Toolkit.make(
 				Schema.String.annotate({description: 'Words every result must contain; a #word matches a tag.'})
 			)
 		}),
-		success: Schema.Struct({nextCursor: Schema.optionalKey(Cursor), notes: Schema.Array(NoteRow), total: Schema.Int})
+		success: Schema.Struct({nextCursor: Schema.optionalKey(Cursor), notes: Schema.Array(NoteItem), total: Schema.Int})
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
@@ -69,7 +69,7 @@ export const Tools = Toolkit.make(
 				Schema.withDecodingDefaultTypeKey(Effect.succeed('body' as const))
 			)
 		}),
-		success: NoteView
+		success: SavedNote
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
@@ -79,7 +79,7 @@ export const Tools = Toolkit.make(
 			'Save a link or text, or retry a failed save; an existing nonfailed note is returned unchanged, otherwise organizing. Use read_note(id) to inspect progress.',
 		failure: NotesError,
 		parameters: Schema.Struct({text: Capture.fields.text.annotate({description: 'The link or text to save.'})}),
-		success: NoteRow
+		success: NoteItem
 	})
 		.annotate(Tool.Destructive, false)
 		.annotate(Tool.Strict, true),

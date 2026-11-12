@@ -3,9 +3,9 @@ import {Array, Boolean, Effect, Number, Option, Order, String, Struct, pipe} fro
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
-import type {ProcessSummary, WorkerApps} from '#services/inventory/schema.ts'
+import type {ProcessSummary, WorkerInventory} from '#services/inventory/schema.ts'
 import {resourceHistory} from '#services/metrics/lib/utils.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
 function checkWorker(workers: readonly {worker: string}[], worker?: string) {
 	if (worker !== undefined && !Array.some(workers, row => row.worker === worker)) {
@@ -59,7 +59,7 @@ function processPage(nodes: readonly ProcessSummary[], offset: number, limit: nu
 }
 
 function inventoryPage(
-	workers: readonly WorkerApps[],
+	workers: readonly WorkerInventory[],
 	input: {cursor?: string; limit: number; processLimit: number; processOffset: number}
 ) {
 	const remaining = pipe(
@@ -105,7 +105,7 @@ function inventoryPage(
 	}
 }
 
-function focusedInventory(workers: readonly WorkerApps[], app?: string) {
+function focusedInventory(workers: readonly WorkerInventory[], app?: string) {
 	return Array.map(workers, worker => ({
 		...worker,
 		...Boolean.match(app === undefined, {
@@ -137,10 +137,10 @@ function metricSummary(series: readonly Option.Option<number>[]) {
 	}
 }
 
-export const ToolHandlers = Tools.toLayer(
+export const ToolHandlers = ToolContracts.toLayer(
 	Effect.map(Fleet, fleet =>
-		Tools.of({
-			expose_port: Effect.fnUntraced(function* (input) {
+		ToolContracts.of({
+			create_exposure: Effect.fnUntraced(function* (input) {
 				yield* checkWorker(listApps(yield* fleet.snapshot, {}), input.worker)
 				return {
 					url: yield* fleet.expose({
@@ -149,20 +149,12 @@ export const ToolHandlers = Tools.toLayer(
 					})
 				}
 			}),
-			hide_exposure: Effect.fnUntraced(function* (input) {
-				yield* checkWorker(listApps(yield* fleet.snapshot, {}), input.worker)
-				yield* fleet.hide({
-					name: input.name,
-					...Boolean.match(input.worker === undefined, {onFalse: () => ({target: input.worker}), onTrue: () => ({})})
-				})
-				return input
-			}),
 			list_apps: Effect.fnUntraced(function* (input) {
 				const snapshot = yield* fleet.snapshot
 				yield* checkWorker(listApps(snapshot, {}), input.worker)
 				return inventoryPage(focusedInventory(listApps(snapshot, input), input.app), input)
 			}),
-			resource_history: Effect.fnUntraced(function* (input) {
+			read_resource_history: Effect.fnUntraced(function* (input) {
 				const value = yield* Effect.all(
 					{machines: fleet.metrics({minutes: input.minutes}), snapshot: fleet.snapshot},
 					{concurrency: 'unbounded'}
@@ -181,6 +173,14 @@ export const ToolHandlers = Tools.toLayer(
 						})
 					)
 				}
+			}),
+			remove_exposure: Effect.fnUntraced(function* (input) {
+				yield* checkWorker(listApps(yield* fleet.snapshot, {}), input.worker)
+				yield* fleet.hide({
+					name: input.name,
+					...Boolean.match(input.worker === undefined, {onFalse: () => ({target: input.worker}), onTrue: () => ({})})
+				})
+				return input
 			}),
 			run_job: Effect.fnUntraced(function* (input) {
 				const snapshot = yield* fleet.snapshot

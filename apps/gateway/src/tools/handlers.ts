@@ -10,14 +10,14 @@ import {AiProxy} from '#services/ai/service.ts'
 import {connectionStatus} from '#services/connections/lib/utils.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery, VerifiedCaller} from '#services/gateway/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
-const ToolHandlers = Tools.toLayer(
+const ToolHandlers = ToolContracts.toLayer(
 	Effect.gen(function* () {
 		const ai = yield* AiProxy
 		const connections = yield* Connections
 		const gateway = yield* Gateway
-		return Tools.of({
+		return ToolContracts.of({
 			list_mcp_connections: Effect.fnUntraced(function* (input) {
 				const now = yield* Clock.currentTimeMillis
 				const all = yield* connections.definitions
@@ -74,7 +74,7 @@ export const GatewayMcp = Layer.unwrap(
 			layerMcp({
 				instructions:
 					'Tools use <server>__<tool>. Use list_mcp_connections for missing or failing tools; name a server to read its full instructions.',
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
 			}),
 			Layer.provide(GatewayDiscovery.layer),
 			Layer.provide(McpServer.McpServer.layer),
