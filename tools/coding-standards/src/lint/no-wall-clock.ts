@@ -67,7 +67,7 @@ function insideEffect(context: Context, node: ESTree.Node): boolean {
 	return insideEffect(context, node.parent)
 }
 
-export const noWallClockTest = defineRule({
+export const noWallClock = defineRule({
 	create: context => {
 		const testFile = isTestFile(context)
 		return {

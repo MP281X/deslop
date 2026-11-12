@@ -2287,7 +2287,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'reports real time read in tests, not the TestClock or fixed instants',
+			'no-wall-clock reports real time read in tests, not the TestClock or fixed instants',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'clock.test.ts': Array.join(
@@ -2314,13 +2314,13 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-wall-clock-test')
+				const lines = reportedLines(result, 'no-wall-clock')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
 
 		testApi.effect(
-			'reports wall-clock reads in Effect and Stream callbacks, not synchronous application code',
+			'no-wall-clock reports reads in Effect and Stream callbacks, not synchronous application code',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'clock.ts': Array.join(
@@ -2353,13 +2353,13 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-wall-clock-test')
+				const lines = reportedLines(result, 'no-wall-clock')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 				assert.isTrue(
 					Array.every(
 						Array.filter(
 							result.stdout.diagnostics,
-							diagnostic => diagnostic.code === '@deslop/coding-standards(no-wall-clock-test)'
+							diagnostic => diagnostic.code === '@deslop/coding-standards(no-wall-clock)'
 						),
 						diagnostic => String.includes('Clock.currentTimeMillis')(diagnostic.message)
 					)
