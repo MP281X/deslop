@@ -1,30 +1,17 @@
 import {platform} from 'node:process'
 
-import {Array, Boolean, Config, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
+import {Array, Boolean, Config, Effect, FileSystem, Path, String, pipe} from 'effect'
 
-import {ChildProcess} from 'effect/process'
-
+import {execute} from '#cli/command.ts'
 import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#cli/launchd.ts'
-import {AppError} from '#cli/schema.ts'
+
+// oxlint-disable-next-line @deslop/coding-standards/no-barrel-module -- Preserve the public service API while launchd uses the lower-level command module.
+export {execute} from '#cli/command.ts'
 
 // systemd expands percent specifiers even inside a quoted argument.
 function systemdArgument(value: string) {
 	return `"${pipe(value, String.replaceAll('\\', '\\\\'), String.replaceAll('"', '\\"'), String.replaceAll('%', '%%'), String.replaceAll('$', '$$$$'), String.replaceAll('\n', '\\n'), String.replaceAll('\r', '\\r'))}"`
 }
-
-export const execute = Effect.fnUntraced(function* (command: string, args: string[]) {
-	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
-	const result = yield* Effect.all(
-		{
-			code: process.exitCode,
-			stderr: Stream.mkString(Stream.decodeText(process.stderr)),
-			stdout: Stream.mkString(Stream.decodeText(process.stdout))
-		},
-		{concurrency: 'unbounded'}
-	)
-	if (result.code !== 0) return yield* AppError.make({message: `${command} failed: ${result.stderr}`})
-	return result.stdout
-}, Effect.scoped)
 
 function systemctl(...args: string[]) {
 	return execute('systemctl', ['--user', ...args])

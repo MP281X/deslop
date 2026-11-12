@@ -16,5 +16,3 @@ Services use systemd user units on Linux and launchd agents on macOS. On macOS, 
 Both platforms set `NODE_ENV=production`, restrict newly created files to the user and read optional settings from `~/.deslop/<app>.env`. On macOS, Node loads that file with `--env-file-if-exists`; the service PATH is `~/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
 
 The separate `deslop-<app>-update` agent checks npm every 900 seconds on macOS (sleeping or already-running intervals are skipped). Updates install alongside the running release, atomically promote `~/.deslop/<app>/current`, restart only the app and retain the previous release. Uninstall removes the app and update agents but preserves application data.
-
-The runtime's `install(..., {restart: false})` leaves a running native helper alone. On macOS a native helper runs through `~/.deslop/<name>/executable`, an atomically replaced symlink, so its next launch uses the latest binary even after an old tool release is removed. Other plist changes take effect on the next bootstrap. Uninstall also removes that executable link.

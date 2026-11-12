@@ -1,12 +1,12 @@
 import {userInfo} from 'node:os'
 import {execPath} from 'node:process'
 
-import {Array, Boolean, Config, Effect, FileSystem, Option, Path, Stream, String, pipe} from 'effect'
+import {Array, Config, Effect, FileSystem, Option, Path, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
+import {execute} from '#cli/command.ts'
 import {AppError} from '#cli/schema.ts'
-import {execute} from '#cli/service.ts'
 
 function xml(value: string) {
 	return pipe(
@@ -48,25 +48,7 @@ const writeAgent = Effect.fnUntraced(function* (label: string, name: string, com
 	const path = yield* Path.Path
 	const home = yield* Config.String('HOME')
 	const directory = yield* agentDirectory
-	const args = yield* Boolean.match(command[0] === execPath, {
-		// Runtime tools discard older binaries while launchd retains a running helper's command.
-		onFalse: () =>
-			Effect.forEach(
-				command,
-				Effect.fnUntraced(function* (arg, index) {
-					if (index !== 0) return arg
-					const executable = path.join(home, '.deslop', name, 'executable')
-					yield* fs.makeDirectory(path.dirname(executable), {mode: 0o700, recursive: true})
-					yield* fs.remove(`${executable}.next`, {force: true})
-					yield* fs.symlink(arg, `${executable}.next`)
-					yield* fs.rename(`${executable}.next`, executable)
-					return executable
-				}),
-				{concurrency: 1}
-			),
-		onTrue: () =>
-			Effect.succeed([execPath, `--env-file-if-exists=${home}/.deslop/${name}.env`, ...Array.drop(command, 1)])
-	})
+	const args = [execPath, `--env-file-if-exists=${home}/.deslop/${name}.env`, ...Array.drop(command, 1)]
 	const file = path.join(directory, `${label}.plist`)
 	yield* fs.makeDirectory(directory, {recursive: true})
 	yield* fs.writeFileString(
@@ -123,7 +105,6 @@ export const uninstallAgents = Effect.fnUntraced(function* (name: string) {
 		}),
 		{concurrency: 1}
 	)
-	yield* fs.remove(path.join(yield* Config.String('HOME'), '.deslop', name, 'executable'), {force: true})
 	return `deslop-${name}.plist removed; application data preserved\n`
 })
 
