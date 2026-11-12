@@ -49,7 +49,8 @@ it.effect('attributes a bare remote source to its own worker, never the local on
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
-			const workers = yield* Schema.decodeUnknownEffect(ListApps)(answer.encodedResult)
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(answer.encodedResult))
+				.workers
 			const dev = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'dev'))
 			const desktop = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'desktop'))
 			assert.isUndefined(dev.errors)
@@ -81,7 +82,8 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 			const listed = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
-			const workers = yield* Schema.decodeUnknownEffect(ListApps)(listed.encodedResult)
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(listed.encodedResult))
+				.workers
 			assert.lengthOf(workers, 1)
 			const dev = Option.getOrThrow(Array.head(workers))
 			assert.strictEqual(dev.worker, 'dev')

@@ -1,25 +1,191 @@
-import {Effect} from 'effect'
+import {Array, Boolean, Effect, Number, Option, Order, String, Struct, pipe} from 'effect'
 
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
+import {DeployError} from '#services/inventory/schema.ts'
+import type {ProcessSummary, WorkerApps} from '#services/inventory/schema.ts'
 import {resourceHistory} from '#services/metrics/lib/utils.ts'
 import {Tools} from '#tools/contracts.ts'
+
+function checkWorker(workers: readonly {worker: string}[], worker?: string) {
+	if (worker !== undefined && !Array.some(workers, row => row.worker === worker)) {
+		return Effect.fail(
+			DeployError.make({
+				message: `Unknown worker ${worker}; valid workers: ${Array.join(
+					Array.map(workers, row => row.worker),
+					', '
+				)}. Nothing changed.`
+			})
+		)
+	}
+	return Effect.void
+}
+
+function processPaths(tree: readonly ProcessSummary[], prefix: string): readonly string[] {
+	return Array.flatMap(tree, (node, index) => [
+		`${prefix}${index}`,
+		...processPaths(node.children ?? [], `${prefix}${index}.`)
+	])
+}
+
+function processPage(nodes: readonly ProcessSummary[], offset: number, limit: number) {
+	const all = processPaths(nodes, '')
+	const selected = pipe(all, Array.drop(offset), Array.take(limit))
+	function visit(tree: readonly ProcessSummary[], prefix: string): readonly ProcessSummary[] {
+		return Array.flatMap(tree, (node, index) => {
+			const path = `${prefix}${index}`
+			if (!Array.some(selected, key => key === path || String.startsWith(`${path}.`)(key))) return []
+			const children = visit(node.children ?? [], `${path}.`)
+			return [
+				{
+					...Struct.omit(node, ['children']),
+					...Boolean.match(Array.isReadonlyArrayNonEmpty(children), {onFalse: () => ({}), onTrue: () => ({children})})
+				}
+			]
+		})
+	}
+	const processes = visit(nodes, '')
+	return {
+		processes,
+		...Boolean.match(all.length > offset + limit, {
+			onFalse: () => ({}),
+			onTrue: () => ({nextProcessOffset: offset + limit})
+		}),
+		...Boolean.match(all.length > processPaths(processes, '').length, {
+			onFalse: () => ({}),
+			onTrue: () => ({processesOmitted: all.length - processPaths(processes, '').length})
+		})
+	}
+}
+
+function inventoryPage(
+	workers: readonly WorkerApps[],
+	input: {cursor?: string; limit: number; processLimit: number; processOffset: number}
+) {
+	const remaining = pipe(
+		workers,
+		Array.flatMap(worker => [
+			...Array.map(worker.apps, row => `${worker.worker}\tapps\t${row.id}`),
+			...Array.map(worker.jobs ?? [], row => `${worker.worker}\tjobs\t${row.id}`),
+			...Array.map(worker.exposures ?? [], row => `${worker.worker}\texposures\t${row.id}`)
+		]),
+		Array.sort(Order.String),
+		Array.filter(key => input.cursor === undefined || key > input.cursor)
+	)
+	const page = Array.take(remaining, input.limit)
+	function contains(worker: string, kind: string, id: string) {
+		return Array.contains(page, `${worker}\t${kind}\t${id}`)
+	}
+	return {
+		...pipe(
+			page,
+			Array.last,
+			Option.filter(() => remaining.length > input.limit),
+			Option.match({onNone: () => ({}), onSome: nextCursor => ({nextCursor})})
+		),
+		workers: Array.map(workers, worker => ({
+			...Struct.pick(worker, ['worker', 'errors']),
+			apps: pipe(
+				worker.apps,
+				Array.filter(row => contains(worker.worker, 'apps', row.id)),
+				Array.map(row => {
+					if (row.processes === undefined) return row
+					return {...row, ...processPage(row.processes, input.processOffset, input.processLimit)}
+				})
+			),
+			...Option.match(Option.fromUndefinedOr(worker.jobs), {
+				onNone: () => ({}),
+				onSome: jobs => ({jobs: Array.filter(jobs, row => contains(worker.worker, 'jobs', row.id))})
+			}),
+			...Option.match(Option.fromUndefinedOr(worker.exposures), {
+				onNone: () => ({}),
+				onSome: exposures => ({exposures: Array.filter(exposures, row => contains(worker.worker, 'exposures', row.id))})
+			})
+		}))
+	}
+}
+
+function focusedInventory(workers: readonly WorkerApps[], app?: string) {
+	return Array.map(workers, worker => ({
+		...worker,
+		...Boolean.match(app === undefined, {
+			onFalse: () => ({
+				exposures: Array.filter(worker.exposures ?? [], row =>
+					String.includes(String.toLowerCase(app ?? ''))(String.toLowerCase(row.name))
+				),
+				jobs: Array.filter(worker.jobs ?? [], row =>
+					String.includes(String.toLowerCase(app ?? ''))(String.toLowerCase(row.name))
+				)
+			}),
+			onTrue: () => ({})
+		})
+	}))
+}
+
+function metricSummary(series: readonly Option.Option<number>[]) {
+	const values = Array.getSomes(series)
+	return {
+		samples: values.length,
+		...pipe(series, Array.last, Option.flatten, Option.match({onNone: () => ({}), onSome: last => ({last})})),
+		...Option.match(Array.head(values), {
+			onNone: () => ({}),
+			onSome: () => ({
+				max: Array.reduce(values, -Infinity, Number.max),
+				min: Array.reduce(values, Infinity, Number.min)
+			})
+		})
+	}
+}
 
 export const ToolHandlers = Tools.toLayer(
 	Effect.map(Fleet, fleet =>
 		Tools.of({
-			expose_port: input => Effect.map(fleet.expose(input), url => ({url})),
-			hide_exposure: fleet.hide,
-			list_apps: input => Effect.map(fleet.snapshot, snapshot => listApps(snapshot, input)),
+			expose_port: Effect.fnUntraced(function* (input) {
+				yield* checkWorker(listApps(yield* fleet.snapshot, {}), input.worker)
+				return {
+					url: yield* fleet.expose({
+						...Struct.omit(input, ['worker']),
+						...Boolean.match(input.worker === undefined, {onFalse: () => ({target: input.worker}), onTrue: () => ({})})
+					})
+				}
+			}),
+			hide_exposure: Effect.fnUntraced(function* (input) {
+				yield* checkWorker(listApps(yield* fleet.snapshot, {}), input.worker)
+				yield* fleet.hide({
+					name: input.name,
+					...Boolean.match(input.worker === undefined, {onFalse: () => ({target: input.worker}), onTrue: () => ({})})
+				})
+				return input
+			}),
+			list_apps: Effect.fnUntraced(function* (input) {
+				const snapshot = yield* fleet.snapshot
+				yield* checkWorker(listApps(snapshot, {}), input.worker)
+				return inventoryPage(focusedInventory(listApps(snapshot, input), input.app), input)
+			}),
 			resource_history: Effect.fnUntraced(function* (input) {
 				const value = yield* Effect.all(
 					{machines: fleet.metrics({minutes: input.minutes}), snapshot: fleet.snapshot},
 					{concurrency: 'unbounded'}
 				)
-				return resourceHistory(value.machines, input, ownerNames(value.snapshot))
+				yield* checkWorker(listApps(value.snapshot, {}), input.worker)
+				return {
+					workers: Array.map(resourceHistory(value.machines, input, ownerNames(value.snapshot)), worker =>
+						Boolean.match(input.series, {
+							onFalse: () => ({
+								...worker,
+								cpuPct: metricSummary(worker.cpuPct),
+								diskPct: metricSummary(worker.diskPct),
+								memoryPct: metricSummary(worker.memoryPct)
+							}),
+							onTrue: () => worker
+						})
+					)
+				}
 			}),
 			run_job: Effect.fnUntraced(function* (input) {
-				yield* fleet.run(yield* jobRequest(yield* fleet.snapshot, input))
+				const snapshot = yield* fleet.snapshot
+				yield* checkWorker(listApps(snapshot, {}), input.worker)
+				yield* fleet.run(yield* jobRequest(snapshot, input))
 				return {started: true as const}
 			})
 		})

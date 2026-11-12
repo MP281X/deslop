@@ -1673,9 +1673,9 @@ it.layer(platform)(test => {
 			const trimmed = yield* telemetry.readTrace({id: deep, limit: 2})
 			assert.deepStrictEqual(
 				Array.map(trimmed.spans, current => current.name),
-				['deep.root', 'deep.mid', 'deep.fail']
+				['deep.root', 'deep.mid', 'deep.fail', 'deep.slow.0', 'deep.slow.1']
 			)
-			assert.strictEqual(trimmed.omitted, 4)
+			assert.strictEqual(trimmed.omitted, 2)
 		})
 	)
 

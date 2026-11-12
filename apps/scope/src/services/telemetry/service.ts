@@ -200,6 +200,10 @@ function findTracesAnswer(entries: readonly Entry[], input: FindTracesParams, no
 				const broken = brokeAt(spans)
 				if (input.errors && Option.isNone(broken)) return Option.none<Candidate>()
 				const side = sideOf(root.service, root.resource)
+				const relay = Option.flatMap(
+					Array.findFirst(spans, span => span.name === 'Gateway.call'),
+					span => Option.fromUndefinedOr(attributesFlat(span.payload, span.name, false))
+				)
 				const failure = Option.map(broken, span => {
 					const error = failureMessage(span.payload)
 					if (String.isNonEmpty(error)) return `${span.name}: ${error}`
@@ -212,6 +216,19 @@ function findTracesAnswer(entries: readonly Entry[], input: FindTracesParams, no
 						id: root.traceId,
 						ms: rounded(timing.durationMs),
 						operation: root.name,
+						...Option.match(relay, {
+							onNone: () => ({}),
+							onSome: attrs => ({
+								...Boolean.match(Predicate.isString(attrs['mcp.server']), {
+									onFalse: () => ({}),
+									onTrue: () => ({server: `${attrs['mcp.server']}`})
+								}),
+								...Boolean.match(Predicate.isString(attrs['mcp.tool']), {
+									onFalse: () => ({}),
+									onTrue: () => ({tool: `${attrs['mcp.tool']}`})
+								})
+							})
+						}),
 						spans: spans.length,
 						...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 						...Option.match(failure, {onNone: () => ({}), onSome: message => ({failure: message})})
@@ -221,18 +238,39 @@ function findTracesAnswer(entries: readonly Entry[], input: FindTracesParams, no
 			}
 		)
 	)
-	const sorted = Boolean.match(input.sort === 'slowest', {
-		onFalse: () =>
-			Array.sort(rows, Order.flip(Order.mapInput(Order.BigInt, (row: Candidate) => BigInt(row.timing.time)))),
-		onTrue: () =>
-			Array.sort(
-				rows,
-				Order.mapInput(Order.flip(Order.Number), (row: Candidate) => row.timing.durationMs)
+	const remaining = Array.filter(
+		Array.sort(
+			rows,
+			Order.combine(
+				Boolean.match(input.sort === 'slowest', {
+					onFalse: () => Order.flip(Order.mapInput(Order.BigInt, (item: Candidate) => BigInt(item.timing.time))),
+					onTrue: () => Order.flip(Order.mapInput(Order.Number, (item: Candidate) => item.timing.durationMs))
+				}),
+				Order.mapInput(Order.flip(Order.String), (item: Candidate) => item.row.id)
 			)
-	})
+		),
+		item => {
+			if (input.cursor === undefined) return true
+			if (input.sort === 'slowest' && item.timing.durationMs !== input.cursor.ms) {
+				return item.timing.durationMs < input.cursor.ms
+			}
+			if (input.sort !== 'slowest' && item.timing.time !== input.cursor.time) {
+				return BigInt(item.timing.time) < BigInt(input.cursor.time)
+			}
+			return item.row.id < input.cursor.id
+		}
+	)
+	const page = Array.take(remaining, input.limit)
 	return {
+		...Option.match(
+			Option.filter(Array.last(page), () => remaining.length > input.limit),
+			{
+				onNone: () => ({}),
+				onSome: item => ({nextCursor: {id: item.row.id, ms: item.timing.durationMs, time: item.timing.time}})
+			}
+		),
 		total: rows.length,
-		traces: Array.map(Array.take(sorted, input.limit), item => item.row)
+		traces: Array.map(page, item => item.row)
 	} satisfies TracesAnswer
 }
 
@@ -261,7 +299,14 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 	}
 }
 
-function readTraceAnswer(entries: readonly Entry[], id: string, limit: number) {
+function readTraceAnswer(
+	entries: readonly Entry[],
+	id: string,
+	limit: number,
+	offset: number,
+	details: boolean,
+	selectedSpanId?: string
+) {
 	const traces = linkedTraces(entries, id)
 	const view = traceView([...entries], id)
 	const timing = traceTiming(Array.filter(entries, entry => HashSet.has(traces, entry.traceId)))
@@ -284,19 +329,22 @@ function readTraceAnswer(entries: readonly Entry[], id: string, limit: number) {
 				)
 		}
 	)
-	const kept = Array.reduce(
+	const candidates = Array.filter(
 		Array.sort(
 			view.spans,
 			Order.mapInput(Order.flip(Order.Number), (span: ReturnType<typeof traceView>['spans'][number]) => span.durationMs)
 		),
+		span => !HashSet.has(ancestors, span.spanId)
+	)
+	const kept = HashSet.union(
 		ancestors,
-		(current, span) => {
-			if (HashSet.size(current) >= limit || HashSet.has(current, span.spanId)) return current
-			return HashSet.add(current, span.spanId)
-		}
+		HashSet.fromIterable(Array.map(Array.take(Array.drop(candidates, offset), limit), span => span.spanId))
 	)
 	const spans = Array.flatMap(view.spans, span => {
-		if (HashSet.has(kept, span.spanId)) return [compactSpan(span)]
+		if (selectedSpanId !== undefined) {
+			return Boolean.match(span.spanId === selectedSpanId, {onFalse: () => [], onTrue: () => [compactSpan(span)]})
+		}
+		if (details || HashSet.has(kept, span.spanId)) return [compactSpan(span)]
 		return []
 	})
 	const logs = Array.map(view.logs, compactLog)
@@ -308,6 +356,10 @@ function readTraceAnswer(entries: readonly Entry[], id: string, limit: number) {
 			onSome: spanId => ({failure: spanId})
 		}),
 		id,
+		...Boolean.match(offset + limit < candidates.length, {
+			onFalse: () => ({}),
+			onTrue: () => ({nextOffset: offset + limit})
+		}),
 		ms: rounded(timing.durationMs),
 		spans,
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})}),
@@ -337,27 +389,39 @@ function searchLogsAnswer(entries: readonly Entry[], input: SearchLogsParams, no
 		if (text !== '' && !String.includes(text)(entryText(entry))) return false
 		return input.level === undefined || severityAtLeast(entry, minimum)
 	})
-	return {
-		logs: Array.map(
-			Array.take(
-				Array.sort(matched, Order.flip(Order.mapInput(Order.BigInt, (entry: Entry) => BigInt(entry.time)))),
-				input.limit
-			),
-			entry => {
-				const attrs = attributesFlat(entry.payload, '', false)
-				const side = sideOf(entry.service, entry.resource)
-				return {
-					app: appName(entry.service),
-					at: isoTime(entry.time),
-					level: levelOf(entry),
-					message: entry.name,
-					...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-					...Boolean.match(entry.traceId !== '', {onFalse: () => ({}), onTrue: () => ({trace: entry.traceId})}),
-					...Boolean.match(entry.spanId !== '', {onFalse: () => ({}), onTrue: () => ({span: entry.spanId})}),
-					...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})})
-				}
-			}
+	const remaining = Array.filter(
+		Array.sort(
+			matched,
+			Order.combine(
+				Order.flip(Order.mapInput(Order.BigInt, (entry: Entry) => BigInt(entry.time))),
+				Order.mapInput(Order.String, (entry: Entry) => entry.id)
+			)
 		),
+		entry =>
+			input.cursor === undefined ||
+			BigInt(entry.time) < BigInt(input.cursor.time) ||
+			(entry.time === input.cursor.time && entry.id > input.cursor.id)
+	)
+	const page = Array.take(remaining, input.limit)
+	return {
+		...Option.match(
+			Option.filter(Array.last(page), () => remaining.length > input.limit),
+			{onNone: () => ({}), onSome: entry => ({nextCursor: {id: entry.id, time: entry.time}})}
+		),
+		logs: Array.map(page, entry => {
+			const attrs = attributesFlat(entry.payload, '', false)
+			const side = sideOf(entry.service, entry.resource)
+			return {
+				app: appName(entry.service),
+				at: isoTime(entry.time),
+				level: levelOf(entry),
+				message: entry.name,
+				...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
+				...Boolean.match(entry.traceId !== '', {onFalse: () => ({}), onTrue: () => ({trace: entry.traceId})}),
+				...Boolean.match(entry.spanId !== '', {onFalse: () => ({}), onTrue: () => ({span: entry.spanId})}),
+				...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})})
+			}
+		}),
 		total: matched.length
 	} satisfies LogsAnswer
 }
@@ -853,7 +917,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			}),
 			// The same snapshot for every viewer; each time frame maps it to its own operations and traces.
 			overview: (range: Range) => Stream.map(live, current => overviewOf(current.traces, current.now, range)),
-			readTrace: Effect.fn('Telemetry.readTrace')(function* (input: ReadTraceParams) {
+			readTrace: Effect.fn('Telemetry.readTrace')(function* (
+				input: ReadTraceParams,
+				offset: number = 0,
+				spanId?: string,
+				details: boolean = false
+			) {
 				const traceId = String.toLowerCase(input.id)
 				const entries = yield* read
 				if (!Array.some(entries, entry => entry.traceId === traceId)) {
@@ -862,7 +931,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
 					})
 				}
-				return readTraceAnswer(entries, traceId, input.limit)
+				return readTraceAnswer(entries, traceId, input.limit, offset, details, spanId)
 			}),
 			ready: Deferred.await(loaded),
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {

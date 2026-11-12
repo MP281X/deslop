@@ -536,6 +536,7 @@ function appOf(row: Row, withProcesses: boolean) {
 	const url = Option.map(Array.head(row.exposures), exposure => exposure.url)
 	return {
 		...failureOf(row.item),
+		id: row.item.id,
 		name: workloadName(row.item),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(reachable), {
 			onFalse: () => ({}),
@@ -553,6 +554,7 @@ function appOf(row: Row, withProcesses: boolean) {
 function jobOf(row: Row) {
 	return {
 		...failureOf(row.item),
+		id: row.item.id,
 		name: workloadName(row.item),
 		...Record.getSomes({next: Option.map(Option.fromUndefinedOr(row.item.next), iso)})
 	} satisfies ListJob
@@ -564,6 +566,7 @@ function exposureOf(item: InventoryItem) {
 			onFalse: () => 'tailnet' as const,
 			onTrue: () => 'public' as const
 		}),
+		id: item.id,
 		name: item.name,
 		...Record.getSomes({port: Option.fromUndefinedOr(item.port)}),
 		url: item.url

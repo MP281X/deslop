@@ -20,7 +20,7 @@ import {
 	pipe
 } from 'effect'
 
-import type {Client} from '@modelcontextprotocol/client'
+import type {Client, Tool} from '@modelcontextprotocol/client'
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {McpSchema, McpServer} from 'effect/ai'
 import {Digest} from 'effect/crypto'
@@ -191,7 +191,8 @@ export class Gateway extends Context.Service<
 				)
 			}
 			const call = Effect.fn('Gateway.call')(
-				function* (server: Server, tool: string, input: unknown) {
+				function* (server: Server, tool: Tool, input: unknown) {
+					yield* Effect.annotateCurrentSpan({'mcp.server': server.id, 'mcp.tool': tool.name})
 					const request = yield* Effect.flatMap(
 						Effect.serviceOption(HttpServerRequest.HttpServerRequest),
 						Effect.fromOption
@@ -202,9 +203,10 @@ export class Gateway extends Context.Service<
 						pipe(
 							Effect.tryPromise({
 								catch: connectionFailure(server.name),
-								try: signal => client.callTool({arguments: args, name: tool}, {signal})
+								try: signal => client.callTool({arguments: args, name: tool.name}, {signal, toolDefinition: tool})
 							}),
 							Effect.flatMap(Schema.decodeUnknownEffect(McpSchema.CallToolResult)),
+							Effect.tap(result => Effect.annotateCurrentSpan({'mcp.is_error': result.isError === true})),
 							Effect.mapError(connectionFailure(server.name))
 						)
 					)
@@ -218,7 +220,7 @@ export class Gateway extends Context.Service<
 								McpSchema.CallToolResult.make({
 									content: [
 										{
-											text: `${connectionFailure(server.name)(cause).message}. list_mcp_connections shows its state; reconnect it at ${url}.`,
+											text: `${connectionFailure(server.name)(cause).message}. The action may already have committed; inspect its current state before retrying. Use list_mcp_connections for connection failures.`,
 											type: 'text'
 										}
 									],
@@ -239,16 +241,19 @@ export class Gateway extends Context.Service<
 								try: signal => client.listTools(undefined, {signal})
 							}),
 							Effect.flatMap(result =>
-								Schema.decodeUnknownEffect(RemoteTools)(
-									Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
+								pipe(
+									Schema.decodeUnknownEffect(RemoteTools)(
+										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
+									),
+									Effect.map(tools => ({tools, upstreamTools: result.tools}))
 								)
 							),
 							Effect.mapBoth({
 								onFailure: connectionFailure(server.name),
-								onSuccess: tools => ({
+								onSuccess: result => ({
 									icons: serverIcons(client.getServerVersion()),
 									instructions: client.getInstructions(),
-									tools
+									...result
 								})
 							})
 						)
@@ -265,15 +270,17 @@ export class Gateway extends Context.Service<
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
 				const names = MutableList.make<string>()
 				for (const tool of found.tools) {
-					const upstreamName = tool.name
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
 					const fingerprint = yield* Schema.encodeEffect(Schema.fromJsonString(McpSchema.Tool))(tool)
 					if ((yield* Ref.get(installed))[name]?.fingerprint !== `${server.generation}:${fingerprint}`) {
 						yield* registry.addTool({
 							annotations: Context.empty(),
-							handle: Effect.fnUntraced(function* (input: unknown) {
-								return yield* call(reference, upstreamName, input)
-							}),
+							handle: (input: unknown) =>
+								call(
+									reference,
+									Option.getOrThrow(Array.findFirst(found.upstreamTools, upstream => upstream.name === tool.name)),
+									input
+								),
 							services,
 							tool: McpSchema.Tool.make({...compact(tool), name})
 						})

@@ -168,6 +168,7 @@ export const ProcessSummary = Schema.Struct({
 export type ListApp = typeof ListApp.Type
 export const ListApp = Schema.Struct({
 	failure: Schema.optionalKey(Schema.String),
+	id: Schema.String,
 	name: Schema.String,
 	ports: Schema.optionalKey(Schema.Array(Schema.Int)),
 	processes: Schema.optionalKey(Schema.Array(ProcessSummary)),
@@ -179,6 +180,7 @@ export const ListApp = Schema.Struct({
 export type ListJob = typeof ListJob.Type
 export const ListJob = Schema.Struct({
 	failure: Schema.optionalKey(Schema.String),
+	id: Schema.String,
 	name: Schema.String,
 	next: Schema.optionalKey(Schema.String),
 	since: Schema.optionalKey(Schema.String)
@@ -187,6 +189,7 @@ export const ListJob = Schema.Struct({
 export type ListExposure = typeof ListExposure.Type
 export const ListExposure = Schema.Struct({
 	access: Schema.Literals(['tailnet', 'public']),
+	id: Schema.String,
 	name: Schema.String,
 	port: Schema.optionalKey(Schema.Int),
 	url: Schema.String
