@@ -27,7 +27,7 @@ import {AccessClaims, AuthError, TokenResponse, User} from '#auth/schema.ts'
 
 type Stored = typeof Stored.Type
 const Stored = Schema.Struct({
-	access: Schema.NonEmptyString,
+	access: Schema.RedactedFromValue(Schema.NonEmptyString),
 	clientId: Schema.NonEmptyString,
 	createdAt: Schema.Finite,
 	expiresAt: Schema.Finite,
@@ -72,7 +72,7 @@ export class Sessions extends Context.Service<
 			const random = yield* SecureRandom.SecureRandom
 			const client = yield* HttpClient.HttpClient
 			const locks = MutableHashMap.empty<string, Semaphore.Semaphore>()
-			const bearers = MutableHashMap.empty<string, {token: string; expiresAt: number}>()
+			const bearers = MutableHashMap.empty<string, {token: Redacted.Redacted; expiresAt: number}>()
 			const app = yield* Config.String('APP_URL')
 
 			// Only a hash of the id is stored, so the store alone cannot act as anyone.
@@ -129,7 +129,7 @@ export class Sessions extends Context.Service<
 				)
 				const now = yield* Clock.currentTimeMillis
 				return Stored.make({
-					access: tokens.access_token,
+					access: Redacted.make(tokens.access_token),
 					clientId,
 					createdAt,
 					expiresAt: now + tokens.expires_in * 1000,
@@ -172,11 +172,11 @@ export class Sessions extends Context.Service<
 					{concurrency: 'unbounded'}
 				)
 				for (const session of matchingSessions(saved, userId)) {
-					if (yield* fresh(session.value)) return session.value.access
+					if (yield* fresh(session.value)) return Redacted.value(session.value.access)
 					const renewed = yield* Effect.result(
 						pipe(refreshed(session.key), rejected('AI access is temporarily unavailable'))
 					)
-					if (renewed._tag === 'Success') return renewed.success.access
+					if (renewed._tag === 'Success') return Redacted.value(renewed.success.access)
 					if (Schema.is(AuthError)(renewed.failure) && renewed.failure.error === 'temporarily_unavailable') {
 						return yield* renewed.failure
 					}
@@ -185,7 +185,7 @@ export class Sessions extends Context.Service<
 				const bearer = Option.getOrUndefined(
 					Option.filter(MutableHashMap.get(bearers, userId), access => access.expiresAt >= now + 60_000)
 				)
-				if (bearer !== undefined) return bearer.token
+				if (bearer !== undefined) return Redacted.value(bearer.token)
 				MutableHashMap.remove(bearers, userId)
 				return yield* AuthError.make({
 					message: `Open ${String.capitalize(String.split(new URL(app).hostname, '.')[0])} once so it can use AI for you`
@@ -195,9 +195,9 @@ export class Sessions extends Context.Service<
 				current: Effect.fn('Sessions.current')(function* (id: string) {
 					const key = yield* keyOf(id)
 					const saved = yield* Effect.fromOption(yield* store.get(key))
-					if (yield* fresh(saved)) return {token: saved.access, user: saved.user}
+					if (yield* fresh(saved)) return {token: Redacted.value(saved.access), user: saved.user}
 					const renewed = yield* refreshed(key)
-					return {token: renewed.access, user: renewed.user}
+					return {token: Redacted.value(renewed.access), user: renewed.user}
 				}, rejected('Sign in first')),
 				end: Effect.fn('Sessions.end')(function* (id: string) {
 					const key = yield* keyOf(id)
@@ -217,7 +217,7 @@ export class Sessions extends Context.Service<
 				}, rejected('The session could not be ended')),
 				remember: (token, claims) =>
 					Effect.sync(() => {
-						MutableHashMap.set(bearers, claims.sub, {expiresAt: claims.exp * 1000, token})
+						MutableHashMap.set(bearers, claims.sub, {expiresAt: claims.exp * 1000, token: Redacted.make(token)})
 					}),
 				start: Effect.fn('Sessions.start')(function* (grant: CodeGrant) {
 					const tokens = yield* pipe(
