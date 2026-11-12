@@ -19,9 +19,6 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-// The keys reader's reactivity key: saving a key rereads them.
-export const AI_KEYS = ['aiKeys'] as const
-
 export const ENDPOINT = `${window.location.origin}/mcp`
 
 addPageTelemetry('@deslop/gateway')
@@ -98,7 +95,7 @@ export const aiKeysAtom = pipe(
 			reconnectOnDrop
 		)
 	),
-	RpcClient.runtime.factory.withReactivity(AI_KEYS)
+	RpcClient.runtime.factory.withReactivity(['aiKeys'])
 )
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.

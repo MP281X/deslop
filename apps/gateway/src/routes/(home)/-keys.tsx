@@ -18,7 +18,7 @@ import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
 import {OpenrouterDark} from '@deslop/components-web/ui/svgs/openrouterDark'
 import {OpenrouterLight} from '@deslop/components-web/ui/svgs/openrouterLight'
 
-import {AI_KEYS, setKeyAtom} from '#lib/utils.ts'
+import {setKeyAtom} from '#lib/utils.ts'
 import {AiProvider, PROVIDER_NAMES} from '#services/ai/schema.ts'
 
 export const PROVIDERS = AiProvider.literals
@@ -84,7 +84,7 @@ export function AddKeyDialog(props: {
 					className="flex flex-col gap-4"
 					onSubmit={event => {
 						event.preventDefault()
-						save({payload: {provider: props.provider, secret: Redacted.make(secret)}, reactivityKeys: AI_KEYS})
+						save({payload: {provider: props.provider, secret: Redacted.make(secret)}, reactivityKeys: ['aiKeys']})
 					}}
 				>
 					<DialogTitle>Add a key</DialogTitle>
