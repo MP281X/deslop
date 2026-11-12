@@ -311,6 +311,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@modelcontextprotocol/client':
         specifier: latest
         version: 2.4.0

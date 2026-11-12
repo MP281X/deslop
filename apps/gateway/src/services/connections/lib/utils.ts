@@ -1,18 +1,4 @@
-import {
-	Array,
-	Boolean,
-	Effect,
-	Match,
-	Number,
-	Option,
-	Order,
-	Predicate,
-	Record,
-	Schema,
-	String,
-	Struct,
-	pipe
-} from 'effect'
+import {Array, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {Client} from '@modelcontextprotocol/client'
 import type {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
@@ -21,8 +7,7 @@ import {HttpClientError} from 'effect/http'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {UpstreamError} from '#services/connections/schema.ts'
-import type {Connection, ConnectionInfo, McpUsageBucket, ServerIcon} from '#services/connections/schema.ts'
-import type {UsageRange} from '#services/usage/schema.ts'
+import type {ServerIcon} from '#services/connections/schema.ts'
 
 export function mcpClient() {
 	return new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})
@@ -53,44 +38,6 @@ export function clientMetadata(url: string) {
 		response_types: ['code'],
 		token_endpoint_auth_method: 'none'
 	}
-}
-
-// A provider token without a refresh token cannot be renewed once it expires.
-export function connectionStatus(connection: Connection, now: number) {
-	return Match.valueTags(connection.link, {
-		Authorized: link =>
-			Boolean.match(link.expiresAt <= now && link.token.refresh_token === undefined, {
-				onFalse: () => 'Connected' as const,
-				onTrue: () => 'Expired' as const
-			}),
-		Connected: () => 'Connected' as const,
-		Disconnected: () => 'Not connected' as const
-	})
-}
-
-export function connectionInfo(connection: Connection, now: number) {
-	return {
-		...Option.match(Option.fromUndefinedOr(connection.error), {onNone: () => ({}), onSome: error => ({error})}),
-		...Struct.pick(connection, ['id', 'name', 'url']),
-		icons: connection.icons ?? [],
-		status: connectionStatus(connection, now),
-		tools: Array.length(connection.tools)
-	} satisfies ConnectionInfo
-}
-
-// Usage is stored by hour; the page's day view sums each day's hours.
-// judge-ignore no-roundtrip -- the string key only groups and is never parsed back: each bucket's time comes from its first entry's number
-export function usageSeries(buckets: readonly McpUsageBucket[], range: UsageRange) {
-	return pipe(
-		Array.filter(buckets, bucket => bucket.at >= range.from && bucket.at < range.to),
-		Array.groupBy(bucket => `${Math.floor(bucket.at / range.size) * range.size}`),
-		Record.values,
-		Array.map(entries => ({
-			at: Math.floor(entries[0].at / range.size) * range.size,
-			calls: Number.sumAll(Array.map(entries, bucket => bucket.calls))
-		})),
-		Array.sort(Order.mapInput(Number.Order, (entry: {at: number}) => entry.at))
-	)
 }
 
 // The icons a server names in its MCP server info, kept to a few a page can show, each small enough to stream to it.

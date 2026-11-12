@@ -1,6 +1,6 @@
 # Gateway intent
 
-- **AI.** Calls pass through unchanged with the caller's signed access token and provider key. The token's client label identifies the app in usage; the key figures read that person's ledger.
+- **AI.** Calls pass through unchanged with the caller's signed access token and provider key. The key figures read that person's hourly ledger.
 - **MCP.** Connection and key removal tools are only for explicit user-requested maintenance or credential revocation, not routine page actions.
 - **Excluded.** Tabs, a detail pane, a charts card, an app breakdown, a summary line, an Add server button or dialog.
 - **Paste.** The field under the bar is the page's one action: an http(s) URL adds a server, an `sk-` key opens the key dialog.

@@ -13,8 +13,14 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 import type {Period} from '#services/usage/schema.ts'
 
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly aiKeys: never
+	}
+}
+
 // The keys reader's reactivity key: saving a key rereads them.
-export const AI_KEYS = ['ai-keys']
+export const AI_KEYS = ['aiKeys'] as const
 
 export const ENDPOINT = `${window.location.origin}/mcp`
 

@@ -1,6 +1,7 @@
-import {Option, Result, Schema} from 'effect'
+import {Option, Result, Schema, Struct} from 'effect'
 
 import {Url} from 'effect/http'
+import {Model} from 'effect/schema'
 
 export class UpstreamError extends Schema.TaggedError<UpstreamError>()('UpstreamError', {cause: Schema.Defect()}) {}
 
@@ -47,21 +48,9 @@ export const Token = Schema.Struct({
 	token_type: Schema.String.check(Schema.isPattern(/^Bearer$/iu))
 })
 
-// How the gateway signs in to a provider: a client it registered there with its own callback, or its client metadata document, which needs the provider to name itself in every answer.
-export type OAuth = typeof OAuth.Type
-export const OAuth = Schema.Struct({
-	client: Schema.TaggedUnion({Document: {}, Registered: {clientId: Schema.NonEmptyString}}),
-	metadata: Metadata,
-	scope: Schema.String
-})
-
-// Deslop servers take the caller's token; only third-party OAuth tokens are stored.
-export type Link = typeof Link.Type
-export const Link = Schema.TaggedUnion({
-	Authorized: {expiresAt: Schema.Finite, token: Token},
-	Connected: {},
-	Disconnected: {}
-})
+// How the gateway signs in to a provider while a connection is in progress: a client it registered there with its own callback, or its client metadata document, which needs the provider to name itself in every answer.
+export type OAuthClient = typeof OAuthClient.Type
+export const OAuthClient = Schema.TaggedUnion({Document: {}, Registered: {clientId: Schema.NonEmptyString}})
 
 export type ServerIcon = typeof ServerIcon.Type
 export const ServerIcon = Schema.Struct({
@@ -69,38 +58,65 @@ export const ServerIcon = Schema.Struct({
 	theme: Schema.optionalKey(Schema.Literals(['light', 'dark']))
 })
 
-export type Connection = typeof Connection.Type
-export const Connection = Schema.Struct({
-	error: Schema.optionalKey(Schema.String),
+// Deslop servers take the caller's token and public ones none, so only a third-party server needs a grant; one without a refresh token cannot be renewed once it expires.
+export type ConnectionStatus = typeof ConnectionStatus.Type
+export const ConnectionStatus = Schema.Literals(['Connected', 'Not connected', 'Expired'])
+
+// One MCP server everyone with access shares, as its last discovery found it.
+export class Connection extends Model.Class<Connection>('Connection')({
+	error: Model.FieldOption(Schema.String),
+	// Made when the server is added: work begun for a server that was removed and added again never lands on the new one.
 	generation: Schema.NonEmptyString,
-	icons: Schema.optionalKey(Schema.Array(ServerIcon)),
+	icons: Model.JsonFromString(Schema.Array(ServerIcon)),
 	id: ServerId,
-	instructions: Schema.optionalKey(Schema.String),
-	link: Link,
+	instructions: Model.FieldOption(Schema.String),
+	// A third-party server's authorization server, whose metadata each connection reads again, and the scope it asks for.
+	issuer: Model.FieldOption(ServerUrl),
 	mode: Schema.Literals(['oauth', 'public', 'deslop']),
 	name: Schema.NonEmptyString,
-	oauth: Schema.optionalKey(OAuth),
-	tools: Schema.Array(Schema.String),
-	url: ServerUrl
-})
-
-export type ConnectionStore = typeof ConnectionStore.Type
-export const ConnectionStore = Schema.Record(Schema.String, Connection)
-
-export type ConnectionInfo = typeof ConnectionInfo.Type
-export const ConnectionInfo = Schema.Struct({
-	error: Schema.optionalKey(Schema.String),
-	icons: Schema.Array(ServerIcon),
-	id: ServerId,
-	name: Schema.NonEmptyString,
-	status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
+	scope: Model.FieldOption(Schema.String),
+	// How many tools the server lists.
 	tools: Schema.Int,
 	url: ServerUrl
+}) {
+	static readonly table = 'connections'
+}
+
+// A third-party server's authorization: the tokens its provider issued, and the client and endpoint that renew them.
+export class ConnectionGrant extends Model.Class<ConnectionGrant>('ConnectionGrant')({
+	accessToken: Model.Sensitive(Token.fields.access_token),
+	clientId: Schema.NonEmptyString,
+	// Epoch milliseconds; zero once the provider refused to renew it.
+	expiresAt: Schema.Finite,
+	refreshToken: Model.FieldOption(Model.Sensitive(Token.fields.access_token)),
+	serverId: ServerId,
+	tokenEndpoint: ServerUrl
+}) {
+	static readonly table = 'connection_grants'
+}
+
+// A server's proxied tool calls in one hour; the page sums the hours into the bar's period, and an hour older than its longest period goes.
+export class ConnectionCalls extends Model.Class<ConnectionCalls>('ConnectionCalls')({
+	calls: Schema.Int,
+	hour: Schema.Int,
+	serverId: ServerId
+}) {
+	static readonly table = 'connection_calls'
+}
+
+// A server's row and its status as of the read.
+export type ConnectionState = typeof ConnectionState.Type
+export const ConnectionState = Schema.Struct({...Connection.fields, status: ConnectionStatus})
+
+// A server as the page shows it.
+export type ConnectionInfo = typeof ConnectionInfo.Type
+export const ConnectionInfo = Schema.Struct({
+	...Struct.pick(Connection.json.fields, ['error', 'icons', 'id', 'name', 'tools', 'url']),
+	status: ConnectionStatus
 })
 
-// Each proxied call counted into its server's hour; the page sums them into the bar's period.
 export type McpUsageBucket = typeof McpUsageBucket.Type
-export const McpUsageBucket = Schema.Struct({at: Schema.Finite, calls: Schema.Finite})
+export const McpUsageBucket = Schema.Struct({at: Schema.Finite, calls: Schema.Int})
 export type McpUsageServer = typeof McpUsageServer.Type
 export const McpUsageServer = Schema.Struct({id: ServerId, series: Schema.Array(McpUsageBucket)})
 export type McpUsageReport = typeof McpUsageReport.Type

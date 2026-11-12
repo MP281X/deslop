@@ -33,19 +33,13 @@ import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
-import {
-	connectionFailure,
-	connectionStatus,
-	endSession,
-	mcpClient,
-	serverIcons
-} from '#services/connections/lib/utils.ts'
-import type {Connection} from '#services/connections/schema.ts'
+import {connectionFailure, endSession, mcpClient, serverIcons} from '#services/connections/lib/utils.ts'
+import type {ConnectionState} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, indexTools, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 
-type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
+type Server = Pick<ConnectionState, 'id' | 'generation' | 'name' | 'mode'>
 
 // The tools/list middleware verifies the caller once and hands the answer to the MCP auth middleware for the same request.
 export const VerifiedCaller = Context.Reference<
@@ -62,7 +56,7 @@ export class Gateway extends Context.Service<
 		// A tools/list answered from the registry: a stale registry is refreshed in the background, and a changed tool set notifies clients.
 		readonly refresh: (headers: Headers.Headers) => Effect.Effect<void>
 		// A removed connection's tools leave the registry, and clients hear that their list changed.
-		readonly removed: Effect.Effect<void>
+		readonly removed: Effect.Effect<void, AuthError>
 	}
 >()('@deslop/gateway/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
@@ -86,10 +80,9 @@ export class Gateway extends Context.Service<
 			const visible = yield* Ref.make(HashSet.empty<string>())
 			const installed = yield* Ref.make<Record<string, {fingerprint: string; generation: string; id: string}>>({})
 			const usable = Effect.fnUntraced(function* (id: string, generation: string) {
-				const now = yield* Clock.currentTimeMillis
 				return Option.exists(
 					yield* Effect.option(connections.get(id)),
-					found => found.generation === generation && connectionStatus(found, now) === 'Connected'
+					found => found.generation === generation && found.status === 'Connected'
 				)
 			})
 			const refreshes = yield* Semaphore.make(1)
@@ -106,7 +99,7 @@ export class Gateway extends Context.Service<
 					discard: true
 				})
 			})
-			const updateVisible = Effect.fnUntraced(function* (server: Connection, names: HashSet.HashSet<string>) {
+			const updateVisible = Effect.fnUntraced(function* (server: ConnectionState, names: HashSet.HashSet<string>) {
 				const changed = yield* Ref.modify(visible, current => {
 					const next = HashSet.union(
 						HashSet.filter(current, name => !String.startsWith(`${server.id}__`)(name)),
@@ -131,10 +124,7 @@ export class Gateway extends Context.Service<
 			)
 			const upstreamFor = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
 				const current = yield* connections.get(server.id)
-				if (
-					current.generation !== server.generation ||
-					connectionStatus(current, yield* Clock.currentTimeMillis) !== 'Connected'
-				) {
+				if (current.generation !== server.generation || current.status !== 'Connected') {
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
 				}
 				if (current.mode === 'public') return {token: undefined, url: current.url}
@@ -229,8 +219,8 @@ export class Gateway extends Context.Service<
 							)
 					)
 			)
-			const discover = Effect.fnUntraced(function* (server: Connection, headers: Headers.Headers) {
-				if (connectionStatus(server, yield* Clock.currentTimeMillis) !== 'Connected') {
+			const discover = Effect.fnUntraced(function* (server: ConnectionState, headers: Headers.Headers) {
+				if (server.status !== 'Connected') {
 					return yield* updateVisible(server, HashSet.empty())
 				}
 				const found = yield* pipe(
@@ -261,7 +251,7 @@ export class Gateway extends Context.Service<
 					Effect.timeout('20 seconds')
 				)
 				const latest = yield* connections.get(server.id)
-				if (latest.generation !== server.generation || latest.link._tag === 'Disconnected') {
+				if (latest.generation !== server.generation || latest.status === 'Not connected') {
 					return yield* AuthError.make({
 						error: 'temporarily_unavailable',
 						message: `${server.name} changed while its tools were read`
@@ -325,7 +315,9 @@ export class Gateway extends Context.Service<
 								{concurrency: 6, discard: true}
 							)
 						),
-						Effect.andThen(prune)
+						Effect.andThen(prune),
+						// The servers' storage failing leaves the registry as it was until the next read.
+						Effect.catch(cause => Effect.logWarning('The MCP servers could not be read', cause))
 					),
 					Effect.gen(function* () {
 						yield* Ref.set(lastRead, Option.some(yield* Clock.currentTimeMillis))
