@@ -153,7 +153,17 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 		apps: [
 			{
 				name: 'deploy',
+				// In the overview's order: failing first, then most recently seen.
 				operations: [
+					{
+						count: 1,
+						failures: 1,
+						name: 'deploy.fail',
+						p50Ms: 1,
+						p95Ms: 1,
+						runtime: 'server',
+						traces: [failureTrace(200, true)]
+					},
 					{
 						count: 1,
 						failures: 0,
@@ -165,15 +175,6 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 							{...failureTrace(300, false), id: traceId},
 							{...failureTrace(100, false), id: otherId}
 						]
-					},
-					{
-						count: 1,
-						failures: 1,
-						name: 'deploy.fail',
-						p50Ms: 1,
-						p95Ms: 1,
-						runtime: 'server',
-						traces: [failureTrace(200, true)]
 					}
 				]
 			},

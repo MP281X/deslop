@@ -242,29 +242,11 @@ export function attributesOf(span: TraceTree['spans'][number]) {
 	)
 }
 
-// The most recent trace an operation started, which orders the list after failures.
-function latestOf(operation: Operation) {
-	return Array.match(operation.traces, {
-		onEmpty: () => 0,
-		onNonEmpty: traces =>
-			Array.max(
-				traces,
-				Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
-			).start
-	})
-}
-
-// One app's operations: failing first, then most recent.
+// One app's operations, in the overview's order: failing first, then most recently seen.
 export function operationsOf(overview: Overview, source?: string) {
-	return Array.sort(
-		Array.flatMap(
-			Array.filter(overview.apps, (app: Overview['apps'][number]) => app.name === source),
-			(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
-		),
-		Order.combine(
-			Order.mapInput(Order.flip(Order.Boolean), (row: ActiveOperation) => row.operation.failures > 0),
-			Order.mapInput(Order.flip(Order.Number), (row: ActiveOperation) => latestOf(row.operation))
-		)
+	return Array.flatMap(
+		Array.filter(overview.apps, (app: Overview['apps'][number]) => app.name === source),
+		(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
 	)
 }
 

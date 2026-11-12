@@ -49,6 +49,23 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 	)
 })
 
+it('orders an app’s operations failing first, then most recently seen', () => {
+	const day = overviewOf(
+		[
+			{...traced(String.repeat(32)('a'), 'stash', NOW - 3 * HOUR, 10), name: 'old'},
+			{...traced(String.repeat(32)('b'), 'stash', NOW - 2 * HOUR, 10), failed: true, name: 'broken'},
+			{...traced(String.repeat(32)('c'), 'stash', NOW - 4 * HOUR, 10), name: 'new'},
+			{...traced(String.repeat(32)('d'), 'stash', NOW - 5 * 60_000, 10), name: 'new'}
+		],
+		NOW,
+		'24h'
+	)
+	assert.deepStrictEqual(
+		Array.map(appOf(day, 'stash').operations, operation => operation.name),
+		['broken', 'new', 'old']
+	)
+})
+
 function traceId(index: number) {
 	return String.padStart(32, '0')(index.toString(16))
 }
