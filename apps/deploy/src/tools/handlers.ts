@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Number, Option, Order, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Effect, HashSet, Option, Order, String, Struct, pipe} from 'effect'
 
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
@@ -30,11 +30,24 @@ function processPaths(tree: readonly ProcessSummary[], prefix: string): readonly
 
 function processPage(nodes: readonly ProcessSummary[], offset: number, limit: number) {
 	const all = processPaths(nodes, '')
-	const selected = pipe(all, Array.drop(offset), Array.take(limit))
+	const selected = pipe(
+		all,
+		Array.drop(offset),
+		Array.take(limit),
+		Array.flatMap(path =>
+			pipe(
+				path,
+				String.split('.'),
+				Array.scan('', (prefix, part) => `${prefix}${part}.`),
+				Array.drop(1)
+			)
+		),
+		HashSet.fromIterable
+	)
 	function visit(tree: readonly ProcessSummary[], prefix: string): readonly ProcessSummary[] {
 		return Array.flatMap(tree, (node, index) => {
 			const path = `${prefix}${index}`
-			if (!Array.some(selected, key => key === path || String.startsWith(`${path}.`)(key))) return []
+			if (!HashSet.has(selected, `${path}.`)) return []
 			const children = visit(node.children ?? [], `${path}.`)
 			return [
 				{
@@ -44,16 +57,16 @@ function processPage(nodes: readonly ProcessSummary[], offset: number, limit: nu
 			]
 		})
 	}
-	const processes = visit(nodes, '')
+
 	return {
-		processes,
+		processes: visit(nodes, ''),
 		...Boolean.match(all.length > offset + limit, {
 			onFalse: () => ({}),
 			onTrue: () => ({nextProcessOffset: offset + limit})
 		}),
-		...Boolean.match(all.length > processPaths(processes, '').length, {
+		...Boolean.match(all.length > HashSet.size(selected), {
 			onFalse: () => ({}),
-			onTrue: () => ({processesOmitted: all.length - processPaths(processes, '').length})
+			onTrue: () => ({processesOmitted: all.length - HashSet.size(selected)})
 		})
 	}
 }
@@ -73,9 +86,7 @@ function inventoryPage(
 		Array.filter(key => input.cursor === undefined || key > input.cursor)
 	)
 	const page = Array.take(remaining, input.limit)
-	function contains(worker: string, kind: string, id: string) {
-		return Array.contains(page, `${worker}\t${kind}\t${id}`)
-	}
+	const selected = HashSet.fromIterable(page)
 	return {
 		...pipe(
 			page,
@@ -87,7 +98,7 @@ function inventoryPage(
 			...Struct.pick(worker, ['worker', 'errors']),
 			apps: pipe(
 				worker.apps,
-				Array.filter(row => contains(worker.worker, 'apps', row.id)),
+				Array.filter(row => HashSet.has(selected, `${worker.worker}\tapps\t${row.id}`)),
 				Array.map(row => {
 					if (row.processes === undefined) return row
 					return {...row, ...processPage(row.processes, input.processOffset, input.processLimit)}
@@ -95,11 +106,13 @@ function inventoryPage(
 			),
 			...Option.match(Option.fromUndefinedOr(worker.jobs), {
 				onNone: () => ({}),
-				onSome: jobs => ({jobs: Array.filter(jobs, row => contains(worker.worker, 'jobs', row.id))})
+				onSome: jobs => ({jobs: Array.filter(jobs, row => HashSet.has(selected, `${worker.worker}\tjobs\t${row.id}`))})
 			}),
 			...Option.match(Option.fromUndefinedOr(worker.exposures), {
 				onNone: () => ({}),
-				onSome: exposures => ({exposures: Array.filter(exposures, row => contains(worker.worker, 'exposures', row.id))})
+				onSome: exposures => ({
+					exposures: Array.filter(exposures, row => HashSet.has(selected, `${worker.worker}\texposures\t${row.id}`))
+				})
 			})
 		}))
 	}
@@ -120,12 +133,9 @@ function metricSummary(series: readonly Option.Option<number>[]) {
 	return {
 		samples: values.length,
 		...pipe(series, Array.last, Option.flatten, Option.match({onNone: () => ({}), onSome: last => ({last})})),
-		...Option.match(Array.head(values), {
-			onNone: () => ({}),
-			onSome: () => ({
-				max: Array.reduce(values, -Infinity, Number.max),
-				min: Array.reduce(values, Infinity, Number.min)
-			})
+		...Array.match(values, {
+			onEmpty: () => ({}),
+			onNonEmpty: measured => ({max: Array.max(measured, Order.Number), min: Array.min(measured, Order.Number)})
 		})
 	}
 }

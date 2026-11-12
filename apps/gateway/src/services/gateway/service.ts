@@ -268,6 +268,11 @@ export class Gateway extends Context.Service<
 					})
 				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
+				const upstreamTools = pipe(
+					found.upstreamTools,
+					Array.groupBy(tool => tool.name),
+					Record.map(Array.headNonEmpty)
+				)
 				const names = MutableList.make<string>()
 				for (const tool of found.tools) {
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
@@ -276,11 +281,7 @@ export class Gateway extends Context.Service<
 						yield* registry.addTool({
 							annotations: Context.empty(),
 							handle: (input: unknown) =>
-								call(
-									reference,
-									Option.getOrThrow(Array.findFirst(found.upstreamTools, upstream => upstream.name === tool.name)),
-									input
-								),
+								call(reference, pipe(upstreamTools, Record.get(tool.name), Option.getOrThrow), input),
 							services,
 							tool: McpSchema.Tool.make({...compact(tool), name})
 						})
