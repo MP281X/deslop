@@ -210,7 +210,7 @@ function machineOf(worker: string, options?: {error?: string; stale?: boolean}) 
 	const apps = [
 		{cpu: 12.34, id: `container:${String.slice(0, 12)(hex(0))}`, memory: 3 * GIB},
 		...Array.makeBy(19, index => ({
-			cpu: 1.234,
+			...Boolean.match(index === 0, {onFalse: () => ({cpu: 1.234}), onTrue: () => ({})}),
 			id: `service:user:svc-${index}.service`,
 			memory: (19 - index) * 256 * MIB
 		}))
