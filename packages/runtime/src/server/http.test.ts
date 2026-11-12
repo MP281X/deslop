@@ -7,9 +7,7 @@ import {
 	Boolean,
 	ConfigProvider,
 	Context,
-	Deferred,
 	Effect,
-	Fiber,
 	FileSystem,
 	Layer,
 	Queue,
@@ -24,7 +22,6 @@ import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Jwk, Jwt} from 'effect/jose'
-import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '#server/auth.ts'
@@ -38,6 +35,7 @@ const handler = Effect.fnUntraced(function* (
 	settings: Record<string, string>,
 	options: {auth?: typeof Auth.layer; client?: HttpClient.HttpClient} = {}
 ) {
+	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 	return yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
@@ -52,7 +50,7 @@ const handler = Effect.fnUntraced(function* (
 					Layer.provide(Sessions.layer),
 					Layer.provide(
 						Layer.mergeAll(
-							KeyValueStore.layerMemory,
+							Layer.provide(layerDataStore(directory), NodeServices.layer),
 							NodeCrypto.layer,
 							Layer.succeed(
 								HttpClient.HttpClient,
@@ -84,67 +82,6 @@ const send = Effect.fnUntraced(function* (
 	const method = Boolean.match(String.includes('/auth/')(url), {onFalse: () => 'POST', onTrue: () => 'GET'})
 	const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>()
 	return yield* Effect.promise(() => web.handler(new Request(url, {headers, method}), context))
-})
-
-it.layer(NodeServices.layer)(test => {
-	test.effect(
-		'cancels a queued storage write without interrupting an atomic write already underway',
-		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
-			const entered = yield* Deferred.make<void>()
-			const release = yield* Deferred.make<void>()
-			const waiting = yield* Deferred.make<void>()
-			const cancelled = yield* Deferred.make<void>()
-			const store = Context.get(
-				yield* Layer.build(
-					pipe(
-						layerDataStore(directory),
-						Layer.provide(
-							Layer.succeed(
-								FileSystem.FileSystem,
-								FileSystem.FileSystem.of({
-									...fs,
-									writeFileString: Effect.fnUntraced(function* (path, value, options) {
-										if (String.endsWith('/first.tmp')(path)) {
-											yield* Deferred.succeed(entered, undefined)
-											yield* Deferred.await(release)
-										}
-										yield* fs.writeFileString(path, value, options)
-									})
-								})
-							)
-						)
-					)
-				),
-				KeyValueStore.KeyValueStore
-			)
-			yield* Effect.ensuring(
-				Effect.gen(function* () {
-					const first = yield* Effect.forkScoped(store.set('first', 'committed'))
-					yield* Deferred.await(entered)
-					const second = yield* Effect.forkScoped(
-						pipe(
-							Deferred.succeed(waiting, undefined),
-							Effect.andThen(store.set('second', 'cancelled')),
-							Effect.onInterrupt(() => Deferred.succeed(cancelled, undefined))
-						)
-					)
-					yield* Deferred.await(waiting)
-					const stopping = yield* Effect.forkChild(Fiber.interrupt(second))
-					yield* TestClock.adjust(1)
-					assert.isTrue(yield* Deferred.isDone(cancelled))
-					yield* Fiber.join(stopping)
-					const stopFirst = yield* Effect.forkChild(Fiber.interrupt(first))
-					yield* Deferred.succeed(release, undefined)
-					yield* Fiber.join(stopFirst)
-					assert.strictEqual(yield* store.get('first'), 'committed')
-					assert.isUndefined(yield* store.get('second'))
-				}),
-				Deferred.succeed(release, undefined)
-			)
-		})
-	)
 })
 
 it.effect('does not keep announcing an app Auth permanently rejects', () =>

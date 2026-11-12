@@ -25,7 +25,6 @@ import {
 import {Signature} from 'effect/crypto'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Jwk, Jwt} from 'effect/jose'
-import {KeyValueStore} from 'effect/persistence'
 import {Reactivity} from 'effect/reactivity'
 import {SqlClient} from 'effect/sql'
 
@@ -76,7 +75,6 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	})
 	const calls = yield* Queue.unbounded<{key: string; url: string; body: string}>()
 	const pricingDown = yield* Ref.make(false)
-	const base = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
 	const database = yield* Layer.build(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer))
 	const client = HttpClient.make(request =>
 		Effect.gen(function* () {
@@ -128,7 +126,6 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 			Layer.mergeAll(
 				NodeServices.layer,
 				Layer.succeedContext(database),
-				Layer.succeed(KeyValueStore.KeyValueStore, base),
 				Layer.succeed(HttpClient.HttpClient, client),
 				NodeCrypto.layer
 			)

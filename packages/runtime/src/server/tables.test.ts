@@ -6,6 +6,8 @@ import {Array, Boolean, Effect, Layer, Option, Order, Predicate, Record, Schema,
 import type {Migrator, SqlError} from 'effect/sql'
 import {SqlClient} from 'effect/sql'
 
+import {Session, Sessions} from '#server/sessions.ts'
+
 type Model = Schema.Top & {readonly table: string}
 
 // A service's migrations need only the app's SqlClient.
@@ -14,36 +16,46 @@ type Migrations = Layer.Layer<never, Migrator.MigrationError | SqlError.SqlError
 type ColumnInfo = typeof ColumnInfo.Type
 const ColumnInfo = Schema.Struct({name: Schema.String, notnull: Schema.BooleanFromBit, type: Schema.String})
 
-// Every service whose class carries its `migrations`, and every model that names its `table`, by app: one app is one database.
+// Every app runs on the runtime, whose sessions table sits beside the app's own; then every service whose class carries its `migrations`, and every model that names its `table`, by app: one app is one database.
+const servers = import.meta.glob('../../../../apps/*/src/main.server.ts')
 const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/service.ts', {
 	eager: true
 })
 const schemas = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/schema.ts', {eager: true})
 
-function exportsByApp(modules: Record<string, Record<string, unknown>>) {
-	return Record.map(
-		Array.groupBy(Record.toEntries(modules), entry => Option.getOrThrow(Array.get(String.split(entry[0], '/'), 5))),
-		entries => Array.flatMap(entries, entry => Record.values(entry[1]))
+function appOf(file: string) {
+	return Option.getOrThrow(Array.get(String.split(file, '/'), 5))
+}
+
+function exportsOf(modules: Record<string, Record<string, unknown>>, app: string) {
+	return pipe(
+		Record.toEntries(modules),
+		Array.filter(entry => appOf(entry[0]) === app),
+		Array.flatMap(entry => Record.values(entry[1]))
 	)
 }
 
-const models = Record.map(exportsByApp(schemas), values =>
-	Array.filter(
-		values,
-		(value): value is Model =>
-			Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
-	)
-)
-
-const apps = Array.map(Record.toEntries(exportsByApp(services)), entry => ({
-	app: entry[0],
-	migrations: pipe(
-		entry[1],
-		Array.filter(value => Predicate.hasProperty(value, 'migrations')),
-		Array.map(service => service.migrations),
-		Array.filter((value): value is Migrations => Layer.isLayer(value))
-	)
-}))
+const apps = Array.map(Record.keys(servers), file => {
+	const app = appOf(file)
+	return {
+		app,
+		migrations: pipe(
+			exportsOf(services, app),
+			Array.filter(value => Predicate.hasProperty(value, 'migrations')),
+			Array.map(service => service.migrations),
+			Array.filter((value): value is Migrations => Layer.isLayer(value)),
+			Array.prepend(Sessions.migrations)
+		),
+		models: pipe(
+			exportsOf(schemas, app),
+			Array.filter(
+				(value): value is Model =>
+					Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
+			),
+			Array.prepend<Model>(Session)
+		)
+	}
+})
 
 // The type and nullability a field's encoded side needs in a STRICT table; only a field that encodes to null is nullable.
 function columnOf(ast: SchemaAST.AST): {readonly nullable: boolean; readonly types: readonly string[]} {
@@ -88,7 +100,7 @@ function expectedColumns(model: Model) {
 }
 
 // Every service of the app migrates one database; then each table is compared with its model through SQLite's own description.
-const checked = Effect.fnUntraced(function* (app: string, migrations: readonly Migrations[]) {
+const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], models: readonly Model[]) {
 	const sql = yield* SqlClient.SqlClient
 	yield* Effect.forEach(migrations, Layer.build, {concurrency: 1, discard: true})
 	const tables = yield* sql<{name: string}>`
@@ -96,17 +108,16 @@ const checked = Effect.fnUntraced(function* (app: string, migrations: readonly M
 		WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_migrations'
 		ORDER BY name
 	`
-	const owned = Option.getOrElse(Record.get(models, app), Array.empty)
 	assert.deepStrictEqual(
 		Array.map(tables, table => table.name),
 		Array.sort(
-			Array.map(owned, model => model.table),
+			Array.map(models, model => model.table),
 			Order.String
 		),
 		'one model per table'
 	)
 	yield* Effect.forEach(
-		owned,
+		models,
 		Effect.fnUntraced(function* (model) {
 			const columns = yield* Effect.flatMap(
 				sql`SELECT name, type, "notnull" FROM pragma_table_xinfo(${model.table}) ORDER BY name`,
@@ -122,7 +133,7 @@ it.effect.each(apps)('$app: every table has one model, and every model matches i
 	Effect.scoped(
 		Effect.gen(function* () {
 			yield* Effect.provideContext(
-				checked(app.app, app.migrations),
+				checked(app.migrations, app.models),
 				yield* Layer.build(SqliteClient.layer({filename: ':memory:'}))
 			)
 		})

@@ -1,8 +1,7 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {Config, Effect, FileSystem, Layer, Option, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
+import {Config, Effect, FileSystem, Layer, Option, Path} from 'effect'
 
-import {KeyValueStore} from 'effect/persistence'
 import {Reactivity} from 'effect/reactivity'
 
 import {appName, packageRoot} from '#server/package.ts'
@@ -35,57 +34,16 @@ export const dataDirectory = Effect.gen(function* () {
 	return directory
 })
 
-// The app's key-value files and its one SQLite database sit together in `directory`, the data directory in production and a temporary one in tests; the database and the services share one Reactivity, so a committed write reaches every live query.
+// The app's one SQLite database sits in `directory`, the data directory in production and a temporary one in tests; the database and the services share one Reactivity, so a committed write reaches every live query.
 export function layerDataStore(directory: string) {
 	return Layer.unwrap(
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem
-			const path = yield* Path.Path
-			// SQLite creates its file but not the folder around it.
+			const filename = (yield* Path.Path).join(directory, 'data.sqlite')
+			// SQLite creates its file but not the folder around it, and gives its -wal and -shm files the database's own mode: it holds tokens and keys, so only the user reads it.
 			yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-			return Layer.mergeAll(
-				pipe(
-					Layer.effect(
-						KeyValueStore.KeyValueStore,
-						Effect.gen(function* () {
-							const base = yield* KeyValueStore.KeyValueStore
-							const writes = yield* Semaphore.make(1)
-							return KeyValueStore.make({
-								...Struct.omit(base, ['set', 'modify', 'modifyUint8Array']),
-								set: (key, value) => {
-									if (key === '' || key === '.' || key === '..') {
-										return Effect.fail(
-											new KeyValueStore.KeyValueStoreError({key, message: 'Invalid storage key', method: 'set'})
-										)
-									}
-									const target = path.join(directory, encodeURIComponent(key))
-									return pipe(
-										Effect.gen(function* () {
-											if (Predicate.isString(value)) yield* fs.writeFileString(`${target}.tmp`, value, {mode: 0o600})
-											else yield* fs.writeFile(`${target}.tmp`, value, {mode: 0o600})
-										}),
-										Effect.andThen(fs.rename(`${target}.tmp`, target)),
-										Effect.uninterruptible,
-										Semaphore.withPermit(writes),
-										Effect.mapError(
-											cause =>
-												new KeyValueStore.KeyValueStoreError({
-													cause,
-													key,
-													message: 'Cannot save the value',
-													method: 'set'
-												})
-										)
-									)
-								}
-							})
-						})
-					),
-					Layer.provide(KeyValueStore.layerFileSystem(directory))
-				),
-				SqliteClient.layer({filename: path.join(directory, 'data.sqlite')}),
-				Reactivity.layer
-			)
+			yield* fs.writeFile(filename, new Uint8Array(), {flag: 'a', mode: 0o600})
+			return Layer.merge(SqliteClient.layer({filename}), Reactivity.layer)
 		})
 	)
 }

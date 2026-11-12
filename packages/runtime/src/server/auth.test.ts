@@ -1,4 +1,4 @@
-import {NodeCrypto} from '@effect/platform-node'
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -10,6 +10,7 @@ import {
 	Effect,
 	Exit,
 	Fiber,
+	FileSystem,
 	Layer,
 	Queue,
 	Redacted,
@@ -21,7 +22,6 @@ import {
 import {Signature} from 'effect/crypto'
 import {Headers, HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Jwk, Jwt} from 'effect/jose'
-import {KeyValueStore} from 'effect/persistence'
 import {Rpc, RpcMessage} from 'effect/rpc'
 import {TestClock} from 'effect/testing'
 
@@ -29,6 +29,7 @@ import {Auth, HttpAuth, layerMcpAuth} from './auth.ts'
 
 import {AiGateway, AiUnavailable} from '#server/ai.ts'
 import {Sessions} from '#server/sessions.ts'
+import {layerDataStore} from '#server/store.ts'
 import {AccessClaims, AuthError, CurrentUser, DEVELOPER, RpcAuth, SESSION_COOKIE, needsSignIn} from '#shared/auth.ts'
 
 const AUTH = 'https://auth.mp281x.xyz'
@@ -90,7 +91,19 @@ function layerAuth(client: HttpClient.HttpClient, settings: Record<string, strin
 		Layer.provideMerge(AiGateway.layer),
 		Layer.provideMerge(Sessions.layer),
 		Layer.provide(
-			Layer.mergeAll(KeyValueStore.layerMemory, NodeCrypto.layer, Layer.succeed(HttpClient.HttpClient, client))
+			Layer.mergeAll(
+				Layer.provide(
+					Layer.unwrap(
+						Effect.map(
+							Effect.flatMap(FileSystem.FileSystem, fs => fs.makeTempDirectoryScoped()),
+							layerDataStore
+						)
+					),
+					NodeServices.layer
+				),
+				NodeCrypto.layer,
+				Layer.succeed(HttpClient.HttpClient, client)
+			)
 		),
 		Layer.provideMerge(ConfigProvider.layer(ConfigProvider.fromUnknown(settings)))
 	)
