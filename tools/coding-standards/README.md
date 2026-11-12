@@ -21,12 +21,14 @@ export default defineConfig({lint: {extends: [lint]}})
 	"scripts": {
 		"prepare": "effect-tsgo patch --no-typescript --tsrs --oxlint",
 		"check": "effect-tsgo --tsrs-lint vp lint --type-aware --type-check",
-		"fix": "effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check || { coding-standards; exit 1; }"
+		"fix": "effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check || { coding-standards tactics; exit 1; }"
 	}
 }
 ```
 
-`coding-standards` with no flag prints the lint tactics, so `fix` ends a diagnostic autofix leaves with them, for the agent fixing it.
+Every action is a subcommand: `tactics`, `judge` or `sign-in`. `coding-standards` with no subcommand prints help; `coding-standards <subcommand> --help` describes that action's options.
+
+`coding-standards tactics` prints the lint tactics, so `fix` ends a diagnostic autofix leaves with them, for the agent fixing it.
 
 The preset leaves type-aware lint and type checking off, so a syntax-only pass stays possible; the two flags turn them on, and `--tsrs-lint` runs them on tsrs instead of Oxlint's tsgolint backend.
 
@@ -43,12 +45,14 @@ Add your own ignores and opt into `deslopRules` for Deslop's own choices.
 
 ## Judge
 
-`--judge` runs by hand, once per pull request after `fix` and the tests pass, then once more after its findings are fixed; never in CI or inside `fix`, `check` or `test`. Jev answers through a Deslop Gateway that spends the signed-in person's own OpenRouter key.
+`judge` runs by hand, once per pull request after `fix` and the tests pass, then once more after its findings are fixed; never in CI or inside `fix`, `check` or `test`. Jev answers through a Deslop Gateway that spends the signed-in person's own OpenRouter key.
 
 ```bash
-coding-standards sign-in                           # once per machine; approve its code in Auth or with answer_request
-coding-standards --judge --ignore '**/*.gen.ts'    # by hand, once per pull request; never in CI
+coding-standards sign-in                         # once per machine; approve its code in Auth or with answer_request
+coding-standards judge --ignore '**/*.gen.ts'     # by hand, once per pull request; never in CI
 ```
+
+`judge` and `sign-in` share `--auth` and `--gateway` to choose their Deslop origins. `judge` also accepts repeated `--ignore` globs; these options belong after the subcommand.
 
 Questions address a single function, component or test case, not codebase-wide decisions. A question with a gate is asked only of the units it admits: a gate reads only what Jev reads, the unit's code and the imports it uses, and admits every unit the answer could be yes for. A gate that skips its own question's yes example fails the judge without a model call.
 
