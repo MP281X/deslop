@@ -1,4 +1,4 @@
-import {Array, Config, Effect, Option, Predicate, Redacted, Schema, SchemaGetter, Stream, String, pipe} from 'effect'
+import {Array, Config, Effect, Option, Redacted, Schema, SchemaGetter, Stream, String, pipe} from 'effect'
 
 import {Mac} from 'effect/crypto'
 import {
@@ -130,10 +130,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								const finished = yield* Effect.map(
 									Effect.option(telemetry.trace(ids.traceId)),
 									Option.exists(trace =>
-										Array.some(
-											trace.spans,
-											span => span.spanId === ids.spanId && Predicate.isString(span.payload['endTimeUnixNano'])
-										)
+										Array.some(trace.spans, span => span.spanId === ids.spanId && Option.isSome(span.duration))
 									)
 								)
 								if (event.action === 'completed' || (event.action === 'in_progress' && !finished)) {

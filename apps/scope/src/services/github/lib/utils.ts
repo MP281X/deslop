@@ -1,7 +1,7 @@
 import {Array, Boolean, DateTime, Option, String, pipe} from 'effect'
 
 import type {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
-import type {Span} from '#services/telemetry/schema.ts'
+import type {ExportedSpan} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 
 // A log line as GitHub writes it: an ISO time, then the runner's message.
@@ -47,7 +47,7 @@ function text(key: string, value: string) {
 	return {key, value: {stringValue: value}}
 }
 
-function repositoryTraces(repository: string, spans: readonly Span[]) {
+function repositoryTraces(repository: string, spans: readonly ExportedSpan[]) {
 	return TracesRequest.make({
 		resourceSpans: [
 			{

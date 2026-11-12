@@ -1,8 +1,10 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Layer, Option, Schema, Stream, pipe} from 'effect'
 
+import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
 import {jobLogs, jobTrace, runTrace} from '#services/github/lib/utils.ts'
@@ -17,13 +19,8 @@ const SKIPPED = Schema.decodeSync(Schema.fromJsonString(WorkflowJob.fields.workf
 )
 
 const layer = pipe(
-	Layer.unwrap(
-		Effect.map(
-			FileSystem.FileSystem.use(fs => fs.makeTempDirectoryScoped()),
-			Telemetry.layer
-		)
-	),
-	Layer.provide(Layer.merge(NodeCrypto.layer, NodeServices.layer))
+	Telemetry.layer,
+	Layer.provide(Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer))
 )
 
 const run = WorkflowRun.make({
@@ -135,7 +132,7 @@ it.layer(layer)(test => {
 			yield* telemetry.ingestTraces(runTrace({...run, action: 'in_progress'}))
 			yield* telemetry.ingestTraces(runTrace(run))
 			yield* TestClock.adjust('2 seconds')
-			const app = Option.getOrThrow(Array.head(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps))
+			const app = Option.getOrThrow(Array.head(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps))
 			assert.strictEqual(app.name, 'MP281X/deslop')
 			assert.deepStrictEqual(
 				Array.map(app.operations, operation => [
@@ -148,7 +145,7 @@ it.layer(layer)(test => {
 			)
 			const trace = Option.getOrThrow(Array.head(app.operations[0]?.traces ?? []))
 			assert.containsSubset(trace.failure, {span: 'Format, lint, types and dead code'})
-			assert.strictEqual(trace.durationMs, 360_000)
+			assert.strictEqual(Duration.toMillis(trace.duration), 360_000)
 			assert.strictEqual(trace.label, '#101')
 			assert.deepStrictEqual(
 				Array.map((yield* telemetry.trace(trace.id)).spans, span => [span.depth, span.name]),

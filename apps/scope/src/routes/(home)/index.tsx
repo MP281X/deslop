@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Duration, Match, Option, Record, Schema, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -41,7 +41,7 @@ import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import {Range, rangeStart} from '#services/telemetry/schema.ts'
-import type {Operation, OperationTrace, Overview, Runtime, Trace} from '#services/telemetry/schema.ts'
+import type {Operation, OperationTrace, Overview, Runtime, TraceTree} from '#services/telemetry/schema.ts'
 
 // The side an operation starts on: a 12px muted glyph after the name when two visible rows share it, and its name for their labels.
 const SIDES: Record<Runtime, string> = {ci: 'CI', mobile: 'iOS', server: 'server', unknown: '', web: 'web'}
@@ -325,13 +325,13 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 						type="button"
 						aria-label={Array.join(
 							[
-								ageOf(props.trace.time, props.now),
+								ageOf(props.trace.start, props.now),
 								`trace ${traceLabel(props.trace)}`,
 								...Option.match(Option.fromUndefinedOr(props.trace.failure), {
 									onNone: () => [],
 									onSome: failure => [`failed in ${failure.span}`]
 								}),
-								durationOf(props.trace.durationMs)
+								durationOf(Duration.toMillis(props.trace.duration))
 							],
 							', '
 						)}
@@ -343,12 +343,9 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 				<ItemMedia className="w-8">
 					<span
 						className="text-muted-foreground tabular-nums"
-						title={Option.match(Number.parse(String.slice(0, -6)(props.trace.time)), {
-							onNone: () => '—',
-							onSome: timestamp => clock.format(timestamp)
-						})}
+						title={clock.format(props.trace.start)}
 					>
-						{ageOf(props.trace.time, props.now)}
+						{ageOf(props.trace.start, props.now)}
 					</span>
 				</ItemMedia>
 				<ItemContent>
@@ -369,7 +366,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 					</span>
 				</ItemContent>
 				<ItemActions>
-					<span className="w-12 text-right tabular-nums">{durationOf(props.trace.durationMs)}</span>
+					<span className="w-12 text-right tabular-nums">{durationOf(Duration.toMillis(props.trace.duration))}</span>
 				</ItemActions>
 			</Item>
 		</div>
@@ -429,7 +426,7 @@ function TracesPane(props: {
 }
 
 // The picked span's details alone, for the phone's pushed span screen.
-function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
+function SpanDetails(props: {focus: Option.Option<TraceTree['spans'][number]>}) {
 	return Option.match(props.focus, {
 		onNone: () => <EmptyState label="Select a span" icon={<ChartBarHorizontalIcon weight="light" />} />,
 		onSome: span => (
@@ -444,10 +441,10 @@ function SpanDetails(props: {focus: Option.Option<Trace['spans'][number]>}) {
 
 // The trace's flame under its pinned time axis, then, when inline, the picked span's details after one hairline.
 function SpansList(props: {
-	focus: Option.Option<Trace['spans'][number]>
+	focus: Option.Option<TraceTree['spans'][number]>
 	inlineDetails: boolean
 	onPick: (id: string) => void
-	trace: Trace
+	trace: TraceTree
 }) {
 	if (!Array.isReadonlyArrayNonEmpty(props.trace.spans)) {
 		return <EmptyState label="No spans" icon={<ChartBarHorizontalIcon weight="light" />} />
@@ -522,7 +519,7 @@ function TracePane(props: {
 					<ItemListHeading icon={<WaterfallGlyph />}>
 						{Option.match(trace, {
 							onNone: () => null,
-							onSome: current => `${traceLabel(current)} · ${ageOf(current.time, props.now)}`
+							onSome: current => `${traceLabel(current)} · ${ageOf(current.start, props.now)}`
 						})}
 					</ItemListHeading>
 				),
@@ -735,7 +732,7 @@ function HomeRoute() {
 		const cutoff = rangeStart(next, now)
 		send({
 			_tag: 'Range',
-			keepTrace: Option.exists(selection.activeTrace, trace => BigInt(trace.time) >= cutoff),
+			keepTrace: Option.exists(selection.activeTrace, trace => trace.start >= cutoff),
 			range: next
 		})
 	}
