@@ -6,7 +6,7 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {liveAtom, liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
@@ -44,7 +44,7 @@ class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/Rpc
 export const accountAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
-			Stream.unwrap(Effect.map(RpcClient, client => client('people.account', undefined))),
+			liveStream(RpcClient, 'people.account'),
 			reconnectOnDrop,
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
@@ -75,10 +75,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 				Typing: {fields: {answered: Schema.optionalKey(Schema.Struct(Answered)), typed: Schema.String}}
 			}
 		}),
-		streams: {
-			lookup: (code: string) =>
-				reconnectOnDrop(Stream.unwrap(Effect.map(RpcClient, client => client('signins.lookup', {code}))))
-		}
+		streams: {lookup: (code: string) => reconnectOnDrop(liveStream(RpcClient, 'signins.lookup', {code}))}
 	}).handle({
 		initial: {data: {typed: ''}, target: 'Typing'},
 		on: {
@@ -128,26 +125,10 @@ export const linkedCodeAtom = Atom.family((code: string) =>
 	})
 )
 
-export const peopleAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('people.watch', undefined))),
-			reconnectOnDrop
-		)
-	)
-)
+export const peopleAtom = Atom.keepAlive(liveAtom(RpcClient, 'people.watch'))
 
 // Live, so a new sign-in, each refresh and a disconnect from another page show here.
-export const appsAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('tokens.watchApps', undefined))),
-			reconnectOnDrop
-		)
-	)
-)
+export const appsAtom = Atom.keepAlive(liveAtom(RpcClient, 'tokens.watchApps'))
 
 // One per person, so a failed answer shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
@@ -157,7 +138,7 @@ export const admitAtom = Atom.family((id: string) =>
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(
-			Stream.unwrap(Effect.map(RpcClient, client => client('signins.status', {request}))),
+			liveStream(RpcClient, 'signins.status', {request}),
 			reconnectOnDrop,
 			Stream.tap(status =>
 				pipe(
@@ -183,15 +164,7 @@ export function approveLink(id: string) {
 }
 
 // Live, so an app shows once its server announces itself to Auth.
-export const catalogAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('apps.watch', undefined))),
-			reconnectOnDrop
-		)
-	)
-)
+export const catalogAtom = Atom.keepAlive(liveAtom(RpcClient, 'apps.watch'))
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(
@@ -293,15 +266,7 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 	)
 )
 
-export const passkeysAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('passkeys.watch', undefined))),
-			reconnectOnDrop
-		)
-	)
-)
+export const passkeysAtom = Atom.keepAlive(liveAtom(RpcClient, 'passkeys.watch'))
 
 // Kept alive, since the browser's passkey prompt outlives the menu that starts it.
 export const addPasskeyAtom = Atom.keepAlive(

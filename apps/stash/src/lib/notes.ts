@@ -6,7 +6,7 @@ import {Directory, File, Paths} from 'expo-file-system'
 
 import {makeRemoval} from '@deslop/components-mobile/removal'
 import {alertFailure, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
-import {keepValueThroughOutages} from '@deslop/runtime/client/live-stream'
+import {keepValueThroughOutages, liveStream} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -29,11 +29,7 @@ export const notesAtom = Atom.keepAlive(
 			get,
 			listFile,
 			NoteItem,
-			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('notes.events', undefined))),
-				Stream.scan(Array.empty<NoteItem>, apply),
-				Stream.drop(1)
-			),
+			pipe(liveStream(RpcClient, 'notes.events'), Stream.scan(Array.empty<NoteItem>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
 	})
@@ -53,7 +49,7 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 		get,
 		pipe(
 			Effect.sleep('250 millis'),
-			Effect.andThen(Effect.map(RpcClient, client => client('notes.search', {query}))),
+			Effect.as(liveStream(RpcClient, 'notes.search', {query})),
 			Stream.unwrap,
 			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
 		),

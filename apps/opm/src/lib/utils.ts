@@ -14,6 +14,7 @@ import {
 
 import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
+import {liveStream} from '@deslop/runtime/client/live-stream'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import {makeSession, provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
@@ -53,11 +54,7 @@ export const chaptersAtom = Atom.keepAlive(
 			get,
 			chaptersFile,
 			ChapterItem,
-			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('chapters.events', undefined))),
-				Stream.scan(Array.empty<ChapterItem>, apply),
-				Stream.drop(1)
-			),
+			pipe(liveStream(RpcClient, 'chapters.events'), Stream.scan(Array.empty<ChapterItem>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
 	})

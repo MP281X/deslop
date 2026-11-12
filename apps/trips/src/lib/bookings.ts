@@ -8,6 +8,7 @@ import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {makeRemoval} from '@deslop/components-mobile/removal'
 import {alertFailure, cachedList} from '@deslop/components-mobile/utils'
+import {liveStream} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
@@ -29,11 +30,7 @@ export const bookingsAtom = Atom.keepAlive(
 			get,
 			bookingsFile,
 			Booking,
-			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('bookings.events', undefined))),
-				Stream.scan(Array.empty<Booking>, apply),
-				Stream.drop(1)
-			),
+			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Booking>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
 	})

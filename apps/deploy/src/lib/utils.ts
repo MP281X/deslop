@@ -2,7 +2,13 @@ import {Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {isDeniedCause, keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {
+	isDeniedCause,
+	keepValueThroughOutages,
+	liveAtom,
+	liveStream,
+	reconnectOnDrop
+} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
@@ -24,7 +30,7 @@ export const inventoryAtom = Atom.keepAlive(
 		keepValueThroughOutages(
 			get,
 			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('inventory.watch', undefined))),
+				liveStream(RpcClient, 'inventory.watch'),
 				Stream.tapCause(cause =>
 					Effect.sync(() => {
 						if (isDeniedCause(cause)) get.set(exposeTargetAtom, Option.none())
@@ -64,11 +70,5 @@ export const runAtom = Atom.family((_id: string) =>
 )
 
 export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('metrics.watch', {minutes}))),
-			reconnectOnDrop
-		)
-	)
+	liveAtom(RpcClient, 'metrics.watch', {minutes})
 )

@@ -18,7 +18,7 @@ import {
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {keepValueThroughOutages, liveAtom, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 
@@ -165,15 +165,7 @@ function openingApp(overview: Overview) {
 }
 
 export const overviewAtom = Atom.family((range: Range) =>
-	Atom.keepAlive(
-		RpcClient.runtime.atom(get =>
-			keepValueThroughOutages(
-				get,
-				Stream.unwrap(Effect.map(RpcClient, client => client('telemetry.overview', range))),
-				reconnectOnDrop
-			)
-		)
-	)
+	Atom.keepAlive(liveAtom(RpcClient, 'telemetry.overview', range))
 )
 
 const traceAtoms = Atom.family((range: Range) =>

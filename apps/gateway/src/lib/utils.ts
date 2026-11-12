@@ -4,7 +4,7 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {keepValueThroughOutages, liveAtom, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
@@ -39,15 +39,7 @@ export const connectAtom = Atom.family((id: string) =>
 	)
 )
 
-export const serversAtom = Atom.keepAlive(
-	RpcClient.runtime.atom(get =>
-		keepValueThroughOutages(
-			get,
-			Stream.unwrap(Effect.map(RpcClient, client => client('connections.watch', undefined))),
-			reconnectOnDrop
-		)
-	)
-)
+export const serversAtom = Atom.keepAlive(liveAtom(RpcClient, 'connections.watch'))
 
 // The field under the bar: its text and why the last add failed, until the next edit; a success clears it.
 export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
@@ -104,28 +96,10 @@ export const aiKeysAtom = pipe(
 )
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
-export const aiUsageAtom = Atom.family((period: Period) =>
-	Atom.keepAlive(
-		RpcClient.runtime.atom(get =>
-			keepValueThroughOutages(
-				get,
-				Stream.unwrap(Effect.map(RpcClient, client => client('ai.usage', period))),
-				reconnectOnDrop
-			)
-		)
-	)
-)
+export const aiUsageAtom = Atom.family((period: Period) => Atom.keepAlive(liveAtom(RpcClient, 'ai.usage', period)))
 
 export const mcpUsageAtom = Atom.family((period: Period) =>
-	Atom.keepAlive(
-		RpcClient.runtime.atom(get =>
-			keepValueThroughOutages(
-				get,
-				Stream.unwrap(Effect.map(RpcClient, client => client('connections.usage', period))),
-				reconnectOnDrop
-			)
-		)
-	)
+	Atom.keepAlive(liveAtom(RpcClient, 'connections.usage', period))
 )
 
 export const setKeyAtom = RpcClient.mutation('ai.setKey')

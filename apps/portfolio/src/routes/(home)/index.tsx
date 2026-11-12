@@ -36,7 +36,7 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
-import {reconnectOnDrop} from '@deslop/runtime/client/live-stream'
+import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
@@ -91,7 +91,7 @@ const identity = getIdentity()
 const portfolioAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
-			Stream.unwrap(Effect.map(RpcClient, client => client('presence.join', identity))),
+			liveStream(RpcClient, 'presence.join', identity),
 			// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
 			reconnectOnDrop,
 			Stream.mapAccum<Scene, PortfolioScene, Scene>(
