@@ -238,7 +238,11 @@ function moveLines(map: ChangeMap) {
 		Array.map(group => {
 			const first = Array.headNonEmpty(group)
 			const deleted = Array.some(map.files, file => file.file === first.from && file.deleted)
-			return `${code(first.from)} ${Boolean.match(deleted, {onFalse: () => 'moved code into', onTrue: () => 'merged into'})} ${code(String.replace(/^.*\//u, '')(first.to))}: ${plural(group.length, 'declaration')}`
+			return {
+				atoms: [Boolean.match(deleted, {onFalse: () => 'moved code', onTrue: () => 'merged'})],
+				line: `${code(first.from)} ${Boolean.match(deleted, {onFalse: () => 'moved code into', onTrue: () => 'merged into'})} ${code(String.replace(/^.*\//u, '')(first.to))}: ${plural(group.length, 'declaration')}`,
+				place: movedFolderOf(first.from)
+			}
 		})
 	)
 	const editedOnTheWay = Array.dedupe(
@@ -248,7 +252,7 @@ function moveLines(map: ChangeMap) {
 		)
 	)
 	return [
-		...fit(Array.map(merges, line => ({atoms: ['merge'], line, place: ''}))),
+		...fit(merges),
 		...when(Array.isReadonlyArrayNonEmpty(editedOnTheWay), [`Edited while moving: ${names(editedOnTheWay, 6)}`]),
 		...Array.map(
 			map.reuses,
