@@ -183,4 +183,5 @@ function JourneyLayout(props: ActivityProps) {
 	}
 }
 
-export const JourneyActivity = createLiveActivity<ActivityProps>(ACTIVITY_NAME, JourneyLayout)
+// Registered at every launch: the activities the server starts by push name this layout, and the app starts none itself.
+createLiveActivity<ActivityProps>(ACTIVITY_NAME, JourneyLayout)

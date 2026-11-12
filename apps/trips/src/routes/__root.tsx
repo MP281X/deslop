@@ -14,7 +14,7 @@ import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bookingsAtom} from '#lib/bookings.ts'
 import {calendarAtom} from '#lib/calendar.ts'
 import {openedAtom} from '#lib/deep-links.ts'
-import {activitiesAtom} from '#lib/live-activity.ts'
+import '#lib/activities.tsx'
 import {pushAtom} from '#lib/notifications.ts'
 import {session} from '#lib/session.ts'
 import {primary} from '#lib/status.ts'
@@ -32,7 +32,6 @@ function Destination(props: {onClose: () => void; value: string}) {
 
 function AppRoutes() {
 	useAtomMount(pushAtom)
-	useAtomMount(activitiesAtom)
 	useAtomMount(calendarAtom)
 	const opened = useAtomValue(openedAtom)
 	const [path, setPath] = useState(() =>
