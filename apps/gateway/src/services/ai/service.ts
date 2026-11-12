@@ -85,9 +85,10 @@ function make(directory: string) {
 			Effect.tapError(error =>
 				Effect.logWarning('The pricing catalog could not be refreshed; keeping cached pricing', error)
 			),
+			Effect.option,
 			Effect.cachedWithTTL(exit => {
-				if (Exit.isFailure(exit)) return 0
-				return '1 day'
+				if (Exit.isSuccess(exit) && Option.isSome(exit.value)) return '1 day'
+				return 0
 			})
 		)
 		function loadKeys(id: string) {
@@ -113,8 +114,7 @@ function make(directory: string) {
 				entry.inputTokens + entry.outputTokens + entry.cacheReadTokens + entry.cacheWriteTokens > 0
 			) {
 				// Calls finishing together share one refresh, even when it fails.
-				// oxlint-disable-next-line @deslop/coding-standards/no-discarded-failure -- The cached computation logs each failed attempt once; waiters must not log it again.
-				yield* Effect.ignore(refreshPricing)
+				yield* refreshPricing
 				const catalog = yield* Ref.get(pricing)
 				const catalogProvider = Boolean.match(entry.provider === 'opencode-zen', {
 					onFalse: () => entry.provider,
