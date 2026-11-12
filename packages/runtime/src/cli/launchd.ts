@@ -67,7 +67,7 @@ const writeAgent = Effect.fnUntraced(function* (label: string, name: string, com
 	return file
 })
 
-export const installAgent = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
+export const installAgent = Effect.fnUntraced(function* (name: string, command: string[]) {
 	const label = `deslop-${name}`
 	const target = `${domain()}/${label}`
 	const file = yield* writeAgent(
@@ -76,14 +76,7 @@ export const installAgent = Effect.fnUntraced(function* (name: string, command: 
 		command,
 		'<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n<key>ThrottleInterval</key><integer>3</integer>'
 	)
-	if (yield* loaded(target)) {
-		// kickstart without -k leaves a running helper alone, just like systemctl start.
-		if (options?.restart === false) {
-			yield* launchctl('kickstart', target)
-			return `${label}.plist installed\n`
-		}
-		yield* bootout(file)
-	}
+	if (yield* loaded(target)) yield* bootout(file)
 	yield* launchctl('bootstrap', domain(), file)
 	return `${label}.plist installed\n`
 })

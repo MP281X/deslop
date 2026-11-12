@@ -20,7 +20,7 @@ const unitDirectory = Effect.gen(function* () {
 
 // `restart: false` leaves a running process alone, for one that reloads its own configuration.
 export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
-	if (platform === 'darwin') return yield* installAgent(name, command, options)
+	if (platform === 'darwin') return yield* installAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const home = yield* Config.String('HOME')

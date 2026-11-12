@@ -1,5 +1,5 @@
 import {cpus, hostname} from 'node:os'
-import {platform} from 'node:process'
+import {pid as collectorPid, platform} from 'node:process'
 
 import {
 	Array,
@@ -331,16 +331,19 @@ export class Inventory extends Context.Service<
 				const time = yield* Clock.currentTimeMillis
 				const total = Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times)))
 				const records = Result.map(launchd.table, text =>
-					launchdProcesses(
-						text,
-						Record.fromEntries(
-							Array.getSomes(
-								Array.map(
-									Result.getOrElse(launchd.agents, () => []),
-									agent => Option.map(agent.pid, pid => [`${pid}`, agent.label] as const)
+					Array.filter(
+						launchdProcesses(
+							text,
+							Record.fromEntries(
+								Array.getSomes(
+									Array.map(
+										Result.getOrElse(launchd.agents, () => []),
+										agent => Option.map(agent.pid, pid => [`${pid}`, agent.label] as const)
+									)
 								)
 							)
-						)
+						),
+						record => record.process.parent !== collectorPid
 					)
 				)
 				const owned = Result.getOrElse(records, () => [])

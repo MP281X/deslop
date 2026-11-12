@@ -33,7 +33,7 @@ function appPort(item: InventoryItem) {
 		item.process !== undefined &&
 		item.process !== '' &&
 		!Array.contains([5353, 5355], item.port ?? 0) &&
-		Option.isNone(String.match(/^(?:ssh|cloudflared|tailscaled|caddy)$/u)(item.process ?? ''))
+		Option.isNone(String.match(/^(?:ssh|cloudflared|tailscaled|caddy|ControlCenter)$/u)(item.process ?? ''))
 	)
 }
 
