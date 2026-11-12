@@ -41,17 +41,17 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 				const history = MachineHistory.make({
 					cpuModel: 'Fixture CPU',
 					error: '',
-					samples: [Sample.make({disks: [], memoryTotal: 1024, memoryUsed: 512, time: 0})],
+					samples: [Sample.make({cores: [], disks: [], memoryTotal: 1024, memoryUsed: 512, time: 0})],
 					stale: false,
 					time: 0,
 					worker: 'worker'
 				})
 				const group = RpcContracts.omit(
-					'deploy.inventory',
-					'deploy.metrics',
-					'deploy.expose',
-					'deploy.hide',
-					'deploy.run'
+					'inventory.watch',
+					'metrics.watch',
+					'exposures.expose',
+					'exposures.hide',
+					'inventory.run'
 				)
 				const server = yield* Layer.build(
 					pipe(
@@ -60,19 +60,19 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								ServerRuntime.layerRpc({
 									group,
 									handlers: group.toLayer({
-										'deploy.history': Effect.fnUntraced(function* () {
+										'inventory.snapshot': () =>
+											Effect.flatMap(Ref.get(unavailable), failed => {
+												if (failed) return Effect.fail(DeployError.make({message: 'worker unavailable'}))
+												return Effect.succeed(snapshot)
+											}),
+										'metrics.history': Effect.fnUntraced(function* () {
 											if (yield* Ref.get(hanging)) {
 												yield* Deferred.succeed(entered, undefined)
 												return yield* Effect.never
 											}
 											if (yield* Ref.get(unavailable)) return yield* DeployError.make({message: 'worker unavailable'})
 											return history
-										}),
-										'deploy.snapshot': () =>
-											Effect.flatMap(Ref.get(unavailable), failed => {
-												if (failed) return Effect.fail(DeployError.make({message: 'worker unavailable'}))
-												return Effect.succeed(snapshot)
-											})
+										})
 									})
 								}),
 								// No person is signed in: only a worker holding the shared key gets through.

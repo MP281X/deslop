@@ -61,10 +61,10 @@ it('measures individual logical cores, load and uptime without bridging resets',
 	assert.deepStrictEqual(value.cores, [{id: 'cpu0', usage: 50}, {id: 'cpu1'}])
 	assert.deepStrictEqual(value.load, [1.5, 2.5, 3.5])
 	assert.strictEqual(value.uptime, 130)
-	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cores?.[0]?.usage)
-	assert.isUndefined(sample({...current, time: 100_000}, MEMORY, STORAGE, first).cores?.[0]?.usage)
+	assert.isUndefined(sample({...current, uptime: 1}, MEMORY, STORAGE, first).cores[0]?.usage)
+	assert.isUndefined(sample({...current, time: 100_000}, MEMORY, STORAGE, first).cores[0]?.usage)
 	assert.isUndefined(
-		sample({...current, cores: [{id: 'cpu0', idle: 1, total: 1000}]}, MEMORY, STORAGE, first).cores?.[0]?.usage
+		sample({...current, cores: [{id: 'cpu0', idle: 1, total: 1000}]}, MEMORY, STORAGE, first).cores[0]?.usage
 	)
 })
 

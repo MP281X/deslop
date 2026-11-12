@@ -1,13 +1,14 @@
 import {Effect, Option, Queue, Schema, String, Stream, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
-import * as Notifications from 'expo-notifications'
+import {addNotificationResponseReceivedListener, getLastNotificationResponse} from 'expo-notifications'
+import type {NotificationResponse} from 'expo-notifications'
 import {Linking} from 'react-native'
 
-import * as MobileRuntime from '@deslop/runtime/mobile/client'
+import {appConfig} from '@deslop/runtime/mobile/app'
 
 export function linkOf(bookingId: string) {
-	return `${MobileRuntime.extra.scheme}://booking/${bookingId}`
+	return `${appConfig.extra.scheme}://booking/${bookingId}`
 }
 
 function bookingIn(url?: string | null) {
@@ -16,7 +17,7 @@ function bookingIn(url?: string | null) {
 	)
 }
 
-function tapped(response: Notifications.NotificationResponse | null) {
+function tapped(response: NotificationResponse | null) {
 	return Option.map(
 		Schema.decodeUnknownOption(Schema.Struct({bookingId: Schema.String}))(response?.notification.request.content.data),
 		data => data.bookingId
@@ -32,7 +33,7 @@ export const openedAtom = Atom.keepAlive(
 						Effect.promise(() => Linking.getInitialURL()),
 						url =>
 							// A notification tapped while the app was closed launches it without a URL.
-							Option.orElse(bookingIn(url), () => tapped(Notifications.getLastNotificationResponse()))
+							Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
 					)
 				),
 				Stream.callback<Option.Option<string>>(queue =>
@@ -45,7 +46,7 @@ export const openedAtom = Atom.keepAlive(
 						)
 						yield* Effect.acquireRelease(
 							Effect.sync(() =>
-								Notifications.addNotificationResponseReceivedListener(response => {
+								addNotificationResponseReceivedListener(response => {
 									Queue.offerUnsafe(queue, tapped(response))
 								})
 							),

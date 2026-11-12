@@ -177,13 +177,13 @@ export class Fleet extends Context.Service<
 						return yield* exposures.expose(Struct.omit(input, ['target']))
 					}
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
-						client('deploy.expose', Struct.omit(input, ['target']), {headers})
+						client('exposures.expose', Struct.omit(input, ['target']), {headers})
 					)
 				}, changeFailed),
 				hide: Effect.fnUntraced(function* (input) {
 					if (input.target === undefined || input.target === '') return yield* exposures.hide(input.name)
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
-						client('deploy.hide', {name: input.name}, {headers})
+						client('exposures.hide', {name: input.name}, {headers})
 					)
 				}, changeFailed),
 				history: metrics.read,
@@ -194,7 +194,7 @@ export class Fleet extends Context.Service<
 						workers,
 						worker =>
 							pipe(
-								remote(worker, (client, headers) => client('deploy.history', query, {headers})),
+								remote(worker, (client, headers) => client('metrics.history', query, {headers})),
 								Effect.timeout('2 seconds'),
 								Effect.map(value => ({...value, worker: worker.name})),
 								Effect.catch(
@@ -225,7 +225,7 @@ export class Fleet extends Context.Service<
 							return yield* inventory.run(Struct.omit(input, ['target']))
 						}
 						return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
-							client('deploy.run', Struct.omit(input, ['target']), {headers})
+							client('inventory.run', Struct.omit(input, ['target']), {headers})
 						)
 					},
 					Effect.mapError(cause => {
@@ -239,7 +239,7 @@ export class Fleet extends Context.Service<
 						workers,
 						worker =>
 							pipe(
-								remote(worker, (client, headers) => client('deploy.snapshot', undefined, {headers})),
+								remote(worker, (client, headers) => client('inventory.snapshot', undefined, {headers})),
 								Effect.timeout('2 seconds'),
 								Effect.map(snapshot =>
 									Snapshot.make({

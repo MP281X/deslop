@@ -1,14 +1,14 @@
-import {useAtom, useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, HashSet, Number, Option, Order, Stream, String} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, Order, Stream, String} from 'effect'
 
 import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {Suspense, useState} from 'react'
+import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
+import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -19,8 +19,7 @@ import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
 
-import {inventoryAtom, runAtom} from '#lib/utils.ts'
-import {useExpose} from '#routes/(home)/-expose.tsx'
+import {inventoryAtom, openExposeAtom, runAtom} from '#lib/utils.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {counted, host, impactGroups, middleEllipsis, runRequest} from '#routes/(home)/-rows.ts'
 import {
@@ -37,15 +36,14 @@ import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
 export function InventoryContent(props: {children: ReactNode}) {
-	const result = useAtomSuspense(inventoryAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(inventoryAtom)
-	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
 	return (
-		<CatchBoundary getResetKey={() => 'inventory'} errorComponent={Failure}>
-			{props.children}
-		</CatchBoundary>
+		<Loaded atom={inventoryAtom}>
+			{() => (
+				<CatchBoundary getResetKey={() => 'inventory'} errorComponent={ReadFailure}>
+					{props.children}
+				</CatchBoundary>
+			)}
+		</Loaded>
 	)
 }
 
@@ -68,7 +66,7 @@ function AppRowsSkeleton(props: {label: string; rows: number}) {
 
 // Every port is one bordered chip whose digits end on the same edge: exposed in foreground text opening its endpoint, exposable in muted text opening the Expose dialog, the rest muted and inert.
 function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
-	const expose = useExpose()
+	const expose = useAtomSet(openExposeAtom)
 	const exposedPorts = HashSet.fromIterable(Array.map(props.row.exposures, exposure => exposure.port))
 	const freePorts = Array.groupBy(props.free, port => port.id)
 	return (
@@ -170,7 +168,6 @@ function AppRow(props: {
 	row: Row
 	selected: boolean
 }) {
-	const [requested, setRequested] = useState(() => Option.none<number>())
 	const [runResult, run] = useAtom(runAtom(props.row.item.id))
 	const state = status(props.row.item)
 	const light = dot(props.row.item, state)
@@ -179,7 +176,6 @@ function AppRow(props: {
 	const age = failureAge(props.row.item, props.now)
 	const running =
 		Option.isSome(String.match(/^(?:activating|deactivating|active · running)/u)(props.row.item.state)) ||
-		Option.exists(requested, at => props.now - at < 10_000) ||
 		AsyncResult.isWaiting(runResult)
 	const fullName = workloadName(props.row.item)
 	const name = Boolean.match(props.compact, {onFalse: () => fullName, onTrue: () => middleEllipsis(fullName)})
@@ -267,14 +263,7 @@ function AppRow(props: {
 						onFalse: () => null,
 						onTrue: () => (
 							<span className="flex size-5 shrink-0 items-center justify-center">
-								<RunNow
-									disabled={running}
-									item={props.row.item}
-									onRun={() => {
-										setRequested(Option.some(props.now))
-										run(runRequest(props.row.item))
-									}}
-								/>
+								<RunNow disabled={running} item={props.row.item} onRun={() => run(runRequest(props.row.item))} />
 							</span>
 						)
 					})}

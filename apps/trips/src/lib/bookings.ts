@@ -1,17 +1,18 @@
 import {Array, Clock, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
-import * as Clipboard from 'expo-clipboard'
+import {getImageAsync, getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 
 import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipboard'
 import {makeRemoval} from '@deslop/components-mobile/removal'
-import {alert, cachedList} from '@deslop/components-mobile/utils'
+import {alertFailure, cachedList} from '@deslop/components-mobile/utils'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
+import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
-import {RpcClient, session, withClient} from '#lib/session.ts'
+import {RpcClient, session} from '#lib/session.ts'
 import {byStart} from '#services/bookings/lib/utils.ts'
 import type {BookingSource} from '#services/bookings/schema.ts'
 import {Booking, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
@@ -29,11 +30,11 @@ export const bookingsAtom = Atom.keepAlive(
 			bookingsFile,
 			Booking,
 			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('bookings.watch', undefined))),
+				Stream.unwrap(Effect.map(RpcClient, client => client('bookings.events', undefined))),
 				Stream.scan(Array.empty<Booking>, apply),
 				Stream.drop(1)
 			),
-			session.reopening
+			session.reconnectOrSignOut
 		)
 	})
 )
@@ -42,7 +43,7 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 	if (offer.kind === 'image') {
 		const copied = yield* Effect.tryPromise({
 			catch: cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}),
-			try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
+			try: () => getImageAsync({format: 'jpeg', jpegQuality: 0.85})
 		})
 		if (copied === null) return yield* BookingsError.make({message: 'The clipboard no longer holds an image.'})
 		const image = yield* pipe(
@@ -57,7 +58,7 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 	const text = pipe(
 		yield* Effect.tryPromise({
 			catch: cause => BookingsError.make({cause, message: 'The copied text could not be read.'}),
-			try: () => Clipboard.getStringAsync()
+			try: () => getStringAsync()
 		}),
 		String.trim,
 		String.slice(0, 60_000)
@@ -70,8 +71,8 @@ export const clipboard = makeClipboard({
 	// A refused booking is answered, but a lost connection offers the same copy on the next return.
 	answered: error => error._tag === 'BookingsError',
 	detect: Effect.gen(function* () {
-		if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
-		if (yield* Effect.promise(() => Clipboard.hasStringAsync())) return Option.some<ClipboardKind>('text')
+		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
+		if (yield* Effect.promise(() => hasStringAsync())) return Option.some<ClipboardKind>('text')
 		return Option.none<ClipboardKind>()
 	}),
 	labels: {
@@ -86,9 +87,10 @@ export const clipboard = makeClipboard({
 	save: (copy, get) =>
 		Effect.gen(function* () {
 			const source = yield* readClipboard(copy.count, bookingFromClipboard(copy))
-			yield* Effect.provideContext(
-				Effect.flatMap(RpcClient, client => client('bookings.save', source)),
-				yield* get.result(RpcClient.runtime)
+			yield* provideRuntimeOnce(
+				get,
+				RpcClient.runtime,
+				Effect.flatMap(RpcClient, client => client('bookings.save', source))
 			)
 		})
 })
@@ -96,24 +98,26 @@ export const clipboard = makeClipboard({
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
 	remove: (id, get) =>
-		withClient(
+		provideRuntimeOnce(
 			get,
+			RpcClient.runtime,
 			Effect.flatMap(RpcClient, client => client('bookings.remove', {id}))
 		)
 })
 
 export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 	pipe(
-		withClient(
+		provideRuntimeOnce(
 			get,
-			Effect.flatMap(RpcClient, client => client('bookings.refresh', {id}))
+			RpcClient.runtime,
+			Effect.flatMap(RpcClient, client => client('tracking.refresh', {id}))
 		),
 		// Offline the call waits for a connection, and the pull spinner would never stop.
 		Effect.timeoutOrElse({
 			duration: '30 seconds',
 			orElse: () => BookingsError.make({message: 'The server did not answer.'})
 		}),
-		alert('Not Refreshed')
+		alertFailure('Not Refreshed')
 	)
 )
 

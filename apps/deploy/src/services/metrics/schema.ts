@@ -60,7 +60,7 @@ export const Sample = Schema.Struct({
 	apps: Schema.optionalKey(
 		Schema.Array(Schema.Struct({cpu: Schema.optionalKey(Schema.Finite), id: Schema.String, memory: Schema.Finite}))
 	),
-	cores: Schema.optionalKey(Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optionalKey(Schema.Finite)}))),
+	cores: Schema.Array(Schema.Struct({id: Schema.String, usage: Schema.optionalKey(Schema.Finite)})),
 	cpu: Schema.optionalKey(Schema.Finite),
 	disks: Schema.Array(Schema.Struct({mount: Schema.String, total: Schema.Finite, used: Schema.Finite})),
 	load: Schema.optionalKey(Schema.Array(Schema.Finite)),

@@ -63,8 +63,21 @@ import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
 import {swiftuiThemeValues} from '#lint/swiftui-theme-values.ts'
 
-const REACT_LEGACY_APIS = ['Component', 'PureComponent', 'createRef', 'forwardRef', 'memo', 'useCallback', 'useMemo']
-const REACT_LEGACY_MESSAGE = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
+const REACT_LEGACY_APIS = [
+	'Component',
+	'PureComponent',
+	'createRef',
+	'forwardRef',
+	'memo',
+	'useCallback',
+	'useEffect',
+	'useLayoutEffect',
+	'useMemo',
+	'useReducer',
+	'useSyncExternalStore'
+]
+const REACT_LEGACY_MESSAGE =
+	'Use React 19 function components with refs as props; React Compiler owns memoization, atoms own effects, subscriptions and state machines, and ref callbacks own DOM listeners.'
 const MAP_MESSAGE =
 	'Use HashMap, or MutableHashMap for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 const NUMBER_CHECK_MESSAGE =
@@ -245,6 +258,11 @@ export const lint: OxlintConfig = {
 				message: 'Name tools in snake_case.',
 				selector:
 					'CallExpression[callee.object.name="Tool"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/])'
+			},
+			{
+				message: "Name an RPC '<service folder>.<verb>', as in 'metrics.history'.",
+				selector:
+					'CallExpression[callee.object.name="Rpc"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z]+\\.[a-z][A-Za-z]*$/])'
 			}
 		],
 

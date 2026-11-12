@@ -1,11 +1,10 @@
-import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomMount, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Option} from 'effect'
 
 import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {useEffect} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
 import {
@@ -20,12 +19,12 @@ import {
 
 import {AccountAvatar} from '#lib/components.tsx'
 import {
-	ADDING_PASSKEY,
 	accountMenuOpenAtom,
 	addPasskeyAtom,
 	confirmForPasskeyAtom,
 	menuSignOutAtom,
-	passkeysAtom
+	passkeysAtom,
+	resumePasskeyAtom
 } from '#lib/utils.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
@@ -83,16 +82,8 @@ function PasskeyItems(props: {via: SessionVia}) {
 export function AccountMenu(props: {account: SignedAccount}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signOut, endSession] = useAtom(menuSignOutAtom)
-	const add = useAtomSet(addPasskeyAtom)
 	const [open, setOpen] = useAtom(accountMenuOpenAtom)
-	// Back from GitHub, the passkey it went for starts at once, and only once.
-	useEffect(() => {
-		if (sessionStorage.getItem(ADDING_PASSKEY) === null) return
-		sessionStorage.removeItem(ADDING_PASSKEY)
-		if (props.account.via === 'Code') return
-		setOpen(true)
-		add()
-	}, [add, props.account.via, setOpen])
+	useAtomMount(resumePasskeyAtom(props.account.via))
 	return (
 		<DropdownMenu open={open} onOpenChange={setOpen}>
 			<DropdownMenuTrigger

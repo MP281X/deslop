@@ -49,14 +49,14 @@ export const RpcHandlers = RpcContracts.toLayer(
 			}
 		})
 		return RpcContracts.of({
-			'deploy.expose': fleet.expose,
-			'deploy.hide': fleet.hide,
-			'deploy.history': fleet.history,
-			'deploy.inventory': () => inventory,
+			'exposures.expose': fleet.expose,
+			'exposures.hide': fleet.hide,
+			'inventory.run': fleet.run,
+			'inventory.snapshot': () => fleet.local,
+			'inventory.watch': () => inventory,
+			'metrics.history': fleet.history,
 			// Cached history at once, then every worker's fresh one; after that a slot of the range as each fills, at most every 30 seconds, while the other workers refresh beside it, at most every 5 seconds, so a sleeping one never holds back this one's seconds.
-			'deploy.metrics': query => Stream.unwrap(Cache.get(metrics, query.minutes)),
-			'deploy.run': fleet.run,
-			'deploy.snapshot': () => fleet.local
+			'metrics.watch': query => Stream.unwrap(Cache.get(metrics, query.minutes))
 		})
 	})
 )

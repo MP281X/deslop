@@ -1,14 +1,21 @@
-import {Array, Effect, HashSet, Option, Order, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, Effect, HashSet, Option, Order, Schema, Stream, pipe} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
 import Constants from 'expo-constants'
 import {File, Paths} from 'expo-file-system'
-import * as Notifications from 'expo-notifications'
+import {
+	addNotificationResponseReceivedListener,
+	getExpoPushTokenAsync,
+	getLastNotificationResponse,
+	requestPermissionsAsync,
+	setBadgeCountAsync,
+	setNotificationHandler
+} from 'expo-notifications'
 
 import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {keychain} from '@deslop/runtime/mobile/keychain'
-import * as MobileSession from '@deslop/runtime/mobile/session'
+import {makeSession, provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 
 import {OpmNative} from '#modules/native/index.ts'
@@ -19,7 +26,7 @@ import {ChapterItem, ChaptersError} from '#services/chapters/schema.ts'
 
 export const primary = hues.ivory
 
-export const session = MobileSession.make('https://opm.mp281x.xyz', keychain)
+export const session = makeSession('https://opm.mp281x.xyz', keychain)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
@@ -47,11 +54,11 @@ export const chaptersAtom = Atom.keepAlive(
 			chaptersFile,
 			ChapterItem,
 			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('library.watch', undefined))),
+				Stream.unwrap(Effect.map(RpcClient, client => client('chapters.events', undefined))),
 				Stream.scan(Array.empty<ChapterItem>, apply),
 				Stream.drop(1)
 			),
-			session.reopening
+			session.reconnectOrSignOut
 		)
 	})
 )
@@ -61,23 +68,92 @@ export const unreachableAtom = Atom.family((_key: string) => Atom.make(Effect.as
 
 // Concurrent, so finishing one chapter while opening the next never cancels either write; the client is read once so a reconnect replays none.
 export const readAtom = Atom.keepAlive(
-	RpcClient.runtime.fn(
+	Atom.fn(
 		(update: ReadingUpdate, get) =>
-			pipe(
-				get.result(RpcClient.runtime),
-				Effect.flatMap(context =>
-					Effect.provideContext(
-						Effect.flatMap(RpcClient, client => client('chapters.read', update)),
-						context
-					)
+			Effect.ignore(
+				provideRuntimeOnce(
+					get,
+					RpcClient.runtime,
+					Effect.flatMap(RpcClient, client => client('chapters.read', update))
 				),
-				Effect.ignore({log: 'Warn', message: 'The reading position was not saved'})
+				{log: 'Warn', message: 'The reading position was not saved'}
 			),
 		{concurrent: true}
 	)
 )
 
-Notifications.setNotificationHandler({
+// One page turn in a reader opened on a chapter: the chapters from it on, in order, and the strip's page index.
+type PageTurn = {following: ChapterList; index: number; opened: number}
+
+// What one opened reader has passed: how many chapters its strip shows, the chapter in view and those it finished, so a page turn before the server's copy of the list arrives cannot unfinish one.
+const readerStateAtom = Atom.family((_reader: string) =>
+	Atom.make({finished: HashSet.empty<number>(), inView: Option.none<number>(), shown: 2})
+)
+
+// Each page turn saves the reading position; passing into the next chapter finishes every page of the one before it, and reaching the last shown chapter adds the next.
+export const readerAtom = Atom.family((reader: string) =>
+	Atom.writable(
+		get => get(readerStateAtom(reader)),
+		(context, turn: PageTurn) => {
+			const state = context.get(readerStateAtom(reader))
+			const shown = Array.take(turn.following, state.shown)
+			Option.match(
+				Array.findFirst(
+					Array.zip(
+						shown,
+						Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+					),
+					pair => turn.index < pair[1] + pair[0].pages.length
+				),
+				{
+					onNone: () => undefined,
+					onSome: pair => {
+						const chapter = pair[0]
+						const page = turn.index - pair[1]
+						const previous = Option.getOrElse(state.inView, () => turn.opened)
+						const passed = Option.match(
+							Array.findFirst(shown, item => item.number === previous && item.number < chapter.number),
+							{
+								onNone: () => state.finished,
+								onSome: before => {
+									context.set(readAtom, {
+										done: true,
+										number: before.number,
+										page: before.pages.length - 1,
+										series: before.series
+									})
+									return HashSet.add(state.finished, before.number)
+								}
+							}
+						)
+						// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
+						const finished = Boolean.match(page === chapter.pages.length - 1 || chapter.reading?.done === true, {
+							onFalse: () => passed,
+							onTrue: () => HashSet.add(passed, chapter.number)
+						})
+						context.set(readAtom, {
+							done: HashSet.has(finished, chapter.number),
+							number: chapter.number,
+							page,
+							series: chapter.series
+						})
+						const last = Option.exists(Array.last(shown), item => item.number === chapter.number)
+						context.set(readerStateAtom(reader), {
+							finished,
+							inView: Option.some(chapter.number),
+							shown: Boolean.match(last && state.shown < turn.following.length, {
+								onFalse: () => state.shown,
+								onTrue: () => state.shown + 1
+							})
+						})
+					}
+				}
+			)
+		}
+	)
+)
+
+setNotificationHandler({
 	handleNotification: () =>
 		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
 		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
@@ -90,12 +166,12 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			if (!session.signedIn(get)) return
 			yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The badge could not be cleared.'}),
-				try: () => Notifications.setBadgeCountAsync(0)
+				try: () => setBadgeCountAsync(0)
 			})
 			if (
 				!(yield* Effect.tryPromise({
 					catch: cause => ChaptersError.make({cause, message: 'The notification permission could not be asked.'}),
-					try: () => Notifications.requestPermissionsAsync()
+					try: () => requestPermissionsAsync()
 				})).granted
 			) {
 				return
@@ -105,9 +181,9 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			)
 			const token = yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
-				try: () => Notifications.getExpoPushTokenAsync({projectId: extra.eas.projectId})
+				try: () => getExpoPushTokenAsync({projectId: extra.eas.projectId})
 			})
-			yield* Effect.flatMap(RpcClient, client => client('devices.register', {token: token.data}))
+			yield* Effect.flatMap(RpcClient, client => client('chapters.register', {token: token.data}))
 		}),
 		Effect.ignore({log: 'Warn', message: 'Notifications are not set up on this iPhone'})
 	)
@@ -154,10 +230,10 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 
 export const openedAtom = Atom.keepAlive(
 	Atom.make(get => {
-		const subscription = Notifications.addNotificationResponseReceivedListener(response =>
+		const subscription = addNotificationResponseReceivedListener(response =>
 			get.setSelf(notificationOf(response.notification.request.content.data))
 		)
 		get.addFinalizer(() => subscription.remove())
-		return notificationOf(Notifications.getLastNotificationResponse()?.notification.request.content.data)
+		return notificationOf(getLastNotificationResponse()?.notification.request.content.data)
 	})
 )

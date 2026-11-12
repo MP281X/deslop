@@ -1,21 +1,20 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Schema, pipe} from 'effect'
 
 import {HourglassIcon, SignOutIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useEffect} from 'react'
+import {Suspense} from 'react'
 
 import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import {EmptyState, Error} from '@deslop/components-web/fallbacks'
+import {EmptyState, FailureRetry} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
-import {searchOf} from '@deslop/components-web/router'
 
-import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signOutAtom} from '#lib/utils.ts'
+import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signingOutAtom} from '#lib/utils.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
-import {SignedOut} from '#routes/(home)/-sign-in.tsx'
+import {SignIn} from '#routes/(home)/-sign-in.tsx'
 import {Waiting} from '#routes/(home)/-waiting.tsx'
 import icon from '#routes/icon.svg'
 import type {SignedAccount} from '#services/people/schema.ts'
@@ -54,11 +53,11 @@ function Signed(props: {account: SignedAccount}) {
 
 function SigningOut() {
 	const next = route.useSearch({select: search => search.next})
-	const [signOut, endSession] = useAtom(signOutAtom)
-	useEffect(() => endSession(next), [endSession, next])
+	const signOut = useAtomValue(signingOutAtom(next))
+	const retry = useAtomRefresh(signingOutAtom(next))
 	return Option.match(AsyncResult.error(signOut), {
 		onNone: () => <EmptyState label="Signing out" icon={<SignOutIcon weight="light" />} />,
-		onSome: failure => <Error error={failure} label="Sign-out failed" reset={() => endSession(next)} />
+		onSome: () => <FailureRetry label="Sign-out failed" reset={retry} />
 	})
 }
 
@@ -100,7 +99,7 @@ function ShellPage() {
 			{signingOut && <SigningOut />}
 			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {
-				onNone: () => Option.isNone(requestId) && !signingOut && <SignedOut />,
+				onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
 				onSome: signed =>
 					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
 						onFalse: () => <Signed account={signed} />,
@@ -112,7 +111,7 @@ function ShellPage() {
 }
 
 // The bar mounts once and stays; its account and tabs join it when known, and no page skeleton shows before the account is known.
-function Shell() {
+function ShellRoute() {
 	return (
 		<>
 			<AppBar
@@ -137,4 +136,7 @@ function Shell() {
 	)
 }
 
-export const Route = createFileRoute('/(home)')({component: Shell, validateSearch: searchOf(Search)})
+export const Route = createFileRoute('/(home)')({
+	component: ShellRoute,
+	validateSearch: Schema.toStandardSchemaV1(Search)
+})

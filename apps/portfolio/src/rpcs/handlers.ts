@@ -6,6 +6,6 @@ import {Presence} from '#services/presence/service.ts'
 export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const presence = yield* Presence
-		return RpcContracts.of({'portfolio.join': presence.join, 'portfolio.move': presence.move})
+		return RpcContracts.of({'presence.join': presence.join, 'presence.move': presence.move})
 	})
 )

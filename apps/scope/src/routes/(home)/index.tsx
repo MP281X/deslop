@@ -1,26 +1,25 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Match, Number, Option, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Cause, DateTime, Match, Number, Option, Record, Schema, String, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon, DeviceMobileIcon, FlowArrowIcon, GlobeIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
-import {Suspense, useEffect, useState} from 'react'
+import {Suspense, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {appMarks} from '@deslop/components-web/apps'
-import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
+import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
-import {searchOf} from '@deslop/components-web/router'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn, useMediaQuery} from '@deslop/components-web/utils'
-import {isDenied} from '@deslop/runtime/shared/auth'
+import {cn, mediaQueryAtom} from '@deslop/components-web/utils'
+import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {
 	Search,
@@ -33,6 +32,7 @@ import {
 	operationsOf,
 	overviewAtom,
 	selectionOf,
+	shownSearch,
 	traceAtom,
 	traceLabel
 } from '#lib/utils.ts'
@@ -490,23 +490,17 @@ function Spans(props: {
 	pickedSpan?: string
 	range: Range
 }) {
-	const atom = traceAtom(props.range, props.id)
-	const result = useAtomSuspense(atom, {includeFailure: true})
-	const refresh = useAtomRefresh(atom)
-	const value = AsyncResult.value(result)
-	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
-	return Option.match(value, {
-		onNone: () => null,
-		onSome: trace => {
-			const focus = focusOf(trace, props.pickedSpan)
-			if (props.detailOnly === true) return <SpanDetails focus={focus} />
-			return (
-				<SpansList focus={focus} inlineDetails={props.inlineDetails === true} onPick={props.onPick} trace={trace} />
-			)
-		}
-	})
+	return (
+		<Loaded atom={traceAtom(props.range, props.id)}>
+			{trace => {
+				const focus = focusOf(trace, props.pickedSpan)
+				if (props.detailOnly === true) return <SpanDetails focus={focus} />
+				return (
+					<SpansList focus={focus} inlineDetails={props.inlineDetails === true} onPick={props.onPick} trace={trace} />
+				)
+			}}
+		</Loaded>
+	)
 }
 
 // The open trace's waterfall: a band naming its short id and age, then, when inline, the picked span's details.
@@ -696,17 +690,12 @@ function renderPage(children: ReactNode) {
 	)
 }
 
-function Home() {
+function HomeRoute() {
 	// Below desktop width, the same selection navigates one screen at a time; from 1600px all panes stand together.
-	const isMobile = useMediaQuery('(width < 64rem)')
-	const isWide = useMediaQuery('(width >= 100rem)')
+	const isMobile = useAtomValue(mediaQueryAtom('(width < 64rem)'))
+	const isWide = useAtomValue(mediaQueryAtom('(width >= 100rem)'))
 	const search = route.useSearch()
-	const navigation = navigationOf(search)
 	const navigate = route.useNavigate()
-	function send(event: NavigationEvent) {
-		navigate({search: previous => nextSearch(previous, event)})
-	}
-	const pane = navigation.path
 	const range = search.range ?? '1h'
 	const overview = useAtomValue(overviewAtom(range))
 	const refresh = useAtomRefresh(overviewAtom(range))
@@ -714,51 +703,17 @@ function Home() {
 	// The app tabs describe retained data, not the frame: the switch stores them so the bar never waits for the new frame.
 	const [known, setKnown] = useState<Overview['apps']>(() => [])
 	const apps = Option.match(value, {onNone: () => known, onSome: current => current.apps})
-	const authFailure = Option.filter(AsyncResult.error(overview), isDenied)
-	const blockingFailure = Option.filter(AsyncResult.cause(overview), () => Option.isNone(value))
+	const failure = blockingFailure(overview)
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 
 	// One app is always chosen: a URL naming none, or one this data no longer has, falls back to the newest failure, else the first tab.
 	const selection = selectionOf(value, search, isMobile)
-	const source = selection.source
-	useEffect(() => {
-		if (source === undefined || search.source === source) return
-		navigate({replace: true, search: previous => nextSearch(previous, {_tag: 'Source', app: source})})
-	}, [navigate, search.source, source])
-
-	// Once a frame's operations arrive, the URL drops a selection the page no longer shows; a frame that still shows it changes nothing.
-	useEffect(() => {
-		if (Option.isNone(value)) return
-		const staleOperation =
-			search.operation !== undefined &&
-			!Option.exists(
-				selection.activeOperation,
-				active =>
-					active.app.name === (search.source ?? '') &&
-					active.operation.name === search.operation &&
-					active.operation.runtime === search.side
-			)
-		const staleTrace =
-			search.trace !== undefined && !Option.exists(selection.activeTrace, trace => trace.id === search.trace)
-		if (!staleOperation && !staleTrace) return
-		navigate({
-			replace: true,
-			search: previous =>
-				Boolean.match(staleOperation, {
-					onFalse: () => Struct.omit(previous, ['span', 'trace']),
-					onTrue: () => Struct.omit(previous, ['operation', 'side', 'span', 'trace'])
-				})
-		})
-	}, [
-		navigate,
-		search.operation,
-		search.side,
-		search.source,
-		search.trace,
-		selection.activeOperation,
-		selection.activeTrace,
-		value
-	])
+	// The selection as the page shows it, which the next navigation writes: the chosen app, without an operation or trace this frame no longer holds.
+	const shown = shownSearch(search, selection, Option.isSome(value))
+	const pane = navigationOf(shown).path
+	function send(event: NavigationEvent) {
+		navigate({search: nextSearch(shown, event)})
+	}
 
 	function selectOperation(app: string, operation: Operation) {
 		send({_tag: 'Operation', operation: {app, name: operation.name, runtime: operation.runtime}})
@@ -850,16 +805,15 @@ function Home() {
 					onTrue: () => undefined
 				})}
 			/>
-			{Option.match(authFailure, {
-				onNone: () =>
-					Option.match(blockingFailure, {
-						onNone: () => renderPage(workspace),
-						onSome: cause => renderPage(<Failure error={Cause.squash(cause)} reset={refresh} />)
-					}),
-				onSome: error => renderPage(<Failure error={error} reset={refresh} />)
+			{Option.match(failure, {
+				onNone: () => renderPage(workspace),
+				onSome: cause => renderPage(<ReadFailure error={Cause.squash(cause)} reset={refresh} />)
 			})}
 		</div>
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: searchOf(Search)})
+export const Route = createFileRoute('/(home)/')({
+	component: HomeRoute,
+	validateSearch: Schema.toStandardSchemaV1(Search)
+})

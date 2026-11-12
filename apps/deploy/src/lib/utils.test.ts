@@ -34,11 +34,13 @@ const fixture = Effect.gen(function* () {
 	}
 	const inventory = yield* Queue.unbounded<Effect.Effect<Snapshot, DeployError>>()
 	const handlers = RpcContracts.toLayer({
-		'deploy.expose': () => Effect.succeed(''),
-		'deploy.hide': () => Effect.void,
-		'deploy.history': () => Effect.never,
-		'deploy.inventory': () => pipe(Stream.fromQueue(inventory), Stream.mapEffect(Function.identity)),
-		'deploy.metrics': query => {
+		'exposures.expose': () => Effect.succeed(''),
+		'exposures.hide': () => Effect.void,
+		'inventory.run': () => Effect.void,
+		'inventory.snapshot': () => Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
+		'inventory.watch': () => pipe(Stream.fromQueue(inventory), Stream.mapEffect(Function.identity)),
+		'metrics.history': () => Effect.never,
+		'metrics.watch': query => {
 			const source = pipe(
 				Match.value(query.minutes),
 				Match.when(60, () => Stream.fromQueue(hour)),
@@ -57,9 +59,7 @@ const fixture = Effect.gen(function* () {
 					return Effect.succeed(values)
 				})
 			)
-		},
-		'deploy.run': () => Effect.void,
-		'deploy.snapshot': () => Effect.succeed(Snapshot.make({items: [], sources: [], time: 1}))
+		}
 	})
 	const context = yield* Layer.build(
 		pipe(

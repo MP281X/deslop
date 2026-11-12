@@ -4,14 +4,13 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {AsyncResult, Atom} from 'effect/reactivity'
-import {RpcClient, RpcClientError, RpcSerialization} from 'effect/rpc'
-import {Socket} from 'effect/socket'
 import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
-import Constants from 'expo-constants'
 import {Alert} from 'react-native'
 
+import {reconnectOnDrop} from '#client/live-stream.ts'
+import {layerSocketProtocol} from '#client/protocol.ts'
 import {activationsAtom} from '#mobile/activations.ts'
-import {extra} from '#mobile/client.ts'
+import {appConfig} from '#mobile/app.ts'
 import {
 	AUTHORIZE_PATH,
 	AUTH_URL,
@@ -23,44 +22,28 @@ import {
 	needsSignIn,
 	rejected
 } from '#shared/auth.ts'
-import {layerRpcStreamClient} from '#shared/rpc.ts'
 import {Account, RPC_PATH} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
 type SessionJson = typeof SessionJson.Type
 const SessionJson = Schema.fromJsonString(SessionHandle)
 
-const slug = Schema.decodeUnknownSync(Schema.String)(Constants.expoConfig?.slug)
-const applicationName = `@deslop/${slug}`
-const name = String.capitalize(slug)
+const applicationName = `@deslop/${appConfig.slug}`
+const name = String.capitalize(appConfig.slug)
 
 // Scope's public receiver takes traces and logs from anywhere; the version is the release running, a build's or an over-the-air update's.
 Atom.runtime.addGlobalLayer(
-	layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile', Constants.expoConfig?.version ?? '0.1.0')
+	layerOtlp(`${applicationName}-ios`, 'https://scope.mp281x.xyz', 'mobile', appConfig.version)
 )
 
-function signedInProtocol<R>(token: Effect.Effect<string, AuthError, R>) {
-	return (server: string) =>
-		pipe(
-			// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-			RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-			Layer.provide(Socket.layerWebSocket(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws')))),
-			Layer.provide(Socket.layerWebSocketConstructorGlobal),
-			Layer.provide(RpcSerialization.layerJson),
-			Layer.provideMerge(layerRpcAuthClient(token)),
-			Layer.provideMerge(layerRpcStreamClient),
-			Layer.provide(FetchHttpClient.layer)
-		)
-}
-
 // An empty text means signed out.
-export type Storage = {
+export type SessionStorage = {
 	clear: Effect.Effect<void, AuthError>
 	read: Effect.Effect<string, AuthError>
 	write: (text: string) => Effect.Effect<void, AuthError>
 }
 
-export function make(server: string, storage: Storage) {
+export function makeSession(server: string, storage: SessionStorage) {
 	const runtime = Atom.runtime(FetchHttpClient.layer)
 
 	// Unreadable JSON signs out rather than failing every launch.
@@ -79,7 +62,7 @@ export function make(server: string, storage: Storage) {
 
 	const signIn = pipe(
 		Effect.gen(function* () {
-			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: extra.scheme})
+			const redirectUri = makeRedirectUri({path: 'auth/callback', scheme: appConfig.extra.scheme})
 			const request = new AuthRequest({
 				clientId: clientIdOf({name, redirects: [redirectUri]}),
 				redirectUri,
@@ -211,12 +194,15 @@ export function make(server: string, storage: Storage) {
 		account,
 		bearer,
 		machine,
-		protocol: signedInProtocol(bearer)(server),
+		protocol: pipe(
+			layerSocketProtocol(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws'))),
+			Layer.provideMerge(layerRpcAuthClient(bearer)),
+			Layer.provide(FetchHttpClient.layer)
+		),
 		// An outage reopens a live stream; a session the server refused signs the app out.
-		reopening: <A, E, R>(live: Stream.Stream<A, E, R>) =>
-			pipe(
-				live,
-				Stream.tapError(error =>
+		reconnectOrSignOut: <A, E, R>(live: Stream.Stream<A, E, R>) =>
+			reconnectOnDrop(
+				Stream.tapError(live, error =>
 					Effect.ignore(
 						Effect.gen(function* () {
 							if (!needsSignIn(error)) return
@@ -224,18 +210,6 @@ export function make(server: string, storage: Storage) {
 							yield* Atom.set(machine.send, {_tag: 'Changed'})
 						}),
 						{log: 'Warn', message: 'The refused session could not be cleared'}
-					)
-				),
-				Stream.retry($ =>
-					pipe(
-						$(Schedule.spaced('2 seconds')),
-						Schedule.while(metadata => {
-							if (Schema.is(AuthError)(metadata.input)) return metadata.input.error === 'temporarily_unavailable'
-							return (
-								Schema.is(RpcClientError.RpcClientError)(metadata.input) &&
-								metadata.input.reason._tag !== 'RpcClientDefect'
-							)
-						})
 					)
 				)
 			),
@@ -248,5 +222,13 @@ export function make(server: string, storage: Storage) {
 	}
 }
 
-export type Session = ReturnType<typeof make>['machine']
-export type AppSession = ReturnType<typeof make>
+// An action reads its client once, so a reconnect never runs its last write again.
+export function provideRuntimeOnce<A, E, R, ER>(
+	get: {result: <B, X>(atom: Atom.Atom<AsyncResult.AsyncResult<B, X>>) => Effect.Effect<B, X>},
+	runtime: Atom.AtomRuntime<R, ER>,
+	effect: Effect.Effect<A, E, R>
+) {
+	return Effect.flatMap(get.result(runtime), context => Effect.provideContext(effect, context))
+}
+
+export type Session = ReturnType<typeof makeSession>

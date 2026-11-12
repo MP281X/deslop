@@ -42,6 +42,7 @@ const readings = [
 		samples: [
 			Sample.make({
 				apps: [{id: 'service:system:deslop-private.service', memory: 1}],
+				cores: [],
 				disks: [],
 				memoryTotal: 100,
 				memoryUsed: 1,
@@ -53,6 +54,30 @@ const readings = [
 		worker: 'desktop'
 	})
 ]
+
+/* oxlint-disable no-restricted-globals, no-restricted-properties -- Node is no browser; scope a desktop screen and a loopback origin with nothing listening, so reads wait as they do offline, and restore both descriptors. */
+const offlineDesktop = Effect.acquireRelease(
+	Effect.sync(() => {
+		const previous = {
+			location: Object.getOwnPropertyDescriptor(globalThis, 'location'),
+			matchMedia: Object.getOwnPropertyDescriptor(globalThis, 'matchMedia')
+		}
+		Object.defineProperty(globalThis, 'location', {configurable: true, value: {origin: 'http://127.0.0.1:9'}})
+		Object.defineProperty(globalThis, 'matchMedia', {
+			configurable: true,
+			value: () => ({addEventListener: () => undefined, matches: false, removeEventListener: () => undefined})
+		})
+		return previous
+	}),
+	previous =>
+		Effect.sync(() => {
+			if (previous.location === undefined) Reflect.deleteProperty(globalThis, 'location')
+			else Object.defineProperty(globalThis, 'location', previous.location)
+			if (previous.matchMedia === undefined) Reflect.deleteProperty(globalThis, 'matchMedia')
+			else Object.defineProperty(globalThis, 'matchMedia', previous.matchMedia)
+		})
+)
+/* oxlint-enable no-restricted-globals, no-restricted-properties */
 
 function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<ReturnType<typeof metricsAtom>>) {
 	return Effect.scoped(
@@ -68,6 +93,7 @@ function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<R
 				),
 				value => Effect.sync(() => value.dispose())
 			)
+			yield* offlineDesktop
 			registry.get(inventoryAtom)
 			registry.get(metricsAtom(60))
 			registry.ensureNode(inventoryAtom).setInitialValue(inventory)

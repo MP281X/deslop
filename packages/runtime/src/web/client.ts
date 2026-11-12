@@ -3,17 +3,15 @@ import {Cause, Context, Effect, Layer, MutableRef, Option, pipe} from 'effect'
 import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
 import {Atom} from 'effect/reactivity'
-import * as Rpc from 'effect/rpc'
-import {Socket} from 'effect/socket'
 
-import {layerRpcStreamClient} from '#shared/rpc.ts'
+import {layerSocketProtocol} from '#client/protocol.ts'
 import {Account, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
 
 // One page error, logged and traced as its own root span once the page's telemetry is up.
-export const errorAtom = Atom.fn(
+export const pageErrorAtom = Atom.fn(
 	(failure: {error: unknown; route: string; source: 'route' | 'caught' | 'uncaught'; stack?: string | null}) => {
 		const log = Effect.logError(
 			'Web error',
@@ -71,21 +69,11 @@ export function layerWebTelemetry(applicationName: string) {
 	)
 }
 
-// The RPC socket alone, without the page's telemetry, so Scope's page never traces itself.
-export const layerProtocol = pipe(
-	// The default ping timeout equals the 5-second ping interval, so any pong delay closes the socket.
-	Rpc.RpcClient.layerProtocolSocket({pingTimeout: '15 seconds', retryTransientErrors: true}),
-	Layer.provide(
-		pipe(
-			Socket.layerWebSocket(Effect.sync(() => `${location.origin}${RPC_PATH}`)),
-			Layer.provide(Socket.layerWebSocketConstructorGlobal)
-		)
-	),
-	Layer.provideMerge(Rpc.RpcSerialization.layerSchemaBinary()),
-	Layer.provideMerge(layerRpcStreamClient)
-)
+// The page's RPC socket to its own origin.
+export const layerPageProtocol = layerSocketProtocol(Effect.sync(() => `${location.origin}${RPC_PATH}`))
 
-export function layer(applicationName: string) {
+// Traces every atom of the page under the app's name; Scope's page skips it, so it never traces itself.
+export function addPageTelemetry(applicationName: string) {
 	Atom.runtime.addGlobalLayer(
 		pipe(
 			layerWebTelemetry(applicationName),
@@ -105,5 +93,4 @@ export function layer(applicationName: string) {
 			})
 		)
 	)
-	return layerProtocol
 }

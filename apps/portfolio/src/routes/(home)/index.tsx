@@ -1,4 +1,4 @@
-import {useAtomSet, useAtomSuspense} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
 import {
 	Array,
@@ -12,7 +12,6 @@ import {
 	Option,
 	Predicate,
 	Random,
-	Schedule,
 	Stream,
 	String,
 	Tuple,
@@ -31,12 +30,13 @@ import {
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
-import {Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react'
+import {Suspense, useRef, useState} from 'react'
 
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
 import {cn} from '@deslop/components-web/utils'
+import {reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
@@ -91,11 +91,9 @@ const identity = getIdentity()
 const portfolioAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
-			RpcClient,
-			Effect.map(client => client('portfolio.join', identity)),
-			Stream.unwrap,
+			Stream.unwrap(Effect.map(RpcClient, client => client('presence.join', identity))),
 			// A dropped socket rejoins with the trails kept, instead of turning the page into an error.
-			Stream.retry(Schedule.spaced('2 seconds')),
+			reconnectOnDrop,
 			Stream.mapAccum<Scene, PortfolioScene, Scene>(
 				() => ({bots: [], trails: [], visitors: []}),
 				(scene, update) => {
@@ -127,26 +125,34 @@ const portfolioAtom = Atom.keepAlive(
 	)
 )
 
-function setCursorTransform(node: HTMLDivElement, x: number, y: number) {
-	node.style.setProperty('--cursor-transform', `translate3d(${x}px, ${y}px, 0)`)
-}
+// This page's cursor: its colour and the pointer as a share of the viewport. The server's echo can lag behind a recolour, so the page keeps its own.
+const ownCursorAtom = Atom.make({color: identity.color, x: 0.5, y: 0.5})
 
-// React Compiler skips a component whose function schedules itself, so the frame loop lives outside it.
-function eachFrame(step: () => boolean, onFrame: (frame: number) => void) {
-	onFrame(
-		requestAnimationFrame(() => {
-			if (step()) eachFrame(step, onFrame)
-			else onFrame(0)
-		})
+// Sends this page's cursor while the page is open: at most one move per 50 ms, always the latest, and none too small to see unless the colour changed.
+const sendCursorAtom = RpcClient.runtime.atom(get =>
+	pipe(
+		get.stream(ownCursorAtom, {withoutInitialValue: true}),
+		Stream.changesWith((sent, next) => sent.color === next.color && !hasMeaningfulMove(sent, next)),
+		Stream.buffer({capacity: 1, strategy: 'sliding'}),
+		Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
+		Stream.runForEach(cursor =>
+			Effect.ignore(
+				Effect.flatMap(RpcClient, client => client('presence.move', {...cursor, id: identity.id})),
+				{log: 'Debug', message: 'The cursor move did not reach the room'}
+			)
+		)
 	)
-}
+)
 
-function subscribeToResize(onStoreChange: () => void) {
-	addEventListener('resize', onStoreChange)
-	return () => {
-		removeEventListener('resize', onStoreChange)
+// The window's size in pixels, following each resize.
+const viewportAtom = Atom.make(get => {
+	function onResize() {
+		get.setSelf({height: innerHeight, width: innerWidth})
 	}
-}
+	addEventListener('resize', onResize)
+	get.addFinalizer(() => removeEventListener('resize', onResize))
+	return {height: innerHeight, width: innerWidth}
+})
 
 // The page's content over the trail grid: one opaque column, rows split by hairlines; its words select like a document's.
 function Panel(input: {className?: string; children: React.ReactNode}) {
@@ -257,21 +263,14 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 
 // Another visitor's cursor sits at each position the server reports.
 function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
-	const nodeRef = useRef<HTMLDivElement>(null)
-
-	// Before paint, so the cursor's first frame is already where the server put it.
-	useLayoutEffect(() => {
-		if (nodeRef.current !== null) {
-			setCursorTransform(nodeRef.current, input.cursor.x * input.viewport.width, input.cursor.y * input.viewport.height)
-		}
-	}, [input.cursor, input.viewport])
-
 	return (
 		<div
-			ref={nodeRef}
 			aria-hidden
 			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform)"
-			style={{'--cursor-color': input.cursor.color}}
+			style={{
+				'--cursor-color': input.cursor.color,
+				'--cursor-transform': `translate3d(${input.cursor.x * input.viewport.width}px, ${input.cursor.y * input.viewport.height}px, 0)`
+			}}
 		>
 			<CursorLabel
 				flip={input.cursor.x * input.viewport.width + labelWidth(input.cursor.name) > input.viewport.width - 8}
@@ -629,70 +628,23 @@ function PresenceUnavailable() {
 
 // oxlint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- The portfolio is one keyboard-scrolling region; it needs focus and paging keys.
 function PortfolioRoute() {
-	const viewport = {
-		height: useSyncExternalStore(
-			subscribeToResize,
-			() => window.innerHeight,
-			() => 0
-		),
-		width: useSyncExternalStore(
-			subscribeToResize,
-			() => window.innerWidth,
-			() => 0
-		)
-	}
+	const viewport = useAtomValue(viewportAtom)
+	const setOwnCursor = useAtomSet(ownCursorAtom)
+	useAtomMount(sendCursorAtom)
 	const containerRef = useRef<HTMLDivElement>(null)
-	const currentSectionRef = useRef(0)
-	const moveRpc = useAtomSet(RpcClient.mutation('portfolio.move'))
-	const pointerFrameRef = useRef(0)
-	const pointerRef = useRef<{x: number; y: number}>(null)
-	const lastSentPointerRef = useRef<{sentAt: number; x: number; y: number}>(null)
-	// The colour this page last sent; the server's echo can lag behind a recolour.
-	const colorRef = useRef(identity.color)
 	const [showShortcuts, setShowShortcuts] = useState(false)
 
 	function toggleShortcuts() {
 		setShowShortcuts(show => !show)
 	}
 
-	useEffect(
-		() => () => {
-			cancelAnimationFrame(pointerFrameRef.current)
-		},
-		[]
-	)
-
-	function sections() {
-		return Array.fromIterable(containerRef.current?.querySelectorAll<HTMLElement>(':scope > section') ?? [])
-	}
-
 	function scrollTo(index: number) {
-		const target = sections()[index]
+		const target = Array.fromIterable(containerRef.current?.querySelectorAll<HTMLElement>(':scope > section') ?? [])[
+			index
+		]
 		if (Predicate.isUndefined(target)) return
-
-		// A frequent keyboard jump lands at once; the scroll event then reads the section at the top.
+		// A frequent keyboard jump lands at once.
 		target.scrollIntoView({behavior: 'auto', block: 'start'})
-		currentSectionRef.current = index
-	}
-
-	function send(pointer: {x: number; y: number}) {
-		lastSentPointerRef.current = {sentAt: performance.now(), x: pointer.x, y: pointer.y}
-		moveRpc({payload: {color: colorRef.current, id: identity.id, x: pointer.x, y: pointer.y}})
-	}
-
-	function updateColor() {
-		colorRef.current = pickNextCursorColor(colorRef.current)
-		send(pointerRef.current ?? lastSentPointerRef.current ?? {x: 0.5, y: 0.5})
-	}
-
-	// At most one move per 50 ms, carrying the latest pointer position; true waits for the next frame.
-	function flushPointer() {
-		if (pointerRef.current !== null && lastSentPointerRef.current !== null) {
-			if (!hasMeaningfulMove(lastSentPointerRef.current, pointerRef.current)) return false
-			if (performance.now() - lastSentPointerRef.current.sentAt < 50) return true
-		}
-		if (pointerRef.current !== null) send(pointerRef.current)
-		return false
 	}
 
 	function updatePointer(event: React.PointerEvent<HTMLDivElement>) {
@@ -701,16 +653,11 @@ function PortfolioRoute() {
 		event.currentTarget.style.setProperty('--pointer-x', `${event.clientX}px`)
 		event.currentTarget.style.setProperty('--pointer-y', `${event.clientY}px`)
 		if (viewport.width === 0 || viewport.height === 0) return
-
-		pointerRef.current = {
+		setOwnCursor(cursor => ({
+			...cursor,
 			x: Number.clamp({maximum: 0.999999, minimum: 0})(event.clientX / viewport.width),
 			y: Number.clamp({maximum: 0.999999, minimum: 0})(event.clientY / viewport.height)
-		}
-		if (pointerFrameRef.current === 0) {
-			eachFrame(flushPointer, frame => {
-				pointerFrameRef.current = frame
-			})
-		}
+		}))
 	}
 
 	useHotkeys([
@@ -720,7 +667,7 @@ function PortfolioRoute() {
 			},
 			hotkey
 		})),
-		{callback: updateColor, hotkey: 'R'},
+		{callback: () => setOwnCursor(cursor => ({...cursor, color: pickNextCursorColor(cursor.color)})), hotkey: 'R'},
 		{callback: toggleShortcuts, hotkey: {key: '?', shift: true}}
 	])
 
@@ -752,20 +699,6 @@ function PortfolioRoute() {
 				}
 			}}
 			onPointerMove={updatePointer}
-			onScroll={event => {
-				currentSectionRef.current = Boolean.match(
-					event.currentTarget.scrollTop + event.currentTarget.clientHeight >= event.currentTarget.scrollHeight - 2,
-					{
-						onFalse: () =>
-							pipe(
-								sections(),
-								Array.findLastIndex(section => section.offsetTop <= event.currentTarget.scrollTop + 2),
-								Option.getOrElse(() => 0)
-							),
-						onTrue: () => Number.max(0, sections().length - 1)
-					}
-				)
-			}}
 			tabIndex={0}
 		>
 			<ProfileSection />

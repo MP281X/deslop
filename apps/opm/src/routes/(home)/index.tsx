@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Order, Result, String, pipe} from 'effect'
+import {Array, Boolean, Number, Option, Order, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -35,7 +35,7 @@ import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {Problem} from '@deslop/components-mobile/problem'
-import {Loaded, shownOf} from '@deslop/components-mobile/screens'
+import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {
@@ -50,6 +50,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bottomBarSearch, shortDate} from '@deslop/components-mobile/utils'
+import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
@@ -199,7 +200,7 @@ export function ChaptersRoute(props: {
 			</Suspense>
 			<Toolbar.Content>
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
-				{AsyncResult.isFailure(loaded) && Result.isSuccess(shownOf(loaded)) && (
+				{AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)) && (
 					<ToolbarItem placement="topBarLeading">
 						<Problem label="Chapters not updating" onRetry={refresh} />
 					</ToolbarItem>

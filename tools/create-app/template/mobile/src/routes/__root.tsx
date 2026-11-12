@@ -18,7 +18,7 @@ import logo from '#routes/icon.png'
 
 export function RootRoute() {
 	return (
-		<SessionGate logo={logo} session={session.machine} tint={primary}>
+		<SessionGate logo={logo} session={session} tint={primary}>
 			<Host style={{flex: 1}}>
 				<NavigationStack modifiers={[tint(primary)]}>
 					<Toolbar modifiers={[navigationTitle('template-app'), navigationBarTitleDisplayMode('large')]}>

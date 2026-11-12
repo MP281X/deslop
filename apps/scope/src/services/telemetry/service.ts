@@ -255,7 +255,7 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 		...Boolean.match(span.parentSpanId !== '', {onFalse: () => ({}), onTrue: () => ({parent: span.parentSpanId})}),
 		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 		...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})}),
-		...Boolean.match(span.denied === true, {onFalse: () => ({}), onTrue: () => ({denied: true})}),
+		...Boolean.match(span.denied, {onFalse: () => ({}), onTrue: () => ({denied: true})}),
 		...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})}),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})})
 	}

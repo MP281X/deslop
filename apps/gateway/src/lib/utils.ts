@@ -1,33 +1,51 @@
-import {Effect, Redacted, Schema, Stream, pipe} from 'effect'
+import {Effect, Schema, Stream, pipe} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
-import {Atom, AtomRpc, Reactivity} from 'effect/reactivity'
+import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {live} from '@deslop/runtime/client/live'
+import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AuthError} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
-import * as WebRuntime from '@deslop/runtime/web/client'
+import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {AiProvider} from '#services/ai/schema.ts'
 import {ServerUrl, UpstreamError} from '#services/connections/schema.ts'
 import type {Period} from '#services/usage/schema.ts'
 
+// The keys reader's reactivity key: saving a key rereads them.
+export const AI_KEYS = ['ai-keys']
+
 export const ENDPOINT = `${window.location.origin}/mcp`
+
+addPageTelemetry('@deslop/gateway')
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: WebRuntime.layer('@deslop/gateway')
+	protocol: layerPageProtocol
 }) {}
 
-export function connectUrl(id: string) {
+function connectUrl(id: string) {
 	return `/oauth/connect?${new URLSearchParams({id})}`
 }
 
+// Leaves for the server's authorization; it stays pending until the page unloads, so the button cannot start a second one.
+export const connectAtom = Atom.family((id: string) =>
+	Atom.fn(() =>
+		Effect.andThen(
+			Effect.sync(() => location.assign(connectUrl(id))),
+			Effect.never
+		)
+	)
+)
+
 export const serversAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		live(get, Stream.unwrap(Effect.map(RpcClient, client => client('gateway.servers', undefined))))
+		keepValueThroughOutages(
+			get,
+			Stream.unwrap(Effect.map(RpcClient, client => client('connections.watch', undefined))),
+			reconnectOnDrop
+		)
 	)
 )
 
@@ -45,7 +63,7 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 						})
 					)
 				)
-				const server = yield* (yield* RpcClient)('gateway.add', {url})
+				const server = yield* Effect.flatMap(RpcClient, client => client('connections.add', {url}))
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
 			})
 		},
@@ -76,34 +94,41 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 // Read like the live streams, so a refusal clears the keys too; saving a key rereads them.
 export const aiKeysAtom = pipe(
 	RpcClient.runtime.atom(get =>
-		live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai.keys', undefined))))
+		keepValueThroughOutages(
+			get,
+			Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai.keys', undefined))),
+			reconnectOnDrop
+		)
 	),
-	RpcClient.runtime.factory.withReactivity(['ai-keys'])
+	RpcClient.runtime.factory.withReactivity(AI_KEYS)
 )
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
 export const aiUsageAtom = Atom.family((period: Period) =>
 	Atom.keepAlive(
-		RpcClient.runtime.atom(get => live(get, Stream.unwrap(Effect.map(RpcClient, client => client('ai.usage', period)))))
+		RpcClient.runtime.atom(get =>
+			keepValueThroughOutages(
+				get,
+				Stream.unwrap(Effect.map(RpcClient, client => client('ai.usage', period))),
+				reconnectOnDrop
+			)
+		)
 	)
 )
 
 export const mcpUsageAtom = Atom.family((period: Period) =>
 	Atom.keepAlive(
 		RpcClient.runtime.atom(get =>
-			live(get, Stream.unwrap(Effect.map(RpcClient, client => client('gateway.usage', period))))
+			keepValueThroughOutages(
+				get,
+				Stream.unwrap(Effect.map(RpcClient, client => client('connections.usage', period))),
+				reconnectOnDrop
+			)
 		)
 	)
 )
 
-export const setKeyAtom = RpcClient.runtime.fn((input: {provider: AiProvider; secret: string}) =>
-	Reactivity.mutation(
-		Effect.flatMap(RpcClient, client =>
-			client('ai.setKey', {provider: input.provider, secret: Redacted.make(input.secret)})
-		),
-		['ai-keys']
-	)
-)
+export const setKeyAtom = RpcClient.mutation('ai.setKey')
 
 // The copy button's check, set by the copy and cleared a moment later.
 export const copiedAtom = Atom.make(false)

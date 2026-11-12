@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Number, Option, Result, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -33,7 +33,7 @@ import {Suspense, useState} from 'react'
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
@@ -48,6 +48,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
+import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
 import {session} from '#lib/session.ts'
@@ -185,13 +186,12 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 		pipe(useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')), AsyncResult.getOrElse(Option.none)),
 		current => current.save
 	)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name="Trips" onRetry={refresh} />
-	}
+	const blocking = Option.getOrUndefined(blockingFailure(loaded))
+	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
+	const bookings = AsyncResult.getOrElse(loaded, () => [])
 	const needle = String.toLowerCase(String.trim(props.searched))
 	const matches = Array.filter(
-		shown.success,
+		bookings,
 		booking =>
 			String.isEmpty(needle) ||
 			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
@@ -215,7 +215,7 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 			{adding && (
 				<ItemGroupSkeleton rows={1} descriptionLines={2} media={<Gutter countdown={{_tag: 'Days', days: 2}} />} />
 			)}
-			{Array.isReadonlyArrayEmpty(shown.success) && !adding && (
+			{Array.isReadonlyArrayEmpty(bookings) && !adding && (
 				<Empty>
 					<EmptyAction
 						label="Paste Booking"
@@ -225,7 +225,7 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 					/>
 				</Empty>
 			)}
-			{Array.isReadonlyArrayNonEmpty(shown.success) && Array.isReadonlyArrayEmpty(matches) && (
+			{Array.isReadonlyArrayNonEmpty(bookings) && Array.isReadonlyArrayEmpty(matches) && (
 				<Empty systemImage="magnifyingglass" label="No bookings match" />
 			)}
 			{Array.isReadonlyArrayNonEmpty(matches) && (

@@ -13,7 +13,7 @@ import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bytes, rate} from '#routes/(home)/-rows.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
-import {bandName, chartWindow, usedStorage} from '#services/metrics/lib/utils.ts'
+import {bandName, chartWindow} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const HEIGHT = 64
@@ -356,7 +356,7 @@ export function ChartBlock(props: {
 	const disk = Array.map(props.history.samples, sample =>
 		Boolean.match(total > 0, {
 			onFalse: () => 0,
-			onTrue: () => Number.clamp((usedStorage(sample) / total) * 100, {maximum: 100, minimum: 0})
+			onTrue: () => Number.clamp(((sample.storageUsed ?? 0) / total) * 100, {maximum: 100, minimum: 0})
 		})
 	)
 	const charts: readonly {
@@ -388,18 +388,15 @@ export function ChartBlock(props: {
 		},
 		{
 			cover: true,
-			figure: Option.match(Option.fromUndefinedOr(latest), {
+			figure: Option.match(Option.fromUndefinedOr(latest?.storageUsed), {
 				onNone: () => '—',
-				onSome: sample =>
-					Boolean.match(total > 0, {
-						onFalse: () => '—',
-						onTrue: () => `${Number.round((usedStorage(sample) / total) * 100, 0)}%`
-					})
+				onSome: used =>
+					Boolean.match(total > 0, {onFalse: () => '—', onTrue: () => `${Number.round((used / total) * 100, 0)}%`})
 			}),
 			format: rate,
 			label: 'Disk',
 			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
-			recorded: sample => sample.storageUsed !== undefined || Array.isReadonlyArrayNonEmpty(sample.disks)
+			recorded: sample => sample.storageUsed !== undefined
 		}
 	]
 	return (

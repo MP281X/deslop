@@ -17,12 +17,12 @@ export class RpcContracts extends RpcGroup.make(
 		stream: true,
 		success: Schema.Struct({range: UsageRange, report: AiUsageReport})
 	}),
-	Rpc.make('gateway.servers', {error: AuthError, stream: true, success: Schema.Array(ConnectionInfo)}),
-	Rpc.make('gateway.usage', {
+	Rpc.make('connections.add', {error: AuthError, payload: AddServer, success: ConnectionInfo}),
+	Rpc.make('connections.usage', {
 		error: AuthError,
 		payload: Period,
 		stream: true,
 		success: Schema.Struct({range: UsageRange, report: McpUsageReport})
 	}),
-	Rpc.make('gateway.add', {error: AuthError, payload: AddServer, success: ConnectionInfo})
+	Rpc.make('connections.watch', {error: AuthError, stream: true, success: Schema.Array(ConnectionInfo)})
 ).middleware(RpcAuth) {}

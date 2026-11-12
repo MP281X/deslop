@@ -1,7 +1,5 @@
 import {Layer, Schema, pipe} from 'effect'
 
-import {RpcSerialization} from 'effect/rpc'
-
 import * as CliRuntime from '@deslop/runtime/server/cli'
 import * as ServerRuntime from '@deslop/runtime/server/http'
 
@@ -16,7 +14,6 @@ CliRuntime.runApp({
 	icon,
 	routes: pipe(
 		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-		Layer.provide(RpcSerialization.layerJson),
 		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracker.layer)),
 		Layer.provide(layerBookings)
 	),

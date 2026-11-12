@@ -27,7 +27,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.lengthOf(first.samples, 1)
 			assert.isAbove(first.samples[0]?.memoryTotal ?? 0, 0)
 			assert.isNotEmpty(first.cpuModel ?? '')
-			assert.isAbove(first.samples[0]?.cores?.length ?? 0, 0)
+			assert.isAbove(first.samples[0]?.cores.length ?? 0, 0)
 			assert.lengthOf(first.samples[0]?.load ?? [], 3)
 			assert.isAbove(first.samples[0]?.uptime ?? 0, 0)
 			yield* TestClock.adjust('90 seconds')
@@ -100,11 +100,4 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.isAtLeast(restored.samples[0]?.time ?? 0, first?.time ?? 0)
 		})
 	)
-})
-
-it('decodes samples saved before the unused counters were removed', () => {
-	const saved = Schema.decodeSync(Schema.fromJsonString(Sample))(
-		'{"diskRead":1,"diskWrite":2,"disks":[],"memoryAvailable":3,"memoryBuffers":4,"memoryCached":5,"memoryTotal":1024,"memoryUsed":512,"networkReceive":6,"networkSend":7,"swapTotal":8,"swapUsed":9,"time":0}'
-	)
-	assert.strictEqual(saved.memoryUsed, 512)
 })

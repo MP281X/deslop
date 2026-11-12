@@ -7,7 +7,7 @@ import {RpcAuth} from '@deslop/runtime/shared/auth'
 import {ChaptersError, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('library.watch', {stream: true, success: ChaptersEvent}),
+	Rpc.make('chapters.events', {stream: true, success: ChaptersEvent}),
 	Rpc.make('chapters.read', {error: ChaptersError, payload: ReadingUpdate}),
-	Rpc.make('devices.register', {error: ChaptersError, payload: Schema.Struct({token: PushToken})})
+	Rpc.make('chapters.register', {error: ChaptersError, payload: Schema.Struct({token: PushToken})})
 ).middleware(RpcAuth) {}

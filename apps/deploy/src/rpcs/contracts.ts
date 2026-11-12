@@ -8,24 +8,24 @@ import {DeployError, ExposeRequest, HideRequest, RunRequest, Snapshot} from '#se
 import {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('deploy.metrics', {
+	Rpc.make('metrics.watch', {
 		error: Schema.Union([AuthError, DeployError]),
 		payload: HistoryQuery,
 		stream: true,
 		success: Schema.Array(MachineHistory)
 	}),
-	Rpc.make('deploy.history', {
+	Rpc.make('metrics.history', {
 		error: Schema.Union([AuthError, DeployError]),
 		payload: HistoryQuery,
 		success: MachineHistory
 	}),
-	Rpc.make('deploy.inventory', {error: Schema.Union([AuthError, DeployError]), stream: true, success: Snapshot}),
-	Rpc.make('deploy.snapshot', {error: Schema.Union([AuthError, DeployError]), success: Snapshot}),
-	Rpc.make('deploy.expose', {
+	Rpc.make('inventory.watch', {error: Schema.Union([AuthError, DeployError]), stream: true, success: Snapshot}),
+	Rpc.make('inventory.snapshot', {error: Schema.Union([AuthError, DeployError]), success: Snapshot}),
+	Rpc.make('exposures.expose', {
 		error: Schema.Union([AuthError, DeployError]),
 		payload: ExposeRequest,
 		success: Schema.String
 	}),
-	Rpc.make('deploy.hide', {error: Schema.Union([AuthError, DeployError]), payload: HideRequest}),
-	Rpc.make('deploy.run', {error: Schema.Union([AuthError, DeployError]), payload: RunRequest})
+	Rpc.make('exposures.hide', {error: Schema.Union([AuthError, DeployError]), payload: HideRequest}),
+	Rpc.make('inventory.run', {error: Schema.Union([AuthError, DeployError]), payload: RunRequest})
 ).middleware(RpcAuth) {}

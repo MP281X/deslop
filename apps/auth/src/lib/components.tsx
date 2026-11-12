@@ -1,12 +1,12 @@
-import {useAtom, useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
+import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 
-import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
+import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
@@ -326,41 +326,36 @@ const signInListAtom = Atom.readable(
 )
 
 export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {
-	const result = useAtomSuspense(signInListAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(signInListAtom)
-	const value = AsyncResult.value(result)
-	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
-	return Option.match(value, {
-		onNone: () => null,
-		onSome: data => {
-			const clients = clientsOf(data.signIns, data.catalog)
-			const checking = props.checking === true && Option.isNone(props.pending)
-			if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
-				return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
-			}
-			return (
-				<Card size="list">
-					<div role="list" aria-label="Signed-in clients">
-						{Boolean.match(checking, {
-							onFalse: () =>
-								Option.match(props.pending, {
-									onNone: () => null,
-									onSome: request => <PendingRow catalog={data.catalog} request={request} />
-								}),
-							onTrue: () => (
-								<div role="status" aria-label="Checking the code">
-									<PendingRowSkeleton />
-								</div>
-							)
-						})}
-						{Array.map(clients, client => (
-							<ClientRow key={client.label} client={client} now={data.now} />
-						))}
-					</div>
-				</Card>
-			)
-		}
-	})
+	return (
+		<Loaded atom={signInListAtom}>
+			{data => {
+				const clients = clientsOf(data.signIns, data.catalog)
+				const checking = props.checking === true && Option.isNone(props.pending)
+				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
+					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
+				}
+				return (
+					<Card size="list">
+						<div role="list" aria-label="Signed-in clients">
+							{Boolean.match(checking, {
+								onFalse: () =>
+									Option.match(props.pending, {
+										onNone: () => null,
+										onSome: request => <PendingRow catalog={data.catalog} request={request} />
+									}),
+								onTrue: () => (
+									<div role="status" aria-label="Checking the code">
+										<PendingRowSkeleton />
+									</div>
+								)
+							})}
+							{Array.map(clients, client => (
+								<ClientRow key={client.label} client={client} now={data.now} />
+							))}
+						</div>
+					</Card>
+				)
+			}}
+		</Loaded>
+	)
 }

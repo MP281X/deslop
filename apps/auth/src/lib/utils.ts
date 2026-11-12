@@ -6,10 +6,10 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {live, reconnecting} from '@deslop/runtime/client/live'
+import {keepValueThroughOutages, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
-import * as WebRuntime from '@deslop/runtime/web/client'
+import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {PasskeySignIn, Registration, RequestOptions} from '#services/passkeys/schema.ts'
@@ -17,6 +17,10 @@ import type {SignedAccount} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {returnable} from '#services/tokens/lib/utils.ts'
+import type {SessionVia} from '#services/tokens/schema.ts'
+
+// The tab remembers the passkey it went to GitHub for, so the page it lands on adds it.
+const ADDING_PASSKEY = 'adding-passkey'
 
 const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
@@ -29,19 +33,19 @@ export const Search = Schema.Struct({
 	'sign-out': Schema.optionalKey(Schema.String)
 })
 
+addPageTelemetry('@deslop/auth')
+
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: WebRuntime.layer('@deslop/auth')
+	protocol: layerPageProtocol
 }) {}
 
 // Live, so an account waiting for an admin moves on once allowed; a declined or removed account is signed out and reads None.
 export const accountAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
 		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.account', undefined)),
-			Stream.unwrap,
-			reconnecting,
+			Stream.unwrap(Effect.map(RpcClient, client => client('people.account', undefined))),
+			reconnectOnDrop,
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
 		)
@@ -73,7 +77,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 		}),
 		streams: {
 			lookup: (code: string) =>
-				reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('auth.lookup', {code}))))
+				reconnectOnDrop(Stream.unwrap(Effect.map(RpcClient, client => client('signins.lookup', {code}))))
 		}
 	}).handle({
 		initial: {data: {typed: ''}, target: 'Typing'},
@@ -126,13 +130,10 @@ export const linkedCodeAtom = Atom.family((code: string) =>
 
 export const peopleAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		live(
+		keepValueThroughOutages(
 			get,
-			pipe(
-				RpcClient,
-				Effect.map(client => client('auth.people', undefined)),
-				Stream.unwrap
-			)
+			Stream.unwrap(Effect.map(RpcClient, client => client('people.watch', undefined))),
+			reconnectOnDrop
 		)
 	)
 )
@@ -140,29 +141,24 @@ export const peopleAtom = Atom.keepAlive(
 // Live, so a new sign-in, each refresh and a disconnect from another page show here.
 export const appsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		live(
+		keepValueThroughOutages(
 			get,
-			pipe(
-				RpcClient,
-				Effect.map(client => client('auth.apps', undefined)),
-				Stream.unwrap
-			)
+			Stream.unwrap(Effect.map(RpcClient, client => client('tokens.watchApps', undefined))),
+			reconnectOnDrop
 		)
 	)
 )
 
 // One per person, so a failed answer shows beneath that person's row.
 export const admitAtom = Atom.family((id: string) =>
-	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('auth.admit', {allow, id})))
+	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('people.admit', {allow, id})))
 )
 
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(
-			RpcClient,
-			Effect.map(client => client('auth.wait', {request})),
-			Stream.unwrap,
-			reconnecting,
+			Stream.unwrap(Effect.map(RpcClient, client => client('signins.status', {request}))),
+			reconnectOnDrop,
 			Stream.tap(status =>
 				pipe(
 					Match.value(status),
@@ -189,13 +185,10 @@ export function approveLink(id: string) {
 // Live, so an app shows once its server announces itself to Auth.
 export const catalogAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		live(
+		keepValueThroughOutages(
 			get,
-			pipe(
-				RpcClient,
-				Effect.map(client => client('auth.catalog', undefined)),
-				Stream.unwrap
-			)
+			Stream.unwrap(Effect.map(RpcClient, client => client('apps.watch', undefined))),
+			reconnectOnDrop
 		)
 	)
 )
@@ -234,8 +227,7 @@ export function signInLabel(client: string, device: string) {
 
 export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
 	pipe(
-		RpcClient,
-		Effect.flatMap(client => client('auth.answer', {accept: input.accept, request: input.request.id})),
+		Effect.flatMap(RpcClient, client => client('signins.answer', {accept: input.accept, request: input.request.id})),
 		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input})))
 	)
 )
@@ -303,13 +295,10 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 
 export const passkeysAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		live(
+		keepValueThroughOutages(
 			get,
-			pipe(
-				RpcClient,
-				Effect.map(client => client('auth.passkeys', undefined)),
-				Stream.unwrap
-			)
+			Stream.unwrap(Effect.map(RpcClient, client => client('passkeys.watch', undefined))),
+			reconnectOnDrop
 		)
 	)
 )
@@ -319,7 +308,7 @@ export const addPasskeyAtom = Atom.keepAlive(
 	RpcClient.runtime.fn(
 		Effect.fnUntraced(function* () {
 			const client = yield* RpcClient
-			const options = yield* client('auth.passkeyOptions', undefined)
+			const options = yield* client('passkeys.registration', undefined)
 			const response = yield* pipe(
 				Effect.tryPromise({
 					catch: cause => AuthError.make({cause, message: 'No passkey was added'}),
@@ -328,16 +317,24 @@ export const addPasskeyAtom = Atom.keepAlive(
 				Effect.catchIf(cancelled, () => Effect.interrupt),
 				Effect.flatMap(Schema.decodeUnknownEffect(Registration))
 			)
-			yield* client('auth.addPasskey', {response})
+			yield* client('passkeys.add', {response})
 		})
 	)
 )
 
-// The tab remembers the passkey it went to GitHub for, so the page it lands on adds it.
-export const ADDING_PASSKEY = 'adding-passkey'
-
 // The account menu's open state, which the return from GitHub also sets so the passkey's outcome shows on its action.
 export const accountMenuOpenAtom = Atom.make(false)
+
+// Back from GitHub, the passkey the tab went for starts at once, and only once.
+export const resumePasskeyAtom = Atom.family((via: SessionVia) =>
+	Atom.make(get => {
+		if (sessionStorage.getItem(ADDING_PASSKEY) === null) return
+		sessionStorage.removeItem(ADDING_PASSKEY)
+		if (via === 'Code') return
+		get.set(accountMenuOpenAtom, true)
+		get.set(addPasskeyAtom, undefined)
+	})
+)
 
 // A code may have been approved for someone else's browser, so a code session signs in with GitHub first.
 export const confirmForPasskeyAtom = Atom.fn(() =>
@@ -388,8 +385,8 @@ function signOut(next: Search['next']) {
 	)
 }
 
-// From another app's Sign out, whose page says how it failed.
-export const signOutAtom = authRuntime.fn(signOut)
+// From another app's Sign out, which starts once the page shows it and again on its retry; the page says how it failed.
+export const signingOutAtom = Atom.family((next: Search['next']) => authRuntime.atom(signOut(next)))
 
 // From the account menu, which shows a failure under its own item.
 export const menuSignOutAtom = authRuntime.fn(signOut)

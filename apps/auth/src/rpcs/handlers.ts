@@ -19,30 +19,30 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const signIns = yield* SignIns
 		const tokens = yield* Tokens
 		return RpcContracts.of({
-			'auth.account': (_, options) => people.account(options.headers),
-			'auth.addPasskey': Effect.fnUntraced(function* (input, options) {
+			'apps.watch': () => apps.catalog,
+			'passkeys.add': Effect.fnUntraced(function* (input, options) {
 				yield* passkeys.add(input.response, {
 					from: originFrom(options.headers, Option.none()),
 					owner: yield* CurrentOwner,
 					via: yield* tokens.sessionVia(options.headers)
 				})
 			}),
-			'auth.admit': Effect.fnUntraced(function* (input) {
-				return yield* people.admit(input, yield* CurrentUser)
-			}),
-			// The page's RPC runs on the signed-in browser's session cookie.
-			'auth.answer': Effect.fnUntraced(function* (input) {
-				yield* signIns.answer(input, yield* CurrentOwner, 'Session')
-			}),
-			'auth.apps': () => Stream.unwrap(Effect.map(CurrentOwner, tokens.apps)),
-			'auth.catalog': () => apps.catalog,
-			'auth.lookup': input => signIns.lookup(input.code),
-			'auth.passkeyOptions': Effect.fnUntraced(function* (_, options) {
+			'passkeys.registration': Effect.fnUntraced(function* (_, options) {
 				return yield* passkeys.registration(yield* CurrentOwner, yield* tokens.sessionVia(options.headers))
 			}),
-			'auth.passkeys': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
-			'auth.people': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
-			'auth.wait': (input, options) => signIns.status(input.request, options.headers)
+			'passkeys.watch': () => Stream.unwrap(Effect.map(CurrentOwner, passkeys.list)),
+			'people.account': (_, options) => people.account(options.headers),
+			'people.admit': Effect.fnUntraced(function* (input) {
+				return yield* people.admit(input, yield* CurrentUser)
+			}),
+			'people.watch': () => Stream.unwrap(Effect.map(CurrentUser, people.people)),
+			// The page's RPC runs on the signed-in browser's session cookie.
+			'signins.answer': Effect.fnUntraced(function* (input) {
+				yield* signIns.answer(input, yield* CurrentOwner, 'Session')
+			}),
+			'signins.lookup': input => signIns.lookup(input.code),
+			'signins.status': (input, options) => signIns.status(input.request, options.headers),
+			'tokens.watchApps': () => Stream.unwrap(Effect.map(CurrentOwner, tokens.apps))
 		})
 	})
 )

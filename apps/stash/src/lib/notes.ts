@@ -1,16 +1,17 @@
 import {Array, Boolean, Effect, HashSet, Option, Order, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
-import * as Crypto from 'expo-crypto'
+import {randomUUID} from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
 import {makeRemoval} from '@deslop/components-mobile/removal'
-import {alert, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
-import {withoutDeniedData} from '@deslop/runtime/client/live'
+import {alertFailure, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
+import {keepValueThroughOutages} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
+import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 import {listReducer} from '@deslop/runtime/shared/list'
 
-import {RpcClient, SERVER, session, withClient} from '#lib/session.ts'
+import {RpcClient, SERVER, session} from '#lib/session.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {NoteItem, NotesError} from '#services/notes/schema.ts'
 
@@ -29,11 +30,11 @@ export const notesAtom = Atom.keepAlive(
 			listFile,
 			NoteItem,
 			pipe(
-				Stream.unwrap(Effect.map(RpcClient, client => client('notes.watch', undefined))),
+				Stream.unwrap(Effect.map(RpcClient, client => client('notes.events', undefined))),
 				Stream.scan(Array.empty<NoteItem>, apply),
 				Stream.drop(1)
 			),
-			session.reopening
+			session.reconnectOrSignOut
 		)
 	})
 )
@@ -48,7 +49,7 @@ export const queryAtom = Atom.make('')
 export const searchAtom = RpcClient.runtime.atom(get => {
 	const query = String.trim(get(queryAtom))
 	if (!session.signedIn(get) || String.isEmpty(query)) return Stream.succeed(Option.none())
-	return withoutDeniedData(
+	return keepValueThroughOutages(
 		get,
 		pipe(
 			Effect.sleep('250 millis'),
@@ -56,7 +57,7 @@ export const searchAtom = RpcClient.runtime.atom(get => {
 			Stream.unwrap,
 			Stream.map(ids => Option.some(HashSet.fromIterable(ids)))
 		),
-		session.reopening
+		session.reconnectOrSignOut
 	)
 })
 
@@ -88,11 +89,12 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 export const regenerateAtom = Atom.keepAlive(
 	Atom.fn((id: Note['id'], get) =>
 		pipe(
-			withClient(
+			provideRuntimeOnce(
 				get,
+				RpcClient.runtime,
 				Effect.flatMap(RpcClient, client => client('notes.regenerate', {id}))
 			),
-			alert('Not Regenerated')
+			alertFailure('Not Regenerated')
 		)
 	)
 )
@@ -100,14 +102,15 @@ export const regenerateAtom = Atom.keepAlive(
 export const removal = makeRemoval({
 	notRemoved: 'Not Deleted',
 	remove: (id, get) =>
-		withClient(
+		provideRuntimeOnce(
 			get,
+			RpcClient.runtime,
 			Effect.flatMap(RpcClient, client => client('notes.remove', {id}))
 		)
 })
 
 export function capture(text: string) {
-	return Effect.flatMap(RpcClient, client => client('notes.capture', {id: Crypto.randomUUID(), text}))
+	return Effect.flatMap(RpcClient, client => client('notes.capture', {id: randomUUID(), text}))
 }
 
 const draftFile = new File(Paths.document, 'draft.txt')
@@ -124,13 +127,13 @@ export const writeAtom = Atom.keepAlive(
 	Atom.fn(
 		(text: string, get) =>
 			pipe(
-				withClient(get, capture(String.trim(text))),
+				provideRuntimeOnce(get, RpcClient.runtime, capture(String.trim(text))),
 				Effect.andThen(
 					Effect.sync(() => {
 						if (get(draftAtom) === text) get.set(draftAtom, '')
 					})
 				),
-				alert('Note Not Saved')
+				alertFailure('Note Not Saved')
 			),
 		{concurrent: true}
 	)

@@ -114,7 +114,7 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 				onSome: message => (
 					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
-							{Boolean.match(props.span.denied === true, {
+							{Boolean.match(props.span.denied, {
 								onFalse: () => 'error',
 								onTrue: () => (
 									<>

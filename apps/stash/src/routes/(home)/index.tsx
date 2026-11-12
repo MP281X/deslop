@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Option, Result, Schema, String, pipe} from 'effect'
+import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -52,7 +52,7 @@ import {Linking} from 'react-native'
 import {AccountMenu} from '@deslop/components-mobile/account'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
-import {FailureContent, Loaded, shownOf} from '@deslop/components-mobile/screens'
+import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {
@@ -67,6 +67,7 @@ import {
 import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
 import {bottomBarSearch} from '@deslop/components-mobile/utils'
+import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {clipboard} from '#lib/clipboard.ts'
@@ -416,7 +417,8 @@ export function HomeRoute(props: {
 	const refreshSearch = useAtomRefresh(searchAtom)
 	const saved =
 		!(AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) &&
-		(AsyncResult.isSuccess(notes) || (AsyncResult.isFailure(notes) && Result.isSuccess(shownOf(notes))))
+		!AsyncResult.isInitial(notes) &&
+		Option.isNone(blockingFailure(notes))
 	return (
 		<Toolbar
 			modifiers={[

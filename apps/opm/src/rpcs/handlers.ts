@@ -7,9 +7,9 @@ export const RpcHandlers = RpcContracts.toLayer(
 	Effect.gen(function* () {
 		const chapters = yield* Chapters
 		return RpcContracts.of({
+			'chapters.events': () => chapters.changes,
 			'chapters.read': input => chapters.read(input),
-			'devices.register': input => chapters.register(input.token),
-			'library.watch': () => chapters.changes
+			'chapters.register': input => chapters.register(input.token)
 		})
 	})
 )

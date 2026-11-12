@@ -1,6 +1,7 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Result} from 'effect'
+import {Boolean, Option} from 'effect'
+import type {Cause} from 'effect'
 
 import {Button, Host, Image, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
 import {
@@ -25,9 +26,9 @@ import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
-import {updateAtom} from '@deslop/runtime/mobile/client'
+import {blockingFailure, isDeniedCause} from '@deslop/runtime/client/live-stream'
 import type {Session} from '@deslop/runtime/mobile/session'
-import {isDenied} from '@deslop/runtime/shared/auth'
+import {updateAtom} from '@deslop/runtime/mobile/updates'
 
 import {colors, radius, space, text} from './theme.ts'
 
@@ -45,22 +46,12 @@ function BlankScreen() {
 	)
 }
 
-function deniedBy(cause: Cause.Cause<unknown>) {
-	return Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
-}
-
-export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Success<A, E>) {
-	if (AsyncResult.isSuccess(result)) return Result.succeed(result.value)
-	if (deniedBy(result.cause)) return Result.fail(result.cause)
-	return Result.fromOption(AsyncResult.value(result), () => result.cause)
-}
-
 // A blocking failure is one destructive button carrying its reason; a denial is a lock with no retry.
 // judge-ignore no-hero-failure -- the compact error the question allows: one destructive Retry carrying its icon and short reason, centred only because a blocking failure has the screen to itself
 export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
-			{Boolean.match(deniedBy(props.cause), {
+			{Boolean.match(isDeniedCause(props.cause), {
 				onFalse: () => (
 					<Button
 						label={`Can’t Reach ${props.name}`}
@@ -92,7 +83,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 }
 
 // One gate for a screen's content: a blocking failure is the retry card, and the value renders where it stands.
-// judge-ignore no-dropped-content -- shownOf keeps a retained value for children, so FailureContent only renders with no value.
+// judge-ignore no-dropped-content -- blockingFailure keeps a retained value for children, so FailureContent only renders with no value.
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode
@@ -100,11 +91,10 @@ export function Loaded<A, E>(props: {
 }) {
 	const loaded = useAtomSuspense(props.atom, {includeFailure: true})
 	const refresh = useAtomRefresh(props.atom)
-	const shown = shownOf(loaded)
-	if (Result.isFailure(shown)) {
-		return <FailureContent cause={shown.failure} name={props.name} onRetry={refresh} />
-	}
-	return props.children(shown.success)
+	return Option.match(blockingFailure(loaded), {
+		onNone: () => Option.match(AsyncResult.value(loaded), {onNone: () => null, onSome: props.children}),
+		onSome: cause => <FailureContent cause={cause} name={props.name} onRetry={refresh} />
+	})
 }
 
 // The app's mark and GitHub sign-in at the bottom.
@@ -136,22 +126,22 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 }
 
 export function SessionGate(props: {children: ReactNode; logo: number | string; session: Session; tint: ColorValue}) {
-	const send = useAtomSet(props.session.send)
+	const send = useAtomSet(props.session.machine.send)
 	useAtomMount(updateAtom)
 	return (
 		<Suspense fallback={<BlankScreen />}>
-			<MachineState machine={props.session} path="Reading" pending={<BlankScreen />}>
+			<MachineState machine={props.session.machine} path="Reading" pending={<BlankScreen />}>
 				{() => <BlankScreen />}
 			</MachineState>
-			<MachineState machine={props.session} path="SignedOut">
+			<MachineState machine={props.session.machine} path="SignedOut">
 				{() => (
 					<SignInScreen logo={props.logo} onSignIn={() => send({_tag: 'SignIn'})} tint={props.tint} waiting={false} />
 				)}
 			</MachineState>
-			<MachineState machine={props.session} path="SigningIn">
+			<MachineState machine={props.session.machine} path="SigningIn">
 				{() => <SignInScreen logo={props.logo} onSignIn={() => undefined} tint={props.tint} waiting />}
 			</MachineState>
-			<MachineState machine={props.session} path="SignedIn">
+			<MachineState machine={props.session.machine} path="SignedIn">
 				{() => props.children}
 			</MachineState>
 		</Suspense>

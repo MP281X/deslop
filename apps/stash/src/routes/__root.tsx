@@ -64,7 +64,7 @@ function AppRoutes() {
 
 export function RootRoute() {
 	return (
-		<SessionGate logo={logo} session={session.machine} tint={primary}>
+		<SessionGate logo={logo} session={session} tint={primary}>
 			<AppRoutes />
 		</SessionGate>
 	)

@@ -8,7 +8,7 @@ import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
 const GIB = 1024 ** 3
 
 function sample(time: number, apps: Sample['apps']) {
-	return {apps, cpu: 50, disks: [], memoryTotal: 10 * GIB, memoryUsed: 6 * GIB, time} satisfies Sample
+	return {apps, cores: [], cpu: 50, disks: [], memoryTotal: 10 * GIB, memoryUsed: 6 * GIB, time} satisfies Sample
 }
 
 function machine(samples: Sample[]) {

@@ -1,6 +1,7 @@
 import {Array, Boolean, Match, Number, Option, Record, String, pipe} from 'effect'
 
-import {useEffect, useLayoutEffect, useRef, useState} from 'react'
+// oxlint-disable-next-line eslint/no-restricted-imports -- useLayoutEffect: the flame measures its surface and label widths after layout and before paint, so bars never draw at a stale width.
+import {useLayoutEffect, useRef, useState} from 'react'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
@@ -15,12 +16,6 @@ import type {Trace} from '#services/telemetry/schema.ts'
 const FLAME_LANE = 24
 const FLAME_BAR = 22
 const FLAME_LABEL_PADDING = 12
-
-// The flame measures its lanes before paint; a server render such as the page test has no window.
-const useIsomorphicLayoutEffect = Boolean.match(typeof window === 'undefined', {
-	onFalse: () => useLayoutEffect,
-	onTrue: () => useEffect
-})
 
 // The flame's 22px lanes while its trace loads, including a lane with two sibling bars; no axis, which the real pane draws only with data.
 export function SpansSkeleton(props: {label: string}) {
@@ -89,7 +84,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 	const [width, setWidth] = useState(0)
 	const [labelWidths, setLabelWidths] = useState<Record<string, number>>({})
 	const surface = useRef<HTMLDivElement>(null)
-	useIsomorphicLayoutEffect(() => {
+	useLayoutEffect(() => {
 		function measure() {
 			if (surface.current === null) return
 			setWidth(surface.current.getBoundingClientRect().width)

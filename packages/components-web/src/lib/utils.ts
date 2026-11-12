@@ -1,6 +1,6 @@
 import type {ClassValue} from 'clsx'
 import {clsx} from 'clsx'
-import {useSyncExternalStore} from 'react'
+import {Atom} from 'effect/reactivity'
 import {twMerge} from 'tailwind-merge'
 
 export function cn(...inputs: ClassValue[]) {
@@ -8,14 +8,14 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Whether the screen matches a media query, read during the first render, so a phone never paints the desktop layout first.
-export function useMediaQuery(query: string) {
-	return useSyncExternalStore(
-		onChange => {
-			const list = window.matchMedia(query)
-			list.addEventListener('change', onChange)
-			return () => list.removeEventListener('change', onChange)
-		},
-		() => window.matchMedia(query).matches,
-		() => false
-	)
-}
+export const mediaQueryAtom = Atom.family((query: string) =>
+	Atom.make(get => {
+		const list = matchMedia(query)
+		function onChange(event: MediaQueryListEvent) {
+			get.setSelf(event.matches)
+		}
+		list.addEventListener('change', onChange)
+		get.addFinalizer(() => list.removeEventListener('change', onChange))
+		return list.matches
+	})
+)
