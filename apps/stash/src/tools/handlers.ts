@@ -13,7 +13,7 @@ import {ToolContracts} from '#tools/contracts.ts'
 function row(note: Note) {
 	return {
 		...Struct.pick(note, ['id', 'status', 'summary', 'tags', 'title', 'url']),
-		saved: DateTime.formatIsoDateUtc(DateTime.makeUnsafe(note.createdAt))
+		saved: pipe(note.createdAt, DateTime.makeUnsafe, DateTime.formatIsoDateUtc)
 	} satisfies NoteSummary
 }
 
@@ -31,15 +31,16 @@ export const ToolHandlers = ToolContracts.toLayer(
 					})
 					const source = note[section] ?? ''
 					const chunk = String.slice(input.offset, input.offset + input.limit)(source)
-					const boundary = Boolean.match(section === 'transcript' && input.offset + chunk.length < source.length, {
-						onFalse: () => chunk.length,
+					const text = Boolean.match(section === 'transcript' && input.offset + chunk.length < source.length, {
+						onFalse: () => chunk,
 						onTrue: () =>
-							Option.getOrElse(
-								Option.map(String.lastIndexOf('\n')(chunk), index => index + 1),
-								() => chunk.length
+							pipe(
+								chunk,
+								String.lastIndexOf('\n'),
+								Option.map(index => String.slice(0, index + 1)(chunk)),
+								Option.getOrElse(() => chunk)
 							)
 					})
-					const text = String.slice(0, boundary)(chunk)
 					return {
 						...metadata,
 						[section]: text,

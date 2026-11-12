@@ -97,7 +97,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 						client: app.client,
 						...Boolean.match(app.device === app.address, {onFalse: () => ({device: app.device}), onTrue: () => ({})}),
 						id: app.family,
-						lastActive: DateTime.formatIso(DateTime.makeUnsafe(app.lastActive))
+						lastActive: pipe(app.lastActive, DateTime.makeUnsafe, DateTime.formatIso)
 					}))
 				}
 			}),
