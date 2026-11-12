@@ -1,37 +1,7 @@
-<!--
-The user merges on this body alone, read in T3 Code's dark theme: it proves the
-change works without anyone reading the code. Each fact appears once and no
-section repeats another. Cut what the diff or the PR page shows: history,
-walkthroughs, test lists, check results. Delete every comment and empty section.
--->
+<!-- Picture: the system before and after, one figure from the pull-requests skill's template. -->
 
-## Summary
+<!-- Working: one trimmed recording per app the change reaches, captioned with the numbers it shows. -->
 
-<!--
-One line: what changes for whom. Then the change's shape as one visual: a
-Mermaid architecture or flow for a structural change, a diff for a contract.
--->
+<!-- Not proven: one line per number nothing above shows working, and why. Delete when there is none. -->
 
-## Evidence
-
-<!--
-Write one line per claim, with its capture under it, showing the real input and
-the result where it is consumed. Use a screenshot per state and a motion video
-per journey. Prove each claim on the final head; a missing proof is a gap. Use a
-| Before | After | table on the same data only when the claim is a difference.
-T3 Code shows an image at most 480 px wide: crop a desktop capture to the region
-its claim is about, in dark, unless the claim is the whole layout. Captions say
-what changed, not how it was captured. An unchecked task-list item under its
-claim for what stays unverified.
--->
-
-## Merge danger
-
-<!--
-Almost always deleted. Keep it only when merging does something a revert cannot
-take back: data deleted or migrated, a package or app release published, an
-external system changed, a secret or server setting someone must change by
-hand. Routine steps (pulling, installing, restarting, CI and the deploy) are
-not merge danger. Then a WARNING alert: what cannot be undone, who it reaches,
-and the manual steps as a numbered list.
--->
+<!-- Merge danger: only when merging does what a revert cannot take back. A WARNING alert: what cannot be undone, then the manual steps, numbered. Delete otherwise. -->

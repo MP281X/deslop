@@ -17,14 +17,27 @@ description: 'Load before the first commit of a task, before the first edit when
 ## Publish
 
 1. **Push** as a draft. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
-2. **Describe** with the repository's PR or MR template.
-   - **Figures** stand in for an `html_render` page, which a PR cannot hold: lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
+2. **Describe** with the repository's PR or MR template. The reader decides merge or iterate from the body alone and never opens the diff; code quality belongs to the linter and the judge. The body holds these, in this order, and nothing else:
+   - **Picture.** One figure of the system before and after, side by side, filled into [the picture template](references/picture.html): a box per part, a line of text per connection, red for what goes away, green for what is new or changed, a number on each changed thing, amber and dashed for a changed thing nothing below shows working. Labels name parts and behaviour, never files. Pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
 
      ```bash
      magick <figure>.png -fuzz 1% -transparent "$(magick <figure>.png -format '%[pixel:p{0,0}]' info:)" <figure>.png
      ```
 
-   - **Videos** record the real journey.
+   - **Working.** One recording per app the change reaches: the real journey on the final head, captioned with the numbers it shows. Cut every stretch where nothing moves down to a second before attaching:
+
+     ```bash
+     ffmpeg -i <recording> -vf "mpdecimate=hi=1:lo=1:frac=0,setpts='if(eq(N,0),0,PREV_OUTPTS+min(PTS-PREV_INPTS,1/TB))',fps=60,scale=out_range=tv,format=yuv420p" -c:v libx264 -pix_fmt yuv420p -color_range tv -movflags +faststart -an <trimmed>.mp4
+     ```
+
+     No screenshot of anything a recording shows; a screenshot only for a state in which nothing moves.
+
+   - **Result**, only where the result is the change: the snippet the check now rejects with its real diagnostic, or a measured before → after.
+   - **Not proven.** One line per number that nothing above shows working, and why.
+   - **Merge danger**, almost never: only when merging does what a revert cannot take back (data deleted or moved, a release published, an external system or a secret changed by hand). A WARNING alert: what cannot be undone, then the manual steps, numbered.
+
+   No file path, line count, test name, list of checks or restated diff.
+
 3. **Read back** the rendered body: every image and video loads under its claim.
 4. **Watch** the final head's pipeline; a failure, a review comment or a conflict gets a fix, Verify and fresh captures where they changed.
 5. **Hand back** once the required jobs pass and no P1 or P2 finding is open.

@@ -1,0 +1,195 @@
+<!doctype html>
+<!-- Copy and fill this Gateway example. Classes: pr (480 px canvas), ba (two sides), side, row/row1/row2/row3, box (part), wire (connection text), x (gone), n (new or changed), q (not proven; dashed), was (old behaviour), num (number badge), also (Also touched), legend. Keep numbers consistent with Working and Not proven; omit also when nothing else was touched. -->
+<meta charset="utf-8" />
+<style>
+	html {
+		zoom: 2;
+	}
+	* {
+		box-sizing: border-box;
+	}
+	body {
+		margin: 0;
+		background: #0d1117;
+		color: #e6edf3;
+		font:
+			13px/1.4 -apple-system,
+			BlinkMacSystemFont,
+			'Segoe UI',
+			'Noto Sans',
+			Helvetica,
+			Arial,
+			sans-serif;
+	}
+	.pr {
+		width: 464px;
+	}
+	.ba {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+	}
+	.side {
+		border: 1px solid #3d444d;
+		border-radius: 6px;
+		padding: 8px;
+	}
+	.side > small {
+		color: #9198a1;
+		font-size: 10.5px;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+	.row {
+		display: grid;
+		gap: 4px;
+	}
+	.row2 {
+		grid-template-columns: repeat(2, 1fr);
+	}
+	.row3 {
+		grid-template-columns: repeat(3, 1fr);
+	}
+	.box {
+		position: relative;
+		border: 1px solid #3d444d;
+		border-radius: 4px;
+		padding: 4px 6px;
+		margin-top: 6px;
+		font-size: 11.5px;
+		text-align: center;
+		overflow-wrap: anywhere;
+	}
+	.box small,
+	.wire small {
+		display: block;
+		color: #9198a1;
+		font-size: 10.5px;
+	}
+	.x {
+		border-color: #f85149;
+		color: #f85149;
+	}
+	.x small,
+	small.was {
+		color: #f85149;
+	}
+	.n {
+		border-color: #3fb950;
+	}
+	.box.q {
+		border-style: dashed;
+		border-color: #d29922;
+	}
+	.wire {
+		text-align: center;
+		color: #9198a1;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 10.5px;
+		margin-top: 4px;
+	}
+	.wire.x,
+	.wire.x small {
+		color: #f85149;
+	}
+	.wire.n,
+	.wire.n small {
+		color: #3fb950;
+	}
+	.wire.q,
+	.wire.q small {
+		color: #d29922;
+		text-decoration: underline dashed;
+	}
+	.num {
+		display: inline-block;
+		width: 15px;
+		height: 15px;
+		border-radius: 50%;
+		background: #e6edf3;
+		color: #0d1117;
+		font-size: 10px;
+		line-height: 15px;
+		text-align: center;
+		font-weight: 600;
+		margin-right: 5px;
+		vertical-align: 1px;
+		font-family: inherit;
+	}
+	.box .num {
+		position: absolute;
+		left: -6px;
+		top: -6px;
+		margin: 0;
+	}
+	.also {
+		margin-top: 8px;
+		font-size: 11.5px;
+		color: #9198a1;
+	}
+	.also b {
+		font-weight: 400;
+		color: #e6edf3;
+	}
+	.legend {
+		font-size: 11px;
+		color: #9198a1;
+		margin-top: 8px;
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.legend u {
+		display: inline-block;
+		width: 12px;
+		height: 9px;
+		border-radius: 2px;
+		margin-right: 4px;
+		text-decoration: none;
+		border: 1px solid;
+		vertical-align: -1px;
+	}
+</style>
+<div class="pr">
+	<div class="ba">
+		<div class="side">
+			<small>Before</small>
+			<div class="row row1">
+				<div class="box">MCP servers<small class="was">one document, sign-ins inside</small></div>
+			</div>
+			<div class="row row1">
+				<div class="box">MCP calls<small class="was">one document per server</small></div>
+			</div>
+			<div class="row row2">
+				<div class="box">AI keys<small class="was">one document per person</small></div>
+				<div class="box x">AI usage<small>a day file of every call</small></div>
+			</div>
+			<div class="wire">loaded whole at start<small class="was">memory copies and locks</small></div>
+		</div>
+		<div class="side">
+			<small>After</small>
+			<div class="row row2">
+				<div class="box n"><span class="num">1</span>MCP servers<small>connections table, tool count</small></div>
+				<div class="box n">
+					<span class="num">2</span>provider sign-ins<small>connection_grants, tokens sensitive</small>
+				</div>
+			</div>
+			<div class="row row1">
+				<div class="box n"><span class="num">3</span>MCP calls<small>connection_calls by server, hour</small></div>
+			</div>
+			<div class="row row2">
+				<div class="box n"><span class="num">4</span>AI keys<small>ai_keys by owner, secret not sent</small></div>
+				<div class="box n"><span class="num">5</span>AI usage<small>ai_usage by owner and hour</small></div>
+			</div>
+			<div class="wire q">
+				<span class="num">6</span>loaded whole at start<small>transactions and live SQL reads</small>
+			</div>
+		</div>
+	</div>
+	<!-- Optional: <div class="also">Also touched: <b>usage summaries</b> · <b>live server counts</b></div> -->
+	<div class="legend">
+		<span><u style="border-color: #f85149"></u>goes away</span>
+		<span><u style="border-color: #3fb950"></u>new or changed</span>
+		<span><u style="border-color: #d29922; border-style: dashed"></u>not proven</span>
+	</div>
+</div>
