@@ -360,9 +360,6 @@ importers:
       '@expo/ui':
         specifier: ^58.0
         version: 58.0.27(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.23)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
-      cheerio:
-        specifier: latest
-        version: 1.2.0
       effect:
         specifier: latest
         version: 4.1.2
