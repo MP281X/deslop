@@ -3,8 +3,8 @@ import {Layer, pipe} from 'effect'
 import {McpServer} from 'effect/ai'
 import {FetchHttpClient} from 'effect/http'
 
-import * as CliRuntime from '@deslop/runtime/server/cli'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {ADMINS, runApp} from '@deslop/runtime/server/cli'
+import {layerRpc} from '@deslop/runtime/server/http'
 
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -24,16 +24,11 @@ const layerServices = pipe(
 	Layer.provide(layerUpstream)
 )
 
-CliRuntime.runApp({
+runApp({
 	icon,
 	routes: pipe(
-		Layer.mergeAll(
-			HttpHandlers,
-			AiHttpHandlers,
-			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-			GatewayMcp
-		),
+		Layer.mergeAll(HttpHandlers, AiHttpHandlers, layerRpc({group: RpcContracts, handlers: RpcHandlers}), GatewayMcp),
 		Layer.provide(layerServices)
 	),
-	settings: {GITHUB_ADMINS: CliRuntime.ADMINS}
+	settings: {GITHUB_ADMINS: ADMINS}
 })

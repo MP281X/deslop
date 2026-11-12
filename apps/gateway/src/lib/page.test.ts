@@ -21,6 +21,7 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {ConnectionInfo} from '#services/connections/schema.ts'
 
 const sample = ConnectionInfo.make({
+	error: Option.none(),
 	icons: [],
 	id: 'private',
 	name: 'Private MCP server',

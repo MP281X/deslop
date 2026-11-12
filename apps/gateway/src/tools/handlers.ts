@@ -1,4 +1,4 @@
-import {Array, Clock, Effect, Layer, Option, Struct, pipe} from 'effect'
+import {Array, Effect, Layer, Option, Struct, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
@@ -7,7 +7,6 @@ import {layerMcp} from '@deslop/runtime/server/http'
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {AiProxy} from '#services/ai/service.ts'
-import {connectionStatus} from '#services/connections/lib/utils.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery, VerifiedCaller} from '#services/gateway/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
@@ -19,7 +18,6 @@ const ToolHandlers = ToolContracts.toLayer(
 		const gateway = yield* Gateway
 		return ToolContracts.of({
 			list_mcp_connections: Effect.fnUntraced(function* (input) {
-				const now = yield* Clock.currentTimeMillis
 				const all = yield* connections.definitions
 				if (input.server !== undefined && !Array.some(all, server => server.id === input.server)) {
 					return yield* AuthError.make({
@@ -33,13 +31,12 @@ const ToolHandlers = ToolContracts.toLayer(
 					servers: Array.map(
 						Array.filter(all, server => input.server === undefined || server.id === input.server),
 						server => ({
-							...Struct.pick(server, ['error', 'id']),
+							...Option.match(server.error, {onNone: () => ({}), onSome: error => ({error})}),
 							...Option.match(
-								Option.filter(Option.fromUndefinedOr(server.instructions), () => input.server === server.id),
+								Option.filter(server.instructions, () => input.server === server.id),
 								{onNone: () => ({}), onSome: instructions => ({instructions})}
 							),
-							status: connectionStatus(server, now),
-							tools: Array.length(server.tools)
+							...Struct.pick(server, ['id', 'status', 'tools'])
 						})
 					)
 				}
