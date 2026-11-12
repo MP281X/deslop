@@ -56,6 +56,7 @@ import type {
 	OperationRow,
 	OperationTrace,
 	OperationsAnswer,
+	Overview,
 	Range,
 	ReadTraceAnswer,
 	ReadTraceParams,
@@ -80,6 +81,7 @@ import {
 	Superseded,
 	TelemetryError,
 	Trace,
+	TraceDetail,
 	TraceId,
 	TraceQuery
 } from '#services/telemetry/schema.ts'
@@ -117,24 +119,47 @@ function chunked<A, E>(rows: readonly A[], save: (chunk: Array.NonEmptyReadonlyA
 }
 
 function tracedOf(row: SettledTrace) {
-	const error = diagnosis(row)
 	return {
 		app: appName(row.service),
+		failed: row.failed,
 		name: row.name,
 		runtime: row.runtime,
-		trace: {
-			duration: row.duration,
-			id: row.id,
-			start: row.start,
-			...Option.match(row.label, {onNone: () => ({}), onSome: label => ({label})}),
-			...Option.match(row.broken, {
-				onNone: () => ({}),
-				onSome: span => ({
-					failure: {span, ...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})}
-				})
-			})
-		}
+		trace: {duration: row.duration, id: row.id, start: row.start}
 	} satisfies Traced
+}
+
+// The overview's kept traces with their labels and failures; a trace pruned since the overview counted it stays without them until the next read.
+function detailed(overview: Overview, rows: readonly TraceDetail[]) {
+	const byId = Record.fromEntries(Array.map(rows, row => [row.id, row] as const))
+	return {
+		apps: Array.map(overview.apps, app => ({
+			...app,
+			operations: Array.map(app.operations, operation => ({
+				...operation,
+				traces: Array.map(operation.traces, trace =>
+					Option.match(Record.get(byId, trace.id), {
+						onNone: () => trace,
+						onSome: row => {
+							const error = diagnosis(row)
+							return {
+								...trace,
+								...Option.match(row.label, {onNone: () => ({}), onSome: label => ({label})}),
+								...Option.match(row.broken, {
+									onNone: () => ({}),
+									onSome: span => ({
+										failure: {
+											span,
+											...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
+										}
+									})
+								})
+							}
+						}
+					})
+				)
+			}))
+		}))
+	} satisfies Overview
 }
 
 // The newest failing trace an operation holds, whose span and message the tools show.
@@ -153,9 +178,9 @@ function latestFailure(traces: readonly OperationTrace[]) {
 }
 
 // The page's own operations for one frame, failing first and then most recent, with the numbers the tools need.
-function operationsAnswer(traces: readonly Traced[], now: number, input: ListOperationsParams) {
+function operationsAnswer(overview: Overview, name?: string) {
 	const apps = Array.map(
-		Array.filter(overviewOf(traces, now, input.since).apps, app => input.app === undefined || app.name === input.app),
+		Array.filter(overview.apps, app => name === undefined || app.name === name),
 		app => ({
 			app: app.name,
 			operations: Array.map(
@@ -515,12 +540,24 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			execute: now => sql`
 				SELECT
 					traces.id, traces.start, traces.duration, root.service, root.runtime, root.name,
+					traces.broken IS NOT NULL AS failed
+				${traceJoins}
+				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${now - 60_000})
+			`
+		})
+		// The label and failure of the traces the overview keeps, read for them alone.
+		const listDetails = SqlSchema.findAll({
+			Request: Schema.Array(TraceId),
+			Result: TraceDetail,
+			execute: ids => sql`
+				SELECT
+					traces.id,
 					CASE WHEN json_type(root.attributes, '$."trace.label"') = 'text'
 						THEN json_extract(root.attributes, '$."trace.label"')
 					END AS label,
 					broken.name AS broken, broken.error, broken.exception
 				${traceJoins}
-				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${now - 60_000})
+				WHERE ${sql.in('traces.id', ids)}
 			`
 		})
 		const listServices = SqlSchema.findAll({
@@ -665,10 +702,18 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			storageFailed,
 			withReactivity
 		)
-		// The overview's rows as of now; a trace whose root never came joins them a minute after it started.
-		const traced = Effect.fnUntraced(function* () {
+		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
+		const readOverview = Effect.fnUntraced(function* (range: Range) {
 			const now = yield* Clock.currentTimeMillis
-			return {now, traces: Array.map(yield* listSettled(now), tracedOf)}
+			const counted = overviewOf(Array.map(yield* listSettled(now), tracedOf), now, range)
+			return detailed(
+				counted,
+				yield* listDetails(
+					Array.flatMap(counted.apps, app =>
+						Array.flatMap(app.operations, operation => Array.map(operation.traces, trace => trace.id))
+					)
+				)
+			)
 		})
 		const tree = Effect.fnUntraced(function* (id: string) {
 			const traceId = String.toLowerCase(id)
@@ -793,8 +838,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				withReactivity
 			),
 			listOperations: Effect.fn('Telemetry.listOperations')(function* (input: ListOperationsParams) {
-				const current = yield* traced()
-				return operationsAnswer(current.traces, current.now, input)
+				return operationsAnswer(yield* readOverview(input.since), input.app)
 			}, storageFailed),
 			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
 				const rows = yield* listLatencies({
@@ -867,10 +911,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			// What the page watches: read again after each committed write, at most once a second, always the newest.
 			watch: (range: Range) =>
 				pipe(
-					sql.reactive(
-						['telemetry'],
-						Effect.map(traced(), current => overviewOf(current.traces, current.now, range))
-					),
+					sql.reactive(['telemetry'], readOverview(range)),
 					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
 					Stream.buffer({capacity: 1, strategy: 'sliding'}),
 					Stream.flatMap(overview =>

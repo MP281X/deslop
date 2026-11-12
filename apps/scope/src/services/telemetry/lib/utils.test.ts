@@ -11,6 +11,7 @@ const HOUR = 3_600_000
 function traced(id: string, app: string, start: number, durationMs: number) {
 	return {
 		app,
+		failed: false,
 		name: 'share',
 		runtime: 'server',
 		trace: {duration: Duration.millis(durationMs), id, start}
@@ -45,5 +46,25 @@ it('counts each app’s operations only inside the page’s time frame and keeps
 	assert.deepStrictEqual(
 		Array.map(appOf(day, 'gateway').operations, operation => [operation.name, operation.count]),
 		[['share', 1]]
+	)
+})
+
+function traceId(index: number) {
+	return String.padStart(32, '0')(index.toString(16))
+}
+
+it('keeps the newest failures among the slowest traces of an operation with 145,000 of them', () => {
+	const busy = Array.makeBy(145_000, index => ({
+		...traced(traceId(index), 'stash', NOW - index * 1000, index % 1000),
+		failed: index % 100 === 0
+	}))
+	const operation = Option.getOrThrow(Array.head(appOf(overviewOf(busy, NOW, '3d'), 'stash').operations))
+	assert.deepStrictEqual([operation.count, operation.failures], [145_000, 1450])
+	assert.deepStrictEqual(
+		Array.map(operation.traces, trace => trace.id),
+		Array.map(
+			[...Array.makeBy(10, index => index * 1000 + 999), ...Array.makeBy(10, index => 900 - index * 100)],
+			traceId
+		)
 	)
 })
