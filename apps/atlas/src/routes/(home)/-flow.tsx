@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Match, Number, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Match, Number, Option, Order, pipe} from 'effect'
 
 import {ChartBarHorizontalIcon} from '@phosphor-icons/react'
 
@@ -6,6 +6,7 @@ import {EmptyState} from '@deslop/components-web/fallbacks'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {cn} from '@deslop/components-web/utils'
 
+import {isSamePullRequest, problemOf} from '#lib/pull-request.ts'
 import {spanOf, stripsOf, ticksOf} from '#lib/time.ts'
 import type {Strip} from '#lib/time.ts'
 import type {PullRequest} from '#services/changes/schema.ts'
@@ -13,22 +14,6 @@ import type {PullRequest} from '#services/changes/schema.ts'
 const date = new Intl.DateTimeFormat(undefined, {day: 'numeric', month: 'short'})
 
 type Span = {readonly end: number; readonly start: number}
-
-function isSelected(pr: PullRequest, selected?: PullRequest) {
-	if (selected === undefined) return false
-	return selected.repoId === pr.repoId && selected.number === pr.number
-}
-
-// The problems a reader must act on, as one phrase for the dot and the row; passing checks and an approval are not problems.
-function problemOf(pr: PullRequest) {
-	return Array.match(
-		[
-			...Boolean.match(pr.checks === 'failing', {onFalse: () => [], onTrue: () => ['Checks failing']}),
-			...Boolean.match(pr.review === 'changes', {onFalse: () => [], onTrue: () => ['changes requested']})
-		],
-		{onEmpty: () => undefined, onNonEmpty: problems => Array.join(problems, '; ')}
-	)
-}
 
 // What a reader hears for the whole row: its number and title, when it opened, merged or last changed, its churn and any problem.
 function labelOf(strip: Strip, problem?: string) {
@@ -95,7 +80,7 @@ function StripRow(props: {
 	readonly strip: Strip
 }) {
 	const pr = props.strip.pr
-	const active = isSelected(pr, props.selected)
+	const active = isSamePullRequest(pr, props.selected)
 	const problem = problemOf(pr)
 	const label = labelOf(props.strip, problem)
 	return (
@@ -138,7 +123,15 @@ export function FlowView(props: {
 	readonly selected?: PullRequest
 	readonly onSelect: (pr: PullRequest) => void
 }) {
-	const strips = stripsOf(props.pullRequests, props.now)
+	const strips = Array.sort(
+		stripsOf(props.pullRequests, props.now),
+		Order.combine(
+			Order.mapInput(Order.Number, (strip: Strip) =>
+				Boolean.match(strip.pr.state === 'merged', {onFalse: () => 0, onTrue: () => 1})
+			),
+			Order.mapInput(Order.Number, (strip: Strip) => strip.start)
+		)
+	)
 	if (Array.isReadonlyArrayEmpty(strips)) {
 		return <EmptyState label="No pull requests" icon={<ChartBarHorizontalIcon weight="light" />} />
 	}

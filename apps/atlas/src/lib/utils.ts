@@ -8,17 +8,17 @@ import * as WebRuntime from '@deslop/runtime/web'
 import {RpcContracts} from '#rpcs/contracts.ts'
 
 export type View = typeof View.Type
-export const View = Schema.Literals(['map', 'flow', 'couple'])
+const View = Schema.Literals(['map', 'flow', 'couple'])
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
 	pane: Schema.optionalKey(Schema.Literals(['files'])),
-	pr: Schema.optionalKey(Schema.String),
+	pr: Schema.optionalKey(Schema.Finite),
 	repo: Schema.optionalKey(Schema.String),
 	view: Schema.optionalKey(View)
 })
 
-export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/atlas/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/atlas/lib/utils/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: WebRuntime.layer('@deslop/atlas')
 }) {}

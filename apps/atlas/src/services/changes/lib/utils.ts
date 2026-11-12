@@ -79,7 +79,7 @@ type GitlabMergeRequest = {
 	readonly created_at: DateTime.Utc
 	readonly detailed_merge_status?: string
 	readonly draft?: boolean
-	readonly head_pipeline: {readonly status: string} | null
+	readonly head_pipeline?: {readonly status: string} | null
 	readonly iid: number
 	readonly merged_at: DateTime.Utc | null
 	readonly source_branch: string
@@ -88,10 +88,6 @@ type GitlabMergeRequest = {
 	readonly updated_at: DateTime.Utc
 	readonly user_notes_count: number
 	readonly web_url: string
-}
-
-export function specsOf(value: string) {
-	return Array.filter(Array.map(String.split(value, ','), String.trim), String.isNonEmpty)
 }
 
 function repoOf(spec: string) {
@@ -121,7 +117,9 @@ function repoOf(spec: string) {
 }
 
 export function reposOf(specs: string) {
-	return Array.getSomes(Array.map(specsOf(specs), repoOf))
+	return Array.getSomes(
+		Array.map(Array.filter(Array.map(String.split(specs, ','), String.trim), String.isNonEmpty), repoOf)
+	)
 }
 
 function githubReviewOf(decision: string | null) {
@@ -259,7 +257,7 @@ export function githubPullRequestsOf(json: string, repo: Repo, now: number) {
 	)
 }
 
-function gitlabChecksOf(pipeline: {readonly status: string} | null) {
+function gitlabChecksOf(pipeline?: {readonly status: string} | null) {
 	return Option.getOrElse(
 		Option.flatMap(Option.fromNullishOr(pipeline), value => Record.get(GITLAB_CHECKS, value.status)),
 		() => 'none' as const
@@ -314,7 +312,7 @@ export function gitlabPullRequestsOf(json: string, repo: Repo) {
 						created_at: Schema.DateTimeUtcFromString,
 						detailed_merge_status: Schema.optionalKey(Schema.String),
 						draft: Schema.optionalKey(Schema.Boolean),
-						head_pipeline: Schema.NullOr(Schema.Struct({status: Schema.String})),
+						head_pipeline: Schema.optionalKey(Schema.NullOr(Schema.Struct({status: Schema.String}))),
 						iid: Schema.Finite,
 						labels: Schema.Array(Schema.Union([Schema.String, Schema.Struct({name: Schema.String})])),
 						merged_at: Schema.NullOr(Schema.DateTimeUtcFromString),

@@ -8,26 +8,19 @@ import {cn} from '@deslop/components-web/utils'
 
 import {areaOf, churnByArea} from '#lib/areas.ts'
 import type {AreaChurn} from '#lib/areas.ts'
+import {isSamePullRequest, problemOf} from '#lib/pull-request.ts'
 import {squarify} from '#lib/treemap.ts'
 import type {PullRequest} from '#services/changes/schema.ts'
 
 const STATE_LABELS: Record<PullRequest['state'], string> = {draft: 'Draft', merged: 'Merged', open: 'Open'}
 
-function isSelected(pr: PullRequest, selected?: PullRequest) {
-	if (selected === undefined) return false
-	return selected.repoId === pr.repoId && selected.number === pr.number
-}
-
-// The problems a reader must act on, as one phrase for the dot and the label; passing checks and an approval are not problems.
-function problemOf(pr: PullRequest) {
-	return Array.match(
-		[
-			...Boolean.match(pr.checks === 'failing', {onFalse: () => [], onTrue: () => ['Checks failing']}),
-			...Boolean.match(pr.review === 'changes', {onFalse: () => [], onTrue: () => ['changes requested']})
-		],
-		{onEmpty: () => undefined, onNonEmpty: problems => Array.join(problems, '; ')}
-	)
-}
+// In flight first, then the most recently touched; a map's first panels are the ones still moving.
+const PANEL_ORDER = Order.combine(
+	Order.mapInput(Order.Number, (pr: PullRequest) =>
+		Boolean.match(pr.state === 'merged', {onFalse: () => 0, onTrue: () => 1})
+	),
+	Order.flip(Order.mapInput(Order.String, (pr: PullRequest) => pr.updatedAt))
+)
 
 // What a reader hears for the whole panel: its name, both sides of its churn, its state and any problem.
 function labelOf(pr: PullRequest, problem?: string) {
@@ -98,7 +91,7 @@ function AreaMap(props: {files: PullRequest['files']; rows: readonly AreaChurn[]
 function MapPanel(props: {onSelect: (pr: PullRequest) => void; pr: PullRequest; selected?: PullRequest}) {
 	const churn = churnByArea(props.pr.files)
 	const problem = problemOf(props.pr)
-	const selected = isSelected(props.pr, props.selected)
+	const selected = isSamePullRequest(props.pr, props.selected)
 	return (
 		<div
 			className={cn(
@@ -135,6 +128,17 @@ function MapPanel(props: {onSelect: (pr: PullRequest) => void; pr: PullRequest; 
 						)
 					})}
 				</span>
+				{Array.match(churn, {
+					onEmpty: () => null,
+					onNonEmpty: rows => (
+						<span className="text-muted-foreground truncate text-xs">
+							{Array.join(
+								Array.map(Array.take(rows, 3), row => row.area),
+								' · '
+							)}
+						</span>
+					)
+				})}
 				<span className="text-muted-foreground text-xs">
 					{Array.join(
 						[
@@ -159,17 +163,14 @@ export function MapView(props: {
 	readonly selected?: PullRequest
 	readonly onSelect: (pr: PullRequest) => void
 }) {
-	return Array.match(
-		Array.sort(props.pullRequests, Order.flip(Order.mapInput(Order.String, (pr: PullRequest) => pr.updatedAt))),
-		{
-			onEmpty: () => <EmptyState label="No pull requests" icon={<MapTrifoldIcon weight="light" />} />,
-			onNonEmpty: pullRequests => (
-				<div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2 2xl:grid-cols-3">
-					{Array.map(pullRequests, pr => (
-						<MapPanel key={`${pr.repoId}#${pr.number}`} onSelect={props.onSelect} pr={pr} selected={props.selected} />
-					))}
-				</div>
-			)
-		}
-	)
+	return Array.match(Array.sort(props.pullRequests, PANEL_ORDER), {
+		onEmpty: () => <EmptyState label="No pull requests" icon={<MapTrifoldIcon weight="light" />} />,
+		onNonEmpty: pullRequests => (
+			<div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2 2xl:grid-cols-3">
+				{Array.map(pullRequests, pr => (
+					<MapPanel key={`${pr.repoId}#${pr.number}`} onSelect={props.onSelect} pr={pr} selected={props.selected} />
+				))}
+			</div>
+		)
+	})
 }

@@ -2,7 +2,7 @@ import {Array, Boolean, Number, Option, Order} from 'effect'
 
 export type TreemapItem = {readonly key: string; readonly value: number}
 
-export type TreemapTile = TreemapItem & {
+type TreemapTile = TreemapItem & {
 	readonly height: number
 	readonly width: number
 	readonly x: number

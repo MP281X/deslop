@@ -3,14 +3,7 @@ import {Array, Boolean, Function, Number, Option, Order, Record} from 'effect'
 import {areaOf} from '#lib/areas.ts'
 import type {PullRequest} from '#services/changes/schema.ts'
 
-export type Coupling = {readonly a: string; readonly b: string; readonly count: number; readonly score: number}
-
-export type CouplingMatrix = {
-	readonly areas: readonly string[]
-	readonly cells: readonly Coupling[]
-	readonly maxCount: number
-	readonly maxScore: number
-}
+type Coupling = {readonly a: string; readonly b: string; readonly count: number; readonly score: number}
 
 function areasOf(pr: PullRequest) {
 	return Array.sort(Array.dedupe(Array.map(pr.files, file => areaOf(file.path))), Order.String)

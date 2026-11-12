@@ -10,7 +10,7 @@ import {couplingOf} from '#lib/coupling.ts'
 import type {PullRequest} from '#services/changes/schema.ts'
 
 const ROW_CLASS = 'flex items-stretch gap-px'
-const CELLS_CLASS = 'flex flex-1 gap-px'
+const CELLS_CLASS = 'flex min-w-0 flex-1 gap-px'
 const GUTTER_CLASS = 'w-40 shrink-0'
 const CELL_CLASS = 'aspect-square min-w-0 flex-1 border-r border-b'
 

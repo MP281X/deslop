@@ -7,7 +7,6 @@ import {
 	gitlabFilesOf,
 	gitlabPullRequestsOf,
 	reposOf,
-	specsOf,
 	withGitlabFiles
 } from '#services/changes/lib/utils.ts'
 import {AtlasError, PullRequest, Repo} from '#services/changes/schema.ts'
@@ -114,12 +113,7 @@ const GITLAB_REPO = Repo.make({
 	url: 'https://git.datapizza.tech/dual/dual'
 })
 
-it('splits repository specs and skips malformed ones', () => {
-	assert.deepStrictEqual(specsOf(' github.com/MP281X/deslop , git.datapizza.tech/dual/dual ,, nope.com '), [
-		'github.com/MP281X/deslop',
-		'git.datapizza.tech/dual/dual',
-		'nope.com'
-	])
+it('reads repository specs and skips malformed ones', () => {
 	assert.deepStrictEqual(reposOf(' github.com/MP281X/deslop , git.datapizza.tech/dual/dual , nope.com , bad/one '), [
 		GITHUB_REPO,
 		GITLAB_REPO

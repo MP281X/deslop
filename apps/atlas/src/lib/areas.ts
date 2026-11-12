@@ -1,6 +1,6 @@
 import {Array, Option, Order, Record, String} from 'effect'
 
-import type {FileChange, PullRequest} from '#services/changes/schema.ts'
+import type {FileChange} from '#services/changes/schema.ts'
 
 const ROOTS = ['apps', 'libs', 'modules', 'packages', 'projects', 'services', 'tools']
 
@@ -38,8 +38,4 @@ export function churnByArea(files: readonly FileChange[]) {
 			Order.mapInput(Order.String, (row: AreaChurn) => row.area)
 		)
 	)
-}
-
-export function prChurn(pr: PullRequest) {
-	return pr.additions + pr.deletions
 }
