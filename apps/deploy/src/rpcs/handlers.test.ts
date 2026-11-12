@@ -21,7 +21,15 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			const closed = yield* Queue.unbounded<number>()
 			const first = yield* Queue.unbounded<readonly MachineHistory[]>()
 			const second = yield* Queue.unbounded<readonly MachineHistory[]>()
-			const history = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
+			const history = MachineHistory.make({
+				disks: [],
+				error: '',
+				load: [],
+				samples: [],
+				stale: false,
+				time: 1,
+				worker: 'desktop'
+			})
 			const fleet = Fleet.of({
 				current: () =>
 					Effect.as(

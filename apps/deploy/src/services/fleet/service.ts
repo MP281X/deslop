@@ -27,9 +27,10 @@ import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
 import {RPC_PATH} from '@deslop/runtime/shared/schema'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
+import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Exposures} from '#services/exposures/service.ts'
 import {DeployError, Snapshot, Worker} from '#services/inventory/schema.ts'
-import type {ExposeRequest, HideRequest, RunRequest} from '#services/inventory/schema.ts'
+import type {RunRequest} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {history} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
@@ -75,6 +76,8 @@ function changeFailed<A, E>(effect: Effect.Effect<A, E>) {
 function cachedHistory(query: HistoryQuery, time: number, saved?: MachineHistory) {
 	return {
 		...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
+		disks: saved?.disks ?? [],
+		load: saved?.load ?? [],
 		samples: history(saved?.samples ?? [], query.minutes, time),
 		time
 	}
@@ -87,9 +90,9 @@ export class Fleet extends Context.Service<
 		readonly hide: (input: HideRequest) => Effect.Effect<void, DeployError>
 		readonly run: (input: RunRequest) => Effect.Effect<void, DeployError>
 		readonly local: Effect.Effect<Snapshot>
-		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory>
-		readonly current: (query: HistoryQuery) => Effect.Effect<MachineHistory[]>
-		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[]>
+		readonly history: (query: HistoryQuery) => Effect.Effect<MachineHistory, DeployError>
+		readonly current: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>
+		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
 >()('@deslop/deploy/services/fleet/service/Fleet') {
@@ -116,9 +119,15 @@ export class Fleet extends Context.Service<
 			const previous = yield* Ref.make<Record<string, Snapshot>>({})
 			const local = Effect.gen(function* () {
 				const snapshot = yield* inventory.snapshot
+				// Owned exposures are one more source: a failed read shows as its error, as an inventory source's does.
+				const owned = yield* Effect.match(exposures.items, {
+					onFailure: cause => ({items: [], sources: [{error: cause.message, name: 'Exposures'}]}),
+					onSuccess: items => ({items, sources: []})
+				})
 				return Snapshot.make({
 					...snapshot,
-					items: [...snapshot.items, ...(yield* exposures.items)],
+					items: [...snapshot.items, ...owned.items],
+					sources: [...snapshot.sources, ...owned.sources],
 					workers: Array.dedupe([
 						...(snapshot.workers ?? Array.map(snapshot.items, item => item.worker)),
 						...Array.map(workers, worker => worker.name)

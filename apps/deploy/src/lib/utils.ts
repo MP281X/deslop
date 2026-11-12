@@ -13,7 +13,8 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import type {ExposeRequest, InventoryItem, RunRequest} from '#services/inventory/schema.ts'
+import type {ExposeRequest} from '#services/exposures/schema.ts'
+import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 addPageTelemetry('@deslop/deploy')

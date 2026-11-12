@@ -5,7 +5,7 @@ import {Array, Option} from 'effect'
 import {impactGroups} from '#routes/(home)/-rows.ts'
 import {workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
-import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+import type {AppSample, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
 
@@ -26,13 +26,24 @@ function row(name: string, state?: string, detail?: string) {
 	return Option.getOrThrow(Array.head(workloads([item(name, state, detail)])))
 }
 
-function sample(time: number, apps: Sample['apps']) {
-	return {apps, cores: [], cpu: 50, disks: [], memoryTotal: 10 * GIB, memoryUsed: 6 * GIB, time} satisfies Sample
+function sample(time: number, apps: readonly AppSample[]) {
+	return {
+		apps: Option.some(apps),
+		cpu: Option.some(50),
+		memoryTotal: 10 * GIB,
+		memoryUsed: 6 * GIB,
+		since: time,
+		step: 1000,
+		storageUsed: Option.none(),
+		time
+	} satisfies Sample
 }
 
 function machine(samples: Sample[]) {
 	return {
+		disks: [],
 		error: '',
+		load: [],
 		samples,
 		stale: false,
 		time: Option.getOrThrow(Option.map(Array.last(samples), last => last.time)),

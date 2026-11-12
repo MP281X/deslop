@@ -44,9 +44,9 @@ function total(
 function appSeries(history: MachineHistory) {
 	// One lookup per sample, so each app's series reads its entry directly.
 	const indexed = Array.map(history.samples, sample =>
-		Record.fromEntries(Array.map(sample.apps ?? [], app => [app.id, app]))
+		Record.fromEntries(Array.map(Option.getOrElse(sample.apps, Array.empty), app => [app.id, app]))
 	)
-	const ids = Array.dedupe(Array.flatMap(history.samples, sample => Array.map(sample.apps ?? [], app => app.id)))
+	const ids = Array.dedupe(Array.flatMap(indexed, Record.keys))
 	// Apps' memory and the machine's used memory are measured apart, so together they can disagree by a little; the apps shrink to fit inside it.
 	const fit = Array.map(history.samples, (sample, index) =>
 		Number.min(
@@ -106,7 +106,9 @@ export function bands(history: MachineHistory) {
 		...ranked,
 		...other,
 		{
-			cpu: Array.map(history.samples, (sample, index) => Number.max(0, (sample.cpu ?? 0) - total(apps, index, 'cpu'))),
+			cpu: Array.map(history.samples, (sample, index) =>
+				Number.max(0, Option.getOrElse(sample.cpu, () => 0) - total(apps, index, 'cpu'))
+			),
 			id: 'system',
 			kind: 'system',
 			memory: Array.map(history.samples, (sample, index) =>
@@ -123,7 +125,9 @@ export function bands(history: MachineHistory) {
 // The band a selected app focuses: its own when the chart draws it, the low-impact block when it shares that, or none when the range never recorded it.
 export function focusedBand(history: MachineHistory, selected: string) {
 	const drawn = Array.some(bands(history), band => band.id === selected)
-	const recorded = Array.some(history.samples, sample => Array.some(sample.apps ?? [], app => app.id === selected))
+	const recorded = Array.some(history.samples, sample =>
+		Option.exists(sample.apps, apps => Array.some(apps, app => app.id === selected))
+	)
 	if (drawn) return Option.some(selected)
 	if (recorded) return Option.some('other')
 	return Option.none()

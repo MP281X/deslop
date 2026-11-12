@@ -3,17 +3,28 @@ import {assert, it} from '@effect/vitest'
 import {Array, Function, HashSet, Option} from 'effect'
 
 import {bandFill, bands, focusedBand, lowImpactIds, runs} from '#routes/(home)/-usage.ts'
-import type {MachineHistory, Sample} from '#services/metrics/schema.ts'
+import type {AppSample, MachineHistory, Sample} from '#services/metrics/schema.ts'
 
 const GIB = 1024 ** 3
 
-function sample(time: number, apps: Sample['apps']) {
-	return {apps, cores: [], cpu: 50, disks: [], memoryTotal: 10 * GIB, memoryUsed: 6 * GIB, time} satisfies Sample
+function sample(time: number, apps: readonly AppSample[]) {
+	return {
+		apps: Option.some(apps),
+		cpu: Option.some(50),
+		memoryTotal: 10 * GIB,
+		memoryUsed: 6 * GIB,
+		since: time,
+		step: 1000,
+		storageUsed: Option.none(),
+		time
+	} satisfies Sample
 }
 
 function machine(samples: Sample[]) {
 	return {
+		disks: [],
 		error: '',
+		load: [],
 		samples,
 		stale: false,
 		time: Option.getOrElse(
@@ -100,11 +111,11 @@ it('breaks the time axis where the recording misses a slot or a sample lacks the
 			sample(hour - 240_000, []),
 			// Two minutes apart is a missed minute on the hour's chart.
 			sample(hour - 120_000, []),
-			{...sample(hour - 60_000, []), cpu: undefined},
+			{...sample(hour - 60_000, []), cpu: Option.none()},
 			sample(hour, [])
 		]),
 		60,
-		entry => entry.cpu !== undefined
+		entry => Option.isSome(entry.cpu)
 	)
 	assert.deepStrictEqual(
 		Array.map(result, run => Array.map(run, point => point.index)),

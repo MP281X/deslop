@@ -352,11 +352,14 @@ export function ChartBlock(props: {
 		Option.flatMap(Option.fromUndefinedOr(props.selectedOwner), selected => focusedBand(props.history, selected))
 	)
 	const latest = Option.getOrUndefined(Array.last(props.history.samples))
-	const total = Array.reduce(latest?.disks ?? [], 0, (sum, disk) => sum + disk.total)
+	const cpu = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.cpu)
+	const storageUsed = Option.flatMap(Option.fromUndefinedOr(latest), sample => sample.storageUsed)
+	const total = Array.reduce(props.history.disks, 0, (sum, disk) => sum + disk.total)
 	const disk = Array.map(props.history.samples, sample =>
 		Boolean.match(total > 0, {
 			onFalse: () => 0,
-			onTrue: () => Number.clamp(((sample.storageUsed ?? 0) / total) * 100, {maximum: 100, minimum: 0})
+			onTrue: () =>
+				Number.clamp((Option.getOrElse(sample.storageUsed, () => 0) / total) * 100, {maximum: 100, minimum: 0})
 		})
 	)
 	const charts: readonly {
@@ -379,16 +382,16 @@ export function ChartBlock(props: {
 		},
 		{
 			cover: false,
-			figure: Boolean.match(latest?.cpu === undefined, {onFalse: () => rate(latest?.cpu ?? 0), onTrue: () => '—'}),
+			figure: Option.match(cpu, {onNone: () => '—', onSome: rate}),
 			focus,
 			format: rate,
 			label: 'CPU',
 			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
-			recorded: sample => sample.cpu !== undefined
+			recorded: sample => Option.isSome(sample.cpu)
 		},
 		{
 			cover: true,
-			figure: Option.match(Option.fromUndefinedOr(latest?.storageUsed), {
+			figure: Option.match(storageUsed, {
 				onNone: () => '—',
 				onSome: used =>
 					Boolean.match(total > 0, {onFalse: () => '—', onTrue: () => `${Number.round((used / total) * 100, 0)}%`})
@@ -396,7 +399,7 @@ export function ChartBlock(props: {
 			format: rate,
 			label: 'Disk',
 			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
-			recorded: sample => sample.storageUsed !== undefined
+			recorded: sample => Option.isSome(sample.storageUsed)
 		}
 	]
 	return (
