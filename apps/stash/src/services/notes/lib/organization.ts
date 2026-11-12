@@ -125,9 +125,9 @@ export class Organizer extends Context.Service<
 						const entry = Array.join(
 							[
 								`Source: ${input.note.source}`,
-								`Link: ${input.note.url ?? 'none'}`,
-								`Saved file: ${input.note.file ?? 'none'}`,
-								`Author: ${input.note.author ?? 'none'}`,
+								`Link: ${Option.getOrElse(input.note.url, () => 'none')}`,
+								`Saved file: ${Option.getOrElse(input.note.file, () => 'none')}`,
+								`Author: ${Option.getOrElse(input.note.author, () => 'none')}`,
 								`Tags in use:\n${pipe(
 									Array.take(input.tags, 150),
 									Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
@@ -135,7 +135,8 @@ export class Organizer extends Context.Service<
 										Array.join(
 											Array.map(
 												entries,
-												tag => `- ${tag.tag} (${tag.count}): ${tag.definition ?? 'no definition yet'}`
+												tag =>
+													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, () => 'no definition yet')}`
 											),
 											'\n'
 										)
@@ -146,7 +147,7 @@ export class Organizer extends Context.Service<
 								`Saved text: ${input.note.text}`,
 								`Link content:\n${bounded(input.note.content)}`,
 								`Video transcript:\n${pipe(
-									Option.fromUndefinedOr(input.note.transcript),
+									input.note.transcript,
 									Option.map(bounded),
 									Option.getOrElse(() => 'none')
 								)}`
