@@ -421,9 +421,7 @@ function Home() {
 		),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
-	const active = Option.getOrElse(Option.fromUndefinedOr(search.machine), () =>
-		Option.getOrUndefined(Array.head(workers))
-	)
+	const active = search.machine ?? Option.getOrUndefined(Array.head(workers))
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)

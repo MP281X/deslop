@@ -11,7 +11,8 @@ export const noVacuousAssertion = question(
 			cases: [
 				'Tests that also assert exact values, counts or members',
 				'A test whose promised behavior is that nothing happens or nothing is returned',
-				'Assertions inside helpers `code` does not show'
+				'Assertions inside helpers `code` does not show',
+				'An assertion whose two arguments are written the same, with no call: lint reports it'
 			],
 			example: `
 				it('keeps active sessions after cleanup', () => {
@@ -23,7 +24,7 @@ export const noVacuousAssertion = question(
 			cases: [
 				'Checking that every item of a result has a property, without checking the result holds the expected items',
 				'Asserting only that no error was thrown, or that a value is defined, when the title promises a specific outcome',
-				'Comparing a value with itself, or with the input the test passed in'
+				'Comparing a value with the input the test passed in, or with itself computed again'
 			],
 			example: `
 				it('keeps active sessions after cleanup', () => {

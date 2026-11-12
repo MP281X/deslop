@@ -71,12 +71,7 @@ function readImportedNames(program: ESTree.Program) {
 }
 
 function bindsImport(context: Context, name: string) {
-	return Array.contains(
-		Option.getOrElse(Option.fromNullishOr(importedNames.get(context.sourceCode.ast)), () =>
-			readImportedNames(context.sourceCode.ast)
-		),
-		name
-	)
+	return Array.contains(importedNames.get(context.sourceCode.ast) ?? readImportedNames(context.sourceCode.ast), name)
 }
 
 export function isImportBinding(input: {
@@ -916,4 +911,96 @@ export function singleUseThunk(input: {context: Context; node: ESTree.Function |
 		return false
 	}
 	return Option.exists(boundReads(input), reads => reads.length === 1)
+}
+
+// One Effect function in a composition, named by its module and function; `call` holds the arguments a rewrite carries over, data included, when one call holds them all.
+function effectStep(
+	context: Context,
+	callee: ESTree.Node,
+	step: {call: Option.Option<ESTree.CallExpression>; node: ESTree.Node; operands: ESTree.Node[]}
+) {
+	if (
+		callee.type !== 'MemberExpression' ||
+		callee.object.type !== 'Identifier' ||
+		!isImportBinding({context, node: callee.object, source: 'effect'})
+	) {
+		return Option.none()
+	}
+	const module = callee.object.name
+	return Option.map(memberName(callee), name => ({...step, module, name}))
+}
+
+// A pipe step: `Module.name` or `Module.name(...operands)`.
+function pipeStep(context: Context, node: ESTree.Node) {
+	if (node.type === 'CallExpression') {
+		return effectStep(context, node.callee, {call: Option.some(node), node, operands: node.arguments})
+	}
+	return effectStep(context, node, {call: Option.none(), node, operands: []})
+}
+
+// A function applied to its data: data-first `Module.name(data, ...operands)` or data-last `Module.name(...operands)(data)`.
+function appliedStep(context: Context, node: ESTree.Node) {
+	if (node.type !== 'CallExpression') return Option.none()
+	const data = Array.head(node.arguments)
+	if (node.callee.type === 'CallExpression') {
+		if (node.arguments.length !== 1) return Option.none()
+		return Option.all({
+			data,
+			step: effectStep(context, node.callee.callee, {
+				call: Option.none(),
+				node: node.callee,
+				operands: node.callee.arguments
+			})
+		})
+	}
+	return Option.all({
+		data,
+		step: effectStep(context, node.callee, {call: Option.some(node), node, operands: Array.drop(node.arguments, 1)})
+	})
+}
+
+// Two Effect functions applied one after the other: nested as `Outer(Inner(data))`, or adjacent pipe steps; `start` and `end` span both.
+export function composedSteps(context: Context, node: ESTree.CallExpression) {
+	if (
+		node.callee.type === 'Identifier' &&
+		isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
+	) {
+		const steps = Array.map(node.arguments, (argument, index) => {
+			if (index === 0) return Option.map(appliedStep(context, argument), applied => applied.step)
+			return pipeStep(context, argument)
+		})
+		return Array.getSomes(
+			Array.map(Array.zip(steps, Array.drop(steps, 1)), pair =>
+				Option.map(Option.all({inner: pair[0], outer: pair[1]}), adjacent => ({
+					...adjacent,
+					end: adjacent.outer.node.range[1],
+					nested: false,
+					report: adjacent.outer.node,
+					start: adjacent.inner.node.range[0]
+				}))
+			)
+		)
+	}
+	return pipe(
+		appliedStep(context, node),
+		Option.flatMap(outer =>
+			Option.map(appliedStep(context, outer.data), inner => ({
+				end: node.range[1],
+				inner: inner.step,
+				nested: true,
+				outer: outer.step,
+				report: node,
+				start: node.range[0]
+			}))
+		),
+		Option.toArray
+	)
+}
+
+// The source text of a call's arguments, for a rewrite that keeps them.
+export function argumentsText(context: Context, node: ESTree.CallExpression) {
+	return Array.join(
+		Array.map(node.arguments, argument => context.sourceCode.getText(argument)),
+		', '
+	)
 }

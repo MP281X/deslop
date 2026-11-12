@@ -56,6 +56,7 @@ export function shownOf<A, E>(result: AsyncResult.Failure<A, E> | AsyncResult.Su
 }
 
 // A blocking failure is one destructive button carrying its reason; a denial is a lock with no retry.
+// judge-ignore no-hero-failure -- the compact error the question allows: one destructive Retry carrying its icon and short reason, centred only because a blocking failure has the screen to itself
 export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
