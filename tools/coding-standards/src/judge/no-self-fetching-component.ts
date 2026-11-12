@@ -13,7 +13,8 @@ export const noSelfFetchingComponent = question(
 				'Reading an atom or query hook',
 				'Calling a mutation from an event handler',
 				'Subscribing to local UI events, such as resize or keyboard',
-				'What an imported hook does, which `code` does not show'
+				'What an imported hook does, which `code` does not show',
+				'A global fetch, a timer such as setInterval or a promise’s then: lint reports these'
 			],
 			example: `
 				function Notes() {
@@ -24,14 +25,12 @@ export const noSelfFetchingComponent = question(
 		},
 		yes: {
 			cases: [
-				'A fetch, client call, polling timer or remote subscription started in the component body or an effect, with its result stored in state or a ref'
+				'A client call, polling schedule or remote subscription started in the component body or an effect, with its result stored in state or a ref'
 			],
 			example: `
 				function Notes() {
 					const [notes, setNotes] = useState<Note[]>([])
-					useEffect(() => {
-						client.list().then(setNotes)
-					}, [])
+					useEffect(() => client.subscribe('notes', setNotes), [])
 					return <NoteList notes={notes} />
 				}
 			`

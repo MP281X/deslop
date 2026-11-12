@@ -12,7 +12,8 @@ export const noRedundantCheck = question(
 				'A presence check after an earlier guard that still allowed the value to be absent',
 				'A check of a value that may have changed since, such as after a call, an await or a yield',
 				'Conditions only callers or imported code guarantee, which `code` does not show',
-				'Checks of different nodes, properties or levels of a structure that look alike'
+				'Checks of different nodes, properties or levels of a structure that look alike',
+				'A test the types already decide, or one written the same as an earlier exiting guard with nothing between that could change it: lint reports both'
 			],
 			example: `
 				function discount(order: Order) {
@@ -25,13 +26,13 @@ export const noRedundantCheck = question(
 		yes: {
 			cases: [
 				'Validating input a second time after `code` already decoded it into its type',
-				'Checking again for a case an earlier early return in `code` already excluded, for the same value'
+				'Checking again, in other words, for a case an earlier early return in `code` already excluded, for the same value'
 			],
 			example: `
 				function discount(order: Order) {
 					if (order.total <= 0) return 0
 					const rate = order.total > 100 ? 0.1 : 0.05
-					if (order.total <= 0) return 0
+					if (order.total < 0) return 0
 					return order.total * rate
 				}
 			`

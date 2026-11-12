@@ -41,10 +41,7 @@ function capture(pattern: RegExp, value: string) {
 function flagParts(token: string) {
 	return Option.match(String.match(/^([^=]*)(?:=(.*))?$/su)(String.replace(/^-+/u, '')(token)), {
 		onNone: () => ({flag: '', inline: Option.none<string>()}),
-		onSome: match => ({
-			flag: Option.getOrElse(Option.fromUndefinedOr(match[1]), () => ''),
-			inline: Option.fromUndefinedOr(match[2])
-		})
+		onSome: match => ({flag: match[1] ?? '', inline: Option.fromUndefinedOr(match[2])})
 	})
 }
 

@@ -9,7 +9,8 @@ export const noDetachedActionError = question(
 			cases: [
 				'A failure shown on or beside the control that started the action, such as its variant, tooltip or inline text',
 				'Calling an imported action or atom setter with no failure handling in `code`',
-				'Navigation, links, closing a dialog and synchronous state updates'
+				'Navigation, links, closing a dialog and synchronous state updates',
+				'A recovery to an empty value, a promise’s catch and a console call: lint reports these'
 			],
 			example: `
 				function DeleteNote(props: {id: string}) {
@@ -24,12 +25,17 @@ export const noDetachedActionError = question(
 		},
 		yes: {
 			cases: [
-				'A failure handler of a mutation in `code` that only logs or discards the error, or shows it in a toast or page-level banner'
+				'A failure handler of a mutation in `code` that only logs the error, or shows it in a toast or page-level banner'
 			],
 			example: `
-				function DeleteNote(props: {id: string}) {
-					const remove = useAtomSet(removeNote, {mode: 'promise'})
-					return <Button onClick={() => remove(props.id).catch(error => toast.error(String(error)))}>Delete</Button>
+				function NotesPage(props: {notes: Note[]}) {
+					const [result, remove] = useAtom(removeNote)
+					return (
+						<main>
+							{Result.isFailure(result) && <Banner>Couldn’t delete the note</Banner>}
+							<NoteList notes={props.notes} onDelete={remove} />
+						</main>
+					)
 				}
 			`
 		}
