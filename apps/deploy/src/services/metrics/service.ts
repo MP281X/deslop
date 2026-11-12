@@ -41,8 +41,8 @@ import {
 	vmStatMemory
 } from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
-import {Counters, HistoryQuery, MachineHistory, Sample} from '#services/metrics/schema.ts'
-import type {Disk} from '#services/metrics/schema.ts'
+import {Counters, HistoryQuery, Sample} from '#services/metrics/schema.ts'
+import type {Disk, MachineHistory} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
@@ -289,7 +289,8 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					storageFailed
 				)
 				const now = yield* Ref.get(latest)
-				return MachineHistory.make({
+				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
+				return {
 					cpuModel,
 					disks: now.disks,
 					error: yield* Ref.get(failure),
@@ -304,7 +305,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 						90_000,
 					time,
 					worker
-				})
+				} satisfies MachineHistory
 			})
 		}
 	})

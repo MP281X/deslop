@@ -245,16 +245,16 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 
 // What a measurement changes in each series: the stored point of the bucket it falls in, merged with it, or a new point.
 export function rollup(point: Point, stored: readonly Sample[]) {
+	const buckets = Record.fromEntries(
+		Array.map(stored, row => [`${row.step}:${Math.floor(row.since / row.step)}`, row] as const)
+	)
 	return Array.map(HistoryQuery.fields.minutes.literals, minutes => {
 		const step = SERIES[minutes]
 		const fresh: Sample = {...point, since: point.time, step}
-		return Option.match(
-			Array.findFirst(
-				stored,
-				row => row.step === step && Math.floor(row.since / step) === Math.floor(point.time / step)
-			),
-			{onNone: () => fresh, onSome: row => merge([row, fresh])}
-		)
+		return Option.match(Record.get(buckets, `${step}:${Math.floor(point.time / step)}`), {
+			onNone: () => fresh,
+			onSome: row => merge([row, fresh])
+		})
 	})
 }
 

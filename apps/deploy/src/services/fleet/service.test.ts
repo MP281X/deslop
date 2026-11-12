@@ -38,7 +38,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					worker: 'worker'
 				})
 				const snapshot = Snapshot.make({items: [item], sources: [], time: 123})
-				const history = MachineHistory.make({
+				const history = {
 					cpuModel: 'Fixture CPU',
 					disks: [],
 					error: '',
@@ -58,7 +58,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					stale: false,
 					time: 0,
 					worker: 'worker'
-				})
+				} satisfies MachineHistory
 				const group = RpcContracts.omit(
 					'inventory.watch',
 					'metrics.watch',
