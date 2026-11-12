@@ -12,6 +12,7 @@ import {
 	Layer,
 	Option,
 	Order,
+	Predicate,
 	Random,
 	Record,
 	Ref,
@@ -25,7 +26,7 @@ import {
 	pipe
 } from 'effect'
 
-import * as cheerio from 'cheerio'
+import {Xml} from 'effect/encoding'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
 import {openStore} from '#services/chapters/lib/store.ts'
@@ -48,10 +49,10 @@ import {
 import type {Chapter, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
 import {ChaptersError, CubariSeries, DeadLink, Post, PushTickets, Series} from '#services/chapters/schema.ts'
 
-// Reddit's JSON answers 403 to servers even through the proxy; its Atom search feed answers. A release can be posted on either subreddit only.
+// Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
 const FEEDS = [
-	'https://www.reddit.com/r/OnePunchMan/search.rss?q=title%3Achapter+english&restrict_sr=1&sort=new&limit=100',
-	'https://www.reddit.com/r/OPMFolk/search.rss?q=title%3Achapter+english&restrict_sr=1&sort=new&limit=100'
+	'https://www.reddit.com/r/OnePunchMan/new/.rss?limit=100',
+	'https://www.reddit.com/r/OPMFolk/new/.rss?limit=100'
 ]
 const BROWSER =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
@@ -92,18 +93,30 @@ function changed(chapters: Chapter[], before: Chapter[]) {
 	)
 }
 
-function postsOf(feed: string) {
-	const $ = cheerio.load(feed, {xml: true})
+function elementText(element: Xml.Element, name: string) {
 	return pipe(
-		$('entry').toArray(),
-		Array.map(entry =>
+		element.children,
+		Array.filter((child): child is Xml.Element => !Predicate.isString(child) && child.name === name),
+		Array.flatMap(child => child.children),
+		Array.filter(Predicate.isString),
+		Array.join('')
+	)
+}
+
+function postsOf(feed: string) {
+	return pipe(
+		Stream.make(feed),
+		Stream.pipeThroughChannel(Xml.decodeString()),
+		Stream.pipeThroughChannel(Xml.elements(['feed', 'entry'])),
+		Stream.map(entry =>
 			postFrom({
-				content: $(entry).children('content').text(),
-				published: $(entry).children('published').text(),
-				title: $(entry).children('title').text()
+				content: elementText(entry, 'content'),
+				published: elementText(entry, 'published'),
+				title: elementText(entry, 'title')
 			})
 		),
-		Array.getSomes
+		Stream.runCollect,
+		Effect.map(Array.getSomes)
 	)
 }
 
@@ -217,7 +230,7 @@ export class Chapters extends Context.Service<
 								})
 							),
 							Effect.retry({times: 3}),
-							Effect.map(postsOf),
+							Effect.flatMap(postsOf),
 							Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
 							Effect.option
 						),
@@ -354,7 +367,7 @@ export class Chapters extends Context.Service<
 				)
 			})
 
-			// Chapters come out weekly, so four rounds a day announce one within six hours.
+			// Announce in the discovering round, then wait an hour before reading both communities again.
 			yield* Effect.forkScoped(
 				Effect.repeat(
 					pipe(
@@ -363,7 +376,7 @@ export class Chapters extends Context.Service<
 						Effect.andThen(notify),
 						Effect.withSpan('Chapters.sync')
 					),
-					Schedule.spaced('6 hours')
+					Schedule.spaced('1 hour')
 				)
 			)
 
