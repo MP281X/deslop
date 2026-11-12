@@ -1,4 +1,4 @@
-import {Array, Option, String, Struct, pipe} from 'effect'
+import {Array, Option, Record, String, Struct, pipe} from 'effect'
 
 import {plainText} from '#services/notes/lib/utils.ts'
 import type {Organization, TagName} from '#services/notes/schema.ts'
@@ -17,36 +17,31 @@ function tagKey(tag: string) {
 	return pipe(tag, String.replaceAll(/[^a-z0-9+#]/gu, ''), String.replace(/^(.{2,}[^s])s$/u, '$1'))
 }
 
-function reuseTags(tags: readonly TagName[], existing: readonly TagName[]) {
-	const byKey = Array.groupBy(existing, tagKey)
-	return Array.dedupe(
-		Array.map(tags, tag =>
-			pipe(
-				Array.head(byKey[tagKey(tag)] ?? []),
-				Option.getOrElse(() => tag)
-			)
-		)
-	)
+// A tag as the tags in use spell it, when one shares its key.
+function spelled(byKey: Record.ReadonlyRecord<string, Array.NonEmptyArray<TagName>>, tag: TagName) {
+	return Option.match(Record.get(byKey, tagKey(tag)), {onNone: () => tag, onSome: Array.headNonEmpty})
 }
 
-// The organization's tags as the tags in use spell them, each with the definition the AI gave it.
+// The organization's tags as the tags in use spell them, each with the first definition the AI gave it.
 export function reconcileOrganization(organization: Organization, inUse: readonly TagName[]) {
-	const tags = reuseTags(organization.tags, inUse)
-	const definitions = Array.getSomes(
-		Array.map(organization.definitions, item =>
-			Option.map(Array.head(reuseTags(normalizeTags([item.tag]), inUse)), name => ({
-				definition: Option.liftPredicate(plainText(item.definition), String.isNonEmpty),
-				tag: name
-			}))
+	const byKey = Array.groupBy(inUse, tagKey)
+	// Read from the last, so the first definition of a tag is the one kept.
+	const definitions = Record.fromEntries(
+		Array.reverse(
+			Array.getSomes(
+				Array.map(organization.definitions, item =>
+					Option.map(
+						Array.head(normalizeTags([item.tag])),
+						tag => [spelled(byKey, tag), Option.liftPredicate(plainText(item.definition), String.isNonEmpty)] as const
+					)
+				)
+			)
 		)
 	)
 	return {
 		organization: Struct.omit(organization, ['definitions', 'tags']),
-		tags: Array.map(tags, name => ({
-			definition: Option.flatMap(
-				Array.findFirst(definitions, item => item.tag === name),
-				item => item.definition
-			),
+		tags: Array.map(Array.dedupe(Array.map(organization.tags, tag => spelled(byKey, tag))), name => ({
+			definition: Option.flatten(Record.get(definitions, name)),
 			name
 		}))
 	}
