@@ -330,22 +330,21 @@ export class Inventory extends Context.Service<
 				)
 				const time = yield* Clock.currentTimeMillis
 				const total = Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times)))
-				const records = Result.map(launchd.table, text =>
-					Array.filter(
-						launchdProcesses(
-							text,
-							Record.fromEntries(
-								Array.getSomes(
-									Array.map(
-										Result.getOrElse(launchd.agents, () => []),
-										agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
-									)
-								)
+				const records = Result.map(launchd.table, text => {
+					const agents = Record.fromEntries(
+						Array.getSomes(
+							Array.map(
+								Result.getOrElse(launchd.agents, () => []),
+								agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
 							)
-						),
-						record => record.process.parent !== pid
+						)
 					)
-				)
+					// Every descendant of this Mac's Deploy agent is a collector, including lsof and Tailscale subprocesses.
+					return Array.filter(
+						launchdProcesses(text, agents),
+						record => record.process.pid === pid || record.unit !== agents[`${pid}`]
+					)
+				})
 				const owned = Result.getOrElse(records, () => [])
 				return {
 					processes: Effect.map(Effect.fromResult(records), found => ({records: found, time, total})),
