@@ -58,27 +58,40 @@ The judge prints `path:line question message score` for findings, then a summary
 
 ## Map
 
-`map` prints what a commit range changed, read from the code of both revisions rather than from anyone's summary, as Markdown a GitHub pull request body renders, or as JSON with `--json` for the judge.
+`map` prints what a commit range changed in the architecture and where its substance is, read from the code of both revisions rather than from anyone's summary, as Markdown a GitHub pull request body renders, or as JSON with `--json`.
 
 ```bash
 coding-standards map                                   # HEAD against its merge base with origin's default branch
 coding-standards map --base <commit> --head <commit>   # any range, such as a merged pull request's
+vp run map --base <commit> --head <commit>             # the same from the repository; `vp run map -- …` passes `--`, which ends the options
 ```
 
 It needs `git`, `tar` and Fallow on the `PATH`. Each revision is archived to a temporary directory with its workspace packages linked, so Fallow's module graph and the parser see that revision alone, not the working tree.
 
-- **Packages** with their files, lines and share of the change; `pnpm-lock.yaml` and `*.gen.*` files count apart, as generated.
-- **Exports** added, removed or changed per file; whitespace is no change.
-- **Routes** added or removed: `router.add` and `HttpRouter.add` calls with their method, and page files under `apps/*/src/routes`.
-- **Schemas** exported from a `schema.ts` that changed; a `Model.Class` table row, a schema one reaches, or a schema a `KeyValueStore.toSchemaStore` document holds is marked stored.
-- **Contracts**: `Rpc.make` and `Tool.make` calls that were added, removed or edited, or that reach a changed schema.
-- **Dependencies** from the lockfile: each importer's direct dependency added, removed or resolved to another version.
-- **Configuration**: each changed setting of a `package.json` outside its dependencies, `vite.config.ts`, `tsconfig*.json`, `.fallowrc.json` and the lint preset; changed lint rule sources, workflows and `pnpm-workspace.yaml` by file.
-- **Suppressions** added or removed: lint, TypeScript, Fallow, Effect diagnostics and judge-ignore comments.
-- **Areas**: changed files joined by a direct import between them, one place (code's folder; a package for its other files; outside the packages, at most three folders deep, such as one skill), or dependency manifests. A file outside the packages, such as `AGENTS.md`, a skill or a `.github` template, also joins the largest area its changed lines mention by package name, by a file name only that package has, or by an export the area changed. The largest area is the main one; every other is a candidate for an unrelated edit.
-- **Diagrams** in Mermaid, each one picture of both revisions: the module graph around the changed modules from Fallow's import graph, and each touched app's services and layers with the services their code yields. Colour marks what changed, was added or was removed.
+Every changed file is one of three kinds, from its top-level statements in both revisions (comments above a statement belong to it; line breaks, spacing beside punctuation, trailing commas and a namespace import's qualifier such as `WebRuntime.` are no change):
 
-A list over eight entries folds into counts per folder, then per package, such as `tools/coding-standards/src/lint: 7 added`, so every change is still counted; JSON keeps each entry. Diagrams stop at 24 boxes and say what they leave out. A change over 60 files or 3,000 lines says it is too large to summarise honestly.
+- **Imports only**: its statements are unchanged; its imports follow code that moved.
+- **Moved**: git renamed it with no other change, or its declarations went to or came from other changed files. A declaration found with the same text in another file moved; one with the same name and at least half its lines in common moved and was edited.
+- **Edited**: what remains, counted as the lines its edited, added and removed declarations differ by; a file outside the code counts git's lines.
+
+The map then states:
+
+- **Where the change is**: how many files only follow imports or only move, and the edited files, largest first.
+- **Outside the main area**: edited files that no import, place or mention ties to the largest area: changed files joined by a direct import between them, one place (code's folder; a package for its other files; outside the packages, at most three folders deep, such as one skill), or dependency manifests; a file outside the packages, such as `AGENTS.md`, also joins the largest area its changed lines mention by package name, by a file name only that package has, or by an export the area changed. Configuration files are listed under Configuration instead. When these areas hold over a quarter of the changed lines, a warning says the change mixes unrelated work.
+- **Packages**: which workspace packages import which, drawn when one such import is added or removed.
+- **Moves**: files and exported declarations that changed folder, as arrows from the old folder to the new; declarations merged between files of one folder; declarations edited on the way; and a declaration a file dropped for an import of the same name.
+- **Modules**: Fallow's import graph around the files that are not imports-only, with the before revision moved to the after revision's paths (a deleted file to the file most of its declarations went to) and a file that only follows imports keeping its imports, so only real dependency changes are marked. Each package starts at its deepest changed folder; past 12 boxes or 16 arrows, the package with the fewest changed files is drawn a folder higher, down to one box; package boxes with the same arrows merge. Unchanged imports are drawn around the change, then only between changed boxes, then only inside packages drawn in detail, whichever first fits. Tests are left out.
+- **Services** of each touched app: a layer that provides service classes reads as providing them, its built services being the ones no other part needs; a diagram of what each service and layer yields is drawn only where a provider, a need or a layer's parts changed; a service whose code alone changed is named.
+- **Contracts**, never folded: a package's export map as what each old specifier became, by following its module through its move to the entry serving it now, with modules a `*` entry newly exposes (tests aside); `Rpc.make` and `Tool.make` calls added, removed, edited or reaching a changed schema; routes from `router.add` and `HttpRouter.add` calls and page files under `apps/*/src/routes`; stored schemas.
+- **Exports** added, removed or edited in place; a moved one is the moves' to report.
+- **Schemas**: values built from `Schema` or `Model`, or classes extending them, that a file exports and changed; a `Model.Class` table row, a schema one reaches, or a schema a `KeyValueStore.toSchemaStore` document holds is stored, a contract.
+- **Dependencies** from the lockfile: each importer's direct dependency added, removed or resolved to another version.
+- **Configuration**: each changed setting of a `package.json` outside its dependencies and exports, `vite.config.ts`, `tsconfig*.json`, `.fallowrc.json` and the lint preset, as a person says it: an object added to a list as one line named by its first string field, a list's plain items as the ones gained and lost; changed lint rule sources, workflows and `pnpm-workspace.yaml` by file.
+- **Suppressions** added or removed (lint, TypeScript, Fallow, Effect diagnostics and judge-ignore comments); one that moved with its code is no change.
+
+A list over eight entries folds into counts per folder, then per package, such as `tools/coding-standards/src/lint: 7 added`; contracts never fold, and JSON keeps each entry. The diagrams say what they leave out.
+
+Five rules are judgements rather than facts: an edited move needs half its lines in common, a deleted file is drawn where most of its declarations went, a file outside the packages joins an area by the words its changed lines share with it, the zoom limits of 12 boxes and 16 arrows, and the quarter of changed lines that makes a change mixed.
 
 ## Policy
 
