@@ -167,17 +167,14 @@ export function launchdProcesses(text: string, agents: Record<string, string>) {
 		)
 	)
 	const parents = Record.fromEntries(Array.map(rows, row => [row.pid, row.parent] as const))
-	function agent(pid: string, depth: number): Option.Option<string> {
+	function agent(pid: string): Option.Option<string> {
 		return Option.orElse(Record.get(agents, pid), () =>
-			Option.flatMap(
-				Option.filter(Record.get(parents, pid), () => depth < 64),
-				parent => agent(parent, depth + 1)
-			)
+			Option.flatMap(Option.filter(Record.get(parents, pid), parent => parent !== pid), agent)
 		)
 	}
 	return Array.getSomes(
 		Array.map(rows, row =>
-			Option.flatMap(agent(row.pid, 0), unit =>
+			Option.flatMap(agent(row.pid), unit =>
 				pipe(
 					Option.all({
 						start: Option.map(DateTime.make(row.start), DateTime.toEpochMillis),
