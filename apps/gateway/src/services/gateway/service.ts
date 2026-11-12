@@ -42,7 +42,7 @@ import {
 } from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
 import {Connections, gatewayUrl} from '#services/connections/service.ts'
-import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
+import {compact, indexTools, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 
 type Server = Pick<Connection, 'id' | 'generation' | 'name' | 'mode'>
@@ -268,11 +268,7 @@ export class Gateway extends Context.Service<
 					})
 				}
 				const reference = Struct.pick(server, ['id', 'generation', 'name', 'mode'])
-				const upstreamTools = pipe(
-					found.upstreamTools,
-					Array.groupBy(tool => tool.name),
-					Record.map(Array.headNonEmpty)
-				)
+				const upstreamTools = indexTools(found.upstreamTools)
 				const names = MutableList.make<string>()
 				for (const tool of found.tools) {
 					const name = yield* namespaced(`${server.id}__${tool.name}`)
