@@ -11,10 +11,6 @@
 	}
 }
 
-@utility tree-sticky-bg {
-	background-color: var(--background);
-}
-
 @utility tree-sticky-hover {
 	background-color: color-mix(in oklab, var(--muted) 30%, var(--background));
 }

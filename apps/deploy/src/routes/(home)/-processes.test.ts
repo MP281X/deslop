@@ -36,7 +36,7 @@ it('pins a parent row while its children scroll under it, and leaves a leaf unpi
 		1
 	)
 	assert.lengthOf(
-		Option.getOrElse(String.match(/tree-sticky-bg/gu)(html), () => []),
+		Option.getOrElse(String.match(/class="bg-background /gu)(html), () => []),
 		1
 	)
 	assert.match(html, /<div class="tree-sticky"><div[^>]*aria-level="1"/u)
