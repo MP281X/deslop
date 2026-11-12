@@ -5,11 +5,13 @@ import {
 	Clock,
 	Context,
 	Effect,
+	Exit,
 	Function,
 	Layer,
 	MutableList,
 	Option,
 	Redacted,
+	Ref,
 	Result,
 	Schema,
 	Scope,
@@ -74,8 +76,20 @@ function make(directory: string) {
 		const client = yield* HttpClient.HttpClient
 		const scope = yield* Scope.Scope
 		const lock = yield* Semaphore.make(1)
-		const pricingLock = yield* Semaphore.make(1)
-		const pricing: {catalog: ModelsCatalog; refreshed: number} = {catalog: {}, refreshed: -Infinity}
+		const pricing = yield* Ref.make<ModelsCatalog>({})
+		const refreshPricing = yield* pipe(
+			client.get('https://models.dev/api.json'),
+			Effect.flatMap(HttpClientResponse.schemaBodyJson(ModelsCatalog)),
+			Effect.timeout('10 seconds'),
+			Effect.tap(catalog => Ref.set(pricing, catalog)),
+			Effect.tapError(error =>
+				Effect.logWarning('The pricing catalog could not be refreshed; keeping cached pricing', error)
+			),
+			Effect.cachedWithTTL(exit => {
+				if (Exit.isFailure(exit)) return 0
+				return '1 day'
+			})
+		)
 		function loadKeys(id: string) {
 			return pipe(keys.get(`ai-keys/${id}`), Effect.map(Option.getOrElse(() => [])), failed)
 		}
@@ -98,35 +112,15 @@ function make(directory: string) {
 				entry.model !== undefined &&
 				entry.inputTokens + entry.outputTokens + entry.cacheReadTokens + entry.cacheWriteTokens > 0
 			) {
-				// Calls finishing together wait for one refresh instead of pricing against the catalog before it.
-				yield* pipe(
-					Effect.gen(function* () {
-						const now = yield* Clock.currentTimeMillis
-						if (now - pricing.refreshed < 86_400_000) return
-						const catalog = yield* pipe(
-							client.get('https://models.dev/api.json'),
-							Effect.flatMap(HttpClientResponse.schemaBodyJson(ModelsCatalog)),
-							Effect.timeout('10 seconds'),
-							Effect.tapError(error =>
-								Effect.logWarning('The pricing catalog could not be refreshed; keeping cached pricing', error)
-							),
-							Effect.option
-						)
-						Option.match(catalog, {
-							onNone: () => undefined,
-							onSome: refreshed => {
-								pricing.catalog = refreshed
-								pricing.refreshed = now
-							}
-						})
-					}),
-					Semaphore.withPermit(pricingLock)
-				)
+				// Calls finishing together share one refresh, even when it fails.
+				// oxlint-disable-next-line @deslop/coding-standards/no-discarded-failure -- The cached computation logs each failed attempt once; waiters must not log it again.
+				yield* Effect.ignore(refreshPricing)
+				const catalog = yield* Ref.get(pricing)
 				const catalogProvider = Boolean.match(entry.provider === 'opencode-zen', {
 					onFalse: () => entry.provider,
 					onTrue: () => 'opencode'
 				})
-				const cost = pricing.catalog[catalogProvider]?.models[entry.model]?.cost
+				const cost = catalog[catalogProvider]?.models[entry.model]?.cost
 				if (cost !== undefined) {
 					if (
 						(entry.cacheReadTokens === 0 || cost.cache_read !== undefined) &&
