@@ -67,7 +67,7 @@ function postedOn(postedAt: number) {
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => void}) {
 	const read = useAtomSet(readAtom)
-	const done = props.chapter.reading?.done === true
+	const done = Option.exists(props.chapter.reading, reading => reading.done)
 	return (
 		<SwipeActions modifiers={itemRow}>
 			<Item onPress={() => props.onOpen(props.chapter.number)}>
@@ -99,7 +99,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 				</ItemContent>
 				{/* Weight already says unread or read, so progress shows only for a chapter left part-way; the pages before the one on screen are read. */}
 				{Option.match(
-					Option.filter(Option.fromUndefinedOr(props.chapter.reading), reading => !reading.done && reading.page > 0),
+					Option.filter(props.chapter.reading, reading => !reading.done && reading.page > 0),
 					{
 						onNone: () => null,
 						onSome: reading => (
