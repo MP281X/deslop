@@ -146,7 +146,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 		yield* Ref.set(calls, [])
 		const handle = yield* ChildProcess.make(
 			'node',
-			[path.join(import.meta.dirname, 'main.cli.ts'), '--judge', '--gateway', gateway],
+			[path.join(import.meta.dirname, 'main.cli.ts'), 'judge', '--gateway', gateway],
 			{
 				cwd: directory,
 				env: {HOME: home, XDG_CACHE_HOME: path.join(home, 'cache')},
@@ -188,7 +188,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 	return {checkout, judge}
 })
 
-describe('coding-standards --judge', () => {
+describe('coding-standards judge', () => {
 	it.layer(NodeServices.layer, {excludeTestServices: true})(test => {
 		test.effect(
 			'reports a score at or above 0.8, keeps a judge-ignore, and reports an ignore once its unit clearly passes',
@@ -239,6 +239,11 @@ describe('coding-standards --judge', () => {
 				assert.deepStrictEqual(
 					{calls: cold.calls, exitCode: cold.exitCode},
 					{calls: 2 + EXAMPLE_CALLS, exitCode: ChildProcessSpawner.ExitCode(0)}
+				)
+				const empty = yield* f.judge(yield* f.checkout({}))
+				assert.deepStrictEqual(
+					{calls: empty.calls, exitCode: empty.exitCode},
+					{calls: 0, exitCode: ChildProcessSpawner.ExitCode(0)}
 				)
 				assert.strictEqual((yield* f.judge(directory)).calls, 0)
 				assert.strictEqual((yield* f.judge(yield* f.checkout(files))).calls, 0)
