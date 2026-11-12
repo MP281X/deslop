@@ -321,7 +321,7 @@ export class Inventory extends Context.Service<
 			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
 				const launchd = yield* Effect.all(
 					{
-						agents: Effect.result(Effect.map(command('launchctl', ['list']), launchAgents)),
+						agents: Effect.result(Effect.flatMap(command('launchctl', ['list']), launchAgents)),
 						table: Effect.result(
 							command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,ppid=,rss=,time=,lstart=,args='])
 						)

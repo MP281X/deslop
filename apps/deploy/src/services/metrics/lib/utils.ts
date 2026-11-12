@@ -143,7 +143,7 @@ export function reading(
 	load: readonly number[],
 	previous?: Counters
 ) {
-	const used = Array.reduce(disks, 0, (sum, entry) => sum + entry.used)
+	const used = Number.sumAll(Array.map(disks, entry => entry.used))
 	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
 	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
 	const value: Sample = {

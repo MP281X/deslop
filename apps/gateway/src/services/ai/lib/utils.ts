@@ -1,14 +1,13 @@
-import {Array, Boolean, Number, Order, Record} from 'effect'
+import {Array, Number, Order, Record} from 'effect'
 
 import type {AiUsageEntry} from '#services/ai/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
 function totals(rows: AiUsageEntry[]) {
-	return Array.reduce(rows, {costUsd: 0, unknownCostCalls: 0}, (sum, row) => ({
-		costUsd: sum.costUsd + (row.costUsd ?? 0),
-		unknownCostCalls:
-			sum.unknownCostCalls + Boolean.match(row.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
-	}))
+	return {
+		costUsd: Number.sumAll(Array.map(rows, row => row.costUsd ?? 0)),
+		unknownCostCalls: Array.countBy(rows, row => row.costSource === 'unknown')
+	}
 }
 
 function grouped(rows: AiUsageEntry[], key: (entry: AiUsageEntry) => string) {
