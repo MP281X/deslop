@@ -35,7 +35,7 @@ function Branch(props: {depth: number; row: TreeRow; stickyParents: boolean}) {
 					{sticky && (
 						<span
 							aria-hidden="true"
-							className="tree-sticky-bg group-hover/item:tree-sticky-hover pointer-events-none absolute inset-0"
+							className="bg-background group-hover/item:tree-sticky-hover pointer-events-none absolute inset-0"
 						/>
 					)}
 					<ItemMedia className="pointer-events-none relative z-10">{props.row.media}</ItemMedia>
