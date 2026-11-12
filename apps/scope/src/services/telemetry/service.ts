@@ -91,10 +91,16 @@ const UNAVAILABLE = 'The telemetry storage could not be read or written.'
 const LEVELS: Record<NonNullable<SearchLogsParams['level']>, number> = {debug: 5, error: 17, info: 9, warn: 13}
 
 // The span columns an arriving copy of a stored span replaces; its trace and id stay.
-const SPAN_UPDATES = Array.filter(Struct.keys(Span.insert.fields), column => column !== 'traceId' && column !== 'spanId')
+const SPAN_UPDATES = Array.filter(
+	Struct.keys(Span.insert.fields),
+	column => column !== 'traceId' && column !== 'spanId'
+)
 
 // The trace columns a new span changes; when the trace first arrived stays.
-const TRACE_UPDATES = Array.filter(Struct.keys(Trace.insert.fields), column => column !== 'id' && column !== 'receivedAt')
+const TRACE_UPDATES = Array.filter(
+	Struct.keys(Trace.insert.fields),
+	column => column !== 'id' && column !== 'receivedAt'
+)
 
 const storageFailed = Effect.mapError((cause: unknown) => TelemetryError.make({cause, message: UNAVAILABLE}))
 
@@ -206,7 +212,9 @@ function operationsAnswer(traces: readonly Traced[], now: number, input: ListOpe
 
 function traceRow(row: FoundTrace) {
 	const side = sideFor(row.service, row.runtime)
-	const relay = Option.flatMap(row.relay, attributes => Option.fromUndefinedOr(attributesFlat(attributes, 'Gateway.call', false)))
+	const relay = Option.flatMap(row.relay, attributes =>
+		Option.fromUndefinedOr(attributesFlat(attributes, 'Gateway.call', false))
+	)
 	const error = diagnosis(row)
 	return {
 		app: appName(row.service),
@@ -231,7 +239,9 @@ function traceRow(row: FoundTrace) {
 		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 		...Option.match(row.broken, {
 			onNone: () => ({}),
-			onSome: span => ({failure: Boolean.match(String.isNonEmpty(error), {onFalse: () => span, onTrue: () => `${span}: ${error}`})})
+			onSome: span => ({
+				failure: Boolean.match(String.isNonEmpty(error), {onFalse: () => span, onTrue: () => `${span}: ${error}`})
+			})
 		})
 	} satisfies TraceRow
 }
@@ -393,12 +403,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const listReleases = SqlSchema.findAll({
 			Request: Schema.Void,
 			Result: Release,
-			execute: () => sql`SELECT * FROM releases`
+			execute: () => sql`SELECT * FROM ${sql(Release.table)}`
 		})
 		const saveReleases = SqlSchema.void({
 			Request: Schema.NonEmptyArray(Release.insert),
 			execute: rows => sql`
-				INSERT INTO releases ${sql.insert(rows)}
+				INSERT INTO ${sql(Release.table)} ${sql.insert(rows)}
 				ON CONFLICT (service) DO UPDATE SET version = excluded.version
 			`
 		})
@@ -415,7 +425,9 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const deleteSuperseded = SqlSchema.void({
 			Request: Schema.NonEmptyArray(Superseded),
 			execute: senders => {
-				const old = sql.or(Array.map(senders, sender => sql`(service = ${sender.service} AND version = ${sender.version})`))
+				const old = sql.or(
+					Array.map(senders, sender => sql`(service = ${sender.service} AND version = ${sender.version})`)
+				)
 				const doomed = sql`
 					SELECT traceId FROM (
 						SELECT traceId, service, version FROM spans
@@ -434,17 +446,17 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const listSpans = SqlSchema.findAll({
 			Request: Schema.Array(TraceId),
 			Result: Span,
-			execute: ids => sql`SELECT * FROM spans WHERE ${sql.in('traceId', ids)}`
+			execute: ids => sql`SELECT * FROM ${sql(Span.table)} WHERE ${sql.in('traceId', ids)}`
 		})
 		const listLogs = SqlSchema.findAll({
 			Request: Schema.Array(TraceId),
 			Result: Log,
-			execute: ids => sql`SELECT * FROM logs WHERE ${sql.in('traceId', ids)}`
+			execute: ids => sql`SELECT * FROM ${sql(Log.table)} WHERE ${sql.in('traceId', ids)}`
 		})
 		const listLinks = SqlSchema.findAll({
 			Request: Schema.Array(TraceId),
 			Result: SpanLink,
-			execute: ids => sql`SELECT * FROM span_links WHERE ${sql.in('traceId', ids)}`
+			execute: ids => sql`SELECT * FROM ${sql(SpanLink.table)} WHERE ${sql.in('traceId', ids)}`
 		})
 		// The trace and every trace a span link joins to it, either way.
 		const listLinkedTraces = SqlSchema.findAll({
@@ -464,7 +476,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const saveTraces = SqlSchema.void({
 			Request: Schema.NonEmptyArray(Trace.insert),
 			execute: rows => sql`
-				INSERT INTO traces ${sql.insert(rows)}
+				INSERT INTO ${sql(Trace.table)} ${sql.insert(rows)}
 				ON CONFLICT (id) DO UPDATE SET ${sql.csv(Array.map(TRACE_UPDATES, column => sql`${sql(column)} = excluded.${sql(column)}`))}
 			`
 		})
@@ -472,18 +484,18 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const saveSpans = SqlSchema.void({
 			Request: Schema.NonEmptyArray(Span.insert),
 			execute: rows => sql`
-				INSERT INTO spans ${sql.insert(rows)}
+				INSERT INTO ${sql(Span.table)} ${sql.insert(rows)}
 				ON CONFLICT (traceId, spanId) DO UPDATE SET ${sql.csv(Array.map(SPAN_UPDATES, column => sql`${sql(column)} = excluded.${sql(column)}`))}
 			`
 		})
 		const saveLinks = SqlSchema.void({
 			Request: Schema.NonEmptyArray(SpanLink.insert),
-			execute: rows => sql`INSERT OR IGNORE INTO span_links ${sql.insert(rows)}`
+			execute: rows => sql`INSERT OR IGNORE INTO ${sql(SpanLink.table)} ${sql.insert(rows)}`
 		})
 		// A retried export carries the same record, so its digest replaces the row instead of adding one.
 		const saveLogs = SqlSchema.void({
 			Request: Schema.NonEmptyArray(Log.insert),
-			execute: rows => sql`INSERT OR REPLACE INTO logs ${sql.insert(rows)}`
+			execute: rows => sql`INSERT OR REPLACE INTO ${sql(Log.table)} ${sql.insert(rows)}`
 		})
 		// A development debugger needs recent runs; whole traces go once their first span is older than the cutoff, with their logs.
 		const deleteExpired = SqlSchema.void({
@@ -720,10 +732,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				return {
 					...Option.match(
 						Option.filter(Array.last(page), () => rows.length > input.limit),
-						{
-							onNone: () => ({}),
-							onSome: row => ({nextCursor: Struct.pick(row, ['duration', 'id', 'start'])})
-						}
+						{onNone: () => ({}), onSome: row => ({nextCursor: Struct.pick(row, ['duration', 'id', 'start'])})}
 					),
 					total: (yield* countTraces(query)).count,
 					traces: Array.map(page, traceRow)
@@ -734,9 +743,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					const receivedAt = yield* Clock.currentTimeMillis
 					const logs = yield* Effect.forEach(
 						Array.flatMap(payload.resourceLogs ?? [], group =>
-							Array.flatMap(group.scopeLogs ?? [], scope =>
-								Array.map(scope.logRecords ?? [], log => ({group, log}))
-							)
+							Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))
 						),
 						Effect.fnUntraced(function* (item) {
 							// A log record has no id of its own, so the identity is what it carries.
@@ -751,7 +758,12 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								timeUnixNano: item.log.timeUnixNano,
 								traceId: item.log.traceId ?? ''
 							})
-							return logOf(item.group, item.log, yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)), receivedAt)
+							return logOf(
+								item.group,
+								item.log,
+								yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)),
+								receivedAt
+							)
 						}),
 						{concurrency: 1}
 					)

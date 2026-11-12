@@ -166,9 +166,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					role="listitem"
 					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
 				>
-					<span className="text-muted-foreground truncate tabular-nums">
-						{preciseClock.format(log.time)}
-					</span>
+					<span className="text-muted-foreground truncate tabular-nums">{preciseClock.format(log.time)}</span>
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',

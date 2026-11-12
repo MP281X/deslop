@@ -45,10 +45,13 @@ const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
 
 const byStart = Order.mapInput(Order.Number, (span: Pick<Span, 'start'>) => span.start)
 
-type Sender = {readonly service: string; readonly version: Option.Option<string>}
+export type Sender = {readonly service: string; readonly version: Option.Option<string>}
 
 // The fields a judgement of a trace reads, whether the span is stored or still arriving.
-type SpanFacts = Pick<Span, 'attributes' | 'duration' | 'name' | 'parentSpanId' | 'spanId' | 'start' | 'status' | 'traceId'>
+export type SpanFacts = Pick<
+	Span,
+	'attributes' | 'duration' | 'name' | 'parentSpanId' | 'spanId' | 'start' | 'status' | 'traceId'
+>
 
 // A version Scope can order, numbers joined by dots such as "0.1.1235"; OTel leaves `service.version` free text, so "1.2.0-rc.1" or a commit hash is never older than anything.
 function releaseOf(version: Option.Option<string>) {
@@ -281,7 +284,9 @@ function severityOf(number?: number, text = '') {
 // One log record of an OTLP logs export, under the identity its digest gave it.
 export function logOf(
 	group: NonNullable<LogsRequest['resourceLogs']>[number],
-	log: NonNullable<NonNullable<NonNullable<LogsRequest['resourceLogs']>[number]['scopeLogs']>[number]['logRecords']>[number],
+	log: NonNullable<
+		NonNullable<NonNullable<LogsRequest['resourceLogs']>[number]['scopeLogs']>[number]['logRecords']
+	>[number],
 	id: string,
 	receivedAt: number
 ) {
@@ -309,7 +314,10 @@ export function levelOf(severity: number) {
 // The diagnostic a failed span is remembered by: its exception's message or its status line, first line only, no stack trace.
 export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
 	return pipe(
-		Option.getOrElse(Option.orElse(span.exception, () => span.error), () => ''),
+		Option.getOrElse(
+			Option.orElse(span.exception, () => span.error),
+			() => ''
+		),
 		value => Array.head(String.split(value, '\n')),
 		Option.getOrElse(() => ''),
 		String.trim,
@@ -319,30 +327,35 @@ export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
 
 // One flat object of primitive attribute values, without keys that only repeat the span or carry no diagnosis.
 export function attributesFlat(attributes: Attributes, name: string, failedSpan: boolean) {
-	const entries = Array.flatMap(Record.toEntries(attributes), entry => {
-		const key = entry[0]
-		const value = entry[1]
-		if (!(Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value))) return []
-		if (
-			key === 'service.name' ||
-			key === 'rpc.system.name' ||
-			key === 'url.scheme' ||
-			key === 'server.port' ||
-			// `url.full` already holds the path, query and host.
-			key === 'url.path' ||
-			key === 'url.query' ||
-			key === 'server.address'
-		) {
+	const entries = pipe(
+		Record.toEntries(attributes),
+		Array.flatMap(entry => {
+			const value = entry[1]
+			if (Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) {
+				return [[entry[0], value] as const]
+			}
 			return []
-		}
-		if (String.startsWith('code.')(key)) return []
-		if (key === 'http.request.method' && String.startsWith(`${value}`)(name)) return []
-		if (key === 'client.address' && (value === '127.0.0.1' || value === '::1')) return []
-		if (key === 'rpc.method' && value === name) return []
-		if (key === 'user_agent.original' && !failedSpan) return []
-		if (value === name) return []
-		return [[key, value] as const]
-	})
+		}),
+		Array.filter(entry => {
+			const key = entry[0]
+			const value = entry[1]
+			if (
+				Array.contains(
+					// `url.full` already holds the path, query and host.
+					['service.name', 'rpc.system.name', 'url.scheme', 'server.port', 'url.path', 'url.query', 'server.address'],
+					key
+				) ||
+				String.startsWith('code.')(key)
+			) {
+				return false
+			}
+			if (key === 'http.request.method' && String.startsWith(`${value}`)(name)) return false
+			if (key === 'client.address' && (value === '127.0.0.1' || value === '::1')) return false
+			if (key === 'rpc.method' && value === name) return false
+			if (key === 'user_agent.original' && !failedSpan) return false
+			return value !== name
+		})
+	)
 	if (Array.isReadonlyArrayEmpty(entries)) return undefined
 	return Record.fromEntries(entries)
 }
@@ -360,7 +373,7 @@ function spanMs(span: Pick<Span, 'duration'>) {
 	return Option.match(span.duration, {onNone: () => 0, onSome: Duration.toMillis})
 }
 
-export function markedStream(span: Pick<Span, 'attributes'>) {
+function markedStream(span: Pick<Span, 'attributes'>) {
 	return span.attributes['rpc.stream'] === true
 }
 
@@ -405,10 +418,7 @@ function timingOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>) {
 		Array.map(spans, span => span.start),
 		Order.Number
 	)
-	return {
-		durationMs: Array.reduce(spans, 0, (end, span) => Number.max(end, span.start - start + spanMs(span))),
-		start
-	}
+	return {durationMs: Array.reduce(spans, 0, (end, span) => Number.max(end, span.start - start + spanMs(span))), start}
 }
 
 // What every list reads of one trace, judged from all of its spans.
@@ -483,7 +493,9 @@ export function traceTree(id: string, spans: readonly Span[], logs: readonly Log
 					pipe(
 						Option.flatMap(parentOf(current.span), parent => Record.get(byId, parent)),
 						Option.filter(parent => !HashSet.has(current.seen, parent.span.spanId)),
-						Option.map(parent => [parent, {seen: HashSet.add(current.seen, parent.span.spanId), span: parent.span}] as const)
+						Option.map(
+							parent => [parent, {seen: HashSet.add(current.seen, parent.span.spanId), span: parent.span}] as const
+						)
 					)
 				)
 			)

@@ -35,7 +35,7 @@ export const dataDirectory = Effect.gen(function* () {
 	return directory
 })
 
-// Schema stores share Effect's filesystem implementation, but replace values atomically instead of truncating them in place.
+// fallow-ignore-next-line unused-export -- the data store opens it in production; the apps' tests open one per directory directly.
 export function layerKeyValueStore(directory: string) {
 	return pipe(
 		Layer.effect(

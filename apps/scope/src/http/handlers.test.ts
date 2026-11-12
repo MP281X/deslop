@@ -184,7 +184,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				assert.deepStrictEqual(trace.spans[2]?.parentSpanId, Option.fromUndefinedOr(trace.spans[1]?.spanId))
 				// GitHub doesn't promise order: a start delivered after the run finished leaves it finished.
 				assert.strictEqual((yield* signed('workflow_run', runEvent(start, 'in_progress'))).status, 204)
-				assert.isTrue(Option.isSome(Option.getOrThrow(Array.head((yield* telemetry.trace(ids.traceId)).spans)).duration))
+				assert.isTrue(
+					Option.isSome(Option.getOrThrow(Array.head((yield* telemetry.trace(ids.traceId)).spans)).duration)
+				)
 				for (const filtered of [
 					{event: 'ping', payload: {zen: 'Keep it up'}},
 					{event: 'workflow_job', payload: jobEvent(start, 'skipped')},

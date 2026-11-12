@@ -90,7 +90,7 @@ function render(
 														p50Ms: 10,
 														p95Ms: 10,
 														runtime: 'server',
-														traces: [{duration: Duration.millis(10),id: ID, start: 1_781_870_000_000}]
+														traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
 													}
 												]
 											}
@@ -249,10 +249,7 @@ it.effect(
 		const html = yield* render(
 			AsyncResult.success({
 				...trace,
-				spans: Array.map(trace.spans, span => ({
-					...span,
-					attributes: {[key]: String.repeat(4000)('v')}
-				}))
+				spans: Array.map(trace.spans, span => ({...span, attributes: {[key]: String.repeat(4000)('v')}}))
 			})
 		)
 		assert.include(html, `title="${key}"`)
@@ -277,7 +274,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_870_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -291,7 +288,7 @@ it.effect(
 								p50Ms: 40,
 								p95Ms: 40,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
 							},
 							{
 								count: 2,
@@ -300,7 +297,7 @@ it.effect(
 								p50Ms: 12,
 								p95Ms: 12,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					},
@@ -314,7 +311,7 @@ it.effect(
 								p50Ms: 48,
 								p95Ms: 48,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_840_000_000}]
 							},
 							{
 								count: 3,
@@ -323,7 +320,7 @@ it.effect(
 								p50Ms: 60,
 								p95Ms: 60,
 								runtime: 'web',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_830_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_830_000_000}]
 							}
 						]
 					}
@@ -363,7 +360,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_870_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -377,7 +374,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -408,7 +405,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1),id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -422,7 +419,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1),failure: {span: 'run'}, id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					},
@@ -436,7 +433,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1),failure: {span: 'run'}, id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -460,7 +457,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1),id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -474,7 +471,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1),id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					}
@@ -517,7 +514,9 @@ it.effect(
 								p50Ms: 10,
 								p95Ms: 10,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10),failure: {span: 'Parser.decode'}, id: ID, start: 1_781_870_000_000}]
+								traces: [
+									{duration: Duration.millis(10), failure: {span: 'Parser.decode'}, id: ID, start: 1_781_870_000_000}
+								]
 							}
 						]
 					}

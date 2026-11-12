@@ -14,8 +14,10 @@ it('makes each tag one lowercase token', () => {
 
 function organizedTags(tags: string[], inUse: string[]) {
 	return Array.map(
-		reconcileOrganization({body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''}, inUse)
-			.tags,
+		reconcileOrganization(
+			{body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''},
+			inUse
+		).tags,
 		tag => tag.name
 	)
 }
