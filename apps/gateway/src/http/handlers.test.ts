@@ -220,7 +220,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const metadataUnavailable = yield* Ref.make(false)
 	const stall = yield* Ref.make(false)
 	const stallReady = yield* Queue.make<true>()
-	const tokenGrants = yield* Queue.unbounded<void>()
 	const upstreamTools = yield* Queue.unbounded<void>()
 	const upstreamRequests = MutableList.make<{url: string; method: string; authorization: string; body: unknown}>()
 	const grants = MutableList.make<{client: string; grant: string; refresh: string; resource: string}>()
@@ -373,7 +372,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					refresh: form.get('refresh_token') ?? '',
 					resource: form.get('resource') ?? ''
 				})
-				yield* Queue.offer(tokenGrants, undefined)
 				if (form.get('code') === 'no-refresh') {
 					return HttpClientResponse.fromWeb(
 						request,
@@ -504,7 +502,6 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		stall,
 		stallReady,
 		storageFails,
-		tokenGrants,
 		toolNames,
 		upstreamRequests,
 		upstreamTools,
@@ -1204,17 +1201,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				}
 			])
 			yield* Ref.set(gateway.rejectAccess, 'Bearer upstream-refresh_token-1')
-			yield* Queue.takeAll(gateway.tokenGrants)
-			yield* Effect.all([modern(gateway.web, TOKEN, 'tools/list'), modern(gateway.web, second, 'tools/list')], {
-				concurrency: 'unbounded'
-			})
-			yield* Queue.take(gateway.tokenGrants)
+			// Calls reach the provider before they answer; a tools/list would only start a read that outlives it and races the stall below.
+			yield* Effect.all(
+				Array.map([TOKEN, second], token =>
+					modern(gateway.web, token, 'tools/call', {arguments: {query: 'rejected'}, name: 'mobbin__search'})
+				),
+				{concurrency: 'unbounded'}
+			)
 			assert.deepStrictEqual(
 				Array.map(MutableList.toArray(gateway.grants), grant => grant.refresh),
 				['refresh-authorization_code-1', 'refresh-refresh_token-1']
 			)
-			// Joining the read in flight settles it, so the stall below starts a new read instead of waiting for the permit.
-			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Ref.set(gateway.stall, true)
 			yield* TestClock.adjust('30 seconds')
 			const slowList = yield* Effect.forkScoped(modern(gateway.web, second, 'tools/list'))
@@ -1306,24 +1303,27 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Array.map(yield* gateway.list(), server => [server.status, server.tools]),
 				[['Connected', 1]]
 			)
-			// Settling the connect read frees the permit, so the agent's read below is the one the stall holds.
-			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Ref.set(gateway.stall, true)
 			yield* TestClock.adjust('30 seconds')
 			const agent = yield* Effect.forkScoped(modern(gateway.web, TOKEN, 'tools/list'))
 			yield* Queue.take(gateway.stallReady)
+			function example(ready: (status: string) => boolean) {
+				return Effect.flatMap(
+					Stream.runHead(
+						Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+							Array.some(rows, server => server.id === 'example' && ready(server.status))
+						)
+					),
+					Effect.fromOption
+				)
+			}
 			yield* Effect.forkScoped(gateway.add('https://mcp.example.com/mcp'))
-			yield* Effect.flatMap(
-				Stream.runHead(
-					Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
-						Array.some(rows, server => server.id === 'example')
-					)
-				),
-				Effect.fromOption
-			)
+			yield* example(() => true)
 			const connecting = yield* Effect.forkScoped(
 				connect(gateway.web, 'example', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			)
+			// The connection's own steps time out at 20 seconds, so the clock moves only once they are done and its tools read waits for the stalled one.
+			yield* example(status => status === 'Connected')
 			yield* Ref.set(gateway.stall, false)
 			yield* TestClock.adjust('21 seconds')
 			yield* Fiber.join(connecting)
