@@ -11,6 +11,7 @@ import {
 	Number,
 	Option,
 	Record,
+	Redacted,
 	Schema,
 	Semaphore,
 	Stream,
@@ -255,7 +256,12 @@ export class Connections extends Context.Service<
 			const ended = Effect.fnUntraced(function* () {
 				if (params['grant_type'] !== 'refresh_token') return
 				yield* update(connection.id, connection.generation, found => {
-					if (found.link._tag !== 'Authorized' || found.link.token.refresh_token !== params['refresh_token']) {
+					if (found.link._tag !== 'Authorized') return found
+					if (
+						Option.getOrUndefined(
+							Option.map(Option.fromUndefinedOr(found.link.token.refresh_token), Redacted.value)
+						) !== params['refresh_token']
+					) {
 						return found
 					}
 					return {
@@ -290,7 +296,7 @@ export class Connections extends Context.Service<
 			function refreshToken() {
 				if (token.refresh_token !== undefined) return token.refresh_token
 				if (params['grant_type'] !== 'refresh_token') return undefined
-				return params['refresh_token']
+				return Option.getOrUndefined(Option.map(Option.fromUndefinedOr(params['refresh_token']), Redacted.make))
 			}
 			const next = Option.match(Option.fromUndefinedOr(refreshToken()), {
 				onNone: () => Struct.omit(token, ['refresh_token']),
@@ -302,7 +308,7 @@ export class Connections extends Context.Service<
 				link: {_tag: 'Authorized', expiresAt: now + (token.expires_in ?? 3600) * 1000, token: next},
 				oauth
 			}))
-			return next.access_token
+			return Redacted.value(next.access_token)
 		})
 		const token = Effect.fn('Connections.token')(function* (id: ServerId, generation: string, rejectedToken?: string) {
 			// The connection is read under its server's lock, so a call that waited sees the token the one before it saved.
@@ -327,13 +333,15 @@ export class Connections extends Context.Service<
 									onNone: () => 0,
 									onSome: () => 30_000
 								})
-								if (link.token.access_token !== rejectedToken && link.expiresAt > now + margin) {
-									return Effect.succeed(link.token.access_token)
+								const access = Redacted.value(link.token.access_token)
+								if (access !== rejectedToken && link.expiresAt > now + margin) {
+									return Effect.succeed(access)
 								}
 								return Option.match(Option.fromUndefinedOr(link.token.refresh_token), {
 									onNone: () =>
 										Effect.fail(AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})),
-									onSome: refresh => exchange(connection, oauth, {grant_type: 'refresh_token', refresh_token: refresh})
+									onSome: refresh =>
+										exchange(connection, oauth, {grant_type: 'refresh_token', refresh_token: Redacted.value(refresh)})
 								})
 							},
 							Connected: () => Effect.fail(notConnected),

@@ -41,9 +41,9 @@ export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({client_id: Schema.NonEmptyString})
 export type Token = typeof Token.Type
 export const Token = Schema.Struct({
-	access_token: Schema.NonEmptyString,
+	access_token: Schema.RedactedFromValue(Schema.NonEmptyString),
 	expires_in: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
-	refresh_token: Schema.optionalKey(Schema.NonEmptyString),
+	refresh_token: Schema.optionalKey(Schema.RedactedFromValue(Schema.NonEmptyString)),
 	token_type: Schema.String.check(Schema.isPattern(/^Bearer$/iu))
 })
 
