@@ -262,19 +262,20 @@ function make(directory: string) {
 							const parser = Sse.makeParser(event => {
 								if (event._tag === 'Event') MutableList.append(events, event.data)
 							})
+							const feed = Effect.fnUntraced(function* (text: string) {
+								const error = parser.feed(text)
+								for (const data of MutableList.toArray(events)) yield* updateUsage(data)
+								MutableList.clear(events)
+								if (error !== undefined) return yield* error
+							})
 							yield* pipe(
 								stream,
 								Stream.decodeText,
-								Stream.runForEach(text =>
-									Effect.gen(function* () {
-										const error = parser.feed(text)
-										for (const data of MutableList.toArray(events)) yield* updateUsage(data)
-										MutableList.clear(events)
-										if (error !== undefined) return yield* error
-									})
-								),
+								Stream.runForEach(feed),
 								Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
 							)
+							// A response cut after its last data line never sends the blank line that ends the event, and usage often arrives last.
+							yield* pipe(feed('\n\n'), Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'}))
 						} else {
 							const decoder = new TextDecoder()
 							yield* pipe(
