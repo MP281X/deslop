@@ -6,8 +6,8 @@ import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
-import * as CliRuntime from '@deslop/runtime/server/cli'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {ADMINS, runApp} from '@deslop/runtime/server/cli'
+import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -19,7 +19,7 @@ import {Passkeys} from '#services/passkeys/service.ts'
 import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {Tokens} from '#services/tokens/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
 
 // Each service builds on the ones below it: tokens and passkeys, then people (who may use them), then sign-ins.
@@ -30,7 +30,7 @@ const layerServices = pipe(
 	Layer.provide(Layer.succeed(NodeHttpClient.RequestInit, {redirect: 'error'}))
 )
 
-CliRuntime.runApp({
+runApp({
 	auth: Layer.provide(layerIssuerAuth, layerServices),
 	icon,
 	// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
@@ -38,17 +38,17 @@ CliRuntime.runApp({
 	routes: pipe(
 		Layer.mergeAll(
 			HttpHandlers,
-			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-			ServerRuntime.layerMcp({
+			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+			layerMcp({
 				instructions:
-					"Auth holds the user's sign-ins, passkeys and people; answer a sign-in you started with answer_request, and start with list_sessions for anything else.",
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
+					'Use the matching list to identify a session, passkey or person. Use answer_sign_in only for an agent sign-in you started; browser sign-ins require the browser.',
+				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
 			})
 		),
 		Layer.provide(layerServices)
 	),
 	settings: {
-		GITHUB_ADMINS: CliRuntime.ADMINS,
+		GITHUB_ADMINS: ADMINS,
 		GITHUB_CLIENT_ID: {
 			description: "The GitHub app's client id",
 			flag: 'github-client-id',

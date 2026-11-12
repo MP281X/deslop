@@ -3,7 +3,7 @@ import {Array, Boolean, Effect, Option, Order, Predicate, Record, String, Struct
 import {TelemetryError} from '#services/telemetry/schema.ts'
 import type {OperationRow} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 
 function textWindow(text: string, offset: number, limit: number) {
 	return {
@@ -54,10 +54,10 @@ function attributeWindow(
 	}
 }
 
-export const ToolHandlers = Tools.toLayer(
+export const ToolHandlers = ToolContracts.toLayer(
 	Effect.gen(function* () {
 		const telemetry = yield* Telemetry
-		return Tools.of({
+		return ToolContracts.of({
 			check_ingestion: input =>
 				Effect.map(telemetry.checkIngestion(), answer => ({
 					...answer,
@@ -73,7 +73,6 @@ export const ToolHandlers = Tools.toLayer(
 						}))
 					)
 				})),
-			find_traces: telemetry.findTraces,
 			list_operations: input =>
 				Effect.map(telemetry.listOperations(input), answer => {
 					const remaining = pipe(
@@ -190,7 +189,8 @@ export const ToolHandlers = Tools.toLayer(
 							message: message.text
 						}
 					})
-				}))
+				})),
+			search_traces: telemetry.findTraces
 		})
 	})
 )

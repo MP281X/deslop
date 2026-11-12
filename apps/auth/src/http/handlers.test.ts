@@ -59,7 +59,7 @@ import {
 import {SignIns} from '#services/sign-ins/service.ts'
 import {DEVICE_GRANT, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
 
 const API = 'https://stash.mp281x.xyz'
@@ -81,11 +81,11 @@ const me = pipe(
 const mcp = pipe(
 	McpServer.layerHttp({
 		instructions:
-			"Auth holds the user's sign-ins, passkeys and people; start with list_sessions, or answer_request when the user shows you a sign-in code.",
+			'Use matching lists for sessions, passkeys or people; answer_sign_in handles only a sign-in the caller started.',
 		name: 'Auth',
 		path: '/mcp',
 		protocols: [McpProtocol.v2025_06_18],
-		registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner)),
+		registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner)),
 		version: '1'
 	}),
 	Layer.provide(HttpAuth.layer)
@@ -1921,7 +1921,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			])
 			const release = yield* authorize(web.issuer, '', 'stash://auth/callback', [API, 'https://scope.mp281x.xyz/mcp'])
 			assert.strictEqual(
-				(yield* callTool(web.issuer, '', 'answer_request', {accept: true, request: simulator.id})).status,
+				(yield* callTool(web.issuer, '', 'answer_sign_in', {accept: true, request: simulator.id})).status,
 				401
 			)
 			yield* Effect.forEach(
@@ -1930,7 +1930,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					{accept: true, request: desktop.id},
 					{accept: false, request: String.toLowerCase(release.id)}
 				],
-				input => callTool(web.issuer, token, 'answer_request', input),
+				input => callTool(web.issuer, token, 'answer_sign_in', input),
 				{concurrency: 1, discard: true}
 			)
 			const callbacks = yield* Effect.forEach(
@@ -2133,7 +2133,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				['Browser', 'Safari', 'iPhone']
 			)
 			// A session in a browser grants every app, so an agent's token cannot approve one.
-			const byAgent = yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: browser.id})
+			const byAgent = yield* callTool(web.issuer, token, 'answer_sign_in', {accept: true, request: browser.id})
 			assert.isTrue(String.includes('only from a signed-in browser')(yield* Effect.promise(() => byAgent.text())))
 			assert.strictEqual((yield* answer(web.issuer, admin, browser.id, true)).status, 204)
 			const signedIn = yield* send(web.issuer, `/auth/continue?request=${browser.id}`, {
@@ -2217,7 +2217,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const other = clientIdOf({name: 'other', redirects: ['http://127.0.0.1/callback']})
 			assert.isTrue(String.includes('"invalid_grant"')((yield* poll(other)).text))
 			assert.strictEqual(
-				(yield* callTool(web.issuer, token, 'answer_request', {accept: true, request: device.user_code})).status,
+				(yield* callTool(web.issuer, token, 'answer_sign_in', {accept: true, request: device.user_code})).status,
 				200
 			)
 			const granted = yield* poll(client)

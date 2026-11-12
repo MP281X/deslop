@@ -1391,7 +1391,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'find_traces filters by app, operation, span, text and failure and answers one compact row each',
+		'search_traces filters by app, operation, span, text and failure and answers one compact row each',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
@@ -1954,7 +1954,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'a thousand failing spans answer read_trace and find_traces under 300 KB',
+		'a thousand failing spans answer read_trace and search_traces under 300 KB',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()

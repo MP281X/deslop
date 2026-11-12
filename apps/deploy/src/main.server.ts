@@ -2,8 +2,8 @@ import {Effect, Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
-import * as CliRuntime from '@deslop/runtime/server/cli'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {runApp} from '@deslop/runtime/server/cli'
+import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
 import {ToolPath} from '@deslop/runtime/server/process'
 import {dataDirectory} from '@deslop/runtime/server/store'
 
@@ -15,7 +15,7 @@ import {Fleet, layerPeerAuth} from '#services/fleet/service.ts'
 import {WorkerList} from '#services/inventory/schema.ts'
 import {Inventory} from '#services/inventory/service.ts'
 import {Metrics} from '#services/metrics/service.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
 const layerServices = pipe(
@@ -26,15 +26,15 @@ const layerServices = pipe(
 	Layer.provide(ToolPath.layer)
 )
 
-CliRuntime.runApp({
+runApp({
 	icon,
 	routes: pipe(
 		Layer.mergeAll(
-			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-			ServerRuntime.layerMcp({
+			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
+			layerMcp({
 				instructions:
-					'Start with list_apps to see what runs on the workers; Deploy also shows resource history, manages explicitly owned HTTPS exposure and starts scheduled jobs.',
-				registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+					'Use list_apps for worker inventory and read_resource_history for resource comparisons. create_exposure and remove_exposure manage owned HTTPS mappings; run_job starts scheduled jobs.',
+				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
 			})
 		),
 		Layer.provide(layerServices),

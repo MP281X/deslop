@@ -4,7 +4,7 @@ import {Array, Boolean, DateTime, Effect, Formatter, Layer, Option, Ref, Schema,
 
 import {Fleet} from '#services/fleet/service.ts'
 import {
-	ListApps,
+	Inventory,
 	Snapshot,
 	type ExposeRequest,
 	type HideRequest,
@@ -14,7 +14,7 @@ import {
 } from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {ResourceHistory, type MachineHistory, type Sample} from '#services/metrics/schema.ts'
-import {Tools} from '#tools/contracts.ts'
+import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
 const GIB = 1024 ** 3
@@ -261,7 +261,7 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 // The tool layer is the public seam: handlers and schemas as the agent receives them.
 function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
 	return Effect.flatMap(Layer.build(pipe(ToolHandlers, Layer.provide(Layer.succeed(Fleet, fleet)))), context =>
-		Effect.provideContext(Tools, context)
+		Effect.provideContext(ToolContracts, context)
 	)
 }
 
@@ -275,7 +275,7 @@ it.effect('answers list_apps with the page’s apps in under 20 KB and no tailne
 			const text = Formatter.formatJson(answer.encodedResult)
 			assert.isBelow(text.length, 20_000)
 			assert.notInclude(text, 'mullvad')
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(answer.encodedResult))
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(answer.encodedResult))
 				.workers
 			assert.lengthOf(workers, 2)
 			const dev = Option.getOrThrow(Array.findFirst(workers, worker => worker.worker === 'dev'))
@@ -311,7 +311,7 @@ it.effect('returns only the matching app with its process tree when list_apps na
 			const text = Formatter.formatJson(answer.encodedResult)
 			assert.notInclude(text, 'command')
 			assert.notInclude(text, 'hidden')
-			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: ListApps}))(answer.encodedResult))
+			const workers = (yield* Schema.decodeUnknownEffect(Schema.Struct({workers: Inventory}))(answer.encodedResult))
 				.workers
 			assert.lengthOf(workers, 2)
 			for (const worker of workers) {
@@ -330,7 +330,7 @@ it.effect('returns only the matching app with its process tree when list_apps na
 	)
 )
 
-it.effect('answers resource_history for 60 points and two workers in under 6 KB with named containers', () =>
+it.effect('answers read_resource_history for 60 points and two workers in under 6 KB with named containers', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
 			const toolkit = yield* toolkitFor(
@@ -343,7 +343,7 @@ it.effect('answers resource_history for 60 points and two workers in under 6 KB 
 			const answer = Option.getOrThrow(
 				Array.last(
 					Array.fromIterable(
-						yield* Stream.runCollect(yield* toolkit.handle('resource_history', {minutes: 60, series: true}))
+						yield* Stream.runCollect(yield* toolkit.handle('read_resource_history', {minutes: 60, series: true}))
 					)
 				)
 			)
@@ -378,7 +378,7 @@ it.effect('answers resource_history for 60 points and two workers in under 6 KB 
 				Array.last(
 					Array.fromIterable(
 						yield* Stream.runCollect(
-							yield* toolkit.handle('resource_history', {minutes: 60, series: true, worker: 'desktop'})
+							yield* toolkit.handle('read_resource_history', {minutes: 60, series: true, worker: 'desktop'})
 						)
 					)
 				)
@@ -436,7 +436,7 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 				worker: 'desktop'
 			}
 			const answer = Option.getOrThrow(
-				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('expose_port', request))))
+				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('create_exposure', request))))
 			)
 			assert.deepStrictEqual(answer.encodedResult, {url: 'https://desktop.tailnet-8c4c.ts.net:4000'})
 			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(exposed)), {
@@ -447,7 +447,7 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 				publicAccess: request.publicAccess,
 				target: request.worker
 			})
-			yield* Stream.runDrain(yield* toolkit.handle('hide_exposure', {name: 'preview', worker: 'desktop'}))
+			yield* Stream.runDrain(yield* toolkit.handle('remove_exposure', {name: 'preview', worker: 'desktop'}))
 			assert.deepStrictEqual(Option.getOrThrow(yield* Ref.get(hidden)), {name: 'preview', target: 'desktop'})
 		})
 	)
