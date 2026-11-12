@@ -73,7 +73,7 @@ export function ReaderRoute(props: {chapters: ChapterList; number: number; serie
 						start={Number.clamp(
 							props.start ??
 								pipe(
-									Option.fromUndefinedOr(Array.headNonEmpty(shown).reading),
+									Array.headNonEmpty(shown).reading,
 									Option.filter(reading => !reading.done),
 									Option.match({onNone: () => 0, onSome: reading => reading.page})
 								),

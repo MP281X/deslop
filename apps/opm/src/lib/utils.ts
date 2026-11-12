@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, HashSet, Option, Order, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, Effect, HashSet, Option, Order, Redacted, Schema, Stream, pipe} from 'effect'
 
 import {AtomRpc, Atom} from 'effect/reactivity'
 import Constants from 'expo-constants'
@@ -22,8 +22,8 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
-import type {ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChapterItem, ChaptersError} from '#services/chapters/schema.ts'
+import type {ChapterItem, ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters/schema.ts'
+import {Chapter, ChaptersError} from '#services/chapters/schema.ts'
 
 export const primary = hues.ivory
 
@@ -53,7 +53,7 @@ export const chaptersAtom = Atom.keepAlive(
 		return cachedList(
 			get,
 			chaptersFile,
-			ChapterItem,
+			Chapter.json,
 			pipe(liveStream(RpcClient, 'chapters.events'), Stream.scan(Array.empty<ChapterItem>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)
@@ -110,10 +110,10 @@ function turnPage(state: ReaderState, turn: PageTurn) {
 				onSome: item => HashSet.add(state.finished, item.number)
 			})
 			// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
-			const finished = Boolean.match(page === chapter.pages.length - 1 || chapter.reading?.done === true, {
-				onFalse: () => passed,
-				onTrue: () => HashSet.add(passed, chapter.number)
-			})
+			const finished = Boolean.match(
+				page === chapter.pages.length - 1 || Option.exists(chapter.reading, reading => reading.done),
+				{onFalse: () => passed, onTrue: () => HashSet.add(passed, chapter.number)}
+			)
 			const last = Option.exists(Array.last(shown), item => item.number === chapter.number)
 			const saves: ReadingUpdate[] = [
 				...Option.toArray(
@@ -184,7 +184,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
 				try: () => getExpoPushTokenAsync({projectId: extra.eas.projectId})
 			})
-			yield* Effect.flatMap(RpcClient, client => client('chapters.register', {token: token.data}))
+			yield* Effect.flatMap(RpcClient, client => client('chapters.register', {token: Redacted.make(token.data)}))
 		}),
 		Effect.ignore({log: 'Warn', message: 'Notifications are not set up on this iPhone'})
 	)

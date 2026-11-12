@@ -8,13 +8,15 @@ import {
 	Context,
 	DateTime,
 	Effect,
+	Equal,
 	HashMap,
+	HashSet,
 	Layer,
 	Option,
-	Order,
 	Predicate,
 	Random,
 	Record,
+	Redacted,
 	Ref,
 	Result,
 	Schedule,
@@ -22,14 +24,13 @@ import {
 	Stream,
 	String,
 	Struct,
-	SubscriptionRef,
 	pipe
 } from 'effect'
 
 import {Xml} from 'effect/encoding'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
-
-import {openStore} from './lib/store.ts'
+import {Reactivity} from 'effect/reactivity'
+import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {
 	byNumber,
@@ -37,18 +38,25 @@ import {
 	INDEXES,
 	indexChapters,
 	keyOf,
-	mergeMissingChapters,
 	missingNumbers,
 	nameOf,
 	pagesOf,
 	postFrom,
-	reconcileChapters,
 	revisionCandidates,
 	seriesOf,
 	SERIES_NAMES
 } from '#services/chapters/lib/utils.ts'
-import type {Chapter, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
-import {ChaptersError, CubariSeries, DeadLink, Post, PushTickets, Series} from '#services/chapters/schema.ts'
+import type {ChaptersEvent, ReadingUpdate} from '#services/chapters/schema.ts'
+import {
+	Chapter,
+	ChaptersError,
+	CubariSeries,
+	DeadLink,
+	Device,
+	Post,
+	PushTickets,
+	Series
+} from '#services/chapters/schema.ts'
 
 // Anonymous search and JSON are refused. Recent-post Atom still answers; a release can appear on either subreddit only.
 const FEEDS = [
@@ -78,19 +86,18 @@ const ARCHIVE_POSTS = Array.map(
 		})
 )
 
-const newestFirst = Order.flip(byNumber)
-
-function change(chapters: Chapter[], key: string, update: (chapter: Chapter) => Chapter) {
-	return Array.map(chapters, item =>
-		Boolean.match(keyOf(item) === key, {onFalse: () => item, onTrue: () => update(item)})
-	)
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly chapters: never
+	}
 }
 
-function changed(chapters: Chapter[], before: Chapter[]) {
+// The chapters a list read again holds with other values than before; a row read again is a new object, so values decide.
+function changed(chapters: readonly Chapter[], before: readonly Chapter[]) {
 	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
 	return Array.filter(
 		chapters,
-		chapter => !Option.exists(HashMap.get(previous, keyOf(chapter)), item => item === chapter)
+		chapter => !Option.exists(HashMap.get(previous, keyOf(chapter)), item => Equal.equals(item, chapter))
 	)
 }
 
@@ -121,301 +128,396 @@ function postsOf(feed: string) {
 	)
 }
 
-export class Chapters extends Context.Service<
-	Chapters,
-	{
-		readonly changes: Stream.Stream<ChaptersEvent>
-		readonly read: (update: ReadingUpdate) => Effect.Effect<void, ChaptersError>
-		readonly register: (token: PushToken) => Effect.Effect<void, ChaptersError>
-	}
->()('@deslop/opm/services/chapters/service/Chapters') {
-	static readonly layer = Layer.effect(
-		this,
-		Effect.gen(function* () {
-			const client = yield* HttpClient.HttpClient
-			const exit = yield* Config.option(Config.String('OPM_PROXY'))
-			const store = yield* openStore()
-			const state = yield* SubscriptionRef.make(Array.sort(yield* store.load, newestFirst))
-			function series(url: string) {
-				return pipe(
-					client.get(url, {headers: {'user-agent': BROWSER}}),
-					Effect.flatMap(HttpClientResponse.filterStatusOk),
-					Effect.flatMap(HttpClientResponse.schemaBodyJson(CubariSeries)),
-					Effect.timeout('20 seconds'),
-					Effect.retry({schedule: Schedule.exponential('1 second'), times: 2, while: HttpClient.isTransientError})
-				)
-			}
+function storageFailure(cause: unknown) {
+	return ChaptersError.make({cause, message: 'The chapter storage failed.'})
+}
 
-			const resolve = Effect.fnUntraced(function* (post: Post, link: string) {
-				const target = yield* Effect.fromOption(seriesOf(link))
-				const answer = yield* series(target.api)
-				return {
-					notified: false,
-					number: post.number,
-					pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
-					postedAt: post.postedAt,
-					series: post.series,
-					source: link,
-					title: nameOf(answer.chapters[target.chapter]?.title ?? '')
-				} satisfies Chapter
+const storageFailed = Effect.mapError(storageFailure)
+
+export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/chapters/service/Chapters', {
+	make: Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		const client = yield* HttpClient.HttpClient
+		const exit = yield* Config.option(Config.String('OPM_PROXY'))
+		// Writes tell this Reactivity of their commits, so callers need none of their own.
+		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
+		// Dead reader links are known only to this run: after a restart each answers its 404 once more.
+		const deadLinks = yield* Ref.make(Array.empty<DeadLink>())
+
+		const listChapters = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Chapter,
+			// Newest first, as the iPhone lists them.
+			execute: () => sql`SELECT * FROM ${sql(Chapter.table)} ORDER BY number DESC, series`
+		})
+		const insertChapter = SqlSchema.void({
+			Request: Chapter.insert,
+			execute: row => sql`INSERT INTO ${sql(Chapter.table)} ${sql.insert(row)}`
+		})
+		const revise = SqlSchema.void({
+			Request: Chapter.update.mapFields(Struct.pick(['number', 'pages', 'revisedAt', 'series', 'source'])),
+			execute: row => sql`
+				UPDATE ${sql(Chapter.table)} SET ${sql.update(row, ['number', 'series'])}
+				WHERE series = ${row.series} AND number = ${row.number}
+			`
+		})
+		const announce = SqlSchema.void({
+			Request: Chapter.update.mapFields(Struct.pick(['notified', 'number', 'series'])),
+			execute: row => sql`
+				UPDATE ${sql(Chapter.table)} SET ${sql.update(row, ['number', 'series'])}
+				WHERE series = ${row.series} AND number = ${row.number}
+			`
+		})
+		const place = SqlSchema.void({
+			Request: Chapter.update.mapFields(Struct.pick(['number', 'reading', 'series'])),
+			execute: row => sql`
+				UPDATE ${sql(Chapter.table)} SET ${sql.update(row, ['number', 'series'])}
+				WHERE series = ${row.series} AND number = ${row.number}
+			`
+		})
+		const listDevices = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Device,
+			execute: () => sql`SELECT * FROM ${sql(Device.table)}`
+		})
+		const insertDevice = SqlSchema.void({
+			Request: Device.insert,
+			execute: row => sql`INSERT INTO ${sql(Device.table)} ${sql.insert(row)} ON CONFLICT DO NOTHING`
+		})
+		const removeDevice = SqlSchema.void({
+			Request: Device.update,
+			execute: row => sql`DELETE FROM ${sql(Device.table)} WHERE token = ${row.token}`
+		})
+
+		const chapters = storageFailed(listChapters())
+
+		function series(url: string) {
+			return pipe(
+				client.get(url, {headers: {'user-agent': BROWSER}}),
+				Effect.flatMap(HttpClientResponse.filterStatusOk),
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(CubariSeries)),
+				Effect.timeout('20 seconds'),
+				Effect.retry({schedule: Schedule.exponential('1 second'), times: 2, while: HttpClient.isTransientError})
+			)
+		}
+
+		const resolve = Effect.fnUntraced(function* (post: Post, link: string, now: number) {
+			const target = yield* Effect.fromOption(seriesOf(link))
+			const answer = yield* series(target.api)
+			return Chapter.make({
+				// A chapter found a day after its post arrives announced, so a first sync never floods the iPhone.
+				notified: now - post.postedAt > 86_400_000,
+				number: post.number,
+				pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
+				postedAt: post.postedAt,
+				reading: Option.none(),
+				revisedAt: Option.none(),
+				series: post.series,
+				source: link,
+				title: nameOf(answer.chapters[target.chapter]?.title ?? '')
 			})
+		})
 
-			// Persist before publishing; unchanged chapters keep their identity so the stream sends only changes.
-			function save(apply: (current: Chapter[]) => Chapter[]) {
-				return Effect.uninterruptible(
-					SubscriptionRef.updateEffect(state, current => {
-						const next = apply(current)
-						if (Array.isReadonlyArrayEmpty(changed(next, current))) return Effect.succeed(current)
-						return Effect.as(store.save(next), next)
-					})
-				)
-			}
+		const backfill = Effect.fnUntraced(function* (kind: Series) {
+			const index = chaptersFromIndex(yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`), kind)
+			// A chapter Reddit already supplied keeps its pages; later rounds fill only the gaps the index now covers.
+			const missing = indexChapters(yield* chapters, index, kind)
+			if (Array.isReadonlyArrayEmpty(missing)) return
+			yield* pipe(
+				Effect.forEach(missing, insertChapter, {concurrency: 1, discard: true}),
+				Reactivity.mutation(['chapters']),
+				sql.withTransaction,
+				storageFailed
+			)
+			yield* Effect.logInfo(`Backfilled ${missing.length} ${kind} chapters from the community index`)
+		})
 
-			const backfill = Effect.fnUntraced(function* (kind: Series) {
-				const chapters = chaptersFromIndex(
-					yield* series(`https://cubari.moe/read/api/gist/series/${INDEXES[kind]}/`),
-					kind
-				)
-				// A chapter Reddit already supplied keeps its pages; later rounds fill only the gaps the index now covers.
-				const missing = indexChapters(yield* SubscriptionRef.get(state), chapters, kind)
-				if (Array.isReadonlyArrayEmpty(missing)) return
-				yield* save(current => mergeMissingChapters(current, missing))
-				yield* Effect.logInfo(`Backfilled ${missing.length} ${kind} chapters from the community index`)
-			})
-
-			const sync = Effect.gen(function* () {
-				// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
-				yield* Effect.forEach(
-					Series.literals,
-					kind =>
-						pipe(backfill(kind), Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})),
-					{concurrency: 1, discard: true}
-				)
-				// One subreddit that does not answer leaves the other's releases for this round.
-				const feeds = yield* Effect.forEach(
-					FEEDS,
-					url =>
-						pipe(
-							Effect.scoped(
-								Effect.gen(function* () {
-									const feedClient = yield* Option.match(exit, {
-										onNone: () => Effect.succeed(client),
-										// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
-										onSome: proxy =>
-											Effect.gen(function* () {
-												const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
-												const context = yield* Layer.build(
-													pipe(
-														NodeHttpClient.layerNodeHttpNoAgent,
-														Layer.provide(
-															NodeHttpClient.layerAgentOptions({
-																proxyEnv: {
-																	HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
-																	HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
-																	NODE_ENV: 'production'
-																}
-															})
-														)
+		const sync = Effect.gen(function* () {
+			// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
+			yield* Effect.forEach(
+				Series.literals,
+				kind => pipe(backfill(kind), Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})),
+				{concurrency: 1, discard: true}
+			)
+			// One subreddit that does not answer leaves the other's releases for this round.
+			const feeds = yield* Effect.forEach(
+				FEEDS,
+				url =>
+					pipe(
+						Effect.scoped(
+							Effect.gen(function* () {
+								const feedClient = yield* Option.match(exit, {
+									onNone: () => Effect.succeed(client),
+									// A residential exit can be offline or flagged by Reddit, so each try leaves from another address.
+									onSome: proxy =>
+										Effect.gen(function* () {
+											const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
+											const context = yield* Layer.build(
+												pipe(
+													NodeHttpClient.layerNodeHttpNoAgent,
+													Layer.provide(
+														NodeHttpClient.layerAgentOptions({
+															proxyEnv: {
+																HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
+																HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
+																NODE_ENV: 'production'
+															}
+														})
 													)
 												)
-												return Context.get(context, HttpClient.HttpClient)
-											})
-									})
-									return yield* pipe(
-										HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
-										Effect.flatMap(HttpClientResponse.filterStatusOk),
-										Effect.flatMap(response => response.text),
-										Effect.timeout('20 seconds'),
-										Effect.provideService(HttpClient.HttpClient, feedClient)
-									)
-								})
-							),
-							Effect.retry({times: 3}),
-							Effect.flatMap(postsOf),
-							Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
-							Effect.option
-						),
-					{concurrency: 'unbounded'}
-				)
-				if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
-				const now = yield* Clock.currentTimeMillis
-				const deadLinks = yield* store.deadLinks
-				const candidates = revisionCandidates(
-					[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
-					yield* SubscriptionRef.get(state),
-					deadLinks
-				)
-				const newlyDead = yield* Ref.make(Array.empty<DeadLink>())
-				const groups = Record.toEntries(Array.groupBy(candidates, candidate => keyOf(candidate.post)))
-				// The first link that loads wins: a release's best translation can be gone while another still reads.
-				const found = yield* Effect.forEach(
-					groups,
-					entry =>
-						pipe(
-							Effect.firstSuccessOf(
-								Array.flatMap(entry[1], candidate =>
-									Array.map(candidate.links, link =>
-										pipe(
-											resolve(candidate.post, link),
-											Effect.tapError(error =>
-												Boolean.match(HttpClientError.isHttpClientError(error) && error.response?.status === 404, {
-													onFalse: () => Effect.void,
-													onTrue: () =>
-														Ref.update(newlyDead, links =>
-															Boolean.match(
-																Array.some(links, item => item.key === entry[0] && item.link === link),
-																{onFalse: () => [...links, DeadLink.make({key: entry[0], link})], onTrue: () => links}
-															)
-														)
-												})
 											)
+											return Context.get(context, HttpClient.HttpClient)
+										})
+								})
+								return yield* pipe(
+									HttpClient.get(url, {headers: {'user-agent': BROWSER}}),
+									Effect.flatMap(HttpClientResponse.filterStatusOk),
+									Effect.flatMap(response => response.text),
+									Effect.timeout('20 seconds'),
+									Effect.provideService(HttpClient.HttpClient, feedClient)
+								)
+							})
+						),
+						Effect.retry({times: 3}),
+						Effect.flatMap(postsOf),
+						Effect.tapError(error => Effect.logWarning(`Reddit did not answer ${url}`, error)),
+						Effect.option
+					),
+				{concurrency: 'unbounded'}
+			)
+			if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
+			const now = yield* Clock.currentTimeMillis
+			const current = yield* chapters
+			const candidates = revisionCandidates(
+				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
+				current,
+				yield* Ref.get(deadLinks)
+			)
+			const groups = Record.toEntries(Array.groupBy(candidates, candidate => keyOf(candidate.post)))
+			// The first link that loads wins: a release's best translation can be gone while another still reads.
+			const found = yield* Effect.forEach(
+				groups,
+				entry =>
+					pipe(
+						Effect.firstSuccessOf(
+							Array.flatMap(entry[1], candidate =>
+								Array.map(candidate.links, link =>
+									pipe(
+										resolve(candidate.post, link, now),
+										Effect.tapError(error =>
+											Boolean.match(HttpClientError.isHttpClientError(error) && error.response?.status === 404, {
+												onFalse: () => Effect.void,
+												onTrue: () =>
+													Ref.update(deadLinks, links =>
+														Boolean.match(
+															Array.some(links, item => item.key === entry[0] && item.link === link),
+															{onFalse: () => [...links, DeadLink.make({key: entry[0], link})], onTrue: () => links}
+														)
+													)
+											})
 										)
 									)
 								)
-							),
-							Effect.asSome,
-							Effect.orElseSucceed(Option.none<Chapter>)
-						),
-					{concurrency: 1}
-				)
-				const recorded = yield* Ref.get(newlyDead)
-				if (Array.isReadonlyArrayNonEmpty(recorded)) yield* store.saveDeadLinks([...deadLinks, ...recorded])
-				// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
-				yield* save(current => reconcileChapters(current, Array.getSomes(found), now))
-				const current = yield* SubscriptionRef.get(state)
-				const unreadable = Array.dedupe([
-					...Array.flatMap(Series.literals, kind =>
-						Array.map(missingNumbers(current, kind), number => keyOf({number, series: kind}))
-					),
-					...Array.filterMap(Array.zip(groups, found), pair =>
-						Option.match(pair[1], {onNone: () => Result.succeed(pair[0][0]), onSome: () => Result.failVoid})
-					)
-				])
-				if (Array.isReadonlyArrayNonEmpty(unreadable)) {
-					yield* Effect.logWarning(`No readable source for ${Array.join(unreadable, ', ')}`)
-				}
-			})
-
-			const send = Effect.fnUntraced(function* (chapter: Chapter, tokens: string[]) {
-				const answer = yield* pipe(
-					HttpClientRequest.post('https://exp.host/--/api/v2/push/send'),
-					HttpClientRequest.bodyJson(
-						Array.map(tokens, to => ({
-							body: Boolean.match(String.isNonEmpty(chapter.title), {
-								onFalse: () => `${chapter.pages.length} pages, out now`,
-								onTrue: () => chapter.title
-							}),
-							data: {path: keyOf(chapter)},
-							sound: 'default',
-							threadId: chapter.series,
-							title: `${SERIES_NAMES[chapter.series]} · Chapter ${chapter.number}`,
-							to
-						}))
-					),
-					Effect.flatMap(request => client.execute(request)),
-					Effect.flatMap(HttpClientResponse.filterStatusOk),
-					Effect.flatMap(
-						HttpClientResponse.schemaBodyJson(
-							PushTickets.check(
-								Schema.makeFilter(received => received.data.length === tokens.length, {
-									message: 'Expo must return exactly one ticket per message'
-								})
 							)
-						)
-					),
-					Effect.timeout('20 seconds')
-				)
-				// Expo answers with one ticket per message; an uninstalled app's token never works again.
-				const tickets = Array.zip(tokens, answer.data)
-				yield* Effect.forEach(
-					Array.filter(tickets, pair => pair[1].details?.error === 'DeviceNotRegistered'),
-					pair => store.removeDevice(pair[0]),
-					{concurrency: 1, discard: true}
-				)
-				// Any other refused message keeps the chapter in the outbox for the next round.
-				const refused = Array.filter(
-					tickets,
-					pair => pair[1].status === 'error' && pair[1].details?.error !== 'DeviceNotRegistered'
-				)
-				if (Array.isReadonlyArrayNonEmpty(refused)) {
-					return yield* ChaptersError.make({
-						message: `Expo refused ${refused.length} messages: ${Array.join(
-							Array.map(refused, pair => pair[1].details?.error ?? 'unknown'),
-							', '
-						)}`
-					})
-				}
-			})
-
-			// The outbox: a chapter stays unannounced until Expo accepts its messages, so a failed send retries next round.
-			const notify = Effect.gen(function* () {
-				const pending = Array.filter(yield* SubscriptionRef.get(state), chapter => !chapter.notified)
-				if (Array.isReadonlyArrayEmpty(pending)) return
-				const tokens = yield* store.devices
-				yield* Effect.forEach(
-					Array.sort(pending, byNumber),
-					chapter =>
-						pipe(
-							Effect.forEach(Array.chunksOf(tokens, 100), batch => send(chapter, batch), {
-								concurrency: 1,
-								discard: true
-							}),
-							Effect.andThen(save(chapters => change(chapters, keyOf(chapter), item => ({...item, notified: true})))),
-							Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${tokens.length} iPhones`)),
-							Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
 						),
-					{concurrency: 1, discard: true}
-				)
-			})
-
-			// Announce in the discovering round, then wait an hour before reading both communities again.
-			yield* Effect.forkScoped(
-				Effect.repeat(
-					pipe(
-						sync,
-						Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}),
-						Effect.andThen(notify),
-						Effect.withSpan('Chapters.sync')
+						Effect.asSome,
+						Effect.orElseSucceed(Option.none<Chapter>)
 					),
-					Schedule.spaced('1 hour')
-				)
+				{concurrency: 1}
 			)
-
-			return Chapters.of({
-				changes: pipe(
-					SubscriptionRef.changes(state),
-					Stream.mapAccum(
-						() => Option.none<Chapter[]>(),
-						(previous, current: Chapter[]) =>
-							[
-								Option.some(current),
-								Option.match(previous, {
-									onNone: () => [
-										{reset: true, upserted: Array.map(current, Struct.omit(['notified', 'revisedAt', 'source']))}
-									],
-									onSome: before =>
-										pipe(
-											changed(current, before),
-											Array.match({
-												onEmpty: () => Array.empty<ChaptersEvent>(),
-												onNonEmpty: updates => [
-													{reset: false, upserted: Array.map(updates, Struct.omit(['notified', 'revisedAt', 'source']))}
-												]
-											})
-										)
-								})
-							] as const
+			// A known chapter takes only an explicit revision's pages, so a second translation never moves a reader's page.
+			const known = HashSet.fromIterable(Array.map(current, keyOf))
+			const loaded = Array.getSomes(found)
+			yield* pipe(
+				Effect.forEach(
+					Array.filter(loaded, chapter => !HashSet.has(known, keyOf(chapter))),
+					insertChapter,
+					{concurrency: 1, discard: true}
+				),
+				Effect.andThen(
+					Effect.forEach(
+						Array.filter(loaded, chapter => HashSet.has(known, keyOf(chapter))),
+						chapter =>
+							revise({
+								number: chapter.number,
+								pages: chapter.pages,
+								revisedAt: Option.some(chapter.postedAt),
+								series: chapter.series,
+								source: chapter.source
+							}),
+						{concurrency: 1, discard: true}
 					)
 				),
-				read: Effect.fn('Chapters.read')(function* (update) {
-					yield* save(chapters =>
-						change(chapters, keyOf(update), item => ({...item, reading: {done: update.done, page: update.page}}))
+				Reactivity.mutation(['chapters']),
+				sql.withTransaction,
+				storageFailed
+			)
+			const saved = yield* chapters
+			const unreadable = Array.dedupe([
+				...Array.flatMap(Series.literals, kind =>
+					Array.map(missingNumbers(saved, kind), number => keyOf({number, series: kind}))
+				),
+				...Array.filterMap(Array.zip(groups, found), pair =>
+					Option.match(pair[1], {onNone: () => Result.succeed(pair[0][0]), onSome: () => Result.failVoid})
+				)
+			])
+			if (Array.isReadonlyArrayNonEmpty(unreadable)) {
+				yield* Effect.logWarning(`No readable source for ${Array.join(unreadable, ', ')}`)
+			}
+		})
+
+		const send = Effect.fnUntraced(function* (chapter: Chapter, devices: readonly Device[]) {
+			const answer = yield* pipe(
+				HttpClientRequest.post('https://exp.host/--/api/v2/push/send'),
+				HttpClientRequest.bodyJson(
+					Array.map(devices, device => ({
+						body: Boolean.match(String.isNonEmpty(chapter.title), {
+							onFalse: () => `${chapter.pages.length} pages, out now`,
+							onTrue: () => chapter.title
+						}),
+						data: {path: keyOf(chapter)},
+						sound: 'default',
+						threadId: chapter.series,
+						title: `${SERIES_NAMES[chapter.series]} · Chapter ${chapter.number}`,
+						to: Redacted.value(device.token)
+					}))
+				),
+				Effect.flatMap(request => client.execute(request)),
+				Effect.flatMap(HttpClientResponse.filterStatusOk),
+				Effect.flatMap(
+					HttpClientResponse.schemaBodyJson(
+						PushTickets.check(
+							Schema.makeFilter(received => received.data.length === devices.length, {
+								message: 'Expo must return exactly one ticket per message'
+							})
+						)
 					)
-				}),
-				register: Effect.fn('Chapters.register')(function* (token) {
-					yield* store.addDevice(token)
+				),
+				Effect.timeout('20 seconds')
+			)
+			// Expo answers with one ticket per message; an uninstalled app's token never works again.
+			const tickets = Array.zip(devices, answer.data)
+			yield* Effect.forEach(
+				Array.filter(tickets, pair => pair[1].details?.error === 'DeviceNotRegistered'),
+				pair => storageFailed(removeDevice(pair[0])),
+				{concurrency: 1, discard: true}
+			)
+			// Any other refused message keeps the chapter in the outbox for the next round.
+			const refused = Array.filter(
+				tickets,
+				pair => pair[1].status === 'error' && pair[1].details?.error !== 'DeviceNotRegistered'
+			)
+			if (Array.isReadonlyArrayNonEmpty(refused)) {
+				return yield* ChaptersError.make({
+					message: `Expo refused ${refused.length} messages: ${Array.join(
+						Array.map(refused, pair => pair[1].details?.error ?? 'unknown'),
+						', '
+					)}`
 				})
+			}
+		})
+
+		// The outbox: a chapter stays unannounced until Expo accepts its messages, so a failed send retries next round.
+		const notify = Effect.gen(function* () {
+			const pending = Array.filter(yield* chapters, chapter => !chapter.notified)
+			if (Array.isReadonlyArrayEmpty(pending)) return
+			const devices = yield* storageFailed(listDevices())
+			yield* Effect.forEach(
+				Array.sort(pending, byNumber),
+				chapter =>
+					pipe(
+						Effect.forEach(Array.chunksOf(devices, 100), batch => send(chapter, batch), {
+							concurrency: 1,
+							discard: true
+						}),
+						Effect.andThen(
+							pipe(
+								announce({notified: true, number: chapter.number, series: chapter.series}),
+								Reactivity.mutation(['chapters']),
+								storageFailed
+							)
+						),
+						Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)),
+						Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
+					),
+				{concurrency: 1, discard: true}
+			)
+		})
+
+		// Announce in the discovering round, then wait an hour before reading both communities again.
+		yield* Effect.forkScoped(
+			Effect.repeat(
+				pipe(
+					sync,
+					Effect.ignore({log: 'Warn', message: 'The chapter sync failed'}),
+					Effect.andThen(Effect.ignore(notify, {log: 'Warn', message: 'The new chapters were not announced'})),
+					Effect.withSpan('Chapters.sync')
+				),
+				Schedule.spaced('1 hour')
+			)
+		)
+
+		return {
+			// What the iPhone watches: the whole list first, then only the chapters that changed, after each commit.
+			events: Stream.mapAccum(
+				Stream.mapError(sql.reactive(['chapters'], listChapters()), storageFailure),
+				() => Option.none<readonly Chapter[]>(),
+				(previous, current) =>
+					[
+						Option.some(current),
+						Option.match(previous, {
+							onNone: () => [{reset: true, upserted: current} satisfies ChaptersEvent],
+							onSome: before =>
+								Array.match(changed(current, before), {
+									onEmpty: () => Array.empty<ChaptersEvent>(),
+									onNonEmpty: upserted => [{reset: false, upserted} satisfies ChaptersEvent]
+								})
+						})
+					] as const
+			),
+			read: Effect.fn('Chapters.read')(function* (update: ReadingUpdate) {
+				yield* pipe(
+					place({
+						number: update.number,
+						reading: Option.some({done: update.done, page: update.page}),
+						series: update.series
+					}),
+					Reactivity.mutation(['chapters']),
+					storageFailed
+				)
+			}, withReactivity),
+			register: Effect.fn('Chapters.register')(function* (device: typeof Device.insert.Type) {
+				yield* storageFailed(insertDevice(device))
 			})
+		}
+	})
+}) {
+	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	static readonly migrations = Layer.effectDiscard(
+		Migrator.make({})({
+			loader: Migrator.fromRecord({
+				'0001_chapters': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`
+						CREATE TABLE chapters (
+							series TEXT NOT NULL,
+							number REAL NOT NULL,
+							title TEXT NOT NULL,
+							pages TEXT NOT NULL,
+							postedAt REAL NOT NULL,
+							reading TEXT,
+							notified INTEGER NOT NULL,
+							revisedAt REAL,
+							source TEXT NOT NULL,
+							PRIMARY KEY (series, number)
+						) STRICT
+					`
+					yield* sql`CREATE TABLE devices (token TEXT PRIMARY KEY) STRICT, WITHOUT ROWID`
+				})
+			}),
+			table: 'chapters_migrations'
 		})
 	)
+
+	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
 }
