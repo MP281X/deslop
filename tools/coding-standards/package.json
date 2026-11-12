@@ -40,6 +40,7 @@
 		"@typeonce/oxlint-plugin-effect-machine": "latest",
 		"effect": "latest",
 		"oxc-parser": "latest",
+		"oxlint-plugin-eslint": "latest",
 		"oxlint-plugin-react-doctor": "latest"
 	},
 	"peerDependencies": {

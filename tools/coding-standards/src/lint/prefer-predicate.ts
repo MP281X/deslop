@@ -1,9 +1,20 @@
 import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
-import type {Context, ESTree} from 'vite-plus/lint/plugins'
+import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {memberName, returnedExpression} from '#lib/ast.ts'
+import {effectImport, memberName, returnedExpression, variableFor} from '#lib/ast.ts'
+
+const GUARDS: Record<string, string> = {
+	bigint: 'isBigInt',
+	boolean: 'isBoolean',
+	function: 'isFunction',
+	number: 'isNumber',
+	string: 'isString',
+	symbol: 'isSymbol',
+	undefined: 'isUndefined'
+}
+const NEGATIONS = {'!==': '!', '===': ''}
 
 function isSubject(input: {name: string; node: ESTree.Node}) {
 	return input.node.type === 'Identifier' && input.node.name === input.name
@@ -62,8 +73,8 @@ function check(input: {name: string; node: ESTree.Expression}): Option.Option<st
 	)
 }
 
-// The Predicate guard that replaces this function; no-typeof leaves the checks inside it to this rule.
-export function replaceableGuard(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+// Prefer the whole Predicate guard to replacing just its inner typeof comparison.
+function replaceableGuard(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	const predicate = node.returnType?.typeAnnotation
 	const returned = returnedExpression(node)
 	if (
@@ -94,13 +105,7 @@ export function replaceableGuard(node: ESTree.Function | ESTree.ArrowFunctionExp
 					'instanceof RegExp': 'isRegExp',
 					'instanceof Set': 'isSet',
 					'instanceof Uint8Array': 'isUint8Array',
-					'typeof === bigint': 'isBigInt',
-					'typeof === boolean': 'isBoolean',
-					'typeof === function': 'isFunction',
-					'typeof === number': 'isNumber',
-					'typeof === string': 'isString',
-					'typeof === symbol': 'isSymbol',
-					'typeof === undefined': 'isUndefined'
+					...Record.mapKeys(GUARDS, name => `typeof === ${name}`)
 				},
 				key
 			)
@@ -114,7 +119,53 @@ function report(input: {context: Context; node: ESTree.Function | ESTree.ArrowFu
 	)
 }
 
-export const noHandWrittenGuard = defineRule({
+function enclosingFunction(node: ESTree.Node): Option.Option<ESTree.Function | ESTree.ArrowFunctionExpression> {
+	if (
+		node.type === 'ArrowFunctionExpression' ||
+		node.type === 'FunctionDeclaration' ||
+		node.type === 'FunctionExpression'
+	) {
+		return Option.some(node)
+	}
+	return Option.flatMap(Option.fromNullishOr(node.parent), enclosingFunction)
+}
+
+// A declared name may not exist at runtime: typeof still answers where a call throws.
+function ambient(node: ESTree.Node): boolean {
+	if ((Predicate.hasProperty(node, 'declare') && node.declare) || node.type === 'TSDeclareFunction') return true
+	return Predicate.isNotNullish(node.parent) && ambient(node.parent)
+}
+
+function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpression}) {
+	if (
+		input.node.argument.type !== 'Identifier' ||
+		Option.exists(variableFor(input.context, input.node.argument), variable =>
+			Array.some(variable.defs, definition => ambient(definition.node))
+		) ||
+		input.node.parent.type !== 'BinaryExpression' ||
+		input.node.parent.left !== input.node ||
+		(input.node.parent.operator !== '===' && input.node.parent.operator !== '!==') ||
+		input.node.parent.right.type !== 'Literal' ||
+		!Predicate.isString(input.node.parent.right.value)
+	) {
+		return []
+	}
+	const guard = GUARDS[input.node.parent.right.value]
+	if (guard === undefined) return []
+	const replacement = input.fixer.replaceTextRange(
+		input.node.parent.range,
+		`${NEGATIONS[input.node.parent.operator]}Predicate.${guard}(${input.node.argument.name})`
+	)
+	return Option.getOrElse(
+		Option.map(
+			effectImport({context: input.context, fixer: input.fixer, name: 'Predicate', node: input.node}),
+			imports => Array.append(imports, replacement)
+		),
+		() => []
+	)
+}
+
+export const preferPredicate = defineRule({
 	create: context => ({
 		ArrowFunctionExpression: node => {
 			report({context, node})
@@ -124,7 +175,23 @@ export const noHandWrittenGuard = defineRule({
 		},
 		FunctionExpression: node => {
 			report({context, node})
+		},
+		UnaryExpression: node => {
+			if (node.operator !== 'typeof') return
+			if (
+				node.argument.type === 'Identifier' &&
+				!Option.exists(variableFor(context, node.argument), variable => Array.isArrayNonEmpty(variable.defs))
+			) {
+				return
+			}
+			if (Option.exists(enclosingFunction(node), fn => Option.isSome(replaceableGuard(fn)))) return
+			context.report({
+				fix: fixer => fix({context, fixer, node}),
+				message:
+					'Replace typeof with its Predicate guard: Predicate.isString, isNumber, isBoolean, isFunction, isObject or isUndefined.',
+				node
+			})
 		}
 	}),
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })

@@ -124,9 +124,7 @@ const serve = Effect.fnUntraced(function* (telemetry: Telemetry['Service']) {
 	return {key: yield* Mac.key(Mac.hmacSha256, new TextEncoder().encode(SECRET)), mac, web}
 })
 
-type Web = Effect.Success<ReturnType<typeof serve>>['web']
-
-function send(web: Web, path: string, init?: RequestInit) {
+function send(web: Effect.Success<ReturnType<typeof serve>>['web'], path: string, init?: RequestInit) {
 	return Effect.promise(() => web.handler(new Request(new URL(path, 'https://scope.mp281x.xyz'), init)))
 }
 

@@ -6,16 +6,13 @@ import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
-import {functionDeclaration} from '#lint/function-declaration.ts'
 import {iconWeight} from '#lint/icon-weight.ts'
 import {moduleConstant} from '#lint/module-constant.ts'
-import {motionLimits} from '#lint/motion-limits.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
 import {noBarrelModule} from '#lint/no-barrel-module.ts'
 import {noClickableBadge} from '#lint/no-clickable-badge.ts'
 import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
-import {noConstantFunction} from '#lint/no-constant-function.ts'
 import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
 import {noDiscardedFailure} from '#lint/no-discarded-failure.ts'
 import {noDomTestEnvironment} from '#lint/no-dom-test-environment.ts'
@@ -29,11 +26,8 @@ import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
 import {noFalliblePromise} from '#lint/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
 import {noGradient} from '#lint/no-gradient.ts'
-import {noHandWrittenGuard} from '#lint/no-hand-written-guard.ts'
 import {noHandWrittenHelper} from '#lint/no-hand-written-helper.ts'
-import {noInOperator} from '#lint/no-in-operator.ts'
 import {noIntermediateCollection} from '#lint/no-intermediate-collection.ts'
-import {noLet} from '#lint/no-let.ts'
 import {noLoopCollector} from '#lint/no-loop-collector.ts'
 import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
@@ -41,7 +35,6 @@ import {noNativeControl} from '#lint/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
-import {noPipeMethod} from '#lint/no-pipe-method.ts'
 import {noPollingTest} from '#lint/no-polling-test.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
 import {noRedundantStateType} from '#lint/no-redundant-state-type.ts'
@@ -57,20 +50,15 @@ import {noSkippedTest} from '#lint/no-skipped-test.ts'
 import {noSleepingTest} from '#lint/no-sleeping-test.ts'
 import {noStoredJsx} from '#lint/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
-import {noSwitchStatement} from '#lint/no-switch-statement.ts'
-import {noTernary} from '#lint/no-ternary.ts'
 import {noTestInLoop} from '#lint/no-test-in-loop.ts'
 import {noTestTimeout} from '#lint/no-test-timeout.ts'
 import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
 import {noTypeFromValue} from '#lint/no-type-from-value.ts'
-import {noTypeof} from '#lint/no-typeof.ts'
-import {noUndoneConversion} from '#lint/no-undone-conversion.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
-import {preferEffectCountBy} from '#lint/prefer-effect-count-by.ts'
+import {preferPredicate} from '#lint/prefer-predicate.ts'
 import {preserveErrorCause} from '#lint/preserve-error-cause.ts'
-import {requireUnicodeRegexp} from '#lint/require-unicode-regexp.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
 import {swiftuiThemeValues} from '#lint/swiftui-theme-values.ts'
@@ -124,15 +112,12 @@ const DESLOP_RULES = {'icon-weight': iconWeight}
 
 const RULES = {
 	'explicit-effect-concurrency': explicitEffectConcurrency,
-	'function-declaration': functionDeclaration,
 	'module-constant': moduleConstant,
-	'motion-limits': motionLimits,
 	'no-accumulating-copy': noAccumulatingCopy,
 	'no-barrel-module': noBarrelModule,
 	'no-clickable-badge': noClickableBadge,
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
-	'no-constant-function': noConstantFunction,
 	'no-destructured-parameter': noDestructuredParameter,
 	'no-discarded-failure': noDiscardedFailure,
 	'no-dom-test-environment': noDomTestEnvironment,
@@ -146,11 +131,8 @@ const RULES = {
 	'no-fallible-promise': noFalliblePromise,
 	'no-floating-derived-type': noFloatingDerivedType,
 	'no-gradient': noGradient,
-	'no-hand-written-guard': noHandWrittenGuard,
 	'no-hand-written-helper': noHandWrittenHelper,
-	'no-in-operator': noInOperator,
 	'no-intermediate-collection': noIntermediateCollection,
-	'no-let': noLet,
 	'no-loop-collector': noLoopCollector,
 	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
@@ -158,7 +140,6 @@ const RULES = {
 	'no-native-emptiness-check': noNativeEmptinessCheck,
 	'no-native-method-call': noNativeMethodCall,
 	'no-option-value-access': noOptionValueAccess,
-	'no-pipe-method': noPipeMethod,
 	'no-polling-test': noPollingTest,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-state-type': noRedundantStateType,
@@ -174,20 +155,15 @@ const RULES = {
 	'no-sleeping-test': noSleepingTest,
 	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
-	'no-switch-statement': noSwitchStatement,
-	'no-ternary': noTernary,
 	'no-test-in-loop': noTestInLoop,
 	'no-test-timeout': noTestTimeout,
 	'no-trivial-indirection': noTrivialIndirection,
 	'no-type-from-value': noTypeFromValue,
-	'no-typeof': noTypeof,
-	'no-undone-conversion': noUndoneConversion,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
-	'prefer-effect-count-by': preferEffectCountBy,
+	'prefer-predicate': preferPredicate,
 	'preserve-error-cause': preserveErrorCause,
-	'require-unicode-regexp': requireUnicodeRegexp,
 	'schema-type-pair': schemaTypePair,
 	'service-schema-file': serviceSchemaFile,
 	'swiftui-theme-values': swiftuiThemeValues
@@ -239,6 +215,7 @@ export const lint: OxlintConfig = {
 	jsPlugins: [
 		{name: '@deslop/coding-standards', specifier: import.meta.url},
 		{name: 'effect-machine', specifier: import.meta.resolve('@typeonce/oxlint-plugin-effect-machine')},
+		{name: 'eslint-js', specifier: import.meta.resolve('oxlint-plugin-eslint')},
 		{name: 'react-doctor', specifier: import.meta.resolve('oxlint-plugin-react-doctor')},
 		{name: 'shadcn', specifier: import.meta.resolve('@shadcn/lint')},
 		{name: 'vite-plus', specifier: import.meta.resolve('vite-plus/oxlint-plugin')}
@@ -275,6 +252,13 @@ export const lint: OxlintConfig = {
 	rules: {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
 		...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'off' as const]),
+
+		'eslint-js/no-restricted-syntax': [
+			'error',
+			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
+			{message: 'Use Match.', selector: 'SwitchStatement'},
+			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'}
+		],
 
 		'effecttsgo/any-unknown-in-error-context': 'error',
 		'effecttsgo/class-self-mismatch': 'error',
@@ -403,6 +387,11 @@ export const lint: OxlintConfig = {
 		'eslint/eqeqeq': 'error',
 		'eslint/for-direction': 'error',
 		'eslint/func-names': ['error', 'as-needed', {generators: 'never'}],
+		'eslint/func-style': [
+			'error',
+			'declaration',
+			{allowArrowFunctions: false, allowTypeAnnotation: false, overrides: {namedExports: 'declaration'}}
+		],
 		'eslint/no-alert': 'error',
 		'eslint/no-caller': 'error',
 		'eslint/no-compare-neg-zero': 'error',
@@ -471,6 +460,7 @@ export const lint: OxlintConfig = {
 		'eslint/no-restricted-imports': ['error', RESTRICTED_IMPORTS],
 		'eslint/no-restricted-properties': [
 			'error',
+			{message: 'Use standalone pipe.', property: 'pipe'},
 			// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
 			{
 				allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
@@ -539,6 +529,7 @@ export const lint: OxlintConfig = {
 		],
 		'eslint/no-shadow-restricted-names': 'error',
 		'eslint/no-sparse-arrays': 'error',
+		'eslint/no-ternary': 'error',
 		'eslint/no-throw-literal': 'error',
 		'eslint/no-unexpected-multiline': 'error',
 		'eslint/no-unmodified-loop-condition': 'error',
@@ -564,6 +555,7 @@ export const lint: OxlintConfig = {
 		'eslint/prefer-arrow-callback': 'error',
 		'eslint/prefer-template': 'error',
 		'eslint/preserve-caught-error': 'error',
+		'eslint/require-unicode-regexp': 'error',
 		'eslint/require-yield': 'error',
 		'eslint/sort-keys': ['error', 'asc', {allowLineSeparatedGroups: true, natural: true}],
 		'eslint/valid-typeof': 'error',
