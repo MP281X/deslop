@@ -70,24 +70,6 @@
 	backdrop-filter: blur(28px) saturate(2.2);
 }
 
-/* A project's arrow keeps a 44px phone target without making its line taller than the title. */
-@media (max-width: 639px) {
-	.project-link {
-		position: relative;
-		display: inline-flex;
-		width: 20px;
-		height: 20px;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.project-link::after {
-		content: '';
-		position: absolute;
-		inset: -12px;
-	}
-}
-
 /* Over links the browser's own pointer would return beside the drawn cursor. */
 @media (hover: hover) and (pointer: fine) {
 	.portfolio-page :is(a, button, [role='button']) {

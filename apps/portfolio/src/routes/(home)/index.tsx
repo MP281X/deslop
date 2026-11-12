@@ -344,12 +344,13 @@ function ProjectRow(input: {project: {description: string; href: string; name: s
 					{input.project.name}
 					<span className="text-muted-foreground ml-2 font-normal">{input.project.role}</span>
 				</h3>
+				{/* The arrow keeps a 44px phone target without making its line taller than the title. */}
 				<a
 					href={input.project.href}
 					target="_blank"
 					rel="noopener noreferrer"
 					aria-label={`View ${input.project.name} on GitHub`}
-					className="project-link text-primary hover:text-primary/80"
+					className="text-primary hover:text-primary/80 max-sm:relative max-sm:inline-flex max-sm:size-5 max-sm:items-center max-sm:justify-center max-sm:after:absolute max-sm:after:-inset-3"
 				>
 					<ArrowUpRightIcon className="size-4" />
 				</a>
