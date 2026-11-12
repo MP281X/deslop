@@ -236,7 +236,7 @@ Update, Clean, Check, in that order. End by reporting what waits on the user's r
      while read -r host url; do curl -s -o /dev/null --max-time 3 "$url" || sudo tailscale serve --https=${host##*:} off; done
    ```
 
-   Deploy: `list_apps` per worker; an entry with a `url` and a `failure`, or a port `ss -ltn` does not list, gets `hide_exposure`.
+   Deploy: `list_apps` per worker; an entry with a `url` and a `failure`, or a port `ss -ltn` does not list, gets `remove_exposure`.
 
 5. **Orphans.** Processes with a deleted working directory; stale scratch under `/tmp` no kept thread or process uses, never `/tmp/repos`; `preview-*` units of removed worktrees; a `~/.deslop/<name>` whose worktree is gone, unless a `deslop-<name>` service's data directory or env file.
 6. **Caches every pass.** Re-downloading is cheap on both workers. No `docker build` or Compose build in progress: `docker image prune -a -f`, `docker builder prune -a -f`; long-lived preview watchers do not block these. No install running: `vp pm cache clean` in both repositories, then:

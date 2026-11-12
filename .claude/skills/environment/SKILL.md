@@ -40,6 +40,6 @@ Two headless Debian workers in one tailnet, same user and paths.
 
 No data means report it and investigate further, not verification.
 
-- **Runtime state.** Call Deploy's `list_apps` or `resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`. Use the full worker name, such as `dev.mp281x.xyz`, not `dev`; check unit health with the maintenance check's `systemctl --failed`.
+- **Runtime state.** Call Deploy's `list_apps` or `read_resource_history`, not `ps`, `docker ps`, `ss` or `systemctl`. Use the full worker name, such as `dev.mp281x.xyz`, not `dev`; check unit health with the maintenance check's `systemctl --failed`.
 - **Missing tool.** Call `list_mcp_connections` before assuming it is absent.
-- **Runtime error, trace or latency.** Call Scope's `list_operations`, then `find_traces`, then `read_trace` or `measure_latency`.
+- **Runtime error, trace or latency.** Call Scope's `list_operations`, then `search_traces`, then `read_trace` or `measure_latency`.
