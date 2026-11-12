@@ -27,6 +27,11 @@ function launchctl(...args: string[]) {
 	return execute('launchctl', args)
 }
 
+// Only the plist form waits for the job to exit; bootstrapping a stopping job fails with error 5.
+function bootout(file: string) {
+	return launchctl('bootout', domain(), file)
+}
+
 const loaded = Effect.fnUntraced(function* (target: string) {
 	const process = yield* ChildProcess.make('launchctl', ['print', target], {stderr: 'pipe', stdout: 'ignore'})
 	const result = yield* Effect.all(
@@ -77,7 +82,7 @@ export const installAgent = Effect.fnUntraced(function* (name: string, command: 
 			yield* launchctl('kickstart', target)
 			return `${label}.plist installed\n`
 		}
-		yield* launchctl('bootout', target)
+		yield* bootout(file)
 	}
 	yield* launchctl('bootstrap', domain(), file)
 	return `${label}.plist installed\n`
@@ -88,7 +93,7 @@ export const installUpdateAgent = Effect.fnUntraced(function* (name: string, com
 	const label = `deslop-${name}-update`
 	const target = `${domain()}/${label}`
 	const file = yield* writeAgent(label, name, command, '<key>StartInterval</key><integer>900</integer>')
-	if (yield* loaded(target)) yield* launchctl('bootout', target)
+	if (yield* loaded(target)) yield* bootout(file)
 	yield* launchctl('bootstrap', domain(), file)
 })
 
@@ -99,9 +104,9 @@ export const uninstallAgents = Effect.fnUntraced(function* (name: string) {
 	yield* Effect.forEach(
 		[`deslop-${name}-update`, `deslop-${name}`],
 		Effect.fnUntraced(function* (label) {
-			const target = `${domain()}/${label}`
-			if (yield* loaded(target)) yield* launchctl('bootout', target)
-			yield* fs.remove(path.join(directory, `${label}.plist`), {force: true})
+			const file = path.join(directory, `${label}.plist`)
+			if (yield* loaded(`${domain()}/${label}`)) yield* bootout(file)
+			yield* fs.remove(file, {force: true})
 		}),
 		{concurrency: 1}
 	)
