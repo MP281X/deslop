@@ -69,11 +69,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 			}),
 			search_notes: input =>
 				Effect.map(
-					notes.list({
-						cursor: Option.fromUndefinedOr(input.cursor),
-						limit: input.limit,
-						query: input.query ?? ''
-					}),
+					notes.list({cursor: Option.fromUndefinedOr(input.cursor), limit: input.limit, query: input.query ?? ''}),
 					page => ({
 						notes: Array.map(page.items, row),
 						total: page.total,

@@ -20,7 +20,9 @@ const SKIPPED = Schema.decodeSync(Schema.fromJsonString(WorkflowJob.fields.workf
 
 const layer = pipe(
 	Telemetry.layer,
-	Layer.provide(Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer))
+	Layer.provide(
+		Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer)
+	)
 )
 
 const run = WorkflowRun.make({

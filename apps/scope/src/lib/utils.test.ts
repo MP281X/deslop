@@ -98,7 +98,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'web',
-						traces: [failureTrace(100,false)]
+						traces: [failureTrace(100, false)]
 					}
 				]
 			},
@@ -112,7 +112,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'server',
-						traces: [failureTrace(300,true)]
+						traces: [failureTrace(300, true)]
 					}
 				]
 			},
@@ -126,7 +126,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'server',
-						traces: [failureTrace(500,true)]
+						traces: [failureTrace(500, true)]
 					}
 				]
 			}
@@ -162,8 +162,8 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						p95Ms: 2,
 						runtime: 'server',
 						traces: [
-							{...failureTrace(300,false), id: traceId},
-							{...failureTrace(100,false), id: otherId}
+							{...failureTrace(300, false), id: traceId},
+							{...failureTrace(100, false), id: otherId}
 						]
 					},
 					{
@@ -173,7 +173,7 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'server',
-						traces: [failureTrace(200,true)]
+						traces: [failureTrace(200, true)]
 					}
 				]
 			},
@@ -187,7 +187,7 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'web',
-						traces: [failureTrace(400,false)]
+						traces: [failureTrace(400, false)]
 					}
 				]
 			}

@@ -213,7 +213,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 		'finds notes that contain every word and carry every #tag, a page at a time',
 		Effect.fnUntraced(function* () {
 			const pages: Record<string, {author: string; tags: string[]; text: string}> = {
-				'https://example.com/soup': {author: 'Lisa Kitchen', tags: ['cooking', 'quick-meals'], text: 'Lentils with cumin'},
+				'https://example.com/soup': {
+					author: 'Lisa Kitchen',
+					tags: ['cooking', 'quick-meals'],
+					text: 'Lentils with cumin'
+				},
 				'https://example.com/spice': {author: 'Spice Atlas', tags: ['history'], text: 'Cumin history'}
 			}
 			function pageOf(link: string) {
@@ -307,7 +311,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 				})
 			)
 			assert.containsSubset(
-				(yield* settled(yield* open({database, directory, organizer: counting(calls), sources: recipe}), () => true))[0],
+				(yield* settled(
+					yield* open({database, directory, organizer: counting(calls), sources: recipe}),
+					() => true
+				))[0],
 				{id: IDS[0], status: 'ready', title: 'Soup'}
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)

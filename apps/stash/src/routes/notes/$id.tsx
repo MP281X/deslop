@@ -365,10 +365,7 @@ function NoteScreen(props: {
 						})}
 						<ToolbarItem placement="topBarTrailing">
 							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-								{Option.match(item.url, {
-									onNone: () => undefined,
-									onSome: url => <ShareLink item={url} />
-								})}
+								{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
 								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
 								<Button
 									label="Delete"

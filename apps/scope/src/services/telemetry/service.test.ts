@@ -787,9 +787,15 @@ it.layer(platform)(test => {
 					]
 				})
 			}
-			yield* telemetry.ingestLogs(run('@deslop/a-server', NOW - 60_000, [log('older', `${BigInt(NOW - 30_000) * 1_000_000n}`)], '0.1.1'))
-			yield* telemetry.ingestLogs(run('@deslop/a-server', NOW - 40_000, [log('first', `${BigInt(NOW - 20_000) * 1_000_000n}`)], '0.1.2'))
-			yield* telemetry.ingestLogs(run('@deslop/a-server', NOW - 40_000, [log('last', `${BigInt(NOW - 10_000) * 1_000_000n}`)], '0.1.2'))
+			yield* telemetry.ingestLogs(
+				run('@deslop/a-server', NOW - 60_000, [log('older', `${BigInt(NOW - 30_000) * 1_000_000n}`)], '0.1.1')
+			)
+			yield* telemetry.ingestLogs(
+				run('@deslop/a-server', NOW - 40_000, [log('first', `${BigInt(NOW - 20_000) * 1_000_000n}`)], '0.1.2')
+			)
+			yield* telemetry.ingestLogs(
+				run('@deslop/a-server', NOW - 40_000, [log('last', `${BigInt(NOW - 10_000) * 1_000_000n}`)], '0.1.2')
+			)
 			yield* telemetry.ingestLogs(run('@deslop/b-server', NOW - 50_000, [log('only', START)]))
 			assert.deepStrictEqual((yield* telemetry.checkIngestion()).services, [
 				{
@@ -820,12 +826,20 @@ it.layer(platform)(test => {
 				Effect.gen(function* () {
 					const telemetry = yield* loaded(database)
 					yield* telemetry.ingestTraces(
-						request('@deslop/stash-server', [span({name: 'root', spanId: '1111111111111111', start: START, traceId: TRACE_ID})])
+						request('@deslop/stash-server', [
+							span({name: 'root', spanId: '1111111111111111', start: START, traceId: TRACE_ID})
+						])
 					)
 					yield* TestClock.adjust('60 hours')
 					yield* telemetry.ingestTraces(
 						request('@deslop/stash-ios', [
-							span({name: 'child', parent: '1111111111111111', spanId: '2222222222222222', start: START, traceId: TRACE_ID})
+							span({
+								name: 'child',
+								parent: '1111111111111111',
+								spanId: '2222222222222222',
+								start: START,
+								traceId: TRACE_ID
+							})
 						])
 					)
 					yield* telemetry.ingestLogs(logs('@deslop/stash-ios', [log('late', START, {traceId: TRACE_ID})]))

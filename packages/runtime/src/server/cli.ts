@@ -116,7 +116,11 @@ export type Routes<A, E> = Layer.Layer<
 >
 
 export type App<A, E> = {
-	readonly auth?: Layer.Layer<Auth | RpcAuth, E, Layer.Success<typeof layerPlatform> | Layer.Success<typeof layerDataStore>>
+	readonly auth?: Layer.Layer<
+		Auth | RpcAuth,
+		E,
+		Layer.Success<typeof layerPlatform> | Layer.Success<typeof layerDataStore>
+	>
 	readonly icon: string
 	readonly routes: Routes<A, E>
 	readonly middleware?: <A, R>(

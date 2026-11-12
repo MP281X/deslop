@@ -136,7 +136,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// Every #tag is one of the note's tags, and every other word is in its texts or tags.
 		function matching(query: {readonly tags: readonly string[]; readonly terms: readonly string[]}) {
 			return sql.and([
-				...Array.map(query.tags, name => sql`EXISTS (SELECT 1 FROM note_tags WHERE noteId = notes.id AND tag = ${name})`),
+				...Array.map(
+					query.tags,
+					name => sql`EXISTS (SELECT 1 FROM note_tags WHERE noteId = notes.id AND tag = ${name})`
+				),
 				...Array.map(
 					query.terms,
 					term => sql`instr(lower(concat_ws(' ', title, summary, author, text, content, topics, body, screenText,
@@ -172,8 +175,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					matching(request),
 					...Array.map(
 						Array.fromNullishOr(request.cursor),
-						cursor =>
-							sql`(createdAt < ${cursor.createdAt} OR (createdAt = ${cursor.createdAt} AND id < ${cursor.id}))`
+						cursor => sql`(createdAt < ${cursor.createdAt} OR (createdAt = ${cursor.createdAt} AND id < ${cursor.id}))`
 					)
 				])}
 				ORDER BY createdAt DESC, id DESC
@@ -215,17 +217,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const defineTags = SqlSchema.void({
 			Request: Schema.NonEmptyArray(Tag.insert),
 			execute: rows => sql`
-				INSERT INTO tags ${sql.insert(rows)}
-				ON CONFLICT (name) DO UPDATE SET definition = coalesce(tags.definition, excluded.definition)
+				INSERT INTO ${sql(Tag.table)} ${sql.insert(rows)}
+				ON CONFLICT (name) DO UPDATE SET definition = coalesce(definition, excluded.definition)
 			`
 		})
 		const insertNoteTags = SqlSchema.void({
 			Request: Schema.NonEmptyArray(NoteTag.insert),
-			execute: rows => sql`INSERT INTO note_tags ${sql.insert(rows)}`
+			execute: rows => sql`INSERT INTO ${sql(NoteTag.table)} ${sql.insert(rows)}`
 		})
 		const deleteNoteTags = SqlSchema.void({
 			Request: NoteId,
-			execute: id => sql`DELETE FROM note_tags WHERE noteId = ${id}`
+			execute: id => sql`DELETE FROM ${sql(NoteTag.table)} WHERE noteId = ${id}`
 		})
 
 		function findNote(id: NoteId) {
@@ -253,29 +255,30 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			yield* change(id, () => ({image: Option.some(image.type)}))
 		})
 
-		const writeOrganization = Effect.fnUntraced(
-			function* (note: Note, found: ReturnType<typeof reconcileOrganization>) {
-				yield* deleteNoteTags(note.id)
-				yield* Array.match(found.tags, {
-					onEmpty: () => Effect.void,
-					onNonEmpty: tags =>
-						Effect.andThen(
-							defineTags(tags),
-							insertNoteTags(Array.map(tags, (entry, position) => ({noteId: note.id, position, tag: entry.name})))
-						)
-				})
-				yield* notes.update({
-					...editable(note),
-					body: Option.some(found.organization.body),
-					issue: Option.none(),
-					screenText: Option.some(found.organization.screenText),
-					status: 'ready',
-					summary: found.organization.summary,
-					title: found.organization.title,
-					topics: Option.some(found.organization.topics)
-				})
-			}
-		)
+		const writeOrganization = Effect.fnUntraced(function* (
+			note: Note,
+			found: ReturnType<typeof reconcileOrganization>
+		) {
+			yield* deleteNoteTags(note.id)
+			yield* Array.match(found.tags, {
+				onEmpty: () => Effect.void,
+				onNonEmpty: tags =>
+					Effect.andThen(
+						defineTags(tags),
+						insertNoteTags(Array.map(tags, (entry, position) => ({noteId: note.id, position, tag: entry.name})))
+					)
+			})
+			yield* notes.update({
+				...editable(note),
+				body: Option.some(found.organization.body),
+				issue: Option.none(),
+				screenText: Option.some(found.organization.screenText),
+				status: 'ready',
+				summary: found.organization.summary,
+				title: found.organization.title,
+				topics: Option.some(found.organization.topics)
+			})
+		})
 
 		// The organized note, its tags and their definitions land together or not at all, and watchers hear of it once it commits; a note removed meanwhile stays removed.
 		function organized(id: NoteId, found: ReturnType<typeof reconcileOrganization>) {
@@ -316,21 +319,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				}))
 			}
 			const entries = yield* pipe(listTagEntries(), storageFailed)
-			yield* Result.match(
-				yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})),
-				{
-					onFailure: error =>
-						change(note.id, () => ({issue: Option.some(error.message), status: 'failed'})),
-					onSuccess: organization =>
-						organized(
-							note.id,
-							reconcileOrganization(
-								organization,
-								Array.map(entries, entry => entry.name)
-							)
+			yield* Result.match(yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})), {
+				onFailure: error => change(note.id, () => ({issue: Option.some(error.message), status: 'failed'})),
+				onSuccess: organization =>
+					organized(
+						note.id,
+						reconcileOrganization(
+							organization,
+							Array.map(entries, entry => entry.name)
 						)
-				}
-			)
+					)
+			})
 		})
 
 		// One note at a time, so two notes read together cannot create rival tags for the same topic.
@@ -338,10 +337,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			return pipe(
 				Effect.flatMap(
 					findNote(id),
-					Option.match({
-						onNone: () => Effect.void,
-						onSome: note => tagging.withPermit(tagNote(userId, note, stills))
-					})
+					Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})
 				),
 				Effect.withSpan('Notes.tag', {attributes: {'note.id': id}})
 			)
@@ -393,10 +389,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 									change(note.id, item => ({
 										...Option.match(
 											Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
-											{
-												onNone: () => ({}),
-												onSome: details => ({content: details.info, issue: Option.none()})
-											}
+											{onNone: () => ({}), onSome: details => ({content: details.info, issue: Option.none()})}
 										),
 										transcript: Option.orElse(transcript, () => item.transcript)
 									}))
@@ -470,10 +463,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 			yield* Option.match(
 				yield* pipe(media.fileTranscript(userId, stored), optional('No transcript', Option.none<string>)),
-				{
-					onNone: () => Effect.void,
-					onSome: text => change(note.id, () => ({transcript: Option.some(text)}))
-				}
+				{onNone: () => Effect.void, onSome: text => change(note.id, () => ({transcript: Option.some(text)}))}
 			)
 			yield* tag(userId, note.id, Array.map(Array.drop(stills, 1), still))
 		})
@@ -501,7 +491,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 										change(note.id, item =>
 											Boolean.match(item.status === 'organizing', {
 												onFalse: () => ({}),
-												onTrue: () => ({issue: Option.some('Tagging stopped before it finished.'), status: 'failed' as const})
+												onTrue: () => ({
+													issue: Option.some('Tagging stopped before it finished.'),
+													status: 'failed' as const
+												})
 											})
 										),
 										Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
@@ -665,7 +658,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}),
 			item: savedItem,
 			// A page of the notes matching a query, newest first, and how many match in all.
-			list: Effect.fn('Notes.list')(function* (input: {cursor: Option.Option<NotesCursor>; limit: number; query: string}) {
+			list: Effect.fn('Notes.list')(function* (input: {
+				cursor: Option.Option<NotesCursor>
+				limit: number
+				query: string
+			}) {
 				const words = queryWords(input.query)
 				const found = yield* pipe(pageItems({...words, cursor: input.cursor, limit: input.limit + 1}), storageFailed)
 				const total = yield* pipe(countMatching(words), storageFailed)
@@ -695,7 +692,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				pipe(
 					sql.reactive(
 						['notes'],
-						Effect.map(findIds(queryWords(query)), Array.map(row => row.id))
+						Effect.map(
+							findIds(queryWords(query)),
+							Array.map(row => row.id)
+						)
 					),
 					Stream.changes,
 					Stream.mapError(storageFailure)
@@ -749,7 +749,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		})
 	)
 
-	static readonly layer = (directory: string) => Layer.provide(Layer.effect(this, this.make(directory)), this.migrations)
+	static readonly layer = (directory: string) =>
+		Layer.provide(Layer.effect(this, this.make(directory)), this.migrations)
 }
 
 // Reading sources and organizing notes are the notes' own internals; tests provide stand-ins to `Notes.layer` instead.

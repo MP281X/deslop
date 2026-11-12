@@ -161,9 +161,7 @@ function openingApp(overview: Overview) {
 	)
 }
 
-export const overviewAtom = Atom.family((range: Range) =>
-	Atom.keepAlive(liveAtom(RpcClient, 'telemetry.watch', range))
-)
+export const overviewAtom = Atom.family((range: Range) => Atom.keepAlive(liveAtom(RpcClient, 'telemetry.watch', range)))
 
 const traceAtoms = Atom.family((range: Range) =>
 	Atom.family((_id: string) =>

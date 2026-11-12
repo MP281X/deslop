@@ -341,10 +341,7 @@ function TraceListRow(props: {active: boolean; now: number; onSelect: () => void
 				}
 			>
 				<ItemMedia className="w-8">
-					<span
-						className="text-muted-foreground tabular-nums"
-						title={clock.format(props.trace.start)}
-					>
+					<span className="text-muted-foreground tabular-nums" title={clock.format(props.trace.start)}>
 						{ageOf(props.trace.start, props.now)}
 					</span>
 				</ItemMedia>
@@ -730,11 +727,7 @@ function HomeRoute() {
 	function selectRange(next: Range) {
 		Option.match(value, {onNone: () => undefined, onSome: current => setKnown(current.apps)})
 		const cutoff = rangeStart(next, now)
-		send({
-			_tag: 'Range',
-			keepTrace: Option.exists(selection.activeTrace, trace => trace.start >= cutoff),
-			range: next
-		})
+		send({_tag: 'Range', keepTrace: Option.exists(selection.activeTrace, trace => trace.start >= cutoff), range: next})
 	}
 
 	const workspaceProps = {

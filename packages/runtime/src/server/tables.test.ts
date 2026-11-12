@@ -18,9 +18,7 @@ const ColumnInfo = Schema.Struct({name: Schema.String, notnull: Schema.BooleanFr
 const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/service.ts', {
 	eager: true
 })
-const schemas = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/schema.ts', {
-	eager: true
-})
+const schemas = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/schema.ts', {eager: true})
 
 function exportsByApp(modules: Record<string, Record<string, unknown>>) {
 	return Record.map(
