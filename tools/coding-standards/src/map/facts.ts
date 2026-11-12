@@ -380,8 +380,11 @@ function joined(path: string, key: string) {
 	return `${path}.${key}`
 }
 
-// An object in a list is named by its first string property, such as a zone's `name` or a pattern's `message`, else its first property's value, so inserting one renames no other.
+// An object in a list is named by its first string property, such as a zone's `name` or a pattern's `message`, else its first property's value; any other item by its own text, as `error` in `['error', {…}]`; so inserting one renames no other.
 function elementKey(source: string, element: Node, index: number) {
+	if (element.type !== 'ObjectExpression') {
+		return Option.getOrElse(stringValue(element), () => squeeze(textOf(source, element)))
+	}
 	const values = Array.getSomes(Array.map(nodesAt(element, 'properties'), property => nodeAt(property, 'value')))
 	return Option.getOrElse(
 		Option.orElse(Array.findFirst(values, stringValue), () =>

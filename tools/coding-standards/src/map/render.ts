@@ -143,11 +143,25 @@ function diagramSection(title: string, lines: string[], diagram: Option.Option<D
 	]
 }
 
+// As many items as about 120 characters hold, at least one.
+function fitting(items: readonly string[]) {
+	return Number.max(
+		1,
+		Array.countBy(
+			Array.drop(
+				Array.scan(items, 0, (total, item) => total + item.length + 2),
+				1
+			),
+			total => total <= 120
+		)
+	)
+}
+
 function itemsLine(added: readonly string[], removed: readonly string[]) {
 	return Array.join(
 		[
-			...when(Array.isReadonlyArrayNonEmpty(added), [`+ ${names(added, 3)}`]),
-			...when(Array.isReadonlyArrayNonEmpty(removed), [`− ${names(removed, 3)}`])
+			...when(Array.isReadonlyArrayNonEmpty(added), [`+ ${names(added, fitting(added))}`]),
+			...when(Array.isReadonlyArrayNonEmpty(removed), [`− ${names(removed, fitting(removed))}`])
 		],
 		' · '
 	)
@@ -161,7 +175,7 @@ function settingLine(entry: SettingLine) {
 				String.match(/^(.*)\[([^[\]]*)\]$/u)(entry.key),
 				parts => `${code(parts[1] ?? '')} ${code(parts[2] ?? '')}`
 			),
-			() => code(entry.key)
+			() => code(clipped(entry.key, 80))
 		)
 		return `${MARK[entry.change]} ${named}${Boolean.match(Array.isReadonlyArrayNonEmpty(entry.fields), {
 			onFalse: () => '',

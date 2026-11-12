@@ -335,12 +335,41 @@ function settingLines(
 			)
 		}))
 	)
+	// Three or more keys one object gained or lost read as a list of their names, such as the rules a preset dropped.
+	const keyed = pipe(
+		rest,
+		Array.filter(setting => !String.includes(ITEM)(setting.key) && setting.change !== 'changed'),
+		Array.groupBy(setting => String.replace(/\.[^.]*$/u, '')(setting.key)),
+		Record.toEntries,
+		Array.filter(entry => entry[1].length >= 3),
+		Array.map(entry => ({
+			added: Array.map(
+				Array.filter(entry[1], setting => setting.change === 'added'),
+				setting => String.slice(entry[0].length + 1)(setting.key)
+			),
+			key: entry[0],
+			kind: 'items' as const,
+			removed: Array.map(
+				Array.filter(entry[1], setting => setting.change === 'removed'),
+				setting => String.slice(entry[0].length + 1)(setting.key)
+			)
+		}))
+	)
 	return pipe(
 		[
 			...elements,
 			...items,
+			...keyed,
 			...Array.map(
-				Array.filter(rest, setting => !String.includes(ITEM)(setting.key)),
+				Array.filter(
+					rest,
+					setting =>
+						!String.includes(ITEM)(setting.key) &&
+						!Array.some(
+							keyed,
+							line => setting.change !== 'changed' && String.replace(/\.[^.]*$/u, '')(setting.key) === line.key
+						)
+				),
 				setting => ({...setting, kind: 'value' as const})
 			)
 		],
