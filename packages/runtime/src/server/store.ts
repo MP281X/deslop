@@ -1,6 +1,9 @@
+import {SqliteClient} from '@effect/sql-sqlite-node'
+
 import {Config, Effect, FileSystem, Layer, Option, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
 
 import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
 
 import {appName, packageRoot} from '#server/package.ts'
 
@@ -72,4 +75,14 @@ export function layerKeyValueStore(directory: string) {
 	)
 }
 
-export const layerDataStore = Layer.unwrap(Effect.map(dataDirectory, layerKeyValueStore))
+// The app's key-value files and its one SQLite database sit together; the database and the services share one Reactivity, so a committed write reaches every live query.
+export const layerDataStore = Layer.unwrap(
+	Effect.gen(function* () {
+		const directory = yield* dataDirectory
+		return Layer.mergeAll(
+			layerKeyValueStore(directory),
+			SqliteClient.layer({filename: (yield* Path.Path).join(directory, 'data.sqlite')}),
+			Reactivity.layer
+		)
+	})
+)

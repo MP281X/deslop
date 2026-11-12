@@ -168,6 +168,7 @@ export default defineConfig({
 										'@effect/ai-openrouter',
 										'@effect/atom-react',
 										'@effect/platform-node',
+										'@effect/sql-sqlite-node',
 										'@effect/tsgo',
 										'@effect/vitest',
 										'@expo/ui',

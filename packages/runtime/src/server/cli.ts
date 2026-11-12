@@ -23,7 +23,6 @@ import {
 import {Command, Flag} from 'effect/cli'
 import type {HttpServerResponse} from 'effect/http'
 import {HttpRouter} from 'effect/http'
-import type {KeyValueStore} from 'effect/persistence'
 
 import {AiGateway} from '#server/ai.ts'
 import {Auth} from '#server/auth.ts'
@@ -105,7 +104,7 @@ export type Provided =
 	| Auth
 	| AiGateway
 	| RpcAuth
-	| KeyValueStore.KeyValueStore
+	| Layer.Success<typeof layerDataStore>
 	| Layer.Success<typeof layerProtocol>
 
 export type Routes<A, E> = Layer.Layer<
@@ -117,7 +116,7 @@ export type Routes<A, E> = Layer.Layer<
 >
 
 export type App<A, E> = {
-	readonly auth?: Layer.Layer<Auth | RpcAuth, E, Layer.Success<typeof layerPlatform> | KeyValueStore.KeyValueStore>
+	readonly auth?: Layer.Layer<Auth | RpcAuth, E, Layer.Success<typeof layerPlatform> | Layer.Success<typeof layerDataStore>>
 	readonly icon: string
 	readonly routes: Routes<A, E>
 	readonly middleware?: <A, R>(
