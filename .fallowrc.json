@@ -49,8 +49,8 @@
 		// Configuration, files and stores are the server's; shared code also holds no client state.
 		"calls": {
 			"forbidden": [
-				{"from": "shared", "callee": ["Config.*", "FileSystem.*", "KeyValueStore.*", "Atom.*", "AsyncResult.*"]},
-				{"from": "client", "callee": ["Config.*", "FileSystem.*", "KeyValueStore.*"]}
+				{"from": "shared", "callee": ["Config.*", "FileSystem.*", "SqlClient.*", "Atom.*", "AsyncResult.*"]},
+				{"from": "client", "callee": ["Config.*", "FileSystem.*", "SqlClient.*"]}
 			]
 		},
 		"coverage": {
