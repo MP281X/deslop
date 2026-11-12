@@ -1,10 +1,9 @@
-import {Effect, Layer, pipe} from 'effect'
+import {Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
 import {runApp} from '@deslop/runtime/server/cli'
 import {layerMcp, layerRpc} from '@deslop/runtime/server/http'
-import {dataDirectory} from '@deslop/runtime/server/store'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'
@@ -27,7 +26,7 @@ runApp({
 				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
 			})
 		),
-		Layer.provide(Layer.unwrap(Effect.map(dataDirectory, directory => Telemetry.layer(`${directory}/entries`))))
+		Layer.provide(Telemetry.layer)
 	),
 	telemetry: false
 })

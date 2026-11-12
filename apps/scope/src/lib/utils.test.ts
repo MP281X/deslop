@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Boolean, Duration, Option, String} from 'effect'
 
 import {navigationOf, nextSearch, selectionOf} from '#lib/utils.ts'
 import type {NavigationEvent, Search} from '#lib/utils.ts'
@@ -12,11 +12,11 @@ function follow(events: NavigationEvent[], search: Search = {}) {
 	return Array.reduce(events, search, nextSearch)
 }
 
-function failureTrace(time: string, failed: boolean) {
+function failureTrace(start: number, failed: boolean) {
 	return {
-		durationMs: 1,
+		duration: Duration.millis(1),
 		id: String.repeat(32)('a'),
-		time,
+		start,
 		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {span: 'run'}})})
 	}
 }
@@ -98,7 +98,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'web',
-						traces: [failureTrace('100', false)]
+						traces: [failureTrace(100,false)]
 					}
 				]
 			},
@@ -112,7 +112,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'server',
-						traces: [failureTrace('300', true)]
+						traces: [failureTrace(300,true)]
 					}
 				]
 			},
@@ -126,7 +126,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'server',
-						traces: [failureTrace('500', true)]
+						traces: [failureTrace(500,true)]
 					}
 				]
 			}
@@ -138,7 +138,7 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 			...app,
 			operations: Array.map(app.operations, operation => ({
 				...operation,
-				traces: Array.map(operation.traces, trace => failureTrace(trace.time, false))
+				traces: Array.map(operation.traces, trace => failureTrace(trace.start, false))
 			}))
 		}))
 	}
@@ -162,8 +162,8 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						p95Ms: 2,
 						runtime: 'server',
 						traces: [
-							{...failureTrace('300', false), id: traceId},
-							{...failureTrace('100', false), id: otherId}
+							{...failureTrace(300,false), id: traceId},
+							{...failureTrace(100,false), id: otherId}
 						]
 					},
 					{
@@ -173,7 +173,7 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'server',
-						traces: [failureTrace('200', true)]
+						traces: [failureTrace(200,true)]
 					}
 				]
 			},
@@ -187,7 +187,7 @@ it('selects the app, operation, trace and span the URL names, defaulting a deskt
 						p50Ms: 1,
 						p95Ms: 1,
 						runtime: 'web',
-						traces: [failureTrace('400', false)]
+						traces: [failureTrace(400,false)]
 					}
 				]
 			}

@@ -23,9 +23,8 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {failedEntry} from '#services/telemetry/lib/utils.ts'
 import {Operation, Range} from '#services/telemetry/schema.ts'
-import type {OperationTrace, Overview, Trace} from '#services/telemetry/schema.ts'
+import type {OperationTrace, Overview, TraceTree} from '#services/telemetry/schema.ts'
 
 // The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
 const UP: Record<string, Pane> = {Span: 'Trace', Trace: 'Traces'}
@@ -44,8 +43,6 @@ const HTTP_ATTRIBUTES = [
 type Pane = typeof Pane.Type
 const Pane = Schema.Literals(['Traces', 'Trace', 'Span'])
 
-type Attributes = typeof Attributes.Type
-const Attributes = Schema.Array(Schema.Struct({key: Schema.String, value: Schema.Json}))
 type Wrapped = typeof Wrapped.Type
 const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
@@ -141,7 +138,7 @@ function openingApp(overview: Overview) {
 		Array.flatMap(app.operations, operation =>
 			Array.getSomes(
 				Array.map(operation.traces, trace =>
-					Option.map(Option.fromUndefinedOr(trace.failure), () => ({app: app.name, time: BigInt(trace.time)}))
+					Option.map(Option.fromUndefinedOr(trace.failure), () => ({app: app.name, start: trace.start}))
 				)
 			)
 		)
@@ -149,12 +146,12 @@ function openingApp(overview: Overview) {
 	return Option.orElse(
 		Option.map(
 			Array.match(failedTraces, {
-				onEmpty: () => Option.none<{app: string; time: bigint}>(),
+				onEmpty: () => Option.none<{app: string; start: number}>(),
 				onNonEmpty: entries =>
 					Option.some(
 						Array.max(
 							entries,
-							Order.mapInput(Order.BigInt, entry => entry.time)
+							Order.mapInput(Order.Number, entry => entry.start)
 						)
 					)
 			}),
@@ -165,7 +162,7 @@ function openingApp(overview: Overview) {
 }
 
 export const overviewAtom = Atom.family((range: Range) =>
-	Atom.keepAlive(liveAtom(RpcClient, 'telemetry.overview', range))
+	Atom.keepAlive(liveAtom(RpcClient, 'telemetry.watch', range))
 )
 
 const traceAtoms = Atom.family((range: Range) =>
@@ -194,18 +191,13 @@ export function traceLabel(trace: OperationTrace) {
 	return trace.label ?? String.slice(0, 8)(trace.id)
 }
 
-export function ageOf(time: string, now: number) {
-	return Option.match(Number.parse(pipe(time, String.slice(0, -6))), {
-		onNone: () => '—',
-		onSome: timestamp => {
-			const seconds = Number.max(0, (now - timestamp) / 1000)
-			if (seconds < 10) return 'now'
-			if (seconds < 60) return `${Number.round(seconds, 0)}s`
-			if (seconds < 3600) return `${Number.round(seconds / 60, 0)}m`
-			if (seconds < 86_400) return `${Number.round(seconds / 3600, 0)}h`
-			return `${Number.round(seconds / 86_400, 0)}d`
-		}
-	})
+export function ageOf(start: number, now: number) {
+	const seconds = Number.max(0, (now - start) / 1000)
+	if (seconds < 10) return 'now'
+	if (seconds < 60) return `${Number.round(seconds, 0)}s`
+	if (seconds < 3600) return `${Number.round(seconds / 60, 0)}m`
+	if (seconds < 86_400) return `${Number.round(seconds / 3600, 0)}h`
+	return `${Number.round(seconds / 86_400, 0)}d`
 }
 
 export function durationOf(ms: number) {
@@ -219,8 +211,9 @@ export function durationOf(ms: number) {
 
 export type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}
 
-// An attribute's value as OTLP wraps it, such as {stringValue: "…"}, shown as its one value.
+// An attribute's one value as text; an array or map OTLP sent keeps its wrapping, such as {arrayValue: …}, shown as JSON.
 function valueOf(value: Schema.Json) {
+	if (Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)) return `${value}`
 	return pipe(
 		Schema.decodeUnknownOption(Wrapped)(value),
 		Option.flatMap(wrapped => Array.head(Record.values(wrapped))),
@@ -229,52 +222,37 @@ function valueOf(value: Schema.Json) {
 	)
 }
 
-export function errorOf(span: Trace['spans'][number]) {
-	return pipe(
-		Option.liftPredicate(span, current => current.status === 2),
-		Option.flatMap(current => Option.fromNullishOr(current.payload['status'])),
-		Option.filter(Predicate.isObject),
-		Option.flatMap(status => Option.fromNullishOr(pipe(Record.get(status, 'message'), Option.getOrUndefined))),
-		Option.filter(String.isString),
-		Option.filter(String.isNonEmpty)
-	)
+export function errorOf(span: TraceTree['spans'][number]) {
+	return span.error
 }
 
 // Attributes, without anything that only repeats the row: its name, code.function, or the status code the error line carries.
-export function attributesOf(span: Trace['spans'][number]) {
-	if (span.payload['attributes'] === undefined) return []
-	return Option.match(Schema.decodeUnknownOption(Attributes)(span.payload['attributes']), {
-		onNone: () => [{key: 'attributes', value: 'Unreadable'}],
-		onSome: decoded => {
-			const failing = failedEntry(span)
-			const attributes = Array.map(
-				Array.filter(decoded, attribute => attribute.key !== 'service.name'),
-				attribute => ({key: attribute.key, value: valueOf(attribute.value)})
-			)
-			const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
-			return Array.filter(
-				attributes,
-				attribute =>
-					attribute.value !== span.name &&
-					attribute.key !== 'trace.label' &&
-					!(failing && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
-					(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
-			)
-		}
-	})
+export function attributesOf(span: TraceTree['spans'][number]) {
+	const failing = span.status === 'failed'
+	const attributes = Array.map(
+		Array.filter(Record.toEntries(span.attributes), entry => entry[0] !== 'service.name'),
+		entry => ({key: entry[0], value: valueOf(entry[1])})
+	)
+	const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
+	return Array.filter(
+		attributes,
+		attribute =>
+			attribute.value !== span.name &&
+			attribute.key !== 'trace.label' &&
+			!(failing && Array.contains(HTTP_ATTRIBUTES, attribute.key)) &&
+			(attribute.key !== 'error.type' || !Option.exists(status, code => code.value === attribute.value))
+	)
 }
 
 // The most recent trace an operation started, which orders the list after failures.
 function latestOf(operation: Operation) {
 	return Array.match(operation.traces, {
-		onEmpty: () => 0n,
+		onEmpty: () => 0,
 		onNonEmpty: traces =>
-			BigInt(
-				Array.max(
-					traces,
-					Order.mapInput(Order.BigInt, (trace: OperationTrace) => BigInt(trace.time))
-				).time
-			)
+			Array.max(
+				traces,
+				Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
+			).start
 	})
 }
 
@@ -287,7 +265,7 @@ export function operationsOf(overview: Overview, source?: string) {
 		),
 		Order.combine(
 			Order.mapInput(Order.flip(Order.Boolean), (row: ActiveOperation) => row.operation.failures > 0),
-			Order.mapInput(Order.flip(Order.BigInt), (row: ActiveOperation) => latestOf(row.operation))
+			Order.mapInput(Order.flip(Order.Number), (row: ActiveOperation) => latestOf(row.operation))
 		)
 	)
 }
@@ -304,7 +282,7 @@ function findOperation(overview: Overview, key: OperationKey) {
 }
 
 // The span the URL picks, else where the failure broke, else the first span.
-export function focusOf(trace: Trace, pickedSpan?: string) {
+export function focusOf(trace: TraceTree, pickedSpan?: string) {
 	return Option.orElse(
 		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
 		() =>

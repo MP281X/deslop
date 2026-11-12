@@ -1,4 +1,4 @@
-import {Array, Boolean, Number, Option, Record, String} from 'effect'
+import {Array, Boolean, Option, Record, String} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
@@ -9,8 +9,8 @@ import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 import {cn} from '@deslop/components-web/utils'
 
 import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
-import {appName, failedEntry} from '#services/telemetry/lib/utils.ts'
-import type {Trace} from '#services/telemetry/schema.ts'
+import {appName} from '#services/telemetry/lib/utils.ts'
+import type {TraceTree} from '#services/telemetry/schema.ts'
 
 const STATUS: Record<string, string> = {
 	400: 'Bad Request',
@@ -66,7 +66,7 @@ export function CiMark() {
 }
 
 // The mark of the app that ran a span: its own icon, GitHub's for CI, else a server glyph.
-function SpanMark(props: {span: Trace['spans'][number]}) {
+function SpanMark(props: {span: TraceTree['spans'][number]}) {
 	return Option.match(Option.fromUndefinedOr(appMarks[appName(props.span.service)]), {
 		onNone: () =>
 			Boolean.match(props.span.runtime === 'ci', {
@@ -78,14 +78,14 @@ function SpanMark(props: {span: Trace['spans'][number]}) {
 }
 
 // The picked span's identity above its details: its app's mark, its name, where it started, and its duration.
-function SpanHeader(props: {span: Trace['spans'][number]}) {
+function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 	return (
 		<div role="listitem" className="col-span-2 flex h-8 items-center gap-3 max-sm:h-11">
 			<SpanMark span={props.span} />
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(failedEntry(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+					Boolean.match(props.span.status === 'failed', {onFalse: () => undefined, onTrue: () => 'text-destructive'})
 				)}
 			>
 				{props.span.name}
@@ -99,7 +99,7 @@ function SpanHeader(props: {span: Trace['spans'][number]}) {
 }
 
 // The picked span's header, error, attributes and logs, as stock-height rows with no dividers between them.
-export function SpanDetail(props: {span: Trace['spans'][number]}) {
+export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 	const error = errorOf(props.span)
 	const attributes = attributesOf(props.span)
 	return (
@@ -114,7 +114,7 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 				onSome: message => (
 					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
-							{Boolean.match(props.span.denied, {
+							{Boolean.match(props.span.status === 'denied', {
 								onFalse: () => 'error',
 								onTrue: () => (
 									<>
@@ -127,7 +127,10 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 						<span
 							className={cn(
 								'block min-w-0 truncate',
-								Boolean.match(failedEntry(props.span), {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+								Boolean.match(props.span.status === 'failed', {
+									onFalse: () => undefined,
+									onTrue: () => 'text-destructive'
+								})
 							)}
 							title={message}
 						>
@@ -164,19 +167,16 @@ export function SpanDetail(props: {span: Trace['spans'][number]}) {
 					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
 				>
 					<span className="text-muted-foreground truncate tabular-nums">
-						{Option.match(Number.parse(String.slice(0, -6)(log.time)), {
-							onNone: () => '—',
-							onSome: timestamp => preciseClock.format(timestamp)
-						})}
+						{preciseClock.format(log.time)}
 					</span>
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',
-							Boolean.match(log.status === 2, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+							Boolean.match(log.severity >= 17, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
 						)}
-						title={log.name}
+						title={log.message}
 					>
-						{log.name}
+						{log.message}
 					</span>
 				</div>
 			))}
