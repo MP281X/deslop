@@ -55,29 +55,34 @@ const readings = [
 	})
 ]
 
-/* oxlint-disable no-restricted-globals, no-restricted-properties -- Node is no browser; scope a desktop screen and a loopback origin with nothing listening, so reads wait as they do offline, and restore both descriptors. */
-const offlineDesktop = Effect.acquireRelease(
-	Effect.sync(() => {
-		const previous = {
-			location: Object.getOwnPropertyDescriptor(globalThis, 'location'),
-			matchMedia: Object.getOwnPropertyDescriptor(globalThis, 'matchMedia')
-		}
-		Object.defineProperty(globalThis, 'location', {configurable: true, value: {origin: 'http://127.0.0.1:9'}})
-		Object.defineProperty(globalThis, 'matchMedia', {
-			configurable: true,
-			value: () => ({addEventListener: () => undefined, matches: false, removeEventListener: () => undefined})
-		})
-		return previous
-	}),
-	previous =>
+/* oxlint-disable no-restricted-globals, no-restricted-properties -- Node is no browser; scope a desktop screen and a loopback origin with nothing listening, so reads wait as they do offline, and restore each descriptor. */
+function stubGlobal(name: string, value: unknown) {
+	return Effect.acquireRelease(
 		Effect.sync(() => {
-			if (previous.location === undefined) Reflect.deleteProperty(globalThis, 'location')
-			else Object.defineProperty(globalThis, 'location', previous.location)
-			if (previous.matchMedia === undefined) Reflect.deleteProperty(globalThis, 'matchMedia')
-			else Object.defineProperty(globalThis, 'matchMedia', previous.matchMedia)
-		})
-)
+			const previous = Object.getOwnPropertyDescriptor(globalThis, name)
+			Object.defineProperty(globalThis, name, {configurable: true, value})
+			return previous
+		}),
+		previous =>
+			Effect.sync(() => {
+				if (previous === undefined) Reflect.deleteProperty(globalThis, name)
+				else Object.defineProperty(globalThis, name, previous)
+			})
+	)
+}
 /* oxlint-enable no-restricted-globals, no-restricted-properties */
+
+const offlineDesktop = Effect.all(
+	[
+		stubGlobal('location', {origin: 'http://127.0.0.1:9'}),
+		stubGlobal('matchMedia', () => ({
+			addEventListener: () => undefined,
+			matches: false,
+			removeEventListener: () => undefined
+		}))
+	],
+	{concurrency: 1}
+)
 
 function render(inventory: Atom.Type<typeof inventoryAtom>, metrics: Atom.Type<ReturnType<typeof metricsAtom>>) {
 	return Effect.scoped(

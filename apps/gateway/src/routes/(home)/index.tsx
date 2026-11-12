@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Order, Schema, String} from 'effect'
+import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -250,13 +250,15 @@ function KeyRow(props: {
 }
 
 function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
+	const keysByProvider = Array.groupBy(props.keys, key => key.provider)
 	return (
 		<Loaded atom={aiUsageAtom(props.period)}>
 			{current =>
 				Array.flatMap(PROVIDERS, provider =>
-					Option.match(
-						Array.findFirst(props.keys, key => key.provider === provider),
-						{
+					pipe(
+						Option.fromUndefinedOr(keysByProvider[provider]),
+						Option.map(Array.headNonEmpty),
+						Option.match({
 							onNone: () => [],
 							onSome: info => [
 								<KeyRow
@@ -268,7 +270,7 @@ function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
 									cost={providerCost(current.report, provider)}
 								/>
 							]
-						}
+						})
 					)
 				)
 			}

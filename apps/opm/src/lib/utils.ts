@@ -86,70 +86,74 @@ export const readAtom = Atom.keepAlive(
 type PageTurn = {following: ChapterList; index: number; opened: number}
 
 // What one opened reader has passed: how many chapters its strip shows, the chapter in view and those it finished, so a page turn before the server's copy of the list arrives cannot unfinish one.
+type ReaderState = {finished: HashSet.HashSet<number>; inView: Option.Option<number>; shown: number}
+
 const readerStateAtom = Atom.family((_reader: string) =>
-	Atom.make({finished: HashSet.empty<number>(), inView: Option.none<number>(), shown: 2})
+	Atom.make<ReaderState>({finished: HashSet.empty(), inView: Option.none(), shown: 2})
 )
 
-// Each page turn saves the reading position; passing into the next chapter finishes every page of the one before it, and reaching the last shown chapter adds the next.
+// The reading positions one page turn saves, in order, and the reader's next state; none for a page past the shown chapters. Passing into the next chapter finishes every page of the one before it, and reaching the last shown chapter adds the next.
+function turnPage(state: ReaderState, turn: PageTurn) {
+	const shown = Array.take(turn.following, state.shown)
+	return Option.map(
+		Array.findFirst(
+			Array.zip(
+				shown,
+				Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+			),
+			pair => turn.index < pair[1] + pair[0].pages.length
+		),
+		pair => {
+			const chapter = pair[0]
+			const page = turn.index - pair[1]
+			const previous = Option.getOrElse(state.inView, () => turn.opened)
+			const before = Array.findFirst(shown, item => item.number === previous && item.number < chapter.number)
+			const passed = Option.match(before, {
+				onNone: () => state.finished,
+				onSome: item => HashSet.add(state.finished, item.number)
+			})
+			// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
+			const finished = Boolean.match(page === chapter.pages.length - 1 || chapter.reading?.done === true, {
+				onFalse: () => passed,
+				onTrue: () => HashSet.add(passed, chapter.number)
+			})
+			const last = Option.exists(Array.last(shown), item => item.number === chapter.number)
+			const saves: ReadingUpdate[] = [
+				...Option.toArray(
+					Option.map(before, item => ({
+						done: true,
+						number: item.number,
+						page: item.pages.length - 1,
+						series: item.series
+					}))
+				),
+				{done: HashSet.has(finished, chapter.number), number: chapter.number, page, series: chapter.series}
+			]
+			const next: ReaderState = {
+				finished,
+				inView: Option.some(chapter.number),
+				shown: Boolean.match(last && state.shown < turn.following.length, {
+					onFalse: () => state.shown,
+					onTrue: () => state.shown + 1
+				})
+			}
+			return {next, saves}
+		}
+	)
+}
+
+// Each page turn saves the reading position and moves the reader on.
 export const readerAtom = Atom.family((reader: string) =>
 	Atom.writable(
 		get => get(readerStateAtom(reader)),
-		(context, turn: PageTurn) => {
-			const state = context.get(readerStateAtom(reader))
-			const shown = Array.take(turn.following, state.shown)
-			Option.match(
-				Array.findFirst(
-					Array.zip(
-						shown,
-						Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
-					),
-					pair => turn.index < pair[1] + pair[0].pages.length
-				),
-				{
-					onNone: () => undefined,
-					onSome: pair => {
-						const chapter = pair[0]
-						const page = turn.index - pair[1]
-						const previous = Option.getOrElse(state.inView, () => turn.opened)
-						const passed = Option.match(
-							Array.findFirst(shown, item => item.number === previous && item.number < chapter.number),
-							{
-								onNone: () => state.finished,
-								onSome: before => {
-									context.set(readAtom, {
-										done: true,
-										number: before.number,
-										page: before.pages.length - 1,
-										series: before.series
-									})
-									return HashSet.add(state.finished, before.number)
-								}
-							}
-						)
-						// A finished chapter stays finished while it is read again; only "Unread" in the list starts it over.
-						const finished = Boolean.match(page === chapter.pages.length - 1 || chapter.reading?.done === true, {
-							onFalse: () => passed,
-							onTrue: () => HashSet.add(passed, chapter.number)
-						})
-						context.set(readAtom, {
-							done: HashSet.has(finished, chapter.number),
-							number: chapter.number,
-							page,
-							series: chapter.series
-						})
-						const last = Option.exists(Array.last(shown), item => item.number === chapter.number)
-						context.set(readerStateAtom(reader), {
-							finished,
-							inView: Option.some(chapter.number),
-							shown: Boolean.match(last && state.shown < turn.following.length, {
-								onFalse: () => state.shown,
-								onTrue: () => state.shown + 1
-							})
-						})
-					}
+		(context, turn: PageTurn) =>
+			Option.match(turnPage(context.get(readerStateAtom(reader)), turn), {
+				onNone: () => undefined,
+				onSome: turned => {
+					for (const save of turned.saves) context.set(readAtom, save)
+					context.set(readerStateAtom(reader), turned.next)
 				}
-			)
-		}
+			})
 	)
 )
 
