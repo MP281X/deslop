@@ -60,7 +60,7 @@ import {noTypeFromValue} from '#lint/no-type-from-value.ts'
 import {noTypeof} from '#lint/no-typeof.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
-import {noWallClockTest} from '#lint/no-wall-clock-test.ts'
+import {noWallClock} from '#lint/no-wall-clock.ts'
 import {preferEffectCountBy} from '#lint/prefer-effect-count-by.ts'
 import {preserveErrorCause} from '#lint/preserve-error-cause.ts'
 import {requireUnicodeRegexp} from '#lint/require-unicode-regexp.ts'
@@ -170,7 +170,7 @@ const RULES = {
 	'no-typeof': noTypeof,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
-	'no-wall-clock-test': noWallClockTest,
+	'no-wall-clock': noWallClock,
 	'prefer-effect-count-by': preferEffectCountBy,
 	'preserve-error-cause': preserveErrorCause,
 	'require-unicode-regexp': requireUnicodeRegexp,

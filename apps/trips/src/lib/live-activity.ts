@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Option, Queue, Record, Result, Schema, Stream, pipe} from 'effect'
+import {Array, Clock, Effect, Option, Queue, Record, Result, Schema, Stream, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {File, Paths} from 'expo-file-system'
@@ -92,7 +92,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 		Effect.gen(function* () {
 			const loaded = get(bookingsAtom)
 			if (!session.signedIn(get) || !AsyncResult.isSuccess(loaded)) return
-			const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
+			const now = yield* Clock.currentTimeMillis
 			const target = yield* apns
 			const client = yield* RpcClient
 			const index = yield* savedIndex()
