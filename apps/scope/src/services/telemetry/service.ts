@@ -13,7 +13,6 @@ import {
 	Number,
 	Option,
 	Order,
-	Path,
 	Predicate,
 	Record,
 	Ref,
@@ -594,7 +593,6 @@ function snapshotOf(state: State, now: number) {
 export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/services/telemetry/service/Telemetry', {
 	make: Effect.fnUntraced(function* (directory: string) {
 		const fs = yield* FileSystem.FileSystem
-		const path = yield* Path.Path
 		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
 		const digest = yield* Digest.Digest
 		const utf8 = new TextEncoder()
@@ -650,17 +648,14 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			Effect.gen(function* () {
 				const entries = Array.getSomes(
 					yield* Effect.forEach(
-						yield* fs.readDirectory(directory),
+						Array.filter(yield* fs.readDirectory(directory), file => !String.endsWith('.tmp')(file)),
 						file =>
 							pipe(
 								Effect.try({
 									catch: cause => TelemetryError.make({cause, message: `${file} has no readable name.`}),
 									try: () => decodeURIComponent(file)
 								}),
-								Effect.filterOrFail(key => !String.endsWith('.tmp')(key)),
-								Effect.flatMap(key => store.get(key)),
-								// An interrupted write or corrupt entry is dropped rather than keeping Scope from starting.
-								Effect.catch(() => Effect.as(fs.remove(path.join(directory, file), {force: true}), Option.none()))
+								Effect.flatMap(key => store.get(key))
 							),
 						{concurrency: 8}
 					)

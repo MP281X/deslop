@@ -558,7 +558,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'keeps ingested spans across restarts for three days, past a broken entry file',
+		'keeps ingested spans across restarts for three days',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
@@ -581,7 +581,6 @@ it.layer(platform)(test => {
 					})
 				})
 			)
-			yield* fs.writeFileString(`${directory}/broken`, '{')
 			yield* TestClock.adjust('2 days')
 			yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -589,7 +588,6 @@ it.layer(platform)(test => {
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
 				})
 			)
-			assert.isFalse(yield* fs.exists(`${directory}/broken`))
 			yield* TestClock.adjust('2 days')
 			const telemetry = yield* loaded(directory)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
