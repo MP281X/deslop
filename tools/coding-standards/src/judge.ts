@@ -2,9 +2,7 @@ import {
 	Array,
 	Clock,
 	Console,
-	Duration,
 	Effect,
-	Exit,
 	FileSystem,
 	HashSet,
 	Layer,
@@ -23,7 +21,7 @@ import {
 
 import {Digest} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
-import {KeyValueStore, Persistable, Persistence, UserDirectories} from 'effect/persistence'
+import {KeyValueStore, UserDirectories} from 'effect/persistence'
 import {ChildProcess} from 'effect/process'
 
 import {noControlForWrongJob} from '#judge/no-control-for-wrong-job.ts'
@@ -131,21 +129,16 @@ type Named = {key: string; name: string; question: Question}
 // One unit's questions with no remembered answer, asked together in one call; `key` digests the unit's kind, imports and code.
 type Asked = {code: string; file: string; imports: string; key: string; kind: Question['kind']; questions: Named[]}
 
-// One of Jev's answers, remembered for one unit and one question, so rewording or adding a question asks only that question again.
-class Verdict extends Persistable.Class<{payload: {question: string; unit: string}}>()('Verdict', {
-	primaryKey: verdict => `${verdict.unit}-${verdict.question}`,
-	success: Schema.Finite
-}) {}
+// One unit's remembered answers by the digest of the question each answers, so rewording or adding a question asks only that question again.
+type Verdicts = typeof Verdicts.Type
+const Verdicts = Schema.Record(Schema.String, Schema.Finite)
 
 // One cache per user, shared by every worktree and repository, so code judged in one is never asked again in another.
 export const layerCache = pipe(
-	Persistence.layerKvs,
-	Layer.provide(
-		Layer.unwrap(
-			Effect.gen(function* () {
-				return KeyValueStore.layerFileSystem(yield* (yield* UserDirectories.UserDirectories).cache('coding-standards'))
-			})
-		)
+	Layer.unwrap(
+		Effect.gen(function* () {
+			return KeyValueStore.layerFileSystem(yield* (yield* UserDirectories.UserDirectories).cache('coding-standards'))
+		})
 	),
 	Layer.provide(UserDirectories.layer)
 )
@@ -280,53 +273,58 @@ function verdictOf(judged: Judged[], examples: Example[], scores: Record<string,
 	}
 }
 
-// Remembered answers stay for 30 more days; the unit's other questions go to Jev in one call, and only a complete answer is remembered.
+// The questions the unit's record does not answer go to Jev in one call; only a complete answer is written back, merged with the record.
 const answer = Effect.fnUntraced(function* <R>(
 	asked: Asked,
-	store: Persistence.PersistenceStore,
+	store: KeyValueStore.SchemaStore<typeof Verdicts>,
 	decided: (asked: Asked) => Effect.Effect<Option.Option<Record<string, number>>, JudgeError, R>
 ) {
-	const verdicts = Array.map(asked.questions, named => ({
-		named,
-		verdict: new Verdict({question: named.key, unit: asked.key})
-	}))
-	const stored = Array.zipWith(
-		verdicts,
-		yield* store.getMany(Array.map(verdicts, entry => entry.verdict)),
-		(entry, exit) => ({...entry, score: Option.flatMap(Option.fromUndefinedOr(exit), Exit.getSuccess)})
+	// Two judges writing one record at once can interleave into text neither wrote; such a record is reported, asked again and rewritten.
+	const record = Option.getOrElse(
+		yield* Effect.catchTag(store.get(asked.key), 'SchemaError', () =>
+			Effect.as(
+				Effect.logWarning(`${asked.file}: its remembered answers are unreadable, so it is asked again`),
+				Option.none()
+			)
+		),
+		() => Record.empty<string, number>()
 	)
-	const remembered = Array.flatMap(stored, entry =>
-		Option.toArray(Option.map(entry.score, score => ({...entry, score})))
+	const remembered = Array.flatMap(asked.questions, named =>
+		Option.toArray(Option.map(Record.get(record, named.key), score => ({named, score})))
 	)
-	const missing = Array.filter(stored, entry => Option.isNone(entry.score))
+	const missing = Array.filter(asked.questions, named => !Record.has(record, named.key))
 	const fresh = yield* Array.match(missing, {
 		onEmpty: () => Effect.succeed(Array.empty()),
 		onNonEmpty: questions =>
-			Effect.map(decided({...asked, questions: Array.map(questions, entry => entry.named)}), found =>
-				Array.flatMap(Option.toArray(found), answers =>
-					Array.flatMap(questions, entry =>
-						Option.toArray(Option.map(Record.get(answers, entry.named.name), score => ({...entry, score})))
-					)
-				)
+			Effect.flatMap(decided({...asked, questions}), found =>
+				Option.match(found, {
+					onNone: () => Effect.succeed(Array.empty()),
+					onSome: answers => {
+						const scored = Array.flatMap(questions, named =>
+							Option.toArray(Option.map(Record.get(answers, named.name), score => ({named, score})))
+						)
+						return Effect.as(
+							store.set(asked.key, {
+								...record,
+								...Record.fromEntries(Array.map(scored, entry => [entry.named.key, entry.score]))
+							}),
+							scored
+						)
+					}
+				})
 			)
 	})
-	const kept = [...remembered, ...fresh]
-	yield* store.setMany(Array.map(kept, entry => [entry.verdict, Exit.succeed(entry.score)] as const))
 	return {
 		asked: missing.length,
 		remembered: remembered.length,
-		scores: Array.map(kept, entry => [`${asked.key}-${entry.named.name}`, entry.score] as const)
+		scores: Array.map([...remembered, ...fresh], entry => [`${asked.key}-${entry.named.name}`, entry.score] as const)
 	}
 })
 
 export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly string[]) {
 	const fs = yield* FileSystem.FileSystem
 	const started = yield* Clock.currentTimeMillis
-	const store = yield* (yield* Persistence.Persistence).make({
-		storeId: 'verdicts',
-		// A verdict nobody reads for 30 days is asked again when next read.
-		timeToLive: () => Duration.days(30)
-	})
+	const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Verdicts)
 	const named = yield* Effect.forEach(
 		Record.toEntries(QUESTIONS),
 		entry =>
@@ -456,4 +454,4 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 	if (Array.isReadonlyArrayNonEmpty(verdict.findings) || Array.isReadonlyArrayNonEmpty(misjudged) || unjudged > 0) {
 		return yield* Failed.make({})
 	}
-}, Effect.scoped)
+})
