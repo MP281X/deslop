@@ -1,4 +1,4 @@
-import {Array, Boolean, Context, Effect, Equal, Layer, Match, Option, Schema, Stream, pipe} from 'effect'
+import {Array, Boolean, Context, Effect, Equal, Layer, Match, Option, Record, Schema, Stream, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
@@ -160,13 +160,15 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		// Every segment merges into the bookings as they are inside the write, so two saves never lose each other's merge.
 		const merge = Effect.fnUntraced(function* (incoming: readonly Booking[]) {
 			const current = yield* listAll
+			const stored = Record.fromIterableBy(current, booking => booking.id)
 			yield* Effect.forEach(
-				Array.filter(upsert(current, incoming), booking => !Array.contains(current, booking)),
+				upsert(current, incoming),
 				booking =>
-					Boolean.match(
-						Array.some(current, item => item.id === booking.id),
-						{onFalse: () => insert(booking), onTrue: () => update(booking)}
-					),
+					Option.match(Record.get(stored, booking.id), {
+						onNone: () => insert(booking),
+						onSome: before =>
+							Boolean.match(Equal.equals(before, booking), {onFalse: () => update(booking), onTrue: () => Effect.void})
+					}),
 				{concurrency: 1, discard: true}
 			)
 		})
