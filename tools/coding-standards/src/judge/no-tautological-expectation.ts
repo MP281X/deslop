@@ -9,6 +9,7 @@ export const noTautologicalExpectation = question(
 		message: 'Write the expected outcome out, so the test can disagree with the code.',
 		no: {
 			cases: [
+				'Identical stable expressions on both sides of assert, with no calls, writes or fresh functions: the parser rule no-self-comparing-assertion owns those cases',
 				'Expected values written out literally',
 				'An independent oracle, such as a property that holds for every input',
 				'Fixtures built with helpers that do not compute the result'

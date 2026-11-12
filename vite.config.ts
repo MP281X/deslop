@@ -5,7 +5,7 @@ import {Array, String} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
-import {deslopRules, lint} from './tools/coding-standards/src/lint.ts'
+import {deslopRules, lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
 
 export default defineConfig({
 	create: {
@@ -107,7 +107,148 @@ export default defineConfig({
 				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		],
-		rules: deslopRules
+		rules: {
+			...deslopRules,
+			'eslint/no-restricted-imports': [
+				'error',
+				{
+					...restrictedImports,
+					patterns: [
+						{
+							// All restrictions share one ordered group: Oxlint applies a group's negations to other patterns too.
+							group: [
+								'*',
+								'!node:*',
+								'!node:*/**',
+								'!#*',
+								'!#*/**',
+								'!.',
+								'!./**',
+								'!..',
+								'!../**',
+								'!@deslop',
+								'!@deslop/**',
+								'!**/*.css',
+								'!**/*.svg',
+								'!**/*.png',
+								'!**/*.jpg',
+								'!**/*.jpeg',
+								'!**/*.webp',
+								'!**/*.gif',
+								'!**/*.ico',
+								'!**/*.woff',
+								'!**/*.woff2',
+								'!**/*.ttf',
+								'!**/*.otf',
+								'!**/*\\?*',
+								'!@bacons',
+								'!@base-ui',
+								'!@effect',
+								'!@expo',
+								'!@fontsource-variable',
+								'!@modelcontextprotocol',
+								'!@phosphor-icons',
+								'!@shadcn',
+								'!@simplewebauthn',
+								'!@tailwindcss',
+								'!@tanstack',
+								'!@typeonce',
+								'!@types',
+								'!@vitejs',
+								...Array.flatMap(
+									[
+										'@bacons/apple-targets',
+										'@base-ui/react',
+										'@deslop/coding-standards',
+										'@deslop/components-mobile',
+										'@deslop/components-web',
+										'@deslop/create-package',
+										'@deslop/runtime',
+										'@effect/ai-anthropic',
+										'@effect/ai-openrouter',
+										'@effect/atom-react',
+										'@effect/platform-node',
+										'@effect/tsgo',
+										'@effect/vitest',
+										'@expo/ui',
+										'@fontsource-variable/geist',
+										'@fontsource-variable/geist-mono',
+										'@fontsource-variable/ibm-plex-sans',
+										'@fontsource-variable/jetbrains-mono',
+										'@modelcontextprotocol/client',
+										'@phosphor-icons/react',
+										'@shadcn/lint',
+										'@shadcn/react',
+										'@simplewebauthn/browser',
+										'@simplewebauthn/server',
+										'@tailwindcss/vite',
+										'@tanstack/react-hotkeys',
+										'@tanstack/react-router',
+										'@tanstack/router-generator',
+										'@tanstack/router-plugin',
+										'@typeonce/effect-machine',
+										'@typeonce/effect-machine-react',
+										'@typeonce/oxlint-plugin-effect-machine',
+										'@types/node',
+										'@types/react',
+										'@types/react-dom',
+										'@vitejs/plugin-react',
+										'cheerio',
+										'class-variance-authority',
+										'clsx',
+										'cmdk',
+										'date-fns',
+										'domhandler',
+										'effect',
+										'embla-carousel-react',
+										'expo',
+										'expo-application',
+										'expo-asset',
+										'expo-auth-session',
+										'expo-calendar',
+										'expo-clipboard',
+										'expo-constants',
+										'expo-crypto',
+										'expo-file-system',
+										'expo-location',
+										'expo-notifications',
+										'expo-secure-store',
+										'expo-updates',
+										'expo-web-browser',
+										'expo-widgets',
+										'fallow',
+										'input-otp',
+										'oxc-parser',
+										'oxc-transform-react',
+										'oxlint-plugin-eslint',
+										'oxlint-plugin-react-doctor',
+										'react',
+										'react-day-picker',
+										'react-dom',
+										'react-native',
+										'react-resizable-panels',
+										'recharts',
+										'scheduler',
+										'shadcn',
+										'shiki',
+										'tailwind-merge',
+										'tailwindcss',
+										'toqr',
+										'tsrs',
+										'vite',
+										'vite-plus',
+										'vitest'
+									],
+									name => [`!${name}`, `!${name}/**`]
+								),
+								...Array.flatMap(restrictedImports.patterns, pattern => pattern.group)
+							],
+							message: 'Not a dependency of this repository. Ask before adding one.'
+						}
+					]
+				}
+			]
+		}
 	},
 	run: {
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.

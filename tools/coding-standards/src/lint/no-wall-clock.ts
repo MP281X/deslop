@@ -79,8 +79,7 @@ export const noWallClock = defineRule({
 					return
 				}
 				if (
-					(Option.contains(globalPath(context, node.callee), 'Date.now') ||
-						importedMember({context, importedName: 'DateTime', node: node.callee, propertyName: 'nowUnsafe'})) &&
+					importedMember({context, importedName: 'DateTime', node: node.callee, propertyName: 'nowUnsafe'}) &&
 					insideEffect(context, node)
 				) {
 					context.report({message: EFFECT_MESSAGE, node})
@@ -88,16 +87,6 @@ export const noWallClock = defineRule({
 			},
 			MemberExpression: node => {
 				if (testFile && readsRealTime(context, node)) context.report({message: MESSAGE, node})
-			},
-			NewExpression: node => {
-				if (
-					!testFile &&
-					Array.isArrayEmpty(node.arguments) &&
-					Option.contains(globalPath(context, node.callee), 'Date') &&
-					insideEffect(context, node)
-				) {
-					context.report({message: EFFECT_MESSAGE, node})
-				}
 			}
 		}
 	},

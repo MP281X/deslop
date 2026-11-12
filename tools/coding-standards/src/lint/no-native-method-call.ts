@@ -3,7 +3,7 @@ import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {matches, memberName, memberRoot, variableFor} from '#lib/ast.ts'
+import {matches, memberName, memberRoot, resolveBinding, variableFor} from '#lib/ast.ts'
 
 // The compiler's preferEffectArray and preferEffectString own string methods and mapped array methods such as map; this rule keeps the array methods they skip and Promise chains.
 const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
@@ -73,6 +73,50 @@ function isYieldedService(node?: ESTree.Node | null) {
 const effectPackage = matches(/^(?:effect(?:\/|$)|@effect\/)/u)
 const localPath = matches(/^[.#~/]|^@\//u)
 
+// The plugin has syntax, not the compiler's type checker. Only hand off receivers whose string type is proved here.
+function declaredType(context: Context, node: ESTree.Expression | ESTree.Super): Option.Option<ESTree.TSType> {
+	if (node.type === 'Identifier') {
+		return pipe(
+			variableFor(context, node),
+			Option.flatMap(variable => Array.head(variable.defs)),
+			Option.flatMap(definition => Option.fromNullishOr(definition.name.typeAnnotation)),
+			Option.map(annotation => annotation.typeAnnotation)
+		)
+	}
+	if (node.type === 'MemberExpression') {
+		return pipe(
+			declaredType(context, node.object),
+			Option.filter(type => type.type === 'TSTypeLiteral'),
+			Option.flatMap(type =>
+				Array.findFirst(
+					type.members,
+					member =>
+						member.type === 'TSPropertySignature' &&
+						member.key.type === 'Identifier' &&
+						Option.contains(memberName(node), member.key.name)
+				)
+			),
+			Option.filter(member => member.type === 'TSPropertySignature'),
+			Option.flatMap(member => Option.fromNullishOr(member.typeAnnotation)),
+			Option.map(annotation => annotation.typeAnnotation)
+		)
+	}
+	if (node.type === 'CallExpression') {
+		return pipe(
+			declaredType(context, node.callee),
+			Option.filter(type => type.type === 'TSFunctionType'),
+			Option.map(type => type.returnType.typeAnnotation)
+		)
+	}
+	return Option.none()
+}
+
+function provenString(context: Context, node: ESTree.Expression | ESTree.Super) {
+	if (Option.exists(declaredType(context, node), type => type.type === 'TSStringKeyword')) return true
+	const value = resolveBinding(context, node)
+	return value.type === 'TemplateLiteral' || (value.type === 'Literal' && Predicate.isString(value.value))
+}
+
 function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
 	const root = chainRoot(input.receiver)
 	const throughCall = root !== memberRoot(input.receiver)
@@ -111,7 +155,8 @@ export const noNativeMethodCall = defineRule({
 					memberName(node.callee),
 					name => Record.has(REPLACEMENTS, name) || name === 'test' || name === 'exec'
 				) ||
-				ownsMethod({context, receiver: node.callee.object})
+				ownsMethod({context, receiver: node.callee.object}) ||
+				provenString(context, node.callee.object)
 			) {
 				return
 			}

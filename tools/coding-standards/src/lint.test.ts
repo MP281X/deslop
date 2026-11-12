@@ -1298,7 +1298,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'}',
 							'export function asserted() {',
 							'	const method = obj.method',
-							'	return method()',
+							'	return method!()',
 							'}',
 							'export function pattern() {',
 							'	obj.first()',
@@ -2738,16 +2738,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						[
 							"import {Clock, DateTime, Effect, Stream} from 'effect'",
 							'export const generator = Effect.gen(function* () { return DateTime.nowUnsafe() }) // reported',
-							"export const traced = Effect.fn('traced')(function* () { return Date.now() }) // reported",
-							'export const untraced = Effect.fnUntraced(function* () { return new Date() }) // reported',
+							"export const traced = Effect.fn('Clock.traced')(function* () { return Date.now() })",
+							'export const untraced = Effect.fnUntraced(function* () { return new Date() })',
 							'export const unnamed = Effect.fn(function* () { return DateTime.nowUnsafe() }) // reported',
-							'export const synchronous = Effect.sync(() => Date.now()) // reported',
-							'export const mapped = Effect.map(Clock.currentTimeMillis, () => new Date()) // reported',
+							'export const synchronous = Effect.sync(() => Date.now())',
+							'export const mapped = Effect.map(Clock.currentTimeMillis, () => new Date())',
 							'export const curried = Effect.map(() => DateTime.nowUnsafe()) // reported',
 							"export const stream = Stream.map(Stream.tick('1 minute'), () => DateTime.toEpochMillis(DateTime.nowUnsafe())) // reported",
-							'export const streamFunction = Stream.map(Stream.make(1), function () { return Date.now() }) // reported',
+							'export const streamFunction = Stream.map(Stream.make(1), function () { return Date.now() })',
 							'export const options = Effect.try({try: () => DateTime.nowUnsafe(), catch: String}) // reported',
-							'export const computed = Effect["sync"](() => Date.now()) // reported',
+							'export const computed = Effect["sync"](() => Date.now())',
 							'export const clock = Effect.gen(function* () { return yield* Clock.currentTimeMillis })',
 							"export const injected = Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis)",
 							'export const fixed = Effect.sync(() => new Date(0))',
@@ -2949,8 +2949,36 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						Array.map(diagnostic => diagnostic.labels[0]?.span.line)
 					),
 					// String, mapped array and record methods belong to the Effect compiler's preferEffectString, preferEffectArray and preferEffectRecord.
-					[12]
+					[]
 				)
+			})
+		)
+
+		testApi.effect(
+			'partitions proven string receivers from residual native array methods',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'strings.ts': Array.join(
+						[
+							'declare const text: string',
+							'declare const items: string[]',
+							'declare const mixed: string | string[]',
+							'export const stringSlice = text.slice(1)',
+							'export const stringAt = text.at(0)',
+							'export const literal = "abc".slice(1)',
+							'export const template = `abc`.at(0)',
+							'const word = "abc"',
+							'export const alias = word.slice(1)',
+							'export const arraySlice = items.slice(1) // reported',
+							'export const arrayAt = items.at(0) // reported',
+							'export const arrayLiteral = ["abc"].slice(1) // reported',
+							'export const union = mixed.slice(1) // reported'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-native-method-call')
+				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
 

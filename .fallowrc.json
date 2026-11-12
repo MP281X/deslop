@@ -99,13 +99,26 @@
 		}
 	],
 	"rules": {
+		"dev-dependencies-in-production": "error",
+		"duplicate-export-aliases": "error",
+		"empty-catalog-groups": "error",
 		// Components build on the runtime, never the reverse.
 		"package-cycle": "error",
 		"policy-violation": "off",
 		"private-type-leaks": "error",
 		"prop-drilling": "error",
+		"re-export-cycle": "error",
 		"require-suppression-reason": "error",
+		"stale-suppressions": "error",
+		"test-only-dependencies": "error",
 		"thin-wrapper": "error",
-		"unlisted-dependencies": "error"
+		"type-only-dependencies": "error",
+		"unlisted-binaries": "error",
+		"unlisted-dependencies": "error",
+		"unused-catalog-entries": "error",
+		"unused-dependency-overrides": "error",
+		"unused-dev-dependencies": "error",
+		"unused-namespace-members": "error",
+		"unused-optional-dependencies": "error"
 	}
 }
