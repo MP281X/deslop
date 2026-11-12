@@ -1,3 +1,6 @@
+import {cpus, hostname} from 'node:os'
+import {platform} from 'node:process'
+
 import {
 	Array,
 	Boolean,
@@ -11,6 +14,7 @@ import {
 	Option,
 	Record,
 	Ref,
+	Result,
 	Schema,
 	String,
 	Tracer,
@@ -22,9 +26,17 @@ import {ChildProcessSpawner} from 'effect/process'
 
 import {execute} from '@deslop/runtime/cli/service'
 
-import {unitFailures} from '#services/inventory/lib/failures.ts'
-import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
-import {probeSocket, socketLine, socketProcess, socketUnit} from '#services/inventory/lib/sockets.ts'
+import {exitFailure, unitFailures} from '#services/inventory/lib/failures.ts'
+import {launchAgents} from '#services/inventory/lib/launchd.ts'
+import {attachProcesses, launchdProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
+import {
+	type Socket,
+	lsofSockets,
+	probeSocket,
+	socketLine,
+	socketProcess,
+	socketUnit
+} from '#services/inventory/lib/sockets.ts'
 import {
 	Container,
 	DeployError,
@@ -37,26 +49,31 @@ import {
 } from '#services/inventory/schema.ts'
 import type {RunRequest} from '#services/inventory/schema.ts'
 
-function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http: HttpClient.HttpClient) {
+// Each listener with its unit, the app a Node listener's working directory names, and whether it answers HTTP; `unit` and `cwd` read a PID the platform's way.
+function portItems(
+	sockets: readonly Socket[],
+	worker: string,
+	http: HttpClient.HttpClient,
+	origin: {
+		readonly cwd: (pid: string) => Effect.Effect<Option.Option<string>>
+		readonly unit: (pid: string) => Effect.Effect<string>
+	}
+) {
 	return Effect.forEach(
-		Array.getSomes(Array.map(String.split(String.trim(text), '\n'), socketLine)),
+		sockets,
 		Effect.fnUntraced(function* (socket) {
-			const cgroup = yield* Option.match(socket.process, {
+			const unit = yield* Option.match(socket.process, {
 				onNone: () => Effect.succeed(''),
-				onSome: Effect.fnUntraced(function* (match) {
-					return Option.getOrElse(yield* Effect.option(fs.readFileString(`/proc/${match.pid}/cgroup`)), () => '')
-				})
+				onSome: match => origin.unit(match.pid ?? '')
 			})
-			const unit = socketUnit(cgroup)
 			const process = yield* Option.match(socket.process, {
 				onNone: () => Effect.succeed(''),
 				onSome: Effect.fnUntraced(function* (match) {
 					if (!String.startsWith('node')(match.name)) return match.name
-					return yield* pipe(
-						fs.readLink(`/proc/${match.pid}/cwd`),
-						Effect.map(cwd => socketProcess(match.name, cwd)),
-						Effect.orElseSucceed(() => match.name)
-					)
+					return Option.match(yield* origin.cwd(match.pid ?? ''), {
+						onNone: () => match.name,
+						onSome: cwd => socketProcess(match.name, cwd)
+					})
 				})
 			})
 			const response = yield* Boolean.match(probeSocket(socket, process), {
@@ -115,6 +132,12 @@ function portItems(text: string, worker: string, fs: FileSystem.FileSystem, http
 	)
 }
 
+// What a worker's own collectors read: its sources, and its processes for the snapshot to attach by owner.
+type Machine = {
+	readonly processes: Effect.Effect<Effect.Success<typeof processes>, DeployError>
+	readonly sources: readonly ReturnType<typeof collect<DeployError, never>>[]
+}
+
 function collect<E extends {readonly message: string}, R>(name: string, effect: Effect.Effect<InventoryItem[], E, R>) {
 	return pipe(
 		effect,
@@ -146,7 +169,7 @@ export class Inventory extends Context.Service<
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
 			}
-			const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
+			const worker = hostname()
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
@@ -215,10 +238,180 @@ export class Inventory extends Context.Service<
 					})
 				)
 			})
+			const docker = pipe(
+				command('docker', ['ps', '--all', '--format', '{{json .}}']),
+				Effect.flatMap(text =>
+					Effect.forEach(
+						Array.filter(String.split(text, '\n'), String.isNonEmpty),
+						line => Schema.decodeEffect(Schema.fromJsonString(Container))(line),
+						{concurrency: 1}
+					)
+				),
+				Effect.map(rows =>
+					Array.map(rows, row =>
+						InventoryItem.make({
+							bindings: [
+								...Array.map(
+									Array.fromIterable(
+										String.matchAll(/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu)(
+											row.Labels ?? ''
+										)
+									),
+									match => ({
+										address: 'container',
+										port: Option.getOrElse(Number.parse(match[1] ?? ''), () => 0),
+										protocol: 'tcp' as const
+									})
+								),
+								...Array.map(
+									Array.fromIterable(String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)),
+									match => ({
+										address: `${match[1]}:${match[2]}`,
+										port: Option.getOrElse(Number.parse(match[2] ?? ''), () => 0),
+										protocol: Boolean.match(match[3] === 'udp', {
+											onFalse: () => 'tcp' as const,
+											onTrue: () => 'udp' as const
+										})
+									})
+								)
+							],
+							detail: row.Status,
+							id: `${worker}:docker:${row.ID}`,
+							kind: 'container',
+							links: Array.dedupe(
+								Array.map(
+									Array.fromIterable(String.matchAll(/Host\(`([^`]+)`\)/gu)(row.Labels ?? '')),
+									match => `https://${match[1]}`
+								)
+							),
+							name: row.Names,
+							state: row.State,
+							url: '',
+							worker
+						})
+					)
+				)
+			)
+			// A Linux worker's systemd units, containers and listeners, and its processes from /proc, each owned by its cgroup.
+			const linux = Effect.succeed<Machine>({
+				processes: pipe(
+					processes,
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.mapError(cause => DeployError.make({cause, message: cause.message}))
+				),
+				sources: [
+					collect('User services', units(false)),
+					collect('System services', units(true)),
+					collect('Docker', docker),
+					collect(
+						'Listening ports',
+						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
+							portItems(Array.getSomes(Array.map(String.split(String.trim(text), '\n'), socketLine)), worker, http, {
+								cwd: pid => Effect.option(fs.readLink(`/proc/${pid}/cwd`)),
+								unit: pid =>
+									Effect.map(Effect.option(fs.readFileString(`/proc/${pid}/cgroup`)), cgroup =>
+										socketUnit(Option.getOrElse(cgroup, () => ''))
+									)
+							})
+						)
+					)
+				]
+			})
+			// A Mac's Deslop launch agents and listeners, and the processes under each agent, measured together so CPU shares compare like readings.
+			const darwin: Effect.Effect<Machine> = Effect.gen(function* () {
+				const launchd = yield* Effect.all(
+					{
+						agents: Effect.result(Effect.map(command('launchctl', ['list']), launchAgents)),
+						table: Effect.result(
+							command('env', ['LC_ALL=C', 'ps', '-axww', '-o', 'pid=,ppid=,rss=,time=,lstart=,args='])
+						)
+					},
+					{concurrency: 'unbounded'}
+				)
+				const time = yield* Clock.currentTimeMillis
+				const total = Number.sumAll(Array.flatMap(cpus(), cpu => Record.values(cpu.times)))
+				const records = Result.map(launchd.table, text =>
+					launchdProcesses(
+						text,
+						Record.fromEntries(
+							Array.getSomes(
+								Array.map(
+									Result.getOrElse(launchd.agents, () => []),
+									agent => Option.map(agent.pid, pid => [`${pid}`, agent.label] as const)
+								)
+							)
+						)
+					)
+				)
+				const owned = Result.getOrElse(records, () => [])
+				return {
+					processes: Effect.map(Effect.fromResult(records), found => ({records: found, time, total})),
+					sources: [
+						collect(
+							'Launch agents',
+							Effect.map(Effect.fromResult(launchd.agents), agents =>
+								Array.map(agents, agent =>
+									InventoryItem.make({
+										detail: 'user · launch agent',
+										...Boolean.match(Option.isNone(agent.pid) && agent.status !== 0, {
+											onFalse: () => ({}),
+											onTrue: () => ({failure: {reason: exitFailure(agent.status)}})
+										}),
+										id: `${worker}:user:${agent.label}`,
+										kind: 'service',
+										name: agent.label,
+										scope: 'user',
+										state: Option.match(agent.pid, {
+											onNone: () =>
+												Boolean.match(agent.status === 0, {
+													onFalse: () => 'failed · failed',
+													onTrue: () => 'inactive · dead'
+												}),
+											onSome: () => 'active · running'
+										}),
+										url: '',
+										worker
+									})
+								)
+							)
+						),
+						collect(
+							'Listening ports',
+							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
+								portItems(lsofSockets(text), worker, http, {
+									cwd: Effect.fnUntraced(function* (pid) {
+										const lines = String.split(
+											Option.getOrElse(
+												yield* Effect.option(command('lsof', ['-nP', '-a', '-p', pid, '-d', 'cwd', '-Fn'])),
+												() => ''
+											),
+											'\n'
+										)
+										return Option.map(Array.findFirst(lines, String.startsWith('n')), String.slice(1))
+									}),
+									unit: pid =>
+										Effect.succeed(
+											Option.getOrElse(
+												Option.map(
+													Array.findFirst(owned, record => `${record.process.pid}` === pid),
+													record => record.unit
+												),
+												() => ''
+											)
+										)
+								})
+							)
+						)
+					]
+				}
+			})
 			return Inventory.of({
-				// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo.
+				// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo. A Mac's launch agents are apps, never timer jobs.
 				run: Effect.fnUntraced(
 					function* (input) {
+						if (platform === 'darwin') {
+							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
+						}
 						const timers = yield* pipe(
 							command('systemctl', [
 								...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
@@ -245,73 +438,10 @@ export class Inventory extends Context.Service<
 				),
 				snapshot: Effect.scoped(
 					Effect.gen(function* () {
+						const machine = yield* Boolean.match(platform === 'darwin', {onFalse: () => linux, onTrue: () => darwin})
 						const sources = yield* Effect.all(
 							[
-								collect('User services', units(false)),
-								collect('System services', units(true)),
-								collect(
-									'Docker',
-									pipe(
-										command('docker', ['ps', '--all', '--format', '{{json .}}']),
-										Effect.flatMap(text =>
-											Effect.forEach(
-												Array.filter(String.split(text, '\n'), String.isNonEmpty),
-												line => Schema.decodeEffect(Schema.fromJsonString(Container))(line),
-												{concurrency: 1}
-											)
-										),
-										Effect.map(rows =>
-											Array.map(rows, row =>
-												InventoryItem.make({
-													bindings: [
-														...Array.map(
-															Array.fromIterable(
-																String.matchAll(
-																	/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu
-																)(row.Labels ?? '')
-															),
-															match => ({
-																address: 'container',
-																port: Option.getOrElse(Number.parse(match[1] ?? ''), () => 0),
-																protocol: 'tcp' as const
-															})
-														),
-														...Array.map(
-															Array.fromIterable(
-																String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)
-															),
-															match => ({
-																address: `${match[1]}:${match[2]}`,
-																port: Option.getOrElse(Number.parse(match[2] ?? ''), () => 0),
-																protocol: Boolean.match(match[3] === 'udp', {
-																	onFalse: () => 'tcp' as const,
-																	onTrue: () => 'udp' as const
-																})
-															})
-														)
-													],
-													detail: row.Status,
-													id: `${worker}:docker:${row.ID}`,
-													kind: 'container',
-													links: Array.dedupe(
-														Array.map(
-															Array.fromIterable(String.matchAll(/Host\(`([^`]+)`\)/gu)(row.Labels ?? '')),
-															match => `https://${match[1]}`
-														)
-													),
-													name: row.Names,
-													state: row.State,
-													url: '',
-													worker
-												})
-											)
-										)
-									)
-								),
-								collect(
-									'Listening ports',
-									Effect.flatMap(command('ss', ['-H', '-lntup']), text => portItems(text, worker, fs, http))
-								),
+								...machine.sources,
 								collect(
 									'Tailnet',
 									pipe(
@@ -371,8 +501,7 @@ export class Inventory extends Context.Service<
 							{concurrency: 'unbounded'}
 						)
 						const collected = yield* pipe(
-							processes,
-							Effect.provideService(FileSystem.FileSystem, fs),
+							machine.processes,
 							Effect.flatMap(current =>
 								Ref.modify(processState, previous => {
 									const next = processReadings(current, Option.getOrUndefined(previous))

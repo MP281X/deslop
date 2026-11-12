@@ -4,6 +4,7 @@
 
 - **Production.** On dev each app is `deslop-<app>.service`, running `~/.deslop/<app>/current`, with its flags in the unit. Deploy's Caddy, `deslop-deploy-caddy.service`, serves its owned `*.mp281x.xyz` hostnames on 80 and 443 (`/etc/sysctl.d/90-unprivileged-ports.conf` lets a user bind them).
 - **Desktop.** Runs only Deploy, at `https://desktop.tailnet-8c4c.ts.net:5102`, reached by dev's Deploy; the shared worker key follows Deploy's README.
+- **MacBook.** Runs only Deploy, as the launch agent `deslop-deploy`, at `https://macbook-pro.tailnet-8c4c.ts.net:5102`, reached by dev's Deploy as `macbook-pro`; its `~/.deslop/deploy` holds a week of resource history and its owned tailnet exposures.
 - **Stash.** No worktree preview: `deslop-stash.service` serves `https://stash.mp281x.xyz` and `~/.deslop/stash` is production data. The iPhone app and share sheet use that origin with shared Keychain credentials. A scratch run from a worktree keeps its own data in `.deslop/stash`: `vp -C apps/stash run build && node --env-file=$HOME/.deslop/stash.env apps/stash/dist/server.js --port 5018`.
 - **Stash proxy.** `STASH_PROXY` is the DataImpulse residential plan "stash", with `__sessid.{session}` after the login.
 

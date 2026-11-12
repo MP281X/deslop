@@ -1,4 +1,4 @@
-import {Array, Boolean, Clock, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Clock, DateTime, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
 
 import {commandLabel} from '#services/inventory/lib/command.ts'
 import {processOwner} from '#services/inventory/lib/owners.ts'
@@ -69,7 +69,7 @@ export const processes = Effect.gen(function* () {
 							try: () => processStatus(status)
 						})
 						return {
-							cgroup: yield* fs.readFileString(`/proc/${pid}/cgroup`),
+							owner: processOwner(yield* fs.readFileString(`/proc/${pid}/cgroup`)),
 							process: {
 								...parsed,
 								...Option.match(command, {onNone: () => ({}), onSome: args => ({command: args})}),
@@ -149,11 +149,78 @@ export function processReadings(
 	return {baseline: current, readings: processUsage(current, previous?.baseline)}
 }
 
+// A Mac's processes that descend from a Deslop launch agent, from `ps -axww -o pid=,ppid=,rss=,time=,lstart=,args=` in the C locale, keyed like `processOwner` by the agent they run under; `agents` names each agent's PID. Times are milliseconds: `ticks` of CPU, and `start` as an identity that tells a reused PID apart.
+export function launchdProcesses(text: string, agents: Record<string, string>) {
+	const rows = Array.getSomes(
+		Array.map(String.split(text, '\n'), line =>
+			Option.map(
+				String.match(/^\s*([0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*)$/u)(line),
+				match => ({
+					args: match[6] ?? '',
+					cpu: match[4] ?? '',
+					memory: match[3] ?? '',
+					parent: match[2] ?? '',
+					pid: match[1] ?? '',
+					start: match[5] ?? ''
+				})
+			)
+		)
+	)
+	const parents = Record.fromEntries(Array.map(rows, row => [row.pid, row.parent] as const))
+	function agent(pid: string, depth: number): Option.Option<string> {
+		return Option.orElse(Record.get(agents, pid), () =>
+			Option.flatMap(
+				Option.filter(Record.get(parents, pid), () => depth < 64),
+				parent => agent(parent, depth + 1)
+			)
+		)
+	}
+	return Array.getSomes(
+		Array.map(rows, row =>
+			Option.flatMap(agent(row.pid, 0), unit =>
+				pipe(
+					Option.all({
+						start: Option.map(DateTime.make(row.start), DateTime.toEpochMillis),
+						ticks: Option.map(
+							String.match(/^(?:([0-9]+):)?([0-9]+):([0-9]+(?:\.[0-9]+)?)$/u)(row.cpu),
+							match =>
+								((Option.getOrElse(Number.parse(match[1] ?? ''), () => 0) * 60 +
+									Option.getOrElse(Number.parse(match[2] ?? ''), () => 0)) *
+									60 +
+									Option.getOrElse(Number.parse(match[3] ?? ''), () => 0)) *
+								1000
+						)
+					}),
+					Option.map(times => {
+						const command = commandArgs(Array.join(String.split(String.trim(row.args), /\s+/u), '\0'))
+						return {
+							...times,
+							owner: `service:user:${unit}`,
+							process: {
+								command,
+								label: commandLabel(command, Option.none()),
+								memory: Schema.decodeSync(Schema.FiniteFromString)(row.memory) * 1024,
+								name: Option.getOrElse(
+									Option.flatMap(Array.head(command), head => Array.last(String.split(head, '/'))),
+									() => ''
+								),
+								parent: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(row.parent),
+								pid: Schema.decodeSync(Schema.FiniteFromString.check(Schema.isInt()))(row.pid)
+							},
+							unit
+						}
+					})
+				)
+			)
+		)
+	)
+}
+
 export function attachProcesses(
 	items: readonly InventoryItem[],
-	records: readonly {cgroup: string; process: NonNullable<InventoryItem['processes']>[number]}[]
+	records: readonly {owner: string; process: NonNullable<InventoryItem['processes']>[number]}[]
 ) {
-	const owners = Array.groupBy(records, record => processOwner(record.cgroup))
+	const owners = Array.groupBy(records, record => record.owner)
 	return Array.map(items, item => ({
 		...item,
 		processes: Array.map(

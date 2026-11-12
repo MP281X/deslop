@@ -30,6 +30,12 @@ function failureReason(result: string, status: number, ran: boolean) {
 	)
 }
 
+// Why a launch agent stopped, from the last exit status `launchctl list` shows: a negative one is the signal that ended it.
+export function exitFailure(status: number) {
+	if (status < 0) return failureReason('signal', -status, true)
+	return failureReason('exit-code', status, true)
+}
+
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
 export function unitFailures(text: string) {
 	return Record.fromEntries(

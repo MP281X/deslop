@@ -3,6 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {Array, Effect, FileSystem, Option, PlatformError, String, pipe} from 'effect'
 
 import {commandLabel} from '#services/inventory/lib/command.ts'
+import {processOwner} from '#services/inventory/lib/owners.ts'
 import {attachProcesses, processReadings, processes} from '#services/inventory/lib/processes.ts'
 import {InventoryItem} from '#services/inventory/schema.ts'
 
@@ -10,7 +11,7 @@ function reading(time: number) {
 	return {
 		records: [
 			{
-				cgroup: '',
+				owner: '',
 				process: {label: {detail: '', name: 'node'}, memory: time, name: 'node', parent: 1, pid: 42},
 				start: 100,
 				ticks: time / 4
@@ -30,7 +31,7 @@ it.effect(
 				assert.strictEqual(collected.total, 800)
 				assert.deepStrictEqual(collected.records, [
 					{
-						cgroup: '0::/user.slice/scope.service\n',
+						owner: 'service:system:scope.service',
 						process: {
 							command: ['firefox', '--type=renderer'],
 							label: {detail: '', name: 'firefox'},
@@ -43,7 +44,7 @@ it.effect(
 						ticks: 10
 					},
 					{
-						cgroup: '0::/user.slice/scope.service\n',
+						owner: 'service:system:scope.service',
 						process: {
 							command: [
 								'node',
@@ -229,7 +230,7 @@ it('measures CPU as a share of machine capacity without reusing a PID or bridgin
 	const previous = {
 		records: [
 			{
-				cgroup: '',
+				owner: '',
 				process: {label: {detail: '', name: 'node'}, memory: 1024, name: 'node', parent: 1, pid: 42},
 				start: 100,
 				ticks: 10
@@ -298,23 +299,26 @@ it('attaches only the exact service cgroup in the right scope, or the actual Doc
 		worker: 'dev'
 	})
 	const process = {label: {detail: '', name: 'node'}, memory: 1024, name: 'node', parent: 7, pid: 42}
-	const rows = [{cgroup: '0::/user.slice/user-1000.slice/user@1000.service/app.slice/scope.service\n', process}]
+	const rows = [
+		{owner: processOwner('0::/user.slice/user-1000.slice/user@1000.service/app.slice/scope.service\n'), process}
+	]
 	assert.deepStrictEqual(attachProcesses([item], rows)[0]?.processes, [process])
 	assert.isEmpty(attachProcesses([{...item, scope: 'system'}], rows)[0]?.processes ?? [])
 	assert.isEmpty(
-		attachProcesses([item], [{...rows[0], cgroup: '0::/user.slice/scope.service-other\n', process}])[0]?.processes ?? []
+		attachProcesses([item], [{owner: processOwner('0::/user.slice/scope.service-other\n'), process}])[0]?.processes ??
+			[]
 	)
 	assert.deepStrictEqual(
 		attachProcesses(
 			[{...item, id: 'dev:docker:abcdef123456', kind: 'container'}],
-			[{cgroup: '0::/system.slice/docker-abcdef123456789.scope\n', process}]
+			[{owner: processOwner('0::/system.slice/docker-abcdef123456789.scope\n'), process}]
 		)[0]?.processes,
 		[process]
 	)
 	assert.deepStrictEqual(
 		attachProcesses(
 			[{...item, name: 'user@1000.service', scope: 'system'}],
-			[{cgroup: '0::/user.slice/user-1000.slice/user@1000.service/init.scope\n', process}]
+			[{owner: processOwner('0::/user.slice/user-1000.slice/user@1000.service/init.scope\n'), process}]
 		)[0]?.processes,
 		[process]
 	)

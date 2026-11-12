@@ -1,7 +1,12 @@
+import {cpus, hostname, loadavg, totalmem} from 'node:os'
+import {platform} from 'node:process'
+
 import {
 	Array,
+	Boolean,
 	Clock,
 	Context,
+	Duration,
 	Effect,
 	FileSystem,
 	HashSet,
@@ -23,7 +28,19 @@ import {execute} from '@deslop/runtime/cli/service'
 
 import {processOwner} from '#services/inventory/lib/owners.ts'
 import {DeployError} from '#services/inventory/schema.ts'
-import {appCgroup, appShares, cgroupUsage, compact, counters, history, sample} from '#services/metrics/lib/utils.ts'
+import {
+	appCgroup,
+	appShares,
+	cgroupUsage,
+	compact,
+	counters,
+	cpuCounters,
+	history,
+	reading,
+	rootVolume,
+	sample,
+	vmStatMemory
+} from '#services/metrics/lib/utils.ts'
 import type {AppReading} from '#services/metrics/lib/utils.ts'
 import {Counters, MachineHistory, Sample} from '#services/metrics/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
@@ -31,6 +48,20 @@ import type {HistoryQuery} from '#services/metrics/schema.ts'
 const CGROUP = '/sys/fs/cgroup'
 
 const HOURLY_FILE_PREFIX = 'metrics-'
+
+function counted(read: () => Counters) {
+	return pipe(
+		Effect.try({catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}), try: read}),
+		Effect.flatMap(Schema.decodeEffect(Counters))
+	)
+}
+
+function sampled(read: () => Sample) {
+	return pipe(
+		Effect.try({catch: cause => DeployError.make({cause, message: 'The machine sample is unreadable.'}), try: read}),
+		Effect.flatMap(Schema.decodeEffect(Sample))
+	)
+}
 
 export class Metrics extends Context.Service<
 	Metrics,
@@ -40,12 +71,10 @@ export class Metrics extends Context.Service<
 		Metrics,
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem
-			const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
-			const cpuModel = pipe(
-				yield* fs.readFileString('/proc/cpuinfo'),
-				String.match(/model name\s*:\s*([^\n]+)/u),
-				Option.map(match => String.trim(match[1] ?? '')),
-				Option.getOrElse(() => '')
+			const worker = hostname()
+			const cpuModel = Option.getOrElse(
+				Option.map(Array.head(cpus()), cpu => String.trim(cpu.model)),
+				() => ''
 			)
 			const base = yield* KeyValueStore.KeyValueStore
 			const store = KeyValueStore.toSchemaStore(base, Schema.Array(Sample))
@@ -145,71 +174,80 @@ export class Metrics extends Context.Service<
 			})
 			const refreshStorage = pipe(
 				Effect.scoped(
-					execute('df', [
-						'-B1',
-						'--output=target,size,used',
-						'-x',
-						'tmpfs',
-						'-x',
-						'devtmpfs',
-						'-x',
-						'overlay',
-						'-x',
-						'squashfs',
-						'-x',
-						'efivarfs'
-					])
+					Boolean.match(platform === 'darwin', {
+						onFalse: () =>
+							execute('df', [
+								'-B1',
+								'--output=target,size,used',
+								'-x',
+								'tmpfs',
+								'-x',
+								'devtmpfs',
+								'-x',
+								'overlay',
+								'-x',
+								'squashfs',
+								'-x',
+								'efivarfs'
+							]),
+						onTrue: () => execute('df', ['-k', '/'])
+					})
 				),
 				Effect.flatMap(text => Ref.set(storage, text)),
 				Effect.ignore({log: 'Warn', message: 'The disk sizes were not read'})
 			)
+			// A Linux sample reads /proc, and each app's cgroup, so the history can split memory and CPU by app; a slow cgroup read only drops the apps.
+			const linux = Effect.fnUntraced(function* (time: number, disks: string, old?: Counters) {
+				const files = yield* Effect.all(
+					{
+						load: fs.readFileString('/proc/loadavg'),
+						memory: fs.readFileString('/proc/meminfo'),
+						stat: fs.readFileString('/proc/stat'),
+						uptime: fs.readFileString('/proc/uptime')
+					},
+					{concurrency: 'unbounded'}
+				)
+				const current = yield* counted(() => counters(files.stat, files.uptime, time))
+				const shares = yield* pipe(
+					apps,
+					Effect.timeout('1 second'),
+					Effect.flatMap(usage =>
+						Ref.modify(lastApps, last => {
+							const cgroups = {cgroups: usage, time, total: current.cpuTotal}
+							return [appShares(cgroups, Option.getOrUndefined(last)), Option.some(cgroups)]
+						})
+					),
+					Effect.asSome,
+					Effect.catchTag('TimeoutError', () => Effect.succeedNone)
+				)
+				const value = yield* sampled(() => ({
+					...sample(current, files.memory, disks, old, files.load),
+					...Option.match(shares, {onNone: () => ({}), onSome: usage => ({apps: usage})})
+				}))
+				return {current, value}
+			})
+			// A Mac has no cgroups, so its samples carry no apps.
+			const darwin = Effect.fnUntraced(function* (time: number, disks: string, old?: Counters) {
+				const memory = yield* Effect.scoped(execute('vm_stat', []))
+				const uptime = Duration.toSeconds(Duration.nanos(yield* Clock.monotonicTimeNanos))
+				const current = yield* counted(() => cpuCounters(cpus(), uptime, time))
+				const value = yield* sampled(() =>
+					reading(current, vmStatMemory(memory, totalmem()), rootVolume(disks), loadavg(), old)
+				)
+				return {current, value}
+			})
 			const collect = pipe(
 				Effect.gen(function* () {
 					const time = yield* Clock.currentTimeMillis
-					const files = yield* Effect.all(
-						{
-							load: fs.readFileString('/proc/loadavg'),
-							memory: fs.readFileString('/proc/meminfo'),
-							stat: fs.readFileString('/proc/stat'),
-							uptime: fs.readFileString('/proc/uptime')
-						},
-						{concurrency: 'unbounded'}
-					)
-					const current = yield* pipe(
-						Effect.try({
-							catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}),
-							try: () => counters(files.stat, files.uptime, time)
-						}),
-						Effect.flatMap(Schema.decodeEffect(Counters))
-					)
 					const old = Option.getOrUndefined(yield* Ref.get(previous))
-					// Apps' usage rides along, so the history can split memory and CPU by app; a slow read only drops it.
-					const shares = yield* pipe(
-						apps,
-						Effect.timeout('1 second'),
-						Effect.flatMap(usage =>
-							Ref.modify(lastApps, last => {
-								const reading = {cgroups: usage, time, total: current.cpuTotal}
-								return [appShares(reading, Option.getOrUndefined(last)), Option.some(reading)]
-							})
-						),
-						Effect.asSome,
-						Effect.catchTag('TimeoutError', () => Effect.succeedNone)
-					)
 					const disks = yield* Ref.get(storage)
-					const value = yield* pipe(
-						Effect.try({
-							catch: cause => DeployError.make({cause, message: 'The machine sample is unreadable.'}),
-							try: () => ({
-								...sample(current, files.memory, disks, old, files.load),
-								...Option.match(shares, {onNone: () => ({}), onSome: usage => ({apps: usage})})
-							})
-						}),
-						Effect.flatMap(Schema.decodeEffect(Sample))
-					)
-					yield* Ref.set(previous, Option.some(current))
+					const measured = yield* Boolean.match(platform === 'darwin', {
+						onFalse: () => linux(time, disks, old),
+						onTrue: () => darwin(time, disks, old)
+					})
+					yield* Ref.set(previous, Option.some(measured.current))
 					const before = yield* Ref.get(state)
-					const samples = compact([...before, value], time)
+					const samples = compact([...before, measured.value], time)
 					yield* Ref.set(state, samples)
 					const retained = HashSet.fromIterable(Array.map(samples, entry => entry.time))
 					const hour = Math.floor(time / 3_600_000)

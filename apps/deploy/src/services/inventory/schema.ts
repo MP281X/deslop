@@ -138,7 +138,7 @@ export const RunRequest = Schema.Struct({
 export type RunJobInput = typeof RunJobInput.Type
 export const RunJobInput = Schema.Struct({
 	job: Schema.String.annotate({description: 'A scheduled job name as list_apps shows it.'}),
-	worker: Schema.optionalKey(Schema.String.annotate({description: 'The worker running the job, when both do.'}))
+	worker: Schema.optionalKey(Schema.String.annotate({description: 'The worker running the job, when several do.'}))
 })
 
 export type ListAppsInput = typeof ListAppsInput.Type
