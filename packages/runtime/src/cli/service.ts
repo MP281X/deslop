@@ -1,7 +1,10 @@
+import {platform} from 'node:process'
+
 import {Array, Boolean, Config, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
+import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#cli/launchd.ts'
 import {AppError} from '#cli/schema.ts'
 
 // systemd expands percent specifiers even inside a quoted argument.
@@ -33,6 +36,7 @@ const unitDirectory = Effect.gen(function* () {
 
 // `restart: false` leaves a running process alone, for one that reloads its own configuration.
 export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
+	if (platform === 'darwin') return yield* installAgent(name, command, options)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const home = yield* Config.String('HOME')
@@ -52,6 +56,7 @@ export const install = Effect.fnUntraced(function* (name: string, command: strin
 
 // A separate oneshot, so updating survives the restart of the app it updates.
 export const installUpdates = Effect.fnUntraced(function* (name: string, command: string[]) {
+	if (platform === 'darwin') return yield* installUpdateAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* unitDirectory
@@ -71,6 +76,7 @@ export const installUpdates = Effect.fnUntraced(function* (name: string, command
 })
 
 export const uninstall = Effect.fnUntraced(function* (name: string) {
+	if (platform === 'darwin') return yield* uninstallAgents(name)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* unitDirectory
@@ -85,9 +91,11 @@ export const uninstall = Effect.fnUntraced(function* (name: string) {
 })
 
 export function status(name: string) {
+	if (platform === 'darwin') return agentStatus(name)
 	return systemctl('show', `deslop-${name}.service`, '--property=LoadState,ActiveState,SubState,MainPID')
 }
 
 export function restart(name: string) {
+	if (platform === 'darwin') return restartAgent(name)
 	return pipe(systemctl('restart', `deslop-${name}.service`), Effect.timeout('30 seconds'))
 }

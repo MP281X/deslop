@@ -1,8 +1,12 @@
+import {userInfo} from 'node:os'
+import {execPath, platform} from 'node:process'
+
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
 import {
 	Array,
+	Boolean,
 	ConfigProvider,
 	Effect,
 	Fiber,
@@ -60,7 +64,7 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 
 it.layer(NodeServices.layer)('Service lifecycle', test => {
 	test.effect(
-		'installs a restarting unit and its update timer, then uninstalls both while retaining app data',
+		'installs a restarting service and its update schedule, then uninstalls both while retaining app data',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const home = yield* fs.makeTempDirectoryScoped()
@@ -90,7 +94,7 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 						pid: ChildProcessSpawner.ProcessId(1),
 						stderr: Stream.empty,
 						stdin: Sink.drain,
-						stdout: Stream.make(new TextEncoder().encode('ActiveState=active\n')),
+						stdout: Stream.make(new TextEncoder().encode('ActiveState=active\n\tstate = running\n')),
 						unref: Effect.succeed(Effect.void)
 					})
 				})
@@ -103,19 +107,44 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 				)
 			}
 			const entry = `${home}/.deslop/fixture/current/dist/server.js`
-			yield* run(install('fixture', ['/node', entry, '--traces', 'https://example.com/%u$HOME"\n[Service]']))
-			yield* run(installUpdates('fixture', ['/node', entry, 'service', 'update']))
-			const units = `${home}/.config/systemd/user`
-			const unit = yield* fs.readFileString(`${units}/deslop-fixture.service`)
-			assert.include(unit, `ExecStart="/node" "${entry}" "--traces" "https://example.com/%%u$$HOME\\"\\n[Service]"`)
-			assert.include(unit, `EnvironmentFile=-${home}/.deslop/fixture.env\n`)
-			assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.service`), '"service" "update"')
-			assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.timer`), 'OnUnitInactiveSec=15min')
-			assert.includeMembers(yield* Ref.get(commands), [
-				'systemctl --user restart deslop-fixture.service',
-				'systemctl --user enable --now deslop-fixture-update.timer'
-			])
-			assert.include(yield* run(status('fixture')), 'ActiveState=active')
+			yield* run(install('fixture', [execPath, entry, '--traces', 'https://example.com/%u$HOME"\n[Service]']))
+			yield* run(installUpdates('fixture', [execPath, entry, 'service', 'update']))
+			const units = Boolean.match(platform === 'darwin', {
+				onFalse: () => `${home}/.config/systemd/user`,
+				onTrue: () => `${home}/Library/LaunchAgents`
+			})
+			if (platform === 'darwin') {
+				const unit = yield* fs.readFileString(`${units}/deslop-fixture.plist`)
+				assert.include(
+					unit,
+					`<string>${execPath}</string>\n<string>--env-file-if-exists=${home}/.deslop/fixture.env</string>`
+				)
+				assert.include(unit, '<string>https://example.com/%u$HOME&quot;\n[Service]</string>')
+				assert.include(unit, '<key>SuccessfulExit</key><false/>')
+				assert.include(
+					yield* fs.readFileString(`${units}/deslop-fixture-update.plist`),
+					'<key>StartInterval</key><integer>900</integer>'
+				)
+				assert.includeMembers(yield* Ref.get(commands), [
+					`launchctl bootstrap gui/${userInfo().uid} ${units}/deslop-fixture.plist`,
+					`launchctl bootstrap gui/${userInfo().uid} ${units}/deslop-fixture-update.plist`
+				])
+				assert.include(yield* run(status('fixture')), 'state = running')
+			} else {
+				const unit = yield* fs.readFileString(`${units}/deslop-fixture.service`)
+				assert.include(
+					unit,
+					`ExecStart="${execPath}" "${entry}" "--traces" "https://example.com/%%u$$HOME\\"\\n[Service]"`
+				)
+				assert.include(unit, `EnvironmentFile=-${home}/.deslop/fixture.env\n`)
+				assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.service`), '"service" "update"')
+				assert.include(yield* fs.readFileString(`${units}/deslop-fixture-update.timer`), 'OnUnitInactiveSec=15min')
+				assert.includeMembers(yield* Ref.get(commands), [
+					'systemctl --user restart deslop-fixture.service',
+					'systemctl --user enable --now deslop-fixture-update.timer'
+				])
+				assert.include(yield* run(status('fixture')), 'ActiveState=active')
+			}
 			yield* fs.makeDirectory(`${home}/.deslop/fixture`, {recursive: true})
 			yield* fs.writeFileString(`${home}/.deslop/fixture/data`, 'keep')
 			yield* run(uninstall('fixture'))

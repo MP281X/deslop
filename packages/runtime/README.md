@@ -10,3 +10,11 @@ npm install --global @deslop/<app>
 ```
 
 Run `<app> --help` to list settings. Root `AGENTS.md` holds the repository's data and secrets policy.
+
+Services use systemd user units on Linux and launchd agents on macOS. On macOS, a GUI user must be logged in (installation can run over SSH): agents live in `~/Library/LaunchAgents/deslop-<app>.plist` in the `gui/<uid>` domain and start at login, not before it. Reinstall replaces the loaded agent; status prints its path, state, PID and last exit information. Failed apps restart after a three-second throttle; a successful exit does not restart.
+
+Both platforms set `NODE_ENV=production`, restrict newly created files to the user and read optional settings from `~/.deslop/<app>.env`. On macOS, Node loads that file with `--env-file-if-exists`; the service PATH is `~/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
+
+The separate `deslop-<app>-update` agent checks npm every 900 seconds on macOS (sleeping or already-running intervals are skipped). Updates install alongside the running release, atomically promote `~/.deslop/<app>/current`, restart only the app and retain the previous release. Uninstall removes the app and update agents but preserves application data.
+
+The runtime's `install(..., {restart: false})` leaves a running native helper alone. On macOS a native helper runs through `~/.deslop/<name>/executable`, an atomically replaced symlink, so its next launch uses the latest binary even after an old tool release is removed. Other plist changes take effect on the next bootstrap. Uninstall also removes that executable link.

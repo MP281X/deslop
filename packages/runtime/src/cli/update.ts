@@ -24,7 +24,7 @@ export const activate = Effect.fnUntraced(function* (name: string, target: strin
 	return current
 })
 
-// Never two processes: systemd stops the old one before starting the new.
+// Never two processes: the service manager stops the old one before starting the new.
 export const update = Effect.fnUntraced(function* (name: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
