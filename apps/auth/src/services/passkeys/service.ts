@@ -25,8 +25,8 @@ import {
 import {Base64Url} from 'effect/encoding'
 import {KeyValueStore} from 'effect/persistence'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {localAuth, rejected} from '@deslop/runtime/auth/utils'
+import {localAuth} from '@deslop/runtime/server/auth'
+import {AuthError, rejected} from '@deslop/runtime/shared/auth'
 
 import type {Assertion, Passkey, Registration} from '#services/passkeys/schema.ts'
 import {ClientData, CreationOptions, RequestOptions, StoredPasskeys, Transport} from '#services/passkeys/schema.ts'

@@ -2,8 +2,8 @@ import {Effect} from 'effect'
 
 import * as SecureStore from 'expo-secure-store'
 
-import {AuthError} from '#auth/schema.ts'
 import type {Storage} from '#mobile/session.ts'
+import {AuthError} from '#shared/auth.ts'
 
 // Outside session.ts: loading expo-secure-store crashes an app that does not build its native module.
 export const keychain = {

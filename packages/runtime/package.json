@@ -6,39 +6,20 @@
 		"#*": "./src/*"
 	},
 	"exports": {
-		"./ai": "./src/ai/service.ts",
-		"./ai/schema": "./src/ai/schema.ts",
-		"./cli": "./src/cli.ts",
-		"./schema": "./src/schema.ts",
-		"./cli/command": "./src/cli/command.ts",
-		"./cli/service": "./src/cli/service.ts",
-		"./auth/schema": "./src/auth/schema.ts",
-		"./auth/service": "./src/auth/service.ts",
-		"./auth/sessions": "./src/auth/sessions.ts",
-		"./auth/utils": "./src/auth/lib/utils.ts",
-		"./mobile": "./src/mobile/client.ts",
-		"./mobile/activations": "./src/mobile/activations.ts",
-		"./mobile/session": "./src/mobile/session.ts",
-		"./mobile/keychain": "./src/mobile/keychain.ts",
-		"./mobile/expo": "./src/mobile/expo.ts",
-		"./mobile/fingerprint": "./src/mobile/fingerprint.js",
-		"./mobile/metro": "./src/mobile/metro.ts",
-		"./net": "./src/net.ts",
-		"./rpc": "./src/rpc.ts",
-		"./server": "./src/server.ts",
-		"./vite": "./src/vite.ts",
-		"./web": "./src/web/client.tsx"
+		"./shared/*": "./src/shared/*.ts",
+		"./server/*": "./src/server/*.ts",
+		"./client/*": "./src/client/*.ts",
+		"./web/*": "./src/web/*.ts",
+		"./mobile/*": "./src/mobile/*.ts",
+		"./config/fingerprint": "./src/config/fingerprint.js",
+		"./config/*": "./src/config/*.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
-		"@deslop/components-web": "workspace:*",
 		"@effect/platform-node": "latest",
-		"@tanstack/react-router": "latest",
-		"effect": "latest",
-		"react": "latest",
-		"react-dom": "latest"
+		"effect": "latest"
 	},
 	"devDependencies": {
 		"@tailwindcss/vite": "latest",

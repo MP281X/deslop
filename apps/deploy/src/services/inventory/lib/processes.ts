@@ -1,8 +1,8 @@
 import {Array, Boolean, Clock, DateTime, Effect, FileSystem, Number, Option, Record, Schema, String, pipe} from 'effect'
 
-import {commandLabel} from '#services/inventory/lib/command.ts'
-import {processOwner} from '#services/inventory/lib/owners.ts'
-import {itemOwner} from '#services/inventory/lib/utils.ts'
+import {commandLabel} from './command.ts'
+
+import {itemOwner, processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
 import type {InventoryItem, Process} from '#services/inventory/schema.ts'
 

@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {Passkey} from '#services/passkeys/schema.ts'
 import {Role} from '#services/people/schema.ts'

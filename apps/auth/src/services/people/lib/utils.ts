@@ -1,7 +1,6 @@
 import {Array, Boolean, Cause, HashSet, Number, Option, Order, Result, String, Struct, pipe} from 'effect'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {isAdmin} from '@deslop/runtime/auth/utils'
+import {AuthError, isAdmin} from '@deslop/runtime/shared/auth'
 
 import type {AdmitParams, GitHubUser, MemberRow, Members, Role} from '#services/people/schema.ts'
 import {Person} from '#services/people/schema.ts'

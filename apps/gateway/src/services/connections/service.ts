@@ -35,10 +35,9 @@ import type {Headers} from 'effect/http'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import type {User} from '@deslop/runtime/auth/schema'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {ISSUER_PATH, adminIds, requireAdmin} from '@deslop/runtime/auth/utils'
+import {Auth, adminIds, requireAdmin} from '@deslop/runtime/server/auth'
+import type {User} from '@deslop/runtime/shared/auth'
+import {AuthError, ISSUER_PATH} from '@deslop/runtime/shared/auth'
 
 import {
 	clientMetadata,
@@ -46,7 +45,6 @@ import {
 	connectionInfo,
 	describe,
 	endSession,
-	gatewayUrl,
 	mcpClient,
 	serverIcons,
 	serverName,
@@ -70,8 +68,10 @@ import {
 	Token,
 	UpstreamError
 } from '#services/connections/schema.ts'
+import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period, UsageRange} from '#services/usage/schema.ts'
-import {usageWindow} from '#services/usage/utils.ts'
+
+export const gatewayUrl = Config.String('APP_URL')
 
 // A provider sign-in in progress, for ten minutes and in memory: a restart asks to connect again.
 type Pending = {

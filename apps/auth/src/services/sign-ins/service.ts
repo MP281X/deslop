@@ -23,8 +23,7 @@ import {Digest, SecureRandom} from 'effect/crypto'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL, rejected} from '@deslop/runtime/auth/utils'
+import {AUTH_URL, AuthError, rejected} from '@deslop/runtime/shared/auth'
 
 import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'

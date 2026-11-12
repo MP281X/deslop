@@ -4,9 +4,10 @@ import {Context, Effect, Function, Layer, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
-import {AiGateway, AiUnavailable} from '@deslop/runtime/ai'
+import {AiGateway, AiUnavailable} from '@deslop/runtime/server/ai'
 
-import {Organizer} from '#services/notes/lib/organization.ts'
+import {Organizer} from './organization.ts'
+
 import {Note} from '#services/notes/schema.ts'
 
 const NOTE = Note.make({

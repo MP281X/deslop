@@ -1,6 +1,6 @@
 import {Array, Option, Schema, String} from 'effect'
 
-import {SecureOrigin} from '@deslop/runtime/schema'
+import {SecureOrigin} from '@deslop/runtime/shared/schema'
 
 export class DeployError extends Schema.TaggedError<DeployError>()('DeployError', {
 	cause: Schema.optional(Schema.Defect()),

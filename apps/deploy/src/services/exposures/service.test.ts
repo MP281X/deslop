@@ -19,7 +19,8 @@ import {
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {ToolPath, layerKeyValueStore} from '@deslop/runtime/server'
+import {ToolPath} from '@deslop/runtime/server/process'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {Exposures} from '#services/exposures/service.ts'
 import type {Serve} from '#services/inventory/schema.ts'

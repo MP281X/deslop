@@ -5,7 +5,7 @@ import {Context, Effect, FileSystem, Layer, PlatformError, Ref, Schema, String, 
 
 import {TestClock} from 'effect/testing'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {Sample} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'

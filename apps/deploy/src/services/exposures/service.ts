@@ -21,9 +21,8 @@ import {
 import {KeyValueStore} from 'effect/persistence'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {execute} from '@deslop/runtime/cli/command'
-import {install} from '@deslop/runtime/cli/service'
-import {ToolPath} from '@deslop/runtime/server'
+import {ToolPath, execute} from '@deslop/runtime/server/process'
+import {install} from '@deslop/runtime/server/services'
 
 import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
 

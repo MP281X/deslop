@@ -2,9 +2,9 @@ import {Array, DateTime, Effect, Option, Struct} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {findNotes} from '#services/notes/lib/search.ts'
+import {findNotes} from '#services/notes/lib/utils.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 import type {NoteRow} from '#tools/contracts.ts'

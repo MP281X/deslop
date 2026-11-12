@@ -2,7 +2,7 @@ import {Effect, Schema, Struct, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {Capture, Note, NoteId, NotesError, Tag} from '#services/notes/schema.ts'
 

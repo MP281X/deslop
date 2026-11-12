@@ -1,7 +1,7 @@
 import {AtomRpc} from 'effect/reactivity'
 
-import {RpcStream} from '@deslop/runtime/rpc'
-import * as WebRuntime from '@deslop/runtime/web'
+import {RpcStream} from '@deslop/runtime/shared/rpc'
+import * as WebRuntime from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 

@@ -11,6 +11,6 @@ Register only `https://<gateway>/mcp` in each harness. Admins add and connect se
 
 App servers start with `--gateway https://gateway.mp281x.xyz`.
 
-Use `AiGateway` from `@deslop/runtime/ai`: `yield* gateway.apiUrl(provider)` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. OpenRouter's scoped `withClientTransform` does not cover streaming chat completions.
+Use `AiGateway` from `@deslop/runtime/server/ai`: `yield* gateway.apiUrl(provider)` and pass `yield* gateway.authorize(userId)` as the provider client's **construction-time** `transformClient`. OpenRouter's scoped `withClientTransform` does not cover streaming chat completions.
 
 Common flags and service commands: [Deslop app runtime](https://github.com/MP281X/deslop/blob/main/packages/runtime/README.md).

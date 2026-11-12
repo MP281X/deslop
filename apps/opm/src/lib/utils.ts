@@ -9,7 +9,7 @@ import {hues} from '@deslop/components-mobile/theme'
 import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import * as MobileSession from '@deslop/runtime/mobile/session'
-import {RpcStream} from '@deslop/runtime/rpc'
+import {RpcStream} from '@deslop/runtime/shared/rpc'
 
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'

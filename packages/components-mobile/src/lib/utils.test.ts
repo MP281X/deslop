@@ -8,7 +8,7 @@ import {File} from 'expo-file-system'
 // oxlint-disable-next-line no-restricted-imports -- Node cannot load native modules; stub only platform imports, exercising the real cache and atom runtime.
 import {vi} from 'vite-plus/test'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {readClipboard} from '#lib/clipboard.ts'
 import {cachedList} from '#lib/utils.ts'

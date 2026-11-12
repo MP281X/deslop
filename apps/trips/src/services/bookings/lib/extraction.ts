@@ -4,7 +4,7 @@ import {Clock, Context, DateTime, Effect, Layer, Option, Predicate, Redacted, Sc
 
 import {HttpClient} from 'effect/http'
 
-import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/ai'
+import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/server/ai'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookingsError, Extraction} from '#services/bookings/schema.ts'

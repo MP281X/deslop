@@ -10,8 +10,7 @@ import {Jwks, Jwt} from 'effect/jose'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {AccessClaims} from '@deslop/runtime/auth/schema'
-import {SESSION_COOKIE} from '@deslop/runtime/auth/utils'
+import {AccessClaims, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
 
 import {Tokens} from '#services/tokens/service.ts'
 

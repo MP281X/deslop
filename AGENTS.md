@@ -27,7 +27,7 @@
 
 - **AI.** No AI wrapper package.
 - **Ownership.** Abstractions add capability or ease reading, not just shorter files; domain names and plain control flow over wrappers and configuration languages.
-- **Imports.** Service packages export only `./schema`, `./service` and `./utils`.
+- **Imports.** A service folder shows only `schema.ts`, `service.ts` and `lib/utils.ts`; its own files reach the rest with `./`. The runtime is imported by side: `shared`, `server`, `client`, `web`, `mobile`, `config`.
 - **Arguments.** Short, independent arguments stay positional, not wrapped just to name them.
 - **Personal tools.** No stdio bridge, container, download command or telemetry Collector.
 - **MCP tools.** Serve agent work, not every page action; none for apps agents do not need, including Trips, OPM and Portfolio.

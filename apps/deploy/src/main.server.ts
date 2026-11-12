@@ -2,8 +2,10 @@ import {Effect, Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
-import * as CliRuntime from '@deslop/runtime/cli'
-import * as ServerRuntime from '@deslop/runtime/server'
+import * as CliRuntime from '@deslop/runtime/server/cli'
+import * as ServerRuntime from '@deslop/runtime/server/http'
+import {ToolPath} from '@deslop/runtime/server/process'
+import {dataDirectory} from '@deslop/runtime/server/store'
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -19,13 +21,9 @@ import {ToolHandlers} from '#tools/handlers.ts'
 const layerServices = pipe(
 	Fleet.layer,
 	Layer.provideMerge(
-		Layer.mergeAll(
-			Inventory.layer,
-			Metrics.layer,
-			Layer.unwrap(Effect.map(ServerRuntime.dataDirectory, Exposures.layer))
-		)
+		Layer.mergeAll(Inventory.layer, Metrics.layer, Layer.unwrap(Effect.map(dataDirectory, Exposures.layer)))
 	),
-	Layer.provide(ServerRuntime.ToolPath.layer)
+	Layer.provide(ToolPath.layer)
 )
 
 CliRuntime.runApp({

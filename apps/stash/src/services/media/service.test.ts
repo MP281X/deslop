@@ -23,8 +23,8 @@ import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {AiGateway} from '@deslop/runtime/ai'
-import {ToolPath} from '@deslop/runtime/server'
+import {AiGateway} from '@deslop/runtime/server/ai'
+import {ToolPath} from '@deslop/runtime/server/process'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'

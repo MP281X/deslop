@@ -5,11 +5,12 @@ import {Array, Context, Effect, FileSystem, Layer, Path, Result, Schema, String}
 
 import {KeyValueStore} from 'effect/persistence'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
+
+import {makeUsage, readUsage} from './usage.ts'
 
 import {report} from '#services/ai/lib/utils.ts'
 import {AiUsageEntry} from '#services/ai/schema.ts'
-import {makeUsage, readUsage} from '#services/ai/usage.ts'
 
 const EMPTY: AiUsageEntry = {
 	app: 'https://stash.mp281x.xyz',

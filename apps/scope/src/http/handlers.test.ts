@@ -9,7 +9,7 @@ import {HttpClient, HttpRouter} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {runIds} from '#services/github/lib/utils.ts'

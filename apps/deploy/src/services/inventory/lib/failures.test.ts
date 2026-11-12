@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array} from 'effect'
 
-import {unitFailures} from '#services/inventory/lib/failures.ts'
+import {unitFailures} from './failures.ts'
 
 it('says why a failed service stopped and when, instead of repeating its command', () => {
 	const failures = unitFailures(

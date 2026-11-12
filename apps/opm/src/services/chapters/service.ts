@@ -29,7 +29,8 @@ import {
 import {Xml} from 'effect/encoding'
 import {HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse} from 'effect/http'
 
-import {openStore} from '#services/chapters/lib/store.ts'
+import {openStore} from './lib/store.ts'
+
 import {
 	byNumber,
 	chaptersFromIndex,

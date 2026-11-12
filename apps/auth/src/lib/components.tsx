@@ -6,7 +6,7 @@ import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-ico
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 
-import {EmptyState} from '@deslop/components-web/fallbacks'
+import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
@@ -14,7 +14,6 @@ import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn} from '@deslop/components-web/utils'
-import * as WebRuntime from '@deslop/runtime/web'
 
 import android from '#lib/brands/android.svg'
 import apple from '#lib/brands/apple.svg'
@@ -331,7 +330,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 	const refresh = useAtomRefresh(signInListAtom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.match(value, {
 		onNone: () => null,

@@ -23,12 +23,13 @@ import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {Dns, NetAddress} from 'effect/net'
 
-import {isPublicIp} from '@deslop/runtime/net'
+import {isPublicIp} from '@deslop/runtime/shared/net'
 
-import {sourceProxy, sticky} from '#services/media/lib/proxy.ts'
-import {pageText} from '#services/notes/lib/page.ts'
+import {pageText} from './page.ts'
+import {conversationPlan, conversationExtraction, tikTokExtraction} from './x.ts'
+
+import {sourceProxy, sticky} from '#services/media/service.ts'
 import {canonical, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
-import {conversationPlan, conversationExtraction, tikTokExtraction} from '#services/notes/lib/x.ts'
 import type {Image} from '#services/notes/schema.ts'
 import {
 	Extraction,

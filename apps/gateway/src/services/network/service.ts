@@ -7,8 +7,8 @@ import {Array, Effect, Layer, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {isIpAddress, isPublicAddress} from '@deslop/runtime/net'
+import {AuthError} from '@deslop/runtime/shared/auth'
+import {isIpAddress, isPublicAddress} from '@deslop/runtime/shared/net'
 
 function requestUrl(input: RequestInfo | URL) {
 	if (input instanceof Request) return new URL(input.url)

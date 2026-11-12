@@ -24,9 +24,9 @@ import {
 
 import {KeyValueStore} from 'effect/persistence'
 
-import {execute} from '@deslop/runtime/cli/command'
+import {execute} from '@deslop/runtime/server/process'
 
-import {processOwner} from '#services/inventory/lib/owners.ts'
+import {processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
 import {
 	appCgroup,

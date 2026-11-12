@@ -25,9 +25,9 @@ import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 import type {ColorValue} from 'react-native'
 
-import {isDenied} from '@deslop/runtime/auth/utils'
-import {updateAtom} from '@deslop/runtime/mobile'
+import {updateAtom} from '@deslop/runtime/mobile/client'
 import type {Session} from '@deslop/runtime/mobile/session'
+import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {colors, radius, space, text} from './theme.ts'
 

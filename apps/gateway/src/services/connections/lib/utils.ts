@@ -1,7 +1,6 @@
 import {
 	Array,
 	Boolean,
-	Config,
 	Effect,
 	Match,
 	Number,
@@ -19,13 +18,11 @@ import {Client} from '@modelcontextprotocol/client'
 import type {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {HttpClientError} from 'effect/http'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {UpstreamError} from '#services/connections/schema.ts'
 import type {Connection, ConnectionInfo, McpUsageBucket, ServerIcon} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
-
-export const gatewayUrl = Config.String('APP_URL')
 
 export function mcpClient() {
 	return new Client({name: 'Deslop MCP gateway', version: '0.1.0'}, {versionNegotiation: {mode: 'auto'}})

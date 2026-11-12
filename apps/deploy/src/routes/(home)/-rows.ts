@@ -1,8 +1,7 @@
 import {Array, Boolean, HashSet, Number, Option, Order, String} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
-import {sourceBelongsToWorker} from '#services/inventory/lib/page.ts'
-import {appUsage, dot, itemOwner, type Row, status} from '#services/inventory/lib/utils.ts'
+import {appUsage, dot, itemOwner, type Row, sourceBelongsToWorker, status} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'

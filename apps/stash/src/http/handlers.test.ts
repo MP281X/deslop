@@ -5,12 +5,14 @@ import {Array, Context, Effect, FileSystem, Layer, Option, Schema, Stream, pipe}
 
 import {HttpRouter} from 'effect/http'
 
-import {Auth, HttpAuth} from '@deslop/runtime/auth/service'
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {Auth, HttpAuth} from '@deslop/runtime/server/auth'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {Media} from '#services/media/service.ts'
+// oxlint-disable-next-line no-restricted-imports -- The handlers run over real notes, with stand-ins for the page reader and the AI that Notes keeps private.
 import {Sources} from '#services/notes/lib/extraction.ts'
+// oxlint-disable-next-line no-restricted-imports -- As above: the AI organizer is Notes' own internal.
 import {Organizer} from '#services/notes/lib/organization.ts'
 import type {Note} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'

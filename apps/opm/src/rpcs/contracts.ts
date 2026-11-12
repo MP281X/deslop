@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {RpcAuth} from '@deslop/runtime/auth/utils'
+import {RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {ChaptersError, ChaptersEvent, PushToken, ReadingUpdate} from '#services/chapters/schema.ts'
 

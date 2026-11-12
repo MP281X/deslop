@@ -18,8 +18,9 @@ import {
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {RpcStream} from '@deslop/runtime/rpc'
-import * as WebRuntime from '@deslop/runtime/web'
+import {live} from '@deslop/runtime/client/live'
+import {RpcStream} from '@deslop/runtime/shared/rpc'
+import * as WebRuntime from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {failedEntry} from '#services/telemetry/lib/utils.ts'
@@ -166,7 +167,7 @@ function openingApp(overview: Overview) {
 export const overviewAtom = Atom.family((range: Range) =>
 	Atom.keepAlive(
 		RpcClient.runtime.atom(get =>
-			WebRuntime.live(
+			live(
 				get,
 				pipe(
 					RpcClient,
@@ -182,10 +183,7 @@ const traceAtoms = Atom.family((range: Range) =>
 	Atom.family((_id: string) =>
 		RpcClient.runtime.atom(get => {
 			get(overviewAtom(range))
-			return WebRuntime.live(
-				get,
-				Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id: _id})))
-			)
+			return live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id: _id}))))
 		})
 	)
 )

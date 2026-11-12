@@ -27,12 +27,13 @@ import {
 
 import {TestClock} from 'effect/testing'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
+
+import {Sources} from './lib/extraction.ts'
+import {Organizer} from './lib/organization.ts'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
-import {Sources} from '#services/notes/lib/extraction.ts'
-import {Organizer} from '#services/notes/lib/organization.ts'
 import type {Note, TagEntry} from '#services/notes/schema.ts'
 import {Extraction, NotesError, NotesEvent} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'

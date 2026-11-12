@@ -27,18 +27,19 @@ import {
 	pipe
 } from 'effect'
 
-import {DEVELOPER} from '@deslop/runtime/auth/utils'
-import {dataDirectory, listEvents} from '@deslop/runtime/server'
+import {dataDirectory} from '@deslop/runtime/server/store'
+import {DEVELOPER} from '@deslop/runtime/shared/auth'
+import {listEvents} from '@deslop/runtime/shared/list'
+
+import {Sources} from './lib/extraction.ts'
+import {Organizer} from './lib/organization.ts'
+import {openStore} from './lib/store.ts'
+import {reconcileOrganization, reconcileDefinitions} from './lib/tags.ts'
 
 import {clock} from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
-import {Sources} from '#services/notes/lib/extraction.ts'
-import {Organizer} from '#services/notes/lib/organization.ts'
-import {findNotes} from '#services/notes/lib/search.ts'
-import {openStore} from '#services/notes/lib/store.ts'
-import {reconcileOrganization, reconcileDefinitions} from '#services/notes/lib/tags.ts'
-import {captureUrl, commentFor, hasVideo, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
+import {captureUrl, commentFor, findNotes, hasVideo, sourceFor, tagCounts} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, NotesEvent, Picture, TagDefinition} from '#services/notes/schema.ts'
 import {ImageType, Note, NotesError, TagEntry} from '#services/notes/schema.ts'
 
@@ -588,12 +589,16 @@ export class Notes extends Context.Service<
 		)
 }
 
-export const layerNotes = Layer.unwrap(
-	pipe(
-		dataDirectory,
-		Effect.mapBoth({
-			onFailure: cause => NotesError.make({cause, message: 'The notes folder could not be read.'}),
-			onSuccess: Notes.layer
-		})
-	)
+// Reading sources and organizing notes are the notes' own internals; tests provide stand-ins to `Notes.layer` instead.
+export const layerNotes = pipe(
+	Layer.unwrap(
+		pipe(
+			dataDirectory,
+			Effect.mapBoth({
+				onFailure: cause => NotesError.make({cause, message: 'The notes folder could not be read.'}),
+				onSuccess: Notes.layer
+			})
+		)
+	),
+	Layer.provide(Layer.mergeAll(Sources.layer, Organizer.layer))
 )

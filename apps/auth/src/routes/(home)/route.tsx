@@ -11,7 +11,7 @@ import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState, Error} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
-import * as WebRuntime from '@deslop/runtime/web'
+import {searchOf} from '@deslop/components-web/router'
 
 import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signOutAtom} from '#lib/utils.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
@@ -137,4 +137,4 @@ function Shell() {
 	)
 }
 
-export const Route = createFileRoute('/(home)')({component: Shell, validateSearch: WebRuntime.searchOf(Search)})
+export const Route = createFileRoute('/(home)')({component: Shell, validateSearch: searchOf(Search)})

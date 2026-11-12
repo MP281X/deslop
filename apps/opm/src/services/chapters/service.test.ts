@@ -30,12 +30,12 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {layerKeyValueStore} from '@deslop/runtime/server'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import onePunchMan from './fixtures/one-punch-man.xml?raw'
 import opmFolk from './fixtures/opm-folk.xml?raw'
+import {openStore} from './lib/store.ts'
 
-import {openStore} from '#services/chapters/lib/store.ts'
 import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import {Chapter, Series} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'

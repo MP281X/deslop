@@ -4,8 +4,8 @@ import {Effect, Fiber, Layer, Queue, Ref, Stream, pipe} from 'effect'
 
 import {RpcTest} from 'effect/rpc'
 
-import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER} from '@deslop/runtime/auth/utils'
+import {Auth} from '@deslop/runtime/server/auth'
+import {DEVELOPER} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'

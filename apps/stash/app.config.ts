@@ -1,4 +1,4 @@
-import * as ExpoRuntime from '@deslop/runtime/mobile/expo'
+import * as ExpoRuntime from '@deslop/runtime/config/expo'
 
 const app = ExpoRuntime.make({projectId: 'c9620553-0dc5-4e08-b691-a47fa3cab00e', slug: 'stash'})
 

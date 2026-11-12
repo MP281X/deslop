@@ -2,7 +2,7 @@ import {Schema} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
-import {RpcAuth} from '@deslop/runtime/auth/utils'
+import {RpcAuth} from '@deslop/runtime/shared/auth'
 
 import {BookingId, BookingSource, BookingsError, BookingsEvent} from '#services/bookings/schema.ts'
 import {ActivityClaim, ActivityToken, Device, PushError} from '#services/push/schema.ts'

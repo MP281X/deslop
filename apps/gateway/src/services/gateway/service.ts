@@ -28,22 +28,20 @@ import {Base64Url} from 'effect/encoding'
 import {FetchHttpClient, HttpRouter, HttpServerRequest} from 'effect/http'
 import type {Headers} from 'effect/http'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import type {User} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {bearerOf, isJwt} from '@deslop/runtime/auth/utils'
-import {MCP_PATH} from '@deslop/runtime/schema'
+import {Auth} from '@deslop/runtime/server/auth'
+import {AuthError, bearerOf, isJwt} from '@deslop/runtime/shared/auth'
+import type {User} from '@deslop/runtime/shared/auth'
+import {MCP_PATH} from '@deslop/runtime/shared/schema'
 
 import {
 	connectionFailure,
 	connectionStatus,
 	endSession,
-	gatewayUrl,
 	mcpClient,
 	serverIcons
 } from '#services/connections/lib/utils.ts'
 import type {Connection} from '#services/connections/schema.ts'
-import {Connections} from '#services/connections/service.ts'
+import {Connections, gatewayUrl} from '#services/connections/service.ts'
 import {compact, prunedTools} from '#services/gateway/lib/utils.ts'
 import {RemoteTools, ToolArguments, ToolRequest} from '#services/gateway/schema.ts'
 

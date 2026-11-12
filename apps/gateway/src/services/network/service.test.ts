@@ -5,7 +5,7 @@ import {Context, Effect, Layer, MutableList, Result, Schema, pipe} from 'effect'
 
 import {FetchHttpClient, HttpClient} from 'effect/http'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {layerUpstream} from '#services/network/service.ts'
 

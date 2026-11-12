@@ -1,6 +1,6 @@
 import {Context, Effect, Schema, pipe} from 'effect'
 
-import {ClientInfo, User} from '@deslop/runtime/auth/schema'
+import {ClientInfo, User} from '@deslop/runtime/shared/auth'
 
 // Credentials retain the registration that issued them, never a later membership with the same GitHub id.
 export type CredentialOwner = typeof CredentialOwner.Type

@@ -6,8 +6,8 @@ import {McpServer} from 'effect/ai'
 import {HttpServerResponse} from 'effect/http'
 import {RateLimiter} from 'effect/persistence'
 
-import * as CliRuntime from '@deslop/runtime/cli'
-import * as ServerRuntime from '@deslop/runtime/server'
+import * as CliRuntime from '@deslop/runtime/server/cli'
+import * as ServerRuntime from '@deslop/runtime/server/http'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import icon from '#routes/icon.svg'

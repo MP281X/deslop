@@ -45,7 +45,7 @@ import {colors, radius, space, text} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
-import {AuthError} from '@deslop/runtime/auth/schema'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {Byline} from '#lib/components.tsx'
 import {BrandLogo} from '#lib/icons.tsx'

@@ -1,28 +1,18 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Array, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
+import {Array, Option, Predicate, String} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
-import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {AsyncResult} from 'effect/reactivity'
 import {useEffect, useRef, useState} from 'react'
 import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
+
+import type {Account} from '@deslop/runtime/shared/schema'
+import {accountAtom} from '@deslop/runtime/web/client'
 
 import {Avatar, AvatarFallback, AvatarImage} from '#components/ui/avatar.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
-
-type Account = typeof Account.Type
-// Without an issuer the account is the developer, who cannot sign out.
-const Account = Schema.Struct({id: Schema.String, name: Schema.String, signOut: Schema.Boolean})
-
-const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
-	pipe(
-		HttpClient.get('/auth/user'),
-		Effect.flatMap(HttpClientResponse.filterStatusOk),
-		Effect.flatMap(HttpClientResponse.schemaBodyJson(Account))
-	)
-)
 
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
 async function loadMenu() {

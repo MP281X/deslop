@@ -4,10 +4,9 @@ import {SecureRandom} from 'effect/crypto'
 import type {Headers} from 'effect/http'
 import {KeyValueStore} from 'effect/persistence'
 
-import type {User} from '@deslop/runtime/auth/schema'
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER, adminIds, bearerOf, isAdmin, localAuth, rejected, requireAdmin} from '@deslop/runtime/auth/utils'
+import {Auth, adminIds, localAuth, requireAdmin} from '@deslop/runtime/server/auth'
+import type {User} from '@deslop/runtime/shared/auth'
+import {AuthError, DEVELOPER, bearerOf, isAdmin, rejected} from '@deslop/runtime/shared/auth'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'

@@ -4,10 +4,11 @@ import {Array, Boolean, Context, Effect, Layer, Option, Struct, SubscriptionRef,
 import {SecureRandom} from 'effect/crypto'
 import {KeyValueStore} from 'effect/persistence'
 
-import {listEvents} from '@deslop/runtime/server'
+import {listEvents} from '@deslop/runtime/shared/list'
 
-import {Extractor} from '#services/bookings/lib/extraction.ts'
-import {Places} from '#services/bookings/lib/places.ts'
+import {Extractor} from './lib/extraction.ts'
+import {Places} from './lib/places.ts'
+
 import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingSource, BookingsEvent, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
 import {BookingList, BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
@@ -180,3 +181,6 @@ export class Bookings extends Context.Service<
 		})
 	)
 }
+
+// Place lookups and extraction are the bookings' own internals; tests provide stand-ins to `Bookings.layer` instead.
+export const layerBookings = Layer.provide(Bookings.layer, Layer.mergeAll(Places.layer, Extractor.layer))

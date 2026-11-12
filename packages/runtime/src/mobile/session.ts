@@ -10,22 +10,22 @@ import {AuthRequest, makeRedirectUri} from 'expo-auth-session'
 import Constants from 'expo-constants'
 import {Alert} from 'react-native'
 
-import {layerRpcStreamClient} from '#rpc.ts'
-import {Account, RPC_PATH} from '#schema.ts'
-import {layerOtlp} from '#telemetry.ts'
-
+import {activationsAtom} from '#mobile/activations.ts'
+import {extra} from '#mobile/client.ts'
 import {
 	AUTHORIZE_PATH,
 	AUTH_URL,
+	AuthError,
 	ISSUER,
+	SessionHandle,
 	clientIdOf,
 	layerRpcAuthClient,
 	needsSignIn,
 	rejected
-} from '#auth/lib/utils.ts'
-import {AuthError, SessionHandle} from '#auth/schema.ts'
-import {activationsAtom} from '#mobile/activations.ts'
-import {extra} from '#mobile/client.ts'
+} from '#shared/auth.ts'
+import {layerRpcStreamClient} from '#shared/rpc.ts'
+import {Account, RPC_PATH} from '#shared/schema.ts'
+import {layerOtlp} from '#shared/telemetry.ts'
 
 type SessionJson = typeof SessionJson.Type
 const SessionJson = Schema.fromJsonString(SessionHandle)

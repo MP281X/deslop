@@ -2,7 +2,7 @@ import {Array, Effect, Schema, String, pipe} from 'effect'
 
 import {HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
-import {CurrentUser} from '@deslop/runtime/auth/utils'
+import {CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {Capture, FileType, NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'

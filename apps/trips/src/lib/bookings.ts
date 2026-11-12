@@ -9,7 +9,7 @@ import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipb
 import {makeRemoval} from '@deslop/components-mobile/removal'
 import {alert, cachedList} from '@deslop/components-mobile/utils'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
-import {listReducer} from '@deslop/runtime/schema'
+import {listReducer} from '@deslop/runtime/shared/list'
 
 import {RpcClient, session, withClient} from '#lib/session.ts'
 import {byStart} from '#services/bookings/lib/utils.ts'

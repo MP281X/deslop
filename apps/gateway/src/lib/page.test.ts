@@ -12,10 +12,9 @@ import {TestClock} from 'effect/testing'
 import {createElement} from 'react'
 import {renderToString} from 'react-dom/server'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import {DEVELOPER} from '@deslop/runtime/auth/utils'
-import * as ServerRuntime from '@deslop/runtime/server'
+import {Auth} from '@deslop/runtime/server/auth'
+import * as ServerRuntime from '@deslop/runtime/server/http'
+import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
 import type {serversAtom} from '#lib/utils.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'

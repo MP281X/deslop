@@ -28,10 +28,19 @@ import {Jwk, Jwks, Jwt} from 'effect/jose'
 import {KeyValueStore, RateLimiter} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
-import {AccessClaims, AuthError, TokenResponse, User} from '@deslop/runtime/auth/schema'
-import {HttpAuth} from '@deslop/runtime/auth/service'
-import {ACCESS_SECONDS, AUTH_URL, CurrentUser, JWKS_PATH, clientIdOf} from '@deslop/runtime/auth/utils'
-import * as ServerRuntime from '@deslop/runtime/server'
+import {HttpAuth} from '@deslop/runtime/server/auth'
+import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {
+	ACCESS_SECONDS,
+	AUTH_URL,
+	AccessClaims,
+	AuthError,
+	CurrentUser,
+	JWKS_PATH,
+	TokenResponse,
+	User,
+	clientIdOf
+} from '@deslop/runtime/shared/auth'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {Apps} from '#services/apps/service.ts'
@@ -119,7 +128,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 				})
 			)
 		),
-		Layer.provide(ServerRuntime.layerKeyValueStore(directory))
+		Layer.provide(layerKeyValueStore(directory))
 	)
 	const digest = yield* Digest.Digest
 	const clock = yield* Clock.Clock

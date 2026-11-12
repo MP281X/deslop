@@ -9,9 +9,9 @@ import {Array, ConfigProvider, Context, Deferred, Effect, Fiber, Layer, Option, 
 import {HttpRouter, HttpServer} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {Auth} from '@deslop/runtime/auth/service'
-import * as ServerRuntime from '@deslop/runtime/server'
+import {Auth} from '@deslop/runtime/server/auth'
+import * as ServerRuntime from '@deslop/runtime/server/http'
+import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Exposures} from '#services/exposures/service.ts'

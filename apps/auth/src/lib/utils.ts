@@ -6,10 +6,10 @@ import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {AuthError} from '@deslop/runtime/auth/schema'
-import {AUTH_URL} from '@deslop/runtime/auth/utils'
-import {RpcStream} from '@deslop/runtime/rpc'
-import * as WebRuntime from '@deslop/runtime/web'
+import {live, reconnecting} from '@deslop/runtime/client/live'
+import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
+import {RpcStream} from '@deslop/runtime/shared/rpc'
+import * as WebRuntime from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {PasskeySignIn, Registration, RequestOptions} from '#services/passkeys/schema.ts'
@@ -41,7 +41,7 @@ export const accountAtom = Atom.keepAlive(
 			RpcClient,
 			Effect.map(client => client('auth.account', undefined)),
 			Stream.unwrap,
-			WebRuntime.reconnecting,
+			reconnecting,
 			Stream.map(Option.some),
 			Stream.catchTag('AuthError', () => Stream.make(Option.none<SignedAccount>()))
 		)
@@ -73,7 +73,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 		}),
 		streams: {
 			lookup: (code: string) =>
-				WebRuntime.reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('auth.lookup', {code}))))
+				reconnecting(Stream.unwrap(Effect.map(RpcClient, client => client('auth.lookup', {code}))))
 		}
 	}).handle({
 		initial: {data: {typed: ''}, target: 'Typing'},
@@ -126,7 +126,7 @@ export const linkedCodeAtom = Atom.family((code: string) =>
 
 export const peopleAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
+		live(
 			get,
 			pipe(
 				RpcClient,
@@ -140,7 +140,7 @@ export const peopleAtom = Atom.keepAlive(
 // Live, so a new sign-in, each refresh and a disconnect from another page show here.
 export const appsAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
+		live(
 			get,
 			pipe(
 				RpcClient,
@@ -162,7 +162,7 @@ export const requestAtom = Atom.family((request: string) =>
 			RpcClient,
 			Effect.map(client => client('auth.wait', {request})),
 			Stream.unwrap,
-			WebRuntime.reconnecting,
+			reconnecting,
 			Stream.tap(status =>
 				pipe(
 					Match.value(status),
@@ -189,7 +189,7 @@ export function approveLink(id: string) {
 // Live, so an app shows once its server announces itself to Auth.
 export const catalogAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
+		live(
 			get,
 			pipe(
 				RpcClient,
@@ -303,7 +303,7 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 
 export const passkeysAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		WebRuntime.live(
+		live(
 			get,
 			pipe(
 				RpcClient,

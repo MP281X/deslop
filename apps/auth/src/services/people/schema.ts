@@ -1,6 +1,6 @@
 import {Schema} from 'effect'
 
-import {User} from '@deslop/runtime/auth/schema'
+import {User} from '@deslop/runtime/shared/auth'
 
 import {SessionVia, StoredOwner} from '#services/tokens/schema.ts'
 

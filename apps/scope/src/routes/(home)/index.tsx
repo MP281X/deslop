@@ -10,17 +10,17 @@ import type {ReactElement, ReactNode} from 'react'
 
 import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
 import {appMarks} from '@deslop/components-web/apps'
-import {EmptyState} from '@deslop/components-web/fallbacks'
+import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
+import {searchOf} from '@deslop/components-web/router'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {cn, useMediaQuery} from '@deslop/components-web/utils'
-import {isDenied} from '@deslop/runtime/auth/utils'
-import * as WebRuntime from '@deslop/runtime/web'
+import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {
 	Search,
@@ -495,7 +495,7 @@ function Spans(props: {
 	const refresh = useAtomRefresh(atom)
 	const value = AsyncResult.value(result)
 	if (AsyncResult.isFailure(result) && (Option.isNone(value) || Option.exists(AsyncResult.error(result), isDenied))) {
-		return <WebRuntime.Failure error={Cause.squash(result.cause)} reset={refresh} />
+		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
 	}
 	return Option.match(value, {
 		onNone: () => null,
@@ -854,12 +854,12 @@ function Home() {
 				onNone: () =>
 					Option.match(blockingFailure, {
 						onNone: () => renderPage(workspace),
-						onSome: cause => renderPage(<WebRuntime.Failure error={Cause.squash(cause)} reset={refresh} />)
+						onSome: cause => renderPage(<Failure error={Cause.squash(cause)} reset={refresh} />)
 					}),
-				onSome: error => renderPage(<WebRuntime.Failure error={error} reset={refresh} />)
+				onSome: error => renderPage(<Failure error={error} reset={refresh} />)
 			})}
 		</div>
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: WebRuntime.searchOf(Search)})
+export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: searchOf(Search)})

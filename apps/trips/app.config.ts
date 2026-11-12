@@ -1,4 +1,4 @@
-import * as ExpoRuntime from '@deslop/runtime/mobile/expo'
+import * as ExpoRuntime from '@deslop/runtime/config/expo'
 
 const app = ExpoRuntime.make({projectId: '3778dc9f-a54b-454e-ae4e-4ef7f115e391', slug: 'trips'})
 
