@@ -29,7 +29,7 @@ import {KeyValueStore, RateLimiter} from 'effect/persistence'
 import {TestClock} from 'effect/testing'
 
 import {HttpAuth} from '@deslop/runtime/server/auth'
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 import {
 	ACCESS_SECONDS,
 	AUTH_URL,
@@ -128,7 +128,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 				})
 			)
 		),
-		Layer.provide(layerKeyValueStore(directory))
+		Layer.provide(layerDataStore(directory))
 	)
 	const digest = yield* Digest.Digest
 	const clock = yield* Clock.Clock

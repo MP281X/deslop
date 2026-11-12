@@ -5,7 +5,7 @@ import {Context, Effect, FileSystem, Layer, PlatformError, Ref, Schema, String, 
 
 import {TestClock} from 'effect/testing'
 
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 
 import {Sample} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
@@ -15,7 +15,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 		'collects without a browser and restores real samples after a service restart',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
-			const layer = Layer.provide(Metrics.layer, layerKeyValueStore(yield* fs.makeTempDirectoryScoped()))
+			const layer = Layer.provide(Metrics.layer, layerDataStore(yield* fs.makeTempDirectoryScoped()))
 			const first = yield* Effect.scoped(
 				Effect.gen(function* () {
 					const metrics = Context.get(yield* Layer.build(Layer.fresh(layer)), Metrics)
@@ -53,7 +53,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			const failed = yield* Ref.make(false)
 			const layer = pipe(
 				Metrics.layer,
-				Layer.provide(layerKeyValueStore(directory)),
+				Layer.provide(layerDataStore(directory)),
 				Layer.provide(
 					Layer.succeed(
 						FileSystem.FileSystem,
