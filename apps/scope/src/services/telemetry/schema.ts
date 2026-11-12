@@ -245,11 +245,19 @@ export class Release extends Model.Class<Release>('Release')({service: Schema.St
 	static readonly table = 'releases'
 }
 
-// A trace as the operations list reads it: its root's name and sender, and the name and messages of the span where it broke.
+// A trace as the operations list counts it: its root's name and sender, and whether it broke.
 export type SettledTrace = typeof SettledTrace.Type
 export const SettledTrace = Schema.Struct({
 	...Struct.pick(Trace.fields, ['duration', 'id', 'start']),
-	...Struct.pick(Span.fields, ['error', 'exception', 'name', 'runtime', 'service']),
+	...Struct.pick(Span.fields, ['name', 'runtime', 'service']),
+	failed: Schema.BooleanFromBit
+})
+
+// What a trace's row shows beyond its numbers: its label, and the name and messages of the span where it broke.
+export type TraceDetail = typeof TraceDetail.Type
+export const TraceDetail = Schema.Struct({
+	...Struct.pick(Trace.fields, ['id']),
+	...Struct.pick(Span.fields, ['error', 'exception']),
 	broken: Schema.OptionFromNullOr(Span.fields.name),
 	label: Schema.OptionFromNullOr(Schema.String)
 })
@@ -257,7 +265,8 @@ export const SettledTrace = Schema.Struct({
 // A trace as search_traces answers it, with its span count and the MCP relay it went through.
 export type FoundTrace = typeof FoundTrace.Type
 export const FoundTrace = Schema.Struct({
-	...Struct.omit(SettledTrace.fields, ['label']),
+	...Struct.omit(SettledTrace.fields, ['failed']),
+	...Struct.omit(TraceDetail.fields, ['label']),
 	relay: Schema.OptionFromNullOr(Span.fields.attributes),
 	spans: Schema.Int
 })
