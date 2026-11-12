@@ -566,45 +566,60 @@ export function latencyOf(times: readonly number[]) {
 const slowestFirst = Order.mapInput(Order.flip(Duration.Order), (item: Traced) => item.trace.duration)
 
 // From an operation's traces slowest first: the slowest, with the newest failures always among them, since those are the traces worth opening.
-function keptTraces(slowest: readonly Traced[]) {
-	const failures = Array.take(
-		Array.sort(
-			Array.filter(slowest, item => item.failed),
-			Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)
-		),
-		KEEP / 2
+function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
+	const newestFailures = HashSet.fromIterable(
+		Array.map(
+			Array.take(
+				Array.sort(
+					Array.filter(slowest, item => item.failed),
+					Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)
+				),
+				KEEP / 2
+			),
+			item => item.trace.id
+		)
 	)
-	const failureIds = HashSet.fromIterable(Array.map(failures, item => item.trace.id))
-	return Array.map(
-		Array.sort(
-			[
-				...failures,
-				...Array.take(
-					Array.filter(slowest, item => !HashSet.has(failureIds, item.trace.id)),
-					KEEP - failures.length
-				)
-			],
-			slowestFirst
-		),
-		item => item.trace
+	// The newest failures, then the slowest of the rest: the sort is stable, so each part stays slowest first.
+	const chosenFirst = Array.sort(
+		slowest,
+		Order.mapInput(Order.flip(Order.Boolean), (item: Traced) => HashSet.has(newestFailures, item.trace.id))
 	)
+	return Array.map(Array.sort(Array.splitAtNonEmpty(chosenFirst, KEEP)[0], slowestFirst), item => item.trace)
 }
 
+type Ordered = {latest: number; operation: Operation}
+
+// Failing first, then most recently seen: the order the page and the tools list an app's operations in.
 function tracedOperations(group: readonly Traced[]) {
-	return Array.map(Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), operation => {
-		const slowest = Array.sort(operation, slowestFirst)
-		// Already in order, so sorting the durations again costs one pass.
-		const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
-		return {
-			count: operation.length,
-			failures: failureCount(operation),
-			name: Array.headNonEmpty(operation).name,
-			p50Ms: latency.p50Ms,
-			p95Ms: latency.p95Ms,
-			runtime: Array.headNonEmpty(operation).runtime,
-			traces: keptTraces(slowest)
-		} satisfies Operation
-	})
+	return Array.map(
+		Array.sort(
+			Array.map(Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), operation => {
+				const slowest = Array.sort(operation, slowestFirst)
+				// Already in order, so sorting the durations again costs one pass.
+				const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
+				return {
+					latest: Array.max(
+						Array.map(operation, item => item.trace.start),
+						Order.Number
+					),
+					operation: {
+						count: operation.length,
+						failures: failureCount(operation),
+						name: Array.headNonEmpty(operation).name,
+						p50Ms: latency.p50Ms,
+						p95Ms: latency.p95Ms,
+						runtime: Array.headNonEmpty(operation).runtime,
+						traces: keptTraces(slowest)
+					} satisfies Operation
+				}
+			}),
+			Order.combine(
+				Order.mapInput(Order.flip(Order.Boolean), (item: Ordered) => item.operation.failures > 0),
+				Order.mapInput(Order.flip(Order.Number), (item: Ordered) => item.latest)
+			)
+		),
+		item => item.operation
+	)
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.

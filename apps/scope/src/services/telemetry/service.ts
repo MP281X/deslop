@@ -162,75 +162,40 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 	} satisfies Overview
 }
 
-// The newest failing trace an operation holds, whose span and message the tools show.
-function latestFailure(traces: readonly OperationTrace[]) {
-	return Array.match(
-		Array.filter(traces, trace => trace.failure !== undefined),
-		{
-			onEmpty: () => undefined,
-			onNonEmpty: failures =>
-				Array.max(
-					failures,
-					Order.mapInput(Order.Number, trace => trace.start)
-				)
-		}
-	)
+// Failing traces above the rest, then the newest: the largest is an operation's newest failure when it has one.
+const newestFailureLast = Order.combine(
+	Order.mapInput(Order.Boolean, (trace: OperationTrace) => trace.failure !== undefined),
+	Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
+)
+
+// The newest failing trace an operation keeps, whose span and message the tools show; its kept traces hold its newest failures.
+function latestFailure(operation: Operation) {
+	const newest = Array.max(operation.traces, newestFailureLast)
+	return Option.map(Option.fromUndefinedOr(newest.failure), failure => ({...failure, trace: newest.id}))
 }
 
-// The page's own operations for one frame, failing first and then most recent, with the numbers the tools need.
+// The page's own operations for one frame, in the overview's order, with the numbers the tools need.
 function operationsAnswer(overview: Overview, name?: string) {
 	const apps = Array.map(
 		Array.filter(overview.apps, app => name === undefined || app.name === name),
 		app => ({
 			app: app.name,
-			operations: Array.map(
-				Array.sort(
-					app.operations,
-					Order.combine(
-						Order.mapInput(Order.flip(Order.Boolean), (operation: Operation) => operation.failures > 0),
-						Order.mapInput(Order.flip(Order.Number), (operation: Operation) =>
-							Array.match(operation.traces, {
-								onEmpty: () => 0,
-								onNonEmpty: found =>
-									Array.max(
-										found,
-										Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
-									).start
-							})
-						)
-					)
-				),
-				operation => {
-					const slowest = Option.getOrThrow(Array.head(operation.traces))
-					const failure = latestFailure(operation.traces)
-					const side = sideFor(app.name, operation.runtime)
-					return {
-						name: operation.name,
-						p50Ms: rounded(operation.p50Ms),
-						p95Ms: rounded(operation.p95Ms),
-						runs: operation.count,
-						slowest: slowest.id,
-						...Boolean.match(operation.failures > 0, {
-							onFalse: () => ({}),
-							onTrue: () => ({failures: operation.failures})
-						}),
-						...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-						...Option.match(Option.fromUndefinedOr(failure), {
-							onNone: () => ({}),
-							onSome: found => ({
-								failure: {
-									span: found.failure?.span ?? '',
-									trace: found.id,
-									...Option.match(Option.fromNullishOr(found.failure?.error), {
-										onNone: () => ({}),
-										onSome: error => ({error})
-									})
-								}
-							})
-						})
-					} satisfies OperationRow
-				}
-			)
+			operations: Array.map(app.operations, operation => {
+				const side = sideFor(app.name, operation.runtime)
+				return {
+					name: operation.name,
+					p50Ms: rounded(operation.p50Ms),
+					p95Ms: rounded(operation.p95Ms),
+					runs: operation.count,
+					slowest: Array.headNonEmpty(operation.traces).id,
+					...Boolean.match(operation.failures > 0, {
+						onFalse: () => ({}),
+						onTrue: () => ({failures: operation.failures})
+					}),
+					...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
+					...Option.match(latestFailure(operation), {onNone: () => ({}), onSome: failure => ({failure})})
+				} satisfies OperationRow
+			})
 		})
 	)
 	return {apps: Array.filter(apps, app => Array.isReadonlyArrayNonEmpty(app.operations))} satisfies OperationsAnswer

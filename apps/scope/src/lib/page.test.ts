@@ -258,7 +258,7 @@ it.effect(
 )
 
 it.effect(
-	'lists the chosen app’s operations, failing first, with a side glyph only for a shared name',
+	'lists only the chosen app’s operations, in the overview’s order, with a side glyph only for a shared name',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
@@ -282,15 +282,6 @@ it.effect(
 						name: 'gateway',
 						operations: [
 							{
-								count: 9,
-								failures: 0,
-								name: 'gateway.idle',
-								p50Ms: 40,
-								p95Ms: 40,
-								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
-							},
-							{
 								count: 2,
 								failures: 3,
 								name: 'gateway.fail',
@@ -298,6 +289,15 @@ it.effect(
 								p95Ms: 12,
 								runtime: 'server',
 								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_850_000_000}]
+							},
+							{
+								count: 9,
+								failures: 0,
+								name: 'gateway.idle',
+								p50Ms: 40,
+								p95Ms: 40,
+								runtime: 'server',
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					},

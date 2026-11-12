@@ -316,7 +316,8 @@ export const Operation = Schema.Struct({
 	p50Ms: Schema.Finite,
 	p95Ms: Schema.Finite,
 	runtime: Runtime,
-	traces: Schema.Array(OperationTrace)
+	// The slowest first; an operation exists because a trace started it, so it keeps at least that one.
+	traces: Schema.NonEmptyArray(OperationTrace)
 })
 
 export type Overview = typeof Overview.Type
