@@ -14,9 +14,12 @@ import {
 	Result,
 	Schema,
 	Semaphore,
-	String
+	Stream,
+	String,
+	pipe
 } from 'effect'
 
+import {Ndjson} from 'effect/encoding'
 import {KeyValueStore} from 'effect/persistence'
 
 import {report} from '#services/ai/lib/utils.ts'
@@ -146,16 +149,15 @@ export function makeUsage(directory: string) {
 					String.Order
 				),
 				file =>
-					Effect.gen(function* () {
-						const text = yield* fs.readFileString(path.join(personDirectory, file))
-						const lines = Array.filter(String.split(/\r?\n/u)(text), String.isNonEmpty)
-						MutableList.appendAll(
-							entries,
-							yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(AiUsageEntry)))(
-								`[${Array.join(lines, ',')}]`
-							)
+					pipe(
+						fs.stream(path.join(personDirectory, file)),
+						Stream.pipeThroughChannel(Ndjson.decodeSchema(AiUsageEntry)({ignoreEmptyLines: true})),
+						Stream.runForEach(entry =>
+							Effect.sync(() => {
+								MutableList.append(entries, entry)
+							})
 						)
-					}),
+					),
 				{concurrency: 1, discard: true}
 			)
 			MutableHashMap.set(months, key, entries)

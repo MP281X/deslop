@@ -7,6 +7,7 @@ import {
 	Effect,
 	Function,
 	Layer,
+	MutableList,
 	Option,
 	Redacted,
 	Result,
@@ -19,6 +20,7 @@ import {
 	pipe
 } from 'effect'
 
+import {Sse} from 'effect/encoding'
 import {
 	Headers,
 	HttpClient,
@@ -250,35 +252,43 @@ function make(directory: string) {
 							)
 						})
 						const sse = String.includes('text/event-stream')(response.headers['content-type'] ?? '')
-						const decoder = new TextDecoder()
-						yield* pipe(
-							Stream.fromReadableStream({
-								evaluate: () => meter,
-								onError: cause =>
-									AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage could not be read'})
-							}),
-							Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
-							Stream.runForEach(chunk =>
-								Effect.gen(function* () {
-									state.pending += decoder.decode(chunk, {stream: true})
-									if (!sse) return
-									const lines = String.split(/\r?\n/u)(state.pending)
-									state.pending = Option.getOrElse(Array.last(lines), () => '')
-									for (const line of Array.dropRight(lines, 1)) {
-										if (String.startsWith('data:')(line)) {
-											yield* updateUsage(String.trim(String.slice(5)(line)))
-										}
-									}
-								})
-							),
-							Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
-						)
-						yield* updateUsage(
-							Boolean.match(sse, {
-								onFalse: () => state.pending,
-								onTrue: () => String.replace(/^data:\s*/u, '')(state.pending)
+						const stream = Stream.fromReadableStream({
+							evaluate: () => meter,
+							onError: cause =>
+								AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI usage could not be read'})
+						})
+						if (sse) {
+							const events = MutableList.make<string>()
+							const parser = Sse.makeParser(event => {
+								if (event._tag === 'Event') MutableList.append(events, event.data)
 							})
-						)
+							yield* pipe(
+								stream,
+								Stream.decodeText,
+								Stream.runForEach(text =>
+									Effect.gen(function* () {
+										const error = parser.feed(text)
+										for (const data of MutableList.toArray(events)) yield* updateUsage(data)
+										MutableList.clear(events)
+										if (error !== undefined) return yield* error
+									})
+								),
+								Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
+							)
+						} else {
+							const decoder = new TextDecoder()
+							yield* pipe(
+								stream,
+								Stream.takeWhile(() => state.pending.length <= 10 * 1024 * 1024),
+								Stream.runForEach(chunk =>
+									Effect.sync(() => {
+										state.pending += decoder.decode(chunk, {stream: true})
+									})
+								),
+								Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
+							)
+							yield* updateUsage(state.pending)
+						}
 						yield* saveUsage(id, state.current)
 					}),
 					Effect.catch(error => Effect.logWarning('AI usage could not be saved', error)),
