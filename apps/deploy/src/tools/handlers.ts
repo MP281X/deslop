@@ -106,19 +106,12 @@ function inventoryPage(
 }
 
 function focusedInventory(workers: readonly WorkerInventory[], app?: string) {
+	if (app === undefined) return workers
+	const query = String.toLowerCase(app)
 	return Array.map(workers, worker => ({
 		...worker,
-		...Boolean.match(app === undefined, {
-			onFalse: () => ({
-				exposures: Array.filter(worker.exposures ?? [], row =>
-					String.includes(String.toLowerCase(app ?? ''))(String.toLowerCase(row.name))
-				),
-				jobs: Array.filter(worker.jobs ?? [], row =>
-					String.includes(String.toLowerCase(app ?? ''))(String.toLowerCase(row.name))
-				)
-			}),
-			onTrue: () => ({})
-		})
+		exposures: Array.filter(worker.exposures ?? [], row => pipe(row.name, String.toLowerCase, String.includes(query))),
+		jobs: Array.filter(worker.jobs ?? [], row => pipe(row.name, String.toLowerCase, String.includes(query)))
 	}))
 }
 
