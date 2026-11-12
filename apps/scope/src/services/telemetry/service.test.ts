@@ -20,7 +20,6 @@ import {
 	Schema,
 	Stream,
 	String,
-	Struct,
 	pipe
 } from 'effect'
 
@@ -133,6 +132,7 @@ function stored(index: number) {
 	const traceId = String.padStart(32, '0')((index + 1).toString(16))
 	const spanId = String.padStart(16, '0')((index + 1).toString(16))
 	return Entry.make({
+		denied: false,
 		durationMs: 1,
 		id: `${traceId}:${spanId}`,
 		name: 'stored.op',
@@ -544,15 +544,6 @@ it.layer(platform)(test => {
 					assert.strictEqual(trace.logs[0]?.time, '99999999999999999999')
 				})
 			)
-			for (const file of yield* fs.readDirectory(directory)) {
-				yield* pipe(
-					fs.readFileString(`${directory}/${file}`),
-					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Entry))),
-					Effect.map(Struct.omit(['receivedAt'])),
-					Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Entry))),
-					Effect.flatMap(value => fs.writeFileString(`${directory}/${file}`, value))
-				)
-			}
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = yield* loaded(directory)
@@ -1130,7 +1121,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'derives denial on load from the previous release’s stored entries',
+		'retains denied spans across restarts without counting them as failures',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const directory = yield* fs.makeTempDirectoryScoped()
@@ -1152,15 +1143,6 @@ it.layer(platform)(test => {
 					)
 				})
 			)
-			for (const file of yield* fs.readDirectory(directory)) {
-				yield* pipe(
-					fs.readFileString(`${directory}/${file}`),
-					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Entry))),
-					Effect.map(Struct.omit(['denied'])),
-					Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Entry))),
-					Effect.flatMap(value => fs.writeFileString(`${directory}/${file}`, value))
-				)
-			}
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const telemetry = yield* loaded(directory)

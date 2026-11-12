@@ -149,8 +149,7 @@ export const Entry = Schema.Struct({
 	links: Schema.optionalKey(Schema.Array(SpanLink)),
 	name: Schema.String,
 	payload: Schema.JsonObject,
-	// Absent on the immediately previous release's stored entries.
-	receivedAt: Schema.optionalKey(Schema.Natural),
+	receivedAt: Schema.Natural,
 	resource: Resource,
 	service: Schema.String,
 	signal: Schema.Literals(['trace', 'log']),

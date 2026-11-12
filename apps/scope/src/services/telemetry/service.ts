@@ -422,8 +422,7 @@ function ingestionAnswer(entries: readonly Entry[], rejections: readonly Rejecti
 	} satisfies IngestionAnswer
 }
 
-// Stored spans are named and judged as new ones are, so the previous release's files read the same.
-function deriveEntry(entry: Entry) {
+function deriveEntry(entry: Omit<Entry, 'denied'>) {
 	const links = readLinks(entry.payload)
 	const derived = {
 		...entry,
@@ -625,12 +624,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 						receivedAt,
 						Duration.toMillis(RETENTION)
 					)
-					yield* Effect.forEach(retention.repaired, entry => store.set(entry.id, entry), {
-						concurrency: 1,
-						discard: true
-					})
 					yield* Effect.forEach(retention.expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-					// Retention only repairs receipt times and removes whole expired traces, so the indexes stay as they are.
 					return {
 						entries: retention.next,
 						links: Array.reduce(retention.expired, current.links, (links, entry) => shiftedLinks(links, entry, -1)),
@@ -665,7 +659,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								}),
 								Effect.filterOrFail(key => !String.endsWith('.tmp')(key)),
 								Effect.flatMap(key => store.get(key)),
-								// A write cut short or an entry of an older shape is dropped rather than keeping Scope from starting.
+								// An interrupted write or corrupt entry is dropped rather than keeping Scope from starting.
 								Effect.catch(() => Effect.as(fs.remove(path.join(directory, file), {force: true}), Option.none()))
 							),
 						{concurrency: 8}
@@ -675,9 +669,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				const now = yield* Clock.currentTimeMillis
 				yield* SynchronizedRef.update(state, current => {
 					const merged = Array.reduce(entries, current, (all, entry) => {
-						const derived = deriveEntry(entry)
-						if (HashMap.has(all.entries, derived.id)) return all
-						return addEntry(all, derived)
+						if (HashMap.has(all.entries, entry.id)) return all
+						return addEntry(all, entry)
 					})
 					return settleTraces(merged, Array.fromIterable(HashMap.keys(merged.traces)), now)
 				})

@@ -1,4 +1,4 @@
-import {Context, Effect, Schema, pipe} from 'effect'
+import {Context, Schema} from 'effect'
 
 import {ClientInfo, User} from '@deslop/runtime/shared/auth'
 
@@ -9,13 +9,6 @@ export const CredentialOwner = Schema.Struct({incarnation: Schema.NonEmptyString
 export class CurrentOwner extends Context.Service<CurrentOwner, CredentialOwner>()(
 	'@deslop/auth/services/tokens/schema/CurrentOwner'
 ) {}
-
-// Only records from the immediately previous release may omit their incarnation.
-export type StoredOwner = typeof StoredOwner.Type
-export const StoredOwner = Schema.Struct({
-	...CredentialOwner.fields,
-	incarnation: pipe(Schema.NonEmptyString, Schema.withDecodingDefaultKey(Effect.succeed('legacy')))
-})
 
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({

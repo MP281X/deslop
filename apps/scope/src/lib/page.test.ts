@@ -24,10 +24,12 @@ beforeAll(() => Route.options.component?.preload?.())
 const trace = traceView(
 	[
 		Entry.make({
+			denied: false,
 			durationMs: 10,
 			id: 'private-span',
 			name: 'Private retained span',
 			payload: {},
+			receivedAt: 1_781_870_000_000,
 			resource: {},
 			service: '@deslop/deploy-server',
 			signal: 'trace',
