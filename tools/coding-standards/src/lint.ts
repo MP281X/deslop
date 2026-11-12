@@ -150,7 +150,11 @@ const RULES = {
 	'swiftui-theme-values': swiftuiThemeValues
 }
 
-export const restrictedImports = {
+// The type keeps the export declarable under isolated declarations, which can't infer the spread entries.
+export const restrictedImports: {
+	paths: {importNames?: string[]; message: string; name: string}[]
+	patterns: {group: string[]; message: string}[]
+} = {
 	paths: [
 		{importNames: ['default', ...REACT_LEGACY_APIS], message: REACT_LEGACY_MESSAGE, name: 'react'},
 		{
