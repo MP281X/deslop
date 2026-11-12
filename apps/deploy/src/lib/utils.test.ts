@@ -129,7 +129,15 @@ it.layer(NodeServices.layer)(test => {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
+				const sample = MachineHistory.make({
+					disks: [],
+					error: '',
+					load: [],
+					samples: [],
+					stale: false,
+					time: 1,
+					worker: 'desktop'
+				})
 				const hour = yield* env.watch(60)
 				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				yield* Queue.offer(env.hour, [sample])
@@ -151,7 +159,15 @@ it.layer(NodeServices.layer)(test => {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
+				const sample = MachineHistory.make({
+					disks: [],
+					error: '',
+					load: [],
+					samples: [],
+					stale: false,
+					time: 1,
+					worker: 'desktop'
+				})
 				const minute = yield* env.watch(1)
 				assert.strictEqual(yield* Queue.take(env.opened), 1)
 				yield* Queue.offer(env.minute, [sample])
@@ -183,7 +199,15 @@ it.layer(NodeServices.layer)(test => {
 		Effect.scoped(
 			Effect.gen(function* () {
 				const env = yield* fixture
-				const sample = MachineHistory.make({error: '', samples: [], stale: false, time: 1, worker: 'desktop'})
+				const sample = MachineHistory.make({
+					disks: [],
+					error: '',
+					load: [],
+					samples: [],
+					stale: false,
+					time: 1,
+					worker: 'desktop'
+				})
 				const hour = yield* env.watch(60)
 				assert.strictEqual(yield* Queue.take(env.opened), 60)
 				yield* Queue.offer(env.hour, [sample])

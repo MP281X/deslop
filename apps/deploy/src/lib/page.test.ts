@@ -38,14 +38,18 @@ const snapshot = Snapshot.make({
 })
 const readings = [
 	MachineHistory.make({
+		disks: [],
 		error: '',
+		load: [],
 		samples: [
 			Sample.make({
-				apps: [{id: 'service:system:deslop-private.service', memory: 1}],
-				cores: [],
-				disks: [],
+				apps: Option.some([{id: 'service:system:deslop-private.service', memory: 1}]),
+				cpu: Option.none(),
 				memoryTotal: 100,
 				memoryUsed: 1,
+				since: 1,
+				step: 1000,
+				storageUsed: Option.none(),
 				time: 1
 			})
 		],
