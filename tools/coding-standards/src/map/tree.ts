@@ -66,6 +66,19 @@ function workspaceDependencies(manifest: Manifest) {
 	)
 }
 
+function workspaceLinks(manifests: {directory: string; manifest: Manifest}[]) {
+	const directories = Record.fromEntries(
+		Array.flatMap(manifests, entry =>
+			Option.toArray(Option.map(Option.fromUndefinedOr(entry.manifest.name), name => [name, entry.directory] as const))
+		)
+	)
+	return Array.flatMap(manifests, entry =>
+		Array.flatMap(workspaceDependencies(entry.manifest), name =>
+			Option.toArray(Option.map(Record.get(directories, name), target => ({directory: entry.directory, name, target})))
+		)
+	)
+}
+
 // pnpm links each workspace dependency into its importer's node_modules; an archive has none, so Fallow resolves no cross-package import without these links.
 const linkWorkspace = Effect.fnUntraced(function* (root: string, files: string[]) {
 	const fs = yield* FileSystem.FileSystem
@@ -79,27 +92,15 @@ const linkWorkspace = Effect.fnUntraced(function* (root: string, files: string[]
 			),
 		{concurrency: 'unbounded'}
 	)
-	const directories = Record.fromEntries(
-		Array.flatMap(manifests, entry =>
-			Option.toArray(Option.map(Option.fromUndefinedOr(entry.manifest.name), name => [name, entry.directory] as const))
-		)
-	)
 	yield* Effect.forEach(
-		Array.flatMap(manifests, entry =>
-			Array.flatMap(workspaceDependencies(entry.manifest), name =>
-				Option.toArray(
-					Option.map(Record.get(directories, name), target => ({
-						link: path.join(root, entry.directory, 'node_modules', name),
-						target: path.join(root, target)
-					}))
-				)
+		workspaceLinks(manifests),
+		found => {
+			const link = path.join(root, found.directory, 'node_modules', found.name)
+			return Effect.andThen(
+				fs.makeDirectory(path.dirname(link), {recursive: true}),
+				fs.symlink(path.join(root, found.target), link)
 			)
-		),
-		found =>
-			Effect.andThen(
-				fs.makeDirectory(path.dirname(found.link), {recursive: true}),
-				fs.symlink(found.target, found.link)
-			),
+		},
 		{concurrency: 'unbounded', discard: true}
 	)
 })

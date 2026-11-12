@@ -328,6 +328,7 @@ export function factsOf(filename: string, source: string) {
 				text: canonical(codeText(source, found.node.start, found.node, namespaces))
 			}) satisfies Located
 	)
+	const byName = Array.groupBy(declarations, found => found.name)
 	const calls = Array.filter(descendants(program), node => node.type === 'CallExpression')
 	return {
 		contracts: Array.flatMap(calls, call => Option.toArray(contractOf(source, call, namespaces))),
@@ -336,7 +337,7 @@ export function factsOf(filename: string, source: string) {
 			Array.map(Array.flatMap(program.body, exportedNames), entry => [
 				entry.name,
 				pipe(
-					Array.filter(declarations, found => found.name === entry.local),
+					Option.getOrElse(Record.get(byName, entry.local), () => []),
 					Array.map(found => found.text),
 					Array.join(' ')
 				)

@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Graph, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Graph, HashSet, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
 import {matches} from '#lib/ast.ts'
 import type {Facts} from '#map/facts.ts'
@@ -420,13 +420,14 @@ const exportsIn = Effect.fnUntraced(function* (tree: Tree, file: string) {
 
 // Each specifier an export map serves, with its file: a `*` entry serves every file its target matches.
 function served(directory: string, entries: Record<string, string>, files: readonly string[]) {
+	const tracked = HashSet.fromIterable(files)
 	return pipe(
 		Record.toEntries(entries),
 		Array.flatMap(entry => {
 			const target = `${directory}/${String.replace(/^\.\//u, '')(entry[1])}`
 			return Option.match(String.match(/^([^*]*)\*(.*)$/u)(target), {
 				onNone: () =>
-					Array.filter([{entry: entry[0], file: target, specifier: entry[0]}], () => Array.contains(files, target)),
+					Array.filter([{entry: entry[0], file: target, specifier: entry[0]}], () => HashSet.has(tracked, target)),
 				onSome: found => {
 					const head = found[1] ?? ''
 					const tail = found[2] ?? ''

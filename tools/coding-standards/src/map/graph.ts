@@ -1,4 +1,4 @@
-import {Array, Boolean, Graph, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, Graph, HashSet, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {matches} from '#lib/ast.ts'
 import type {Provider} from '#map/facts.ts'
@@ -89,15 +89,18 @@ function edgesOf(edges: readonly Edge[], as: (node: string) => string) {
 
 // Both revisions' edges that touch a focused node, each marked kept, added or removed.
 function diffEdges(before: readonly Edge[], after: readonly Edge[], focus: readonly string[]) {
+	const previous = HashSet.fromIterable(Array.map(before, keyOf))
+	const next = HashSet.fromIterable(Array.map(after, keyOf))
+	const focused = HashSet.fromIterable(focus)
 	return pipe(
 		[...before, ...after],
-		Array.filter(edge => Array.contains(focus, edge.from) || Array.contains(focus, edge.to)),
+		Array.filter(edge => HashSet.has(focused, edge.from) || HashSet.has(focused, edge.to)),
 		Array.dedupeWith((first, second) => keyOf(first) === keyOf(second)),
 		Array.map(edge => {
-			if (!Array.some(before, other => keyOf(other) === keyOf(edge))) {
+			if (!HashSet.has(previous, keyOf(edge))) {
 				return {...edge, label: '', status: 'added' as const}
 			}
-			if (!Array.some(after, other => keyOf(other) === keyOf(edge))) {
+			if (!HashSet.has(next, keyOf(edge))) {
 				return {...edge, label: '', status: 'removed' as const}
 			}
 			return {...edge, label: '', status: 'kept' as const}
@@ -384,8 +387,8 @@ export function moveDiagram(before: Revision, after: Revision, renames: readonly
 	)
 	if (!Array.isReadonlyArrayNonEmpty(flows)) return Option.none()
 	const folders = {
-		after: Array.dedupe(Array.map(after.files, movedFolderOf)),
-		before: Array.dedupe(Array.map(before.files, movedFolderOf))
+		after: HashSet.fromIterable(Array.map(after.files, movedFolderOf)),
+		before: HashSet.fromIterable(Array.map(before.files, movedFolderOf))
 	}
 	const sources = Array.dedupe(Array.map(flows, group => Array.headNonEmpty(group).from))
 	const targets = Array.dedupe(Array.map(flows, group => Array.headNonEmpty(group).to))
@@ -401,7 +404,7 @@ export function moveDiagram(before: Revision, after: Revision, renames: readonly
 				group: 'before',
 				id: `${folder} before`,
 				label: folderLabel(folder),
-				status: Boolean.match(Array.contains(folders.after, folder), {
+				status: Boolean.match(HashSet.has(folders.after, folder), {
 					onFalse: () => 'removed' as const,
 					onTrue: () => 'neighbour' as const
 				})
@@ -410,7 +413,7 @@ export function moveDiagram(before: Revision, after: Revision, renames: readonly
 				group: 'after',
 				id: `${folder} after`,
 				label: folderLabel(folder),
-				status: Boolean.match(Array.contains(folders.before, folder), {
+				status: Boolean.match(HashSet.has(folders.before, folder), {
 					onFalse: () => 'added' as const,
 					onTrue: () => 'neighbour' as const
 				})
@@ -580,12 +583,8 @@ function areaKey(file: string) {
 // `terms` name what a file is (its package, a file name no other package has, the exports it changed); `words` are what a file outside the packages says in its changed lines.
 export type Changed = {file: string; lines: number; terms: string[]; words: string[]}
 
-function linesIn(changed: readonly Changed[], files: readonly string[]) {
-	return Number.sumAll(
-		Array.map(changed, entry =>
-			Boolean.match(Array.contains(files, entry.file), {onFalse: () => 0, onTrue: () => entry.lines})
-		)
-	)
+function linesIn(lines: Record<string, number>, files: readonly string[]) {
+	return Number.sumAll(Array.map(files, file => Option.getOrElse(Record.get(lines, file), () => 0)))
 }
 
 function isAnchored(files: readonly string[]) {
@@ -594,35 +593,58 @@ function isAnchored(files: readonly string[]) {
 
 // Instructions and settings outside the packages join the largest area whose terms their changed lines mention, so documenting the change is not an unrelated edit.
 function attachMentions(changed: readonly Changed[], areas: string[][]) {
+	const byFile = Array.groupBy(changed, entry => entry.file)
+	const terms = pipe(
+		areas,
+		Array.flatMap((files, index) => {
+			if (!isAnchored(files)) return []
+			return pipe(
+				files,
+				Array.flatMap(file => Option.getOrElse(Record.get(byFile, file), () => [])),
+				Array.flatMap(entry => entry.terms),
+				Array.map(term => ({index, term}))
+			)
+		}),
+		Array.groupBy(entry => entry.term),
+		Record.map(group => Array.headNonEmpty(group).index)
+	)
 	function homeOf(files: string[]) {
-		const words = pipe(
-			changed,
-			Array.filter(entry => Array.contains(files, entry.file)),
-			Array.flatMap(entry => entry.words)
+		const mentions = pipe(
+			files,
+			Array.flatMap(file => Option.getOrElse(Record.get(byFile, file), () => [])),
+			Array.flatMap(entry => entry.words),
+			Array.flatMap(word => Option.toArray(Record.get(terms, word)))
 		)
-		return Array.findFirstIndex(
-			areas,
-			other =>
-				isAnchored(other) &&
-				Array.some(
-					changed,
-					entry => Array.contains(other, entry.file) && Array.some(entry.terms, term => Array.contains(words, term))
-				)
-		)
+		if (!Array.isReadonlyArrayNonEmpty(mentions)) return Option.none<number>()
+		return Option.some(Array.min(mentions, Number.Order))
 	}
-	const homes = Array.map(areas, files => Option.filter(homeOf(files), () => !isAnchored(files)))
-	function homeAt(index: number) {
-		return Option.flatten(Array.get(homes, index))
-	}
+	const homes = Array.flatMap(areas, (files, index) => {
+		if (isAnchored(files)) return []
+		return Option.toArray(Option.map(homeOf(files), home => ({files, home, index})))
+	})
+	const relocated = HashSet.fromIterable(Array.map(homes, entry => entry.index))
+	const attached = Array.groupBy(homes, entry => `${entry.home}`)
 	return Array.flatMap(areas, (files, index) => {
-		if (Option.isSome(homeAt(index))) return []
-		return [[...files, ...Array.flatten(Array.filter(areas, (_, other) => Option.contains(homeAt(other), index)))]]
+		if (HashSet.has(relocated, index)) return []
+		return [
+			[
+				...files,
+				...Array.flatMap(
+					Option.getOrElse(Record.get(attached, `${index}`), () => []),
+					entry => entry.files
+				)
+			]
+		]
 	})
 }
 
 // Changed files fall into areas joined by a direct import between them, a shared place, a dependency manifest, or a mention.
 export function areasOf(changed: Changed[], imports: readonly Edge[]) {
 	const files = Array.map(changed, entry => entry.file)
+	const lines = Record.map(
+		Array.groupBy(changed, entry => entry.file),
+		group => Number.sumAll(Array.map(group, entry => entry.lines))
+	)
 	const groups = Array.groupBy(files, areaKey)
 	const manifests = Array.filter(files, isManifest)
 	const graph = Graph.undirected<string, 'joined'>(mutable => {
@@ -647,7 +669,7 @@ export function areasOf(changed: Changed[], imports: readonly Edge[]) {
 			pipe(
 				Graph.connectedComponents(graph),
 				Array.map(component => Array.getSomes(Array.map(component, index => Graph.getNode(graph, index)))),
-				Array.sortWith(members => -linesIn(changed, members), Number.Order)
+				Array.sortWith(members => -linesIn(lines, members), Number.Order)
 			)
 		),
 		// An area names its package files first, most changed lines first, then the instructions that joined them.
@@ -656,14 +678,14 @@ export function areasOf(changed: Changed[], imports: readonly Edge[]) {
 				...pipe(
 					members,
 					Array.filter(file => packageOf(file) !== ROOT),
-					Array.sortWith(file => -linesIn(changed, [file]), Number.Order)
+					Array.sortWith(file => -linesIn(lines, [file]), Number.Order)
 				),
 				...Array.sort(
 					Array.filter(members, file => packageOf(file) === ROOT),
 					String.Order
 				)
 			],
-			lines: linesIn(changed, members)
+			lines: linesIn(lines, members)
 		})),
 		Array.sortWith(area => -area.lines, Number.Order)
 	)
