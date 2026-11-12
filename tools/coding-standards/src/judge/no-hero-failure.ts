@@ -1,9 +1,15 @@
+import {matches} from '#lib/ast.ts'
 import {question} from '#lib/question.ts'
+
+// Words an error state shows or is named by.
+const ERROR_STATE =
+	/error|fail|wrong|oops|crash|broke|problem|retry|unavailable|could ?n[o'’]t|couldn|can[’']?t|cannot|unable|sorry|denied|forbidden|offline|outage|cause|exit|catch|reject|not found|404|5\d\d|lost|unreachable|\bdown\b|issue|invalid|expired|missing|snag|hiccup|trouble|unexpected|went/iu
 
 export const noHeroFailure = question(
 	'component',
 	'Does `code` render an error state as a hero, with an illustration, an oversized heading or a large centred layout?',
 	{
+		gate: unit => unit.jsx && matches(ERROR_STATE)(unit.text),
 		message: 'Show a blocking failure compactly: an icon, a short reason and a destructive Retry.',
 		no: {
 			cases: [

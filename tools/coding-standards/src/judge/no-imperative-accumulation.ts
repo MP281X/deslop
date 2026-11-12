@@ -4,6 +4,8 @@ export const noImperativeAccumulation = question(
 	'code',
 	'Does `code` use a mutable accumulator only to build a pure collection or total that one map, filter, flatMap, reduce, groupBy or partition gives directly?',
 	{
+		// An accumulator is written to once per item, from a loop or a per-item callback.
+		gate: unit => unit.iterates && unit.mutates,
 		message: 'Build the result with one declarative operation instead of a mutable accumulator.',
 		no: {
 			cases: [

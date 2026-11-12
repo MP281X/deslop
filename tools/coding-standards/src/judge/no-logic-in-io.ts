@@ -4,6 +4,8 @@ export const noLogicInIo = question(
 	'code',
 	'Does `code` work out a result or a plan in several steps in the middle of its I/O, where a pure function of the values already read could do it?',
 	{
+		// Several steps of calculation, amid input or output.
+		gate: unit => unit.inputOutput && unit.transformations >= 2,
 		message: 'Move the calculation into a pure function of the values read, and keep the I/O around it.',
 		no: {
 			cases: [

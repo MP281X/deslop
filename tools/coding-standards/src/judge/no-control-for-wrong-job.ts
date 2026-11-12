@@ -4,6 +4,8 @@ export const noControlForWrongJob = question(
 	'component',
 	'Does `code` use a tab to run an action instead of to switch the view?',
 	{
+		// Only a tab with a handler of its own can run an action.
+		gate: unit => unit.tabHandlers,
 		message: 'Tabs switch views; run an action from a button.',
 		no: {
 			cases: [

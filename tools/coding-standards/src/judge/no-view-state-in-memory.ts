@@ -1,9 +1,17 @@
+import {matches} from '#lib/ast.ts'
 import {question} from '#lib/question.ts'
+
+// Widgets whose open item, tab or range is a view, and the props that keep it uncontrolled.
+const VIEW_WIDGETS =
+	/Tab|Select|Toggle|Accordion|Collapsible|Segment|Radio|Picker|Combobox|Filter|Sort|Range|Calendar|Pane|Resizable|Sidebar|Disclosure|Carousel|Pagination|Menubar|default[A-Z]|uncontrolled/u
+const NATIVE = /from ['"](?:react-native[\w/-]*|expo[\w/-]*|@expo\/[\w/-]+|@deslop\/components-mobile[\w/-]*)['"]/u
 
 export const noViewStateInMemory = question(
 	'component',
 	'Does `code`, a web page, keep which item, tab, pane, filter or range it shows in component state instead of the URL? A native screen has no URL.',
 	{
+		// State lives in a hook or behind a widget; a native screen has no URL to keep it in.
+		gate: unit => (unit.hooks || matches(VIEW_WIDGETS)(unit.text)) && !matches(NATIVE)(unit.imports),
 		message: 'Keep the view in the URL, so reload, back and shared links restore it.',
 		no: {
 			cases: [

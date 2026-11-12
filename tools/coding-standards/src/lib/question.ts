@@ -1,11 +1,20 @@
-import {Array, Order, String, pipe} from 'effect'
+import {Array, Function, Order, String, pipe} from 'effect'
+
+import type {Features} from '#lib/features.ts'
 
 export type Kind = 'code' | 'component' | 'test'
 
 export type Side = {cases: Array.NonEmptyReadonlyArray<string>; example: string}
 
-// One narrow yes-or-no question about `code`, asked of every unit of its kind: `yes` is the violation, `message` tells the agent the fix, and the judge checks it answers its own examples.
-export type Question = {kind: Kind; message: string; no: Side; question: string; yes: Side}
+// One narrow yes-or-no question about `code`, asked of every unit of its kind that its `gate` admits: `yes` is the violation, `message` tells the agent the fix, and the judge checks it answers its own examples. A gate reads only what Jev reads and must hold for every unit the answer could be yes for; without one, every unit is asked.
+export type Question = {
+	gate: (unit: Features) => boolean
+	kind: Kind
+	message: string
+	no: Side
+	question: string
+	yes: Side
+}
 
 // An example is written indented inside its question; Jev reads it without the opening and closing lines and their shared indent.
 function dedent(example: string) {
@@ -21,8 +30,13 @@ function dedent(example: string) {
 	return Array.join(Array.map(lines, String.slice(indent)), '\n')
 }
 
-export function question(kind: Kind, text: string, criteria: {message: string; no: Side; yes: Side}) {
+export function question(
+	kind: Kind,
+	text: string,
+	criteria: {gate?: (unit: Features) => boolean; message: string; no: Side; yes: Side}
+) {
 	return {
+		gate: criteria.gate ?? Function.constTrue,
 		kind,
 		message: criteria.message,
 		no: {cases: criteria.no.cases, example: dedent(criteria.no.example)},

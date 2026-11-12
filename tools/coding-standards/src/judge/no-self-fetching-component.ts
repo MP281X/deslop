@@ -4,6 +4,8 @@ export const noSelfFetchingComponent = question(
 	'component',
 	'Does `code` fetch, poll or subscribe to remote data itself and keep the result in component state?',
 	{
+		// Component state, a ref, an effect or an atom setter holds what the component fetched.
+		gate: unit => unit.stateHooks,
 		message:
 			'Read the value from the atom that keeps it in sync; fetching, polling and streaming belong to its service.',
 		no: {

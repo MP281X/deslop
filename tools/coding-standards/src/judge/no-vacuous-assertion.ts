@@ -4,6 +4,8 @@ export const noVacuousAssertion = question(
 	'test',
 	'Does the test in `code` rely only on assertions that would still pass if the code under test did nothing or returned nothing?',
 	{
+		// A written-out expected value that pins an outcome fails when the code did nothing.
+		gate: unit => !unit.exactExpectation,
 		message: 'Assert the expected outcome itself, so the test fails when the behavior is missing.',
 		no: {
 			cases: [
