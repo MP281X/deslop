@@ -1,23 +1,22 @@
 import {Layer, pipe} from 'effect'
 
-import {McpServer} from 'effect/ai'
-
 import * as CliRuntime from '@deslop/runtime/cli'
 import * as ServerRuntime from '@deslop/runtime/server'
 
 import icon from '#routes/icon.svg'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import {Tools} from '#tools/contracts.ts'
-import {ToolHandlers} from '#tools/handlers.ts'
+import {RepoSpecList} from '#services/changes/schema.ts'
+import {Changes} from '#services/changes/service.ts'
 
 CliRuntime.runApp({
 	icon,
-	routes: Layer.mergeAll(
-		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-		ServerRuntime.layerMcp({
-			instructions: "Read the app's name with name.",
-			registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
-		})
-	)
+	routes: pipe(ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}), Layer.provide(Changes.layer)),
+	settings: {
+		ATLAS_REPOS: {
+			description: 'Repositories to map, comma-separated host/owner/name',
+			flag: 'repos',
+			schema: RepoSpecList
+		}
+	}
 })
