@@ -1,9 +1,11 @@
 import {Array, Boolean, HashSet, Option, Predicate, String, pipe} from 'effect'
 
 import type {ImportDeclaration, ImportDeclarationSpecifier} from 'oxc-parser'
-import {parseSync, visitorKeys} from 'oxc-parser'
+import {parseSync} from 'oxc-parser'
 
 import {matches} from '#lib/ast.ts'
+import type {Node} from '#lib/nodes.ts'
+import {childrenOf, field, isNode, nodeAt, textOf} from '#lib/nodes.ts'
 import type {Kind} from '#lib/question.ts'
 
 // A function longer than this is judged through its inner functions: past it, one question no longer has one answer.
@@ -12,25 +14,6 @@ const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionEx
 
 // A unit with only the imports it uses, so an import added for another unit asks nothing again; `ignores` names the questions its `judge-ignore` comments opt out of.
 export type Unit = {ignores: HashSet.HashSet<string>; imports: string; kind: Kind; line: number; text: string}
-
-type Node = {type: string; start: number; end: number}
-
-function isNode(value: unknown): value is Node {
-	return Predicate.hasProperty(value, 'type') && Predicate.isString(value.type)
-}
-
-function field(node: unknown, key: string) {
-	if (!Predicate.hasProperty(node, key)) return Option.none()
-	return Option.some(node[key])
-}
-
-function nodeAt(node: Node, key: string) {
-	return Option.filter(field(node, key), isNode)
-}
-
-function textOf(source: string, node: Node) {
-	return String.slice(node.start, node.end)(source)
-}
 
 function isTestCall(source: string, node: Node) {
 	if (node.type !== 'CallExpression') return false
@@ -62,12 +45,6 @@ function importLine(source: string, declaration: ImportDeclaration, specifier: I
 		return `import ${kind}{${binding}} from ${textOf(source, declaration.source)}`
 	}
 	return `import ${kind}${binding} from ${textOf(source, declaration.source)}`
-}
-
-function childrenOf(node: Node) {
-	return Array.flatMap(visitorKeys[node.type] ?? [], key =>
-		Array.filter(Array.ensure(Option.getOrUndefined(field(node, key))), isNode)
-	)
 }
 
 // Every identifier in the unit's code, never a word in its strings or comments.

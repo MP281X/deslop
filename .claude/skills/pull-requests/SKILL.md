@@ -18,6 +18,7 @@ description: 'Load before the first commit of a task, before the first edit when
 
 1. **Push** as a draft. A round of fixes is one push per affected PR, since each push cancels the previous pipeline.
 2. **Describe** with the repository's PR or MR template.
+   - **Change map**: the Markdown of the repository's map command on the pushed head, unedited, under its heading; in Deslop `vp run map`, with `--base <parent branch>` for a stack's upper layer. Rerun it after every push.
    - **Figures** stand in for an `html_render` page, which a PR cannot hold: lay the page out for 480 px (stacked, two columns at most) with `zoom: 2` on its `html`, pass it to `html_preview` at width 960 in dark, clear its background, and read it before attaching:
 
      ```bash

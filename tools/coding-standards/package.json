@@ -45,6 +45,7 @@
 	},
 	"peerDependencies": {
 		"@effect/tsgo": ">=0.67",
+		"fallow": ">=3.42",
 		"vite-plus": "^1.3"
 	}
 }

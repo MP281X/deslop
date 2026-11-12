@@ -8,8 +8,16 @@ walkthroughs, test lists, check results. Delete every comment and empty section.
 ## Summary
 
 <!--
-One line: what changes for whom. Then the change's shape as one visual: a
-Mermaid architecture or flow for a structural change, a diff for a contract.
+One line: what changes for whom. The change map below draws its architecture;
+add a visual only for what the map cannot show: a flow, or a diff for a
+contract.
+-->
+
+## Change map
+
+<!--
+The output of `vp run map` on the final head, pasted unedited: it is generated
+from both revisions' code, so it cannot leave anything out.
 -->
 
 ## Evidence

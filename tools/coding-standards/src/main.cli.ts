@@ -2,14 +2,16 @@
 
 import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Boolean, Console, Effect, Layer, pipe} from 'effect'
+import {Boolean, Console, Effect, Layer, Schema, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
 import {judge, layerCache} from '#judge.ts'
+import {mapOf} from '#map.ts'
 import packageJson from '#package.json' with {type: 'json'}
 
 import {signIn} from '#lib/session.ts'
+import {markdownOf} from '#map/render.ts'
 
 // Printed after lint leaves a diagnostic, for the agent fixing it; autofix has already run.
 const TACTICS = `Fix each diagnostic at the cause its message names:
@@ -55,6 +57,38 @@ const cli = pipe(
 		pipe(
 			Command.make('sign-in', urls, signIn),
 			Command.withDescription('Sign the judge in to Gateway once per machine')
+		),
+		pipe(
+			Command.make(
+				'map',
+				{
+					base: pipe(
+						Flag.String('base'),
+						Flag.withDescription(
+							"The commit before the change; default: HEAD's merge base with origin's default branch"
+						),
+						Flag.optional
+					),
+					head: pipe(Flag.String('head'), Flag.withDescription('The changed commit'), Flag.withDefault('HEAD')),
+					json: pipe(
+						Flag.Boolean('json'),
+						Flag.withDescription('Print the facts as JSON for the judge instead of Markdown'),
+						Flag.withDefault(false)
+					)
+				},
+				input =>
+					Effect.flatMap(mapOf(input.base, input.head), map =>
+						Boolean.match(input.json, {
+							onFalse: () => Console.log(markdownOf(map)),
+							onTrue: () =>
+								Effect.flatMap(
+									Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown, {space: '\t'}))(map),
+									Console.log
+								)
+						})
+					)
+			),
+			Command.withDescription('Print the change map of a commit range: touched packages, contracts and diagrams')
 		)
 	]),
 	Command.run({version: packageJson.version})

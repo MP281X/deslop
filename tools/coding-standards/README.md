@@ -56,6 +56,30 @@ A unit's unanswered questions go to Jev together in one call. The answers live i
 
 The judge prints `path:line question message score` for findings, then a summary of units, questions asked, answered from memory and skipped by gates, calls and cost, and exits 1 on any finding or unanswered question. To suppress a finding, put `// judge-ignore <question> -- <reason>` in the comment lines above the unit; a suppression is reported once Jev clearly answers no or the question's gate skips the unit.
 
+## Map
+
+`map` prints what a commit range changed, read from the code of both revisions rather than from anyone's summary, as Markdown a GitHub pull request body renders, or as JSON with `--json` for the judge.
+
+```bash
+coding-standards map                                   # HEAD against its merge base with origin's default branch
+coding-standards map --base <commit> --head <commit>   # any range, such as a merged pull request's
+```
+
+It needs `git`, `tar` and Fallow on the `PATH`. Each revision is archived to a temporary directory with its workspace packages linked, so Fallow's module graph and the parser see that revision alone, not the working tree.
+
+- **Packages** with their files, lines and share of the change; `pnpm-lock.yaml` and `*.gen.*` files count apart, as generated.
+- **Exports** added, removed or changed per file; whitespace is no change.
+- **Routes** added or removed: `router.add` and `HttpRouter.add` calls with their method, and page files under `apps/*/src/routes`.
+- **Schemas** exported from a `schema.ts` that changed; a `Model.Class` table row, a schema one reaches, or a schema a `KeyValueStore.toSchemaStore` document holds is marked stored.
+- **Contracts**: `Rpc.make` and `Tool.make` calls that were added, removed or edited, or that reach a changed schema.
+- **Dependencies** from the lockfile: each importer's direct dependency added, removed or resolved to another version.
+- **Configuration**: each changed setting of a `package.json` outside its dependencies, `vite.config.ts`, `tsconfig*.json`, `.fallowrc.json` and the lint preset; changed lint rule sources, workflows and `pnpm-workspace.yaml` by file.
+- **Suppressions** added or removed: lint, TypeScript, Fallow, Effect diagnostics and judge-ignore comments.
+- **Areas**: changed files joined by a direct import between them, one place (code's folder; a package for its other files; outside the packages, at most three folders deep, such as one skill), or dependency manifests. A file outside the packages, such as `AGENTS.md`, a skill or a `.github` template, also joins the largest area its changed lines mention by package name, by a file name only that package has, or by an export the area changed. The largest area is the main one; every other is a candidate for an unrelated edit.
+- **Diagrams** in Mermaid, each one picture of both revisions: the module graph around the changed modules from Fallow's import graph, and each touched app's services and layers with the services their code yields. Colour marks what changed, was added or was removed.
+
+A list over eight entries folds into counts per folder, then per package, such as `tools/coding-standards/src/lint: 7 added`, so every change is still counted; JSON keeps each entry. Diagrams stop at 24 boxes and say what they leave out. A change over 60 files or 3,000 lines says it is too large to summarise honestly.
+
 ## Policy
 
 Root `AGENTS.md` holds the repository's maintenance policy.

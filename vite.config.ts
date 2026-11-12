@@ -147,6 +147,8 @@ export default defineConfig({
 				command:
 					"coding-standards --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
 			},
+			// The pull request body's change map of HEAD against its merge base with the default branch; `vp run map --json` for the judge.
+			map: {cache: false, command: 'coding-standards map'},
 			test: 'vp run -r --parallel test'
 		}
 	},
