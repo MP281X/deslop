@@ -10,23 +10,22 @@ import {Error, SignIn} from '@deslop/components-web/fallbacks'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {signInUrl} from '@deslop/runtime/auth/utils'
 
-import {RpcClient} from '#lib/utils.ts'
+import {snapshotAtom} from '#lib/utils.ts'
 
-// Every RPC requires a user: a signed-out visitor goes to Auth, which returns here.
-function Name() {
-	const name = useAtomSuspense(RpcClient.query('app.name', undefined), {includeFailure: true})
-	if (AsyncResult.isSuccess(name)) return name.value
-	if (!Option.exists(Cause.findErrorOption(name.cause), error => error._tag === 'AuthError')) {
-		return <Error error={Cause.squash(name.cause)} reset={() => location.reload()} />
+// The views replace this shell; it keeps the app's route compiling while they are built.
+function FetchedAt() {
+	const snapshot = useAtomSuspense(snapshotAtom, {includeFailure: true})
+	if (AsyncResult.isSuccess(snapshot)) return <span>{snapshot.value.fetchedAt}</span>
+	if (!Option.exists(Cause.findErrorOption(snapshot.cause), error => error._tag === 'AuthError')) {
+		return <Error error={Cause.squash(snapshot.cause)} reset={() => location.reload()} />
 	}
 	return <SignIn href={signInUrl(location.href)} />
 }
 
-// The first load suspends to a skeleton; React keeps a shown fallback at least 300ms, so it never blinks.
 function Home() {
 	return (
 		<Suspense fallback={<Skeleton className="h-5 w-32" />}>
-			<Name />
+			<FetchedAt />
 		</Suspense>
 	)
 }
