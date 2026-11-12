@@ -2126,6 +2126,393 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'rejects an empty collector a loop only fills, while keeping loops whose items depend on each other or on effects',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'collectors.ts': Array.join(
+						[
+							"import {Array, Effect, MutableHashMap, MutableList} from 'effect'",
+							'',
+							'declare const notes: {id: string; pinned: boolean; tags: string[]}[]',
+							'export function tagsOf() {',
+							'	const tags: string[] = []',
+							'	for (const note of notes) { // reported',
+							'		for (const tag of note.tags) tags.push(tag)',
+							'	}',
+							'	return tags',
+							'}',
+							'export function pinnedIds() {',
+							'	const ids = MutableList.make<string>()',
+							'	for (const note of notes) if (note.pinned) MutableList.append(ids, note.id) // reported',
+							'	return ids',
+							'}',
+							'export function byId() {',
+							'	const index: Record<string, string[]> = {}',
+							'	Array.forEach(notes, note => { index[note.id] = note.tags }) // reported',
+							'	return index',
+							'}',
+							'export function sizes() {',
+							'	const counts = MutableHashMap.empty<string, number>()',
+							'	for (const note of notes) MutableHashMap.set(counts, note.id, note.tags.length) // reported',
+							'	return counts',
+							'}',
+							'export function numbered() {',
+							'	const lines: string[] = []',
+							'	for (const note of notes) lines.push(`${lines.length}: ${note.id}`)',
+							'	return lines',
+							'}',
+							'export const installed = Effect.gen(function* () {',
+							'	const done: string[] = []',
+							'	for (const note of notes) done.push(yield* Effect.succeed(note.id))',
+							'	return done',
+							'})',
+							'export function twoGuards() {',
+							'	const ids: string[] = []',
+							'	for (const note of notes) {',
+							'		if (note.pinned) {',
+							'			if (note.tags.length > 0) ids.push(note.id)',
+							'		}',
+							'	}',
+							'	return ids',
+							'}',
+							'export function branched() {',
+							'	const ids: string[] = []',
+							'	for (const note of notes) {',
+							'		if (note.pinned) ids.push(note.id)',
+							"		else ids.push('')",
+							'	}',
+							'	return ids',
+							'}',
+							'export function logged() {',
+							'	const ids: string[] = []',
+							'	for (const note of notes) {',
+							'		ids.push(note.id)',
+							'		Effect.runSync(Effect.log(note.id))',
+							'	}',
+							'	return ids',
+							'}',
+							'export function seeded() {',
+							"	const ids = ['first']",
+							'	for (const note of notes) ids.push(note.id)',
+							'	return ids',
+							'}'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-loop-collector')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects an is, has, can or should name whose value or return is plainly not a boolean',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'names.ts': Array.join(
+						[
+							'declare const session: {expiresAt: number}',
+							'declare const now: number',
+							'declare const items: string[]',
+							'export function isExpired() { return session.expiresAt - now } // reported',
+							'export function isLate() { return session.expiresAt < now }',
+							'export function hasRows(rows: string[]) { if (rows.length === 0) return 0; return rows.length } // reported',
+							"export const isReady = 'yes' // reported",
+							'export const canEdit = {edit: true} // reported',
+							'export const shouldRetry = () => `${now}` // reported',
+							'export const hasItems = items.length',
+							'export const isOpen = false',
+							'export const isUnset = null',
+							'export const hasLabel = (label: string) => label.length > 0',
+							'export function isInner() { return items.every(() => { return 1 }) }',
+							'export function* isGenerated() { yield 1; return 1 }',
+							'export const counter = 1 + 2'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-misleading-boolean-name')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects a guard repeated after an exit on the same test, unless something between could change it',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'guards.ts': Array.join(
+						[
+							'declare const order: {total: number}',
+							'declare function refresh(): void',
+							'declare function check(): boolean',
+							'export function discount() {',
+							'	if (order.total <= 0) return 0',
+							'	const rate = order.total > 100 ? 0.1 : 0.05',
+							'	if (order.total <= 0) return 0 // reported',
+							'	return order.total * rate',
+							'}',
+							'export function afterCall() {',
+							'	if (order.total <= 0) return 0',
+							'	refresh()',
+							'	if (order.total <= 0) return 0',
+							'	return order.total',
+							'}',
+							'export function differentTest() {',
+							'	if (order.total <= 0) return 0',
+							'	if (order.total < 0) return 1',
+							'	return order.total',
+							'}',
+							'export function assigned() {',
+							'	if (order.total <= 0) order.total = 1',
+							'	if (order.total <= 0) return 0',
+							'	return order.total',
+							'}',
+							'export function withElse() {',
+							'	if (order.total <= 0) {',
+							'		return 0',
+							'	} else {',
+							'		order.total = 1',
+							'	}',
+							'	if (order.total <= 0) return 1',
+							'	return 2',
+							'}',
+							'export function inCallback() {',
+							'	if (order.total <= 0) return []',
+							'	return [1].map(() => { if (order.total <= 0) return 0; return 1 })',
+							'}',
+							'export function called() {',
+							'	if (check()) return 0',
+							'	if (check()) return 1',
+							'	return 2',
+							'}',
+							'export function skipped(items: number[]) {',
+							'	for (const item of items) {',
+							'		if (item < 0) continue',
+							'		if (item < 0) continue // reported',
+							'	}',
+							'}'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-repeated-guard')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects hand-written capitalising and padding, and capitalises with String.capitalize',
+			Effect.fnUntraced(function* () {
+				const reported = yield* lintSource({
+					'helpers.ts': Array.join(
+						[
+							"import {String} from 'effect'",
+							'',
+							'declare const word: string',
+							'declare const name: string',
+							'declare const width: number',
+							'export const templated = `${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}` // reported',
+							"export const joined = String.toUpperCase(word[0] ?? '') + String.slice(1)(word) // reported",
+							'export const native = word.charAt(0).toUpperCase() + word.slice(1) // reported',
+							'export const mixed = String.toUpperCase(String.slice(0, 1)(word)) + String.slice(1)(name)',
+							'export const local = word.charAt(0).toLocaleUpperCase() + word.slice(1)',
+							'export const shouted = String.toUpperCase(word) + String.slice(1)(word)',
+							'export const titled = `Dear ${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}`',
+							"export const padded = String.repeat(width - word.length)(' ') + word // reported",
+							"export const trailing = `${word}${String.repeat(width - String.length(word))('.')}` // reported",
+							"export const indented = String.repeat(width)('  ') + word",
+							"export const unrelated = String.repeat(width - name.length)(' ') + word"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(reported, 'no-hand-written-helper')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				const fixed = yield* lintSource(
+					{
+						'imported.ts': Array.join(
+							[
+								"import {Array, String} from 'effect'",
+								'',
+								'declare const words: string[]',
+								'export const titles = Array.map(words, word => `${String.toUpperCase(String.slice(0, 1)(word))}${String.slice(1)(word)}`)'
+							],
+							'\n'
+						),
+						'missing.ts': Array.join(
+							[
+								"import {Array} from 'effect'",
+								'',
+								'declare const words: string[]',
+								"export const titles = Array.map(words, word => (word[0] ?? '').toUpperCase() + word.substring(1))"
+							],
+							'\n'
+						)
+					},
+					['--fix']
+				)
+				assert.deepStrictEqual(fixed.sources, [
+					Array.join(
+						[
+							"import {Array, String} from 'effect'",
+							'',
+							'declare const words: string[]',
+							'export const titles = Array.map(words, word => String.capitalize(word))',
+							''
+						],
+						'\n'
+					),
+					Array.join(
+						[
+							"import {Array, String} from 'effect'",
+							'',
+							'declare const words: string[]',
+							'export const titles = Array.map(words, word => String.capitalize(word))',
+							''
+						],
+						'\n'
+					)
+				])
+			})
+		)
+
+		testApi.effect(
+			'rejects sorting or filtering a whole array to read one item or its emptiness, and fixes what findFirst and some say directly',
+			Effect.fnUntraced(function* () {
+				const reported = yield* lintSource({
+					'picks.ts': Array.join(
+						[
+							"import {Array, Order, pipe} from 'effect'",
+							'',
+							'declare const notes: {pinned: boolean; rank: number}[]',
+							'declare const byRank: Order.Order<{pinned: boolean; rank: number}>',
+							'export const smallest = Array.head(Array.sort(notes, byRank)) // reported',
+							'export const pipedSmallest = pipe(notes, Array.sort(byRank), Array.head) // reported',
+							'export const largest = Array.last(Array.sort(notes, byRank))',
+							'export const ordered = Array.sort(notes, byRank)',
+							'export const firstPinned = Array.head(Array.filter(notes, note => note.pinned)) // reported',
+							'export const pipedPinned = pipe(notes, Array.filter(note => note.pinned), Array.head) // reported',
+							'export const anyPinned = Array.isArrayNonEmpty(Array.filter(notes, note => note.pinned)) // reported',
+							'export const nonePinned = pipe(notes, Array.filter(note => note.pinned), Array.isArrayEmpty) // reported',
+							'export const indexed = Array.filter(notes, note => note.pinned)[0] // reported',
+							'export const sortedFirst = Array.sort(notes, byRank)[0] // reported',
+							'export const hasPinned = Array.some(notes, note => note.pinned)',
+							'export const pinned = Array.filter(notes, note => note.pinned)',
+							'export const ranks = Array.head(Array.map(notes, note => note.rank))',
+							'export const separate = pipe(notes, Array.filter(note => note.pinned), Array.map(note => note.rank), Array.head)'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(reported, 'no-intermediate-collection')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				const fixed = yield* lintSource(
+					{
+						'picks.ts': Array.join(
+							[
+								"import {Array, pipe} from 'effect'",
+								'',
+								'declare const notes: {pinned: boolean; rank: number}[]',
+								'export const firstPinned = Array.head(Array.filter(notes, note => note.pinned))',
+								'export const pipedPinned = pipe(notes, Array.filter(note => note.pinned), Array.head, Array.isSome)',
+								'export const anyPinned = Array.isArrayNonEmpty(Array.filter(notes, note => note.pinned))',
+								'export const nonePinned = Array.isReadonlyArrayEmpty(Array.filter(notes, note => note.pinned))',
+								'export const pipedNone = pipe(notes, Array.filter(note => note.pinned), Array.isArrayEmpty)'
+							],
+							'\n'
+						)
+					},
+					['--fix']
+				)
+				assert.deepStrictEqual(fixed.sources, [
+					Array.join(
+						[
+							"import {Array, pipe} from 'effect'",
+							'',
+							'declare const notes: {pinned: boolean; rank: number}[]',
+							'export const firstPinned = Array.findFirst(notes, note => note.pinned)',
+							'export const pipedPinned = pipe(',
+							'\tnotes,',
+							'\tArray.findFirst(note => note.pinned),',
+							'\tArray.isSome',
+							')',
+							'export const anyPinned = Array.some(notes, note => note.pinned)',
+							'export const nonePinned = !Array.some(notes, note => note.pinned)',
+							'export const pipedNone = pipe(',
+							'\tnotes,',
+							'\tArray.filter(note => note.pinned),',
+							'\tArray.isArrayEmpty',
+							')',
+							''
+						],
+						'\n'
+					)
+				])
+			})
+		)
+
+		testApi.effect(
+			'rejects a conversion undone by its inverse in the next step',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'conversions.ts': Array.join(
+						[
+							"import {Array, Option, Schema, String, pipe} from 'effect'",
+							'',
+							'declare const maybe: string | undefined',
+							'declare const tags: string[]',
+							'declare const value: {n: number}',
+							'declare const Item: Schema.Codec<{n: number}, {n: string}>',
+							'declare const Other: Schema.Codec<{n: number}, {n: string}>',
+							"export const label = Option.getOrElse(Option.fromUndefinedOr(maybe), () => 'none') // reported",
+							"export const piped = pipe(maybe, Option.fromNullishOr, Option.getOrElse(() => 'none')) // reported",
+							'export const wrapped = Option.getOrNull(Option.some(maybe)) // reported',
+							"export const curried = Option.getOrElse(() => 'none')(Option.fromNullishOr(maybe)) // reported",
+							'export const mapped = pipe(Option.fromNullishOr(maybe), Option.map(text => text.length), Option.getOrElse(() => 0))',
+							"export const fallback = maybe ?? 'none'",
+							'export const copied = Schema.decodeSync(Item)(Schema.encodeSync(Item)(value)) // reported',
+							'export const converted = Schema.decodeSync(Other)(Schema.encodeSync(Item)(value))',
+							"export const resplit = String.split(Array.join(tags, ','), ',') // reported",
+							"export const pipedSplit = pipe(tags, Array.join(','), String.split(',')) // reported",
+							"export const respaced = String.split(Array.join(tags, ','), ' ')"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-undone-conversion')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects an assertion of an expression against itself, while keeping calls that may answer differently',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'sessions.test.ts': Array.join(
+						[
+							"import {assert, it} from '@effect/vitest'",
+							'',
+							'declare const sessions: {active: boolean; id: string}[]',
+							'declare function cleanup(items: {active: boolean; id: string}[]): {active: boolean; id: string}[]',
+							"it('keeps active sessions after cleanup', () => {",
+							'	const kept = cleanup(sessions)',
+							'	assert.deepStrictEqual(kept, kept) // reported',
+							'	assert.strictEqual(kept.length, kept.length) // reported',
+							'	assert.strictEqual(1, 1) // reported',
+							'	assert.deepStrictEqual(cleanup(sessions), cleanup(sessions))',
+							'	assert.deepStrictEqual(kept, sessions)',
+							"	assert.deepStrictEqual(kept[0]?.id, 'a')",
+							'})'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-self-comparing-assertion')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
 			'reports focused, skipped, conditional and failing tests',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

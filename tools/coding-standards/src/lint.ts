@@ -30,8 +30,12 @@ import {noFalliblePromise} from '#lint/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
 import {noGradient} from '#lint/no-gradient.ts'
 import {noHandWrittenGuard} from '#lint/no-hand-written-guard.ts'
+import {noHandWrittenHelper} from '#lint/no-hand-written-helper.ts'
 import {noInOperator} from '#lint/no-in-operator.ts'
+import {noIntermediateCollection} from '#lint/no-intermediate-collection.ts'
 import {noLet} from '#lint/no-let.ts'
+import {noLoopCollector} from '#lint/no-loop-collector.ts'
+import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
 import {noNativeControl} from '#lint/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
@@ -45,7 +49,9 @@ import {noRedundantUseRefNullType} from '#lint/no-redundant-use-ref-null-type.ts
 import {noRedundantVariableAnnotation} from '#lint/no-redundant-variable-annotation.ts'
 import {noReinventedSchema} from '#lint/no-reinvented-schema.ts'
 import {noRenamedImport} from '#lint/no-renamed-import.ts'
+import {noRepeatedGuard} from '#lint/no-repeated-guard.ts'
 import {noReturnType} from '#lint/no-return-type.ts'
+import {noSelfComparingAssertion} from '#lint/no-self-comparing-assertion.ts'
 import {noSingleUseValue} from '#lint/no-single-use-value.ts'
 import {noSkippedTest} from '#lint/no-skipped-test.ts'
 import {noSleepingTest} from '#lint/no-sleeping-test.ts'
@@ -58,6 +64,7 @@ import {noTestTimeout} from '#lint/no-test-timeout.ts'
 import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
 import {noTypeFromValue} from '#lint/no-type-from-value.ts'
 import {noTypeof} from '#lint/no-typeof.ts'
+import {noUndoneConversion} from '#lint/no-undone-conversion.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
@@ -140,8 +147,12 @@ const RULES = {
 	'no-floating-derived-type': noFloatingDerivedType,
 	'no-gradient': noGradient,
 	'no-hand-written-guard': noHandWrittenGuard,
+	'no-hand-written-helper': noHandWrittenHelper,
 	'no-in-operator': noInOperator,
+	'no-intermediate-collection': noIntermediateCollection,
 	'no-let': noLet,
+	'no-loop-collector': noLoopCollector,
+	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
 	'no-native-control': noNativeControl,
 	'no-native-emptiness-check': noNativeEmptinessCheck,
@@ -155,7 +166,9 @@ const RULES = {
 	'no-redundant-variable-annotation': noRedundantVariableAnnotation,
 	'no-reinvented-schema': noReinventedSchema,
 	'no-renamed-import': noRenamedImport,
+	'no-repeated-guard': noRepeatedGuard,
 	'no-return-type': noReturnType,
+	'no-self-comparing-assertion': noSelfComparingAssertion,
 	'no-single-use-value': noSingleUseValue,
 	'no-skipped-test': noSkippedTest,
 	'no-sleeping-test': noSleepingTest,
@@ -168,6 +181,7 @@ const RULES = {
 	'no-trivial-indirection': noTrivialIndirection,
 	'no-type-from-value': noTypeFromValue,
 	'no-typeof': noTypeof,
+	'no-undone-conversion': noUndoneConversion,
 	'no-unexplained-disable': noUnexplainedDisable,
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,

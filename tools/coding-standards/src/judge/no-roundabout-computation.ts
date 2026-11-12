@@ -13,7 +13,9 @@ export const noRoundaboutComputation = question(
 				'One step a direct operation would not shorten',
 				'Mapping to values and then reducing them, such as totals per index and then their maximum',
 				'Separate passes answering different questions, which one pass could only fuse with extra state',
-				'Comparing every pair of a handful of items, where the pair relation has no key to index by'
+				'Comparing every pair of a handful of items, where the pair relation has no key to index by',
+				'The head or first index of a sort or a filter, an emptiness test of a filter and the length of a filter: lint reports these',
+				'Source text a test hands to a parser or lint rule as a fixture'
 			],
 			example: `
 				function hasPinned(notes: Note[]) {
@@ -29,8 +31,8 @@ export const noRoundaboutComputation = question(
 				'Two passes or nested loops over data one pass handles'
 			],
 			example: `
-				function smallestRank(notes: Note[]) {
-					return Array.head(Array.sort(notes, Order.mapInput(Order.Number, note => note.rank)))
+				function highestRank(notes: Array.NonEmptyReadonlyArray<Note>) {
+					return Array.lastNonEmpty(Array.sort(notes, Order.mapInput(Order.Number, note => note.rank)))
 				}
 			`
 		}

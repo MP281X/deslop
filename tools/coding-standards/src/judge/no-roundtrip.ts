@@ -10,7 +10,8 @@ export const noRoundtrip = question(
 				'Text written for storage, a network request, a URL or display',
 				'Encoding the current value for storage while decoding an older stored one in the same function',
 				'A string key used only to group or look up, never parsed back',
-				'Parsing text that came from outside `code`'
+				'Parsing text that came from outside `code`',
+				'An Option made and unwrapped, a schema encode decoded or a join split by the very next step, a JSON round trip and a Number() cast: lint reports these'
 			],
 			example: `
 				function series(entries: Entry[]) {
@@ -30,7 +31,7 @@ export const noRoundtrip = question(
 				function series(entries: Entry[]) {
 					return Array.map(Record.toEntries(Array.groupBy(entries, entry => \`\${entry.hour}\`)), group => ({
 						count: group[1].length,
-						hour: Number(group[0])
+						hour: Option.getOrThrow(Number.parse(group[0]))
 					}))
 				}
 			`

@@ -308,9 +308,7 @@ export function compact(samples: readonly Sample[], now: number) {
 
 // The machine's used disk space: its recorded total, or the sum of its mounts for a sample from before that field.
 export function usedStorage(point: Sample) {
-	return Option.getOrElse(Option.fromUndefinedOr(point.storageUsed), () =>
-		Array.reduce(point.disks, 0, (sum, disk) => sum + disk.used)
-	)
+	return point.storageUsed ?? Array.reduce(point.disks, 0, (sum, disk) => sum + disk.used)
 }
 
 export function history(samples: readonly Sample[], minutes: number, now: number) {
