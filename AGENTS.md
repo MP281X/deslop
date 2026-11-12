@@ -4,7 +4,7 @@
 
 - **Task.** No issue tracker: the request is the whole task.
 - **Language.** Apps are English-only.
-- **Users.** One user on two workers; no portability, compatibility code or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage. Portfolio is public.
+- **Users.** One user on three workers: two Debian ones and a Mac whose only Deslop app is Deploy; no portability, compatibility code or general multi-user platform. Everyone with access shares app data except Gateway's person-owned AI keys and usage. Portfolio is public.
 - **Releases.** Linear and squash-merged; a newer merge cancels an older release run, so a data change covers everything since the last successful deploy.
 - **Data retention.** Local data is disposable. Preserve production data only from the immediately previous release; delete obsolete data.
 

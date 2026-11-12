@@ -1,4 +1,4 @@
-import {Array, Iterable, Number, Option, String} from 'effect'
+import {Array, Boolean, Iterable, Number, Option, String} from 'effect'
 
 export function socketLine(line: string) {
 	const fields = String.split(String.trim(line), /\s+/u)
@@ -13,6 +13,57 @@ export function socketLine(line: string) {
 		protocol: fields[0],
 		state: fields[1] ?? 'listening'
 	}))
+}
+
+export type Socket = Option.Option.Value<ReturnType<typeof socketLine>>
+
+type OpenFile = {address: string; pid: string; process: string; protocol: string; state: string; type: string}
+
+function lsofSocket(file: OpenFile) {
+	if (String.includes('->')(file.address) || !Array.contains(['TCP', 'UDP'], file.protocol)) {
+		return Option.none<Socket>()
+	}
+	const address = String.replace(
+		/^\*:/u,
+		Boolean.match(file.type === 'IPv4', {onFalse: () => '*:', onTrue: () => '0.0.0.0:'})
+	)(file.address)
+	return Option.map(Number.parse(Option.getOrElse(Array.last(String.split(address, ':')), () => '')), port => ({
+		address,
+		port,
+		process: Option.some({name: file.process, pid: file.pid}),
+		protocol: String.toLowerCase(file.protocol),
+		state: Boolean.match(file.protocol === 'TCP', {
+			onFalse: () => 'UNCONN',
+			onTrue: () => String.replace(/^ST=/u, '')(file.state) || 'LISTEN'
+		})
+	}))
+}
+
+// A Mac's listening sockets from `lsof -nP +c0 -iTCP -sTCP:LISTEN -iUDP -F pctPnT`, read as `socketLine` reads ss: an IPv4 wildcard is 0.0.0.0, an IPv6 one `*`, and a socket that several descriptors share is listed once.
+export function lsofSockets(text: string) {
+	const empty: OpenFile = {address: '', pid: '', process: '', protocol: '', state: '', type: ''}
+	const scanned = Array.reduce(
+		String.split(text, '\n'),
+		{file: empty, sockets: Array.empty<Socket>()},
+		(scan, line) => {
+			const value = String.slice(1)(line)
+			const flushed = [...scan.sockets, ...Option.toArray(lsofSocket(scan.file))]
+			if (String.startsWith('p')(line)) return {file: {...empty, pid: value}, sockets: flushed}
+			if (String.startsWith('c')(line)) return {...scan, file: {...scan.file, process: value}}
+			if (String.startsWith('f')(line)) {
+				return {file: {...empty, pid: scan.file.pid, process: scan.file.process}, sockets: flushed}
+			}
+			if (String.startsWith('t')(line)) return {...scan, file: {...scan.file, type: value}}
+			if (String.startsWith('P')(line)) return {...scan, file: {...scan.file, protocol: value}}
+			if (String.startsWith('n')(line)) return {...scan, file: {...scan.file, address: value}}
+			if (String.startsWith('TST=')(line)) return {...scan, file: {...scan.file, state: value}}
+			return scan
+		}
+	)
+	return Array.dedupeWith(
+		[...scanned.sockets, ...Option.toArray(lsofSocket(scanned.file))],
+		(a, b) => a.protocol === b.protocol && a.address === b.address
+	)
 }
 
 export function socketUnit(cgroup: string) {

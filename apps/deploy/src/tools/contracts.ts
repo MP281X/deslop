@@ -29,7 +29,7 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Readonly, true),
 	Tool.make('expose_port', {
 		description:
-			'Use to give a local port an HTTPS URL on the tailnet or the public internet; publicAccess=true is required for public, and target names another configured worker. Returns {url}; it adds no authentication and starts no application.',
+			'Use to give a local port an HTTPS URL on the tailnet or, from a Linux worker, the public internet; publicAccess=true is required for public, and target names another configured worker. Returns {url}; it adds no authentication and starts no application.',
 		failure: DeployError,
 		parameters: ExposeRequest,
 		success: Schema.Struct({url: Schema.String})
@@ -42,7 +42,7 @@ export const Tools = Toolkit.make(
 	}).annotate(Tool.Destructive, true),
 	Tool.make('run_job', {
 		description:
-			'Use to run a scheduled job now, by the name list_apps shows. Pass worker when both machines run the same job; returns {started: true}.',
+			'Use to run a scheduled job now, by the name list_apps shows. Pass worker when several machines run the same job; returns {started: true}.',
 		failure: DeployError,
 		parameters: RunJobInput,
 		success: Schema.Struct({started: Schema.Literal(true)})

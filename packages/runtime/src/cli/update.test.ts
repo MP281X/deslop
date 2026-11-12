@@ -1,3 +1,6 @@
+import {userInfo} from 'node:os'
+import {platform} from 'node:process'
+
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
@@ -72,7 +75,11 @@ it.layer(NodeServices.layer)('Service update', test => {
 			const [installed, restarted, ...rest] = yield* Ref.get(commands)
 			assert.include(installed, '--ignore-scripts')
 			assert.include(installed, `@deslop/fixture@0.1.11 → ${release('0.1.10')}`)
-			assert.strictEqual(restarted, `--user restart deslop-fixture.service → ${release('0.1.11')}`)
+			if (platform === 'darwin') {
+				assert.strictEqual(restarted, `kickstart -k gui/${userInfo().uid}/deslop-fixture → ${release('0.1.11')}`)
+			} else {
+				assert.strictEqual(restarted, `--user restart deslop-fixture.service → ${release('0.1.11')}`)
+			}
 			assert.isEmpty(rest)
 			assert.sameMembers(yield* fs.readDirectory(`${root}/releases`), ['0.1.10', '0.1.11'])
 		})

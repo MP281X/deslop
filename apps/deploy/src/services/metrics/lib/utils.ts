@@ -72,6 +72,100 @@ function coreUsages(current: Counters, seconds: number, old?: Counters) {
 	}))
 }
 
+// A Mac's counters from `os.cpus()`, in milliseconds per core; `uptime` is a monotonic clock in seconds, since the Mac's own uptime counts whole seconds.
+export function cpuCounters(
+	cpus: readonly {times: Record<'idle' | 'irq' | 'nice' | 'sys' | 'user', number>}[],
+	uptime: number,
+	time: number
+) {
+	const cores = Array.map(cpus, (cpu, index) => ({
+		id: `cpu${index}`,
+		idle: cpu.times.idle,
+		total: Number.sumAll(Record.values(cpu.times))
+	}))
+	return {
+		cores,
+		cpuIdle: Number.sumAll(Array.map(cores, core => core.idle)),
+		cpuTotal: Number.sumAll(Array.map(cores, core => core.total)),
+		time,
+		uptime
+	}
+}
+
+// What Activity Monitor calls used memory, from `vm_stat`: app memory (anonymous less purgeable), wired, and what the compressor occupies.
+export function vmStatMemory(text: string, total: number) {
+	const pages = Record.fromEntries(
+		Array.getSomes(
+			Array.map(String.split(text, '\n'), line =>
+				Option.map(
+					String.match(/^"?([^":]+)"?:\s+([0-9]+)\.$/u)(String.trim(line)),
+					match => [match[1] ?? '', match[2] ?? ''] as const
+				)
+			)
+		)
+	)
+	const page = Schema.decodeSync(Schema.FiniteFromString)(
+		Option.getOrElse(
+			Option.map(String.match(/page size of ([0-9]+) bytes/u)(text), match => match[1] ?? ''),
+			() => ''
+		)
+	)
+	function count(name: string) {
+		return Schema.decodeSync(Schema.FiniteFromString)(pages[name] ?? '')
+	}
+	return {
+		total,
+		used: Number.clamp(
+			(count('Anonymous pages') -
+				count('Pages purgeable') +
+				count('Pages wired down') +
+				count('Pages occupied by compressor')) *
+				page,
+			{maximum: total, minimum: 0}
+		)
+	}
+}
+
+// A Mac's startup volume from `df -k /`: APFS reports the system volume's own use, so its container's use is size less available.
+export function rootVolume(text: string) {
+	return Array.map(Array.filter(Array.drop(String.split(String.trim(text), '\n'), 1), String.isNonEmpty), line => {
+		const fields = String.split(String.trim(line), /\s+/u)
+		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
+		return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
+	})
+}
+
+// A sample from the machine's readings: memory in bytes, the disks it measures and up to three load averages.
+export function reading(
+	current: Counters,
+	memory: {total: number; used: number},
+	disks: Sample['disks'],
+	load: readonly number[],
+	previous?: Counters
+) {
+	const used = Array.reduce(disks, 0, (sum, entry) => sum + entry.used)
+	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
+	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
+	const value: Sample = {
+		cores: coreUsages(current, seconds, Option.getOrUndefined(baseline)),
+		...Record.getSomes({
+			cpu: cpuUsage(
+				{idle: current.cpuIdle, total: current.cpuTotal},
+				seconds,
+				Option.getOrUndefined(Option.map(baseline, old => ({idle: old.cpuIdle, total: old.cpuTotal})))
+			)
+		}),
+		disks,
+		load,
+		memoryTotal: memory.total,
+		memoryUsed: memory.used,
+		time: current.time,
+		uptime: current.uptime
+	}
+	return Array.match(disks, {onEmpty: () => value, onNonEmpty: () => ({...value, storageUsed: used})})
+}
+
+// A Linux sample from `/proc/meminfo`, `df -B1 --output=target,size,used` and `/proc/loadavg`.
 export function sample(current: Counters, memory: string, disk: string, previous?: Counters, load?: string) {
 	const values = Record.fromEntries(
 		Array.map(String.split(String.trim(memory), '\n'), line => {
@@ -79,43 +173,29 @@ export function sample(current: Counters, memory: string, disk: string, previous
 			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
 		})
 	)
-	const disks = pipe(
-		disk,
-		String.trim,
-		String.split('\n'),
-		Array.drop(1),
-		Array.filter(String.isNonEmpty),
-		Array.map(line => {
-			const fields = String.split(String.trim(line), /\s+/u)
-			return {
-				mount: fields[0],
-				total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
-				used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
-			}
-		})
-	)
-	const used = Array.reduce(disks, 0, (sum, entry) => sum + entry.used)
-	const seconds = (current.time - (previous?.time ?? current.time)) / 1000
-	const baseline = Option.filter(Option.fromUndefinedOr(previous), old => old.uptime < current.uptime)
-	const reading: Sample = {
-		cores: coreUsages(current, seconds, Option.getOrUndefined(baseline)),
-		...Record.getSomes({
-			cpu: cpuUsage(
-				{idle: current.cpuIdle, total: current.cpuTotal},
-				seconds,
-				Option.getOrUndefined(Option.map(baseline, value => ({idle: value.cpuIdle, total: value.cpuTotal})))
-			)
-		}),
-		disks,
-		load: Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
+	return reading(
+		current,
+		{total: values['MemTotal:'] ?? 0, used: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0)},
+		pipe(
+			disk,
+			String.trim,
+			String.split('\n'),
+			Array.drop(1),
+			Array.filter(String.isNonEmpty),
+			Array.map(line => {
+				const fields = String.split(String.trim(line), /\s+/u)
+				return {
+					mount: fields[0],
+					total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
+					used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
+				}
+			})
+		),
+		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
 			Array.take(Array.filter(String.split(String.trim(load ?? ''), /\s+/u), String.isNonEmpty), 3)
 		),
-		memoryTotal: values['MemTotal:'] ?? 0,
-		memoryUsed: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0),
-		time: current.time,
-		uptime: current.uptime
-	}
-	return Array.match(disks, {onEmpty: () => reading, onNonEmpty: () => ({...reading, storageUsed: used})})
+		previous
+	)
 }
 
 // A range's slot width: every range draws 60 slots.

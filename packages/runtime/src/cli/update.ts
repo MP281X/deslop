@@ -6,8 +6,9 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 
 import {AppVersion} from '#schema.ts'
 
+import {execute} from '#cli/command.ts'
 import {AppError} from '#cli/schema.ts'
-import {execute, restart} from '#cli/service.ts'
+import {restart} from '#cli/service.ts'
 
 const serviceDirectory = Effect.fnUntraced(function* (name: string) {
 	return (yield* Path.Path).join(yield* Config.String('HOME'), '.deslop', name)
@@ -24,7 +25,7 @@ export const activate = Effect.fnUntraced(function* (name: string, target: strin
 	return current
 })
 
-// Never two processes: systemd stops the old one before starting the new.
+// Never two processes: the service manager stops the old one before starting the new.
 export const update = Effect.fnUntraced(function* (name: string) {
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path

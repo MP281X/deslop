@@ -1,3 +1,6 @@
+import {hostname} from 'node:os'
+import {platform} from 'node:process'
+
 import {
 	Array,
 	Context,
@@ -18,7 +21,8 @@ import {
 import {KeyValueStore} from 'effect/persistence'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {execute, install} from '@deslop/runtime/cli/service'
+import {execute} from '@deslop/runtime/cli/command'
+import {install} from '@deslop/runtime/cli/service'
 import {ToolPath} from '@deslop/runtime/server'
 
 import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
@@ -78,7 +82,7 @@ export class Exposures extends Context.Service<
 				const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('exposures'), () => ({})))
 				const lock = yield* Semaphore.make(1)
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-				const worker = String.trim(yield* fs.readFileString('/proc/sys/kernel/hostname'))
+				const worker = hostname()
 				const path = yield* Path.Path
 				// Unpacked on the first public exposure, not on every start.
 				const caddy = pipe(
@@ -171,6 +175,12 @@ export class Exposures extends Context.Service<
 							}
 							if (input.kind === 'public' && !input.publicAccess) {
 								return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
+							}
+							// Public exposure runs the bundled Caddy, a Linux x64 build.
+							if (input.kind === 'public' && platform !== 'linux') {
+								return yield* DeployError.make({
+									message: 'Public exposure needs a Linux worker; expose this port to the tailnet'
+								})
 							}
 							if (input.kind === 'tailnet') {
 								yield* checkTailnet(input)

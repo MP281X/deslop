@@ -10,6 +10,7 @@
 		"./ai/schema": "./src/ai/schema.ts",
 		"./cli": "./src/cli.ts",
 		"./schema": "./src/schema.ts",
+		"./cli/command": "./src/cli/command.ts",
 		"./cli/service": "./src/cli/service.ts",
 		"./auth/schema": "./src/auth/schema.ts",
 		"./auth/service": "./src/auth/service.ts",

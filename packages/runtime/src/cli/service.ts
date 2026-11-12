@@ -1,27 +1,14 @@
-import {Array, Boolean, Config, Effect, FileSystem, Path, Stream, String, pipe} from 'effect'
+import {platform} from 'node:process'
 
-import {ChildProcess} from 'effect/process'
+import {Array, Boolean, Config, Effect, FileSystem, Path, String, pipe} from 'effect'
 
-import {AppError} from '#cli/schema.ts'
+import {execute} from '#cli/command.ts'
+import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#cli/launchd.ts'
 
 // systemd expands percent specifiers even inside a quoted argument.
 function systemdArgument(value: string) {
 	return `"${pipe(value, String.replaceAll('\\', '\\\\'), String.replaceAll('"', '\\"'), String.replaceAll('%', '%%'), String.replaceAll('$', '$$$$'), String.replaceAll('\n', '\\n'), String.replaceAll('\r', '\\r'))}"`
 }
-
-export const execute = Effect.fnUntraced(function* (command: string, args: string[]) {
-	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
-	const result = yield* Effect.all(
-		{
-			code: process.exitCode,
-			stderr: Stream.mkString(Stream.decodeText(process.stderr)),
-			stdout: Stream.mkString(Stream.decodeText(process.stdout))
-		},
-		{concurrency: 'unbounded'}
-	)
-	if (result.code !== 0) return yield* AppError.make({message: `${command} failed: ${result.stderr}`})
-	return result.stdout
-}, Effect.scoped)
 
 function systemctl(...args: string[]) {
 	return execute('systemctl', ['--user', ...args])
@@ -33,6 +20,7 @@ const unitDirectory = Effect.gen(function* () {
 
 // `restart: false` leaves a running process alone, for one that reloads its own configuration.
 export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
+	if (platform === 'darwin') return yield* installAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const home = yield* Config.String('HOME')
@@ -52,6 +40,7 @@ export const install = Effect.fnUntraced(function* (name: string, command: strin
 
 // A separate oneshot, so updating survives the restart of the app it updates.
 export const installUpdates = Effect.fnUntraced(function* (name: string, command: string[]) {
+	if (platform === 'darwin') return yield* installUpdateAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* unitDirectory
@@ -71,6 +60,7 @@ export const installUpdates = Effect.fnUntraced(function* (name: string, command
 })
 
 export const uninstall = Effect.fnUntraced(function* (name: string) {
+	if (platform === 'darwin') return yield* uninstallAgents(name)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
 	const directory = yield* unitDirectory
@@ -85,9 +75,11 @@ export const uninstall = Effect.fnUntraced(function* (name: string) {
 })
 
 export function status(name: string) {
+	if (platform === 'darwin') return agentStatus(name)
 	return systemctl('show', `deslop-${name}.service`, '--property=LoadState,ActiveState,SubState,MainPID')
 }
 
 export function restart(name: string) {
+	if (platform === 'darwin') return restartAgent(name)
 	return pipe(systemctl('restart', `deslop-${name}.service`), Effect.timeout('30 seconds'))
 }
