@@ -77,6 +77,8 @@ function expectedColumns(model: Model) {
 	if (!SchemaAST.isObjects(encoded)) return assert.fail(`${model.table} encodes to an object`)
 	return pipe(
 		encoded.propertySignatures,
+		// A key the row may leave out, such as a kind's tag that decoding fills in, is no column.
+		Array.filter(property => !SchemaAST.isOptional(property.type)),
 		Array.map(property => {
 			const column = columnOf(property.type)
 			return {name: property.name.toString(), notnull: !column.nullable, type: Array.join(column.types, '|')}
