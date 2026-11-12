@@ -422,7 +422,7 @@ function timingOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>) {
 }
 
 // What every list reads of one trace, judged from all of its spans.
-export function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedAt: number) {
+function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedAt: number) {
 	const root = traceRoot(spans)
 	const timing = timingOf(spans)
 	return {
@@ -438,6 +438,25 @@ export function traceOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>, receivedA
 			subscription(root, spans) ||
 			(String.startsWith('Machine.invoke')(root.name) && root.attributes['machine.invoke.kind'] === 'Timer')
 	}
+}
+
+// The traces an export touches, whose stored spans `touchedTraces` reads again.
+export function traceIdsOf(spans: readonly SpanFacts[]) {
+	return Array.dedupe(Array.map(spans, span => span.traceId))
+}
+
+// Each trace an export touches, judged again over its stored spans with the arriving copies in place of theirs.
+export function touchedTraces(incoming: readonly SpanFacts[], stored: readonly SpanFacts[], receivedAt: number) {
+	const arriving = HashSet.fromIterable(Array.map(incoming, span => `${span.traceId}:${span.spanId}`))
+	return Array.map(
+		Record.values(
+			Array.groupBy(
+				[...Array.filter(stored, span => !HashSet.has(arriving, `${span.traceId}:${span.spanId}`)), ...incoming],
+				span => span.traceId
+			)
+		),
+		spans => traceOf(spans, receivedAt)
+	)
 }
 
 // Each linked trace's root hangs under the span it links to, its own link first.

@@ -38,7 +38,8 @@ import {
 	sideFor,
 	spansOf,
 	supersededBy,
-	traceOf,
+	touchedTraces,
+	traceIdsOf,
 	traceTree
 } from '#services/telemetry/lib/utils.ts'
 import type {Traced} from '#services/telemetry/lib/utils.ts'
@@ -288,38 +289,36 @@ function startOf(tree: TraceTree) {
 }
 
 function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details: boolean, selectedSpanId?: string) {
-	const ancestors = Option.match(
-		Option.flatMap(Option.fromUndefinedOr(tree.failureSpanId), spanId =>
-			Array.findFirst(tree.spans, span => span.spanId === spanId)
-		),
-		{
-			onNone: () => [],
-			onSome: span =>
-				Array.unfold({id: Option.some(span.spanId), seen: Array.empty<string>()}, current =>
-					Option.flatMap(
-						Option.filter(current.id, id => !Array.contains(current.seen, id)),
-						id =>
-							Option.map(
-								Array.findFirst(tree.spans, found => found.spanId === id),
-								found => [found.spanId, {id: found.parentSpanId, seen: [...current.seen, id]}] as const
-							)
-					)
-				)
-		}
+	const byId = Record.fromEntries(Array.map(tree.spans, span => [span.spanId, span] as const))
+	// The failing span and its parents up to the root, stopping at a parent already walked.
+	const ancestors = HashSet.fromIterable(
+		Array.unfold({id: Option.fromUndefinedOr(tree.failureSpanId), seen: HashSet.empty<string>()}, current =>
+			Option.flatMap(
+				Option.filter(current.id, id => !HashSet.has(current.seen, id)),
+				id =>
+					Option.map(Record.get(byId, id), found => [
+						found.spanId,
+						{id: found.parentSpanId, seen: HashSet.add(current.seen, id)}
+					])
+			)
+		)
 	)
 	const candidates = Array.filter(
 		Array.sort(
 			tree.spans,
 			Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)
 		),
-		span => !Array.contains(ancestors, span.spanId)
+		span => !HashSet.has(ancestors, span.spanId)
 	)
-	const kept = [...ancestors, ...Array.map(Array.take(Array.drop(candidates, offset), limit), span => span.spanId)]
+	const kept = HashSet.union(
+		ancestors,
+		HashSet.fromIterable(Array.map(Array.take(Array.drop(candidates, offset), limit), span => span.spanId))
+	)
 	const spans = Array.flatMap(tree.spans, span => {
 		if (selectedSpanId !== undefined) {
 			return Boolean.match(span.spanId === selectedSpanId, {onFalse: () => [], onTrue: () => [compactSpan(span)]})
 		}
-		if (details || Array.contains(kept, span.spanId)) return [compactSpan(span)]
+		if (details || HashSet.has(kept, span.spanId)) return [compactSpan(span)]
 		return []
 	})
 	const logs = Array.map(tree.logs, compactLog)
@@ -780,16 +779,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				function* (payload: TracesRequest) {
 					const receivedAt = yield* Clock.currentTimeMillis
 					const incoming = spansOf(payload)
-					const touched = Array.dedupe(Array.map(incoming.spans, span => span.traceId))
-					const arriving = HashSet.fromIterable(Array.map(incoming.spans, span => `${span.traceId}:${span.spanId}`))
-					const stored = Array.filter(
-						yield* listSpans(touched),
-						span => !HashSet.has(arriving, `${span.traceId}:${span.spanId}`)
-					)
 					yield* chunked(
-						Array.map(Record.values(Array.groupBy([...stored, ...incoming.spans], span => span.traceId)), spans =>
-							traceOf(spans, receivedAt)
-						),
+						touchedTraces(incoming.spans, yield* listSpans(traceIdsOf(incoming.spans)), receivedAt),
 						saveTraces
 					)
 					yield* chunked(incoming.spans, saveSpans)
