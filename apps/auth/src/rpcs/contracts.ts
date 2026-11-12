@@ -32,9 +32,9 @@ export class RpcContracts extends RpcGroup.make(
 	Rpc.make('signins.answer', {error: AuthError, payload: AnswerParams}),
 	Rpc.make('people.watch', {error: AuthError, stream: true, success: Schema.Array(Person)}),
 	Rpc.make('people.admit', {error: AuthError, payload: AdmitParams, success: Person}),
-	Rpc.make('tokens.watchApps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp)}),
+	Rpc.make('tokens.watchApps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp.json)}),
 	Rpc.make('apps.watch', {error: AuthError, stream: true, success: Catalog}),
-	Rpc.make('passkeys.watch', {error: AuthError, stream: true, success: Schema.Array(Passkey)}),
+	Rpc.make('passkeys.watch', {error: AuthError, stream: true, success: Schema.Array(Passkey.json)}),
 	Rpc.make('passkeys.registration', {error: AuthError, success: CreationOptions}),
 	Rpc.make('passkeys.add', {error: AuthError, payload: AddPasskeyParams})
 )

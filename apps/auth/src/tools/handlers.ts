@@ -93,9 +93,12 @@ export const ToolHandlers = ToolContracts.toLayer(
 				return {
 					...Struct.omit(found, ['items']),
 					sessions: Array.map(found.items, app => ({
-						...Option.match(Option.fromUndefinedOr(app.address), {onNone: () => ({}), onSome: address => ({address})}),
+						...Option.match(app.address, {onNone: () => ({}), onSome: address => ({address})}),
 						client: app.client,
-						...Boolean.match(app.device === app.address, {onFalse: () => ({device: app.device}), onTrue: () => ({})}),
+						...Boolean.match(Option.contains(app.address, app.device), {
+							onFalse: () => ({device: app.device}),
+							onTrue: () => ({})
+						}),
 						id: app.family,
 						lastActive: pipe(app.lastActive, DateTime.makeUnsafe, DateTime.formatIso)
 					}))

@@ -233,6 +233,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@phosphor-icons/react':
         specifier: latest
         version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

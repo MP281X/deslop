@@ -6,6 +6,7 @@ import {
 	Boolean,
 	Clock,
 	ConfigProvider,
+	Context,
 	Effect,
 	FileSystem,
 	Fiber,
@@ -13,7 +14,6 @@ import {
 	Option,
 	Order,
 	Queue,
-	Ref,
 	Schema,
 	String,
 	Stream,
@@ -25,7 +25,8 @@ import {Digest, SecureRandom, Signature} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerRequest, HttpServerResponse, UrlParams} from 'effect/http'
 import {Jwk, Jwks, Jwt} from 'effect/jose'
-import {KeyValueStore, RateLimiter} from 'effect/persistence'
+import {RateLimiter} from 'effect/persistence'
+import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
 import {HttpAuth} from '@deslop/runtime/server/auth'
@@ -57,7 +58,7 @@ import {
 	RequestParams
 } from '#services/sign-ins/schema.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
-import {DEVICE_GRANT, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
+import {BrowserSession, DEVICE_GRANT, Registration, SessionVia, SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers, layerMcpOwner} from '#tools/handlers.ts'
@@ -101,35 +102,13 @@ function refused<E, R>(handler: Effect.Effect<HttpServerResponse.HttpServerRespo
 	)
 }
 
-const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<Option.Option<string>>) {
-	const directory = saved ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
-	const failures = failing ?? (yield* Ref.make(Option.none<string>()))
-	const grantWrites = yield* Ref.make(0)
-	const failGrantWrite = yield* Ref.make(Option.none<number>())
-	const storage = pipe(
-		Layer.effect(
-			KeyValueStore.KeyValueStore,
-			Effect.map(KeyValueStore.KeyValueStore, store =>
-				KeyValueStore.make({
-					...store,
-					set: (key, value) =>
-						Effect.gen(function* () {
-							const grantFailed =
-								key === 'sign-ins' &&
-								Option.contains(
-									yield* Ref.get(failGrantWrite),
-									yield* Ref.updateAndGet(grantWrites, count => count + 1)
-								)
-							if (Option.contains(yield* Ref.get(failures), key) || grantFailed) {
-								return yield* new KeyValueStore.KeyValueStoreError({key, message: 'Disk unavailable', method: 'set'})
-							}
-							return yield* store.set(key, value)
-						})
-				})
-			)
-		),
-		Layer.provide(layerDataStore(directory))
+// Auth's database in the directory a restart opens again; the test shares the server's connection, so its triggers bind the server's writes.
+const servers = Effect.fnUntraced(function* (saved?: string) {
+	const database = yield* Layer.build(
+		layerDataStore(saved ?? (yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()))
 	)
+	const sql = Context.get(database, SqlClient.SqlClient)
+	const storage = Layer.succeedContext(database)
 	const digest = yield* Digest.Digest
 	const clock = yield* Clock.Clock
 	const ready = yield* Queue.make<true>()
@@ -228,7 +207,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 									'GET',
 									'/apps',
 									Effect.gen(function* () {
-										return yield* HttpServerResponse.schemaJson(Schema.Array(SignedInApp))(
+										return yield* HttpServerResponse.schemaJson(Schema.Array(SignedInApp.json))(
 											yield* Effect.flatMap(
 												Stream.runHead((yield* Tokens).apps(yield* requestOwner)),
 												Effect.fromOption
@@ -283,7 +262,7 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 									'GET',
 									'/passkeys',
 									Effect.gen(function* () {
-										return yield* HttpServerResponse.schemaJson(Schema.Array(Passkey))(
+										return yield* HttpServerResponse.schemaJson(Schema.Array(Passkey.json))(
 											yield* Effect.flatMap(
 												Stream.runHead((yield* Passkeys).list(yield* requestOwner)),
 												Effect.fromOption
@@ -371,7 +350,14 @@ const servers = Effect.fnUntraced(function* (saved?: string, failing?: Ref.Ref<O
 		),
 		web => Effect.promise(() => web.dispose())
 	)
-	return {failGrantWrite, grantWrites, issuer, ready}
+	return {
+		// The database refuses one kind of write to a table, as a full disk would, until `recover`.
+		fail: (write: 'DELETE' | 'INSERT', table: string) =>
+			sql`CREATE TEMP TRIGGER refuse BEFORE ${sql.literal(write)} ON ${sql(table)} BEGIN SELECT RAISE(ABORT, 'Disk unavailable'); END`,
+		issuer,
+		ready,
+		recover: sql`DROP TRIGGER temp.refuse`
+	}
 })
 
 function send(web: Effect.Success<ReturnType<typeof servers>>['issuer'], path: string, init?: RequestInit) {
@@ -919,13 +905,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					yield* Effect.promise(() => response.text())
 				)
 				const list = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
-				const apps = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+				const apps = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
 					yield* Effect.promise(() => list.text())
 				)
 				const browser = yield* Effect.fromOption(Array.findFirst(apps, app => app.kind === 'Browser'))
-				assert.strictEqual(
+				assert.deepStrictEqual(
 					(yield* Effect.fromOption(Array.findFirst(apps, app => app.client === 'Scope'))).parent,
-					browser.family
+					Option.some(browser.family)
 				)
 				const unspent = yield* authorizeWeb(web.issuer, session)
 				if (ending === 'sign-out') {
@@ -1000,7 +986,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const listed = yield* Effect.forEach(
 				[admin, member],
 				Effect.fnUntraced(function* (session) {
-					return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey)))(
+					return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey.json)))(
 						yield* Effect.flatMap(send(web.issuer, '/passkeys', {headers: {cookie: session}}), response =>
 							Effect.promise(() => response.text())
 						)
@@ -1028,8 +1014,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'keeps old passkeys and registration challenges invalid after a failed removal cleanup and restart',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-			const failing = yield* Ref.make(Option.none<string>())
-			const web = yield* servers(directory, failing)
+			const web = yield* servers(directory)
 			const admin = cookie(yield* signIn(web.issuer, 'octocat'))
 			const member = cookie(yield* signIn(web.issuer, 'stranger'))
 			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
@@ -1048,9 +1033,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Effect.promise(() => response.text())
 				)
 			)
-			yield* Ref.set(failing, Option.some('sign-ins'))
+			yield* web.fail('DELETE', BrowserSession.table)
 			assert.strictEqual((yield* post(web.issuer, '/remove-person', admin, {id: 'github:7'})).status, 400)
-			yield* Ref.set(failing, Option.none())
+			yield* web.recover
 			const fresh = cookie(yield* signIn(web.issuer, 'stranger'))
 			yield* post(web.issuer, '/admit', admin, {allow: true, id: 'github:7'})
 			const anotherKey = yield* authenticator()
@@ -1106,7 +1091,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				method: 'POST'
 			})
 			assert.strictEqual(added.status, 204)
-			const listed = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey)))(
+			const listed = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(Passkey.json)))(
 				yield* Effect.flatMap(send(web.issuer, '/passkeys', {headers: {cookie: session}}), response =>
 					Effect.promise(() => response.text())
 				)
@@ -1401,14 +1386,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 
 	for (const via of SessionVia.literals) {
 		test.effect(
-			`replaces only the presented browser session in one grant write through ${via}`,
+			`replaces only the presented browser session through ${via}`,
 			Effect.fnUntraced(function* () {
 				const web = yield* servers()
 				const before = cookie(yield* signIn(web.issuer, 'octocat'))
 				const independent = cookie(yield* signIn(web.issuer, 'octocat'))
-				const replace = yield* replacement(web.issuer, before, via)
-				const writes = yield* Ref.get(web.grantWrites)
-				const after = cookie(yield* replace())
+				const after = cookie(yield* (yield* replacement(web.issuer, before, via))())
 				assert.deepStrictEqual(
 					[
 						(yield* send(web.issuer, '/me', {headers: {cookie: before}})).status,
@@ -1417,7 +1400,6 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					],
 					[401, 200, 200]
 				)
-				assert.strictEqual(yield* Ref.get(web.grantWrites), writes + 1)
 			})
 		)
 
@@ -1427,11 +1409,11 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				const web = yield* servers()
 				const before = cookie(yield* signIn(web.issuer, 'octocat'))
 				const replace = yield* replacement(web.issuer, before, via)
-				yield* Ref.set(web.failGrantWrite, Option.some((yield* Ref.get(web.grantWrites)) + 1))
+				yield* web.fail('INSERT', BrowserSession.table)
 				const failed = yield* replace()
 				assert.isFalse(String.includes('__Host-session=')(cookie(failed)))
 				assert.strictEqual((yield* send(web.issuer, '/me', {headers: {cookie: before}})).status, 200)
-				yield* Ref.set(web.failGrantWrite, Option.none())
+				yield* web.recover
 				const after = cookie(yield* replace())
 				assert.deepStrictEqual(
 					[
@@ -2017,7 +1999,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const apps = Effect.fnUntraced(function* (session: string) {
 				const response = yield* send(web.issuer, '/apps', {headers: {cookie: session}})
 				return Array.filter(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
 						yield* Effect.promise(() => response.text())
 					),
 					app => app.kind === 'App'
@@ -2081,7 +2063,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				Effect.map(
 					Effect.flatMap(
 						Effect.promise(() => response.text()),
-						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))
+						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))
 					),
 					Array.filter(app => app.kind === 'App')
 				)
@@ -2152,7 +2134,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const listed = yield* send(web.issuer, '/apps', {headers: {cookie: admin}})
 			const browserApp = yield* Effect.fromOption(
 				Array.findFirst(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp)))(
+					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
 						yield* Effect.promise(() => listed.text())
 					),
 					app => app.client === 'Safari' && app.device === 'iPhone'
@@ -2314,21 +2296,21 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* post(web.issuer, '/add-passkey', member, {response: memberAdded})).status, 204)
 			const agent = yield* agentToken(web.issuer, admin)
 			assert.strictEqual((yield* callTool(web.issuer, '', 'list_passkeys', {})).status, 401)
-			const listed = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey)}))(
+			const listed = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey.json)}))(
 				yield* toolResult(yield* callTool(web.issuer, agent, 'list_passkeys', {}))
 			)
 			assert.deepStrictEqual(listed.passkeys, [{addedFrom: 'Safari · iPhone', id: added.id, synced: false}])
 			const denied = yield* callTool(web.issuer, agent, 'remove_passkey', {id: memberAdded.id})
 			assert.include(yield* Effect.promise(() => denied.text()), 'No passkey of yours has that id')
 			const memberAgent = yield* agentToken(web.issuer, member)
-			const remaining = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey)}))(
+			const remaining = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey.json)}))(
 				yield* toolResult(yield* callTool(web.issuer, memberAgent, 'list_passkeys', {}))
 			)
 			assert.deepStrictEqual(remaining.passkeys, [{addedFrom: 'Safari · iPhone', id: memberAdded.id, synced: false}])
 			assert.deepStrictEqual(yield* toolResult(yield* callTool(web.issuer, agent, 'remove_passkey', {id: added.id})), {
 				id: added.id
 			})
-			const emptied = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey)}))(
+			const emptied = yield* Schema.decodeUnknownEffect(Schema.Struct({passkeys: Schema.Array(Passkey.json)}))(
 				yield* toolResult(yield* callTool(web.issuer, agent, 'list_passkeys', {}))
 			)
 			assert.deepStrictEqual(emptied.passkeys, [])

@@ -1,4 +1,4 @@
-import {Array, Effect, Option, Order, Record, Result, Schema, String, Struct, pipe} from 'effect'
+import {Array, Effect, Option, Order, Record, Result, Schema, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import type {SecureRandom} from 'effect/crypto'
@@ -9,14 +9,7 @@ import {NetAddress} from 'effect/net'
 import {AuthError, ClientInfo, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
 import {isPrivateAddress} from '@deslop/runtime/shared/net'
 
-import type {
-	AuthorizeClient,
-	AuthorizeParams,
-	CredentialOwner,
-	Origin,
-	Grants,
-	SignedInApp
-} from '#services/tokens/schema.ts'
+import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin, SignedInApp} from '#services/tokens/schema.ts'
 import {ClientRequest} from '#services/tokens/schema.ts'
 
 // The workers by their public and tailnet addresses; Traefik runs on dev, so dev's own requests may also arrive from a private one.
@@ -35,9 +28,9 @@ export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
 	return left.user.id === right.user.id && left.incarnation === right.incarnation
 }
 
-// A stored origin keeps only the address: the user agent labelled the sign-in when it was made.
-export function storedOrigin(origin: Origin) {
-	return Option.match(Option.fromUndefinedOr(origin.address), {onNone: () => ({}), onSome: address => ({address})})
+// The account a stored credential belongs to, from the owner columns it keeps.
+export function credentialOwnerOf(row: {incarnation: string; userId: string; userName: string}) {
+	return {incarnation: row.incarnation, user: {id: row.userId, name: row.userName}}
 }
 
 // A secret as its URL-safe base64, and a value as the same digest every comparison uses, bound once in each layer.
@@ -49,47 +42,14 @@ export function hashOf(digest: Digest.Digest['Service']) {
 	return (value: string) => Effect.map(digest.digest(Digest.sha256, new TextEncoder().encode(value)), Base64Url.encode)
 }
 
-export function live(grants: Grants, now: number) {
-	const current = Record.filter(grants, grant => grant.credential.expiresAt > now)
-	return Record.filter(
-		current,
-		grant =>
-			grant.parent === undefined ||
-			Option.exists(Record.get(current, grant.parent), parent => parent.credential._tag === 'Browser')
-	)
-}
-
-export function signedInApps(grants: Grants, now: number, owner: CredentialOwner) {
-	return pipe(
-		Record.toEntries(live(grants, now)),
-		Array.filter(entry => sameOwner(entry[1], owner)),
-		Array.map(
-			entry =>
-				({
-					client: entry[1].client,
-					device: entry[1].device,
-					family: entry[0],
-					kind: entry[1].credential._tag,
-					lastActive: entry[1].lastActive,
-					...Struct.pick(entry[1], ['parent']),
-					...Option.match(Option.fromUndefinedOr(entry[1].origin.address), {
-						onNone: () => ({}),
-						onSome: address => ({address})
-					})
-				}) satisfies SignedInApp
-		),
-		Array.sort(Order.flip(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive)))
-	)
-}
-
 // Child app sign-ins are never rows of their own; their browser takes the newest activity and address.
 export function withChildActivity(signIns: readonly SignedInApp[]) {
 	const children = Array.groupBy(
-		Array.filter(signIns, signIn => signIn.parent !== undefined),
-		signIn => signIn.parent ?? ''
+		Array.filter(signIns, signIn => Option.isSome(signIn.parent)),
+		signIn => Option.getOrElse(signIn.parent, () => '')
 	)
 	return Array.map(
-		Array.filter(signIns, signIn => signIn.parent === undefined),
+		Array.filter(signIns, signIn => Option.isNone(signIn.parent)),
 		signIn => {
 			const latest = Array.reduce(
 				Option.getOrElse(Record.get(children, signIn.family), () => []),
@@ -97,10 +57,14 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 				Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
 			)
 			return {
-				...Struct.omit(signIn, ['address']),
+				address: latest.address,
+				client: signIn.client,
+				device: signIn.device,
+				family: signIn.family,
+				kind: signIn.kind,
 				lastActive: latest.lastActive,
-				...Struct.pick(latest, ['address'])
-			} satisfies SignedInApp
+				parent: signIn.parent
+			}
 		}
 	)
 }

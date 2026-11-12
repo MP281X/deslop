@@ -36,6 +36,7 @@
 		"@deslop/runtime": "workspace:*",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
+		"@effect/sql-sqlite-node": "latest",
 		"@phosphor-icons/react": "latest",
 		"@simplewebauthn/browser": "latest",
 		"@simplewebauthn/server": "latest",

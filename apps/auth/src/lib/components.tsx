@@ -298,7 +298,7 @@ function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: str
 			return {
 				address: pipe(
 					Array.findFirst(group, signIn => signIn.lastActive === lastActive),
-					Option.flatMap(signIn => Option.fromUndefinedOr(signIn.address))
+					Option.flatMap(signIn => signIn.address)
 				),
 				client: {
 					app: Option.map(
