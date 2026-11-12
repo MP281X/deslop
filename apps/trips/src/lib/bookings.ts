@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Clock, Effect, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import * as Clipboard from 'expo-clipboard'
@@ -119,5 +119,5 @@ export const refreshAtom = Atom.fn((id: Booking['id'], get) =>
 
 export const nowAtom = Atom.make(get => {
 	get(activationsAtom)
-	return Stream.map(Stream.tick('1 minute'), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	return Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis)
 })

@@ -1,4 +1,4 @@
-import {Array, DateTime, Effect, HashSet, MutableList, Option, String, pipe} from 'effect'
+import {Array, Clock, DateTime, Effect, HashSet, MutableList, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import * as Calendar from 'expo-calendar'
@@ -137,7 +137,7 @@ export const calendarAtom = Atom.make(get =>
 						})
 				}
 			)
-			const now = DateTime.toEpochMillis(DateTime.nowUnsafe())
+			const now = yield* Clock.currentTimeMillis
 			const events = yield* Effect.tryPromise({
 				catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
 				try: () =>

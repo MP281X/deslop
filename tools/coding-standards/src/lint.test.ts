@@ -2320,6 +2320,54 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'reports wall-clock reads in Effect and Stream callbacks, not synchronous application code',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'clock.ts': Array.join(
+						[
+							"import {Clock, DateTime, Effect, Stream} from 'effect'",
+							'export const generator = Effect.gen(function* () { return DateTime.nowUnsafe() }) // reported',
+							"export const traced = Effect.fn('traced')(function* () { return Date.now() }) // reported",
+							'export const untraced = Effect.fnUntraced(function* () { return new Date() }) // reported',
+							'export const unnamed = Effect.fn(function* () { return DateTime.nowUnsafe() }) // reported',
+							'export const synchronous = Effect.sync(() => Date.now()) // reported',
+							'export const mapped = Effect.map(Clock.currentTimeMillis, () => new Date()) // reported',
+							'export const curried = Effect.map(() => DateTime.nowUnsafe()) // reported',
+							"export const stream = Stream.map(Stream.tick('1 minute'), () => DateTime.toEpochMillis(DateTime.nowUnsafe())) // reported",
+							'export const streamFunction = Stream.map(Stream.make(1), function () { return Date.now() }) // reported',
+							'export const options = Effect.try({try: () => DateTime.nowUnsafe(), catch: String}) // reported',
+							'export const computed = Effect["sync"](() => Date.now()) // reported',
+							'export const clock = Effect.gen(function* () { return yield* Clock.currentTimeMillis })',
+							"export const injected = Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis)",
+							'export const fixed = Effect.sync(() => new Date(0))',
+							'export const parsed = Effect.sync(() => new Date("2026-01-01"))',
+							'export const render = () => DateTime.nowUnsafe()',
+							'export function Component() { return Date.now() }',
+							'export const onClick = () => new Date()',
+							'export const handler = Effect.gen(function* () { return () => DateTime.nowUnsafe() })',
+							'export const helper = Effect.gen(function* () { function plain() { return Date.now() }; return plain })',
+							'export const ordinaryMap = [1].map(() => DateTime.nowUnsafe())',
+							'export function shadow(Date: {now: () => number}) { return Effect.sync(() => Date.now()) }',
+							'export function custom(DateTime: {nowUnsafe: () => number}) { return Effect.sync(() => DateTime.nowUnsafe()) }'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'no-wall-clock-test')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				assert.isTrue(
+					Array.every(
+						Array.filter(
+							result.stdout.diagnostics,
+							diagnostic => diagnostic.code === '@deslop/coding-standards(no-wall-clock-test)'
+						),
+						diagnostic => String.includes('Clock.currentTimeMillis')(diagnostic.message)
+					)
+				)
+			})
+		)
+
+		testApi.effect(
 			'reports Effect tests and per-element callbacks that register tests in a loop',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({

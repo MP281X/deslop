@@ -9,6 +9,7 @@ import {
 	Config,
 	Context,
 	Effect,
+	Exit,
 	HashMap,
 	Layer,
 	Option,
@@ -173,32 +174,21 @@ export class Push extends Context.Service<
 					return yield* Jwk.importPkcs8(Redacted.make(der), 'ES256', {kid: found.keyId})
 				})
 			)
-			const bearer = yield* Ref.make(Option.none<{at: number; token: string}>())
 			const retrying = yield* Ref.make(HashMap.empty<string, {answer: Answer; until: number}>())
 
-			const sign = Effect.fnUntraced(function* (now: number) {
-				const found = yield* Effect.fromOption(signer)
-				const token = Redacted.value(
-					yield* Jws.sign(
+			// APNs accepts a provider token for an hour and refuses one renewed more than every twenty minutes.
+			const providerToken = yield* pipe(
+				Effect.gen(function* () {
+					const now = yield* Clock.currentTimeMillis
+					const found = yield* Effect.fromOption(signer)
+					return yield* Jws.sign(
 						new TextEncoder().encode(yield* Schema.encodeEffect(JwtClaims)({iat: seconds(now), iss: found.teamId})),
 						yield* signingKey,
 						{kid: found.keyId}
 					)
-				)
-				yield* Ref.set(bearer, Option.some({at: now, token}))
-				return token
-			})
-
-			// APNs accepts a provider token for an hour and refuses one renewed more than every twenty minutes.
-			const providerToken = pipe(
-				Effect.gen(function* () {
-					const now = yield* Clock.currentTimeMillis
-					return yield* Option.match(
-						Option.filter(yield* Ref.get(bearer), token => now - token.at < 40 * MINUTE),
-						{onNone: () => sign(now), onSome: cached => Effect.succeed(cached.token)}
-					)
 				}),
-				failed('The APNs key could not sign a token.')
+				failed('The APNs key could not sign a token.'),
+				Effect.cachedWithTTL(exit => Exit.match(exit, {onFailure: () => 0, onSuccess: () => '40 minutes'}))
 			)
 
 			const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
@@ -209,7 +199,9 @@ export class Push extends Context.Service<
 				)
 				if (deferred !== undefined) return deferred.answer
 				const response = yield* pipe(
-					client.execute(HttpClientRequest.setHeader(request, 'authorization', `bearer ${yield* providerToken}`)),
+					client.execute(
+						HttpClientRequest.setHeader(request, 'authorization', `bearer ${Redacted.value(yield* providerToken)}`)
+					),
 					Effect.timeout('20 seconds'),
 					failed('APNs did not answer.')
 				)
