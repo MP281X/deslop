@@ -1,6 +1,6 @@
 import {Effect, Layer, Predicate, Struct} from 'effect'
 
-import {McpSchema, McpServer} from 'effect/ai'
+import {McpServer} from 'effect/ai'
 
 // Gateway's raw upstream registrations deliberately do not use this Toolkit presentation layer.
 export const layerStructuredTools = Layer.effect(McpServer.McpServer)(
@@ -18,7 +18,7 @@ export const layerStructuredTools = Layer.effect(McpServer.McpServer)(
 						handle: input =>
 							Effect.map(options.handle(input), result => {
 								if (Predicate.hasProperty(result, 'content') && result.isError !== true) {
-									return McpSchema.CallToolResult.make({...Struct.omit(result, []), content: []})
+									return Struct.evolve(result, {content: () => []})
 								}
 								return result
 							})
