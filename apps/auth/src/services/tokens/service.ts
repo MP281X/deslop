@@ -26,7 +26,15 @@ import type {Jwks} from 'effect/jose'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {ACCESS_SECONDS, AccessClaims, AuthError, ISSUER_PATH, bearerOf, rejected} from '@deslop/runtime/shared/auth'
+import {
+	ACCESS_SECONDS,
+	AccessClaims,
+	AuthError,
+	ISSUER_PATH,
+	REFRESH_SECONDS,
+	bearerOf,
+	rejected
+} from '@deslop/runtime/shared/auth'
 
 import {
 	browserLabel,
@@ -426,8 +434,7 @@ export class Tokens extends Context.Service<
 						signature
 					)
 					return {
-						// A refresh token lasts 30 days from its last use.
-						refresh: {expiresAt: now + 30 * 86_400_000, hash: yield* hash(refreshSecret)},
+						refresh: {expiresAt: now + REFRESH_SECONDS * 1000, hash: yield* hash(refreshSecret)},
 						tokens: {
 							access_token: Redacted.value(access),
 							expires_in: ACCESS_SECONDS,

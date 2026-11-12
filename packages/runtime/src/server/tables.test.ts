@@ -6,7 +6,7 @@ import {Array, Boolean, Effect, Layer, Option, Order, Predicate, Record, Schema,
 import type {Migrator, SqlError} from 'effect/sql'
 import {SqlClient} from 'effect/sql'
 
-import {Session, Sessions} from '#server/sessions.ts'
+import {Sessions} from '#server/sessions.ts'
 
 type Model = Schema.Top & {readonly table: string}
 
@@ -52,7 +52,7 @@ const apps = Array.map(Record.keys(servers), file => {
 				(value): value is Model =>
 					Schema.isSchema(value) && Predicate.hasProperty(value, 'table') && Predicate.isString(value.table)
 			),
-			Array.prepend<Model>(Session)
+			Array.prepend<Model>(Sessions.model)
 		)
 	}
 })

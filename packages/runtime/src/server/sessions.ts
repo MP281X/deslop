@@ -37,8 +37,7 @@ import {
 } from '#shared/auth.ts'
 import type {CodeGrant} from '#shared/auth.ts'
 
-// fallow-ignore-next-line unused-export -- the table check compares it with every app's sessions table.
-export class Session extends Model.Class<Session>('Session')({
+class Session extends Model.Class<Session>('Session')({
 	access: Model.Sensitive(Schema.RedactedFromValue(Schema.NonEmptyString)),
 	clientId: Schema.NonEmptyString,
 	// When the access token expires.
@@ -77,6 +76,8 @@ export class Sessions extends Context.Service<
 		readonly tokenFor: (userId: string) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/runtime/server/sessions') {
+	static readonly model = Session
+
 	// The table every app's database holds for its sign-ins, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({

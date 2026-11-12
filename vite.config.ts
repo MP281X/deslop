@@ -296,7 +296,7 @@ export default defineConfig({
 	test: {
 		// The only limits: no-test-timeout keeps tests, hooks and layers from raising their own.
 		hookTimeout: 60_000,
-		// The first glob serves each package's own run, the second a run from the root, such as one test file by path.
+		// The first glob serves each package's own run; the second a root run of a test that never reads its app's package, which the runtime takes from the current directory.
 		include: ['src/**/*.test.ts', '{apps,packages,tools}/*/src/**/*.test.ts'],
 		// Only the lint rule suite runs concurrently; eight measured fastest without starving the rest.
 		maxConcurrency: 8,
