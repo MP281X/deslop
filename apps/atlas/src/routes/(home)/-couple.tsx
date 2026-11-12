@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, Order} from 'effect'
+import {Array, Boolean, Option, Order, String} from 'effect'
 
 import {GridNineIcon} from '@phosphor-icons/react'
 
@@ -13,6 +13,19 @@ const ROW_CLASS = 'flex items-stretch gap-px'
 const CELLS_CLASS = 'flex min-w-0 flex-1 gap-px'
 const GUTTER_CLASS = 'w-40 shrink-0'
 const CELL_CLASS = 'aspect-square min-w-0 flex-1 border-r border-b'
+const AREA_ROOTS = ['apps', 'libs', 'modules', 'packages', 'projects', 'services', 'tools']
+
+// Column labels fit a dense matrix: the workspace root stays in the tooltip, the package name in the cell.
+function shortArea(area: string) {
+	const parts = String.split(area, '/')
+	return Option.getOrElse(
+		Option.map(
+			Option.filter(Array.head(parts), root => Array.contains(AREA_ROOTS, root)),
+			() => Array.join(Array.drop(parts, 1), '/')
+		),
+		() => area
+	)
+}
 
 function opacityOf(score: number, maxScore: number) {
 	return 0.12 + 0.75 * Boolean.match(maxScore === 0, {onFalse: () => score / maxScore, onTrue: () => 0})
@@ -44,7 +57,7 @@ export function CoupleView(props: {
 	readonly selected?: PullRequest
 	readonly onSelect: (pr: PullRequest) => void
 }) {
-	const matrix = couplingOf(props.pullRequests, 12)
+	const matrix = couplingOf(props.pullRequests, 10)
 	if (Array.length(matrix.areas) < 2) {
 		return <EmptyState label="Not enough areas to couple" icon={<GridNineIcon weight="light" />} />
 	}
@@ -61,13 +74,13 @@ export function CoupleView(props: {
 		)
 	}
 	return (
-		<div className="flex flex-col gap-3 p-3">
+		<div className="flex max-w-3xl flex-col gap-3 p-3">
 			<div className={ROW_CLASS}>
 				<span className={GUTTER_CLASS} />
 				<div className={CELLS_CLASS}>
 					{Array.map(matrix.areas, area => (
 						<span key={area} className="text-muted-foreground min-w-0 flex-1 truncate text-center text-xs" title={area}>
-							{area}
+							{shortArea(area)}
 						</span>
 					))}
 				</div>
@@ -87,7 +100,7 @@ export function CoupleView(props: {
 						)}
 						title={area}
 					>
-						{area}
+						{shortArea(area)}
 					</span>
 					<div className={CELLS_CLASS}>
 						{Array.map(matrix.areas, (column, index) =>

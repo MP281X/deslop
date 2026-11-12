@@ -98,7 +98,7 @@ function StripRow(props: {
 				className="flex h-full w-full items-center gap-3 text-left"
 				onClick={() => props.onSelect(pr)}
 			>
-				<span className="flex w-56 shrink-0 items-center gap-2">
+				<span className="flex w-64 shrink-0 items-center gap-2 2xl:w-96">
 					<span className="text-muted-foreground shrink-0 text-xs tabular-nums">#{pr.number}</span>
 					<span className="min-w-0 truncate text-sm">{pr.title}</span>
 					{Option.match(Option.fromUndefinedOr(problem), {
@@ -139,7 +139,7 @@ export function FlowView(props: {
 	return (
 		<div className="flex flex-col gap-2 p-3">
 			<div className="text-muted-foreground flex items-center gap-3 text-xs">
-				<span className="w-56 shrink-0" />
+				<span className="w-64 shrink-0 2xl:w-96" />
 				<div className="flex flex-1 justify-between">
 					{Array.map(ticksOf(span.start, span.end, 6), tick => (
 						<span key={tick} className="tabular-nums">
