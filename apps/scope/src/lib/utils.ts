@@ -18,9 +18,9 @@ import {
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {live} from '@deslop/runtime/client/live'
+import {keepValueThroughOutages, liveAtom, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
-import * as WebRuntime from '@deslop/runtime/web/client'
+import {layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {failedEntry} from '#services/telemetry/lib/utils.ts'
@@ -51,7 +51,7 @@ const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: WebRuntime.layerProtocol
+	protocol: layerPageProtocol
 }) {}
 
 export type OperationKey = typeof OperationKey.Type
@@ -165,25 +165,18 @@ function openingApp(overview: Overview) {
 }
 
 export const overviewAtom = Atom.family((range: Range) =>
-	Atom.keepAlive(
-		RpcClient.runtime.atom(get =>
-			live(
-				get,
-				pipe(
-					RpcClient,
-					Effect.map(client => client('scope.overview', range)),
-					Stream.unwrap
-				)
-			)
-		)
-	)
+	Atom.keepAlive(liveAtom(RpcClient, 'telemetry.overview', range))
 )
 
 const traceAtoms = Atom.family((range: Range) =>
 	Atom.family((_id: string) =>
 		RpcClient.runtime.atom(get => {
 			get(overviewAtom(range))
-			return live(get, Stream.fromEffect(Effect.flatMap(RpcClient, client => client('scope.trace', {id: _id}))))
+			return keepValueThroughOutages(
+				get,
+				Stream.fromEffect(Effect.flatMap(RpcClient, client => client('telemetry.trace', {id: _id}))),
+				reconnectOnDrop
+			)
 		})
 	)
 )
@@ -373,4 +366,35 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 		)
 	)
 	return {activeKey, activeOperation, activeTrace, pickedSpan, source}
+}
+
+// The URL as the page shows it: the chosen app and, once a frame's operations arrive, no operation or trace that frame no longer holds.
+export function shownSearch(
+	search: Search,
+	selection: {
+		activeOperation: Option.Option<ActiveOperation>
+		activeTrace: Option.Option<OperationTrace>
+		source?: string
+	},
+	loaded: boolean
+) {
+	const chosen = Option.match(Option.fromUndefinedOr(selection.source), {
+		onNone: () => search,
+		onSome: app => sourceSearch(search, app)
+	})
+	if (!loaded) return chosen
+	const staleOperation =
+		chosen.operation !== undefined &&
+		!Option.exists(
+			selection.activeOperation,
+			active =>
+				active.app.name === (chosen.source ?? '') &&
+				active.operation.name === chosen.operation &&
+				active.operation.runtime === chosen.side
+		)
+	if (staleOperation) return Struct.omit(chosen, ['operation', 'side', 'span', 'trace'])
+	if (chosen.trace !== undefined && !Option.exists(selection.activeTrace, trace => trace.id === chosen.trace)) {
+		return Struct.omit(chosen, ['span', 'trace'])
+	}
+	return chosen
 }

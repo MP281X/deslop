@@ -142,7 +142,7 @@ export const SpanLink = Schema.Struct({spanId: Schema.String, traceId: Schema.St
 export type Entry = typeof Entry.Type
 export const Entry = Schema.Struct({
 	// A failed span whose only failures are a denied sign-in: not a failure for any count or marker.
-	denied: Schema.optionalKey(Schema.Boolean),
+	denied: Schema.Boolean,
 	durationMs: Schema.Finite,
 	id: Schema.NonEmptyString,
 	// The span's OTLP links, judged once when the entry arrives rather than on every trace view.

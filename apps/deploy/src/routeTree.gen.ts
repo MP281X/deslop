@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as homeRouteRouteImport } from './routes/(home)/route'
 import { Route as homeIndexRouteImport } from './routes/(home)/index'
-import { Route as homeMonitorRouteImport } from './routes/(home)/monitor'
 
 const homeRouteRoute = homeRouteRouteImport.update({
   id: '/(home)',
@@ -22,32 +21,24 @@ const homeIndexRoute = homeIndexRouteImport.update({
   path: '/',
   getParentRoute: () => homeRouteRoute,
 } as any)
-const homeMonitorRoute = homeMonitorRouteImport.update({
-  id: '/monitor',
-  path: '/monitor',
-  getParentRoute: () => homeRouteRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof homeIndexRoute
-  '/monitor': typeof homeMonitorRoute
 }
 export interface FileRoutesByTo {
-  '/monitor': typeof homeMonitorRoute
   '/': typeof homeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/(home)': typeof homeRouteRouteWithChildren
-  '/(home)/monitor': typeof homeMonitorRoute
   '/(home)/': typeof homeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/monitor'
+  fullPaths: '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/monitor' | '/'
-  id: '__root__' | '/(home)' | '/(home)/monitor' | '/(home)/'
+  to: '/'
+  id: '__root__' | '/(home)' | '/(home)/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -70,23 +61,14 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof homeIndexRouteImport
       parentRoute: typeof homeRouteRoute
     }
-    '/(home)/monitor': {
-      id: '/(home)/monitor'
-      path: '/monitor'
-      fullPath: '/monitor'
-      preLoaderRoute: typeof homeMonitorRouteImport
-      parentRoute: typeof homeRouteRoute
-    }
   }
 }
 
 interface homeRouteRouteChildren {
-  homeMonitorRoute: typeof homeMonitorRoute
   homeIndexRoute: typeof homeIndexRoute
 }
 
 const homeRouteRouteChildren: homeRouteRouteChildren = {
-  homeMonitorRoute: homeMonitorRoute,
   homeIndexRoute: homeIndexRoute,
 }
 

@@ -42,6 +42,24 @@ const trace = traceView(
 	ID
 )
 
+/* oxlint-disable no-restricted-globals, no-restricted-properties -- Node has no screen to match; scope a desktop browser's matchMedia to the render and restore its descriptor. */
+const desktopScreen = Effect.acquireRelease(
+	Effect.sync(() => {
+		const previous = Object.getOwnPropertyDescriptor(globalThis, 'matchMedia')
+		Object.defineProperty(globalThis, 'matchMedia', {
+			configurable: true,
+			value: () => ({addEventListener: () => undefined, matches: false, removeEventListener: () => undefined})
+		})
+		return previous
+	}),
+	previous =>
+		Effect.sync(() => {
+			if (previous === undefined) Reflect.deleteProperty(globalThis, 'matchMedia')
+			else Object.defineProperty(globalThis, 'matchMedia', previous)
+		})
+)
+/* oxlint-enable no-restricted-globals, no-restricted-properties */
+
 function render(
 	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
 	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>,
@@ -83,6 +101,7 @@ function render(
 				),
 				value => Effect.sync(() => value.dispose())
 			)
+			yield* desktopScreen
 			registry.get(traceAtom(RANGE, traceId))
 			registry.ensureNode(traceAtom(RANGE, traceId)).setInitialValue(result)
 			if (overview !== undefined) registry.ensureNode(overviewAtom(RANGE)).setInitialValue(overview)

@@ -1,17 +1,4 @@
-import {
-	Array,
-	Boolean,
-	Cause,
-	DateTime,
-	Effect,
-	FiberHandle,
-	Function,
-	Option,
-	Schema,
-	Stream,
-	String,
-	pipe
-} from 'effect'
+import {Boolean, DateTime, Effect, FiberHandle, Function, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {createModifier} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -21,8 +8,7 @@ import {Asset} from 'expo-asset'
 import {File, Paths} from 'expo-file-system'
 import {Alert} from 'react-native'
 
-import {withoutDeniedData} from '@deslop/runtime/client/live'
-import {isDenied} from '@deslop/runtime/shared/auth'
+import {isDeniedCause, keepValueThroughOutages} from '@deslop/runtime/client/live-stream'
 
 class DeviceError extends Schema.TaggedError<DeviceError>()('DeviceError', {
 	cause: Schema.Defect(),
@@ -45,7 +31,8 @@ export function clipboardChangeCount() {
 	return requireNativeModule<{clipboardChangeCount: () => number}>('DeslopComponents').clipboardChangeCount()
 }
 
-export function alert(title: string) {
+// Shows a failure's message in a system alert under the title, then fails as before.
+export function alertFailure(title: string) {
 	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
 		Effect.tapError(effect, error => Effect.sync(() => Alert.alert(title, error.message)))
 }
@@ -80,7 +67,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 		onSome: result => {
 			if (Option.isSome(AsyncResult.value(result))) return false
 			if (!AsyncResult.isFailure(result)) return true
-			return !Array.some(result.cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))
+			return !isDeniedCause(result.cause)
 		}
 	})
 	return Stream.concat(
@@ -99,7 +86,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 		Stream.unwrap(
 			Effect.gen(function* () {
 				const writes = yield* FiberHandle.make()
-				return withoutDeniedData(
+				return keepValueThroughOutages(
 					get,
 					pipe(
 						live,
@@ -121,9 +108,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 							)
 						),
 						Stream.tapCause(failure => {
-							if (!Array.some(failure.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))) {
-								return Effect.void
-							}
+							if (!isDeniedCause(failure)) return Effect.void
 							return pipe(
 								// A write waiting out its pause must not restore the file after the denial removed it.
 								FiberHandle.clear(writes),

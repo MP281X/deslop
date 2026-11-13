@@ -3,11 +3,11 @@ import {assert, it} from '@effect/vitest'
 import {createElement} from 'react'
 import {renderToStaticMarkup} from 'react-dom/server'
 
-import {Denied, Error} from '#components/fallbacks.tsx'
+import {AccessDenied, FailureRetry, ReadFailure} from '#components/fallbacks.tsx'
 
 it('names a blocking failure on the one button that retries it, without exposing diagnostics', () => {
 	const html = renderToStaticMarkup(
-		createElement(Error, {error: new TypeError('PRIVATE DIAGNOSTIC'), reset: () => undefined})
+		createElement(ReadFailure, {error: new TypeError('PRIVATE DIAGNOSTIC'), reset: () => undefined})
 	)
 	assert.include(html, 'role="alert"')
 	assert.match(html, /<button[^>]*>.*Can’t load this view<\/button>/u)
@@ -15,15 +15,13 @@ it('names a blocking failure on the one button that retries it, without exposing
 })
 
 it('names the failure on its retry button with the label its caller supplies instead of the default', () => {
-	const html = renderToStaticMarkup(
-		createElement(Error, {error: undefined, label: 'Can’t reach desktop', reset: () => undefined})
-	)
+	const html = renderToStaticMarkup(createElement(FailureRetry, {label: 'Can’t reach desktop', reset: () => undefined}))
 	assert.match(html, /<button[^>]*>.*Can’t reach desktop<\/button>/u)
 	assert.notInclude(html, 'Can’t load this view')
 })
 
 it('offers nothing to retry when access is denied', () => {
-	const html = renderToStaticMarkup(createElement(Denied))
+	const html = renderToStaticMarkup(createElement(AccessDenied))
 	assert.include(html, 'aria-label="Access denied"')
 	assert.notInclude(html, '<button')
 })

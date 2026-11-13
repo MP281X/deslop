@@ -3,7 +3,6 @@ import {NodeDns} from '@effect/platform-node'
 import {Layer, pipe} from 'effect'
 
 import {McpServer} from 'effect/ai'
-import {RpcSerialization} from 'effect/rpc'
 
 import {HttpAuth} from '@deslop/runtime/server/auth'
 import * as CliRuntime from '@deslop/runtime/server/cli'
@@ -19,17 +18,11 @@ import {layerNotes} from '#services/notes/service.ts'
 import {Tools} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
 
-// Binary frames failed to reopen a cancelled watch.
-const rpc = pipe(
-	ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-	Layer.provide(RpcSerialization.layerJson)
-)
-
 CliRuntime.runApp({
 	icon,
 	routes: pipe(
 		Layer.mergeAll(
-			rpc,
+			ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			pipe(HttpHandlers, Layer.provide(HttpAuth.layer)),
 			ServerRuntime.layerMcp({
 				instructions:

@@ -1,16 +1,16 @@
 import {Effect, Queue, Schema, Stream, pipe} from 'effect'
 
-import * as Application from 'expo-application'
-import * as Notifications from 'expo-notifications'
+import {applicationId} from 'expo-application'
+import {getDevicePushTokenAsync, requestPermissionsAsync, setNotificationHandler} from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 import {Bundle} from '#services/push/schema.ts'
 
-export const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(Application.applicationId), bundle => ({bundle}))
+export const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
 
-Notifications.setNotificationHandler({
+setNotificationHandler({
 	handleNotification: () =>
 		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
 		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
@@ -26,16 +26,16 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			if (
 				(yield* Effect.tryPromise({
 					catch: cause => BookingsError.make({cause, message: 'The notification permission could not be asked.'}),
-					try: () => Notifications.requestPermissionsAsync()
+					try: () => requestPermissionsAsync()
 				})).granted
 			) {
-				yield* client('devices.register', {
+				yield* client('push.register', {
 					...target,
 					kind: 'alert',
 					token: `${
 						(yield* Effect.tryPromise({
 							catch: cause => BookingsError.make({cause, message: 'The push token could not be read.'}),
-							try: () => Notifications.getDevicePushTokenAsync()
+							try: () => getDevicePushTokenAsync()
 						})).data
 					}`
 				})
@@ -53,7 +53,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 					)
 				),
 				Stream.runForEach(token =>
-					Effect.ignore(client('devices.register', {...target, kind: 'start', token}), {
+					Effect.ignore(client('push.register', {...target, kind: 'start', token}), {
 						log: 'Warn',
 						message: 'The Live Activity token was not registered'
 					})

@@ -1,64 +1,74 @@
-import {Array, Cause, Effect, Option, Stream, pipe} from 'effect'
+import {Effect, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
-import {live} from '@deslop/runtime/client/live'
-import {isDenied} from '@deslop/runtime/shared/auth'
+import {
+	isDeniedCause,
+	keepValueThroughOutages,
+	liveAtom,
+	liveStream,
+	reconnectOnDrop
+} from '@deslop/runtime/client/live-stream'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
-import * as WebRuntime from '@deslop/runtime/web/client'
+import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import type {ExposeRequest, InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
 
+addPageTelemetry('@deslop/deploy')
+
 class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
-	protocol: WebRuntime.layer('@deslop/deploy')
+	protocol: layerPageProtocol
 }) {}
 
 export const exposeTargetAtom = Atom.make(Option.none<InventoryItem>())
 
 export const inventoryAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
-		live(
+		keepValueThroughOutages(
 			get,
 			pipe(
-				RpcClient,
-				Effect.map(client => client('deploy.inventory', undefined)),
-				Stream.unwrap,
+				liveStream(RpcClient, 'inventory.watch'),
 				Stream.tapCause(cause =>
 					Effect.sync(() => {
-						if (Array.some(cause.reasons, reason => Cause.isFailReason(reason) && isDenied(reason.error))) {
-							get.set(exposeTargetAtom, Option.none())
-						}
+						if (isDeniedCause(cause)) get.set(exposeTargetAtom, Option.none())
 					})
 				)
-			)
+			),
+			reconnectOnDrop
 		)
 	)
 )
 
 export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 	pipe(
-		Effect.flatMap(RpcClient, client => client('deploy.expose', input)),
+		Effect.flatMap(RpcClient, client => client('exposures.expose', input)),
 		Effect.tap(() => Effect.sync(() => get.set(exposeTargetAtom, Option.none())))
 	)
 )
 
-// Starts a timer's job now; keyed by the job's row, so its failure shows there.
+// Opens the Expose dialog on a port, clear of the last attempt's failure.
+export const openExposeAtom = Atom.writable(
+	() => undefined,
+	(context, port: InventoryItem) => {
+		context.set(exposeAtom, Atom.Reset)
+		context.set(exposeTargetAtom, Option.some(port))
+	}
+)
+
+// Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
 export const runAtom = Atom.family((_id: string) =>
-	RpcClient.runtime.fn((input: RunRequest) => Effect.flatMap(RpcClient, client => client('deploy.run', input)))
+	RpcClient.runtime.fn((input: RunRequest) =>
+		Effect.zip(
+			Effect.flatMap(RpcClient, client => client('inventory.run', input)),
+			Effect.sleep('10 seconds'),
+			{concurrent: true}
+		)
+	)
 )
 
 export const metricsAtom = Atom.family((minutes: HistoryQuery['minutes']) =>
-	RpcClient.runtime.atom(get =>
-		live(
-			get,
-			pipe(
-				RpcClient,
-				Effect.map(client => client('deploy.metrics', {minutes})),
-				Stream.unwrap
-			)
-		)
-	)
+	liveAtom(RpcClient, 'metrics.watch', {minutes})
 )

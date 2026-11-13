@@ -7,7 +7,7 @@ import {File, Paths} from 'expo-file-system'
 
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 
-import {alert, clipboardChangeCount, writeAtomically} from '#lib/utils.ts'
+import {alertFailure, clipboardChangeCount, writeAtomically} from '#lib/utils.ts'
 
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
@@ -173,7 +173,7 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 								Boolean.match(options.answered(error), {onFalse: () => Effect.void, onTrue: () => handled})
 							),
 							Effect.andThen(handled),
-							alert(options.labels.notSaved),
+							alertFailure(options.labels.notSaved),
 							Effect.ignore({log: 'Warn', message: 'The clipboard copy was not saved'})
 						)
 					}),

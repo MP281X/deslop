@@ -6,7 +6,7 @@ import {Button, Image, Menu, Section} from '@expo/ui/swift-ui'
 import {accessibilityLabel, buttonStyle, frame, menuIndicator, menuStyle, resizable} from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 
-import type {AppSession} from '@deslop/runtime/mobile/session'
+import type {Session} from '@deslop/runtime/mobile/session'
 
 import {avatarAtom} from '#lib/utils.ts'
 
@@ -20,7 +20,7 @@ function Avatar(props: {id: string}) {
 }
 
 // Signing out also ends this app's sign-in at Auth, as in the web app bar.
-export function AccountMenu(props: {session: AppSession}) {
+export function AccountMenu(props: {session: Session}) {
 	const send = useAtomSet(props.session.machine.send)
 	const account = AsyncResult.value(useAtomValue(props.session.account))
 	return (

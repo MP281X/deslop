@@ -20,14 +20,14 @@ export const RpcHandlers = RpcContracts.toLayer(
 				yield* ai.setKey((yield* CurrentUser).id, input.provider, input.secret)
 			}),
 			'ai.usage': period => Stream.unwrap(Effect.map(CurrentUser, user => ai.usage(user.id, period))),
-			'gateway.add': Effect.fnUntraced(function* (input, options) {
+			'connections.add': Effect.fnUntraced(function* (input, options) {
 				const added = yield* connections.add(input.url, yield* CurrentUser, options.headers)
 				// A new server's tools are read now, so its first list is not empty.
 				yield* gateway.connected(options.headers)
 				return added
 			}),
-			'gateway.servers': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch)),
-			'gateway.usage': period => connections.usage(period)
+			'connections.usage': period => connections.usage(period),
+			'connections.watch': () => Stream.unwrap(Effect.map(CurrentUser, connections.watch))
 		})
 	})
 )

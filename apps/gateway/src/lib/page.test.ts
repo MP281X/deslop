@@ -37,16 +37,16 @@ const fixture = Effect.gen(function* () {
 		'ai.keys': () => Effect.never,
 		'ai.setKey': () => Effect.never,
 		'ai.usage': () => Stream.never,
-		'gateway.add': () => Effect.never,
-		'gateway.servers': () =>
+		'connections.add': () => Effect.never,
+		'connections.usage': () => Stream.never,
+		'connections.watch': () =>
 			Stream.unwrap(
 				Effect.gen(function* () {
 					yield* Queue.offer(opened, undefined)
 					if (yield* Ref.get(complete)) return Stream.empty
 					return pipe(Stream.fromQueue(answers), Stream.mapEffect(Function.identity))
 				})
-			),
-		'gateway.usage': () => Stream.never
+			)
 	})
 	const context = yield* Layer.build(
 		pipe(

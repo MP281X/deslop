@@ -312,7 +312,7 @@ function percentile(times: readonly number[], ratio: number) {
 
 // A failed span whose only failures are a denied sign-in is not a failure: no count, dot or error filter includes it.
 export function failedEntry(entry: Pick<Entry, 'denied' | 'status'>) {
-	return entry.status === 2 && entry.denied !== true
+	return entry.status === 2 && !entry.denied
 }
 
 // A failed span is denied when every exception event is an AuthError, or its HTTP response is 401 or 403.

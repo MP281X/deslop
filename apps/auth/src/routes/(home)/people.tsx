@@ -1,6 +1,6 @@
-import {useAtom, useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
+import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, DateTime, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Option, pipe} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -8,7 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
-import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
+import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
@@ -78,19 +78,12 @@ function MemberRow(props: {person: Person}) {
 
 // One card: whoever is asking for access first, then everyone with it.
 function Directory() {
-	const result = useAtomSuspense(peopleAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(peopleAtom)
-	const value = AsyncResult.value(result)
-	if (AsyncResult.isFailure(result) && Option.isNone(value)) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
 	return (
-		<>
-			<h1 className="sr-only">People</h1>
-			{Option.match(value, {
-				onNone: () => null,
-				onSome: rows =>
-					Array.match(rows, {
+		<Loaded atom={peopleAtom}>
+			{rows => (
+				<>
+					<h1 className="sr-only">People</h1>
+					{Array.match(rows, {
 						onEmpty: () => <EmptyState label="No one yet" icon={<UsersIcon className="size-5" weight="light" />} />,
 						onNonEmpty: entries => (
 							<Card size="list">
@@ -104,9 +97,10 @@ function Directory() {
 								</div>
 							</Card>
 						)
-					})
-			})}
-		</>
+					})}
+				</>
+			)}
+		</Loaded>
 	)
 }
 

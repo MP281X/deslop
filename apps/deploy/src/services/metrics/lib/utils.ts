@@ -264,12 +264,12 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 				)
 			})
 		}),
-		cores: Array.map(last.cores ?? [], core => ({
+		cores: Array.map(last.cores, core => ({
 			id: core.id,
 			...Record.getSomes({
 				usage: mean(
 					bucket,
-					point => Option.getOrUndefined(Array.findFirst(point.cores ?? [], entry => entry.id === core.id))?.usage
+					point => Option.getOrUndefined(Array.findFirst(point.cores, entry => entry.id === core.id))?.usage
 				)
 			})
 		})),
@@ -304,10 +304,6 @@ export function compact(samples: readonly Sample[], now: number) {
 		Array.map(merge),
 		Array.sort(Order.mapInput(Order.Number, (value: Sample) => value.time))
 	)
-}
-
-export function usedStorage(point: Sample) {
-	return point.storageUsed ?? 0
 }
 
 export function history(samples: readonly Sample[], minutes: number, now: number) {

@@ -129,17 +129,17 @@ it.layer(NodeCrypto.layer)(test => {
 				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(other, {}, 'GitHub', '')).token}`
 			})
 			const client = yield* fixture.client
-			assert.strictEqual((yield* first(client['auth.account'](undefined, {headers}))).role, 'Waiting')
+			assert.strictEqual((yield* first(client['people.account'](undefined, {headers}))).role, 'Waiting')
 			assert.strictEqual(
-				(yield* Effect.flip(Stream.runCollect(Stream.take(client['auth.apps'](undefined, {headers}), 1)))).error,
+				(yield* Effect.flip(Stream.runCollect(Stream.take(client['tokens.watchApps'](undefined, {headers}), 1)))).error,
 				'access_denied'
 			)
 			yield* fixture.people.admit({allow: true, id: member.user.id}, ADMIN)
 			yield* fixture.people.admit({allow: true, id: other.user.id}, ADMIN)
-			assert.strictEqual((yield* first(client['auth.apps'](undefined, {headers}))).length, 1)
-			assert.strictEqual((yield* first(client['auth.apps'](undefined, {headers: otherHeaders}))).length, 1)
+			assert.strictEqual((yield* first(client['tokens.watchApps'](undefined, {headers}))).length, 1)
+			assert.strictEqual((yield* first(client['tokens.watchApps'](undefined, {headers: otherHeaders}))).length, 1)
 			const pending = yield* fixture.signIns.start({_tag: 'Browser'}, {})
-			yield* client['auth.answer']({accept: true, request: pending.code}, {headers})
+			yield* client['signins.answer']({accept: true, request: pending.code}, {headers})
 			yield* fixture.people.remove(member.user.id, ADMIN)
 			yield* fixture.people.admit({allow: true, id: (yield* fixture.people.register(PROFILE)).user.id}, ADMIN)
 			assert.deepStrictEqual(

@@ -1,6 +1,6 @@
-import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Option, Record, Schema, String} from 'effect'
+import {Array, Boolean, Option, Record, Schema, String} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -9,16 +9,15 @@ import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
 import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
-import {EmptyState, Failure} from '@deslop/components-web/fallbacks'
+import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
-import {searchOf} from '@deslop/components-web/router'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/item'
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn, useMediaQuery} from '@deslop/components-web/utils'
+import {cn, mediaQueryAtom} from '@deslop/components-web/utils'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
@@ -145,15 +144,14 @@ function ProcessRowsSkeleton(props: {label: string; rows: number}) {
 }
 
 function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minutes']}) {
-	const result = useAtomSuspense(metricsAtom(props.minutes), {includeFailure: true})
-	const refresh = useAtomRefresh(metricsAtom(props.minutes))
-	if (AsyncResult.isFailure(result) && Option.isNone(AsyncResult.value(result))) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
 	return (
-		<CatchBoundary getResetKey={() => 'metrics'} errorComponent={Failure}>
-			{props.children}
-		</CatchBoundary>
+		<Loaded atom={metricsAtom(props.minutes)}>
+			{() => (
+				<CatchBoundary getResetKey={() => 'metrics'} errorComponent={ReadFailure}>
+					{props.children}
+				</CatchBoundary>
+			)}
+		</Loaded>
 	)
 }
 
@@ -382,12 +380,12 @@ function Workspace(props: {
 				</div>
 			</div>
 		),
-		onSome: error => <Failure error={error} reset={props.retryFailed} />
+		onSome: error => <ReadFailure error={error} reset={props.retryFailed} />
 	})
 }
 
-function Home() {
-	const isPhone = useMediaQuery('(width < 40rem)')
+function HomeRoute() {
+	const isPhone = useAtomValue(mediaQueryAtom('(width < 40rem)'))
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	function view(next: Partial<Search>) {
@@ -519,4 +517,7 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: searchOf(Search)})
+export const Route = createFileRoute('/(home)/')({
+	component: HomeRoute,
+	validateSearch: Schema.toStandardSchemaV1(Search)
+})

@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, String, pipe} from 'effect'
+import {Array, Boolean, Match, Option, Redacted, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -18,7 +18,7 @@ import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
 import {OpenrouterDark} from '@deslop/components-web/ui/svgs/openrouterDark'
 import {OpenrouterLight} from '@deslop/components-web/ui/svgs/openrouterLight'
 
-import {setKeyAtom} from '#lib/utils.ts'
+import {AI_KEYS, setKeyAtom} from '#lib/utils.ts'
 import {AiProvider, PROVIDER_NAMES} from '#services/ai/schema.ts'
 
 export const PROVIDERS = AiProvider.literals
@@ -84,7 +84,7 @@ export function AddKeyDialog(props: {
 					className="flex flex-col gap-4"
 					onSubmit={event => {
 						event.preventDefault()
-						save({provider: props.provider, secret})
+						save({payload: {provider: props.provider, secret: Redacted.make(secret)}, reactivityKeys: AI_KEYS})
 					}}
 				>
 					<DialogTitle>Add a key</DialogTitle>

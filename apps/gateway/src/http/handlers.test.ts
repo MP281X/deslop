@@ -461,15 +461,15 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		handler => Effect.promise(() => handler.dispose())
 	)
 	return {
-		add: (url: string) => client('gateway.add', {url}, {headers: {cookie: SESSION}}),
+		add: (url: string) => client('connections.add', {url}, {headers: {cookie: SESSION}}),
 		addFailure: (url: string, session: string = SESSION) =>
-			Effect.flip(client('gateway.add', {url}, {headers: {cookie: session}})),
+			Effect.flip(client('connections.add', {url}, {headers: {cookie: session}})),
 		challengeMethods,
 		client,
 		discovered: () =>
 			Effect.flatMap(
 				Stream.runHead(
-					Stream.filter(client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+					Stream.filter(client('connections.watch', undefined, {headers: {cookie: SESSION}}), rows =>
 						Array.every(rows, row => row.status !== 'Connected' || row.tools > 0)
 					)
 				),
@@ -480,7 +480,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		keys: (session: string) => client('ai.keys', undefined, {headers: {cookie: session}}),
 		list: (session: string = SESSION) =>
 			Effect.flatMap(
-				Stream.runHead(client('gateway.servers', undefined, {headers: {cookie: session}})),
+				Stream.runHead(client('connections.watch', undefined, {headers: {cookie: session}})),
 				Effect.fromOption
 			),
 		metadataUnavailable,
@@ -685,7 +685,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const gateway = yield* servers(undefined, 'http://127.0.0.1:5000', true)
 			assert.strictEqual(
 				(yield* gateway.client(
-					'gateway.add',
+					'connections.add',
 					{url: 'https://public.example.com/mcp'},
 					{headers: {cookie: 'session=dev'}}
 				)).status,
@@ -803,7 +803,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* Effect.flatMap(
 				Stream.runHead(
-					Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+					Stream.filter(gateway.client('connections.watch', undefined, {headers: {cookie: SESSION}}), rows =>
 						Array.some(rows, row => row.id === added.id && row.tools === 1)
 					)
 				),
@@ -1026,7 +1026,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			const updates = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
 			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('gateway.usage', '24h', {headers: {cookie: SESSION}}), value =>
+				Stream.runForEach(gateway.client('connections.usage', '24h', {headers: {cookie: SESSION}}), value =>
 					Queue.offer(updates, value)
 				)
 			)
@@ -1077,7 +1077,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			// The page's day view sums the same hours into one day.
 			const daily = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
 			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('gateway.usage', '30d', {headers: {cookie: SESSION}}), value =>
+				Stream.runForEach(gateway.client('connections.usage', '30d', {headers: {cookie: SESSION}}), value =>
 					Queue.offer(daily, value)
 				)
 			)
@@ -1316,7 +1316,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			function example(ready: (status: string) => boolean) {
 				return Effect.flatMap(
 					Stream.runHead(
-						Stream.filter(gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}), rows =>
+						Stream.filter(gateway.client('connections.watch', undefined, {headers: {cookie: SESSION}}), rows =>
 							Array.some(rows, server => server.id === 'example' && ready(server.status))
 						)
 					),
@@ -1381,7 +1381,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const requestsBeforeExpiry = MutableList.toArray(gateway.upstreamRequests)
 			const ready = yield* Queue.make<true>()
 			const updates = yield* pipe(
-				gateway.client('gateway.servers', undefined, {headers: {cookie: SESSION}}),
+				gateway.client('connections.watch', undefined, {headers: {cookie: SESSION}}),
 				Stream.tap(() => Queue.offer(ready, true)),
 				Stream.take(2),
 				Stream.runCollect,

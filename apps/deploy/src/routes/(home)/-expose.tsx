@@ -1,8 +1,8 @@
-import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Option, String} from 'effect'
 
-import {AsyncResult, Atom} from 'effect/reactivity'
+import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
 
 import {ResultError} from '@deslop/components-web/result-error'
@@ -23,15 +23,6 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from '@deslop/components-web/u
 import {exposeAtom, exposeTargetAtom, inventoryAtom} from '#lib/utils.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import type {InventoryItem} from '#services/inventory/schema.ts'
-
-export function useExpose() {
-	const setTarget = useAtomSet(exposeTargetAtom)
-	const reset = useAtomSet(exposeAtom)
-	return (port: InventoryItem) => {
-		reset(Atom.Reset)
-		setTarget(Option.some(port))
-	}
-}
 
 function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const [result, expose] = useAtom(exposeAtom)

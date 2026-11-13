@@ -112,7 +112,7 @@ it.effect('ends a running RPC once its credentials are rejected, not while the i
 						headers: Headers.empty,
 						payload: undefined,
 						requestId: RpcMessage.RequestId(0),
-						rpc: Rpc.make('watch')
+						rpc: Rpc.make('session.watch')
 					}
 				)
 			)

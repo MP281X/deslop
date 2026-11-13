@@ -7,7 +7,7 @@ import {RpcAuth} from '@deslop/runtime/shared/auth'
 import {Capture, Note, NoteId, NotesError, NotesEvent} from '#services/notes/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('notes.watch', {error: NotesError, stream: true, success: NotesEvent}),
+	Rpc.make('notes.events', {error: NotesError, stream: true, success: NotesEvent}),
 	Rpc.make('notes.get', {error: NotesError, payload: Schema.Struct({id: NoteId}), success: Note}),
 	Rpc.make('notes.search', {
 		error: NotesError,

@@ -13,13 +13,13 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const push = yield* Push
 		const tracker = yield* Tracker
 		return RpcContracts.of({
-			'activities.claim': input => push.claim(input),
-			'activities.register': input => push.activity(input),
-			'bookings.refresh': input => tracker.refresh(input.id),
+			'bookings.events': () => bookings.events,
 			'bookings.remove': input => bookings.remove(input.id),
 			'bookings.save': input => Effect.flatMap(CurrentUser, user => bookings.save(user.id, input)),
-			'bookings.watch': () => bookings.events,
-			'devices.register': input => push.register(input)
+			'push.activity': input => push.activity(input),
+			'push.claim': input => push.claim(input),
+			'push.register': input => push.register(input),
+			'tracking.refresh': input => tracker.refresh(input.id)
 		})
 	})
 )

@@ -68,7 +68,8 @@ function SuiteSkeleton() {
 	)
 }
 
-function SignIn() {
+// A known signed-out account sees the sign-in page at once; only its app list waits for the catalog.
+export function SignIn() {
 	const catalog = useAtomValue(catalogAtom)
 	const apps = AsyncResult.getOrElse(catalog, () => [])
 	const next = route.useSearch({select: search => search.next})
@@ -118,9 +119,4 @@ function SignIn() {
 			})}
 		</section>
 	)
-}
-
-// A known signed-out account sees the sign-in page at once; only its app list waits for the catalog.
-export function SignedOut() {
-	return <SignIn />
 }

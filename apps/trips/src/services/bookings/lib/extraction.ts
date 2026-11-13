@@ -1,6 +1,6 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Clock, Context, DateTime, Effect, Layer, Option, Predicate, Redacted, Schema, String, pipe} from 'effect'
+import {Clock, Context, DateTime, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
 
 import {HttpClient} from 'effect/http'
 
@@ -68,7 +68,7 @@ export class Extractor extends Context.Service<
 						const anthropic = yield* model(userId)
 						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
 						function content() {
-							if (Predicate.hasProperty(source, 'image')) {
+							if (source._tag === 'image') {
 								return [
 									{data: source.image, mediaType: 'image/jpeg', type: 'file' as const},
 									{text: today, type: 'text' as const}

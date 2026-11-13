@@ -1,6 +1,6 @@
-import {useAtom, useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Cause, Number, Option, Order, Schema, String} from 'effect'
+import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
 
 import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -11,11 +11,10 @@ import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
-import {Failure} from '@deslop/components-web/fallbacks'
+import {Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
-import {searchOf} from '@deslop/components-web/router'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
@@ -23,13 +22,12 @@ import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {isDenied} from '@deslop/runtime/shared/auth'
 
 import {
 	addAtom,
 	aiKeysAtom,
 	aiUsageAtom,
-	connectUrl,
+	connectAtom,
 	copiedAtom,
 	copyAtom,
 	ENDPOINT,
@@ -140,16 +138,12 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 
 // One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period.
 function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]; server: ConnectionInfo}) {
-	const [connecting, setConnecting] = useState(false)
+	const [connecting, connect] = useAtom(connectAtom(props.server.id))
 	const connected = props.server.status === 'Connected'
 	const needsUser = !connected || props.server.error !== undefined
 	const failed = props.server.status === 'Expired' || props.server.error !== undefined
 	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
 	const series = serverSeries(props.report, props.server.id, props.period)
-	function connect() {
-		setConnecting(true)
-		location.assign(connectUrl(props.server.id))
-	}
 	return (
 		<div role="listitem">
 			<Item size="row">
@@ -177,9 +171,9 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 							<Button
 								size="xs"
 								className="max-sm:h-11"
-								disabled={connecting}
+								disabled={AsyncResult.isWaiting(connecting)}
 								aria-label={`${action} ${props.server.name}`}
-								onClick={connect}
+								onClick={() => connect()}
 							>
 								{action}
 							</Button>
@@ -195,47 +189,33 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	)
 }
 
-function ServerUsage(props: {period: Period; servers: readonly ConnectionInfo[]}) {
-	const result = useAtomSuspense(mcpUsageAtom(props.period), {includeFailure: true})
-	const refresh = useAtomRefresh(mcpUsageAtom(props.period))
-	if (
-		AsyncResult.isFailure(result) &&
-		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
-	) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
-	return Option.getOrUndefined(
-		Option.map(AsyncResult.value(result), current =>
-			Array.map(props.servers, server => (
-				<ServerRow key={server.id} server={server} period={current.range} report={current.report} />
-			))
-		)
-	)
-}
-
 // The servers reader first, so a refusal or a failed read shows without waiting for usage.
 function ServerRows(props: {period: Period}) {
-	const result = useAtomSuspense(serversAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(serversAtom)
-	if (
-		AsyncResult.isFailure(result) &&
-		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
-	) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
-	const servers = Option.getOrElse(AsyncResult.value(result), () => [])
-	if (Array.isReadonlyArrayEmpty(servers)) return null
-	const ordered = Array.sort(servers, byUrgency)
 	return (
-		<Suspense
-			fallback={
-				<RowsSkeleton label="MCP servers" rows={ordered.length}>
-					<RowBones tool />
-				</RowsSkeleton>
+		<Loaded atom={serversAtom}>
+			{servers =>
+				Array.match(Array.sort(servers, byUrgency), {
+					onEmpty: () => null,
+					onNonEmpty: ordered => (
+						<Suspense
+							fallback={
+								<RowsSkeleton label="MCP servers" rows={ordered.length}>
+									<RowBones tool />
+								</RowsSkeleton>
+							}
+						>
+							<Loaded atom={mcpUsageAtom(props.period)}>
+								{current =>
+									Array.map(ordered, server => (
+										<ServerRow key={server.id} server={server} period={current.range} report={current.report} />
+									))
+								}
+							</Loaded>
+						</Suspense>
+					)
+				})
 			}
-		>
-			<ServerUsage period={props.period} servers={ordered} />
-		</Suspense>
+		</Loaded>
 	)
 }
 
@@ -270,63 +250,58 @@ function KeyRow(props: {
 }
 
 function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
-	const result = useAtomSuspense(aiUsageAtom(props.period), {includeFailure: true})
-	const refresh = useAtomRefresh(aiUsageAtom(props.period))
-	if (
-		AsyncResult.isFailure(result) &&
-		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
-	) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
-	return Option.getOrUndefined(
-		Option.map(AsyncResult.value(result), current =>
-			Array.flatMap(PROVIDERS, provider =>
-				Option.match(
-					Array.findFirst(props.keys, key => key.provider === provider),
-					{
-						onNone: () => [],
-						onSome: info => [
-							<KeyRow
-								key={provider}
-								provider={provider}
-								info={info}
-								report={current.report}
-								period={current.range}
-								cost={providerCost(current.report, provider)}
-							/>
-						]
-					}
+	const keysByProvider = Array.groupBy(props.keys, key => key.provider)
+	return (
+		<Loaded atom={aiUsageAtom(props.period)}>
+			{current =>
+				Array.flatMap(PROVIDERS, provider =>
+					pipe(
+						Option.fromUndefinedOr(keysByProvider[provider]),
+						Option.map(Array.headNonEmpty),
+						Option.match({
+							onNone: () => [],
+							onSome: info => [
+								<KeyRow
+									key={provider}
+									provider={provider}
+									info={info}
+									report={current.report}
+									period={current.range}
+									cost={providerCost(current.report, provider)}
+								/>
+							]
+						})
+					)
 				)
-			)
-		)
+			}
+		</Loaded>
 	)
 }
 
 // Only providers with a key have a row; the field adds and replaces them.
 function KeyRows(props: {period: Period}) {
-	const result = useAtomSuspense(aiKeysAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(aiKeysAtom)
-	if (
-		AsyncResult.isFailure(result) &&
-		(Option.isNone(AsyncResult.value(result)) || Option.exists(AsyncResult.error(result), isDenied))
-	) {
-		return <Failure error={Cause.squash(result.cause)} reset={refresh} />
-	}
-	const keys = Array.filter(
-		Option.getOrElse(AsyncResult.value(result), () => []),
-		key => Array.contains(PROVIDERS, key.provider)
-	)
-	if (Array.isReadonlyArrayEmpty(keys)) return null
 	return (
-		<Suspense
-			fallback={
-				<RowsSkeleton label="AI keys" rows={keys.length}>
-					<RowBones />
-				</RowsSkeleton>
+		<Loaded atom={aiKeysAtom}>
+			{all =>
+				Array.match(
+					Array.filter(all, key => Array.contains(PROVIDERS, key.provider)),
+					{
+						onEmpty: () => null,
+						onNonEmpty: keys => (
+							<Suspense
+								fallback={
+									<RowsSkeleton label="AI keys" rows={keys.length}>
+										<RowBones />
+									</RowsSkeleton>
+								}
+							>
+								<KeyUsage keys={keys} period={props.period} />
+							</Suspense>
+						)
+					}
+				)
 			}
-		>
-			<KeyUsage keys={keys} period={props.period} />
-		</Suspense>
+		</Loaded>
 	)
 }
 
@@ -336,7 +311,7 @@ function List(props: {period: Period}) {
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
 				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'servers'} errorComponent={Failure}>
+				<CatchBoundary getResetKey={() => 'servers'} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
 							<RowsSkeleton label="MCP servers" rows={3}>
@@ -348,7 +323,7 @@ function List(props: {period: Period}) {
 					</Suspense>
 				</CatchBoundary>
 				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
-				<CatchBoundary getResetKey={() => 'keys'} errorComponent={Failure}>
+				<CatchBoundary getResetKey={() => 'keys'} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
 							<RowsSkeleton label="AI keys" rows={4}>
@@ -471,7 +446,7 @@ function GatewayProblem(props: {period: Period}) {
 	)
 }
 
-function Home() {
+function HomeRoute() {
 	const search = route.useSearch()
 	const navigate = route.useNavigate()
 	const period = search.period ?? '7d'
@@ -521,4 +496,7 @@ function Home() {
 	)
 }
 
-export const Route = createFileRoute('/(home)/')({component: Home, validateSearch: searchOf(Search)})
+export const Route = createFileRoute('/(home)/')({
+	component: HomeRoute,
+	validateSearch: Schema.toStandardSchemaV1(Search)
+})

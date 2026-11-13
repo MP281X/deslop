@@ -4,7 +4,7 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
 
-import {alert} from '#lib/utils.ts'
+import {alertFailure} from '#lib/utils.ts'
 
 type RemovalError = {_tag: string; message: string}
 
@@ -29,7 +29,7 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 				effects: {
 					remove: Effect.gen(function* () {
 						const removal = yield* Removal
-						yield* pipe(removal.remove(id), alert(removal.notRemoved))
+						yield* pipe(removal.remove(id), alertFailure(removal.notRemoved))
 					})
 				},
 				events: Machine.events({Removed: {}, Restored: {}}),

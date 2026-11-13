@@ -11,7 +11,7 @@ import {TestClock} from 'effect/testing'
 // oxlint-disable-next-line no-restricted-imports -- Node has no native host; only Expo and React Native imports are stubbed, not session, machine, atom or HTTP behavior.
 import {vi} from 'vite-plus/test'
 
-import {make} from '#mobile/session.ts'
+import {makeSession} from '#mobile/session.ts'
 import {AuthError, ISSUER} from '#shared/auth.ts'
 
 vi.mock('expo-auth-session', () => ({
@@ -34,7 +34,7 @@ vi.mock('react-native', () => ({Alert: {alert: () => {}}, AppState: {addEventLis
 class DataError extends Schema.TaggedError<DataError>()('DataError', {message: Schema.String}) {}
 
 function session(cleared: Ref.Ref<boolean>) {
-	return make('https://fixture.example', {
+	return makeSession('https://fixture.example', {
 		clear: Ref.set(cleared, true),
 		read: Effect.succeed('{"session":"fixture-session"}'),
 		write: () => Effect.void
@@ -53,7 +53,9 @@ it.layer(AtomRegistry.layer)(test => {
 			`surfaces ${error._tag}: ${error.message} without retrying or signing out`,
 			Effect.fnUntraced(function* () {
 				const cleared = yield* Ref.make(false)
-				const waiting = yield* Effect.forkChild(Stream.runCollect(session(cleared).reopening(Stream.fail(error))))
+				const waiting = yield* Effect.forkChild(
+					Stream.runCollect(session(cleared).reconnectOrSignOut(Stream.fail(error)))
+				)
 				yield* TestClock.adjust('2 seconds')
 				assert.isDefined(waiting.pollUnsafe())
 				assert.strictEqual(yield* Effect.flip(Fiber.join(waiting)), error)
@@ -67,7 +69,9 @@ it.layer(AtomRegistry.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const cleared = yield* Ref.make(false)
 			const refusal = AuthError.make({message: 'Sign in first'})
-			const waiting = yield* Effect.forkChild(Stream.runCollect(session(cleared).reopening(Stream.fail(refusal))))
+			const waiting = yield* Effect.forkChild(
+				Stream.runCollect(session(cleared).reconnectOrSignOut(Stream.fail(refusal)))
+			)
 			yield* TestClock.adjust('2 seconds')
 			assert.strictEqual(yield* Effect.flip(Fiber.join(waiting)), refusal)
 			assert.isTrue(yield* Ref.get(cleared))
@@ -85,7 +89,7 @@ it.layer(AtomRegistry.layer)(test => {
 				const attempts = yield* Ref.make(0)
 				const waiting = yield* Effect.forkChild(
 					Stream.runCollect(
-						session(cleared).reopening(
+						session(cleared).reconnectOrSignOut(
 							Stream.unwrap(
 								Effect.map(
 									Ref.getAndUpdate(attempts, count => count + 1),
@@ -109,7 +113,7 @@ it.layer(AtomRegistry.layer)(test => {
 	test.effect(
 		'leaves signing-in after the server stalls exchanging the code for ten seconds',
 		Effect.fnUntraced(function* () {
-			const current = make('https://fixture.example', {
+			const current = makeSession('https://fixture.example', {
 				clear: Effect.void,
 				read: Effect.succeed(''),
 				write: () => Effect.void

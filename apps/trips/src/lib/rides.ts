@@ -1,10 +1,10 @@
 import {Array, Effect, Option, String, pipe} from 'effect'
 
 import {Atom} from 'effect/reactivity'
-import * as Location from 'expo-location'
+import {geocodeAsync} from 'expo-location'
 import {Linking} from 'react-native'
 
-import {alert} from '@deslop/components-mobile/utils'
+import {alertFailure} from '@deslop/components-mobile/utils'
 
 import {departureOf, MINUTE, stayAfter} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'
@@ -24,7 +24,7 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 		Array.head(
 			yield* Effect.tryPromise({
 				catch: cause => BookingsError.make({cause, message: `${place.name} could not be found on the map.`}),
-				try: () => Location.geocodeAsync(placeLine(place))
+				try: () => geocodeAsync(placeLine(place))
 			})
 		),
 		match => ({latitude: match.latitude, longitude: match.longitude}) satisfies Coordinates
@@ -63,7 +63,7 @@ export const mapsAtom = Atom.fn((ride: Ride) =>
 					)
 			})
 		),
-		alert('No Directions')
+		alertFailure('No Directions')
 	)
 )
 
@@ -84,6 +84,6 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 					)
 			})
 		),
-		alert('No Uber')
+		alertFailure('No Uber')
 	)
 )

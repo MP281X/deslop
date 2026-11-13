@@ -2,7 +2,7 @@ import {Outlet, createFileRoute} from '@tanstack/react-router'
 
 import {ExposeDialog} from '#routes/(home)/-expose.tsx'
 
-function Shell() {
+function ShellRoute() {
 	return (
 		<>
 			<ExposeDialog />
@@ -11,4 +11,4 @@ function Shell() {
 	)
 }
 
-export const Route = createFileRoute('/(home)')({component: Shell})
+export const Route = createFileRoute('/(home)')({component: ShellRoute})

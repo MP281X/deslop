@@ -8,13 +8,13 @@ import {BookingId, BookingSource, BookingsError, BookingsEvent} from '#services/
 import {ActivityClaim, ActivityToken, Device, PushError} from '#services/push/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('bookings.watch', {error: BookingsError, stream: true, success: BookingsEvent}),
+	Rpc.make('bookings.events', {error: BookingsError, stream: true, success: BookingsEvent}),
 	Rpc.make('bookings.save', {error: BookingsError, payload: BookingSource}),
 	Rpc.make('bookings.remove', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
 	// Asks the provider now, at most once a minute while the journey is tracked.
-	Rpc.make('bookings.refresh', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
-	Rpc.make('devices.register', {error: PushError, payload: Device}),
+	Rpc.make('tracking.refresh', {error: BookingsError, payload: Schema.Struct({id: BookingId})}),
+	Rpc.make('push.register', {error: PushError, payload: Device}),
 	// Whether the app may start a leg's Live Activity itself; the server starts the ones nobody claimed.
-	Rpc.make('activities.claim', {error: PushError, payload: ActivityClaim, success: Schema.Boolean}),
-	Rpc.make('activities.register', {error: PushError, payload: ActivityToken})
+	Rpc.make('push.claim', {error: PushError, payload: ActivityClaim, success: Schema.Boolean}),
+	Rpc.make('push.activity', {error: PushError, payload: ActivityToken})
 ).middleware(RpcAuth) {}

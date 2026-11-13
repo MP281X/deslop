@@ -1,12 +1,13 @@
 import {Boolean, Effect, Option, Predicate, String, pipe} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
-import * as Clipboard from 'expo-clipboard'
-import * as Crypto from 'expo-crypto'
+import {getImageAsync, getStringAsync, hasImageAsync} from 'expo-clipboard'
+import {randomUUID} from 'expo-crypto'
 import {File, Paths} from 'expo-file-system'
 
 import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardKind} from '@deslop/components-mobile/clipboard'
+import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
 
 import {capture} from '#lib/notes.ts'
 import {RpcClient, SERVER, session} from '#lib/session.ts'
@@ -19,12 +20,12 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 		count,
 		Effect.tryPromise({
 			catch: cause => NotesError.make({cause, message: 'The copied image could not be read.'}),
-			try: () => Clipboard.getImageAsync({format: 'jpeg', jpegQuality: 0.85})
+			try: () => getImageAsync({format: 'jpeg', jpegQuality: 0.85})
 		})
 	)
 	if (image === null) return yield* NotesError.make({message: 'The clipboard no longer holds an image.'})
 	const token = yield* session.bearer
-	const id = Crypto.randomUUID()
+	const id = randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
 	const response = yield* pipe(
 		Effect.tryPromise({
@@ -50,7 +51,7 @@ const saveLink = Effect.fnUntraced(function* (count: string) {
 			count,
 			Effect.tryPromise({
 				catch: cause => NotesError.make({cause, message: 'The clipboard could not be read.'}),
-				try: () => Clipboard.getStringAsync()
+				try: () => getStringAsync()
 			})
 		)
 	)
@@ -69,7 +70,7 @@ export const clipboard = makeClipboard({
 	// A copy that failed to save is never offered again.
 	answered: () => true,
 	detect: Effect.gen(function* () {
-		if (yield* Effect.promise(() => Clipboard.hasImageAsync())) return Option.some<ClipboardKind>('image')
+		if (yield* Effect.promise(() => hasImageAsync())) return Option.some<ClipboardKind>('image')
 		if (yield* Effect.promise(() => native.hasLink())) return Option.some<ClipboardKind>('link')
 		return Option.none<ClipboardKind>()
 	}),
@@ -80,8 +81,7 @@ export const clipboard = makeClipboard({
 	},
 	save: (copy, get) =>
 		Boolean.match(copy.kind === 'image', {
-			onFalse: () =>
-				Effect.flatMap(get.result(RpcClient.runtime), context => Effect.provideContext(saveLink(copy.count), context)),
+			onFalse: () => provideRuntimeOnce(get, RpcClient.runtime, saveLink(copy.count)),
 			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
 			onTrue: () => Effect.provide(saveImage(copy.count), FetchHttpClient.layer)
 		})

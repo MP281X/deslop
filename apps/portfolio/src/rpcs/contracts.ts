@@ -12,10 +12,10 @@ const Guest = PortfolioVisitor.mapFields(fields => ({
 
 // Visitors are guests, so the room needs no sign-in, unlike every other app's RPC.
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('portfolio.join', {
+	Rpc.make('presence.join', {
 		payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'name']))),
 		stream: true,
 		success: PortfolioScene
 	}),
-	Rpc.make('portfolio.move', {payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'x', 'y'])))})
+	Rpc.make('presence.move', {payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'x', 'y'])))})
 ) {}

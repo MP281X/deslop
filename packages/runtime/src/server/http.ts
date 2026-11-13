@@ -70,7 +70,7 @@ export const guard = HttpMiddleware.make(app =>
 	})
 )
 
-// Binary RPC frames unless an app picks JSON; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
+// Binary RPC frames for every client; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
 export const layerProtocol = Layer.mergeAll(
 	RpcSerialization.layerSchemaBinary(),
 	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10)),

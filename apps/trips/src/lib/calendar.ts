@@ -1,7 +1,14 @@
 import {Array, Clock, DateTime, Effect, HashSet, MutableList, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
-import * as Calendar from 'expo-calendar'
+import {
+	EntityTypes,
+	createCalendar,
+	getCalendars,
+	getDefaultCalendarSync,
+	requestCalendarPermissions
+} from 'expo-calendar'
+import type {ExpoCalendar, ExpoCalendarEvent} from 'expo-calendar'
 
 import {bookingsAtom} from '#lib/bookings.ts'
 import {linkOf} from '#lib/deep-links.ts'
@@ -50,11 +57,11 @@ function sameTime(left: DateTime.DateTime.Input, right: DateTime.DateTime.Input)
 	)
 }
 
-function calendarPlan(all: BookingList, events: Awaited<ReturnType<Calendar.ExpoCalendar['listEvents']>>, now: number) {
+function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar['listEvents']>>, now: number) {
 	const eventsByUrl = Array.groupBy(events, event => event.url ?? '')
 	const bookings = Array.filter(all, booking => booking.status === 'confirmed' && endOf(booking) > now - 24 * HOUR)
 	const create = MutableList.make<ReturnType<typeof eventOf> & {url: string}>()
-	const update = MutableList.make<{event: Calendar.ExpoCalendarEvent; details: ReturnType<typeof eventOf>}>()
+	const update = MutableList.make<{event: ExpoCalendarEvent; details: ReturnType<typeof eventOf>}>()
 	for (const booking of bookings) {
 		const details = {...eventOf(booking), url: linkOf(booking.id)}
 		Option.match(Array.head(eventsByUrl[details.url] ?? []), {
@@ -96,7 +103,7 @@ export const calendarAtom = Atom.make(get =>
 			if (
 				!(yield* Effect.tryPromise({
 					catch: cause => BookingsError.make({cause, message: 'The calendar permission could not be asked.'}),
-					try: () => Calendar.requestCalendarPermissions()
+					try: () => requestCalendarPermissions()
 				})).granted
 			) {
 				return
@@ -105,7 +112,7 @@ export const calendarAtom = Atom.make(get =>
 				Array.findFirst(
 					yield* Effect.tryPromise({
 						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
-						try: () => Calendar.getCalendars(Calendar.EntityTypes.EVENT)
+						try: () => getCalendars(EntityTypes.EVENT)
 					}),
 					found => found.title === CALENDAR
 				),
@@ -114,10 +121,10 @@ export const calendarAtom = Atom.make(get =>
 						Effect.tryPromise({
 							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
 							try: () => {
-								const source = Calendar.getDefaultCalendarSync().source
-								return Calendar.createCalendar({
+								const source = getDefaultCalendarSync().source
+								return createCalendar({
 									color: COLOR,
-									entityType: Calendar.EntityTypes.EVENT,
+									entityType: EntityTypes.EVENT,
 									name: CALENDAR,
 									source,
 									sourceId: source.id,

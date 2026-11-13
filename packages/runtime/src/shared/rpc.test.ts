@@ -4,10 +4,24 @@ import {createServer} from 'node:http'
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Context, Effect, Layer, MutableList, Schema, Stream, String, Tracer, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	Effect,
+	FileSystem,
+	Layer,
+	MutableList,
+	Path,
+	Predicate,
+	Schema,
+	Stream,
+	String,
+	Tracer,
+	pipe
+} from 'effect'
 
 import {HttpRouter, HttpServer} from 'effect/http'
-import {Rpc, RpcClient, RpcGroup, RpcSerialization} from 'effect/rpc'
+import {Rpc, RpcClient, RpcGroup, RpcSchema, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
 import {layerProtocol, layerRpc} from '#server/http.ts'
@@ -18,6 +32,66 @@ class TestRpcs extends RpcGroup.make(
 	Rpc.make('test.echo', {payload: Schema.String, success: Schema.String}),
 	Rpc.make('test.watch', {payload: Schema.String, stream: true, success: Schema.String})
 ).middleware(RpcStream) {}
+
+it.layer(Layer.mergeAll(NodeServices.layer, RpcSerialization.layerSchemaBinary()))('Binary RPC contracts', test => {
+	test.effect(
+		'runtime envelopes and protocol failures',
+		Effect.fnUntraced(function* () {
+			const serialization = yield* RpcSerialization.RpcSerialization
+			for (const schema of [Schema.Defect(), Schema.Exit(Schema.Never, Schema.Never, Schema.Defect())]) {
+				const codec = serialization.codecFor(schema)
+				assert.isFunction(Schema.encodeEffect(codec))
+				assert.isFunction(Schema.decodeEffect(codec))
+			}
+			assert.isFunction(serialization.makeUnsafe().encode)
+			assert.isFunction(serialization.makeUnsafe().decode)
+		})
+	)
+	test.effect(
+		'all app payloads, responses and streams',
+		Effect.fnUntraced(function* () {
+			const path = yield* Path.Path
+			const root = yield* path.fromFileUrl(new URL('../../../../apps/', import.meta.url))
+			const contracts = yield* (yield* FileSystem.FileSystem).glob('*/src/rpcs/contracts.ts', {root})
+			const serialization = yield* RpcSerialization.RpcSerialization
+			assert.isNotEmpty(contracts)
+			for (const contract of contracts) {
+				const file = path.join(root, contract)
+				const loaded: unknown = yield* Effect.promise(() => import(file))
+				const module = yield* Schema.decodeUnknownEffect(
+					Schema.Struct({
+						RpcContracts: Schema.declare(
+							(value): value is RpcGroup.RpcGroup<Rpc.AnyWithProps> =>
+								Predicate.hasProperty(value, 'requests') &&
+								Predicate.isMap(value.requests) &&
+								Array.every(Array.fromIterable(value.requests), entry => Rpc.isRpc(entry[1]))
+						)
+					})
+				)(loaded)
+				for (const entry of module.RpcContracts.requests) {
+					const schemas = MutableList.make<Schema.Top>()
+					MutableList.appendAll(schemas, [
+						entry[1].payloadSchema,
+						entry[1].errorSchema,
+						entry[1].defectSchema,
+						Rpc.exitSchema(entry[1])
+					])
+					if (RpcSchema.isStreamSchema(entry[1].successSchema)) {
+						MutableList.append(schemas, Schema.NonEmptyArray(entry[1].successSchema.success))
+						MutableList.append(schemas, entry[1].successSchema.error)
+					} else {
+						MutableList.append(schemas, entry[1].successSchema)
+					}
+					for (const schema of MutableList.toArray(schemas)) {
+						const codec = serialization.codecFor(schema)
+						assert.isFunction(Schema.encodeEffect(codec))
+						assert.isFunction(Schema.decodeEffect(codec))
+					}
+				}
+			}
+		})
+	)
+})
 
 it.layer(NodeServices.layer)('RPC streams', test => {
 	test.effect('marks both ends of a stream without auth and leaves a call unmarked', () =>

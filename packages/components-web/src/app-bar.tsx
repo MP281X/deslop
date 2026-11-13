@@ -1,10 +1,10 @@
-import {useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Option, Predicate, String} from 'effect'
+import {Array, Effect, Option, Predicate, String} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
-import {AsyncResult} from 'effect/reactivity'
-import {useEffect, useRef, useState} from 'react'
+import {AsyncResult, Atom} from 'effect/reactivity'
+import {useState} from 'react'
 import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
 
 import type {Account} from '@deslop/runtime/shared/schema'
@@ -15,9 +15,7 @@ import {Button} from '#components/ui/button.tsx'
 import {Tabs, TabsList, TabsTrigger} from '#components/ui/tabs.tsx'
 
 // The menu's floating-ui bundle is the page's heaviest import, so it arrives on intent rather than with the bar.
-async function loadMenu() {
-	return await import('#components/ui/dropdown-menu.tsx')
-}
+const menuModuleAtom = Atom.keepAlive(Atom.fn(() => Effect.promise(() => import('#components/ui/dropdown-menu.tsx'))))
 
 function AccountAvatar(props: {account: Account}) {
 	return (
@@ -34,27 +32,26 @@ function AccountAvatar(props: {account: Account}) {
 // Signing out goes through Auth, which ends the session every app shares.
 function AccountMenu() {
 	const account = useAtomValue(accountAtom)
-	const [menu, setMenu] = useState<Awaited<ReturnType<typeof loadMenu>>>()
+	const [loaded, loadMenu] = useAtom(menuModuleAtom)
 	const [open, setOpen] = useState<boolean>()
 
-	async function load() {
-		setMenu(await loadMenu())
+	function load() {
+		loadMenu()
 	}
 
-	async function activate() {
+	function activate() {
 		setOpen(true)
-		await load()
+		loadMenu()
 	}
 
-	async function activateWithKey(event: KeyboardEvent<HTMLButtonElement>) {
+	function activateWithKey(event: KeyboardEvent<HTMLButtonElement>) {
 		if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
 		event.preventDefault()
-		setOpen(true)
-		await load()
+		activate()
 	}
 
 	if (!AsyncResult.isSuccess(account)) return null
-	if (menu === undefined || open === undefined) {
+	if (!AsyncResult.isSuccess(loaded) || open === undefined) {
 		return (
 			<Button
 				variant="ghost"
@@ -74,46 +71,53 @@ function AccountMenu() {
 		)
 	}
 	return (
-		<menu.DropdownMenu open={open} onOpenChange={setOpen}>
-			<menu.DropdownMenuTrigger
+		<loaded.value.DropdownMenu open={open} onOpenChange={setOpen}>
+			<loaded.value.DropdownMenuTrigger
 				aria-label="Account"
 				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
 			>
 				<AccountAvatar account={account.value} />
-			</menu.DropdownMenuTrigger>
-			<menu.DropdownMenuContent align="end" className="w-auto min-w-48">
-				<menu.DropdownMenuGroup>
-					<menu.DropdownMenuLabel>@{account.value.name}</menu.DropdownMenuLabel>
-				</menu.DropdownMenuGroup>
-				<menu.DropdownMenuSeparator />
-				<menu.DropdownMenuItem
+			</loaded.value.DropdownMenuTrigger>
+			<loaded.value.DropdownMenuContent align="end" className="w-auto min-w-48">
+				<loaded.value.DropdownMenuGroup>
+					<loaded.value.DropdownMenuLabel>@{account.value.name}</loaded.value.DropdownMenuLabel>
+				</loaded.value.DropdownMenuGroup>
+				<loaded.value.DropdownMenuSeparator />
+				<loaded.value.DropdownMenuItem
 					variant="destructive"
 					className="max-sm:h-11"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
 					Sign out
-				</menu.DropdownMenuItem>
-			</menu.DropdownMenuContent>
-		</menu.DropdownMenu>
+				</loaded.value.DropdownMenuItem>
+			</loaded.value.DropdownMenuContent>
+		</loaded.value.DropdownMenu>
 	)
+}
+
+// Tabs can arrive after the bar, so each change to them places the chosen one again; one already in view stays put.
+function keepChosenTabInView(sections: HTMLDivElement) {
+	function place() {
+		const active = sections.querySelector<HTMLElement>('[data-active]')
+		if (Predicate.isNullish(active) || Predicate.isNullish(sections.parentElement)) return
+		const tab = active.getBoundingClientRect()
+		const bounds = sections.parentElement.getBoundingClientRect()
+		if (tab.left >= bounds.left - 1 && tab.right <= bounds.right + 1) return
+		active.scrollIntoView({block: 'nearest', inline: 'nearest'})
+	}
+	place()
+	const changes = new MutationObserver(place)
+	changes.observe(sections, {attributeFilter: ['data-active'], childList: true, subtree: true})
+	return () => {
+		changes.disconnect()
+	}
 }
 
 // The app's sections as one segmented control in the masthead; `value` names the current one. A bar narrow enough to need it scrolls this control sideways, keeping the chosen tab in view.
 export function AppBarTabs(props: {children: ReactNode; value: string}) {
-	const sections = useRef<HTMLDivElement>(null)
-	// Tabs can arrive after the bar, so every render places the chosen one again; one already in view stays put.
-	useEffect(() => {
-		const active = sections.current?.querySelector<HTMLElement>('[data-active]')
-		const view = sections.current?.parentElement
-		if (Predicate.isNullish(active) || Predicate.isNullish(view)) return
-		const tab = active.getBoundingClientRect()
-		const bounds = view.getBoundingClientRect()
-		if (tab.left >= bounds.left - 1 && tab.right <= bounds.right + 1) return
-		active.scrollIntoView({block: 'nearest', inline: 'nearest'})
-	})
 	return (
-		<div ref={sections}>
+		<div ref={keepChosenTabInView}>
 			<Tabs value={props.value}>
 				<TabsList>{props.children}</TabsList>
 			</Tabs>

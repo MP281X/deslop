@@ -20,7 +20,7 @@ import {
 import {AsyncResult, Atom, AtomRegistry} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
-import {withoutDeniedData} from '#client/live.ts'
+import {keepValueThroughOutages} from '#client/live-stream.ts'
 import {adminIds} from '#server/auth.ts'
 import {AuthError, isAdmin, isDenied, needsSignIn, rejected} from '#shared/auth.ts'
 
@@ -45,9 +45,9 @@ const readFixture = Effect.gen(function* () {
 	const incoming = yield* Queue.unbounded<Effect.Effect<string, AuthError | string>>()
 	const empty = Atom.make(false)
 	const atom = Atom.make(get => {
-		if (get(empty)) return withoutDeniedData(get, Stream.empty)
+		if (get(empty)) return keepValueThroughOutages(get, Stream.empty)
 		return pipe(
-			withoutDeniedData(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
+			keepValueThroughOutages(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
 				Stream.retry(stream, $ =>
 					pipe(
 						$(Schedule.spaced('1 second')),
@@ -162,8 +162,10 @@ it.layer(AtomRegistry.layer)(test => {
 				const incoming = yield* Queue.unbounded<Effect.Effect<string, string>>()
 				const atom = Atom.make(get =>
 					pipe(
-						withoutDeniedData(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
-							Stream.retry(stream, Schedule.spaced('1 second'))
+						keepValueThroughOutages(
+							get,
+							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)),
+							stream => Stream.retry(stream, Schedule.spaced('1 second'))
 						),
 						Stream.provideService(Clock.Clock, clock)
 					)

@@ -220,6 +220,7 @@ function machineOf(worker: string, options?: {error?: string; stale?: boolean}) 
 		index =>
 			({
 				apps,
+				cores: [],
 				...Boolean.match(index === 0, {onFalse: () => ({cpu: 20 + index / 10}), onTrue: () => ({})}),
 				disks: Boolean.match(index === 59, {
 					onFalse: () => [],

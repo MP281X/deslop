@@ -106,7 +106,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 
 			// Only a leg nobody started yet: the server may already show it from a push.
 			const begin = Effect.fnUntraced(function* (journey: Flight | Train, leg: Leg, props: ActivityProps) {
-				if (!(yield* client('activities.claim', {...target, bookingId: journey.id, leg}))) {
+				if (!(yield* client('push.claim', {...target, bookingId: journey.id, leg}))) {
 					return Option.none<Started>()
 				}
 				const activity = JourneyActivity.start(props, linkOf(journey.id))
@@ -141,7 +141,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 				)
 				yield* Option.match(token, {
 					onNone: () => Effect.void,
-					onSome: found => client('activities.register', {...target, bookingId: journey.id, leg, token: found})
+					onSome: found => client('push.activity', {...target, bookingId: journey.id, leg, token: found})
 				})
 				return Option.some<Started>([activity.getId(), entryOf(journey.id, leg, token)])
 			})
@@ -157,7 +157,7 @@ export const activitiesAtom = RpcClient.runtime.atom(get =>
 					try: () => mine.activity.getPushToken()
 				})
 				if (token === null || token === mine.token) return Option.none<Started>()
-				yield* client('activities.register', {...target, bookingId: mine.bookingId, leg: mine.leg, token})
+				yield* client('push.activity', {...target, bookingId: mine.bookingId, leg: mine.leg, token})
 				return Option.some<Started>([mine.activity.getId(), entryOf(mine.bookingId, mine.leg, Option.some(token))])
 			})
 
