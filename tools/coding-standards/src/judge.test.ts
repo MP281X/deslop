@@ -261,6 +261,17 @@ function changeLevel(asked: Asked[]) {
 	)
 }
 
+// The lines printed under a heading, without their indent.
+function under(printed: readonly string[], heading: string) {
+	return pipe(
+		printed,
+		Array.dropWhile(line => !String.startsWith(heading)(line)),
+		Array.drop(1),
+		Array.takeWhile(String.startsWith('  ')),
+		Array.map(String.trimStart)
+	)
+}
+
 function claimsAsked(asked: Asked[]) {
 	return Array.flatMap(changeLevel(asked), call => Option.toArray(Record.get(call.state, 'claim')))
 }
@@ -326,15 +337,15 @@ describe('coding-standards judge', () => {
 					{
 						quotedInMarkdown: Array.some(result.printed, matches(/^1 commits since main no-unrelated-edit .* 0\.95$/u)),
 						quotedInString: Array.filter(result.findings, String.startsWith('page.tsx')),
-						summary: String.includes('1 suppressed')(result.summary),
-						suppressed: Array.filter(result.printed, String.includes(' suppressed by judge-ignore: '))
+						summary: String.endsWith(', 1 suppressed')(result.summary),
+						suppressed: under(result.printed, 'Suppressed by judge-ignore:')
 					},
 					{
 						quotedInMarkdown: true,
 						quotedInString: ['page.tsx:5-12 no-self-fetching-component 0.95'],
 						summary: true,
 						suppressed: [
-							'page.tsx:14-21 no-self-fetching-component suppressed by judge-ignore: the view lives in a parent route (0.95)'
+							'page.tsx:14-21 no-self-fetching-component: suppressed by judge-ignore: the view lives in a parent route (0.95)'
 						]
 					}
 				)
@@ -400,7 +411,7 @@ describe('coding-standards judge', () => {
 		)
 
 		test.effect(
-			'reports a change too large for one call as unjudged without sending it, and fails a run past its limit before any call',
+			'fails on a change too large for one call without sending it, and on a run past its limit before any call',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('')
 				const directory = yield* f.checkout(
@@ -412,18 +423,17 @@ describe('coding-standards judge', () => {
 					{
 						exitCode: large.exitCode,
 						sent: changeLevel(large.asked).length,
-						unjudged: pipe(
-							large.printed,
-							Array.filter(String.includes(' unjudged: ')),
-							Array.map(String.replaceAll(/~\d+ tokens|commit [0-9a-f]+:\d+/gu, '…'))
+						unread: Array.map(
+							under(large.printed, 'Could not read'),
+							String.replaceAll(/~\d+ tokens|commit [0-9a-f]+:\d+/gu, '…')
 						)
 					},
 					{
 						exitCode: ChildProcessSpawner.ExitCode(1),
 						sent: 0,
-						unjudged: [
-							'1 commits since main no-boundary-crossing, no-needless-machinery, no-unfulfilled-request, no-unrelated-edit unjudged: …, past --max-call-tokens 12000; not sent',
-							'… no-unproven-claim unjudged: …, past --max-call-tokens 12000; not sent'
+						unread: [
+							'1 commits since main no-boundary-crossing, no-needless-machinery, no-unfulfilled-request, no-unrelated-edit: …, past --max-call-tokens 12000; not sent',
+							'… no-unproven-claim: …, past --max-call-tokens 12000; not sent'
 						]
 					}
 				)
@@ -436,7 +446,7 @@ describe('coding-standards judge', () => {
 		)
 
 		test.effect(
-			'asks a claim again when the implementation changes under the same request, and reports a claim only a recording could prove as not checkable',
+			'asks a claim again when the implementation changes under the same request',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('')
 				const directory = yield* f.checkout(
@@ -452,6 +462,13 @@ describe('coding-standards judge', () => {
 				assert.isTrue(
 					Array.contains(claimsAsked((yield* f.judge(directory)).asked), 'The helper keeps every Unproven tag.')
 				)
+			}, Effect.scoped)
+		)
+
+		test.effect(
+			'lists a claim a recording below it shows as shown, not checked, and passes; a claim with nothing below it is a finding',
+			Effect.fnUntraced(function* () {
+				const f = yield* fixture('')
 				const recorded = yield* f.judge(
 					yield* f.checkout(
 						{'src/text.ts': ["import {Array, String} from 'effect'", '', ...functionSource('first', 'c')]},
@@ -461,21 +478,44 @@ describe('coding-standards judge', () => {
 				assert.deepStrictEqual(
 					{
 						exitCode: recorded.exitCode,
-						findings: Array.filter(recorded.findings, String.includes('no-unproven-claim')),
-						unjudged: Array.some(
-							recorded.printed,
-							line =>
-								String.includes(' no-unproven-claim unjudged: not checkable by the judge: ')(line) &&
-								String.endsWith('Claim: "The helper keeps every Unproven tag.".')(line)
+						findings: recorded.findings.length,
+						shown: Array.map(
+							under(recorded.printed, 'Shown in a recording or still, not checked by the judge:'),
+							String.replace(/^commit [0-9a-f]+/u, 'commit')
+						),
+						summary: String.endsWith('0 findings, 0 could not read, 0 excluded, 1 shown not checked, 0 suppressed')(
+							recorded.summary
 						)
 					},
-					{exitCode: ChildProcessSpawner.ExitCode(1), findings: [], unjudged: true}
+					{
+						exitCode: ChildProcessSpawner.ExitCode(0),
+						findings: 0,
+						shown: [
+							'commit:3 "The helper keeps every Unproven tag." https://github.com/user-attachments/assets/helper.png'
+						],
+						summary: true
+					}
+				)
+				// The claim sits below the only recording, so nothing shows it.
+				const bare = yield* f.judge(
+					yield* f.checkout(
+						{'src/text.ts': ["import {Array, String} from 'effect'", '', ...functionSource('first', 'd')]},
+						'Add the text helper\n\n![The helper at work](https://github.com/user-attachments/assets/helper.png)\n\nThe helper keeps every Unproven tag.'
+					)
+				)
+				assert.deepStrictEqual(
+					{
+						exitCode: bare.exitCode,
+						findings: Array.countBy(bare.printed, matches(/^commit [0-9a-f]+:5 no-unproven-claim .* 0\.95$/u)),
+						shown: under(bare.printed, 'Shown in a recording').length
+					},
+					{exitCode: ChildProcessSpawner.ExitCode(1), findings: 1, shown: 0}
 				)
 			}, Effect.scoped)
 		)
 
 		test.effect(
-			'tells two binary replacements apart and reports each as unjudged',
+			'excludes and lists a binary file without failing, and tells two binary replacements apart',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('')
 				const base = {'icon.png': ['\u0000PNG first']}
@@ -483,14 +523,20 @@ describe('coding-standards judge', () => {
 				const second = yield* f.judge(yield* f.checkout({'icon.png': ['\u0000PNG third']}, 'Redraw the icon', base))
 				assert.deepStrictEqual(
 					{
-						first: Array.filter(first.printed, String.includes(' unjudged: ')),
-						second: Array.filter(second.printed, String.includes(' unjudged: ')),
-						secondAsked: changeLevel(second.asked).length
+						exitCodes: [first.exitCode, second.exitCode],
+						first: under(first.printed, 'Excluded:'),
+						second: under(second.printed, 'Excluded:'),
+						secondAsked: changeLevel(second.asked).length,
+						summary: String.endsWith('0 findings, 0 could not read, 1 excluded, 0 shown not checked, 0 suppressed')(
+							second.summary
+						)
 					},
 					{
-						first: ['icon.png unjudged: a binary file, whose content the judge does not read'],
-						second: ['icon.png unjudged: a binary file, whose content the judge does not read'],
-						secondAsked: 2
+						exitCodes: [ChildProcessSpawner.ExitCode(0), ChildProcessSpawner.ExitCode(0)],
+						first: ['icon.png: binary'],
+						second: ['icon.png: binary'],
+						secondAsked: 2,
+						summary: true
 					}
 				)
 			}, Effect.scoped)
@@ -542,10 +588,15 @@ describe('coding-standards judge', () => {
 						)
 					)
 				)
-				assert.isTrue(
-					Array.some(unreadable.printed, line =>
-						matches(/^commit [0-9a-f]+:3 unjudged: a Mermaid block with no After lane$/u)(line)
-					)
+				assert.deepStrictEqual(
+					{
+						exitCode: unreadable.exitCode,
+						unread: Array.map(
+							under(unreadable.printed, 'Could not read'),
+							String.replace(/^commit [0-9a-f]+/u, 'commit')
+						)
+					},
+					{exitCode: ChildProcessSpawner.ExitCode(1), unread: ['commit:3: a Mermaid block with no After lane']}
 				)
 			}, Effect.scoped)
 		)
@@ -694,16 +745,13 @@ describe('coding-standards judge', () => {
 				assert.deepStrictEqual(
 					{
 						calls: changeLevel(result.asked).length + lineLevel(result.asked).length,
-						excluded: Array.filter(result.printed, String.includes(' excluded: ')),
+						excluded: under(result.printed, 'Excluded:'),
 						exitCode: result.exitCode,
 						reviewable: String.includes('nothing reviewable')(result.summary)
 					},
 					{
 						calls: 0,
-						excluded: [
-							'pnpm-lock.yaml excluded: a generated lockfile',
-							'src/routes.gen.ts excluded: --ignore **/*.gen.ts'
-						],
+						excluded: ['pnpm-lock.yaml: a generated lockfile', 'src/routes.gen.ts: --ignore **/*.gen.ts'],
 						exitCode: ChildProcessSpawner.ExitCode(0),
 						reviewable: true
 					}
@@ -752,7 +800,7 @@ describe('coding-standards judge', () => {
 		)
 
 		test.effect(
-			'remembers nothing from a call missing an answer, and reports it unjudged',
+			'remembers nothing from a call missing an answer, and fails as could not read',
 			Effect.fnUntraced(function* () {
 				const f = yield* fixture('')
 				const directory = yield* f.checkout(
@@ -765,10 +813,9 @@ describe('coding-standards judge', () => {
 					{
 						calls: first.calls,
 						exitCode: first.exitCode,
-						unjudged: pipe(
-							first.printed,
-							Array.filter(String.includes(' unjudged: Gateway or Jev gave no answer')),
-							Array.map(String.replace(/ no-[\w-]+ unjudged: .*$/u, '')),
+						unread: pipe(
+							under(first.printed, 'Could not read'),
+							Array.map(String.replace(/ no-[\w-]+: Gateway or Jev gave no answer the judge could read$/u, '')),
 							Array.map(String.replace(/^commit [0-9a-f]+:\d+$/u, 'claim')),
 							Array.dedupe
 						)
@@ -776,7 +823,7 @@ describe('coding-standards judge', () => {
 					{
 						calls: 3 + EXAMPLE_CALLS,
 						exitCode: ChildProcessSpawner.ExitCode(1),
-						unjudged: ['src/text.ts:3-9', '1 commits since main', 'claim']
+						unread: ['src/text.ts:3-9', '1 commits since main', 'claim']
 					}
 				)
 				assert.strictEqual((yield* f.judge(directory)).calls, 3)

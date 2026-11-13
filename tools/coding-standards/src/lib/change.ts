@@ -21,9 +21,9 @@ const HUNK_HEADER = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/u
 // Lines of a request that state nothing: headings, table rules, a recording or image alone on its line, and HTML that only wraps.
 const SILENT =
 	/^(?:#|\|[\s|:-]+\||!\[[^\]]*\]\([^)]*\)$|<\/?(?:details|summary|video|img|picture|source|p|br)\b|https?:\/\/\S+$|-\s*\[[ x]\]\s*$)/iu
-// Evidence the judge cannot read: a recording or a still, embedded or linked.
+// Evidence the judge cannot read, a recording or a still, by its address: a Markdown image, a `src` of video or image HTML, or a link to an attachment or a media file.
 const MEDIA =
-	/!\[[^\]]*\]\([^)]*\)|<(?:video|img|picture)\b|github\.com\/user-attachments\/|\.(?:mp4|mov|webm|gif|png|jpe?g|webp)\b/iu
+	/!\[[^\]]*\]\(([^)\s]+)[^)]*\)|<(?:video|img|source)\b[^>]*?\bsrc=["']([^"']+)["']|(https?:\/\/github\.com\/user-attachments\/[^\s)"'<>]+|https?:\/\/[^\s)"'<>]+\.(?:mp4|mov|webm|gif|png|jpe?g|webp)\b)/giu
 // A heading or label that opens the request's admissions: what the change says it does not show working.
 const NOT_PROVEN = /^(?:#+\s*|\*\*|[-*]\s+)?not proven\b/iu
 // The numbered marks a picture gives each changed thing, ① to ⑳.
@@ -82,10 +82,10 @@ const LOCKFILES = [
 ]
 
 // One line of what the change says it does.
-export type Claim = {text: string; where: string}
+export type Claim = {line: number; text: string; where: string}
 
-// What the judge did not read, and why.
-export type Unjudged = {reason: string; where: string}
+// What the judge could not read though it is there to read it, and why.
+export type Unreadable = {reason: string; where: string}
 
 type PullRequest = typeof PullRequest.Type
 const PullRequest = Schema.Struct({
@@ -173,11 +173,11 @@ function laneClaims(input: {
 		),
 		Array.map(entry => ({...entry, chain: chainOf(entry.text)}))
 	)
-	const unreadable = Array.filter(read, entry => Option.isNone(entry.chain))
-	if (Array.isArrayNonEmpty(unreadable)) {
+	const broken = Array.filter(read, entry => Option.isNone(entry.chain))
+	if (Array.isArrayNonEmpty(broken)) {
 		return {
 			claims: Array.empty<Claim>(),
-			unjudged: Array.map(unreadable, entry => ({
+			unreadable: Array.map(broken, entry => ({
 				reason: 'a line of the picture’s After lane the judge cannot read as nodes and edges',
 				where: input.where(entry.line)
 			}))
@@ -229,11 +229,11 @@ function laneClaims(input: {
 			return pipe(
 				[...linked, ...parts],
 				Array.filter(claimed),
-				Array.map(text => ({text, where: input.where(entry.line)}))
+				Array.map(text => ({line: entry.line, text, where: input.where(entry.line)}))
 			)
 		})
 	)
-	return {claims, unjudged: Array.empty<Unjudged>()}
+	return {claims, unreadable: Array.empty<Unreadable>()}
 }
 
 // A picture with no After lane promises nothing the judge can read.
@@ -244,7 +244,7 @@ function pictureClaims(block: string[], opening: number, where: (line: number) =
 		Option.match({
 			onNone: () => ({
 				claims: Array.empty<Claim>(),
-				unjudged: [{reason: 'a Mermaid block with no After lane', where: where(opening)}]
+				unreadable: [{reason: 'a Mermaid block with no After lane', where: where(opening)}]
 			}),
 			onSome: lane => laneClaims({admitted, block, lane, opening, where})
 		})
@@ -296,7 +296,7 @@ export function claimsOf(text: string, where: (line: number) => string) {
 		Array.filter(
 			entry => !entry.hidden && !entry.admitted && String.isNonEmpty(entry.text) && !matches(SILENT)(entry.text)
 		),
-		Array.map(entry => ({text: entry.text, where: where(entry.line)}))
+		Array.map(entry => ({line: entry.line, text: entry.text, where: where(entry.line)}))
 	)
 	// Each picture: the lines between its opening fence and its closing one.
 	const pictures = pipe(
@@ -315,7 +315,7 @@ export function claimsOf(text: string, where: (line: number) => string) {
 	)
 	return {
 		claims: [...prose, ...Array.flatMap(pictures, picture => picture.claims)],
-		unjudged: Array.flatMap(pictures, picture => picture.unjudged)
+		unreadable: Array.flatMap(pictures, picture => picture.unreadable)
 	}
 }
 
@@ -586,16 +586,34 @@ export const change = Effect.fnUntraced(function* (base: Option.Option<string>, 
 	)
 	const claimed = claimsOf(request.text, request.where)
 	return {
+		// Each recording or still of the request, by the line it sits on.
+		attachments: pipe(
+			request.text,
+			String.split('\n'),
+			Array.flatMap((text, index) =>
+				Array.map(Array.fromIterable(String.matchAll(MEDIA)(text)), found => ({
+					line: index + 1,
+					ref: found[1] ?? found[2] ?? found[3] ?? found[0]
+				}))
+			)
+		),
 		claims: claimed.claims,
 		context: yield* contextOf(root, namesOf(request.text, declared), pathspec, files),
-		excluded,
+		// A binary file is listed in the change with its blob ids, so two of them never share an answer, and left out of what is read like a lockfile.
+		excluded: [
+			...excluded,
+			...pipe(
+				files,
+				Array.filter(file => file.binary),
+				Array.map(file => ({path: file.path, why: 'binary'}))
+			)
+		],
 		files,
-		media: matches(MEDIA)(request.text),
 		mergeBase,
 		request: request.text,
 		root,
 		source: request.source,
-		unjudged: claimed.unjudged
+		unreadable: claimed.unreadable
 	}
 })
 
