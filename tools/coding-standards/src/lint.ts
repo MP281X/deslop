@@ -16,12 +16,10 @@ import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
 import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
 import {noDiscardedFailure} from '#lint/no-discarded-failure.ts'
-import {noDomTestEnvironment} from '#lint/no-dom-test-environment.ts'
 import {noDoubleNullishCheck} from '#lint/no-double-nullish-check.ts'
 import {noEffectGenCallback} from '#lint/no-effect-gen-callback.ts'
 import {noEffectPropertyArrow} from '#lint/no-effect-property-arrow.ts'
 import {noEmptyRecovery} from '#lint/no-empty-recovery.ts'
-import {noErrorMessageAssertion} from '#lint/no-error-message-assertion.ts'
 import {noErrorMessageControlFlow} from '#lint/no-error-message-control-flow.ts'
 import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
 import {noFalliblePromise} from '#lint/no-fallible-promise.ts'
@@ -36,7 +34,6 @@ import {noNativeControl} from '#lint/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
-import {noPollingTest} from '#lint/no-polling-test.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
 import {noRedundantStateType} from '#lint/no-redundant-state-type.ts'
 import {noRedundantUseRefNullType} from '#lint/no-redundant-use-ref-null-type.ts'
@@ -46,14 +43,9 @@ import {noRenamedImport} from '#lint/no-renamed-import.ts'
 import {noRepeatedGuard} from '#lint/no-repeated-guard.ts'
 import {noRepeatedSearch} from '#lint/no-repeated-search.ts'
 import {noReturnType} from '#lint/no-return-type.ts'
-import {noSelfComparingAssertion} from '#lint/no-self-comparing-assertion.ts'
 import {noSingleUseValue} from '#lint/no-single-use-value.ts'
-import {noSkippedTest} from '#lint/no-skipped-test.ts'
-import {noSleepingTest} from '#lint/no-sleeping-test.ts'
 import {noStoredJsx} from '#lint/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
-import {noTestInLoop} from '#lint/no-test-in-loop.ts'
-import {noTestTimeout} from '#lint/no-test-timeout.ts'
 import {noTrivialIndirection} from '#lint/no-trivial-indirection.ts'
 import {noTypeFromValue} from '#lint/no-type-from-value.ts'
 import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
@@ -65,6 +57,10 @@ import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
 import {swiftuiThemeValues} from '#lint/swiftui-theme-values.ts'
+import {testAssertions} from '#lint/test-assertions.ts'
+import {testBoundaries} from '#lint/test-boundaries.ts'
+import {testRegistration} from '#lint/test-registration.ts'
+import {testSynchronization} from '#lint/test-synchronization.ts'
 
 const REACT_LEGACY_APIS = [
 	'Component',
@@ -118,12 +114,10 @@ const RULES = {
 	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-destructured-parameter': noDestructuredParameter,
 	'no-discarded-failure': noDiscardedFailure,
-	'no-dom-test-environment': noDomTestEnvironment,
 	'no-double-nullish-check': noDoubleNullishCheck,
 	'no-effect-gen-callback': noEffectGenCallback,
 	'no-effect-property-arrow': noEffectPropertyArrow,
 	'no-empty-recovery': noEmptyRecovery,
-	'no-error-message-assertion': noErrorMessageAssertion,
 	'no-error-message-control-flow': noErrorMessageControlFlow,
 	'no-fake-ref-state': noFakeRefState,
 	'no-fallible-promise': noFalliblePromise,
@@ -138,7 +132,6 @@ const RULES = {
 	'no-native-emptiness-check': noNativeEmptinessCheck,
 	'no-native-method-call': noNativeMethodCall,
 	'no-option-value-access': noOptionValueAccess,
-	'no-polling-test': noPollingTest,
 	'no-property-alias': noPropertyAlias,
 	'no-redundant-state-type': noRedundantStateType,
 	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
@@ -148,14 +141,9 @@ const RULES = {
 	'no-repeated-guard': noRepeatedGuard,
 	'no-repeated-search': noRepeatedSearch,
 	'no-return-type': noReturnType,
-	'no-self-comparing-assertion': noSelfComparingAssertion,
 	'no-single-use-value': noSingleUseValue,
-	'no-skipped-test': noSkippedTest,
-	'no-sleeping-test': noSleepingTest,
 	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,
-	'no-test-in-loop': noTestInLoop,
-	'no-test-timeout': noTestTimeout,
 	'no-trivial-indirection': noTrivialIndirection,
 	'no-type-from-value': noTypeFromValue,
 	'no-unexplained-disable': noUnexplainedDisable,
@@ -166,7 +154,11 @@ const RULES = {
 	'schema-type-pair': schemaTypePair,
 	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
-	'swiftui-theme-values': swiftuiThemeValues
+	'swiftui-theme-values': swiftuiThemeValues,
+	'test-assertions': testAssertions,
+	'test-boundaries': testBoundaries,
+	'test-registration': testRegistration,
+	'test-synchronization': testSynchronization
 }
 
 // The type keeps the export declarable under isolated declarations, which can't infer the spread entries.
@@ -176,15 +168,6 @@ export const restrictedImports: {
 } = {
 	paths: [
 		{importNames: ['default', ...REACT_LEGACY_APIS], message: REACT_LEGACY_MESSAGE, name: 'react'},
-		{
-			importNames: ['vi', 'vitest', 'expect'],
-			message: 'Use assert from @effect/vitest and a Layer as the seam, not vi or vitest.',
-			name: '@effect/vitest'
-		},
-		...Array.map(['vitest', 'vite-plus/test'], name => ({
-			message: 'Import tests and assert from @effect/vitest; vi is only for a documented native-module seam.',
-			name
-		})),
 		{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
 	],
 	patterns: [
@@ -1000,7 +983,6 @@ export const lint: OxlintConfig = {
 		'vitest/consistent-each-for': ['error', {}],
 		'vitest/consistent-test-filename': ['error', {}],
 		'vitest/expect-expect': 'error',
-		'vitest/hoisted-apis-on-top': 'error',
 		'vitest/max-nested-describe': ['error', {}],
 		'vitest/no-commented-out-tests': 'error',
 		'vitest/no-conditional-tests': 'error',
@@ -1009,7 +991,6 @@ export const lint: OxlintConfig = {
 		'vitest/no-focused-tests': 'error',
 		'vitest/no-identical-title': 'error',
 		'vitest/no-import-node-test': 'error',
-		'vitest/no-mocks-import': 'error',
 		'vitest/no-test-return-statement': 'error',
 		'vitest/padding-around-after-all-blocks': 'error',
 		'vitest/padding-around-test-blocks': 'error',
@@ -1017,10 +998,6 @@ export const lint: OxlintConfig = {
 		'vitest/prefer-hooks-in-order': 'error',
 		'vitest/prefer-hooks-on-top': 'error',
 		'vitest/prefer-lowercase-title': ['error', {allowedPrefixes: [], ignore: [], ignoreTopLevelDescribe: false}],
-		'vitest/prefer-mock-promise-shorthand': 'error',
-		'vitest/prefer-mock-return-shorthand': 'error',
-		'vitest/prefer-spy-on': 'error',
-		'vitest/require-mock-type-parameters': ['error', {checkImportFunctions: true}],
 		'vitest/valid-describe-callback': 'error',
 		'vitest/valid-title': 'error',
 		'vitest/warn-todo': 'error',

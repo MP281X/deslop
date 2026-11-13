@@ -1,9 +1,18 @@
-import {Option} from 'effect'
+import {Array, Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isImportBinding, matches, memberName, typeWrapped, variableFromScope} from '#lib/ast.ts'
+import {
+	containsNode,
+	importedMember,
+	isFunction,
+	isImportBinding,
+	matches,
+	memberName,
+	typeWrapped,
+	variableFromScope
+} from '#lib/ast.ts'
 
 const ASSERT_IDENTITY =
 	"Assert the failure's class or stable payload, such as assert.instanceOf(error, NotesError), not its message wording."
@@ -60,16 +69,85 @@ function assertsMessage(context: Context, node: ESTree.CallExpression) {
 	return (
 		node.callee.type === 'MemberExpression' &&
 		node.callee.object.type === 'Identifier' &&
-		node.callee.object.name === 'assert' &&
 		isErrorMessage(context, actual) &&
 		(expected?.type === 'Literal' || expected?.type === 'TemplateLiteral')
 	)
 }
 
-export const noErrorMessageAssertion = defineRule({
+export const testAssertions = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			if (assertsMessage(context, node)) context.report({message: ASSERT_IDENTITY, node})
+			if (
+				node.callee.type !== 'MemberExpression' ||
+				node.callee.object.type !== 'Identifier' ||
+				!isImportBinding({context, importedName: 'assert', node: node.callee.object, source: '@effect/vitest'})
+			) {
+				return
+			}
+			if (assertsMessage(context, node)) {
+				context.report({message: ASSERT_IDENTITY, node})
+				return
+			}
+			if (
+				Option.exists(memberName(node.callee), name =>
+					Array.contains(
+						[
+							'notInclude',
+							'notIncludeDeepMembers',
+							'notIncludeMembers',
+							'notMatch',
+							'notProperty',
+							'notNestedProperty',
+							'notOwnProperty'
+						],
+						name
+					)
+				)
+			) {
+				context.report({
+					message:
+						'Assert the current rule through the answer a caller receives; delete checks for removed code or superseded behavior.',
+					node
+				})
+				return
+			}
+			const [actual, expected] = node.arguments
+			if (
+				actual === undefined ||
+				expected === undefined ||
+				context.sourceCode.getText(actual) !== context.sourceCode.getText(expected)
+			) {
+				return
+			}
+			if (
+				containsNode({
+					context,
+					matches: inner =>
+						isFunction(inner) ||
+						Array.contains(
+							[
+								'AssignmentExpression',
+								'AwaitExpression',
+								'CallExpression',
+								'ClassExpression',
+								'ImportExpression',
+								'NewExpression',
+								'TaggedTemplateExpression',
+								'UpdateExpression',
+								'YieldExpression'
+							],
+							inner.type
+						),
+					node: actual,
+					throughFunctions: false
+				})
+			) {
+				return
+			}
+			context.report({
+				message: 'Compare the answer with an independent expected value, not the same expression on both sides.',
+				node
+			})
 		}
 	}),
 	meta: {type: 'problem'}

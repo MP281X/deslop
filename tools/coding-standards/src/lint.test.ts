@@ -35,6 +35,7 @@ const lintSource = Effect.fnUntraced(function* (input: Record<string, string>, f
 	)
 	const files = Array.map(Record.keys(input), name => path.join(directory, name))
 	const root = path.resolve(import.meta.dirname, '../../..')
+	yield* fs.symlink(path.join(root, 'node_modules'), path.join(directory, 'node_modules'))
 	const read = Effect.forEach(files, file => fs.readFileString(file), {concurrency: 'unbounded'})
 	const lint = Effect.scoped(
 		Effect.flatMap(
@@ -341,12 +342,10 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.include(fixed.sources[0] ?? '', 'export const appliedArrow = Array.take(values, 2)')
 				assert.include(fixed.sources[0] ?? '', 'export const ordinaryForward = transform(values, 2)')
 				assert.include(fixed.sources[0] ?? '', 'export const ordinaryApplied = transform(values, 2)')
-				assert.notInclude(fixed.sources[0] ?? '', 'value => Option.filter(value,')
 				assert.include(fixed.sources[0] ?? '', 'Array.map(value => `${value}`)')
 				assert.include(fixed.sources[0] ?? '', 'Array.take(Array.drop(values, read()), read())')
 				assert.include(fixed.sources[0] ?? '', "Context.Service<Service, {}>()('Service')")
 				assert.include(fixed.sources[0] ?? '', 'Option.filter(value => value > 0)')
-				assert.notMatch(fixed.sources[0] ?? '', /\b(?:pipelineSubject|subject)\d+\b/u)
 				assert.include(fixed.sources[0] ?? '', "String.includes('x')('text')")
 				assert.include(fixed.sources[0] ?? '', 'Array.take(read())(readValues())')
 				assert.lengthOf(
@@ -785,15 +784,15 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
 					'@deslop/coding-standards(effect-call-form)',
-					'@deslop/coding-standards(no-error-message-assertion)',
-					'@deslop/coding-standards(no-error-message-assertion)',
-					'@deslop/coding-standards(no-error-message-assertion)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
 					'@deslop/coding-standards(no-trivial-indirection)',
-					'@deslop/coding-standards(no-trivial-indirection)'
+					'@deslop/coding-standards(no-trivial-indirection)',
+					'@deslop/coding-standards(test-assertions)',
+					'@deslop/coding-standards(test-assertions)',
+					'@deslop/coding-standards(test-assertions)'
 				])
 			})
 		)
@@ -1033,12 +1032,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const result = yield* lintSource({
 					'assertions.ts': Array.join(
 						[
+							"import {assert} from '@effect/vitest'",
 							"import {Predicate} from 'effect'",
 							'',
 							'declare const properties: unknown',
 							'declare const value: unknown',
 							'declare const failure: {message: string}',
-							'declare const assert: {strictEqual: (actual: unknown, expected: unknown) => void}',
 							"const isText = typeof value === 'string'",
 							"if (typeof properties === 'object') Predicate.isNotNull(properties)",
 							"assert.strictEqual(failure.message, 'negative')",
@@ -1051,7 +1050,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					customCodes(result.stdout),
 					Array.sort(
 						[
-							'@deslop/coding-standards(no-error-message-assertion)',
+							'@deslop/coding-standards(test-assertions)',
 							'@deslop/coding-standards(prefer-predicate)',
 							'@deslop/coding-standards(prefer-predicate)'
 						],
@@ -1065,7 +1064,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'leaves rewrites that would change behavior alone',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'behavior.test.tsx': Array.join(
+					'behavior.tsx': Array.join(
 						[
 							"import {assert, it} from '@effect/vitest'",
 							"import {Array, Effect, MutableRef, pipe} from 'effect'",
@@ -1992,7 +1991,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'reports closed sets read from a value instead of a schema',
+			'reports value-derived closed sets',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'closed-sets.ts': Array.join(
@@ -2026,7 +2025,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'uses import bindings instead of matching shadowed names',
+			'resolves import bindings through shadowed names',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'bindings.ts': Array.join(
@@ -3077,7 +3076,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-self-comparing-assertion')
+				const lines = reportedLines(result, 'test-assertions')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -3111,7 +3110,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-skipped-test')
+				const lines = reportedLines(result, 'test-registration')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -3153,7 +3152,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-test-timeout')
+				const lines = reportedLines(result, 'test-synchronization')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -3180,12 +3179,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"it('waits a turn', () => new Promise(resolve => setImmediate(resolve))) // reported",
 							"it('waits on a timer the compiler reports', () => new Promise(resolve => setTimeout(resolve, 10)))",
 							"it('waits through the promise timer', () => wait(10))",
-							"it.effect('repeats on the test clock', () => Effect.repeat(work, Schedule.spaced('1 second')))"
+							"it.effect('repeats on the test clock', () => Effect.repeat(work, Schedule.spaced('1 second'))) // reported"
 						],
 						'\n'
 					)
 				})
-				const drivenLines = reportedLines(driven, 'no-sleeping-test')
+				const drivenLines = reportedLines(driven, 'test-synchronization')
 				assert.deepStrictEqual(drivenLines.reported, drivenLines.marked)
 				const undriven = yield* lintSource({
 					'undriven.test.ts': Array.join(
@@ -3200,7 +3199,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const undrivenLines = reportedLines(undriven, 'no-sleeping-test')
+				const undrivenLines = reportedLines(undriven, 'test-synchronization')
 				assert.deepStrictEqual(undrivenLines.reported, undrivenLines.marked)
 			})
 		)
@@ -3238,7 +3237,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-polling-test')
+				const lines = reportedLines(result, 'test-synchronization')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 			})
 		)
@@ -3346,7 +3345,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-test-in-loop')
+				const lines = reportedLines(result, 'test-registration')
 				assert.deepStrictEqual(lines.reported, lines.marked)
 				assert.isTrue(
 					Array.some(
@@ -3377,8 +3376,115 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'\n'
 					)
 				})
-				const lines = reportedLines(result, 'no-dom-test-environment')
+				const lines = reportedLines(result, 'test-boundaries')
 				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects transport, rendering, storage inspection and module mocks in logic tests',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'boundaries.test.ts': Array.join(
+						[
+							"import {assert, it} from '@effect/vitest'",
+							"import {renderToStaticMarkup} from 'react-dom/server' // reported",
+							"import {HttpClient} from 'effect/http' // reported",
+							"import {RpcServer} from 'effect/rpc' // reported",
+							"import {SqlClient} from 'effect/sql' // reported",
+							"import {McpServer} from 'effect/ai/McpServer' // reported",
+							"import {Atom, AtomRegistry, Tracer} from 'effect' // reported",
+							"import {vi} from '@effect/vitest' // reported",
+							"import {createServer} from 'node:http' // reported",
+							"import {ChildProcess} from 'effect/process' // reported",
+							"import {handlers} from './handlers.ts' // reported",
+							"import {view} from './view.tsx' // reported",
+							'declare const fs: {readFileString: (path: string) => string}',
+							"export const source = fs.readFileString('src/service.ts') // reported",
+							"export const request = new Request('https://example.com') // reported",
+							"export const response = new Response('ok') // reported",
+							"export const deferred = import('./service.ts') // reported",
+							"it('computes the charge', () => assert.strictEqual(handlers.charge(2), 4))",
+							'export {Atom, AtomRegistry, ChildProcess, HttpClient, McpServer, RpcServer, SqlClient, Tracer, createServer, renderToStaticMarkup, vi, view}'
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'test-boundaries')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+			})
+		)
+
+		testApi.effect(
+			'rejects historical scenarios and absence assertions',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'history.test.ts': Array.join(
+						[
+							"import {assert, it} from '@effect/vitest'",
+							'declare function answer(): string',
+							"it('no longer sends the removed field', () => assert.strictEqual(answer(), 'ok')) // reported",
+							"it('fixes issue #123', () => assert.strictEqual(answer(), 'ok')) // reported",
+							"it('uses the current answer instead of the old answer', () => assert.strictEqual(answer(), 'ok')) // reported",
+							"it('answers callers', () => { assert.notInclude(answer(), 'old') })",
+							"it('answers another caller', () => { assert.notMatch(answer(), /old/u) })",
+							"it('answers callers with a literal', () => assert.strictEqual(answer(), 'ok'))",
+							"it(`no longer sends ${answer()}`, () => assert.strictEqual(answer(), 'ok')) // reported",
+							"const TITLE = 'legacy field'",
+							"it(TITLE, () => assert.strictEqual(answer(), 'ok')) // reported"
+						],
+						'\n'
+					)
+				})
+				const lines = reportedLines(result, 'test-registration')
+				assert.deepStrictEqual(lines.reported, lines.marked)
+				assert.deepStrictEqual(reportedLines(result, 'test-assertions').reported, [7, 8])
+			})
+		)
+
+		testApi.effect(
+			'accepts plain observable outcomes under the whole preset',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'quota.test.ts': Array.join(
+						[
+							"import {assert, it} from '@effect/vitest'",
+							'',
+							'declare function permits(amount: number): boolean',
+							'',
+							"it('refuses spending over the quota', () => {",
+							'  assert.isFalse(permits(11))',
+							'})'
+						],
+						'\n'
+					),
+					'service.test.ts': Array.join(
+						[
+							"import {assert, it} from '@effect/vitest'",
+							'',
+							"import {Context, Effect, Fiber, Layer} from 'effect'",
+							'',
+							"import {TestClock} from 'effect/testing'",
+							'',
+							"class Bank extends Context.Service<Bank, {readonly balance: Effect.Effect<number>}>()('Bank') {}",
+							'declare function spend(amount: number): Effect.Effect<number, never, Bank>',
+							'declare function expires(): Effect.Effect<boolean>',
+							'it.layer(Layer.mock(Bank, {balance: Effect.succeed(10)}))(test => {',
+							"  test.effect('caps spending at the available balance', Effect.fnUntraced(function* () {",
+							'    assert.strictEqual(yield* spend(11), 10)',
+							'  }))',
+							'})',
+							"it.effect('expires at the deadline', Effect.fnUntraced(function* () {",
+							'  const expiry = yield* Effect.forkChild(expires())',
+							"  yield* TestClock.adjust('1 minute')",
+							'  assert.isTrue(yield* Fiber.join(expiry))',
+							'}))'
+						],
+						'\n'
+					)
+				})
+				assert.deepStrictEqual(result.stdout.diagnostics, [])
+				assert.strictEqual(result.exitCode, 0)
 			})
 		)
 

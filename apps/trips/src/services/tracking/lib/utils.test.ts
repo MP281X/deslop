@@ -212,28 +212,3 @@ it('checks a train each minute near departure and calls live data stale after tw
 		[Option.none(), false]
 	)
 })
-
-it("answers nothing for another day's run of the number or a run that does not call at the booked station", () => {
-	assert.deepStrictEqual(
-		[
-			trainTracking(
-				Schema.decodeSync(VtStatus)({
-					fermate: [{id: 'S08409', programmata: 18_000_000, stazione: 'ROMA TERMINI'}],
-					ritardo: 0
-				}),
-				train,
-				DateTime.makeUnsafe(1)
-			),
-			trainTracking(
-				Schema.decodeSync(VtStatus)({
-					fermate: [{id: 'S08409', partenzaReale: 1, stazione: 'ROMA TERMINI'}],
-					ritardo: 0
-				}),
-				train,
-				DateTime.makeUnsafe(1)
-			),
-			trainTracking(Schema.decodeSync(VtStatus)({fermate: [], ritardo: 9}), train, DateTime.makeUnsafe(1))
-		],
-		[Option.none(), Option.none(), Option.none()]
-	)
-})

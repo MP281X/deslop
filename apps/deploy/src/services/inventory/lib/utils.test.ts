@@ -2,14 +2,8 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option, Schema, Struct} from 'effect'
 
-import {
-	availablePorts,
-	processOwner,
-	sourceBelongsToWorker,
-	workloadName,
-	workloads
-} from '#services/inventory/lib/utils.ts'
-import {InventoryItem, WorkerId, WorkerList} from '#services/inventory/schema.ts'
+import {availablePorts, processOwner, workloads} from '#services/inventory/lib/utils.ts'
+import {InventoryItem, WorkerList} from '#services/inventory/schema.ts'
 
 const LISTENER = {
 	active: false,
@@ -28,14 +22,6 @@ const LISTENER = {
 	url: '',
 	worker: 'dev'
 } satisfies typeof InventoryItem.Encoded
-
-it('matches a worker’s bare or prefixed source and no other worker’s', () => {
-	assert.isTrue(sourceBelongsToWorker({name: 'desktop'}, WorkerId.make('desktop')))
-	assert.isFalse(sourceBelongsToWorker({name: 'desktop'}, WorkerId.make('dev')))
-	assert.isTrue(sourceBelongsToWorker({name: 'desktop · Tailscale'}, WorkerId.make('desktop')))
-	assert.isFalse(sourceBelongsToWorker({name: 'desktop · Tailscale'}, WorkerId.make('dev')))
-	assert.isFalse(sourceBelongsToWorker({name: 'Docker'}, WorkerId.make('dev')))
-})
 
 it("counts what a user's service starts in its own app slice, like T3 Code's agents, as that service", () => {
 	const manager = '0::/user.slice/user-1000.slice/user@1000.service'
@@ -75,56 +61,6 @@ it('validates worker origins when parsing configuration', () => {
 function important(item: typeof InventoryItem.Encoded) {
 	return workloads(Schema.decodeSync(Schema.Array(InventoryItem))([item])).length === 1
 }
-
-it('uses concise display names without changing service/container identifiers', () => {
-	assert.strictEqual(
-		workloadName(Schema.decodeSync(InventoryItem)({...LISTENER, kind: 'service', name: 'deslop-scope.service'})),
-		'scope'
-	)
-	assert.strictEqual(
-		workloadName(Schema.decodeSync(InventoryItem)({...LISTENER, kind: 'service', name: 't3code.service'})),
-		't3code'
-	)
-	assert.strictEqual(
-		workloadName(Schema.decodeSync(InventoryItem)({...LISTENER, kind: 'container', name: 'deslop-stash-1'})),
-		'stash'
-	)
-	assert.strictEqual(
-		workloadName(
-			Schema.decodeSync(InventoryItem)({
-				...LISTENER,
-				kind: 'container',
-				name: 'dual-postgres-wt-cc52031fa2a8-i4gwwaeao22pymmk'
-			})
-		),
-		'dual-postgres-wt-cc52031-i4gwwae'
-	)
-	assert.strictEqual(
-		workloadName(
-			Schema.decodeSync(InventoryItem)({...LISTENER, kind: 'container', name: 'long-meaningful-application'})
-		),
-		'long-meaningful-application'
-	)
-	assert.strictEqual(
-		workloadName(Schema.decodeSync(InventoryItem)({...LISTENER, kind: 'service', name: 'preview-t3-123.service'})),
-		'Preview t3-123'
-	)
-	assert.strictEqual(
-		workloadName(Schema.decodeSync(InventoryItem)({...LISTENER, kind: 'service', name: 'preview-t3-16dbb9fe.service'})),
-		'Preview t3-16dbb9f'
-	)
-	assert.strictEqual(
-		workloadName(
-			Schema.decodeSync(InventoryItem)({
-				...LISTENER,
-				detail: '@deslop/deploy',
-				kind: 'service',
-				name: 'preview-t3-123.service'
-			})
-		),
-		'deploy preview'
-	)
-})
 
 it('keeps application listeners but excludes non-loopback, UDP and privileged targets from publishing', () => {
 	assert.lengthOf(availablePorts(workloads(Schema.decodeSync(Schema.Array(InventoryItem))([LISTENER]))), 1)

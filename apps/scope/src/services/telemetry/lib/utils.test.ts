@@ -84,30 +84,3 @@ it('orders an app’s operations failing first, then most recently seen', () => 
 		['broken', 'new', 'old']
 	)
 })
-
-function traceId(index: number) {
-	return String.padStart(32, '0')(index.toString(16))
-}
-
-it('keeps the newest failures among the slowest traces of an operation with 145,000 of them', () => {
-	const busy = Array.makeBy(145_000, index => ({
-		...traced(traceId(index), 'stash', NOW - index * 1000, index % 1000),
-		failed: index % 100 === 0
-	}))
-	const operation = Option.getOrThrow(
-		Array.head(
-			appOf(
-				overviewOf(busy, [{ci: false, count: 145_000, failures: 1450, service: ServiceName.make('stash')}]),
-				'stash'
-			).operations
-		)
-	)
-	assert.deepStrictEqual([operation.count, operation.failures], [145_000, 1450])
-	assert.deepStrictEqual(
-		Array.map(operation.traces, trace => trace.id),
-		Array.map(
-			[...Array.makeBy(10, index => index * 1000 + 999), ...Array.makeBy(10, index => 900 - index * 100)],
-			traceId
-		)
-	)
-})

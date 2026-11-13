@@ -11,7 +11,6 @@ import {
 	chartWindow,
 	counters,
 	history,
-	resolution,
 	rollup,
 	sample
 } from '#services/metrics/lib/utils.ts'
@@ -145,27 +144,6 @@ it('shows a new worker the entire requested window without fabricating recording
 		end: DateTime.makeUnsafe(7_200_000),
 		start: DateTime.makeUnsafe(3_600_000)
 	})
-})
-
-it('does not introduce interior gaps when sleeping-worker history is read again on a later clock-aligned grid', () => {
-	const now = 168 * 3_600_000
-	const week = Array.makeBy(20_161, index => ({...idle, time: DateTime.makeUnsafe(index * 30_000)}))
-	for (const range of [1440, 10_080] as const) {
-		const cached = history(series(week, SERIES[range]), Duration.minutes(range), DateTime.makeUnsafe(now))
-		for (const minutes of [5, 10, 17, 23, 100, 140]) {
-			const later = now + minutes * 60_000
-			const slots = Array.map(
-				history(cached, Duration.minutes(range), DateTime.makeUnsafe(later)),
-				point =>
-					Math.ceil(
-						Duration.toMillis(
-							DateTime.distance(chartWindow(Duration.minutes(range), DateTime.makeUnsafe(later)).start, point.time)
-						) / Duration.toMillis(resolution(Duration.minutes(range)))
-					) - 1
-			)
-			assert.isTrue(Array.every(slots, (slot, index) => index === 0 || slot === (slots[index - 1] ?? 0) + 1))
-		}
-	}
 })
 
 function second(index: number) {

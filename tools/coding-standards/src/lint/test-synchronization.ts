@@ -1,4 +1,4 @@
-import {Array, Option, Predicate} from 'effect'
+import {Array, MutableList, Option, Predicate} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -8,10 +8,17 @@ import {
 	effectMethod,
 	importedMember,
 	isClockWait,
+	isFunction,
+	isImportBinding,
+	isTestClockCall,
 	isTestFile,
+	isTimerCall,
 	memberName,
+	onRealClock,
 	optionKeys,
-	resolveBinding
+	resolveBinding,
+	testChain,
+	testHook
 } from '#lib/ast.ts'
 
 const MESSAGE =
@@ -128,22 +135,61 @@ function polls(context: Context, loop: Loop) {
 	)
 }
 
-export const noPollingTest = defineRule({
+function setsLimit(context: Context, node: ESTree.CallExpression) {
+	const body = Array.findFirstIndex(
+		node.arguments,
+		(argument, index) =>
+			isFunction(resolveBinding(context, argument)) || (index > 0 && argument.type === 'CallExpression')
+	)
+	return Array.some(node.arguments, (argument, index) => {
+		const value = resolveBinding(context, argument)
+		if (value.type === 'ObjectExpression') {
+			return Array.some(optionKeys(value), key => Array.contains(['repeats', 'retry', 'timeout'], key))
+		}
+		return Option.exists(body, position => index > position)
+	})
+}
+
+function inside(node: ESTree.Node, ancestor: ESTree.Node): boolean {
+	if (node === ancestor) return true
+	if (node.parent === null) return false
+	return inside(node.parent, ancestor)
+}
+
+export const testSynchronization = defineRule({
 	create: context => {
 		if (!isTestFile(context)) return {}
+		const waits = MutableList.make<ESTree.Node>()
+		const findings = MutableList.make<{message: string; node: ESTree.Node}>()
 		function loop(node: Loop) {
 			if (
 				containsNode({context, matches: child => isWait(context, child), node: node.body, throughFunctions: false}) &&
 				polls(context, node)
 			) {
-				context.report({message: MESSAGE, node})
+				MutableList.append(findings, {message: MESSAGE, node})
 			}
 		}
 		return {
 			CallExpression: node => {
+				if (
+					((testHook(context, node.callee) || Option.isSome(testChain(context, node.callee))) &&
+						setsLimit(context, node)) ||
+					(node.callee.type === 'Identifier' &&
+						isImportBinding({context, importedName: 'flakyTest', node: node.callee, source: '@effect/vitest'}))
+				) {
+					MutableList.append(findings, {
+						message:
+							'Use the project timeout only; await a milestone or advance TestClock instead of per-test limits or retries.',
+						node
+					})
+					return
+				}
+				if (isTimerCall(context, node) && node.callee.type === 'Identifier' && node.callee.name === 'setImmediate') {
+					MutableList.append(findings, {message: MESSAGE, node})
+				}
 				const method = effectMethod({context, node})
 				if (Option.contains(method, 'eventually')) {
-					context.report({message: MESSAGE, node})
+					MutableList.append(findings, {message: MESSAGE, node})
 					return
 				}
 				if (
@@ -157,11 +203,59 @@ export const noPollingTest = defineRule({
 						(Array.some(node.arguments, argument => untilUnbounded(context, argument)) &&
 							!takesEvents(context, pipedFrom(node))))
 				) {
-					context.report({message: MESSAGE, node})
+					MutableList.append(findings, {message: MESSAGE, node})
 				}
 			},
 			DoWhileStatement: loop,
 			ForStatement: loop,
+			ImportDeclaration: node => {
+				if (Array.contains(['node:timers', 'node:timers/promises', 'timers', 'timers/promises'], node.source.value)) {
+					MutableList.append(findings, {message: MESSAGE, node})
+				}
+			},
+			MemberExpression: node => {
+				if (isClockWait(context, node)) {
+					if (onRealClock(context, node)) MutableList.append(findings, {message: MESSAGE, node})
+					else MutableList.append(waits, node)
+					return
+				}
+				if (
+					Array.some(['timeout', 'timeoutOption', 'timeoutOrElse'], propertyName =>
+						importedMember({context, importedName: 'Effect', node, propertyName})
+					) ||
+					Option.exists(testChain(context, node), chain => Option.contains(Array.last(chain.members), 'flakyTest'))
+				) {
+					MutableList.append(findings, {
+						message:
+							'Use the project timeout only; await a milestone or advance TestClock instead of adding hang guards or flaky retries.',
+						node
+					})
+				}
+			},
+			'Program:exit': program => {
+				if (
+					!containsNode({
+						context,
+						matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
+						node: program,
+						throughFunctions: true
+					})
+				) {
+					for (const node of MutableList.toArray(waits)) {
+						MutableList.append(findings, {
+							message:
+								'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
+							node
+						})
+					}
+				}
+				const all = MutableList.toArray(findings)
+				for (const finding of all) {
+					if (!Array.some(all, other => other.node !== finding.node && inside(finding.node, other.node))) {
+						context.report(finding)
+					}
+				}
+			},
 			WhileStatement: loop
 		}
 	},

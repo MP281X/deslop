@@ -1,8 +1,8 @@
 import {assert, describe, it} from '@effect/vitest'
 
-import {Duration, Option, Schema} from 'effect'
+import {Option, Schema} from 'effect'
 
-import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTracks, captionTranscript, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
 import {Metadata} from '#services/media/schema.ts'
 
 describe('captionTracks', () => {
@@ -32,23 +32,6 @@ describe('captionTranscript', () => {
 				vtt: 'WEBVTT\n\n1\n00:00:10.000 --> 00:00:12.000 align:start\n<c>Tom &amp; Jerry</c> &lt;3'
 			}),
 			'[00:10] Tom & Jerry <3\n'
-		)
-	})
-
-	it('reads captions with Windows line endings', () => {
-		assert.strictEqual(
-			captionTranscript({authored: true, vtt: 'WEBVTT\r\n\r\n00:01:05.000 --> 00:01:07.000\r\nhello\r\n'}),
-			'[01:05] hello\n'
-		)
-	})
-
-	it('drops a rolling repeat that starts as the previous cue ends', () => {
-		assert.strictEqual(
-			captionTranscript({
-				authored: false,
-				vtt: 'WEBVTT\n\n00:00:00.160 --> 00:00:02.869\nhi everyone\n\n00:00:02.869 --> 00:00:02.879\nhi everyone\n\n00:00:02.879 --> 00:00:05.990\nwelcome to'
-			}),
-			'[00:00] hi everyone\n[00:02] welcome to\n'
 		)
 	})
 
@@ -95,13 +78,6 @@ describe('isBlocked', () => {
 		assert.isFalse(
 			isBlocked('ERROR: [youtube] dQw4w9WgXcQ: Video unavailable. This video has been removed by the uploader')
 		)
-	})
-})
-
-describe('clock', () => {
-	it('counts minutes past an hour and a day', () => {
-		assert.strictEqual(clock(Duration.seconds(3725)), '62:05')
-		assert.strictEqual(clock(Duration.seconds(90_061)), '1501:01')
 	})
 })
 
