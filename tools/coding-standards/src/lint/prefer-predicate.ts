@@ -3,7 +3,7 @@ import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {effectImport, memberName, returnedExpression, variableFor} from '#lib/ast.ts'
+import {effectImport, memberName, returnedExpression, variableOf} from '#lib/ast.ts'
 
 const GUARDS: Record<string, string> = {
 	bigint: 'isBigInt',
@@ -40,9 +40,9 @@ function comparison(input: {name: string; operator: string; other: ESTree.Node; 
 
 function check(input: {name: string; node: ESTree.Expression}): Option.Option<string[]> {
 	if (input.node.type === 'LogicalExpression' && input.node.operator === '&&') {
-		return pipe(
+		return Option.map(
 			Option.all([check({name: input.name, node: input.node.left}), check({name: input.name, node: input.node.right})]),
-			Option.map(Array.flatten)
+			Array.flatten
 		)
 	}
 	if (
@@ -64,12 +64,12 @@ function check(input: {name: string; node: ESTree.Expression}): Option.Option<st
 		}
 		return Option.some([`instanceof ${input.node.right.name}`])
 	}
-	return pipe(
+	return Option.map(
 		Option.firstSomeOf([
 			comparison({name: input.name, operator: input.node.operator, other: input.node.right, subject: input.node.left}),
 			comparison({name: input.name, operator: input.node.operator, other: input.node.left, subject: input.node.right})
 		]),
-		Option.map(Array.of)
+		Array.of
 	)
 }
 
@@ -139,7 +139,7 @@ function ambient(node: ESTree.Node): boolean {
 function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpression}) {
 	if (
 		input.node.argument.type !== 'Identifier' ||
-		Option.exists(variableFor(input.context, input.node.argument), variable =>
+		Option.exists(variableOf(input.context, input.node.argument), variable =>
 			Array.some(variable.defs, definition => ambient(definition.node))
 		) ||
 		input.node.parent.type !== 'BinaryExpression' ||
@@ -156,12 +156,10 @@ function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpressio
 		input.node.parent.range,
 		`${NEGATIONS[input.node.parent.operator]}Predicate.${guard}(${input.node.argument.name})`
 	)
-	return Option.getOrElse(
-		Option.map(
-			effectImport({context: input.context, fixer: input.fixer, name: 'Predicate', node: input.node}),
-			imports => Array.append(imports, replacement)
-		),
-		() => []
+	return pipe(
+		effectImport({context: input.context, fixer: input.fixer, name: 'Predicate', node: input.node}),
+		Option.map(imports => Array.append(imports, replacement)),
+		Option.getOrElse(() => [])
 	)
 }
 
@@ -180,7 +178,7 @@ export const preferPredicate = defineRule({
 			if (node.operator !== 'typeof') return
 			if (
 				node.argument.type === 'Identifier' &&
-				!Option.exists(variableFor(context, node.argument), variable => Array.isArrayNonEmpty(variable.defs))
+				!Option.exists(variableOf(context, node.argument), variable => Array.isArrayNonEmpty(variable.defs))
 			) {
 				return
 			}

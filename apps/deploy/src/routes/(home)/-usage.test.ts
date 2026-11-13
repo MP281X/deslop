@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Function, HashSet, Option} from 'effect'
+import {Array, Function, HashSet, Option, pipe} from 'effect'
 
 import {bandFill, bands, focusedBand, lowImpactIds, runs} from '#routes/(home)/-usage.ts'
 import type {AppSample, MachineHistory, Sample} from '#services/metrics/schema.ts'
@@ -27,9 +27,10 @@ function machine(samples: Sample[]) {
 		load: [],
 		samples,
 		stale: false,
-		time: Option.getOrElse(
-			Option.map(Array.last(samples), last => last.time),
-			() => 0
+		time: pipe(
+			Array.last(samples),
+			Option.map(last => last.time),
+			Option.getOrElse(() => 0)
 		),
 		worker: 'desktop'
 	} satisfies MachineHistory

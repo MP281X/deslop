@@ -18,6 +18,7 @@
 		"test": "vp test --config ../../vite.config.ts"
 	},
 	"dependencies": {
+		"@effect/ai-anthropic": "latest",
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",
 		"effect": "latest"

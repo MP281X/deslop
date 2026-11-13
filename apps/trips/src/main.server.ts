@@ -8,13 +8,13 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {layerBookings} from '#services/bookings/service.ts'
 import {Push, layerApnsClient} from '#services/push/service.ts'
-import {Tracker} from '#services/tracking/service.ts'
+import {Tracking} from '#services/tracking/service.ts'
 
 runApp({
 	icon,
 	routes: pipe(
 		layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracker.layer)),
+		Layer.provide(Layer.mergeAll(Layer.provide(Push.layer, layerApnsClient), Tracking.layer)),
 		Layer.provide(layerBookings)
 	),
 	settings: {

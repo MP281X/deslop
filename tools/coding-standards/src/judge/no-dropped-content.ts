@@ -4,19 +4,19 @@ export const noDroppedContent = question(
 	'component',
 	'Does `code` replace content it already loaded with an error or empty state when a later refresh fails?',
 	{
-		message: 'Keep the last loaded content and mark it stale; show the error alone only when nothing has loaded.',
+		message: 'Keep the last loaded content unmarked; show the error alone only when nothing has loaded.',
 		no: {
 			cases: [
 				'A first load that fails with no earlier value',
 				'An authorization failure, which must clear the content',
-				'An error shown beside the kept content, such as a marker or a banner',
+				'A retry or failure control beside content kept unmarked, without a toast or page-moving banner',
 				'A component that only renders a value it is given'
 			],
 			example: `
 				function Prices() {
 					const prices = useQuery(pricesQuery)
 					if (prices.data === undefined) return prices.error ? <LoadFailed /> : <PricesSkeleton />
-					return <PriceTable prices={prices.data} stale={prices.error !== null} />
+					return <PriceTable prices={prices.data} />
 				}
 			`
 		},

@@ -96,7 +96,7 @@ function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar[
 
 // The bookings mirror into one calendar; an event's URL names its booking, so a later sync finds it again.
 export const calendarAtom = Atom.make(get =>
-	pipe(
+	Effect.ignore(
 		Effect.gen(function* () {
 			const loaded = get(bookingsAtom)
 			if (!AsyncResult.isSuccess(loaded)) return
@@ -108,15 +108,13 @@ export const calendarAtom = Atom.make(get =>
 			) {
 				return
 			}
-			const calendar = yield* Option.match(
-				Array.findFirst(
-					yield* Effect.tryPromise({
-						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
-						try: () => getCalendars(EntityTypes.EVENT)
-					}),
-					found => found.title === CALENDAR
-				),
-				{
+			const calendar = yield* pipe(
+				yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
+					try: () => getCalendars(EntityTypes.EVENT)
+				}),
+				Array.findFirst(found => found.title === CALENDAR),
+				Option.match({
 					onNone: () =>
 						Effect.tryPromise({
 							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
@@ -132,17 +130,16 @@ export const calendarAtom = Atom.make(get =>
 								})
 							}
 						}),
-					onSome: found =>
-						Effect.gen(function* () {
-							if (String.toLowerCase(found.color ?? '') !== COLOR) {
-								yield* Effect.tryPromise({
-									catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
-									try: () => found.update({color: COLOR})
-								})
-							}
-							return found
-						})
-				}
+					onSome: Effect.fnUntraced(function* (found) {
+						if (String.toLowerCase(found.color ?? '') !== COLOR) {
+							yield* Effect.tryPromise({
+								catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
+								try: () => found.update({color: COLOR})
+							})
+						}
+						return found
+					})
+				})
 			)
 			const now = yield* Clock.currentTimeMillis
 			const events = yield* Effect.tryPromise({
@@ -186,6 +183,6 @@ export const calendarAtom = Atom.make(get =>
 				{concurrency: 1, discard: true}
 			)
 		}),
-		Effect.ignore({log: 'Warn', message: 'The calendar was not synced'})
+		{log: 'Warn', message: 'The calendar was not synced'}
 	)
 )

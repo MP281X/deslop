@@ -77,18 +77,23 @@ export function cpuCounters(
 export function vmStatMemory(text: string, total: number) {
 	const pages = Record.fromEntries(
 		Array.getSomes(
-			Array.map(String.split(text, '\n'), line =>
-				Option.map(
-					String.match(/^"?([^":]+)"?:\s+([0-9]+)\.$/u)(String.trim(line)),
-					match => [match[1] ?? '', match[2] ?? ''] as const
+			pipe(
+				text,
+				String.split('\n'),
+				Array.map(line =>
+					Option.map(
+						String.match(/^"?([^":]+)"?:\s+([0-9]+)\.$/u)(String.trim(line)),
+						match => [match[1] ?? '', match[2] ?? ''] as const
+					)
 				)
 			)
 		)
 	)
 	const page = Schema.decodeSync(Schema.FiniteFromString)(
-		Option.getOrElse(
-			Option.map(String.match(/page size of ([0-9]+) bytes/u)(text), match => match[1] ?? ''),
-			() => ''
+		pipe(
+			String.match(/page size of ([0-9]+) bytes/u)(text),
+			Option.map(match => match[1] ?? ''),
+			Option.getOrElse(() => '')
 		)
 	)
 	function count(name: string) {
@@ -108,9 +113,19 @@ export function vmStatMemory(text: string, total: number) {
 }
 
 // A Mac's startup volume from `df -k /`: APFS reports the system volume's own use, so its container's use is size less available.
+function diskRows(output: string) {
+	return pipe(
+		output,
+		String.trim,
+		String.split('\n'),
+		Array.drop(1),
+		Array.filter(String.isNonEmpty),
+		Array.map(line => String.split(String.trim(line), /\s+/u))
+	)
+}
+
 export function rootVolume(text: string) {
-	return Array.map(Array.filter(Array.drop(String.split(String.trim(text), '\n'), 1), String.isNonEmpty), line => {
-		const fields = String.split(String.trim(line), /\s+/u)
+	return Array.map(diskRows(text), fields => {
 		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
 		return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
 	})
@@ -146,31 +161,25 @@ export function reading(
 // A Linux sample from `/proc/meminfo`, `df -B1 --output=target,size,used` and `/proc/loadavg`.
 export function sample(current: Counters, memory: string, disk: string, previous?: Counters, load?: string) {
 	const values = Record.fromEntries(
-		Array.map(String.split(String.trim(memory), '\n'), line => {
-			const fields = String.split(line, /\s+/u)
-			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
-		})
+		pipe(
+			String.trim(memory),
+			String.split('\n'),
+			Array.map(line => {
+				const fields = String.split(line, /\s+/u)
+				return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
+			})
+		)
 	)
 	return reading(
 		current,
 		{total: values['MemTotal:'] ?? 0, used: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0)},
-		pipe(
-			disk,
-			String.trim,
-			String.split('\n'),
-			Array.drop(1),
-			Array.filter(String.isNonEmpty),
-			Array.map(line => {
-				const fields = String.split(String.trim(line), /\s+/u)
-				return {
-					mount: fields[0],
-					total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
-					used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
-				}
-			})
-		),
+		Array.map(diskRows(disk), fields => ({
+			mount: fields[0],
+			total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
+			used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
+		})),
 		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
-			Array.take(Array.filter(String.split(String.trim(load ?? ''), /\s+/u), String.isNonEmpty), 3)
+			pipe(String.trim(load ?? ''), String.split(/\s+/u), Array.filter(String.isNonEmpty), Array.take(3))
 		),
 		previous
 	)
@@ -205,7 +214,13 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 	if (bucket.length === 1) return bucket[0]
 	const reported = Array.filter(bucket, point => Option.isSome(point.apps))
 	const appsById = Array.map(reported, point =>
-		Record.fromEntries(Array.map(Option.getOrElse(point.apps, Array.empty), app => [app.id, app] as const))
+		Record.fromEntries(
+			pipe(
+				point.apps,
+				Option.getOrElse(Array.empty),
+				Array.map(app => [app.id, app] as const)
+			)
+		)
 	)
 	// An app missing from a point that reported apps used nothing then; one just started has no CPU reading yet.
 	function appMean(id: string, read: (app: AppSample) => Option.Option<number>) {
@@ -223,12 +238,10 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 					Array.map(Array.dedupe(Array.flatMap(appsById, Record.keys)), id => ({
 						...Record.getSomes({cpu: appMean(id, app => Option.fromUndefinedOr(app.cpu))}),
 						id,
-						memory: Number.round(
-							Option.getOrElse(
-								appMean(id, app => Option.some(app.memory)),
-								() => 0
-							),
-							0
+						memory: pipe(
+							appMean(id, app => Option.some(app.memory)),
+							Option.getOrElse(() => 0),
+							Number.round(0)
 						)
 					}))
 				)
@@ -251,10 +264,11 @@ export function rollup(point: Point, stored: readonly Sample[]) {
 	return Array.map(HistoryQuery.fields.minutes.literals, minutes => {
 		const step = SERIES[minutes]
 		const fresh: Sample = {...point, since: point.time, step}
-		return Option.match(Record.get(buckets, `${step}:${Math.floor(point.time / step)}`), {
-			onNone: () => fresh,
-			onSome: row => merge([row, fresh])
-		})
+		return pipe(
+			buckets,
+			Record.get(`${step}:${Math.floor(point.time / step)}`),
+			Option.match({onNone: () => fresh, onSome: row => merge([row, fresh])})
+		)
 	})
 }
 
@@ -276,8 +290,15 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 export function bandName(id: string, labels: Record<string, string>) {
 	if (id === 'other') return 'Low impact'
 	if (id === 'system') return 'System'
-	return Option.getOrElse(Record.get(labels, id), () =>
-		String.replaceAll(/^service:[a-z]+:(?:deslop-)?|\.service$/gu, '')(String.replace(/^container:/u, 'container ')(id))
+	return pipe(
+		labels,
+		Record.get(id),
+		Option.getOrElse(() =>
+			String.replaceAll(
+				/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
+				''
+			)(String.replace(/^container:/u, 'container ')(id))
+		)
 	)
 }
 
@@ -324,21 +345,17 @@ export type AppReading = {
 export function appShares(current: AppReading, previous?: AppReading) {
 	const elapsed = current.total - (previous?.total ?? current.total)
 	const measured = elapsed > 0 && current.time - (previous?.time ?? 0) <= 90_000
-	return Array.map(
-		Array.filter(
-			Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)),
-			entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2
-		),
-		entry => {
+	return pipe(
+		Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)),
+		Array.filter(entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2),
+		Array.map(entry => {
 			const [id, cgroups] = entry
 			const deltas = Array.getSomes(
 				Array.map(cgroups, cgroup =>
-					Option.map(
-						Option.filter(
-							Option.fromUndefinedOr(previous?.cgroups[cgroup[0]]),
-							old => measured && cgroup[1].usage >= old.usage
-						),
-						old => cgroup[1].usage - old.usage
+					pipe(
+						Option.fromUndefinedOr(previous?.cgroups[cgroup[0]]),
+						Option.filter(old => measured && cgroup[1].usage >= old.usage),
+						Option.map(old => cgroup[1].usage - old.usage)
 					)
 				)
 			)
@@ -346,21 +363,18 @@ export function appShares(current: AppReading, previous?: AppReading) {
 				...Array.match(deltas, {
 					onEmpty: () => ({}),
 					onNonEmpty: () => ({
-						cpu: Number.round(
-							Number.clamp((Number.sumAll(deltas) / 10_000 / elapsed) * 100, {maximum: 100, minimum: 0}),
-							2
+						cpu: pipe(
+							(Number.sumAll(deltas) / 10_000 / elapsed) * 100,
+							Number.clamp({maximum: 100, minimum: 0}),
+							Number.round(2)
 						)
 					})
 				}),
 				id,
 				memory: Number.round(Array.reduce(cgroups, 0, (sum, cgroup) => sum + cgroup[1].memory) / 1024, 0) * 1024
 			}
-		}
+		})
 	)
-}
-
-function rounded(value: number) {
-	return Number.round(value, 1)
 }
 
 function diskTotal(machine: MachineHistory) {
@@ -382,24 +396,32 @@ function series(machine: MachineHistory, minutes: number, read: (sample: Sample)
 		)
 	)
 	return Array.makeBy(60, index =>
-		Option.map(Option.flatMap(Option.fromUndefinedOr(bySlot[`${index}`]), read), rounded)
+		pipe(
+			Option.fromUndefinedOr(bySlot[`${index}`]),
+			Option.flatMap(read),
+			Option.map(value => Number.round(value, 1))
+		)
 	)
 }
 
 function appsOf(labels: Record<string, string>, latest: Sample) {
 	const sorted = Array.sort(
-		Array.map(
-			Option.getOrElse(latest.apps, Array.empty),
-			app =>
-				({
-					...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(app.cpu), rounded)}),
-					mib: Number.round(app.memory / 1024 ** 2, 0),
-					name: bandName(app.id, labels)
-				}) satisfies AppUsage
+		pipe(
+			latest.apps,
+			Option.getOrElse(Array.empty),
+			Array.map(
+				app =>
+					({
+						...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(app.cpu), value => Number.round(value, 1))}),
+						mib: Number.round(app.memory / 1024 ** 2, 0),
+						name: bandName(app.id, labels)
+					}) satisfies AppUsage
+			)
 		),
-		Order.combine(
-			Order.mapInput(Order.flip(Order.Number), (app: AppUsage) => app.mib),
-			Order.mapInput(Order.String, (app: AppUsage) => app.name)
+		pipe(
+			Order.flip(Order.Number),
+			Order.mapInput((app: AppUsage) => app.mib),
+			Order.combine(Order.mapInput(Order.String, (app: AppUsage) => app.name))
 		)
 	)
 	if (sorted.length <= 15) return sorted
@@ -410,7 +432,7 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 		{
 			...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
 				onFalse: () => ({}),
-				onTrue: () => ({cpu: rounded(Number.sumAll(cpus))})
+				onTrue: () => ({cpu: Number.round(Number.sumAll(cpus), 1)})
 			}),
 			mib: Number.sumAll(Array.map(rest, (app: AppUsage) => app.mib)),
 			name: 'other'
@@ -435,13 +457,13 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 			onSome: point => ({
 				now: {
 					...Record.getSomes({
-						cpuPct: Option.map(point.cpu, rounded),
-						diskGiB: Option.map(point.storageUsed, used => rounded(used / 1024 ** 3)),
-						diskTotalGiB: Option.map(storageTotal, total => rounded(total / 1024 ** 3))
+						cpuPct: Option.map(point.cpu, value => Number.round(value, 1)),
+						diskGiB: Option.map(point.storageUsed, used => Number.round(used / 1024 ** 3, 1)),
+						diskTotalGiB: Option.map(storageTotal, total => Number.round(total / 1024 ** 3, 1))
 					}),
 					...Record.getSomes({load: Option.liftPredicate(machine.load, Array.isReadonlyArrayNonEmpty)}),
-					memoryGiB: rounded(point.memoryUsed / 1024 ** 3),
-					memoryTotalGiB: rounded(point.memoryTotal / 1024 ** 3)
+					memoryGiB: Number.round(point.memoryUsed / 1024 ** 3, 1),
+					memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)
 				}
 			})
 		}),
@@ -458,7 +480,8 @@ export function resourceHistory(
 	names: Record<string, Record<string, string>>
 ) {
 	return pipe(
-		Array.filter(machines, machine => input.worker === undefined || machine.worker === input.worker),
+		machines,
+		Array.filter(machine => input.worker === undefined || machine.worker === input.worker),
 		Array.map(machine => workerHistory(machine, input.minutes, names[machine.worker] ?? {}))
 	)
 }

@@ -7,7 +7,7 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 
 addPageTelemetry('@deslop/portfolio')
 
-export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/portfolio/lib/utils/RpcClient', {
+export class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/portfolio/lib/presence/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: layerPageProtocol
 }) {}

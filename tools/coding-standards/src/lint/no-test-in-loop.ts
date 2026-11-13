@@ -1,4 +1,4 @@
-import {Array, Option, Predicate} from 'effect'
+import {Array, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {ESTree} from 'vite-plus/lint/plugins'
@@ -25,7 +25,9 @@ function iterates(node: ESTree.Node) {
 function repetition(node: ESTree.Node): Option.Option<'callback' | 'loop'> {
 	if (Predicate.isNullish(node.parent)) return Option.none()
 	if (Array.contains(LOOPS, node.parent.type)) return Option.some('loop')
-	if (isFunction(node.parent)) return Option.as(Option.liftPredicate(node.parent, iterates), 'callback' as const)
+	if (isFunction(node.parent)) {
+		return pipe(node.parent, Option.liftPredicate(iterates), Option.as('callback' as const))
+	}
 	return repetition(node.parent)
 }
 

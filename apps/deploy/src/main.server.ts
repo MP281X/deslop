@@ -34,7 +34,7 @@ runApp({
 			layerMcp({
 				instructions:
 					'Use list_apps for worker inventory and read_resource_history for resource comparisons. create_exposure and remove_exposure manage owned HTTPS mappings; run_job starts scheduled jobs.',
-				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
+				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})
 		),
 		Layer.provide(layerServices),

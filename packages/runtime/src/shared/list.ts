@@ -1,4 +1,4 @@
-import {Array, Equal, HashMap, HashSet, Option, Stream} from 'effect'
+import {Array, Equal, HashMap, HashSet, Option, Stream, pipe} from 'effect'
 import type {Order} from 'effect'
 
 // A live list travels as its changes: the server diffs each new list against the last, and a client folds them back in order.
@@ -18,14 +18,20 @@ export function listEvents<A extends {id: string}, E, R>(lists: Stream.Stream<re
 				onSome: before => {
 					const kept = HashMap.fromIterable(Array.map(before, item => [item.id, item] as const))
 					const ids = HashSet.fromIterable(Array.map(current, item => item.id))
-					const removed = Array.filter(
-						Array.map(before, item => item.id),
-						id => !HashSet.has(ids, id)
+					const removed = pipe(
+						before,
+						Array.map(item => item.id),
+						Array.filter(id => !HashSet.has(ids, id))
 					)
 					const upserted = Array.filter(
 						current,
 						// A list read again holds new objects, so an unchanged item is told apart by its value.
-						item => !Option.exists(HashMap.get(kept, item.id), old => Equal.equals(old, item))
+						item =>
+							!pipe(
+								kept,
+								HashMap.get(item.id),
+								Option.exists(old => Equal.equals(old, item))
+							)
 					)
 					if (Array.isArrayEmpty(removed) && Array.isArrayEmpty(upserted)) return []
 					return [{removed, reset: false, upserted}]

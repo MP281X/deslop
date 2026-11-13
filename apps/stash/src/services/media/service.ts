@@ -85,15 +85,7 @@ export class Media extends Context.Service<
 			const whisper = yield* Semaphore.make(1)
 			const gateway = yield* AiGateway
 			const http = yield* HttpClient.HttpClient
-			const openRouter = Effect.fnUntraced(function* (userId: string) {
-				return yield* pipe(
-					OpenRouterClient.make({
-						apiUrl: yield* gateway.apiUrl('openrouter'),
-						transformClient: yield* gateway.authorize(userId)
-					}),
-					Effect.provideService(HttpClient.HttpClient, http)
-				)
-			})
+
 			const ytDlpArgs = [
 				'--js-runtimes',
 				`node:${execPath}`,
@@ -132,7 +124,8 @@ export class Media extends Context.Service<
 					Effect.provideService(Path.Path, path),
 					Effect.mapError(cause =>
 						pipe(
-							Option.liftPredicate(cause, Schema.is(MediaError)),
+							cause,
+							Option.liftPredicate(Schema.is(MediaError)),
 							Option.getOrElse(() => MediaError.make({cause, message: 'Cannot extract the media'}))
 						)
 					)
@@ -186,9 +179,18 @@ export class Media extends Context.Service<
 					Option.flatMap(Option.fromUndefinedOr(media.format?.duration), Number.parse)
 				)
 				if (!Option.exists(seconds, value => value >= 1 && value <= MAX_WHISPER_SECONDS)) return Option.none()
-				const speech = yield* pipe(
-					openRouter(userId),
-					Effect.mapError(cause => MediaError.make({cause: Redacted.make(cause), message: cause.message}))
+				const speech = yield* Effect.mapError(
+					Effect.gen(function* () {
+						return yield* Effect.provideService(
+							OpenRouterClient.make({
+								apiUrl: yield* gateway.apiUrl('openrouter'),
+								transformClient: yield* gateway.authorize(userId)
+							}),
+							HttpClient.HttpClient,
+							http
+						)
+					}),
+					cause => MediaError.make({cause: Redacted.make(cause), message: cause.message})
 				)
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
 				// Five-minute lossless chunks stay below upload limits and the provider's one-minute processing timeout.
@@ -224,9 +226,10 @@ export class Media extends Context.Service<
 				}
 				return yield* whisper.withPermit(
 					Effect.gen(function* () {
-						const files = Array.sort(
-							Array.filter(yield* fs.readDirectory(work), String.endsWith('.flac')),
-							Order.String
+						const files = pipe(
+							yield* fs.readDirectory(work),
+							Array.filter(String.endsWith('.flac')),
+							Array.sort(Order.String)
 						)
 						return speechOnly(
 							pipe(
@@ -272,7 +275,7 @@ export class Media extends Context.Service<
 				)
 			})
 
-			const captionsFor = Effect.fnUntraced(function* (link: string, track: {authored: boolean; language: string}) {
+			const fetchCaptions = Effect.fnUntraced(function* (link: string, track: {authored: boolean; language: string}) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-captions-'})
 				const result = yield* fetch([
 					...ytDlpArgs,
@@ -304,14 +307,15 @@ export class Media extends Context.Service<
 						const captions = yield* Schema.decodeEffect(Schema.fromJsonString(CreatorCaptions))(
 							yield* fs.readFileString(path.join(work, file))
 						)
-						const text = Array.join(
-							Array.map(captions.utterances, cue => {
+						const text = pipe(
+							captions.utterances,
+							Array.map(cue => {
 								if (String.isNonEmpty(String.trim(cue.text))) {
 									return `[${clock(cue.start_time / 1000)}] ${String.trim(cue.text)}\n`
 								}
 								return ''
 							}),
-							''
+							Array.join('')
 						)
 						if (String.isNonEmpty(String.trim(text))) return {blocked: false, transcript: Option.some(text)}
 					}
@@ -329,7 +333,7 @@ export class Media extends Context.Service<
 				for (const track of captionTracks(media)) {
 					// A broken authored track must not hide a working automatic or alternate-language track.
 					const captioned = yield* pipe(
-						captionsFor(link, track),
+						fetchCaptions(link, track),
 						Effect.scoped,
 						Effect.orElseSucceed(() => ({blocked: false, transcript: Option.none<string>()}))
 					)
@@ -351,12 +355,10 @@ export class Media extends Context.Service<
 					'-o',
 					path.join(work, 'audio.%(ext)s')
 				]
-				const download = yield* pipe(
+				const download = yield* Effect.filterOrElse(
 					fetch([...args, fallback ?? link]),
-					Effect.filterOrElse(
-						result => result.exitCode === 0 || fallback === undefined || fallback === link,
-						() => fetch([...args, link])
-					)
+					result => result.exitCode === 0 || fallback === undefined || fallback === link,
+					() => fetch([...args, link])
 				)
 				if (download.exitCode !== 0) {
 					return yield* MediaError.make({message: `yt-dlp cannot download the audio: ${download.stderr}`})
@@ -404,11 +406,15 @@ export class Media extends Context.Service<
 				if (sampled.exitCode !== 0) {
 					return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
 				}
-				return yield* Effect.forEach(
-					Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
-					(file, index) =>
-						Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
-					{concurrency: 'unbounded'}
+				return yield* pipe(
+					yield* fs.readDirectory(work),
+					Array.filter(String.startsWith('frame-')),
+					Array.sort(Order.String),
+					Effect.forEach(
+						(file, index) =>
+							Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
+						{concurrency: 'unbounded'}
+					)
 				)
 			})
 

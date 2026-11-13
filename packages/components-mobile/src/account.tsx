@@ -8,7 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {avatarAtom} from '#lib/utils.ts'
+import {avatarAtom} from '#lib/images.ts'
 
 // Square, like the web's avatar: the picture and its fallback both fill the same 28pt tile.
 function Avatar(props: {id: string}) {

@@ -39,28 +39,38 @@ export function exitFailure(status: number) {
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
 export function unitFailures(text: string) {
 	return Record.fromEntries(
-		Array.map(Array.filter(String.split(String.trim(text), /\n\s*\n/u), String.isNonEmpty), block => {
-			const fields = Record.fromEntries(
-				Array.map(Array.filter(String.split(block, '\n'), String.includes('=')), line => {
-					const [key, ...value] = String.split(line, '=')
-					return [key, Array.join(value, '=')] as const
-				})
-			)
-			return [
-				fields['Id'] ?? '',
-				{
-					...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
-						onNone: () => ({}),
-						onSome: seconds => ({at: seconds * 1000})
-					}),
-					// A unit whose start step failed never ran its main process, which leaves its code 0.
-					reason: failureReason(
-						fields['Result'] ?? '',
-						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
-						fields['ExecMainCode'] !== '0'
+		pipe(
+			String.trim(text),
+			String.split(/\n\s*\n/u),
+			Array.filter(String.isNonEmpty),
+			Array.map(block => {
+				const fields = Record.fromEntries(
+					pipe(
+						block,
+						String.split('\n'),
+						Array.filter(String.includes('=')),
+						Array.map(line => {
+							const [key, ...value] = String.split(line, '=')
+							return [key, Array.join(value, '=')] as const
+						})
 					)
-				}
-			] as const
-		})
+				)
+				return [
+					fields['Id'] ?? '',
+					{
+						...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
+							onNone: () => ({}),
+							onSome: seconds => ({at: seconds * 1000})
+						}),
+						// A unit whose start step failed never ran its main process, which leaves its code 0.
+						reason: failureReason(
+							fields['Result'] ?? '',
+							Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
+							fields['ExecMainCode'] !== '0'
+						)
+					}
+				] as const
+			})
+		)
 	)
 }

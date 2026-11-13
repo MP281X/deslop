@@ -490,9 +490,6 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@effect/ai-anthropic':
-        specifier: latest
-        version: 4.1.4(effect@4.1.4)
       '@effect/ai-openrouter':
         specifier: latest
         version: 4.1.4(effect@4.1.4)
@@ -560,9 +557,6 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@effect/ai-anthropic':
-        specifier: latest
-        version: 4.1.4(effect@4.1.4)
       '@effect/atom-react':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
@@ -644,6 +638,9 @@ importers:
       expo-file-system:
         specifier: ^58.0.13
         version: 58.0.13(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))
+      expo-notifications:
+        specifier: ^58.1.9
+        version: 58.1.9(expo@58.0.24)(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)(supports-color@8.1.1)
       react:
         specifier: ^19
         version: 19.3.1
@@ -733,6 +730,9 @@ importers:
 
   packages/runtime:
     dependencies:
+      '@effect/ai-anthropic':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)

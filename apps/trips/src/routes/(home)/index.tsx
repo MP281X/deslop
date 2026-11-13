@@ -36,6 +36,7 @@ import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
+import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -47,7 +48,6 @@ import {
 	itemRow
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
@@ -80,7 +80,7 @@ function scheduleOf(booking: Booking) {
 // The schedule and the gate or platform it leaves from, each shown once.
 function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
 	const where = Option.match(status.where, {onNone: () => '', onSome: found => found.text})
-	return Array.join(Array.filter([scheduleOf(booking), where], String.isNonEmpty), ' · ')
+	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
@@ -176,26 +176,56 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	)
 }
 
-function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(bookingsAtom)
-	const paste = useAtomSet(clipboard.atom.send)
-	const [pastOpen, setPastOpen] = useState(false)
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const adding = Option.exists(
-		pipe(useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')), AsyncResult.getOrElse(Option.none)),
-		current => current.save
-	)
-	const blocking = Option.getOrUndefined(blockingFailure(loaded))
-	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
-	const bookings = AsyncResult.getOrElse(loaded, () => [])
-	const needle = String.toLowerCase(String.trim(props.searched))
-	const matches = Array.filter(
+function matchesOf(bookings: readonly Booking[], searched: string) {
+	const needle = String.toLowerCase(String.trim(searched))
+	return Array.filter(
 		bookings,
 		booking =>
 			String.isEmpty(needle) ||
 			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
 	)
+}
+
+function PastBookings(props: {
+	bookings: readonly Booking[]
+	expanded: boolean
+	now: number
+	onExpandedChange: (expanded: boolean) => void
+	onOpen: (id: string) => void
+}) {
+	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
+	return (
+		<Section title="Past" isExpanded={props.expanded} onIsExpandedChange={props.onExpandedChange}>
+			{Array.map(props.bookings, booking => (
+				<BookingRow
+					key={booking.id}
+					booking={booking}
+					countdown={{_tag: 'SameDay'}}
+					now={props.now}
+					onOpen={props.onOpen}
+				/>
+			))}
+		</Section>
+	)
+}
+
+function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
+	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(bookingsAtom)
+	const paste = useAtomSet(clipboard.atom.send)
+	const [pastOpen, setPastOpen] = useState(false)
+
+	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	const adding = pipe(
+		useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')),
+		AsyncResult.value,
+		Option.flatten,
+		Option.exists(current => current.save)
+	)
+	const blocking = Option.getOrUndefined(blockingFailure(loaded))
+	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
+	const bookings = AsyncResult.getOrElse(loaded, () => [])
+	const matches = matchesOf(bookings, props.searched)
 	const current = Array.filter(matches, booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now)
 	const ahead = Array.filter(matches, booking => startOf(booking) - 6 * HOUR > now)
 	const past = Array.reverse(
@@ -249,14 +279,18 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 								<BookingRow
 									key={booking.id}
 									booking={booking}
-									countdown={Option.match(Array.get(ahead, position - 1), {
-										onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-										onSome: before =>
-											Boolean.match(daysOf(before) === daysOf(booking), {
-												onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-												onTrue: () => ({_tag: 'SameDay'}) as const
-											})
-									})}
+									countdown={pipe(
+										ahead,
+										Array.get(position - 1),
+										Option.match({
+											onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+											onSome: before =>
+												Boolean.match(daysOf(before) === daysOf(booking), {
+													onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+													onTrue: () => ({_tag: 'SameDay'}) as const
+												})
+										})
+									)}
 									now={now}
 									onOpen={props.onOpen}
 								/>
@@ -268,19 +302,13 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 							<Empty systemImage="ticket" label="Nothing coming up" />
 						</Section>
 					)}
-					{Array.isReadonlyArrayNonEmpty(past) && (
-						<Section title="Past" isExpanded={pastOpen} onIsExpandedChange={setPastOpen}>
-							{Array.map(past, booking => (
-								<BookingRow
-									key={booking.id}
-									booking={booking}
-									countdown={{_tag: 'SameDay'}}
-									now={now}
-									onOpen={props.onOpen}
-								/>
-							))}
-						</Section>
-					)}
+					<PastBookings
+						bookings={past}
+						expanded={pastOpen}
+						now={now}
+						onExpandedChange={setPastOpen}
+						onOpen={props.onOpen}
+					/>
 				</ItemGroup>
 			)}
 		</VStack>

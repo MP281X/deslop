@@ -40,7 +40,7 @@ const LOOPBACK = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:.]+\])$/iu
 const OTLP = ['/v1/traces', '/v1/logs']
 
 // One cross-site check per app: a foreign Origin is refused except for OTLP, and without an issuer only loopback, IP and canonical hosts are served.
-export const guard = HttpMiddleware.make(app =>
+export const crossSiteGuard = HttpMiddleware.make(app =>
 	Effect.gen(function* () {
 		const request = yield* HttpServerRequest.HttpServerRequest
 		const host = request.headers['host'] ?? ''
@@ -72,9 +72,9 @@ export const guard = HttpMiddleware.make(app =>
 )
 
 // Binary RPC frames for every client; public endpoints such as client registration read their body before any sign-in, and streamed uploads keep their own limit.
-export const layerProtocol = Layer.mergeAll(
+export const layerServerProtocol = Layer.mergeAll(
 	RpcSerialization.layerSchemaBinary(),
-	Layer.succeed(HttpIncomingMessage.MaxBodySize)(ByteSize.mebibytes(10)),
+	Layer.succeed(HttpIncomingMessage.MaxBodySize, ByteSize.mebibytes(10)),
 	Layer.effect(
 		HttpMiddleware.TracerDisabledWhen,
 		Effect.map(HttpMiddleware.TracerDisabledWhen, previous => request => {
@@ -104,7 +104,7 @@ export const layerRoutes = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
 		const issuer = yield* Config.option(Config.String('AUTH_URL'))
-		const traces = yield* pipe(Config.String('OTEL_URL'), Config.withDefault(''))
+		const traces = yield* Config.withDefault(Config.String('OTEL_URL'), '')
 		const metadata = yield* Effect.cached(packageMetadata)
 		yield* router.add(
 			'GET',
@@ -121,7 +121,7 @@ export const layerRoutes = HttpRouter.use(router =>
 		)
 		yield* router.add(
 			'GET',
-			'/auth/user',
+			'/api/account',
 			Effect.gen(function* () {
 				const user = yield* Effect.result(auth.user((yield* HttpServerRequest.HttpServerRequest).headers))
 				if (Result.isFailure(user)) return HttpServerResponse.empty(failureOptions(user.failure, 401))
@@ -233,7 +233,7 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 			const canonical = yield* Config.String('APP_URL')
 			const issuer = yield* Config.option(Config.String('AUTH_URL'))
 			const resource = new URL(MCP_PATH, canonical).href
-			const endpoint = pipe(
+			const endpoint = Layer.provide(
 				McpServer.layerHttp({
 					allowSessionTermination: true,
 					icons: [{src: new URL('/icon', canonical).href}],
@@ -244,7 +244,7 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 					registrations: Layer.provide(options.registrations, layerStructuredTools),
 					version: metadata.version
 				}),
-				Layer.provide(layerMcpAuth(resource))
+				layerMcpAuth(resource)
 			)
 			return Option.match(issuer, {
 				onNone: () => endpoint,

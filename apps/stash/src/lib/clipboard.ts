@@ -1,4 +1,4 @@
-import {Boolean, Effect, Option, Predicate, String, pipe} from 'effect'
+import {Boolean, Effect, Option, Predicate, String} from 'effect'
 
 import {FetchHttpClient} from 'effect/http'
 import {getImageAsync, getStringAsync, hasImageAsync} from 'expo-clipboard'
@@ -27,7 +27,7 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 	const token = yield* session.bearer
 	const id = randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
-	const response = yield* pipe(
+	const response = yield* Effect.ensuring(
 		Effect.tryPromise({
 			catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
 			try: () => {
@@ -38,7 +38,7 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 				})
 			}
 		}),
-		Effect.ensuring(Effect.sync(() => file.delete()))
+		Effect.sync(() => file.delete())
 	)
 	if (response.status >= 300) {
 		return yield* NotesError.make({message: `The server refused the image with status ${response.status}.`})

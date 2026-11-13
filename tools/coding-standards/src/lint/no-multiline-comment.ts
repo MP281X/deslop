@@ -12,14 +12,12 @@ function adjacentLines(first?: ESTree.Comment, second?: ESTree.Comment) {
 export const noMultilineComment = defineRule({
 	create: context => ({
 		Program: () => {
-			const comments = pipe(
+			const comments = Array.filter(
 				context.sourceCode.getAllComments(),
-				Array.filter(
-					comment =>
-						!matches(/^\s*(?:eslint|oxlint|judge-ignore|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u)(
-							comment.value
-						)
-				)
+				comment =>
+					!matches(/^\s*(?:eslint|oxlint|judge-ignore|@effect-diagnostics|@ts-|\/\s*<reference|#region|#endregion)/u)(
+						comment.value
+					)
 			)
 			pipe(
 				comments,

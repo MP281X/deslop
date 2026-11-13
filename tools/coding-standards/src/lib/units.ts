@@ -74,7 +74,11 @@ function childrenOf(node: Node) {
 function identifiers(node: Node): string[] {
 	return [
 		...Option.toArray(
-			Option.filter(Option.filter(field(node, 'name'), Predicate.isString), () => matches(/Identifier$/u)(node.type))
+			pipe(
+				field(node, 'name'),
+				Option.filter(Predicate.isString),
+				Option.filter(() => matches(/Identifier$/u)(node.type))
+			)
 		),
 		...Array.flatMap(childrenOf(node), identifiers)
 	]
@@ -86,9 +90,10 @@ function importsUsed(source: string, declarations: ImportDeclaration[], node: No
 	return pipe(
 		declarations,
 		Array.flatMap(declaration =>
-			Array.map(
-				Array.filter(declaration.specifiers, specifier => HashSet.has(names, specifier.local.name)),
-				specifier => importLine(source, declaration, specifier)
+			pipe(
+				declaration.specifiers,
+				Array.filter(specifier => HashSet.has(names, specifier.local.name)),
+				Array.map(specifier => importLine(source, declaration, specifier))
 			)
 		),
 		Array.join('\n')
@@ -99,13 +104,14 @@ function importsUsed(source: string, declarations: ImportDeclaration[], node: No
 export function units(filename: string, source: string) {
 	const program = parseSync(filename, source).program
 	const declarations = Array.filter(program.body, statement => statement.type === 'ImportDeclaration')
-	const lines = String.split('\n')(source)
+	const lines = String.split(source, '\n')
 	const starts = Array.scan(lines, 0, (offset, line) => offset + line.length + 1)
 	function lineOf(offset: number) {
 		return (
-			Option.getOrElse(
-				Array.findLastIndex(starts, start => start <= offset),
-				() => 0
+			pipe(
+				starts,
+				Array.findLastIndex(start => start <= offset),
+				Option.getOrElse(() => 0)
 			) + 1
 		)
 	}

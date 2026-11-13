@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from "embla-carousel-react"

@@ -3,7 +3,7 @@ import {tanstackRouter} from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
 import type {UserConfig} from 'vite-plus'
 
-export const pack = {
+export const serverPack = {
 	banner: '#!/usr/bin/env -S node --max-old-space-size=16384 --heapsnapshot-near-heap-limit=3 --report-on-fatalerror',
 	clean: false,
 	deps: {alwaysBundle: [/./u], onlyBundle: false},
@@ -17,7 +17,7 @@ export const pack = {
 	target: 'node26'
 } satisfies UserConfig['pack']
 
-export const config = {
+export const webConfig = {
 	build: {
 		chunkSizeWarningLimit: 750,
 		modulePreload: {polyfill: false},
@@ -37,7 +37,7 @@ export const config = {
 		target: 'esnext'
 	},
 	future: 'warn',
-	pack,
+	pack: serverPack,
 	plugins: [
 		// Its scratch files stay out of the checkout, as the app generator's do.
 		tanstackRouter({autoCodeSplitting: true, target: 'react', tmpDir: 'node_modules/.cache/tanstack'}),

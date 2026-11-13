@@ -4,10 +4,11 @@ import {Atom} from 'effect/reactivity'
 import {getImageAsync, getStringAsync, hasImageAsync, hasStringAsync} from 'expo-clipboard'
 import {File, Paths} from 'expo-file-system'
 
+import {alertFailure} from '@deslop/components-mobile/alerts'
 import {makeClipboard, readClipboard} from '@deslop/components-mobile/clipboard'
 import type {ClipboardCopy, ClipboardKind} from '@deslop/components-mobile/clipboard'
+import {cachedList} from '@deslop/components-mobile/files'
 import {makeRemoval} from '@deslop/components-mobile/removal'
-import {alertFailure, cachedList} from '@deslop/components-mobile/utils'
 import {liveStream} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
@@ -43,9 +44,9 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 			try: () => getImageAsync({format: 'jpeg', jpegQuality: 0.85})
 		})
 		if (copied === null) return yield* BookingsError.make({message: 'The clipboard no longer holds an image.'})
-		const image = yield* pipe(
+		const image = yield* Effect.mapError(
 			Schema.decodeEffect(Schema.Uint8ArrayFromBase64)(String.replace(/^data:[^,]*,/u, '')(copied.data)),
-			Effect.mapError(cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'}))
+			cause => BookingsError.make({cause, message: 'The copied screenshot could not be read.'})
 		)
 		if (image.byteLength === 0 || image.byteLength > IMAGE_BYTES) {
 			return yield* BookingsError.make({message: 'Copy a screenshot smaller than 4 MB and try again.'})
@@ -81,15 +82,14 @@ export const clipboard = makeClipboard({
 			text: 'Add a booking from the copied text?'
 		}
 	},
-	save: (copy, get) =>
-		Effect.gen(function* () {
-			const source = yield* readClipboard(copy.count, bookingFromClipboard(copy))
-			yield* provideRuntimeOnce(
-				get,
-				RpcClient.runtime,
-				Effect.flatMap(RpcClient, client => client('bookings.save', source))
-			)
-		})
+	save: Effect.fnUntraced(function* (copy, get) {
+		const source = yield* readClipboard(copy.count, bookingFromClipboard(copy))
+		yield* provideRuntimeOnce(
+			get,
+			RpcClient.runtime,
+			Effect.flatMap(RpcClient, client => client('bookings.save', source))
+		)
+	})
 })
 
 export const removal = makeRemoval({

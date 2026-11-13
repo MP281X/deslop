@@ -1,6 +1,6 @@
-import * as ExpoRuntime from '@deslop/runtime/config/expo'
+import {makeExpoConfig} from '@deslop/runtime/config/expo'
 
-const app = ExpoRuntime.make({projectId: 'c9620553-0dc5-4e08-b691-a47fa3cab00e', slug: 'stash'})
+const app = makeExpoConfig({projectId: 'c9620553-0dc5-4e08-b691-a47fa3cab00e', slug: 'stash'})
 
 export default {
 	...app.config,

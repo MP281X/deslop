@@ -3,7 +3,7 @@ import {Context, Schema, Struct} from 'effect'
 import {Jwk} from 'effect/jose'
 import {Model} from 'effect/schema'
 
-import {ClientInfo, User} from '@deslop/runtime/shared/auth'
+import {ClientRegistration, User} from '@deslop/runtime/shared/auth'
 
 // Credentials retain the registration that issued them, never a later membership with the same GitHub id.
 export type CredentialOwner = typeof CredentialOwner.Type
@@ -16,7 +16,7 @@ export class CurrentOwner extends Context.Service<CurrentOwner, CredentialOwner>
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({
 	client_name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100))),
-	redirect_uris: ClientInfo.fields.redirects,
+	redirect_uris: ClientRegistration.fields.redirects,
 	token_endpoint_auth_method: Schema.optionalKey(Schema.Literal('none'))
 })
 

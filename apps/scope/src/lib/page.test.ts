@@ -12,7 +12,7 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {routeTree} from '#routeTree.gen.ts'
 
-import {overviewAtom, traceAtom} from '#lib/utils.ts'
+import {overviewAtom, traceAtom} from '#lib/telemetry.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceTree} from '#services/telemetry/lib/utils.ts'
 import {Span, TelemetryError} from '#services/telemetry/schema.ts'
@@ -525,7 +525,7 @@ it.effect(
 		)
 		assert.include(html, 'aria-label="Failed in Parser.decode"')
 		assert.include(html, 'title="Failed in Parser.decode"')
-		assert.strictEqual(Array.length(String.split('Failed in Parser.decode')(html)) - 1, 2)
+		assert.strictEqual(Array.length(String.split(html, 'Failed in Parser.decode')) - 1, 2)
 		assert.notInclude(html, '>Failed in Parser.decode<')
 	})
 )

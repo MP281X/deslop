@@ -23,13 +23,13 @@ export class RpcOwner extends RpcMiddleware.Service<RpcOwner, {provides: Current
 ) {}
 
 export class RpcContracts extends RpcGroup.make(
-	Rpc.make('signins.lookup', {
+	Rpc.make('sign-ins.lookup', {
 		error: AuthError,
 		payload: CodeParams,
 		stream: true,
 		success: Schema.Option(PendingAuthorization)
 	}),
-	Rpc.make('signins.answer', {error: AuthError, payload: AnswerParams}),
+	Rpc.make('sign-ins.answer', {error: AuthError, payload: AnswerParams}),
 	Rpc.make('people.watch', {error: AuthError, stream: true, success: Schema.Array(Person)}),
 	Rpc.make('people.admit', {error: AuthError, payload: AdmitParams, success: Person}),
 	Rpc.make('tokens.watchApps', {error: AuthError, stream: true, success: Schema.Array(SignedInApp.json)}),
@@ -44,6 +44,11 @@ export class RpcContracts extends RpcGroup.make(
 		// A GitHub account an admin has not allowed yet still reads its own state, and a waiting sign-in has no account at all.
 		RpcGroup.make(
 			Rpc.make('people.account', {error: AuthError, stream: true, success: SignedAccount}),
-			Rpc.make('signins.status', {error: AuthError, payload: RequestParams, stream: true, success: AuthorizationStatus})
+			Rpc.make('sign-ins.status', {
+				error: AuthError,
+				payload: RequestParams,
+				stream: true,
+				success: AuthorizationStatus
+			})
 		)
 	) {}

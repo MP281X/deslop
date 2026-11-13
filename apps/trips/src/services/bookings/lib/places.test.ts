@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
+import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {TestClock} from 'effect/testing'
@@ -37,7 +37,7 @@ it.layer(Layer.empty)(test => {
 				})
 			)
 			const places = Context.get(
-				yield* Layer.build(pipe(Places.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				yield* Layer.build(Layer.provide(Places.layer, Layer.succeed(HttpClient.HttpClient, client))),
 				Places
 			)
 			const first = yield* Effect.forkScoped(Effect.exit(places.airport('FCO')))
@@ -85,7 +85,7 @@ it.layer(Layer.empty)(test => {
 				})
 			)
 			const places = Context.get(
-				yield* Layer.build(pipe(Places.layer, Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))),
+				yield* Layer.build(Layer.provide(Places.layer, Layer.succeed(HttpClient.HttpClient, client))),
 				Places
 			)
 			assert.isTrue(Exit.hasFails(yield* Effect.exit(places.station('Roma Termini'))))

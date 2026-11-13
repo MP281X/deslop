@@ -1,4 +1,4 @@
-import {Array, HashSet, Number, Option, Order, String, Struct} from 'effect'
+import {Array, HashSet, Number, Option, Order, String, Struct, pipe} from 'effect'
 
 import {isAdmin} from '@deslop/runtime/shared/auth'
 
@@ -20,10 +20,11 @@ export function roleOf(admins: readonly string[], id: string, row: Option.Option
 export function personOf(admins: readonly string[], row: Member) {
 	return Person.make({
 		...Struct.pick(row, ['id', 'name', 'since']),
-		...Option.match(Option.filter(row.fullName, String.isNonEmpty), {
-			onNone: () => ({}),
-			onSome: fullName => ({fullName})
-		}),
+		...pipe(
+			row.fullName,
+			Option.filter(String.isNonEmpty),
+			Option.match({onNone: () => ({}), onSome: fullName => ({fullName})})
+		),
 		role: roleOf(admins, row.id, Option.some(row))
 	})
 }
@@ -34,9 +35,10 @@ export function listPeople(rows: readonly Member[], admins: readonly string[]) {
 	const knownIds = HashSet.fromIterable(Array.map(known, person => person.id))
 	return Array.sort(
 		[
-			...Array.map(
-				Array.filter(admins, id => !HashSet.has(knownIds, `github:${id}`)),
-				id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0})
+			...pipe(
+				admins,
+				Array.filter(id => !HashSet.has(knownIds, `github:${id}`)),
+				Array.map(id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0}))
 			),
 			...known
 		],

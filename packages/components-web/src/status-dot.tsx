@@ -1,7 +1,7 @@
 import {cva} from 'class-variance-authority'
 import type {VariantProps} from 'class-variance-authority'
 
-import {cn} from '#lib/utils.ts'
+import {cn} from '#lib/classes.ts'
 
 const statusDotVariants = cva('inline-block size-1.5 shrink-0 rounded-full', {
 	variants: {

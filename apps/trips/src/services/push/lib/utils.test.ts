@@ -4,7 +4,7 @@ import {Array, DateTime, Option} from 'effect'
 
 import {HOUR, MINUTE} from '#services/bookings/lib/utils.ts'
 import {Flight, Train} from '#services/bookings/schema.ts'
-import {alertsFor} from '#services/push/lib/utils.ts'
+import {alertsOf} from '#services/push/lib/utils.ts'
 
 const DEPARTS = DateTime.toEpochMillis(DateTime.makeUnsafe('2026-10-28T15:40:00Z'))
 
@@ -43,7 +43,7 @@ const TRAIN = {
 
 it('announces a cancelled train', () => {
 	assert.deepStrictEqual(
-		Array.map(alertsFor(Train.make({...TRAIN, status: 'cancelled'}), DEPARTS - HOUR), alert => alert.category),
+		Array.map(alertsOf(Train.make({...TRAIN, status: 'cancelled'}), DEPARTS - HOUR), alert => alert.category),
 		['cancelled']
 	)
 })
@@ -60,14 +60,14 @@ it('announces gate changes, delays in steps and cancellations once each', () => 
 		})
 	}
 	assert.deepStrictEqual(
-		Array.map(alertsFor(Flight.make(late), DEPARTS - HOUR), alert => [alert.category, alert.value, alert.body]),
+		Array.map(alertsOf(Flight.make(late), DEPARTS - HOUR), alert => [alert.category, alert.value, alert.body]),
 		[
 			['gate', 'B12', 'Changed from A3'],
 			['delay', '15', 'Now departs 17:00']
 		]
 	)
 	assert.deepStrictEqual(
-		Array.map(alertsFor(Flight.make({...late, status: 'cancelled'}), DEPARTS - HOUR), alert => [
+		Array.map(alertsOf(Flight.make({...late, status: 'cancelled'}), DEPARTS - HOUR), alert => [
 			alert.category,
 			alert.value
 		]),
@@ -76,5 +76,5 @@ it('announces gate changes, delays in steps and cancellations once each', () => 
 			['gate', 'B12']
 		]
 	)
-	assert.deepStrictEqual(alertsFor(Flight.make(FLIGHT), DEPARTS - 40 * HOUR), [])
+	assert.deepStrictEqual(alertsOf(Flight.make(FLIGHT), DEPARTS - 40 * HOUR), [])
 })

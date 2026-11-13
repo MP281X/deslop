@@ -1,6 +1,6 @@
-import {Array, HashMap, Option} from 'effect'
+import {Array, HashMap, Option, pipe} from 'effect'
 
-import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai/schema.ts'
+import type {AiProvider, AiUsageBreakdown, AiUsageReport} from '#services/ai-proxy/schema.ts'
 import type {McpUsageServer} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
@@ -28,34 +28,37 @@ function seriesOf(range: UsageRange, value: (at: number) => number) {
 export function providerSeries(report: AiUsageReport, provider: AiProvider, range: UsageRange) {
 	const costs = HashMap.fromIterable(
 		Array.flatMap(report.series, bucket =>
-			Array.map(
-				Array.filter(bucket.byProvider, sum => sum.name === provider),
-				sum => [bucket.at, sum.costUsd] as const
+			pipe(
+				bucket.byProvider,
+				Array.filter(sum => sum.name === provider),
+				Array.map(sum => [bucket.at, sum.costUsd] as const)
 			)
 		)
 	)
-	return seriesOf(range, at => Option.getOrElse(HashMap.get(costs, at), () => 0))
+	return seriesOf(range, at =>
+		pipe(
+			costs,
+			HashMap.get(at),
+			Option.getOrElse(() => 0)
+		)
+	)
 }
 export function providerCost(report: AiUsageReport, provider: AiProvider) {
-	return Option.getOrElse(
-		Option.map(
-			Array.findFirst(report.byProvider, sum => sum.name === provider),
-			costOf
-		),
-		() => '—'
+	return pipe(
+		report.byProvider,
+		Array.findFirst(sum => sum.name === provider),
+		Option.map(costOf),
+		Option.getOrElse(() => '—')
 	)
 }
 export function serverSeries(report: readonly McpUsageServer[], id: string, range: UsageRange) {
 	return seriesOf(range, at =>
-		Option.getOrElse(
-			Option.map(
-				Option.flatMap(
-					Array.findFirst(report, row => row.id === id),
-					row => Array.findFirst(row.series, bucket => bucket.at === at)
-				),
-				bucket => bucket.calls
-			),
-			() => 0
+		pipe(
+			report,
+			Array.findFirst(row => row.id === id),
+			Option.flatMap(row => Array.findFirst(row.series, bucket => bucket.at === at)),
+			Option.map(bucket => bucket.calls),
+			Option.getOrElse(() => 0)
 		)
 	)
 }

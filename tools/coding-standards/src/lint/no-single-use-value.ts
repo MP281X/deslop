@@ -9,7 +9,7 @@ import {
 	isSchemaOperationCall,
 	outermost,
 	readable,
-	readsOf,
+	singleRead,
 	rootName,
 	suspends,
 	typeWrapped
@@ -61,7 +61,7 @@ function insideConditional(input: {node: ESTree.Node; statement: ESTree.Node}): 
 }
 
 function unwrapped(node: ESTree.Node): ESTree.Node {
-	return pipe(typeWrapped(node), Option.match({onNone: () => node, onSome: unwrapped}))
+	return Option.match(typeWrapped(node), {onNone: () => node, onSome: unwrapped})
 }
 
 function candidate(context: Context, node: ESTree.VariableDeclarator) {
@@ -161,10 +161,7 @@ function report(input: {context: Context; effects: ESTree.Node[]; node: ESTree.V
 		Option.flatMap(index => Array.get(statements, index + 1)),
 		Option.flatMap(next =>
 			pipe(
-				readsOf({context: input.context, name, node: input.node}),
-				Option.filter(reads => reads.length === 1),
-				Option.flatMap(Array.head),
-				Option.map(reference => reference.identifier),
+				singleRead({context: input.context, name, node: input.node}),
 				Option.filter(
 					read =>
 						read.range[0] >= next.range[0] &&

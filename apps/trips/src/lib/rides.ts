@@ -4,14 +4,14 @@ import {Atom} from 'effect/reactivity'
 import {geocodeAsync} from 'expo-location'
 import {Linking} from 'react-native'
 
-import {alertFailure} from '@deslop/components-mobile/utils'
+import {alertFailure} from '@deslop/components-mobile/alerts'
 
 import {departureOf, MINUTE, stayAfter} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 
 export function placeLine(place: Place) {
-	return Array.join(Array.filter([place.name, place.address ?? place.city ?? ''], String.isNonEmpty), ', ')
+	return pipe([place.name, place.address ?? place.city ?? ''], Array.filter(String.isNonEmpty), Array.join(', '))
 }
 
 type Coordinates = {latitude: number; longitude: number}
@@ -33,18 +33,19 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 
 export type Ride = {label: string; place: Place}
 
-export function ridesFor(booking: Booking, bookings: BookingList, now: number) {
+export function ridesOf(booking: Booking, bookings: BookingList, now: number) {
 	if (booking._tag === 'stay') return [{label: booking.name, place: booking.place}] satisfies Ride[]
 	const stay = Option.map(
 		stayAfter(bookings, booking),
 		found => ({label: found.name, place: found.place}) satisfies Ride
 	)
-	return Option.match(
-		Option.filter(stay, () => now > departureOf(booking) - 30 * MINUTE),
-		{
+	return pipe(
+		stay,
+		Option.filter(() => now > departureOf(booking) - 30 * MINUTE),
+		Option.match({
 			onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
 			onSome: next => [next] satisfies Ride[]
-		}
+		})
 	)
 }
 
@@ -71,8 +72,10 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 	pipe(
 		coordinatesOf(ride.place),
 		Effect.flatMap(coordinates =>
-			Effect.mapError(Effect.fromOption(coordinates), cause =>
-				BookingsError.make({cause, message: 'The place could not be found for Uber.'})
+			pipe(
+				coordinates,
+				Effect.fromOption,
+				Effect.mapError(cause => BookingsError.make({cause, message: 'The place could not be found for Uber.'}))
 			)
 		),
 		Effect.flatMap(found =>

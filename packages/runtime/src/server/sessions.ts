@@ -33,7 +33,7 @@ import {
 	User,
 	bearerOf,
 	isJwt,
-	rejected
+	asAuthError
 } from '#shared/auth.ts'
 import type {CodeGrant} from '#shared/auth.ts'
 
@@ -56,12 +56,13 @@ class Session extends Model.Class<Session>('Session')({
 type Refusal = typeof Refusal.Type
 const Refusal = Schema.Struct({error: Schema.String, error_description: Schema.optionalKey(Schema.String)})
 
-class Refused extends Schema.TaggedError<Refused>()('Refused', {message: Schema.String}) {}
+class RefusedError extends Schema.TaggedError<RefusedError>()('RefusedError', {message: Schema.String}) {}
 
 export function sessionIdOf(headers: Headers.Headers) {
-	return Option.orElse(
-		Option.filter(bearerOf(headers), token => !isJwt(token)),
-		() => Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE])
+	return pipe(
+		bearerOf(headers),
+		Option.filter(token => !isJwt(token)),
+		Option.orElse(() => Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE]))
 	)
 }
 
@@ -73,7 +74,7 @@ export class Sessions extends Context.Service<
 		// Ends the sign-in at Auth too; a failed revocation still forgets the session.
 		readonly end: (id: string) => Effect.Effect<void, AuthError>
 		readonly remember: (token: string, claims: AccessClaims) => Effect.Effect<void>
-		readonly tokenFor: (userId: string) => Effect.Effect<string, AuthError>
+		readonly tokenOf: (userId: string) => Effect.Effect<string, AuthError>
 	}
 >()('@deslop/runtime/server/sessions') {
 	static readonly model = Session
@@ -145,11 +146,15 @@ export class Sessions extends Context.Service<
 				}
 
 				function lockOf(idHash: string) {
-					return Option.getOrElse(MutableHashMap.get(locks, idHash), () => {
-						const lock = Semaphore.makeUnsafe(1)
-						MutableHashMap.set(locks, idHash, lock)
-						return lock
-					})
+					return pipe(
+						locks,
+						MutableHashMap.get(idHash),
+						Option.getOrElse(() => {
+							const lock = Semaphore.makeUnsafe(1)
+							MutableHashMap.set(locks, idHash, lock)
+							return lock
+						})
+					)
 				}
 
 				function fresh(session: Session) {
@@ -157,14 +162,14 @@ export class Sessions extends Context.Service<
 				}
 
 				const post = Effect.fnUntraced(function* (path: string, params: Record<string, string>) {
-					return yield* pipe(
+					return yield* Effect.timeout(
 						client.execute(
 							HttpClientRequest.bodyUrlParams(
 								HttpClientRequest.post(new URL(path, yield* Effect.fromOption(issuer)).href),
 								params
 							)
 						),
-						Effect.timeout('10 seconds')
+						'10 seconds'
 					)
 				})
 
@@ -172,12 +177,11 @@ export class Sessions extends Context.Service<
 				const granted = Effect.fnUntraced(function* (params: Record<string, string>) {
 					const response = yield* post(TOKEN_PATH, params)
 					if (response.status === 400 || response.status === 401) {
-						return yield* Refused.make({
-							message: Option.getOrElse(
-								Option.flatMap(yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)), body =>
-									Option.fromUndefinedOr(body.error_description)
-								),
-								() => 'Auth refused the sign-in'
+						return yield* RefusedError.make({
+							message: pipe(
+								yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)),
+								Option.flatMap(body => Option.fromUndefinedOr(body.error_description)),
+								Option.getOrElse(() => 'Auth refused the sign-in')
 							)
 						})
 					}
@@ -209,15 +213,14 @@ export class Sessions extends Context.Service<
 						Effect.gen(function* () {
 							const session = yield* Effect.fromOption(yield* findSession(idHash))
 							if (yield* fresh(session)) return session
-							const tokens = yield* pipe(
+							const tokens = yield* Effect.catchTag(
 								granted({
 									client_id: session.clientId,
 									grant_type: 'refresh_token',
 									refresh_token: Redacted.value(session.refresh)
 								}),
-								Effect.catchTag('Refused', () =>
-									Effect.andThen(deleteSession(idHash), AuthError.make({message: 'Sign in first'}))
-								)
+								'RefusedError',
+								() => Effect.andThen(deleteSession(idHash), AuthError.make({message: 'Sign in first'}))
 							)
 							const next = yield* sessionOf(tokens, session.clientId, idHash)
 							yield* saveSession(next)
@@ -238,10 +241,11 @@ export class Sessions extends Context.Service<
 						}
 						const renewed = yield* refreshed(idHash)
 						return {token: Redacted.value(renewed.access), user: {id: renewed.userId, name: renewed.userName}}
-					}, rejected('Sign in first')),
+					}, asAuthError('Sign in first')),
 					end: Effect.fn('Sessions.end')(function* (id: string) {
 						const idHash = yield* idHashOf(id)
-						yield* pipe(
+						yield* Semaphore.withPermit(
+							lockOf(idHash),
 							Effect.gen(function* () {
 								for (const session of Option.toArray(yield* findSession(idHash))) {
 									yield* pipe(
@@ -251,34 +255,33 @@ export class Sessions extends Context.Service<
 									)
 								}
 								yield* deleteSession(idHash)
-							}),
-							Semaphore.withPermit(lockOf(idHash))
+							})
 						)
-					}, rejected('The session could not be ended')),
+					}, asAuthError('The session could not be ended')),
 					remember: (token, claims) =>
 						Effect.sync(() => {
 							MutableHashMap.set(bearers, claims.sub, {expiresAt: claims.exp * 1000, token: Redacted.make(token)})
 						}),
 					// A new sign-in also drops the sessions whose refresh token Auth no longer accepts.
 					start: Effect.fn('Sessions.start')(function* (grant: CodeGrant) {
-						const tokens = yield* pipe(
+						const tokens = yield* Effect.catchTag(
 							granted({...grant, grant_type: 'authorization_code'}),
-							Effect.catchTag('Refused', refusal => AuthError.make({message: refusal.message}))
+							'RefusedError',
+							refusal => AuthError.make({message: refusal.message})
 						)
 						const id = Base64Url.encode(yield* random.randomBytes(32))
 						const session = yield* sessionOf(tokens, grant.client_id, yield* idHashOf(id))
-						yield* pipe(
-							Effect.andThen(deleteSessionsBefore(session.refreshedAt - REFRESH_SECONDS * 1000), saveSession(session)),
-							sql.withTransaction
+						yield* sql.withTransaction(
+							Effect.andThen(deleteSessionsBefore(session.refreshedAt - REFRESH_SECONDS * 1000), saveSession(session))
 						)
 						return id
-					}, rejected('The sign-in could not be completed')),
+					}, asAuthError('The sign-in could not be completed')),
 					// The person's session whose access token lasts longest, refreshed if it must be; else the bearer they last called with.
-					tokenFor: Effect.fn('Sessions.tokenFor')(function* (userId: string) {
+					tokenOf: Effect.fn('Sessions.tokenOf')(function* (userId: string) {
 						for (const session of yield* findSessionsOf(userId)) {
 							if (yield* fresh(session)) return Redacted.value(session.access)
 							const renewed = yield* Effect.result(
-								pipe(refreshed(session.idHash), rejected('AI access is temporarily unavailable'))
+								asAuthError('AI access is temporarily unavailable')(refreshed(session.idHash))
 							)
 							if (renewed._tag === 'Success') return Redacted.value(renewed.success.access)
 							if (Schema.is(AuthError)(renewed.failure) && renewed.failure.error === 'temporarily_unavailable') {
@@ -287,14 +290,18 @@ export class Sessions extends Context.Service<
 						}
 						const now = yield* Clock.currentTimeMillis
 						const bearer = Option.getOrUndefined(
-							Option.filter(MutableHashMap.get(bearers, userId), access => access.expiresAt >= now + 60_000)
+							pipe(
+								bearers,
+								MutableHashMap.get(userId),
+								Option.filter(access => access.expiresAt >= now + 60_000)
+							)
 						)
 						if (bearer !== undefined) return Redacted.value(bearer.token)
 						MutableHashMap.remove(bearers, userId)
 						return yield* AuthError.make({
 							message: `Open ${String.capitalize(String.split(new URL(app).hostname, '.')[0])} once so it can use AI for you`
 						})
-					}, rejected('AI access is temporarily unavailable'))
+					}, asAuthError('AI access is temporarily unavailable'))
 				})
 			})
 		),

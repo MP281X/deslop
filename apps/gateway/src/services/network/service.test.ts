@@ -1,7 +1,7 @@
 import {NodeHttpClient} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Context, Effect, Layer, MutableList, Result, Schema, pipe} from 'effect'
+import {Context, Effect, Layer, MutableList, Result, Schema} from 'effect'
 
 import {FetchHttpClient, HttpClient} from 'effect/http'
 
@@ -22,18 +22,16 @@ it.effect(
 		const requests = MutableList.make<{redirect: string; url: string}>()
 		const client = Effect.service(HttpClient.HttpClient)
 		const services = yield* Layer.build(
-			pipe(
+			Layer.provide(
 				Layer.mergeAll(
-					pipe(Layer.effect(Ordinary)(client), Layer.provide(NodeHttpClient.layerFetch)),
-					pipe(Layer.effect(Upstream)(client), Layer.provide(layerUpstream))
+					Layer.provide(Layer.effect(Ordinary, client), NodeHttpClient.layerFetch),
+					Layer.provide(Layer.effect(Upstream, client), layerUpstream)
 				),
-				Layer.provide(
-					Layer.succeed(FetchHttpClient.Fetch, (input, init) => {
-						MutableList.append(requests, {redirect: init?.redirect ?? 'unset', url: new Request(input).url})
-						// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
-						return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
-					})
-				)
+				Layer.succeed(FetchHttpClient.Fetch, (input, init) => {
+					MutableList.append(requests, {redirect: init?.redirect ?? 'unset', url: new Request(input).url})
+					// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
+					return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
+				})
 			)
 		)
 		const upstream = Context.get(services, Upstream)
@@ -53,15 +51,13 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const requests = MutableList.make<{init?: RequestInit}>()
 		const services = yield* Layer.build(
-			pipe(
+			Layer.provide(
 				layerUpstream,
-				Layer.provide(
-					Layer.succeed(FetchHttpClient.Fetch, (_input, init) => {
-						MutableList.append(requests, {init})
-						// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
-						return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
-					})
-				)
+				Layer.succeed(FetchHttpClient.Fetch, (_input, init) => {
+					MutableList.append(requests, {init})
+					// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
+					return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
+				})
 			)
 		)
 		const fetch = Context.get(services, FetchHttpClient.Fetch)

@@ -4,7 +4,7 @@ import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
 
 import {localAuth} from '@deslop/runtime/server/auth'
-import {AUTH_URL, AuthError, DEVELOPER, rejected} from '@deslop/runtime/shared/auth'
+import {AUTH_URL, AuthError, DEVELOPER, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {GitHubToken} from '#services/github/schema.ts'
 import type {SignInParams} from '#services/github/schema.ts'
@@ -84,7 +84,7 @@ export class GitHub extends Context.Service<
 							code_verifier: flow.verifier,
 							redirect_uri: CALLBACK
 						}),
-						request => client.execute(request),
+						client.execute,
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken)),
 						Effect.timeout('10 seconds')
 					)
@@ -92,10 +92,10 @@ export class GitHub extends Context.Service<
 						HttpClientRequest.bearerToken(HttpClientRequest.get('https://api.github.com/user'), token.access_token)
 					)
 					return {flow, profile}
-				}, rejected('GitHub sign-in failed')),
+				}, asAuthError('GitHub sign-in failed')),
 				profile: Effect.fn('GitHub.profile')(function* (id: string) {
 					return yield* user(HttpClientRequest.get(`https://api.github.com/user/${id}`))
-				}, rejected('Cannot read the GitHub profile')),
+				}, asAuthError('Cannot read the GitHub profile')),
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const state = yield* nonce
 					const verifier = yield* nonce
@@ -111,7 +111,7 @@ export class GitHub extends Context.Service<
 						})
 					)
 					return {state, url: url.href}
-				}, rejected('Cannot start GitHub sign-in'))
+				}, asAuthError('Cannot start GitHub sign-in'))
 			})
 		})
 	)

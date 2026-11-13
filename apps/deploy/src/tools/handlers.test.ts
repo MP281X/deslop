@@ -198,7 +198,7 @@ function historyFixture() {
 	})
 }
 
-function machineOf(worker: string, options?: {error?: string; stale?: boolean}) {
+function makeMachine(worker: string, options?: {error?: string; stale?: boolean}) {
 	const start = chartWindow(60, NOW).start
 	const apps = [
 		{cpu: 12.34, id: `container:${String.slice(0, 12)(hex(0))}`, memory: 3 * GIB},
@@ -233,9 +233,9 @@ function machineOf(worker: string, options?: {error?: string; stale?: boolean}) 
 	} satisfies MachineHistory
 }
 
-function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
+function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 	const snapshot = Snapshot.make({items: [], sources: [], time: 0})
-	const machine = machineOf('dev')
+	const machine = makeMachine('dev')
 	return Fleet.of({
 		current: () => Effect.succeed([]),
 		expose: () => Effect.succeed(''),
@@ -250,8 +250,8 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 }
 
 // The tool layer is the public seam: handlers and schemas as the agent receives them.
-function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
-	return Effect.flatMap(Layer.build(pipe(ToolHandlers, Layer.provide(Layer.succeed(Fleet, fleet)))), context =>
+function makeToolkit(fleet: Parameters<typeof Fleet.of>[0]) {
+	return Effect.flatMap(Layer.build(Layer.provide(ToolHandlers, Layer.succeed(Fleet, fleet))), context =>
 		Effect.provideContext(ToolContracts, context)
 	)
 }
@@ -259,7 +259,7 @@ function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
 it.effect('answers list_apps with the page’s apps in under 20 KB and no tailnet peer', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const toolkit = yield* toolkitFor(fleetOf({snapshot: Effect.succeed(fixture())}))
+			const toolkit = yield* makeToolkit(makeFleet({snapshot: Effect.succeed(fixture())}))
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
@@ -295,7 +295,7 @@ it.effect('answers list_apps with the page’s apps in under 20 KB and no tailne
 it.effect('returns only the matching app with its process tree when list_apps names one', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const toolkit = yield* toolkitFor(fleetOf({snapshot: Effect.succeed(fixture())}))
+			const toolkit = yield* makeToolkit(makeFleet({snapshot: Effect.succeed(fixture())}))
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {app: 'minecraft'}))))
 			)
@@ -324,10 +324,10 @@ it.effect('returns only the matching app with its process tree when list_apps na
 it.effect('answers read_resource_history for 60 points and two workers in under 6 KB with named containers', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const toolkit = yield* toolkitFor(
-				fleetOf({
+			const toolkit = yield* makeToolkit(
+				makeFleet({
 					metrics: () =>
-						Effect.succeed([machineOf('dev'), machineOf('desktop', {error: 'Worker unavailable', stale: true})]),
+						Effect.succeed([makeMachine('dev'), makeMachine('desktop', {error: 'Worker unavailable', stale: true})]),
 					snapshot: Effect.succeed(historyFixture())
 				})
 			)
@@ -392,8 +392,8 @@ it.effect('runs a scheduled job through the deploy.run path', () =>
 				time: NOW,
 				workers: ['dev']
 			})
-			const toolkit = yield* toolkitFor(
-				fleetOf({run: request => Ref.set(started, Option.some(request)), snapshot: Effect.succeed(snapshot)})
+			const toolkit = yield* makeToolkit(
+				makeFleet({run: request => Ref.set(started, Option.some(request)), snapshot: Effect.succeed(snapshot)})
 			)
 			assert.deepStrictEqual(
 				Option.getOrThrow(
@@ -411,9 +411,15 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 		Effect.gen(function* () {
 			const exposed = yield* Ref.make(Option.none<ExposeRequest>())
 			const hidden = yield* Ref.make(Option.none<HideRequest>())
-			const toolkit = yield* toolkitFor(
-				fleetOf({
-					expose: input => Effect.as(Ref.set(exposed, Option.some(input)), 'https://desktop.tailnet-8c4c.ts.net:4000'),
+			const toolkit = yield* makeToolkit(
+				makeFleet({
+					expose: Effect.fnUntraced(function* (input) {
+						return yield* pipe(
+							exposed,
+							Ref.set(Option.some(input)),
+							Effect.as('https://desktop.tailnet-8c4c.ts.net:4000')
+						)
+					}),
 					hide: input => Ref.set(hidden, Option.some(input)),
 					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))
 				})

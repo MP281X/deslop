@@ -150,10 +150,11 @@ const noKey = Organizer.of({
 
 function counting(calls: Ref.Ref<number>) {
 	return Organizer.of({
-		organize: (_userId, input) =>
-			Effect.as(
-				Ref.update(calls, count => count + 1),
-				{
+		organize: Effect.fnUntraced(function* (_userId, input) {
+			return yield* pipe(
+				calls,
+				Ref.update(count => count + 1),
+				Effect.as({
 					body: '',
 					definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
 					screenText: '',
@@ -161,8 +162,9 @@ function counting(calls: Ref.Ref<number>) {
 					tags: ['cooking', 'soup'],
 					title: 'Soup',
 					topics: 'lentils; cumin'
-				}
+				})
 			)
+		})
 	})
 }
 
@@ -200,7 +202,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 				sources: recipe
 			})
 			const updates = yield* Queue.unbounded<readonly string[]>()
-			yield* Effect.forkChild(Stream.runForEach(notes.search('secret'), ids => Queue.offer(updates, ids)))
+			yield* pipe(
+				notes.search('secret'),
+				Stream.runForEach(ids => Queue.offer(updates, ids)),
+				Effect.forkChild
+			)
 			assert.deepStrictEqual(yield* Queue.take(updates), [])
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
 			assert.deepStrictEqual(yield* Queue.take(updates), [IDS[0]])
@@ -332,7 +338,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 					const notes = yield* open({
 						database,
 						directory,
-						organizer: Organizer.of({organize: userId => Effect.andThen(Queue.offer(reached, userId), Effect.never)}),
+						organizer: Organizer.of({
+							organize: Effect.fnUntraced(function* (userId) {
+								return yield* pipe(reached, Queue.offer(userId), Effect.andThen(Effect.never))
+							})
+						}),
 						sources: recipe
 					})
 					yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
@@ -344,8 +354,9 @@ it.layer(NodeServices.layer)('Notes', test => {
 				database,
 				directory,
 				organizer: Organizer.of({
-					organize: (userId, input) =>
-						Effect.andThen(Queue.offer(reached, userId), counting(calls).organize(userId, input))
+					organize: Effect.fnUntraced(function* (userId, input) {
+						return yield* pipe(reached, Queue.offer(userId), Effect.andThen(counting(calls).organize(userId, input)))
+					})
 				}),
 				sources: recipe
 			})
@@ -418,18 +429,20 @@ it.layer(NodeServices.layer)('Notes', test => {
 				}
 			]
 			const organizer = Organizer.of({
-				organize: (_userId, input) =>
-					Effect.map(
-						Ref.getAndUpdate(seen, all => [...all, input.tags]),
-						earlier => ({
+				organize: Effect.fnUntraced(function* (_userId, input) {
+					return yield* pipe(
+						seen,
+						Ref.getAndUpdate(all => [...all, input.tags]),
+						Effect.map(earlier => ({
 							body: '',
 							screenText: '',
 							summary: '',
 							title: 'Soup',
 							topics: '',
 							...Array.getUnsafe(answers, Number.min(earlier.length, 1))
-						})
+						}))
 					)
+				})
 			})
 			yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -469,18 +482,19 @@ it.layer(NodeServices.layer)('Notes', test => {
 						Effect.succeed({info: '# Lentils', transcript: Effect.succeedSome('[00:01] Soak the lentils overnight.\n')})
 				}),
 				organizer: Organizer.of({
-					organize: (userId, input) =>
-						Effect.andThen(
+					organize: Effect.fnUntraced(function* (userId, input) {
+						return yield* pipe(
+							seen,
 							Ref.set(
-								seen,
 								Option.some({
 									images: Array.map(input.images, image => image.bytes),
 									labels: Array.map(input.images, image => image.label),
 									transcript: input.note.transcript
 								})
 							),
-							counting(calls).organize(userId, input)
+							Effect.andThen(counting(calls).organize(userId, input))
 						)
+					})
 				}),
 				sources: Sources.of({
 					...recipe,
@@ -513,16 +527,23 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				media: Media.of({
 					...noVideo,
-					frames: link =>
-						Effect.andThen(
-							Ref.update(lookups, links => Array.append(links, link)),
-							Effect.as(sampled.await, [])
-						),
-					read: (_userId, link, fallback) =>
-						Effect.as(
-							Ref.update(lookups, links => Array.append(links, `${link} | ${fallback ?? ''}`)),
-							{info: 'Video metadata', transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')}
+					frames: Effect.fnUntraced(function* (link) {
+						return yield* pipe(
+							lookups,
+							Ref.update(links => Array.append(links, link)),
+							Effect.andThen(Effect.as(sampled.await, []))
 						)
+					}),
+					read: Effect.fnUntraced(function* (_userId, link, fallback) {
+						return yield* pipe(
+							lookups,
+							Ref.update(links => Array.append(links, `${link} | ${fallback ?? ''}`)),
+							Effect.as({
+								info: 'Video metadata',
+								transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')
+							})
+						)
+					})
 				}),
 				organizer: counting(calls),
 				sources: Sources.of({
@@ -608,10 +629,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* TestClock.adjust('1 second')
 			yield* release.open
 			yield* settled(notes, current => Array.every(current, note => note.status === 'ready'))
-			yield* Effect.forEach(
-				Array.makeBy(5, () => Effect.yieldNow),
-				Function.identity,
-				{concurrency: 1, discard: true}
+			yield* pipe(
+				5,
+				Array.makeBy(() => Effect.yieldNow),
+				Effect.forEach(Function.identity, {concurrency: 1, discard: true})
 			)
 			const [first, second] = tagList
 			assert.isDefined(first)
@@ -698,14 +719,13 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				organizer: Organizer.of({
-					organize: (userId, input) =>
-						Effect.andThen(
-							Ref.set(
-								seen,
-								Array.map(input.images, image => image.bytes)
-							),
-							tagger.organize(userId, input)
+					organize: Effect.fnUntraced(function* (userId, input) {
+						return yield* pipe(
+							seen,
+							Ref.set(Array.map(input.images, image => image.bytes)),
+							Effect.andThen(tagger.organize(userId, input))
 						)
+					})
 				}),
 				sources: Sources.of({
 					...recipe,

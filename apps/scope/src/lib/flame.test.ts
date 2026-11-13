@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, MutableList, Number, Option, Order, Record} from 'effect'
+import {Array, Boolean, MutableList, Number, Option, Order, Record, pipe} from 'effect'
 
 import {lanesOf} from '#lib/flame.ts'
 
@@ -11,22 +11,25 @@ function span(spanId: string, depth: number, offsetMs: number, durationMs: numbe
 }
 
 function byStart() {
-	return Order.combine(
-		Order.mapInput(Order.Number, (item: Span) => item.offsetMs),
-		Order.mapInput(Order.flip(Order.Number), (item: Span) => item.durationMs)
+	return pipe(
+		Order.Number,
+		Order.mapInput((item: Span) => item.offsetMs),
+		Order.combine(Order.mapInput(Order.flip(Order.Number), (item: Span) => item.durationMs))
 	)
 }
 
 // The quadratic lane search the packer replaced, kept as the reference its lane choices must keep matching.
 function referenceLanesOf(spans: readonly Span[], reservations: Record<string, number> = {}) {
 	const root = Option.getOrUndefined(Array.findFirst(spans, item => item.depth === 0))
-	const jobs = Array.sort(
-		Array.filter(spans, item => item.depth === 1),
-		byStart()
+	const jobs = pipe(
+		spans,
+		Array.filter(item => item.depth === 1),
+		Array.sort(byStart())
 	)
-	const rest = Array.sort(
-		Array.filter(spans, item => item.depth > 1 || (item.depth === 0 && item !== root)),
-		byStart()
+	const rest = pipe(
+		spans,
+		Array.filter(item => item.depth > 1 || (item.depth === 0 && item !== root)),
+		Array.sort(byStart())
 	)
 	const placed = MutableList.make<{lane: number; span: Span}>()
 	const intervals = MutableList.make<{end: number; lane: number; start: number}>()
@@ -41,30 +44,36 @@ function referenceLanesOf(spans: readonly Span[], reservations: Record<string, n
 	if (root !== undefined) add(root, 0)
 	Array.forEach(jobs, item => {
 		const lane = add(item, laneCount())
-		Option.match(Record.get(reservations, item.spanId), {
-			onNone: () => undefined,
-			onSome: reserve =>
-				MutableList.append(intervals, {
-					end: item.offsetMs + item.durationMs + reserve,
-					lane,
-					start: item.offsetMs + item.durationMs
-				})
-		})
+		pipe(
+			reservations,
+			Record.get(item.spanId),
+			Option.match({
+				onNone: () => undefined,
+				onSome: reserve =>
+					MutableList.append(intervals, {
+						end: item.offsetMs + item.durationMs + reserve,
+						lane,
+						start: item.offsetMs + item.durationMs
+					})
+			})
+		)
 	})
 	Array.forEach(rest, item => {
 		const end = item.offsetMs + item.durationMs
 		const lanes = laneCount()
-		Option.match(
-			Array.findFirst(Array.range(0, lanes - 1), lane =>
-				Array.every(
-					Array.filter(MutableList.toArray(intervals), interval => interval.lane === lane),
-					interval => {
+		pipe(
+			Array.range(0, lanes - 1),
+			Array.findFirst(lane =>
+				pipe(
+					MutableList.toArray(intervals),
+					Array.filter(interval => interval.lane === lane),
+					Array.every(interval => {
 						if (item.durationMs === 0) return !(interval.start <= item.offsetMs && item.offsetMs <= interval.end)
 						return !(item.offsetMs < interval.end && interval.start < end)
-					}
+					})
 				)
 			),
-			{onNone: () => add(item, lanes), onSome: lane => add(item, lane)}
+			Option.match({onNone: () => add(item, lanes), onSome: lane => add(item, lane)})
 		)
 	})
 	return MutableList.toArray(placed)
@@ -140,14 +149,19 @@ function laneOf(placed: readonly {lane: number; span: Span}[], spanId: string) {
 
 function assertLanesDisjoint(placed: readonly {lane: number; span: Span}[], lanes: number) {
 	for (const lane of Array.range(0, lanes - 1)) {
-		const laneSpans = Array.map(
-			Array.filter(placed, entry => entry.lane === lane),
-			entry => entry.span
+		const laneSpans = pipe(
+			placed,
+			Array.filter(entry => entry.lane === lane),
+			Array.map(entry => entry.span)
 		)
 		Array.forEach(laneSpans, (left, index) =>
-			Array.forEach(Array.drop(laneSpans, index + 1), right =>
-				assert.isFalse(
-					left.offsetMs < right.offsetMs + right.durationMs && right.offsetMs < left.offsetMs + left.durationMs
+			pipe(
+				laneSpans,
+				Array.drop(index + 1),
+				Array.forEach(right =>
+					assert.isFalse(
+						left.offsetMs < right.offsetMs + right.durationMs && right.offsetMs < left.offsetMs + left.durationMs
+					)
 				)
 			)
 		)

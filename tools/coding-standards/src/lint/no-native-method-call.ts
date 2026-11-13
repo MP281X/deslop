@@ -3,7 +3,7 @@ import {Array, Option, Predicate, Record, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {matches, memberName, memberRoot, resolveBinding, variableFor} from '#lib/ast.ts'
+import {matches, memberName, memberRoot, resolveBinding, variableOf} from '#lib/ast.ts'
 
 // The compiler's preferEffectArray and preferEffectString own string methods and mapped array methods such as map; this rule keeps the array methods they skip and Promise chains.
 const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
@@ -77,7 +77,7 @@ const localPath = matches(/^[.#~/]|^@\//u)
 function declaredType(context: Context, node: ESTree.Expression | ESTree.Super): Option.Option<ESTree.TSType> {
 	if (node.type === 'Identifier') {
 		return pipe(
-			variableFor(context, node),
+			variableOf(context, node),
 			Option.flatMap(variable => Array.head(variable.defs)),
 			Option.flatMap(definition => Option.fromNullishOr(definition.name.typeAnnotation)),
 			Option.map(annotation => annotation.typeAnnotation)
@@ -124,7 +124,7 @@ function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
 	if (root.type !== 'Identifier') return false
 	if (root.name === 'path') return !throughCall
 	return pipe(
-		variableFor(input.context, root),
+		variableOf(input.context, root),
 		// A global such as Buffer can appear as a variable without definitions.
 		Option.filter(variable => Array.isReadonlyArrayNonEmpty(variable.defs)),
 		Option.match({
@@ -168,7 +168,7 @@ export const noNativeMethodCall = defineRule({
 					// String.match returns every match of a global pattern, unlike exec, so only a non-global exec maps to it.
 					name =>
 						name === 'test' ||
-						(name === 'exec' && Option.exists(Option.flatten(regExpFlags), flags => !pipe(flags, String.includes('g'))))
+						(name === 'exec' && Option.exists(Option.flatten(regExpFlags), flags => !String.includes('g')(flags)))
 				)
 			) {
 				context.report({
@@ -185,7 +185,8 @@ export const noNativeMethodCall = defineRule({
 				),
 				Option.flatMap(name =>
 					pipe(
-						Record.get(REPLACEMENTS, name),
+						REPLACEMENTS,
+						Record.get(name),
 						Option.map(replacement => ({name, replacement}))
 					)
 				),

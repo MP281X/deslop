@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 
 import { Button } from "#components/ui/button.tsx"
 import { CheckIcon, CopyIcon } from "@phosphor-icons/react"

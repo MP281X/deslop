@@ -15,9 +15,14 @@ export const copyTemplate = Effect.fnUntraced(function* (input: {
 	if (yield* fs.exists(input.to)) {
 		return yield* CliError.UserError.make({cause: input.to, userMessage: `${input.to} already exists.`})
 	}
-	const entries = pipe(
+	const entries = Array.filter(
 		yield* fs.readDirectory(input.from, {recursive: true}),
-		Array.filter(entry => !Array.some(pipe(entry, String.split(path.sep)), segment => Array.contains(SKIPPED, segment)))
+		entry =>
+			!pipe(
+				entry,
+				String.split(path.sep),
+				Array.some(segment => Array.contains(SKIPPED, segment))
+			)
 	)
 	yield* Effect.forEach(
 		entries,

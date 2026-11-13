@@ -33,7 +33,7 @@ import {Sessions} from '@deslop/runtime/server/sessions'
 import {AccessClaims} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
-import {AiProxy} from '#services/ai/service.ts'
+import {AiProxy} from '#services/ai-proxy/service.ts'
 
 const JSON_BODY = '{ "model": "test", "usage": {"input_tokens": 10, "output_tokens": 5} }'
 const SSE_BODY =
@@ -41,19 +41,21 @@ const SSE_BODY =
 
 const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient) {
 	const signature = Context.get(yield* Layer.build(NodeCrypto.layer), Signature.Signature)
-	const pair = yield* pipe(
+	const pair = yield* Effect.provideService(
 		Jwk.generateKeyPair({algorithm: 'EdDSA', kid: 'test'}),
-		Effect.provideService(Signature.Signature, signature)
+		Signature.Signature,
+		signature
 	)
-	const signingKey = yield* pipe(
+	const signingKey = yield* Effect.provideService(
 		Jwk.importPrivate(pair.privateKey, 'EdDSA'),
-		Effect.provideService(Signature.Signature, signature)
+		Signature.Signature,
+		signature
 	)
 	const down = yield* Ref.make(false)
 	const sign = Effect.fnUntraced(function* (expires: number = 600) {
 		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
 		return Redacted.value(
-			yield* pipe(
+			yield* Effect.provideService(
 				Jwt.sign(
 					AccessClaims,
 					{
@@ -69,7 +71,8 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 					signingKey,
 					{kid: 'test', typ: 'at+jwt'}
 				),
-				Effect.provideService(Signature.Signature, signature)
+				Signature.Signature,
+				signature
 			)
 		)
 	})
@@ -135,19 +138,18 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	const sql = Context.get(database, SqlClient.SqlClient)
 	// Alice's usage after the services made its table, then again after each call of hers is saved.
 	const saved = yield* Queue.unbounded<{costUsd: number; unknownCostCalls: number}>()
-	yield* Effect.forkScoped(
-		Stream.runForEach(
-			sql.reactive(
-				{aiUsage: ['alice']},
-				Effect.flatMap(
-					sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
-					Schema.decodeUnknownEffect(
-						Schema.Tuple([Schema.Struct({costUsd: Schema.Finite, unknownCostCalls: Schema.Finite})])
-					)
+	yield* pipe(
+		sql.reactive(
+			{aiUsage: ['alice']},
+			Effect.flatMap(
+				sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
+				Schema.decodeUnknownEffect(
+					Schema.Tuple([Schema.Struct({costUsd: Schema.Finite, unknownCostCalls: Schema.Finite})])
 				)
-			),
-			rows => Queue.offer(saved, rows[0])
-		)
+			)
+		),
+		Stream.runForEach(rows => Queue.offer(saved, rows[0])),
+		Effect.forkScoped
 	)
 	assert.deepStrictEqual(yield* Queue.take(saved), {costUsd: 0, unknownCostCalls: 0})
 	const web = yield* Effect.acquireRelease(
@@ -178,9 +180,15 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	}
 })
 
-it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its cost', () =>
-	pipe(
-		Effect.gen(function* () {
+it.layer(
+	ConfigProvider.layer(
+		ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
+	),
+	{excludeTestServices: true}
+)(test => {
+	test.effect(
+		'forwards JSON and SSE unchanged using the JWT owner key and meters its cost',
+		Effect.fnUntraced(function* () {
 			const f = yield* fixture()
 			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 			yield* f.ai.setKey('bob', 'anthropic', Redacted.make('bob-secret'))
@@ -210,7 +218,7 @@ it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its 
 				assert.strictEqual(usage.unknownCostCalls, 0)
 			}
 			assert.deepStrictEqual(
-				Array.map(yield* f.ai.keys('alice'), key => ({...key, lastStatus: Option.getOrUndefined(key.lastStatus)})),
+				Array.map(yield* f.ai.list('alice'), key => ({...key, lastStatus: Option.getOrUndefined(key.lastStatus)})),
 				[{last4: 'cret', lastStatus: 201, provider: 'anthropic'}]
 			)
 			const response = yield* f.request('/ai/anthropic/cost', {
@@ -225,19 +233,12 @@ it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its 
 			const missing = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(missing.status, 402)
 			assert.include(yield* Effect.promise(() => missing.text()), 'Add your Anthropic key in Gateway')
-		}),
-		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
-		Effect.provide(
-			ConfigProvider.layer(
-				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
-			)
-		)
+		})
 	)
-)
 
-it.live('retries a failed pricing refresh on the next call instead of pricing a day as unknown', () =>
-	pipe(
-		Effect.gen(function* () {
+	test.effect(
+		'retries a failed pricing refresh on the next call instead of pricing a day as unknown',
+		Effect.fnUntraced(function* () {
 			const f = yield* fixture()
 			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 			const token = yield* f.sign()
@@ -261,19 +262,12 @@ it.live('retries a failed pricing refresh on the next call instead of pricing a 
 			const priced = yield* Queue.take(f.saved)
 			assert.closeTo(priced.costUsd, 0.00004, 1e-12)
 			assert.strictEqual(priced.unknownCostCalls, 1)
-		}),
-		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
-		Effect.provide(
-			ConfigProvider.layer(
-				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
-			)
-		)
+		})
 	)
-)
 
-it.live('refuses missing, invalid and expired bearers and has no credential-creation endpoint', () =>
-	pipe(
-		Effect.gen(function* () {
+	test.effect(
+		'refuses missing, invalid and expired bearers and has no credential-creation endpoint',
+		Effect.fnUntraced(function* () {
 			const f = yield* fixture()
 			for (const authorization of [
 				'',
@@ -288,39 +282,24 @@ it.live('refuses missing, invalid and expired bearers and has no credential-crea
 				assert.deepEqual(yield* Effect.promise(() => response.json()), {error: {message: 'Sign in first'}})
 			}
 			assert.equal((yield* f.request(Array.join(['', 'ai', 'grants'], '/'), {method: 'POST'})).status, 404)
-		}),
-		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP entry point owns the configured service lifetime.
-		Effect.provide(
-			ConfigProvider.layer(
-				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
-			)
-		)
+		})
 	)
-)
 
-it.live('answers 503 rather than a refusal while Auth cannot serve its key set', () =>
-	pipe(
-		Effect.gen(function* () {
+	test.effect(
+		'answers 503 rather than a refusal while Auth cannot serve its key set',
+		Effect.fnUntraced(function* () {
 			const f = yield* fixture()
 			yield* Ref.set(f.down, true)
 			const response = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${yield* f.sign()}`}})
 			assert.equal(response.status, 503)
 			assert.equal(response.headers.get('retry-after'), '5')
-		}),
-		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP entry point owns the configured service lifetime.
-		Effect.provide(
-			ConfigProvider.layer(
-				ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
-			)
-		)
+		})
 	)
-)
 
-it.layer(NodeHttpServer.layerTest, {excludeTestServices: true})(test => {
-	test.effect(
-		'forwards decoded gzip JSON without stale encoding or hop-by-hop headers',
-		Effect.fnUntraced(
-			function* () {
+	test.layer(NodeHttpServer.layerTest)(serverTest => {
+		serverTest.effect(
+			'forwards decoded gzip JSON without stale encoding or hop-by-hop headers',
+			Effect.fnUntraced(function* () {
 				const bytes = gzipSync(JSON_BODY)
 				yield* Layer.build(
 					HttpRouter.serve(
@@ -351,13 +330,7 @@ it.layer(NodeHttpServer.layerTest, {excludeTestServices: true})(test => {
 				for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection', 'x-private']) {
 					assert.isNull(response.headers.get(name))
 				}
-			},
-			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This gzip HTTP test entry point owns its configured service lifetime.
-			Effect.provide(
-				ConfigProvider.layer(
-					ConfigProvider.fromUnknown({APP_URL: 'https://gateway.mp281x.xyz', AUTH_URL: 'https://auth.mp281x.xyz'})
-				)
-			)
+			})
 		)
-	)
+	})
 })

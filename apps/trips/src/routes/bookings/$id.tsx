@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Option} from 'effect'
+import {Array, DateTime, Option, pipe} from 'effect'
 
 import {
 	Button,
@@ -34,7 +34,7 @@ import {colors, space, text} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 
 import {nowAtom, refreshAtom, removal} from '#lib/bookings.ts'
-import {mapsAtom, placeLine, ridesFor, uberAtom} from '#lib/rides.ts'
+import {mapsAtom, placeLine, ridesOf, uberAtom} from '#lib/rides.ts'
 import {dayAt, primary, problemOf, statusOf, tones} from '#lib/status.ts'
 import {arrivalOf, clockAt, departureOf, MINUTE, routeOf, titleOf} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Flight, FlightTracking, Stay, Tone, Train} from '#services/bookings/schema.ts'
@@ -221,7 +221,7 @@ function Rides(props: {booking: Booking; bookings: BookingList; now: number}) {
 	const uber = useAtomSet(uberAtom)
 	return (
 		<>
-			{Array.map(ridesFor(props.booking, props.bookings, props.now), ride => (
+			{Array.map(ridesOf(props.booking, props.bookings, props.now), ride => (
 				<Section key={ride.label} title={`To ${ride.label}`}>
 					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>{placeLine(ride.place)}</Text>
 					<Button label="Directions in Maps" systemImage="map" onPress={() => maps(ride)} />
@@ -236,9 +236,10 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	return Option.match(
-		Array.findFirst(props.bookings, booking => booking.id === props.id),
-		{
+	return pipe(
+		props.bookings,
+		Array.findFirst(booking => booking.id === props.id),
+		Option.match({
 			onNone: () => (
 				<Empty
 					systemImage="trash"
@@ -308,6 +309,6 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 					</Toolbar>
 				)
 			}
-		}
+		})
 	)
 }

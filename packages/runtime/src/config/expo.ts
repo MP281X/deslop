@@ -1,19 +1,17 @@
-import {Boolean, Config, Effect, Option, pipe} from 'effect'
+import {Boolean, Config, Effect, Option} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'
 
 // EAS sets APP_VARIANT from the build profile; the simulator build gets its own bundle identifier and name.
-export function make(app: {projectId: string; slug: string}) {
+export function makeExpoConfig(app: {projectId: string; slug: string}) {
 	// oxlint-disable-next-line eslint/no-restricted-properties -- Expo loads the app config outside any Effect runtime.
 	return Effect.runSync(
 		Effect.gen(function* () {
-			const release = yield* pipe(Config.Int('RELEASE_NUMBER'), Config.withDefault(0))
+			const release = yield* Config.withDefault(Config.Int('RELEASE_NUMBER'), 0)
 			const team = yield* Config.option(Config.String('APPLE_TEAM_ID'))
 			const production =
-				(yield* pipe(
-					Config.Literals(['development', 'production'], 'APP_VARIANT'),
-					Config.withDefault('development')
-				)) === 'production'
+				(yield* Config.withDefault(Config.Literals(['development', 'production'], 'APP_VARIANT'), 'development')) ===
+				'production'
 			const variant = Boolean.match(production, {
 				onFalse: () => ({
 					bundleIdentifier: `xyz.mp281x.${app.slug}.dev`,

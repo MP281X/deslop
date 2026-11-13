@@ -19,7 +19,7 @@ import type {HistoryQuery} from '#services/metrics/schema.ts'
 
 addPageTelemetry('@deslop/deploy')
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/deploy/lib/fleet/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: layerPageProtocol
 }) {}
@@ -30,13 +30,10 @@ export const inventoryAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
 		keepValueThroughOutages(
 			get,
-			pipe(
-				liveStream(RpcClient, 'inventory.watch'),
-				Stream.tapCause(cause =>
-					Effect.sync(() => {
-						if (isDeniedCause(cause)) get.set(exposeTargetAtom, Option.none())
-					})
-				)
+			Stream.tapCause(liveStream(RpcClient, 'inventory.watch'), cause =>
+				Effect.sync(() => {
+					if (isDeniedCause(cause)) get.set(exposeTargetAtom, Option.none())
+				})
 			),
 			reconnectOnDrop
 		)
@@ -45,7 +42,8 @@ export const inventoryAtom = Atom.keepAlive(
 
 export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 	pipe(
-		Effect.flatMap(RpcClient, client => client('exposures.expose', input)),
+		RpcClient,
+		Effect.flatMap(client => client('exposures.expose', input)),
 		Effect.tap(() => Effect.sync(() => get.set(exposeTargetAtom, Option.none())))
 	)
 )
@@ -62,10 +60,10 @@ export const openExposeAtom = Atom.writable(
 // Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
 export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) =>
-		Effect.zip(
-			Effect.flatMap(RpcClient, client => client('inventory.run', input)),
-			Effect.sleep('10 seconds'),
-			{concurrent: true}
+		pipe(
+			RpcClient,
+			Effect.flatMap(client => client('inventory.run', input)),
+			Effect.zip(Effect.sleep('10 seconds'), {concurrent: true})
 		)
 	)
 )

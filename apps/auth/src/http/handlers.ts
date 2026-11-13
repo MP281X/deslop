@@ -13,7 +13,7 @@ import {
 	SESSION_COOKIE,
 	clientIdOf,
 	failureOptions,
-	rejected
+	asAuthError
 } from '@deslop/runtime/shared/auth'
 
 import {App, AppParams} from '#services/apps/schema.ts'
@@ -140,9 +140,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 					Option.map(addressGroup),
 					Option.getOrElse(() => 'unknown')
 				)
-				return yield* pipe(
+				return yield* Effect.matchEffect(
 					limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}),
-					Effect.matchEffect({
+					{
 						onFailure: failure =>
 							Effect.succeed(
 								HttpServerResponse.text('Too many requests; retry later', {
@@ -156,7 +156,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								})
 							),
 						onSuccess: () => handler
-					})
+					}
 				)
 			})
 		}
@@ -174,14 +174,13 @@ export const HttpHandlers = HttpRouter.use(router =>
 				'apps',
 				10
 			)(
-				pipe(
+				Effect.catchIf(
 					Effect.gen(function* () {
-						const params = yield* pipe(HttpServerRequest.schemaBodyJson(AppParams), rejected('Send the app’s origin'))
+						const params = yield* asAuthError('Send the app’s origin')(HttpServerRequest.schemaBodyJson(AppParams))
 						return yield* HttpServerResponse.schemaJson(App.json)(yield* apps.register(params.origin))
 					}),
-					Effect.catchIf(Schema.is(AuthError), failure =>
-						Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))
-					)
+					Schema.is(AuthError),
+					failure => Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))
 				)
 			)
 		)
@@ -213,15 +212,12 @@ export const HttpHandlers = HttpRouter.use(router =>
 			)(
 				oauth(
 					Effect.gen(function* () {
-						const params = yield* pipe(
-							HttpServerRequest.schemaBodyJson(Registration),
-							Effect.mapError(cause =>
-								AuthError.make({
-									cause,
-									error: 'invalid_client_metadata',
-									message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
-								})
-							)
+						const params = yield* Effect.mapError(HttpServerRequest.schemaBodyJson(Registration), cause =>
+							AuthError.make({
+								cause,
+								error: 'invalid_client_metadata',
+								message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
+							})
 						)
 						if (!Array.every(params.redirect_uris, allowedRedirect)) {
 							return yield* AuthError.make({
@@ -257,14 +253,13 @@ export const HttpHandlers = HttpRouter.use(router =>
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest
 						// Until the client and its callback check out, an error stays on this page: RFC 9700 §4.11 forbids redirecting it.
-						const asked = yield* pipe(
-							HttpServerRequest.schemaSearchParams(AuthorizeClient),
-							rejected('The authorization request names no client_id')
+						const asked = yield* asAuthError('The authorization request names no client_id')(
+							HttpServerRequest.schemaSearchParams(AuthorizeClient)
 						)
 						const client = yield* tokens.client(asked)
 						return yield* pipe(
 							HttpServerRequest.schemaSearchParams(AuthorizeParams),
-							rejected('Invalid authorization request'),
+							asAuthError('Invalid authorization request'),
 							Effect.flatMap(params => clientRequest(asked, client, params)),
 							Effect.flatMap(
 								Effect.fnUntraced(function* (checked) {
@@ -322,10 +317,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest
-						const params = yield* pipe(
-							HttpServerRequest.schemaBodyUrlParams(DeviceParams),
-							rejected('Send a client_id')
-						)
+						const params = yield* asAuthError('Send a client_id')(HttpServerRequest.schemaBodyUrlParams(DeviceParams))
 						const started = yield* signIns.start(
 							{
 								_tag: 'Device',
@@ -357,13 +349,12 @@ export const HttpHandlers = HttpRouter.use(router =>
 			)(
 				oauth(
 					Effect.gen(function* () {
-						const grant = yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenGrant), rejected('Send a grant_type'))
+						const grant = yield* asAuthError('Send a grant_type')(HttpServerRequest.schemaBodyUrlParams(TokenGrant))
 						if (grant.grant_type === DEVICE_GRANT) {
 							return HttpServerResponse.jsonUnsafe(
 								yield* signIns.poll(
-									yield* pipe(
-										HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams),
-										rejected('Send the device_code and client_id')
+									yield* asAuthError('Send the device_code and client_id')(
+										HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams)
 									)
 								)
 							)
@@ -376,7 +367,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						}
 						return Match.valueTags(
 							yield* tokens.exchange(
-								yield* pipe(HttpServerRequest.schemaBodyUrlParams(TokenParams), rejected('Invalid token request')),
+								yield* asAuthError('Invalid token request')(HttpServerRequest.schemaBodyUrlParams(TokenParams)),
 								originOf(yield* HttpServerRequest.HttpServerRequest),
 								people.allowed
 							),
@@ -404,7 +395,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						yield* tokens.revoke(
-							yield* pipe(HttpServerRequest.schemaBodyUrlParams(RevokeParams), rejected('Invalid revocation request'))
+							yield* asAuthError('Invalid revocation request')(HttpServerRequest.schemaBodyUrlParams(RevokeParams))
 						)
 						return HttpServerResponse.empty({status: 200})
 					})
@@ -421,7 +412,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const started = yield* github.start(
-							yield* pipe(HttpServerRequest.schemaSearchParams(SignInParams), rejected('Invalid sign-in request'))
+							yield* asAuthError('Invalid sign-in request')(HttpServerRequest.schemaSearchParams(SignInParams))
 						)
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.redirect(started.url),
@@ -436,12 +427,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/auth/github/callback',
-			pipe(
+			Effect.catch(
 				Effect.gen(function* () {
-					const params = yield* pipe(
-						HttpServerRequest.schemaSearchParams(CallbackParams),
-						rejected('GitHub sent no code')
-					)
+					const params = yield* asAuthError('GitHub sent no code')(HttpServerRequest.schemaSearchParams(CallbackParams))
 					if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
 						return yield* AuthError.make({message: 'The sign-in state does not match'})
 					}
@@ -462,15 +450,13 @@ export const HttpHandlers = HttpRouter.use(router =>
 						Effect.catch(cause => githubFailed(cause, Option.some(finished.flow)))
 					)
 				}),
-				// A cancelled GitHub step sends no code, only the state of the sign-in it belonged to.
-				Effect.catch(cause =>
+				cause =>
 					Effect.flatMap(
 						Effect.option(
 							Effect.flatMap(HttpServerRequest.schemaSearchParams(LoginState), found => github.cancel(found.state))
 						),
 						flow => githubFailed(cause, flow)
 					)
-				)
 			)
 		)
 		yield* router.add(
@@ -482,9 +468,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 			)(
 				oauth(
 					Effect.gen(function* () {
-						const next = (yield* pipe(
-							HttpServerRequest.schemaSearchParams(BrowserParams),
-							rejected('Invalid sign-in request')
+						const next = (yield* asAuthError('Invalid sign-in request')(
+							HttpServerRequest.schemaSearchParams(BrowserParams)
 						)).next
 						return waitingAt(
 							yield* signIns.start(
@@ -519,9 +504,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest
-						const input = yield* pipe(
-							HttpServerRequest.schemaBodyJson(PasskeySignIn),
-							rejected('Send the passkey’s answer')
+						const input = yield* asAuthError('Send the passkey’s answer')(
+							HttpServerRequest.schemaBodyJson(PasskeySignIn)
 						)
 						const started = yield* tokens.startSession(
 							yield* people.allowed(yield* passkeys.signIn(input.response)),
@@ -531,9 +515,10 @@ export const HttpHandlers = HttpRouter.use(router =>
 						)
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.jsonUnsafe(
-								Option.match(
-									Option.filter(Option.fromUndefinedOr(input.next), page => returnable(page, origin)),
-									{onNone: () => ({}), onSome: next => ({next})}
+								pipe(
+									Option.fromUndefinedOr(input.next),
+									Option.filter(page => returnable(page, origin)),
+									Option.match({onNone: () => ({}), onSome: next => ({next})})
 								)
 							),
 							SESSION_COOKIE,
@@ -550,7 +535,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			pipe(
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
-					const params = yield* pipe(HttpServerRequest.schemaSearchParams(RequestParams), rejected('Name the sign-in'))
+					const params = yield* asAuthError('Name the sign-in')(HttpServerRequest.schemaSearchParams(RequestParams))
 					const collected = yield* signIns.collect(params.request, request.headers)
 					const cookie = `${REQUEST_COOKIE}${typedCode(params.request)}`
 					return Match.valueTags(collected, {
@@ -567,7 +552,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							)
 					})
 				}),
-				rejected('Cannot complete the sign-in'),
+				asAuthError('Cannot complete the sign-in'),
 				Effect.catch(failure => Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))),
 				Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
 			)

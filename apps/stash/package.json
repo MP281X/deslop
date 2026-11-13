@@ -48,7 +48,6 @@
 		"@bacons/apple-targets": "latest",
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/ai-anthropic": "latest",
 		"@effect/ai-openrouter": "latest",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",

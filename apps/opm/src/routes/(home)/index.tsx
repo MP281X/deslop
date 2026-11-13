@@ -34,9 +34,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {shortDate} from '@deslop/components-mobile/dates'
 import {Problem} from '@deslop/components-mobile/problem'
 import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
+import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -49,10 +51,9 @@ import {
 	itemRow
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {bottomBarSearch, shortDate} from '@deslop/components-mobile/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
-import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem} from '#services/chapters/schema.ts'
@@ -91,16 +92,18 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 						})}
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
-						{Array.join(
-							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
-							' · '
+						{pipe(
+							[props.chapter.title, postedOn(props.chapter.postedAt)],
+							Array.filter(String.isNonEmpty),
+							Array.join(' · ')
 						)}
 					</ItemDescription>
 				</ItemContent>
 				{/* Weight already says unread or read, so progress shows only for a chapter left part-way; the pages before the one on screen are read. */}
-				{Option.match(
-					Option.filter(props.chapter.reading, reading => !reading.done && reading.page > 0),
-					{
+				{pipe(
+					props.chapter.reading,
+					Option.filter(reading => !reading.done && reading.page > 0),
+					Option.match({
 						onNone: () => null,
 						onSome: reading => (
 							<ItemActions>
@@ -112,7 +115,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 								/>
 							</ItemActions>
 						)
-					}
+					})
 				)}
 			</Item>
 			<SwipeActions.Actions edge="leading">
@@ -146,16 +149,15 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
-				return Array.match(
-					pipe(
-						Array.sort(chapters, Order.flip(byNumber)),
-						Array.filter(
-							chapter =>
-								String.startsWith(needle)(`${chapter.number}`) ||
-								String.includes(needle)(String.toLowerCase(chapter.title))
-						)
+				return pipe(
+					chapters,
+					Array.sort(Order.flip(byNumber)),
+					Array.filter(
+						chapter =>
+							String.startsWith(needle)(`${chapter.number}`) ||
+							String.includes(needle)(String.toLowerCase(chapter.title))
 					),
-					{
+					Array.match({
 						onEmpty: () =>
 							Boolean.match(String.isEmpty(needle), {
 								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
@@ -170,7 +172,7 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 								</Section>
 							</ItemGroup>
 						)
-					}
+					})
 				)
 			}}
 		</Loaded>

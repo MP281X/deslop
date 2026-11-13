@@ -6,6 +6,7 @@ import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-ico
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
 
+import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
@@ -13,8 +14,8 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn} from '@deslop/components-web/utils'
 
+import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, signInLabel} from '#lib/auth.ts'
 import android from '#lib/brands/android.svg'
 import apple from '#lib/brands/apple.svg'
 import chrome from '#lib/brands/chrome.svg'
@@ -23,7 +24,6 @@ import codex from '#lib/brands/codex.svg'
 import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
-import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, signInLabel} from '#lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
@@ -161,10 +161,11 @@ type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browse
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
-		return Option.match(Record.get(BROWSERS, props.client.name), {
-			onNone: () => <GlobeIcon />,
-			onSome: src => <img src={src} alt="" className="size-3.5" />
-		})
+		return pipe(
+			BROWSERS,
+			Record.get(props.client.name),
+			Option.match({onNone: () => <GlobeIcon />, onSome: src => <img src={src} alt="" className="size-3.5" />})
+		)
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
 		return <img src={claude} alt="" className="size-3.5" />
@@ -228,22 +229,18 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 
 // The mark of the app or browser that is waiting, from the catalog when it is a Deslop app.
 function PendingMark(props: {catalog: readonly {name: string; origin: string}[]; request: PendingAuthorization}) {
-	return Option.match(
-		Option.map(
-			Array.findFirst(
-				props.catalog,
-				app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)
-			),
-			app => app.origin
-		),
-		{
+	return pipe(
+		props.catalog,
+		Array.findFirst(app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)),
+		Option.map(app => app.origin),
+		Option.match({
 			onNone: () =>
 				Boolean.match(props.request.kind === 'Browser', {
 					onFalse: () => <HardDrivesIcon />,
 					onTrue: () => <GlobeIcon />
 				}),
 			onSome: origin => <AppIcon origin={origin} />
-		}
+		})
 	)
 }
 
@@ -297,13 +294,15 @@ function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: str
 			const lastActive = newest(group)
 			return {
 				address: pipe(
-					Array.findFirst(group, signIn => signIn.lastActive === lastActive),
+					group,
+					Array.findFirst(signIn => signIn.lastActive === lastActive),
 					Option.flatMap(signIn => signIn.address)
 				),
 				client: {
-					app: Option.map(
-						Option.filter(Array.head(byName[String.toLowerCase(group[0].client)] ?? []), () => group[0].kind === 'App'),
-						app => app.origin
+					app: pipe(
+						Array.head(byName[String.toLowerCase(group[0].client)] ?? []),
+						Option.filter(() => group[0].kind === 'App'),
+						Option.map(app => app.origin)
 					),
 					device: group[0].device,
 					kind: group[0].kind,

@@ -23,11 +23,11 @@ runApp({
 	routes: pipe(
 		Layer.mergeAll(
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
-			pipe(HttpHandlers, Layer.provide(HttpAuth.layer)),
+			Layer.provide(HttpHandlers, HttpAuth.layer),
 			layerMcp({
 				instructions:
 					'Stash holds saved articles, videos and posts. Use search_notes when the id is unknown, or read_note directly with a known id; source sections are explicit.',
-				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
+				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})
 		),
 		Layer.provide(layerNotes),

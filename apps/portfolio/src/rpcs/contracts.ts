@@ -1,4 +1,4 @@
-import {Schema, Struct, pipe} from 'effect'
+import {Schema, Struct} from 'effect'
 
 import {Rpc, RpcGroup} from 'effect/rpc'
 
@@ -13,9 +13,9 @@ const Guest = PortfolioVisitor.mapFields(fields => ({
 // Visitors are guests, so the room needs no sign-in, unlike every other app's RPC.
 export class RpcContracts extends RpcGroup.make(
 	Rpc.make('presence.join', {
-		payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'name']))),
+		payload: Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'name'])),
 		stream: true,
 		success: PortfolioScene
 	}),
-	Rpc.make('presence.move', {payload: Schema.Struct(pipe(Guest.fields, Struct.pick(['color', 'id', 'x', 'y'])))})
+	Rpc.make('presence.move', {payload: Schema.Struct(Struct.pick(Guest.fields, ['color', 'id', 'x', 'y']))})
 ) {}

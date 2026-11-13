@@ -21,7 +21,7 @@ import {
 
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {execute} from '@deslop/runtime/server/process'
+import {executeProcess} from '@deslop/runtime/server/process'
 
 import {processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
@@ -46,14 +46,14 @@ import type {Disk, MachineHistory} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
-const storageFailed = Effect.mapError((cause: unknown) =>
+const asDeployError = Effect.mapError((cause: unknown) =>
 	DeployError.make({cause, message: 'The resource history could not be read or written.'})
 )
 
 function counted(read: () => Counters) {
-	return pipe(
+	return Effect.flatMap(
 		Effect.try({catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}), try: read}),
-		Effect.flatMap(Schema.decodeEffect(Counters))
+		Schema.decodeEffect(Counters)
 	)
 }
 
@@ -69,9 +69,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const fs = yield* FileSystem.FileSystem
 		const sql = yield* SqlClient.SqlClient
 		const worker = hostname()
-		const cpuModel = Option.getOrElse(
-			Option.map(Array.head(cpus()), cpu => String.trim(cpu.model)),
-			() => ''
+		const cpuModel = pipe(
+			Array.head(cpus()),
+			Option.map(cpu => String.trim(cpu.model)),
+			Option.getOrElse(() => '')
 		)
 
 		// The stored point of each series that a measurement at this time joins.
@@ -115,39 +116,41 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
 		function walk(pending: readonly string[], found: readonly string[]): Effect.Effect<readonly string[]> {
 			if (Array.isReadonlyArrayEmpty(pending)) return Effect.succeed(found)
-			return Effect.flatMap(
+			return pipe(
+				pending,
 				Effect.forEach(
-					pending,
 					path =>
 						Effect.option(
 							Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
-								Array.map(
-									Array.filter(names, name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
-									name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`})
+								pipe(
+									names,
+									Array.filter(name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
+									Array.map(name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`}))
 								)
 							)
 						),
 					{concurrency: 'unbounded'}
 				),
-				levels => {
+				Effect.flatMap(levels => {
 					const children = Array.flatten(Array.getSomes(levels))
 					return walk(
-						Array.map(
+						pipe(
+							children,
 							Array.filter(
-								children,
 								child => !child.app && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child.path))
 							),
-							child => child.path
+							Array.map(child => child.path)
 						),
 						[
 							...found,
-							...Array.map(
-								Array.filter(children, child => child.app),
-								child => child.path
+							...pipe(
+								children,
+								Array.filter(child => child.app),
+								Array.map(child => child.path)
 							)
 						]
 					)
-				}
+				})
 			)
 		}
 		const appCgroups = walk([''], [])
@@ -185,7 +188,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			Effect.scoped(
 				Boolean.match(platform === 'darwin', {
 					onFalse: () =>
-						execute('df', [
+						executeProcess('df', [
 							'-B1',
 							'--output=target,size,used',
 							'-x',
@@ -199,7 +202,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 							'-x',
 							'efivarfs'
 						]),
-					onTrue: () => execute('df', ['-k', '/'])
+					onTrue: () => executeProcess('df', ['-k', '/'])
 				})
 			),
 			Effect.flatMap(text => Ref.set(storage, text)),
@@ -234,7 +237,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		})
 		// A Mac has no cgroups, so its samples carry no apps.
 		const darwin = Effect.fnUntraced(function* (time: number, disks: string, old?: Counters) {
-			const memory = yield* Effect.scoped(execute('vm_stat', []))
+			const memory = yield* Effect.scoped(executeProcess('vm_stat', []))
 			const uptime = Duration.toSeconds(Duration.nanos(yield* Clock.monotonicTimeNanos))
 			const current = yield* counted(() => cpuCounters(cpus(), uptime, time))
 			const value = yield* sampled(() =>
@@ -243,7 +246,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			return {current, value}
 		})
 		// Each measurement joins every series in one commit, so a restart loses nothing measured.
-		const collect = pipe(
+		const collect = Effect.catch(
 			Effect.gen(function* () {
 				const time = yield* Clock.currentTimeMillis
 				const old = Option.getOrUndefined(yield* Ref.get(previous))
@@ -257,14 +260,14 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					listBuckets(time),
 					Effect.flatMap(stored => saveSamples(rollup(measured.value.point, stored))),
 					sql.withTransaction,
-					storageFailed
+					asDeployError
 				)
 				yield* Ref.set(latest, {disks: measured.value.disks, load: measured.value.load})
 				yield* Ref.set(failure, '')
 			}),
-			Effect.catch(cause => Ref.set(failure, cause.message))
+			cause => Ref.set(failure, cause.message)
 		)
-		const prune = pipe(Clock.currentTimeMillis, Effect.flatMap(deleteExpired), storageFailed)
+		const prune = pipe(Clock.currentTimeMillis, Effect.flatMap(deleteExpired), asDeployError)
 
 		yield* prune
 		yield* refreshStorage
@@ -284,10 +287,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			read: Effect.fnUntraced(function* (query: HistoryQuery) {
 				const time = yield* Clock.currentTimeMillis
 				const step = SERIES[query.minutes]
-				const samples = yield* pipe(
-					listSeries({after: chartWindow(query.minutes, time).start - step, step}),
-					storageFailed
-				)
+				const samples = yield* asDeployError(listSeries({after: chartWindow(query.minutes, time).start - step, step}))
 				const now = yield* Ref.get(latest)
 				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
 				return {
@@ -298,9 +298,10 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					samples: history(samples, query.minutes, time),
 					stale:
 						time -
-							Option.getOrElse(
-								Option.map(Array.last(samples), value => value.time),
-								() => 0
+							pipe(
+								Array.last(samples),
+								Option.map(value => value.time),
+								Option.getOrElse(() => 0)
 							) >
 						90_000,
 					time,

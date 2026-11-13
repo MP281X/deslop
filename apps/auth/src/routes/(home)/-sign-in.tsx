@@ -11,8 +11,8 @@ import {Button} from '@deslop/components-web/ui/button'
 import {FieldError} from '@deslop/components-web/ui/field'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
+import {catalogAtom, codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/auth.ts'
 import {AppIcon} from '#lib/components.tsx'
-import {catalogAtom, codeSignInAtom, passkeySignInAtom, signInAtom} from '#lib/utils.ts'
 
 const route = getRouteApi('/(home)')
 

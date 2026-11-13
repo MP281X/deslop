@@ -1,6 +1,7 @@
 import {Array, Boolean, Match, Number, Option, Order, Predicate, Result, String, pipe} from 'effect'
 
-import * as cheerio from 'cheerio'
+import {load} from 'cheerio'
+import type {CheerioAPI} from 'cheerio'
 import type {AnyNode} from 'domhandler'
 
 import {canonical, plainText} from '#services/notes/lib/utils.ts'
@@ -24,7 +25,7 @@ const BLOCK_TAGS = [
 
 const BY_SIZE = Order.mapInput(Order.Number, (icon: {href: string; size: number}) => icon.size)
 
-function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
+function element($: CheerioAPI, input: {base: URL; inner: string; node: AnyNode; tag: string}) {
 	const text = String.trim(input.inner)
 	return pipe(
 		Match.value(input.tag),
@@ -59,7 +60,7 @@ function element($: cheerio.CheerioAPI, input: {base: URL; inner: string; node: 
 	)
 }
 
-function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
+function markdown($: CheerioAPI, node: AnyNode, base: URL): string {
 	if (node.nodeType === 3) return String.replaceAll(/\s+/gu, ' ')(node.data)
 	if (!Predicate.hasProperty(node, 'tagName')) return ''
 	const inner = pipe(
@@ -76,7 +77,7 @@ function markdown($: cheerio.CheerioAPI, node: AnyNode, base: URL): string {
 
 // Markdown, so the AI keeps headings, lists and link targets.
 export function pageText(html: string, url: URL) {
-	const $ = cheerio.load(html)
+	const $ = load(html)
 	$('script, style, noscript, iframe, svg, nav, header, footer, form, aside, button, dialog, template').remove()
 	const description =
 		$('meta[property="og:description"]').attr('content') ?? $('meta[name="description"]').attr('content')
@@ -88,10 +89,9 @@ export function pageText(html: string, url: URL) {
 	)
 	// Whitespace stays only inside code blocks; elsewhere it is markup indentation.
 	const body = pipe(
-		Array.join(
-			Array.map(root.toArray(), node => markdown($, node, url)),
-			''
-		),
+		root.toArray(),
+		Array.map(node => markdown($, node, url)),
+		Array.join(''),
 		String.split('```'),
 		Array.map((part, index) =>
 			Boolean.match(index % 2 === 1, {
@@ -132,8 +132,9 @@ export function pageText(html: string, url: URL) {
 							Option.isSome(String.match(/apple-touch-icon/iu)(link.attr('rel') ?? ''))
 					),
 					Array.filterMap(link =>
-						Result.fromOption(
-							Option.map(Option.fromUndefinedOr(link.attr('href')), href => ({
+						pipe(
+							Option.fromUndefinedOr(link.attr('href')),
+							Option.map(href => ({
 								href,
 								size: pipe(
 									String.match(/(\d+)x\d+/u)(link.attr('sizes') ?? ''),
@@ -142,7 +143,7 @@ export function pageText(html: string, url: URL) {
 									Option.getOrElse(() => 0)
 								)
 							})),
-							() => undefined
+							Result.fromOption(() => undefined)
 						)
 					),
 					Option.liftPredicate(Array.isArrayNonEmpty),

@@ -91,12 +91,13 @@ it.layer(AtomRegistry.layer)(test => {
 					Stream.runCollect(
 						session(cleared).reconnectOrSignOut(
 							Stream.unwrap(
-								Effect.map(
-									Ref.getAndUpdate(attempts, count => count + 1),
-									count => {
+								pipe(
+									attempts,
+									Ref.getAndUpdate(count => count + 1),
+									Effect.map(count => {
 										if (count === 0) return Stream.fail(error)
 										return Stream.make('recovered')
-									}
+									})
 								)
 							)
 						)
@@ -129,7 +130,7 @@ it.layer(AtomRegistry.layer)(test => {
 								Layer.merge(
 									Layer.succeed(
 										HttpClient.HttpClient,
-										HttpClient.make(request => Effect.andThen(Queue.offer(entered, request.url), Effect.never))
+										HttpClient.make(request => pipe(entered, Queue.offer(request.url), Effect.andThen(Effect.never)))
 									),
 									Layer.succeed(Clock.Clock, clock)
 								),

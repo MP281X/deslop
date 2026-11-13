@@ -8,8 +8,9 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
+import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
 import {appMarks} from '@deslop/components-web/apps'
+import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -18,7 +19,6 @@ import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/comp
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn, mediaQueryAtom} from '@deslop/components-web/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {
@@ -35,8 +35,8 @@ import {
 	shownSearch,
 	traceAtom,
 	traceLabel
-} from '#lib/utils.ts'
-import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/utils.ts'
+} from '#lib/telemetry.ts'
+import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/telemetry.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
 import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
@@ -132,11 +132,6 @@ function AppMark(props: {app: Overview['apps'][number]}) {
 	})
 }
 
-// The waterfall's mark, and the trace list's until an operation is chosen.
-function WaterfallGlyph() {
-	return <ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />
-}
-
 // The bar's app choice: one mark per app; one is always chosen, and choosing the chosen tab again does nothing.
 function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 	return (
@@ -171,9 +166,10 @@ function RangeTabs(props: {onChange: (range: Range) => void; range: Range}) {
 			value={props.range}
 			options={RANGES}
 			onChange={value => {
-				Option.map(
-					Array.findFirst(RANGES, entry => entry.value === value),
-					entry => props.onChange(entry.value)
+				pipe(
+					RANGES,
+					Array.findFirst(entry => entry.value === value),
+					Option.map(entry => props.onChange(entry.value))
 				)
 			}}
 		/>
@@ -295,7 +291,11 @@ function OperationsPane(props: {
 														props.activeKey.runtime === row.operation.runtime &&
 														props.activeKey.name === row.operation.name
 													}
-													duplicate={Option.exists(Record.get(names, row.operation.name), group => group.length > 1)}
+													duplicate={pipe(
+														names,
+														Record.get(row.operation.name),
+														Option.exists(group => group.length > 1)
+													)}
 													failing={failing}
 													onSelect={() => props.onSelect(row.app.name, row.operation)}
 													operation={row.operation}
@@ -384,7 +384,7 @@ function TracesPane(props: {
 		<section aria-label="Traces" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			<ItemListHeading
 				icon={Option.match(active, {
-					onNone: () => <WaterfallGlyph />,
+					onNone: () => <ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
 					onSome: current => <AppMark app={current.app} />
 				})}
 			>
@@ -488,7 +488,9 @@ function Spans(props: {
 		<Loaded atom={traceAtom(props.range, props.id)}>
 			{trace => {
 				const focus = focusOf(trace, props.pickedSpan)
-				if (props.detailOnly === true) return <SpanDetails focus={focus} />
+				if (props.detailOnly === true) {
+					return <SpanDetails focus={focus} />
+				}
 				return (
 					<SpansList focus={focus} inlineDetails={props.inlineDetails === true} onPick={props.onPick} trace={trace} />
 				)
@@ -513,7 +515,9 @@ function TracePane(props: {
 		<section aria-label="Trace" className={cn('flex h-full min-h-0 flex-col overflow-hidden', props.className)}>
 			{Boolean.match(props.detailOnly === true, {
 				onFalse: () => (
-					<ItemListHeading icon={<WaterfallGlyph />}>
+					<ItemListHeading
+						icon={<ChartBarHorizontalIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />}
+					>
 						{Option.match(trace, {
 							onNone: () => null,
 							onSome: current => `${traceLabel(current)} · ${ageOf(current.start, props.now)}`
@@ -580,6 +584,7 @@ function NarrowWorkspace(props: WorkspaceProps) {
 				/>
 				<TracesPane
 					active={props.active}
+
 					now={props.now}
 					onSelect={props.onSelectTrace}
 					range={props.range}
@@ -588,6 +593,7 @@ function NarrowWorkspace(props: WorkspaceProps) {
 			</div>
 			<TracePane
 				inlineDetails
+
 				now={props.now}
 				onPickSpan={props.onPickSpan}
 				pickedSpan={props.pickedSpan}
@@ -614,6 +620,7 @@ function WideWorkspace(props: WorkspaceProps) {
 			<ResizablePanel defaultSize={320} minSize={240} maxSize={480}>
 				<TracesPane
 					active={props.active}
+
 					now={props.now}
 					onSelect={props.onSelectTrace}
 					range={props.range}
@@ -624,6 +631,7 @@ function WideWorkspace(props: WorkspaceProps) {
 			<ResizablePanel minSize={320}>
 				<TracePane
 					inlineDetails
+
 					now={props.now}
 					onPickSpan={props.onPickSpan}
 					pickedSpan={props.pickedSpan}

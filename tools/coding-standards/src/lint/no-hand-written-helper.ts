@@ -53,9 +53,12 @@ function firstCharacterOf(context: Context, node: ESTree.Node): Option.Option<ES
 		stringCall(context, node, 'charAt'),
 		Option.filter(call => call.operands.length === 1 && isNumber(0, call.operands[0])),
 		Option.orElse(() =>
-			Option.filter(
-				Option.orElse(stringCall(context, node, 'slice'), () => stringCall(context, node, 'substring')),
-				call => call.operands.length === 2 && isNumber(0, call.operands[0]) && isNumber(1, call.operands[1])
+			pipe(
+				stringCall(context, node, 'slice'),
+				Option.orElse(() => stringCall(context, node, 'substring')),
+				Option.filter(
+					call => call.operands.length === 2 && isNumber(0, call.operands[0]) && isNumber(1, call.operands[1])
+				)
 			)
 		),
 		Option.map(call => call.text)
@@ -109,14 +112,15 @@ function padded(context: Context, node: ESTree.Node) {
 }
 
 function capitalize(input: {context: Context; fixer: Fixer; node: ESTree.Node; text: ESTree.Node}) {
-	return Option.getOrElse(
-		Option.map(effectImport({context: input.context, fixer: input.fixer, name: 'String', node: input.node}), imports =>
+	return pipe(
+		effectImport({context: input.context, fixer: input.fixer, name: 'String', node: input.node}),
+		Option.map(imports =>
 			Array.append(
 				imports,
 				input.fixer.replaceText(input.node, `String.capitalize(${input.context.sourceCode.getText(input.text)})`)
 			)
 		),
-		() => []
+		Option.getOrElse(() => [])
 	)
 }
 

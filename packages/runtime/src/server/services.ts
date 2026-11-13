@@ -3,7 +3,7 @@ import {platform} from 'node:process'
 import {Array, Boolean, Config, Effect, FileSystem, Path, String, pipe} from 'effect'
 
 import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#server/launchd.ts'
-import {execute} from '#server/process.ts'
+import {executeProcess} from '#server/process.ts'
 
 // systemd expands percent specifiers even inside a quoted argument.
 function systemdArgument(value: string) {
@@ -11,7 +11,7 @@ function systemdArgument(value: string) {
 }
 
 function systemctl(...args: string[]) {
-	return execute('systemctl', ['--user', ...args])
+	return executeProcess('systemctl', ['--user', ...args])
 }
 
 const unitDirectory = Effect.gen(function* () {
@@ -19,7 +19,11 @@ const unitDirectory = Effect.gen(function* () {
 })
 
 // `restart: false` leaves a running process alone, for one that reloads its own configuration.
-export const install = Effect.fnUntraced(function* (name: string, command: string[], options?: {restart: false}) {
+export const installService = Effect.fnUntraced(function* (
+	name: string,
+	command: string[],
+	options?: {restart: false}
+) {
 	if (platform === 'darwin') return yield* installAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -29,7 +33,7 @@ export const install = Effect.fnUntraced(function* (name: string, command: strin
 	yield* fs.makeDirectory(directory, {recursive: true})
 	yield* fs.writeFileString(
 		path.join(directory, unit),
-		`[Unit]\nDescription=Deslop ${name}\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment=NODE_ENV=production\nEnvironment=${systemdArgument(`PATH=${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin`)}\nEnvironmentFile=-${String.replaceAll('%', '%%')(`${home}/.deslop/${name}.env`)}\nExecStart=${Array.join(Array.map(command, systemdArgument), ' ')}\nRestart=on-failure\nRestartSec=3\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
+		`[Unit]\nDescription=Deslop ${name}\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment=NODE_ENV=production\nEnvironment=${systemdArgument(`PATH=${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin`)}\nEnvironmentFile=-${String.replaceAll('%', '%%')(`${home}/.deslop/${name}.env`)}\nExecStart=${pipe(command, Array.map(systemdArgument), Array.join(' '))}\nRestart=on-failure\nRestartSec=3\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
 		{mode: 0o600}
 	)
 	yield* systemctl('daemon-reload')
@@ -39,7 +43,7 @@ export const install = Effect.fnUntraced(function* (name: string, command: strin
 })
 
 // A separate oneshot, so updating survives the restart of the app it updates.
-export const installUpdates = Effect.fnUntraced(function* (name: string, command: string[]) {
+export const installUpdateService = Effect.fnUntraced(function* (name: string, command: string[]) {
 	if (platform === 'darwin') return yield* installUpdateAgent(name, command)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -47,7 +51,7 @@ export const installUpdates = Effect.fnUntraced(function* (name: string, command
 	const unit = `deslop-${name}-update`
 	yield* fs.writeFileString(
 		path.join(directory, `${unit}.service`),
-		`[Unit]\nDescription=Update Deslop ${name}\n\n[Service]\nType=oneshot\nExecStart=${Array.join(Array.map(command, systemdArgument), ' ')}\nUMask=0077\n`,
+		`[Unit]\nDescription=Update Deslop ${name}\n\n[Service]\nType=oneshot\nExecStart=${pipe(command, Array.map(systemdArgument), Array.join(' '))}\nUMask=0077\n`,
 		{mode: 0o600}
 	)
 	yield* fs.writeFileString(
@@ -59,7 +63,7 @@ export const installUpdates = Effect.fnUntraced(function* (name: string, command
 	yield* systemctl('enable', '--now', `${unit}.timer`)
 })
 
-export const uninstall = Effect.fnUntraced(function* (name: string) {
+export const uninstallService = Effect.fnUntraced(function* (name: string) {
 	if (platform === 'darwin') return yield* uninstallAgents(name)
 	const fs = yield* FileSystem.FileSystem
 	const path = yield* Path.Path
@@ -74,12 +78,12 @@ export const uninstall = Effect.fnUntraced(function* (name: string) {
 	return `deslop-${name}.service removed; application data preserved\n`
 })
 
-export function status(name: string) {
+export function serviceStatus(name: string) {
 	if (platform === 'darwin') return agentStatus(name)
 	return systemctl('show', `deslop-${name}.service`, '--property=LoadState,ActiveState,SubState,MainPID')
 }
 
-export function restart(name: string) {
+export function restartService(name: string) {
 	if (platform === 'darwin') return restartAgent(name)
-	return pipe(systemctl('restart', `deslop-${name}.service`), Effect.timeout('30 seconds'))
+	return Effect.timeout(systemctl('restart', `deslop-${name}.service`), '30 seconds')
 }

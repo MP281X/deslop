@@ -35,7 +35,7 @@ runApp({
 	icon,
 	// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
 	middleware: app => Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'")),
-	routes: pipe(
+	routes: Layer.provide(
 		Layer.mergeAll(
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
@@ -45,7 +45,7 @@ runApp({
 				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
 			})
 		),
-		Layer.provide(layerServices)
+		layerServices
 	),
 	settings: {
 		GITHUB_ADMINS: ADMINS,

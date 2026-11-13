@@ -35,9 +35,16 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 import {Auth, localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, bearerOf, failureOptions, isJwt} from '@deslop/runtime/shared/auth'
 
-import {readUsage} from '#services/ai/lib/utils.ts'
-import type {AiProvider, AiUsageEntry} from '#services/ai/schema.ts'
-import {AiKey, AiUsage, AiUsageBreakdown, AiUsageQuery, ModelsCatalog, PROVIDER_NAMES} from '#services/ai/schema.ts'
+import {readUsage} from '#services/ai-proxy/lib/utils.ts'
+import type {AiProvider, AiUsageEntry} from '#services/ai-proxy/schema.ts'
+import {
+	AiKey,
+	AiUsage,
+	AiUsageBreakdown,
+	AiUsageQuery,
+	ModelsCatalog,
+	PROVIDER_NAMES
+} from '#services/ai-proxy/schema.ts'
 import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period} from '#services/usage/schema.ts'
 
@@ -66,11 +73,11 @@ declare module 'effect/reactivity/Reactivity' {
 	}
 }
 
-function storageFailure(cause: unknown) {
+function asStorageAuthError(cause: unknown) {
 	return AuthError.make({cause, error: 'temporarily_unavailable', message: 'AI Gateway storage failed'})
 }
 
-const storageFailed = Effect.mapError(storageFailure)
+const asAuthError = Effect.mapError(asStorageAuthError)
 
 const make = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient
@@ -218,7 +225,7 @@ const make = Effect.gen(function* () {
 		)
 	})
 	return {
-		keys: (id: string) => storageFailed(listKeys(id)),
+		list: (id: string) => asAuthError(listKeys(id)),
 		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const now = yield* Clock.currentTimeMillis
@@ -234,7 +241,7 @@ const make = Effect.gen(function* () {
 				)
 			}
 			const id = person.success.id
-			const key = Option.getOrUndefined(yield* storageFailed(findKey({owner: id, provider})))
+			const key = Option.getOrUndefined(yield* asAuthError(findKey({owner: id, provider})))
 			if (key === undefined) {
 				return HttpServerResponse.jsonUnsafe(
 					{error: {message: `Add your ${PROVIDER_NAMES[provider]} key in Gateway`}},
@@ -243,8 +250,10 @@ const make = Effect.gen(function* () {
 			}
 			const headers = Headers.removeMany(request.headers, [
 				...FORBIDDEN,
-				...Array.map(String.split(',')(request.headers['connection'] ?? ''), value =>
-					String.toLowerCase(String.trim(value))
+				...pipe(
+					request.headers['connection'] ?? '',
+					String.split(','),
+					Array.map(value => String.toLowerCase(String.trim(value)))
 				)
 			])
 			const outgoing = {
@@ -275,7 +284,7 @@ const make = Effect.gen(function* () {
 				}
 			}
 			const response = yield* client.execute(outgoing.request)
-			yield* storageFailed(markKey({lastStatus: Option.some(response.status), owner: id, provider, secret: key.secret}))
+			yield* asAuthError(markKey({lastStatus: Option.some(response.status), owner: id, provider, secret: key.secret}))
 			const web = Option.getOrUndefined(HttpClientResponse.toWeb(response))
 			const body = web?.body ?? (yield* Stream.toReadableStreamEffect(response.stream))
 			const [forward, meter] = body.tee()
@@ -293,13 +302,10 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					const state = {current: entry, pending: ''}
 					const updateUsage = Effect.fnUntraced(function* (text: string) {
-						state.current = yield* pipe(
-							Effect.fromResult(readUsage(text, state.current)),
-							Effect.catch(error =>
-								Effect.as(
-									Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
-									state.current
-								)
+						state.current = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current)), error =>
+							Effect.as(
+								Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
+								state.current
 							)
 						)
 					})
@@ -327,7 +333,7 @@ const make = Effect.gen(function* () {
 							Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
 						)
 						// A response cut after its last data line never sends the blank line that ends the event, and usage often arrives last.
-						yield* pipe(feed('\n\n'), Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'}))
+						yield* Effect.ignore(feed('\n\n'), {log: 'Warn', message: 'AI usage response could not be read'})
 					} else {
 						const decoder = new TextDecoder()
 						yield* pipe(
@@ -351,8 +357,10 @@ const make = Effect.gen(function* () {
 				...HOP_BY_HOP,
 				'content-encoding',
 				'content-length',
-				...Array.map(String.split(',')(response.headers['connection'] ?? ''), name =>
-					String.toLowerCase(String.trim(name))
+				...pipe(
+					response.headers['connection'] ?? '',
+					String.split(','),
+					Array.map(name => String.toLowerCase(String.trim(name)))
 				)
 			]
 			return HttpServerResponse.stream(
@@ -360,22 +368,21 @@ const make = Effect.gen(function* () {
 				{headers: Headers.removeMany(response.headers, responseBlocked), status: response.status}
 			)
 		}),
-		removeKey: (id: string, provider: AiProvider) => pipe(deleteKey({owner: id, provider}), storageFailed),
+		removeKey: (id: string, provider: AiProvider) => asAuthError(deleteKey({owner: id, provider})),
 		setKey: (id: string, provider: AiProvider, secret: Redacted.Redacted) =>
-			pipe(
+			asAuthError(
 				saveKey({
 					last4: String.slice(-4)(Redacted.value(secret)),
 					lastStatus: Option.none(),
 					owner: id,
 					provider,
 					secret
-				}),
-				storageFailed
+				})
 			),
 		// A person's report now and after each of their recorded calls.
 		usage: (id: string, period: Period) =>
 			usageWindow(period, range =>
-				pipe(
+				Stream.mapError(
 					sql.reactive(
 						{aiUsage: [id]},
 						Effect.all(
@@ -383,14 +390,14 @@ const make = Effect.gen(function* () {
 							{concurrency: 1}
 						)
 					),
-					Stream.mapError(storageFailure)
+					asStorageAuthError
 				)
 			)
 	}
 })
 
 export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()(
-	'@deslop/gateway/services/ai/service/AiProxy'
+	'@deslop/gateway/services/ai-proxy/service/AiProxy'
 ) {
 	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(

@@ -1,4 +1,4 @@
-import {Schema, pipe} from 'effect'
+import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -22,7 +22,7 @@ export type Bundle = typeof Bundle.Type
 export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
 
 export type ApnsToken = typeof ApnsToken.Type
-export const ApnsToken = pipe(Schema.String, Schema.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu)))
+export const ApnsToken = Schema.String.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu))
 
 // One row of `devices`, and what the phone registers: one token per kind and app, a new one replacing the one it rotated from.
 export class Device extends Model.Class<Device>('Device')({

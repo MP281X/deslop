@@ -32,15 +32,15 @@ import {CatchBoundary, createFileRoute} from '@tanstack/react-router'
 import {Atom} from 'effect/reactivity'
 import {Suspense, useRef, useState} from 'react'
 
+import {cn} from '@deslop/components-web/classes'
 import {Button} from '@deslop/components-web/ui/button'
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@deslop/components-web/ui/dialog'
 import {Kbd, KbdGroup} from '@deslop/components-web/ui/kbd'
-import {cn} from '@deslop/components-web/utils'
 import {liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 
 import {hasMeaningfulMove} from '#lib/portfolio.ts'
+import {RpcClient} from '#lib/presence.ts'
 import {contacts, education, experience, languages, profile, projects, skills, summary} from '#lib/profile.ts'
-import {RpcClient} from '#lib/utils.ts'
 import {PortfolioColor} from '#services/presence/schema.ts'
 import type {PortfolioScene, PortfolioVisitor, PortfolioVisitors} from '#services/presence/schema.ts'
 
@@ -56,7 +56,8 @@ function randomIndex(length: number) {
 function randomSeed() {
 	const alphabet = '0123456789abcdef'
 	return pipe(
-		Array.makeBy(6, () => alphabet[randomIndex(String.length(alphabet))] ?? '0'),
+		6,
+		Array.makeBy(() => alphabet[randomIndex(String.length(alphabet))] ?? '0'),
 		Array.join('')
 	)
 }
@@ -66,7 +67,7 @@ function pickNextCursorColor(currentColor: PortfolioColor) {
 	return nextPalette[randomIndex(Array.length(nextPalette))] ?? PortfolioColor.literals[0]
 }
 
-function getIdentity() {
+function restoreIdentity() {
 	const existingId = sessionStorage.getItem('portfolio.id')
 	const existingName = sessionStorage.getItem('portfolio.name')
 	const color =
@@ -78,7 +79,7 @@ function getIdentity() {
 
 	const seed = randomSeed()
 
-	const next = {color, id: `v-${seed}`, name: `Guest-${pipe(seed, String.slice(0, 3))}`}
+	const next = {color, id: `v-${seed}`, name: `Guest-${String.slice(0, 3)(seed)}`}
 
 	sessionStorage.setItem('portfolio.id', next.id)
 	sessionStorage.setItem('portfolio.name', next.name)
@@ -86,7 +87,7 @@ function getIdentity() {
 	return next
 }
 
-const identity = getIdentity()
+const identity = restoreIdentity()
 
 const portfolioAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(
@@ -99,22 +100,24 @@ const portfolioAtom = Atom.keepAlive(
 				(scene, update) => {
 					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						Array.map(Array.appendAll(scene.visitors, scene.bots), visitor =>
-							Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y)
+						pipe(
+							scene.visitors,
+							Array.appendAll(scene.bots),
+							Array.map(visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 						)
 					)
 					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
 						bots: update.bots,
-						trails: Array.takeRight(
+						trails: pipe(
+							scene.trails,
 							Array.appendAll(
-								scene.trails,
 								Array.filter(
 									cursors,
 									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 								)
 							),
-							180
+							Array.takeRight(180)
 						),
 						visitors: update.visitors
 					}
@@ -136,9 +139,10 @@ const sendCursorAtom = RpcClient.runtime.atom(get =>
 		Stream.buffer({capacity: 1, strategy: 'sliding'}),
 		Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
 		Stream.runForEach(cursor =>
-			Effect.ignore(
-				Effect.flatMap(RpcClient, client => client('presence.move', {...cursor, id: identity.id})),
-				{log: 'Debug', message: 'The cursor move did not reach the room'}
+			pipe(
+				RpcClient,
+				Effect.flatMap(client => client('presence.move', {...cursor, id: identity.id})),
+				Effect.ignore({log: 'Debug', message: 'The cursor move did not reach the room'})
 			)
 		)
 	)
@@ -261,41 +265,30 @@ function labelOverReadingColumn(x: number, viewport: {width: number}, label: str
 	return at <= right || at - width < right
 }
 
-// Another visitor's cursor sits at each position the server reports.
-function VisitorCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
+// Visitors use server positions; the hidden system pointer's replacement follows local CSS variables above them.
+function Cursor(input: {cursor: PortfolioVisitor; own: boolean; viewport: {width: number; height: number}}) {
+	const label = Boolean.match(input.own, {onFalse: () => input.cursor.name, onTrue: () => 'You'})
+	const x = `${input.cursor.x * input.viewport.width}px`
+	const y = `${input.cursor.y * input.viewport.height}px`
 	return (
 		<div
 			aria-hidden
-			className="pointer-events-none fixed top-0 left-0 z-5 transform-(--cursor-transform)"
+			className={cn(
+				'pointer-events-none fixed top-0 left-0 transform-(--cursor-transform)',
+				Boolean.match(input.own, {onFalse: () => 'z-5', onTrue: () => 'z-20'})
+			)}
 			style={{
 				'--cursor-color': input.cursor.color,
-				'--cursor-transform': `translate3d(${input.cursor.x * input.viewport.width}px, ${input.cursor.y * input.viewport.height}px, 0)`
+				'--cursor-transform': Boolean.match(input.own, {
+					onFalse: () => `translate3d(${x}, ${y}, 0)`,
+					onTrue: () => `translate3d(var(--pointer-x, ${x}), var(--pointer-y, ${y}), 0)`
+				})
 			}}
 		>
 			<CursorLabel
-				flip={input.cursor.x * input.viewport.width + labelWidth(input.cursor.name) > input.viewport.width - 8}
-				label={input.cursor.name}
-				show={!labelOverReadingColumn(input.cursor.x, input.viewport, input.cursor.name)}
-			/>
-		</div>
-	)
-}
-
-// The system pointer is hidden, so this one rides above the page on the pointer's own CSS variables.
-function OwnCursor(input: {cursor: PortfolioVisitor; viewport: {width: number; height: number}}) {
-	return (
-		<div
-			aria-hidden
-			className="pointer-events-none fixed top-0 left-0 z-20 transform-(--cursor-transform)"
-			style={{
-				'--cursor-color': input.cursor.color,
-				'--cursor-transform': `translate3d(var(--pointer-x, ${input.cursor.x * input.viewport.width}px), var(--pointer-y, ${input.cursor.y * input.viewport.height}px), 0)`
-			}}
-		>
-			<CursorLabel
-				flip={input.cursor.x * input.viewport.width + labelWidth('You') > input.viewport.width - 8}
-				label="You"
-				show={!labelOverReadingColumn(input.cursor.x, input.viewport, 'You')}
+				flip={input.cursor.x * input.viewport.width + labelWidth(label) > input.viewport.width - 8}
+				label={label}
+				show={!labelOverReadingColumn(input.cursor.x, input.viewport, label)}
 			/>
 		</div>
 	)
@@ -496,7 +489,8 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 						}
 						label="Jump to a section"
 						title={pipe(
-							Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
+							SECTION_NAMES,
+							Array.map((name, index) => `${index + 1} ${name}`),
 							Array.join(' · ')
 						)}
 					/>
@@ -516,7 +510,8 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 				className="size-1.5 rounded-full bg-(--identity-color)"
 				style={{
 					'--identity-color': pipe(
-						Array.findFirst(props.visitors, visitor => visitor.id === identity.id),
+						props.visitors,
+						Array.findFirst(visitor => visitor.id === identity.id),
 						Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
 					)
 				}}
@@ -593,21 +588,27 @@ function RealtimeLayer(input: {
 			<TrailGrid trails={portfolio.value.trails} viewport={input.viewport} />
 
 			<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-				<OwnCursor
-					cursor={Option.getOrElse(
-						Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
-						() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5})
+				<Cursor
+					own
+					cursor={pipe(
+						portfolio.value.visitors,
+						Array.findFirst(visitor => visitor.id === identity.id),
+						Option.getOrElse(() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}))
 					)}
 					viewport={input.viewport}
 				/>
 			</div>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-					{Array.map(Array.appendAll(portfolio.value.visitors, portfolio.value.bots), cursor =>
-						Boolean.match(cursor.id === identity.id, {
-							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
-							onTrue: () => null
-						})
+					{pipe(
+						portfolio.value.visitors,
+						Array.appendAll(portfolio.value.bots),
+						Array.map(cursor =>
+							Boolean.match(cursor.id === identity.id, {
+								onFalse: () => <Cursor key={cursor.id} cursor={cursor} own={false} viewport={input.viewport} />,
+								onTrue: () => null
+							})
+						)
 					)}
 				</div>
 			</div>
@@ -620,10 +621,6 @@ function RealtimeLayer(input: {
 			/>
 		</>
 	)
-}
-
-function PresenceUnavailable() {
-	return <PresenceHud state="offline" />
 }
 
 // oxlint-disable jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions -- The portfolio is one keyboard-scrolling region; it needs focus and paging keys.
@@ -655,8 +652,8 @@ function PortfolioRoute() {
 		if (viewport.width === 0 || viewport.height === 0) return
 		setOwnCursor(cursor => ({
 			...cursor,
-			x: Number.clamp({maximum: 0.999999, minimum: 0})(event.clientX / viewport.width),
-			y: Number.clamp({maximum: 0.999999, minimum: 0})(event.clientY / viewport.height)
+			x: Number.clamp(event.clientX / viewport.width, {maximum: 0.999999, minimum: 0}),
+			y: Number.clamp(event.clientY / viewport.height, {maximum: 0.999999, minimum: 0})
 		}))
 	}
 
@@ -708,12 +705,13 @@ function PortfolioRoute() {
 			<EducationSection />
 			<ContactSection />
 
-			<CatchBoundary getResetKey={() => 'presence'} errorComponent={PresenceUnavailable}>
+			<CatchBoundary getResetKey={() => 'presence'} errorComponent={() => <PresenceHud state="offline" />}>
 				<Suspense
 					fallback={
 						<>
 							<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-								<OwnCursor
+								<Cursor
+									own
 									cursor={{color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5}}
 									viewport={viewport}
 								/>

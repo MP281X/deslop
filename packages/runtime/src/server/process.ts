@@ -14,7 +14,7 @@ export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	message: Schema.String
 }) {}
 
-export const execute = Effect.fnUntraced(function* (command: string, args: string[]) {
+export const executeProcess = Effect.fnUntraced(function* (command: string, args: string[]) {
 	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
 	const result = yield* Effect.all(
 		{
@@ -49,10 +49,10 @@ const tool = Effect.fnUntraced(function* (name: string) {
 			yield* fs.rename(temporary, target)
 		})
 	)
-	yield* Effect.forEach(
-		Array.filter(yield* fs.readDirectory(tools), entry => entry !== version),
-		entry => fs.remove(path.join(tools, entry), {recursive: true}),
-		{concurrency: 1}
+	yield* pipe(
+		yield* fs.readDirectory(tools),
+		Array.filter(entry => entry !== version),
+		Effect.forEach(entry => fs.remove(path.join(tools, entry), {recursive: true}), {concurrency: 1})
 	)
 	return target
 })

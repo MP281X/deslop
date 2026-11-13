@@ -20,6 +20,12 @@ const WorkerSummary = WorkerHistory.mapFields(fields => ({
 	memoryPct: MetricSummary
 }))
 
+type PageLimit = typeof PageLimit.Type
+const PageLimit = pipe(
+	Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+	Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+)
+
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_apps', {
 		description:
@@ -28,14 +34,8 @@ export const ToolContracts = Toolkit.make(
 		parameters: Schema.Struct({
 			...InventoryQuery.fields,
 			cursor: Schema.optionalKey(Schema.String),
-			limit: pipe(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
-			),
-			processLimit: pipe(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
-			),
+			limit: PageLimit,
+			processLimit: PageLimit,
 			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
 		}),
 		success: Schema.Struct({

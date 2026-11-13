@@ -65,9 +65,10 @@
 			]
 		}
 	},
-	// Below these, the clones are imports, schema fields and SwiftUI modifier lists: shapes, not shared logic.
-	"duplicates": {"minTokens": 100, "minLines": 10},
+	// Extract shared logic at this size; mark imports, schema fields and modifier/prop lists inline as shape-only clones.
+	"duplicates": {"minTokens": 50, "minLines": 5},
 	"health": {
+		"maxCognitive": 14,
 		// No production coverage exists: estimated CRAP must not masquerade as measured risk.
 		"maxCrap": 0,
 		"ignore": ["packages/components-web/src/ui/**"]

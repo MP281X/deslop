@@ -1,10 +1,8 @@
-import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
+import {Clock, Context, DateTime, Effect, Layer, Option, Redacted, Schema, String} from 'effect'
 
-import {Clock, Context, DateTime, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
+import type {HttpClient} from 'effect/http'
 
-import {HttpClient} from 'effect/http'
-
-import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/server/ai'
+import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/ai'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookingsError, Extraction} from '#services/bookings/schema.ts'
@@ -41,31 +39,14 @@ export class Extractor extends Context.Service<
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const gateway = yield* AiGateway
-			const http = yield* HttpClient.HttpClient
-			const model = Effect.fnUntraced(function* (userId: string) {
-				return yield* pipe(
-					AnthropicLanguageModel.make({
-						config: {max_tokens: 16_000, output_config: {effort: 'high'}},
-						model: 'claude-haiku-5-5'
-					}),
-					Effect.provideServiceEffect(
-						AnthropicClient.AnthropicClient,
-						pipe(
-							AnthropicClient.make({
-								apiUrl: yield* gateway.apiUrl('anthropic'),
-								transformClient: yield* gateway.authorize(userId)
-							}),
-							Effect.provideService(HttpClient.HttpClient, http)
-						)
-					)
-				)
-			})
-
+			const modelContext = yield* Effect.context<AiGateway | HttpClient.HttpClient>()
 			return Extractor.of({
 				read: Effect.fn('Extractor.read')(
 					function* (userId, source) {
-						const anthropic = yield* model(userId)
+						const anthropic = yield* Effect.provideContext(
+							AiGateway.languageModel(userId, {maxTokens: 16_000}),
+							modelContext
+						)
 						const today = `Today: ${DateTime.formatIsoDateUtc(DateTime.makeUnsafe(yield* Clock.currentTimeMillis))}`
 						function content() {
 							if (source._tag === 'image') {
@@ -87,7 +68,7 @@ export class Extractor extends Context.Service<
 					},
 					Effect.timeout('3 minutes'),
 					// An overloaded API or an answer outside the schema usually succeeds on the next try.
-					Effect.retry({times: 1, while: cause => !Schema.is(AiUnavailable)(cause)}),
+					Effect.retry({times: 1, while: cause => !Schema.is(AiUnavailableError)(cause)}),
 					Effect.mapError(cause =>
 						BookingsError.make({
 							cause: Redacted.make(cause),

@@ -9,7 +9,7 @@ import {Array, ConfigProvider, Effect, FileSystem, Option, Predicate, Ref, Sink,
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {update} from '#server/update.ts'
+import {updateRelease} from '#server/update.ts'
 
 it.layer(NodeServices.layer)('Service update', test => {
 	test.effect(
@@ -35,11 +35,16 @@ it.layer(NodeServices.layer)('Service update', test => {
 					const linked = yield* fs.readLink(`${root}/current`)
 					yield* Ref.update(commands, rows => [
 						...rows,
-						`${Array.join(
-							Array.map(command.args, arg =>
-								Option.getOrElse(Option.liftPredicate(arg, Predicate.isString), () => '<redacted>')
+						`${pipe(
+							command.args,
+							Array.map(arg =>
+								pipe(
+									arg,
+									Option.liftPredicate(Predicate.isString),
+									Option.getOrElse(() => '<redacted>')
+								)
 							),
-							' '
+							Array.join(' ')
 						)} → ${linked}`
 					])
 					return ChildProcessSpawner.makeHandle({
@@ -59,7 +64,7 @@ it.layer(NodeServices.layer)('Service update', test => {
 			)
 			function attempt() {
 				return pipe(
-					update('fixture'),
+					updateRelease('fixture'),
 					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({HOME: home})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 					Effect.provideService(

@@ -125,6 +125,15 @@ export function AppBarTabs(props: {children: ReactNode; value: string}) {
 	)
 }
 
+// A section the current URL can name: the tab navigates through a router link.
+export function AppBarTab(props: {children: ReactNode; render: ReactElement; value: string}) {
+	return (
+		<TabsTrigger value={props.value} nativeButton={false} render={props.render}>
+			{props.children}
+		</TabsTrigger>
+	)
+}
+
 // A bar's segmented choice: the stock tabs over one list of options, named for assistive technology.
 export function AppBarChoice(props: {
 	label: string
@@ -142,15 +151,6 @@ export function AppBarChoice(props: {
 				))}
 			</TabsList>
 		</Tabs>
-	)
-}
-
-// A section the current URL can name: the tab navigates through `render`, a router link.
-export function AppBarTab(props: {children: ReactNode; render: ReactElement; value: string}) {
-	return (
-		<TabsTrigger value={props.value} nativeButton={false} render={props.render}>
-			{props.children}
-		</TabsTrigger>
 	)
 }
 

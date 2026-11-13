@@ -26,7 +26,7 @@ function literal(node: ESTree.Node): boolean {
 				property.type === 'Property' && !property.computed && property.kind === 'init' && literal(property.value)
 		)
 	}
-	return pipe(typeWrapped(node), Option.exists(literal))
+	return Option.exists(typeWrapped(node), literal)
 }
 
 function literalConstant(statement: ESTree.Statement | ESTree.ModuleDeclaration) {
@@ -50,7 +50,7 @@ function primitive(node: ESTree.Node): boolean {
 	if (node.type === 'Literal') return !Predicate.hasProperty(node, 'regex')
 	return (
 		Array.contains(['BinaryExpression', 'TemplateLiteral', 'UnaryExpression'], node.type) ||
-		pipe(typeWrapped(node), Option.exists(primitive))
+		Option.exists(typeWrapped(node), primitive)
 	)
 }
 
@@ -66,7 +66,7 @@ function check(input: {
 		input.found.node.init !== null &&
 		primitive(input.found.node.init) &&
 		Array.countBy(input.variable.references, reference => reference.isRead()) === 1 &&
-		!pipe(input.context.sourceCode.getText(input.found.node), String.includes('\n'))
+		!String.includes('\n')(input.context.sourceCode.getText(input.found.node))
 	) {
 		input.context.report({message: 'Inline this value at its only use.', node: input.found.node})
 		return

@@ -109,8 +109,8 @@ export type ConnectionState = typeof ConnectionState.Type
 export const ConnectionState = Schema.Struct({...Connection.fields, status: ConnectionStatus})
 
 // A server as the page shows it.
-export type ConnectionInfo = typeof ConnectionInfo.Type
-export const ConnectionInfo = Schema.Struct({
+export type ConnectionItem = typeof ConnectionItem.Type
+export const ConnectionItem = Schema.Struct({
 	...Struct.pick(Connection.json.fields, ['error', 'icons', 'id', 'name', 'tools', 'url']),
 	status: ConnectionStatus
 })

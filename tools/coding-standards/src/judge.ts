@@ -24,6 +24,7 @@ import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {KeyValueStore, UserDirectories} from 'effect/persistence'
 import {ChildProcess} from 'effect/process'
 
+import {noCompatibilityCode} from '#judge/no-compatibility-code.ts'
 import {noControlForWrongJob} from '#judge/no-control-for-wrong-job.ts'
 import {noDetachedActionError} from '#judge/no-detached-action-error.ts'
 import {noDroppedContent} from '#judge/no-dropped-content.ts'
@@ -52,6 +53,7 @@ import {noStaleComment} from '#judge/no-stale-comment.ts'
 import {noStringlyTyped} from '#judge/no-stringly-typed.ts'
 import {noTautologicalExpectation} from '#judge/no-tautological-expectation.ts'
 import {noTitleMismatchTest} from '#judge/no-title-mismatch-test.ts'
+import {noUninvalidatedWrite} from '#judge/no-uninvalidated-write.ts'
 import {noUnmountedChrome} from '#judge/no-unmounted-chrome.ts'
 import {noUnrelatedJobs} from '#judge/no-unrelated-jobs.ts'
 import {noVacuousAssertion} from '#judge/no-vacuous-assertion.ts'
@@ -75,6 +77,7 @@ const TACTICS =
 	'Each finding is Jev reading that one unit alone. Fix what it names; when the unit cannot show the context that makes it right, put `// judge-ignore <question> -- <reason>` in the comment above it.'
 
 const QUESTIONS = {
+	'no-compatibility-code': noCompatibilityCode,
 	'no-control-for-wrong-job': noControlForWrongJob,
 	'no-detached-action-error': noDetachedActionError,
 	'no-dropped-content': noDroppedContent,
@@ -103,6 +106,7 @@ const QUESTIONS = {
 	'no-stringly-typed': noStringlyTyped,
 	'no-tautological-expectation': noTautologicalExpectation,
 	'no-title-mismatch-test': noTitleMismatchTest,
+	'no-uninvalidated-write': noUninvalidatedWrite,
 	'no-unmounted-chrome': noUnmountedChrome,
 	'no-unrelated-jobs': noUnrelatedJobs,
 	'no-vacuous-assertion': noVacuousAssertion,
@@ -119,7 +123,7 @@ type Refusal = typeof Refusal.Type
 const Refusal = Schema.Struct({error: Schema.Struct({message: Schema.String})})
 
 // The judge has printed what failed, so the process exits 1 without logging it again.
-class Failed extends Schema.TaggedError<Failed>()('Failed', {}) {
+class ReportedJudgeError extends Schema.TaggedError<ReportedJudgeError>()('ReportedJudgeError', {}) {
 	override readonly [Runtime.errorReported] = false
 }
 
@@ -134,13 +138,13 @@ type Verdicts = typeof Verdicts.Type
 const Verdicts = Schema.Record(Schema.String, Schema.Finite)
 
 // One cache per user, shared by every worktree and repository, so code judged in one is never asked again in another.
-export const layerCache = pipe(
+export const layerCache = Layer.provide(
 	Layer.unwrap(
 		Effect.gen(function* () {
 			return KeyValueStore.layerFileSystem(yield* (yield* UserDirectories.UserDirectories).cache('coding-standards'))
 		})
 	),
-	Layer.provide(UserDirectories.layer)
+	UserDirectories.layer
 )
 
 const digestOf = Effect.fnUntraced(function* (parts: readonly string[]) {
@@ -178,14 +182,15 @@ const decide = Effect.fnUntraced(function* (
 		client.execute(HttpClientRequest.bearerToken(request, Redacted.value(used))),
 		sent => sent.status !== 401,
 		() =>
-			Effect.flatMap(
-				SynchronizedRef.updateAndGetEffect(token, current =>
+			pipe(
+				token,
+				SynchronizedRef.updateAndGetEffect(current =>
 					Effect.gen(function* () {
 						if (current !== used) return current
 						return yield* accessToken(urls, true)
 					})
 				),
-				fresh => client.execute(HttpClientRequest.bearerToken(request, Redacted.value(fresh)))
+				Effect.flatMap(fresh => client.execute(HttpClientRequest.bearerToken(request, Redacted.value(fresh))))
 			)
 	)
 	if (response.status === 401) {
@@ -201,9 +206,10 @@ const decide = Effect.fnUntraced(function* (
 	)
 	return {
 		cost: decision.usage?.cost ?? 0,
-		verdicts: Option.liftPredicate(
-			Record.map(decision.answers, answer => answer.noul),
-			found => Array.every(asked.questions, named => Record.has(found, named.name))
+		verdicts: pipe(
+			decision.answers,
+			Record.map(answer => answer.noul),
+			Option.liftPredicate(found => Array.every(asked.questions, named => Record.has(found, named.name)))
 		)
 	}
 })
@@ -224,7 +230,11 @@ const trackedFiles = Effect.fnUntraced(function* (ignore: readonly string[]) {
 		],
 		{stderr: 'pipe', stdout: 'pipe'}
 	)
-	return Array.filter(String.split('\n')(yield* Stream.mkString(Stream.decodeText(handle.stdout))), String.isNonEmpty)
+	return pipe(
+		yield* Stream.mkString(Stream.decodeText(handle.stdout)),
+		String.split('\n'),
+		Array.filter(String.isNonEmpty)
+	)
 }, Effect.scoped)
 
 type Judged = Asked & {skipped: Named[]; unit: Unit}
@@ -290,7 +300,13 @@ const answer = Effect.fnUntraced(function* <R>(
 		() => Record.empty<string, number>()
 	)
 	const remembered = Array.flatMap(asked.questions, named =>
-		Option.toArray(Option.map(Record.get(record, named.key), score => ({named, score})))
+		Option.toArray(
+			pipe(
+				record,
+				Record.get(named.key),
+				Option.map(score => ({named, score}))
+			)
+		)
 	)
 	const missing = Array.filter(asked.questions, named => !Record.has(record, named.key))
 	const fresh = yield* Array.match(missing, {
@@ -301,7 +317,13 @@ const answer = Effect.fnUntraced(function* <R>(
 					onNone: () => Effect.succeed(Array.empty()),
 					onSome: answers => {
 						const scored = Array.flatMap(questions, named =>
-							Option.toArray(Option.map(Record.get(answers, named.name), score => ({named, score})))
+							Option.toArray(
+								pipe(
+									answers,
+									Record.get(named.name),
+									Option.map(score => ({named, score}))
+								)
+							)
 						)
 						return Effect.as(
 							store.set(asked.key, {
@@ -348,56 +370,58 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 			file =>
 				Effect.gen(function* () {
 					// A file deleted in the working tree stays tracked until the deletion is staged.
-					return yield* Effect.forEach(
-						Option.match(yield* Effect.option(fs.readFileString(file)), {
-							onNone: () => [],
-							onSome: source => units(file, source)
-						}),
-						unit => {
-							const read = features(unit.text, unit.imports)
-							const kind = Array.filter(named, entry => Array.contains(ASKED[unit.kind], entry.question.kind))
-							return Effect.map(digestOf([unit.kind, unit.imports, unit.text]), key => ({
-								code: unit.text,
-								file,
-								imports: unit.imports,
-								key,
-								kind: unit.kind,
-								questions: Array.filter(kind, entry => entry.question.gate(read)),
-								skipped: Array.filter(kind, entry => !entry.question.gate(read)),
-								unit
-							}))
-						},
-						{concurrency: 'unbounded'}
+					return yield* pipe(
+						yield* Effect.option(fs.readFileString(file)),
+						Option.match({onNone: Array.empty<Unit>, onSome: source => units(file, source)}),
+						Effect.forEach(
+							unit => {
+								const read = features(unit.text, unit.imports)
+								const kind = Array.filter(named, entry => Array.contains(ASKED[unit.kind], entry.question.kind))
+								return Effect.map(digestOf([unit.kind, unit.imports, unit.text]), key => ({
+									code: unit.text,
+									file,
+									imports: unit.imports,
+									key,
+									kind: unit.kind,
+									questions: Array.filter(kind, entry => entry.question.gate(read)),
+									skipped: Array.filter(kind, entry => !entry.question.gate(read)),
+									unit
+								}))
+							},
+							{concurrency: 'unbounded'}
+						)
 					)
 				}),
 			{concurrency: CONCURRENCY}
 		)
 	)
 	// A reworded question shows it still answers its own examples, and its gate admits its yes example.
-	const allExamples = yield* Effect.forEach(
+	const allExamples = yield* pipe(
+		named,
 		Array.flatMap(
-			named,
 			entry =>
 				[
 					{entry, side: 'yes', yes: true},
 					{entry, side: 'no', yes: false}
 				] as const
 		),
-		example => {
-			const code = example.entry.question[example.side].example
-			return Effect.map(digestOf([example.entry.question.kind, '', code]), key => ({
-				admitted: example.entry.question.gate(features(code, '')),
-				code,
-				file: EXAMPLE_FILES[example.entry.question.kind],
-				imports: '',
-				key,
-				kind: example.entry.question.kind,
-				questions: [example.entry],
-				side: example.side,
-				yes: example.yes
-			}))
-		},
-		{concurrency: CONCURRENCY}
+		Effect.forEach(
+			example => {
+				const code = example.entry.question[example.side].example
+				return Effect.map(digestOf([example.entry.question.kind, '', code]), key => ({
+					admitted: example.entry.question.gate(features(code, '')),
+					code,
+					file: EXAMPLE_FILES[example.entry.question.kind],
+					imports: '',
+					key,
+					kind: example.entry.question.kind,
+					questions: [example.entry],
+					side: example.side,
+					yes: example.yes
+				}))
+			},
+			{concurrency: CONCURRENCY}
+		)
 	)
 	const examples = Array.filter(allExamples, example => example.admitted)
 	const spent = yield* Ref.make({calls: 0, cost: 0})
@@ -422,9 +446,10 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 			answer(
 				{
 					...Array.headNonEmpty(group),
-					questions: Array.dedupeWith(
-						Array.flatMap(group, asked => asked.questions),
-						(first, second) => first.name === second.name
+					questions: pipe(
+						group,
+						Array.flatMap(asked => asked.questions),
+						Array.dedupeWith((first, second) => first.name === second.name)
 					)
 				},
 				store,
@@ -452,6 +477,6 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 		`judge: ${distinct.length} units; ${asked} questions asked, ${remembered} answered from memory, ${Number.sumAll(Array.map(distinct, entry => entry.skipped.length))} skipped by gates; ${totals.calls} calls, $${Number.round(totals.cost, 4)}, ${Number.round(((yield* Clock.currentTimeMillis) - started) / 1000, 1)}s; ${verdict.findings.length + misjudged.length} findings, ${unjudged} unjudged`
 	)
 	if (Array.isReadonlyArrayNonEmpty(verdict.findings) || Array.isReadonlyArrayNonEmpty(misjudged) || unjudged > 0) {
-		return yield* Failed.make({})
+		return yield* ReportedJudgeError.make({})
 	}
 })

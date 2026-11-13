@@ -1,14 +1,14 @@
-import {Array, Boolean, Option, Record, String} from 'effect'
+import {Array, Boolean, Option, Record, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
 import {appMarks} from '@deslop/components-web/apps'
+import {cn} from '@deslop/components-web/classes'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
-import {cn} from '@deslop/components-web/utils'
 
-import {attributesOf, durationOf, errorOf} from '#lib/utils.ts'
+import {attributesOf, durationOf, errorOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {TraceTree} from '#services/telemetry/schema.ts'
 
@@ -45,7 +45,12 @@ function ErrorText(props: {message: string}) {
 			return (
 				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
 					<span className="font-medium">
-						{code} {Option.getOrElse(Record.get(STATUS, code), () => '')}
+						{code}{' '}
+						{pipe(
+							STATUS,
+							Record.get(code),
+							Option.getOrElse(() => '')
+						)}
 					</span>
 					<span>{method}</span>
 					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>

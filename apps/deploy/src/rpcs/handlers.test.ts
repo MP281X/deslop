@@ -32,18 +32,23 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			})
 			const fleet = Fleet.of({
 				current: () =>
-					Effect.as(
-						Ref.update(currents, count => count + 1),
-						[history]
+					pipe(
+						currents,
+						Ref.update(count => count + 1),
+						Effect.as([history])
 					),
 				expose: () => Effect.succeed(''),
 				hide: () => Effect.void,
 				history: () => Effect.succeed(history),
 				local: Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
-				metrics: query =>
-					Effect.onInterrupt(Effect.andThen(Queue.offer(entered, query.minutes), Effect.never), () =>
-						Queue.offer(closed, query.minutes)
-					),
+				metrics: Effect.fnUntraced(function* (query) {
+					return yield* pipe(
+						entered,
+						Queue.offer(query.minutes),
+						Effect.andThen(Effect.never),
+						Effect.onInterrupt(() => Queue.offer(closed, query.minutes))
+					)
+				}),
 				run: () => Effect.void,
 				snapshot: Effect.never
 			})
@@ -60,13 +65,17 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			)
 			const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), context)
 			assert.strictEqual(yield* Ref.get(currents), 0)
-			const one = yield* Effect.forkChild(
-				Stream.runForEach(client('metrics.watch', {minutes: 60}), values => Queue.offer(first, values))
+			const one = yield* pipe(
+				client('metrics.watch', {minutes: 60}),
+				Stream.runForEach(values => Queue.offer(first, values)),
+				Effect.forkChild
 			)
 			assert.deepStrictEqual(yield* Queue.take(first), [history])
 			assert.strictEqual(yield* Queue.take(entered), 60)
-			const two = yield* Effect.forkChild(
-				Stream.runForEach(client('metrics.watch', {minutes: 60}), values => Queue.offer(second, values))
+			const two = yield* pipe(
+				client('metrics.watch', {minutes: 60}),
+				Stream.runForEach(values => Queue.offer(second, values)),
+				Effect.forkChild
 			)
 			assert.deepStrictEqual(yield* Queue.take(second), [history])
 			assert.strictEqual(yield* Ref.get(currents), 1)
@@ -107,14 +116,18 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 								expose: () => Effect.succeed(''),
 								hide: () => Effect.void,
 								history: () => Effect.never,
-								local: Effect.as(
-									Ref.update(locals, count => count + 1),
-									snapshot
+								local: pipe(
+									locals,
+									Ref.update(count => count + 1),
+									Effect.as(snapshot)
 								),
 								metrics: () => Effect.never,
 								run: () => Effect.void,
-								snapshot: Effect.onInterrupt(Effect.andThen(Queue.offer(entered, undefined), Effect.never), () =>
-									Queue.offer(closed, undefined)
+								snapshot: pipe(
+									entered,
+									Queue.offer(undefined),
+									Effect.andThen(Effect.never),
+									Effect.onInterrupt(() => Queue.offer(closed, undefined))
 								)
 							})
 						)
@@ -127,13 +140,17 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 				)
 			)
 			const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), context)
-			const one = yield* Effect.forkChild(
-				Stream.runForEach(client('inventory.watch', undefined), value => Queue.offer(received, value))
+			const one = yield* pipe(
+				client('inventory.watch', undefined),
+				Stream.runForEach(value => Queue.offer(received, value)),
+				Effect.forkChild
 			)
 			assert.deepStrictEqual(yield* Queue.take(received), snapshot)
 			yield* Queue.take(entered)
-			const two = yield* Effect.forkChild(
-				Stream.runForEach(client('inventory.watch', undefined), value => Queue.offer(received, value))
+			const two = yield* pipe(
+				client('inventory.watch', undefined),
+				Stream.runForEach(value => Queue.offer(received, value)),
+				Effect.forkChild
 			)
 			assert.deepStrictEqual(yield* Queue.take(received), snapshot)
 			assert.strictEqual(yield* Ref.get(locals), 1)

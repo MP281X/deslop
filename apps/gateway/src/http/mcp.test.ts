@@ -26,7 +26,7 @@ import {Auth} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
 import {DEVELOPER} from '@deslop/runtime/shared/auth'
 
-import {AiProxy} from '#services/ai/service.ts'
+import {AiProxy} from '#services/ai-proxy/service.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
 import {GatewayMcp} from '#tools/handlers.ts'
@@ -78,9 +78,8 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 						{part: 'call', value: result}
 					],
 					entry =>
-						pipe(
-							Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(entry.value),
-							Effect.flatMap(encoded => fs.writeFileString(`${capture}/${name}.${entry.part}.json`, encoded))
+						Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(entry.value), encoded =>
+							fs.writeFileString(`${capture}/${name}.${entry.part}.json`, encoded)
 						),
 					{concurrency: 1, discard: true}
 				)
@@ -102,9 +101,10 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 											tool: McpSchema.Tool.make({
 												inputSchema: {type: 'object'},
 												name: entry.name,
-												...Option.match(
-													Option.liftPredicate(OUTPUT, () => entry.name !== 'document'),
-													{onNone: () => ({}), onSome: outputSchema => ({outputSchema})}
+												...pipe(
+													OUTPUT,
+													Option.liftPredicate(() => entry.name !== 'document'),
+													Option.match({onNone: () => ({}), onSome: outputSchema => ({outputSchema})})
 												)
 											})
 										})
@@ -120,14 +120,14 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			const auth = Layer.succeedContext(
 				Auth.makeContext(Auth.of({token: () => Effect.succeed('unused'), user: () => Effect.succeed(DEVELOPER)}))
 			)
-			const platform = pipe(
+			const platform = Layer.provideMerge(
 				Layer.mergeAll(
 					ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://gateway.example'})),
 					Layer.succeed(FetchHttpClient.Fetch, (input, init) => upstream.handler(new Request(input, init))),
 					layerDataStore(directory),
 					auth
 				),
-				Layer.provideMerge(NodeServices.layer)
+				NodeServices.layer
 			)
 			const services = yield* Layer.buildWithMemoMap(
 				pipe(
@@ -159,9 +159,9 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 					() => new Client({name: 'Relay acceptance client', version: '1'}, {versionNegotiation: {mode: 'auto'}})
 				),
 				value =>
-					pipe(
+					Effect.andThen(
 						Effect.promise(() => transport.terminateSession()),
-						Effect.andThen(Effect.promise(() => value.close()))
+						Effect.promise(() => value.close())
 					)
 			)
 			yield* Effect.promise(() => client.connect(transport))
@@ -215,9 +215,8 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			]) {
 				for (const entry of CASES) {
 					const name = `${added.id}__${entry.name}`
-					const descriptor = pipe(
-						Record.get<string, Tool | typeof McpSchema.Tool.Encoded>(probe.tools, name),
-						Option.getOrThrow
+					const descriptor = Option.getOrThrow(
+						Record.get<string, Tool | typeof McpSchema.Tool.Encoded>(probe.tools, name)
 					)
 					assert.deepStrictEqual(
 						descriptor.outputSchema,
@@ -242,7 +241,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			assert.deepStrictEqual(connectionsResult, {servers: [{id: added.id, tools: 3}]})
 			const ai = Context.get(services, AiProxy)
 			yield* ai.setKey(DEVELOPER.id, 'openrouter', Redacted.make('disposable-fixture-not-an-api-key'))
-			assert.lengthOf(yield* ai.keys(DEVELOPER.id), 1)
+			assert.lengthOf(yield* ai.list(DEVELOPER.id), 1)
 			for (const entry of [
 				{arguments: {}, name: 'list_mcp_connections'},
 				{arguments: {provider: 'openrouter'}, name: 'remove_ai_key'},
@@ -264,7 +263,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 				}
 				yield* captureCall(entry.name, descriptor, result)
 			}
-			assert.lengthOf(yield* ai.keys(DEVELOPER.id), 0)
+			assert.lengthOf(yield* ai.list(DEVELOPER.id), 0)
 			assert.lengthOf(yield* Context.get(services, Connections).definitions, 0)
 		})
 	)

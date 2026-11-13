@@ -88,9 +88,8 @@ const audioSpawner = Effect.fnUntraced(function* () {
 	return ChildProcessSpawner.make(command =>
 		Effect.gen(function* () {
 			if (!ChildProcess.isStandardCommand(command)) return yield* Effect.die('Unexpected pipeline')
-			const file = yield* pipe(
-				Schema.decodeUnknownEffect(Schema.String)(pipe(Array.last(command.args), Option.getOrThrow)),
-				Effect.orDie
+			const file = yield* Effect.orDie(
+				Schema.decodeUnknownEffect(Schema.String)(Option.getOrThrow(Array.last(command.args)))
 			)
 			if (String.endsWith('/ffprobe')(command.command)) {
 				if (String.endsWith('part-000.flac')(file)) {
@@ -259,17 +258,17 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 		'uses Whisper Turbo only as a fallback and offsets chunk timestamps by actual durations',
 		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
-			const speech = Array.join(
-				Array.makeBy(220, index => `word${index}`),
-				' '
+			const speech = pipe(
+				220,
+				Array.makeBy(index => `word${index}`),
+				Array.join(' ')
 			)
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
 					assert.strictEqual(request.url, `${GATEWAY}/audio/transcriptions`)
 					if (request.body._tag !== 'Uint8Array') return yield* Effect.die('Expected a JSON audio request')
-					const payload = yield* pipe(
-						Schema.decodeEffect(Schema.fromJsonString(STTRequest))(new TextDecoder().decode(request.body.body)),
-						Effect.orDie
+					const payload = yield* Effect.orDie(
+						Schema.decodeEffect(Schema.fromJsonString(STTRequest))(new TextDecoder().decode(request.body.body))
 					)
 					assert.strictEqual(payload.model, 'openai/whisper-large-v3-turbo')
 					assert.strictEqual(payload.response_format, 'verbose_json')

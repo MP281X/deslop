@@ -24,7 +24,7 @@ import {
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {execute} from '@deslop/runtime/server/process'
+import {executeProcess} from '@deslop/runtime/server/process'
 
 import {exitFailure, unitFailures} from './lib/failures.ts'
 import {launchAgents} from './lib/launchd.ts'
@@ -158,7 +158,7 @@ export class Inventory extends Context.Service<
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			function command(name: string, args: string[]) {
 				return pipe(
-					execute(name, args),
+					executeProcess(name, args),
 					Effect.mapError(cause => DeployError.make({cause, message: cause.message})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
@@ -171,9 +171,9 @@ export class Inventory extends Context.Service<
 				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
 						Array.map(
-							yield* pipe(
+							yield* Effect.flatMap(
 								command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']),
-								Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer))))
+								Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
 							),
 							timer =>
 								Option.map(
@@ -183,13 +183,14 @@ export class Inventory extends Context.Service<
 						)
 					)
 				)
-				const rows = yield* pipe(
+				const rows = yield* Effect.flatMap(
 					command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
-					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit))))
+					Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
 				)
-				const failed = Array.map(
-					Array.filter(rows, row => row.active === 'failed'),
-					row => row.unit
+				const failed = pipe(
+					rows,
+					Array.filter(row => row.active === 'failed'),
+					Array.map(row => row.unit)
 				)
 				// Why each failed one stopped, in place of its description, which only repeats its command; an unreadable reason leaves the description.
 				const failures = Option.getOrElse(
@@ -220,11 +221,18 @@ export class Inventory extends Context.Service<
 						id: `${worker}:${scope}:${row.unit}`,
 						kind: 'service',
 						name: row.unit,
-						...Option.match(HashMap.get(scheduled, row.unit), {
-							onNone: () => ({}),
-							onSome: next =>
-								Option.match(next, {onNone: () => ({scheduled: true}), onSome: time => ({next: time, scheduled: true})})
-						}),
+						...pipe(
+							scheduled,
+							HashMap.get(row.unit),
+							Option.match({
+								onNone: () => ({}),
+								onSome: next =>
+									Option.match(next, {
+										onNone: () => ({scheduled: true}),
+										onSome: time => ({next: time, scheduled: true})
+									})
+							})
+						),
 						scope,
 						state: `${row.active} · ${row.sub}`,
 						url: '',
@@ -235,10 +243,11 @@ export class Inventory extends Context.Service<
 			const docker = pipe(
 				command('docker', ['ps', '--all', '--format', '{{json .}}']),
 				Effect.flatMap(text =>
-					Effect.forEach(
-						Array.filter(String.split(text, '\n'), String.isNonEmpty),
-						line => Schema.decodeEffect(Schema.fromJsonString(Container))(line),
-						{concurrency: 1}
+					pipe(
+						text,
+						String.split('\n'),
+						Array.filter(String.isNonEmpty),
+						Effect.forEach(line => Schema.decodeEffect(Schema.fromJsonString(Container))(line), {concurrency: 1})
 					)
 				),
 				Effect.map(rows =>
@@ -300,13 +309,18 @@ export class Inventory extends Context.Service<
 					collect(
 						'Listening ports',
 						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
-							portItems(Array.getSomes(Array.map(String.split(String.trim(text), '\n'), socketLine)), worker, http, {
-								cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
-								unit: processId =>
-									Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
-										socketUnit(Option.getOrElse(cgroup, () => ''))
-									)
-							})
+							portItems(
+								Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))),
+								worker,
+								http,
+								{
+									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
+									unit: processId =>
+										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
+											socketUnit(Option.getOrElse(cgroup, () => ''))
+										)
+								}
+							)
 						)
 					)
 				]
@@ -327,9 +341,10 @@ export class Inventory extends Context.Service<
 				const records = Result.map(launchd.table, text => {
 					const agents = Record.fromEntries(
 						Array.getSomes(
-							Array.map(
-								Result.getOrElse(launchd.agents, () => []),
-								agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
+							pipe(
+								launchd.agents,
+								Result.getOrElse(() => []),
+								Array.map(agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const))
 							)
 						)
 					)
@@ -339,7 +354,7 @@ export class Inventory extends Context.Service<
 						record => record.process.pid === pid || record.unit !== agents[`${pid}`]
 					)
 				})
-				const owned = Result.getOrElse(records, () => [])
+				const owned = Result.getOrElse(records, Array.empty<Result.Result.Success<typeof records>[number]>)
 				return {
 					processes: Effect.map(Effect.fromResult(records), found => ({records: found, time, total})),
 					sources: [
@@ -376,23 +391,21 @@ export class Inventory extends Context.Service<
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
 								portItems(lsofSockets(text), worker, http, {
 									cwd: Effect.fnUntraced(function* (processId) {
-										const lines = String.split(
-											Option.getOrElse(
-												yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
-												() => ''
-											),
-											'\n'
+										return pipe(
+											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
+											Option.getOrElse(() => ''),
+											String.split('\n'),
+											Array.findFirst(String.startsWith('n')),
+											Option.map(String.slice(1))
 										)
-										return Option.map(Array.findFirst(lines, String.startsWith('n')), String.slice(1))
 									}),
 									unit: processId =>
 										Effect.succeed(
-											Option.getOrElse(
-												Option.map(
-													Array.findFirst(owned, record => `${record.process.pid}` === processId),
-													record => record.unit
-												),
-												() => ''
+											pipe(
+												owned,
+												Array.findFirst(record => `${record.process.pid}` === processId),
+												Option.map(record => record.unit),
+												Option.getOrElse(() => '')
 											)
 										)
 								})
@@ -408,7 +421,7 @@ export class Inventory extends Context.Service<
 						if (platform === 'darwin') {
 							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
 						}
-						const timers = yield* pipe(
+						const timers = yield* Effect.flatMap(
 							command('systemctl', [
 								...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
 								'list-timers',
@@ -416,7 +429,7 @@ export class Inventory extends Context.Service<
 								'--output=json',
 								'--no-pager'
 							]),
-							Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer))))
+							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
 						)
 						if (!Array.some(timers, timer => timer.activates === input.name)) {
 							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
@@ -477,12 +490,10 @@ export class Inventory extends Context.Service<
 														name: `${site[0]}${handler[0]}`,
 														owned: false,
 														publicAccess: status.AllowFunnel?.[site[0]] === true,
-														...Option.match(
-															Option.flatMap(
-																String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)(handler[1].Proxy ?? ''),
-																match => Number.parse(match[1] ?? '')
-															),
-															{onNone: () => ({}), onSome: port => ({port})}
+														...pipe(
+															String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)(handler[1].Proxy ?? ''),
+															Option.flatMap(match => Number.parse(match[1] ?? '')),
+															Option.match({onNone: () => ({}), onSome: port => ({port})})
 														),
 														state: 'observed',
 														url: `https://${site[0]}${handler[0]}`,

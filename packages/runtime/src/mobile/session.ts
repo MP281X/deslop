@@ -20,7 +20,7 @@ import {
 	clientIdOf,
 	layerRpcAuthClient,
 	needsSignIn,
-	rejected
+	asAuthError
 } from '#shared/auth.ts'
 import {Account, RPC_PATH} from '#shared/schema.ts'
 import {layerOtlp} from '#shared/telemetry.ts'
@@ -44,11 +44,11 @@ export type SessionStorage = {
 }
 
 export function makeSession(server: string, storage: SessionStorage) {
-	const runtime = Atom.runtime(FetchHttpClient.layer)
+	const sessionRuntime = Atom.runtime(FetchHttpClient.layer)
 
 	// Unreadable JSON signs out rather than failing every launch.
 	const read = Effect.map(storage.read, text =>
-		Option.flatMap(Option.liftPredicate(text, String.isNonEmpty), Schema.decodeUnknownOption(SessionJson))
+		pipe(text, Option.liftPredicate(String.isNonEmpty), Option.flatMap(Schema.decodeUnknownOption(SessionJson)))
 	)
 
 	// The session id is the bearer of every request to the server; a missing one asks to sign in, while a Keychain that cannot be read yet is read again later.
@@ -57,7 +57,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 		Effect.mapError(cause => AuthError.make({cause, error: 'temporarily_unavailable', message: cause.message})),
 		Effect.flatMap(Effect.fromOption),
 		Effect.map(saved => saved.session),
-		rejected(`Sign in to ${name}`)
+		asAuthError(`Sign in to ${name}`)
 	)
 
 	const signIn = pipe(
@@ -112,7 +112,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 	})
 
 	// The Keychain stays the truth, shared with a share extension; the machine knows only whether it holds a session.
-	const machine = AtomMachine.bind(runtime).make(
+	const machine = AtomMachine.bind(sessionRuntime).make(
 		Machine.make({
 			branches: {read: {signedIn: {target: 'SignedIn'}, signedOut: {target: 'SignedOut'}}},
 			effects: {
@@ -134,6 +134,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 		}).handle({
 			initial: {target: 'Reading'},
 			states: {
+				// fallow-ignore-next-line code-duplication -- Boot and resumed session states repeat the machine transition shape, not a second workflow.
 				Reading: {
 					invoke: {
 						onDone: {
@@ -177,13 +178,13 @@ export function makeSession(server: string, storage: SessionStorage) {
 	)
 	const signedIn = AtomMachine.matches(machine, 'SignedIn')
 
-	const account = runtime.atom(get => {
+	const accountAtom = sessionRuntime.atom(get => {
 		get(signedIn)
 		get(activationsAtom)
 		return pipe(
 			bearer,
 			Effect.flatMap(id =>
-				HttpClient.get(new URL('/auth/user', server).href, {headers: {authorization: `Bearer ${id}`}})
+				HttpClient.get(new URL('/api/account', server).href, {headers: {authorization: `Bearer ${id}`}})
 			),
 			Effect.flatMap(HttpClientResponse.schemaBodyJson(Account)),
 			Effect.timeout('10 seconds')
@@ -191,11 +192,11 @@ export function makeSession(server: string, storage: SessionStorage) {
 	})
 
 	return {
-		account,
+		account: accountAtom,
 		bearer,
 		machine,
 		protocol: pipe(
-			layerSocketProtocol(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws'))),
+			layerSocketProtocol(String.replace(/^http/u, 'ws')(new URL(RPC_PATH, server).href)),
 			Layer.provideMerge(layerRpcAuthClient(bearer)),
 			Layer.provide(FetchHttpClient.layer)
 		),
@@ -213,7 +214,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 					)
 				)
 			),
-		runtime,
+		runtime: sessionRuntime,
 		// Reading it also starts the caller over on each return from the background, when iOS has closed its sockets.
 		signedIn: (get: Atom.AtomContext) => {
 			get(activationsAtom)

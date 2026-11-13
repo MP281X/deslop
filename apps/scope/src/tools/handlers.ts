@@ -47,9 +47,10 @@ function attributeWindow(
 			Option.filter(() => entries.length > page.length),
 			Option.match({onNone: () => ({}), onSome: entry => ({nextAttribute: entry[0]})})
 		),
-		...Boolean.match(
-			Array.some(page, entry => Predicate.isString(entry[1]) && entry[1].length > input.textOffset + input.textLimit),
-			{onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})}
+		...pipe(
+			page,
+			Array.some(entry => Predicate.isString(entry[1]) && entry[1].length > input.textOffset + input.textLimit),
+			Boolean.match({onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})})
 		)
 	}
 }
@@ -98,10 +99,14 @@ function operationPage(
 	const byApp = Array.groupBy(page, row => row.app)
 	return {
 		apps: Array.flatMap(answer.apps, app =>
-			Option.match(Record.get(byApp, app.app), {
-				onNone: () => [],
-				onSome: rows => [{app: app.app, operations: Array.map(rows, row => row.operation)}]
-			})
+			pipe(
+				byApp,
+				Record.get(app.app),
+				Option.match({
+					onNone: () => [],
+					onSome: rows => [{app: app.app, operations: Array.map(rows, row => row.operation)}]
+				})
+			)
 		),
 		...pipe(
 			page,
@@ -156,9 +161,10 @@ function traceResult(
 				onFalse: () => ({}),
 				onTrue: () => ({nextOffset: input.offset + input.logLimit})
 			}),
-			...Boolean.match(
-				Array.some(logs, log => log.message.length > input.textOffset + input.textLimit),
-				{onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})}
+			...pipe(
+				logs,
+				Array.some(log => log.message.length > input.textOffset + input.textLimit),
+				Boolean.match({onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})})
 			)
 		})
 	}
@@ -172,9 +178,10 @@ function traceResult(
 				onSome: error => ({error: String.slice(input.textOffset, input.textOffset + input.textLimit)(error)})
 			})
 		})),
-		...Boolean.match(
-			Array.some(spans, span => (span.error?.length ?? 0) > input.textOffset + input.textLimit),
-			{onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})}
+		...pipe(
+			spans,
+			Array.some(span => (span.error?.length ?? 0) > input.textOffset + input.textLimit),
+			Boolean.match({onFalse: () => ({}), onTrue: () => ({nextTextOffset: input.textOffset + input.textLimit})})
 		)
 	})
 }

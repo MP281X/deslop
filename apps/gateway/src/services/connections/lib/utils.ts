@@ -41,7 +41,7 @@ export function clientMetadata(url: string) {
 }
 
 // The icons a server names in its MCP server info, kept to a few a page can show, each small enough to stream to it.
-export function serverIcons(implementation?: {icons?: {src: string; theme?: 'dark' | 'light'}[]}) {
+export function serverIcons(implementation: ReturnType<Client['getServerVersion']>) {
 	return pipe(
 		implementation?.icons ?? [],
 		Array.filter(

@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, Option, Predicate} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -16,9 +16,9 @@ function hasUnusedSetter(input: {context: Context; node: ESTree.CallExpression})
 	const setter = input.node.parent.id.elements[1]
 	if (Predicate.isNullish(setter)) return true
 	if (setter.type !== 'Identifier') return false
-	return pipe(
+	return Option.exists(
 		variableFromScope({name: setter.name, scope: input.context.sourceCode.getScope(setter)}),
-		Option.exists(variable => !Array.some(variable.references, reference => reference.isRead()))
+		variable => !Array.some(variable.references, reference => reference.isRead())
 	)
 }
 

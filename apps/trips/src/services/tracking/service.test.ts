@@ -30,7 +30,7 @@ import {HOUR} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 import {Flight, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {Tracker} from '#services/tracking/service.ts'
+import {Tracking} from '#services/tracking/service.ts'
 
 const ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
 
@@ -70,7 +70,6 @@ const TRAIN = {
 // The bookings as a list in memory; a newer state replaces the one it was made from only while that one is still stored.
 function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 	return Bookings.of({
-		changes: Stream.never,
 		events: Stream.never,
 		list: Effect.tap(Ref.get(state), () =>
 			Option.match(Option.fromUndefinedOr(listed), {
@@ -79,17 +78,19 @@ function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 			})
 		),
 		remove: () => Effect.void,
-		replace: (before, after) =>
-			Effect.andThen(
+		replace: Effect.fnUntraced(function* (before, after) {
+			return yield* pipe(
+				state,
 				Ref.update(
-					state,
 					Array.map(booking =>
-						Boolean.match(Equal.equals(booking, before), {onFalse: () => booking, onTrue: () => after})
+						pipe(booking, Equal.equals(before), Boolean.match({onFalse: () => booking, onTrue: () => after}))
 					)
 				),
-				Effect.undefined
-			),
-		save: () => Effect.undefined
+				Effect.andThen(Effect.undefined)
+			)
+		}),
+		save: () => Effect.undefined,
+		watch: Stream.never
 	})
 }
 
@@ -99,13 +100,13 @@ const open = Effect.fnUntraced(function* (bookings: typeof Bookings.Service, cli
 	const tracker = Context.get(
 		yield* Layer.build(
 			pipe(
-				Tracker.layer,
+				Tracking.layer,
 				Layer.provide(Layer.succeedContext(database)),
 				Layer.provide(Layer.succeed(Bookings, bookings)),
 				Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
 			)
 		),
-		Tracker
+		Tracking
 	)
 	const sql = Context.get(database, SqlClient.SqlClient)
 	return {lookups: sql<{calls: number; month: string}>`SELECT month, calls FROM lookups`, sql, tracker}
@@ -122,9 +123,10 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state, listed),
 				HttpClient.make(request =>
-					Effect.as(
-						Ref.update(calls, count => count + 1),
-						HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
+					pipe(
+						calls,
+						Ref.update(count => count + 1),
+						Effect.as(HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204})))
 					)
 				)
 			)
@@ -231,9 +233,10 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state),
 				HttpClient.make(request =>
-					Effect.as(
-						Ref.update(calls, count => count + 1),
-						HttpClientResponse.fromWeb(request, Response.json({flights: []}))
+					pipe(
+						calls,
+						Ref.update(count => count + 1),
+						Effect.as(HttpClientResponse.fromWeb(request, Response.json({flights: []})))
 					)
 				)
 			)

@@ -1,9 +1,9 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Duration, Option, String} from 'effect'
+import {Array, Boolean, Duration, Option, String, Struct, pipe} from 'effect'
 
-import {navigationOf, nextSearch, selectionOf} from '#lib/utils.ts'
-import type {NavigationEvent, Search} from '#lib/utils.ts'
+import {navigationOf, nextSearch, selectionOf} from '#lib/telemetry.ts'
+import type {NavigationEvent, Search} from '#lib/telemetry.ts'
 import type {Overview} from '#services/telemetry/schema.ts'
 
 const OPERATION = {app: 'deploy', name: 'Inventory.snapshot', runtime: 'server' as const}
@@ -29,9 +29,13 @@ it('backs out one inspector level at a time without losing the selected operatio
 		{_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}}
 	])
 	assert.strictEqual(navigationOf(span).path, 'Span')
-	const backs = Array.scan(Array.replicate({_tag: 'Back'} as const, 4), span, nextSearch)
+	const backs = pipe({_tag: 'Back'} as const, Array.replicate(4), Array.scan(span, nextSearch))
 	assert.deepStrictEqual(
-		Array.map(Array.drop(backs, 1), search => navigationOf(search).path),
+		pipe(
+			backs,
+			Array.drop(1),
+			Array.map(search => navigationOf(search).path)
+		),
 		['Trace', 'Traces', 'Operations', 'Operations']
 	)
 	for (const search of backs) {
@@ -80,7 +84,7 @@ it('chooses one app at a time and leaves the chosen tab alone', () => {
 	const selected = follow([{_tag: 'Operation', operation: OPERATION}], {source: 'deploy'})
 	assert.deepStrictEqual(nextSearch(selected, {_tag: 'Source', app: 'deploy'}), selected)
 	assert.deepStrictEqual(nextSearch(selected, {_tag: 'Source', app: 'stash'}), {source: 'stash'})
-	assert.deepStrictEqual(nextSearch({...selected, source: undefined}, {_tag: 'Source', app: 'stash'}), {
+	assert.deepStrictEqual(nextSearch(Struct.omit(selected, ['source']), {_tag: 'Source', app: 'stash'}), {
 		source: 'stash'
 	})
 })

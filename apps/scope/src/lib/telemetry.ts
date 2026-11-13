@@ -46,7 +46,7 @@ const Pane = Schema.Literals(['Traces', 'Trace', 'Span'])
 type Wrapped = typeof Wrapped.Type
 const Wrapped = Schema.Record(Schema.String, Schema.Json)
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/scope/lib/telemetry/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: layerPageProtocol
 }) {}
@@ -87,8 +87,8 @@ export function navigationOf(search: Search) {
 				runtime =>
 					({
 						operation: {app: search.source ?? '', name: search.operation ?? '', runtime},
-						...Option.match(Option.fromUndefinedOr(search.trace), {onNone: () => ({}), onSome: traceId => ({traceId})}),
-						...Option.match(Option.fromUndefinedOr(search.span), {onNone: () => ({}), onSome: spanId => ({spanId})})
+						...Option.match(Option.fromUndefinedOr(search.span), {onNone: () => ({}), onSome: spanId => ({spanId})}),
+						...Option.match(Option.fromUndefinedOr(search.trace), {onNone: () => ({}), onSome: traceId => ({traceId})})
 					}) satisfies Selection
 			)
 		)
@@ -99,12 +99,12 @@ export function navigationOf(search: Search) {
 function select(selection: Selection, frame?: Range, pane?: Pane) {
 	return {
 		operation: selection.operation.name,
+		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
 		...Option.match(Option.fromUndefinedOr(frame), {onNone: () => ({}), onSome: range => ({range})}),
 		side: selection.operation.runtime,
 		source: selection.operation.app,
-		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
-		...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})}),
-		...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})})
+		...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})}),
+		...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})})
 	} satisfies Search
 }
 
@@ -126,38 +126,40 @@ export function nextSearch(search: Search, event: NavigationEvent) {
 		})
 		return {...kept, range: event.range} satisfies Search
 	}
-	return Option.match(
-		Option.flatMap(Option.fromUndefinedOr(search.pane), current => Record.get(UP, current)),
-		{onNone: () => ({...Struct.omit(search, ['pane']), pane: undefined}), onSome: up => ({...search, pane: up})}
+	return pipe(
+		Option.fromUndefinedOr(search.pane),
+		Option.flatMap(current => Record.get(UP, current)),
+		Option.match({
+			onNone: () => ({...Struct.omit(search, ['pane']), pane: undefined}),
+			onSome: up => ({...search, pane: up})
+		})
 	) satisfies Search
 }
 
 // The app a plain open lands on: the one whose newest failed trace is newest, else the first tab.
 function openingApp(overview: Overview) {
-	const failedTraces = Array.flatMap(overview.apps, app =>
-		Array.flatMap(app.operations, operation =>
-			Array.getSomes(
-				Array.map(operation.traces, trace =>
-					Option.map(Option.fromUndefinedOr(trace.failure), () => ({app: app.name, start: trace.start}))
+	return pipe(
+		Array.flatMap(overview.apps, app =>
+			Array.flatMap(app.operations, operation =>
+				Array.getSomes(
+					Array.map(operation.traces, trace =>
+						Option.map(Option.fromUndefinedOr(trace.failure), () => ({app: app.name, start: trace.start}))
+					)
 				)
 			)
-		)
-	)
-	return Option.orElse(
-		Option.map(
-			Array.match(failedTraces, {
-				onEmpty: () => Option.none<{app: string; start: number}>(),
-				onNonEmpty: entries =>
-					Option.some(
-						Array.max(
-							entries,
-							Order.mapInput(Order.Number, entry => entry.start)
-						)
-					)
-			}),
-			entry => entry.app
 		),
-		() => Option.map(Array.head(overview.apps), app => app.name)
+		Array.match({
+			onEmpty: () => Option.none<{app: string; start: number}>(),
+			onNonEmpty: entries =>
+				Option.some(
+					Array.max(
+						entries,
+						Order.mapInput(Order.Number, entry => entry.start)
+					)
+				)
+		}),
+		Option.map(entry => entry.app),
+		Option.orElse(() => Option.map(Array.head(overview.apps), app => app.name))
 	)
 }
 
@@ -227,9 +229,10 @@ export function errorOf(span: TraceTree['spans'][number]) {
 // Attributes, without anything that only repeats the row: its name, code.function, or the status code the error line carries.
 export function attributesOf(span: TraceTree['spans'][number]) {
 	const failing = span.status === 'failed'
-	const attributes = Array.map(
-		Array.filter(Record.toEntries(span.attributes), entry => entry[0] !== 'service.name'),
-		entry => ({key: entry[0], value: valueOf(entry[1])})
+	const attributes = pipe(
+		Record.toEntries(span.attributes),
+		Array.filter(entry => entry[0] !== 'service.name'),
+		Array.map(entry => ({key: entry[0], value: valueOf(entry[1])}))
 	)
 	const status = Array.findFirst(attributes, attribute => attribute.key === 'http.response.status_code')
 	return Array.filter(
@@ -244,56 +247,57 @@ export function attributesOf(span: TraceTree['spans'][number]) {
 
 // One app's operations, in the overview's order: failing first, then most recently seen.
 export function operationsOf(overview: Overview, source?: string) {
-	return Array.flatMap(
-		Array.filter(overview.apps, (app: Overview['apps'][number]) => app.name === source),
-		(app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation}))
+	return pipe(
+		overview.apps,
+		Array.filter((app: Overview['apps'][number]) => app.name === source),
+		Array.flatMap((app: Overview['apps'][number]) => Array.map(app.operations, operation => ({app, operation})))
 	)
 }
 
 function findOperation(overview: Overview, key: OperationKey) {
-	return Option.flatMap(
-		Array.findFirst(overview.apps, app => app.name === key.app),
-		app =>
-			Option.map(
-				Array.findFirst(app.operations, operation => operation.runtime === key.runtime && operation.name === key.name),
-				operation => ({app, operation})
+	return pipe(
+		overview.apps,
+		Array.findFirst(app => app.name === key.app),
+		Option.flatMap(app =>
+			pipe(
+				app.operations,
+				Array.findFirst(operation => operation.runtime === key.runtime && operation.name === key.name),
+				Option.map(operation => ({app, operation}))
 			)
+		)
 	)
 }
 
 // The span the URL picks, else where the failure broke, else the first span.
 export function focusOf(trace: TraceTree, pickedSpan?: string) {
-	return Option.orElse(
-		Array.findFirst(trace.spans, span => span.spanId === pickedSpan),
-		() =>
-			Option.orElse(
-				Option.flatMap(Option.fromUndefinedOr(trace.failureSpanId), id =>
-					Array.findFirst(trace.spans, span => span.spanId === id)
-				),
-				() => Array.findFirst(trace.spans, span => span.depth === 0)
+	return pipe(
+		trace.spans,
+		Array.findFirst(span => span.spanId === pickedSpan),
+		Option.orElse(() =>
+			pipe(
+				Option.fromUndefinedOr(trace.failureSpanId),
+				Option.flatMap(id => Array.findFirst(trace.spans, span => span.spanId === id)),
+				Option.orElse(() => Array.findFirst(trace.spans, span => span.depth === 0))
 			)
+		)
 	)
 }
 
 // The app, operation, trace and span the URL selects; a desktop layout defaults to the app's first operation and phone starts empty.
 export function selectionOf(overview: Option.Option<Overview>, search: Search, mobile: boolean) {
 	const source = Option.getOrUndefined(
-		Option.orElse(
-			Option.filter(Option.fromUndefinedOr(search.source), name =>
-				Option.exists(overview, current => Array.some(current.apps, app => app.name === name))
-			),
-			() => Option.flatMap(overview, openingApp)
+		pipe(
+			Option.fromUndefinedOr(search.source),
+			Option.filter(name => Option.exists(overview, current => Array.some(current.apps, app => app.name === name))),
+			Option.orElse(() => Option.flatMap(overview, openingApp))
 		)
 	)
 	const selection = navigationOf(search).selection
-	const activeOperation = Option.orElse(
-		Option.filter(
-			Option.flatMap(Option.fromUndefinedOr(selection?.operation), key =>
-				Option.flatMap(overview, current => findOperation(current, key))
-			),
-			active => active.app.name === source
-		),
-		() =>
+	const activeOperation = pipe(
+		Option.fromUndefinedOr(selection?.operation),
+		Option.flatMap(key => Option.flatMap(overview, current => findOperation(current, key))),
+		Option.filter(active => active.app.name === source),
+		Option.orElse(() =>
 			Boolean.match(mobile, {
 				onFalse: () =>
 					Option.flatMap(overview, current =>
@@ -301,6 +305,7 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 					),
 				onTrue: () => Option.none<ActiveOperation>()
 			})
+		)
 	)
 	const activeKey = Option.map(activeOperation, active => ({
 		app: active.app.name,
@@ -308,19 +313,17 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 		runtime: active.operation.runtime
 	}))
 	const activeTrace = Option.flatMap(activeOperation, active =>
-		Option.orElse(
-			Option.flatMap(Option.fromUndefinedOr(selection?.traceId), selected =>
-				Array.findFirst(active.operation.traces, trace => trace.id === selected)
-			),
-			() => Array.head(active.operation.traces)
+		pipe(
+			Option.fromUndefinedOr(selection?.traceId),
+			Option.flatMap(selected => Array.findFirst(active.operation.traces, trace => trace.id === selected)),
+			Option.orElse(() => Array.head(active.operation.traces))
 		)
 	)
 	const pickedSpan = Option.getOrUndefined(
-		Option.flatMap(
-			Option.filter(Option.fromUndefinedOr(selection), selected =>
-				Option.exists(activeTrace, trace => selected.traceId === trace.id)
-			),
-			selected => Option.fromUndefinedOr(selected.spanId)
+		pipe(
+			Option.fromUndefinedOr(selection),
+			Option.filter(selected => Option.exists(activeTrace, trace => selected.traceId === trace.id)),
+			Option.flatMap(selected => Option.fromUndefinedOr(selected.spanId))
 		)
 	)
 	return {activeKey, activeOperation, activeTrace, pickedSpan, source}

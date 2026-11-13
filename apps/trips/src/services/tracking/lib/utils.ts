@@ -9,7 +9,7 @@ function instant(value?: string | null) {
 }
 
 function text(value?: string | null) {
-	return Option.filter(Option.map(Option.fromNullishOr(value), String.trim), String.isNonEmpty)
+	return pipe(Option.fromNullishOr(value), Option.map(String.trim), Option.filter(String.isNonEmpty))
 }
 
 // The operation that leaves the booked airport closest to the booked time; a codeshare or a schedule change keeps the same one.
@@ -22,12 +22,11 @@ export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
 				Option.exists(Option.fromNullishOr(candidate.origin?.code_iata), code => code === flight.from.code)
 		),
 		Array.filterMap(candidate =>
-			Option.match(
-				Option.filter(
-					Option.map(instant(candidate.scheduled_out), out => Math.abs(out - flight.departs)),
-					gap => gap < 12 * HOUR
-				),
-				{onNone: () => Result.failVoid, onSome: gap => Result.succeed({candidate, gap})}
+			pipe(
+				instant(candidate.scheduled_out),
+				Option.map(out => Math.abs(out - flight.departs)),
+				Option.filter(gap => gap < 12 * HOUR),
+				Option.match({onNone: () => Result.failVoid, onSome: gap => Result.succeed({candidate, gap})})
 			)
 		),
 		matches => {
@@ -68,9 +67,12 @@ export function flightTracking(answer: FaFlight, checkedAt: number, last: Option
 			departureTerminal: text(answer.terminal_origin),
 			// A gate that replaces another keeps the old one to show the change; the same gate keeps any earlier change.
 			previousGate: Option.flatMap(gate, current =>
-				Option.orElse(
-					Option.filter(Option.fromUndefinedOr(previous?.departureGate), before => before !== current),
-					() => Option.filter(Option.fromUndefinedOr(previous?.previousGate), () => previous?.departureGate === current)
+				pipe(
+					Option.fromUndefinedOr(previous?.departureGate),
+					Option.filter(before => before !== current),
+					Option.orElse(() =>
+						Option.filter(Option.fromUndefinedOr(previous?.previousGate), () => previous?.departureGate === current)
+					)
 				)
 			),
 			providerId: Option.fromNullishOr(answer.fa_flight_id)
@@ -105,13 +107,11 @@ function normalized(name: string) {
 	)
 }
 
-function stopFor(stops: VtStatus['fermate'], place: Place) {
-	return Option.orElse(
-		// "S08409" from Transitous' "it-trenitalia_08409:station", which ViaggiaTreno uses as its stop id.
-		Option.flatMap(String.match(/it-trenitalia_(\d+)/u)(place.code ?? ''), match =>
-			Array.findFirst(stops, stop => stop.id === `S${match[1] ?? ''}`)
-		),
-		() => Array.findFirst(stops, stop => normalized(stop.stazione) === normalized(place.name))
+function stopOf(stops: VtStatus['fermate'], place: Place) {
+	return pipe(
+		String.match(/it-trenitalia_(\d+)/u)(place.code ?? ''),
+		Option.flatMap(match => Array.findFirst(stops, stop => stop.id === `S${match[1] ?? ''}`)),
+		Option.orElse(() => Array.findFirst(stops, stop => normalized(stop.stazione) === normalized(place.name)))
 	)
 }
 
@@ -127,8 +127,8 @@ function trainState(from: Option.Option<VtStop>, to: Option.Option<VtStop>) {
 
 // Only the run that calls at the booked station near the booked time; another day's run of a daily number, or an unplaced station, answers none.
 export function trainTracking(answer: VtStatus, train: Train, checkedAt: number) {
-	const from = stopFor(answer.fermate, train.from)
-	const to = stopFor(answer.fermate, train.to)
+	const from = stopOf(answer.fermate, train.from)
+	const to = stopOf(answer.fermate, train.to)
 	if (
 		!Option.exists(from, stop =>
 			Option.exists(Option.fromNullishOr(stop.programmata), planned => Math.abs(planned - train.departs) <= 3 * HOUR)
@@ -151,18 +151,19 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			departurePlatformPlanned: Option.flatMap(from, stop => text(stop.binarioProgrammatoPartenzaDescrizione))
 		}),
 		checkedAt,
-		delayMinutes: Option.getOrElse(
-			Option.orElse(
-				Option.flatMap(
-					Option.filter(to, stop => stop.actualFermataType === 1),
-					stop => Option.fromNullishOr(stop.ritardo)
-				),
-				() => Option.fromNullishOr(answer.ritardo)
-			),
-			() => 0
+		delayMinutes: pipe(
+			to,
+			Option.filter(stop => stop.actualFermataType === 1),
+			Option.flatMap(stop => Option.fromNullishOr(stop.ritardo)),
+			Option.orElse(() => Option.fromNullishOr(answer.ritardo)),
+			Option.getOrElse(() => 0)
 		),
 		...Record.getSomes({
-			departureDelay: Option.flatMap(Option.filter(from, left), stop => Option.fromNullishOr(stop.ritardo))
+			departureDelay: pipe(
+				from,
+				Option.filter(left),
+				Option.flatMap(stop => Option.fromNullishOr(stop.ritardo))
+			)
 		}),
 		...Record.getSomes({
 			lastSeen: Option.filter(
@@ -187,8 +188,7 @@ function flightInterval(flight: Flight, now: number) {
 	// FlightAware answers at most two days ahead.
 	if (now < flight.departs - 47 * HOUR || now > arrival + 2 * HOUR) return Option.none<number>()
 	if (state === 'arrived') {
-		if (live?.belt === undefined && now < arrival + 45 * MINUTE) return Option.some(5 * MINUTE)
-		return Option.none<number>()
+		return Option.liftPredicate(5 * MINUTE, () => live?.belt === undefined && now < arrival + 45 * MINUTE)
 	}
 	if (state === 'landed') return Option.some(5 * MINUTE)
 	if (state === 'departed' || state === 'airborne') {
@@ -230,8 +230,11 @@ export function isDue(booking: Booking, now: number, attemptedAt: number) {
 // Live data that missed two of the checks due after it no longer describes the journey, even once tracking stopped; an arrival is final.
 export function isStale(booking: Booking, now: number) {
 	if (booking._tag === 'stay') return false
-	return Option.exists(
-		Option.filter(booking.live, live => live.state !== 'arrived'),
-		live => Option.exists(checkEvery(booking, live.checkedAt), every => now - live.checkedAt > 2 * every + 2 * MINUTE)
+	return pipe(
+		booking.live,
+		Option.filter((live: FlightTracking | TrainTracking) => live.state !== 'arrived'),
+		Option.exists(live =>
+			Option.exists(checkEvery(booking, live.checkedAt), every => now - live.checkedAt > 2 * every + 2 * MINUTE)
+		)
 	)
 }

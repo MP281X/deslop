@@ -34,7 +34,7 @@ import {reconcileOrganization} from './lib/tags.ts'
 import {clock} from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
-import {captureUrl, commentFor, hasVideo, queryWords, sourceFor} from '#services/notes/lib/utils.ts'
+import {captureUrl, commentOf, hasVideo, queryWords, sourceOf} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, Picture} from '#services/notes/schema.ts'
 import {
 	ImageType,
@@ -58,7 +58,7 @@ declare module 'effect/reactivity/Reactivity' {
 function withWords(note: Note, text: string) {
 	const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
 	return pipe(
-		commentFor(text),
+		commentOf(text),
 		String.split(' '),
 		Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word))),
 		Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
@@ -86,11 +86,11 @@ function optional<B>(message: string, fallback: () => B) {
 		)
 }
 
-function storageFailure(cause: unknown) {
+function asStorageNotesError(cause: unknown) {
 	return NotesError.make({cause, message: 'The notes or their files could not be read or written.'})
 }
 
-const storageFailed = Effect.mapError(storageFailure)
+const asNotesError = Effect.mapError(asStorageNotesError)
 
 const missing = NotesError.make({message: 'No note has this id; find its id with search_notes.'})
 
@@ -123,8 +123,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
-		yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
-		yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
+		yield* asNotesError(fs.makeDirectory(images, {mode: 0o700, recursive: true}))
+		yield* asNotesError(fs.makeDirectory(files, {mode: 0o700, recursive: true}))
 
 		const notes = yield* SqlModel.makeRepository(Note, {idColumn: 'id', spanPrefix: 'Notes', tableName: Note.table})
 
@@ -231,7 +231,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		})
 
 		function findNote(id: NoteId) {
-			return pipe(notes.findById(id), Effect.catchNoSuchElement, storageFailed)
+			return pipe(notes.findById(id), Effect.catchNoSuchElement, asNotesError)
 		}
 
 		// The note is read again inside the write, so a change made meanwhile is kept and a note removed meanwhile stays removed.
@@ -246,12 +246,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				),
 				Reactivity.mutation(['notes']),
 				sql.withTransaction,
-				storageFailed
+				asNotesError
 			)
 		}
 
 		const storeImage = Effect.fnUntraced(function* (id: NoteId, image: Image) {
-			yield* pipe(fs.writeFile(path.join(images, id), image.bytes, {mode: 0o600}), storageFailed)
+			yield* asNotesError(fs.writeFile(path.join(images, id), image.bytes, {mode: 0o600}))
 			yield* change(id, () => ({image: Option.some(image.type)}))
 		})
 
@@ -289,7 +289,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				),
 				Reactivity.mutation(['notes']),
 				sql.withTransaction,
-				storageFailed
+				asNotesError
 			)
 		}
 
@@ -298,19 +298,21 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				onFalse: () => 'The saved photo',
 				onTrue: () => 'Preview image'
 			})
-			const preview = yield* pipe(
+			const preview = yield* optional(
+				'The preview could not be read',
+				Array.empty<Picture>
+			)(
 				Effect.forEach(
 					Option.toArray(note.image),
 					type => Effect.map(fs.readFile(path.join(images, note.id)), bytes => ({bytes, label, type})),
 					{concurrency: 'unbounded'}
-				),
-				optional('The preview could not be read', Array.empty<Picture>)
+				)
 			)
 			const pictures = [...preview, ...stills]
 			if (
 				String.isEmpty(note.content) &&
 				!Option.exists(note.transcript, String.isNonEmpty) &&
-				String.isEmpty(commentFor(note.text)) &&
+				String.isEmpty(commentOf(note.text)) &&
 				Array.isReadonlyArrayEmpty(pictures)
 			) {
 				return yield* change(note.id, item => ({
@@ -318,7 +320,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					status: 'failed'
 				}))
 			}
-			const entries = yield* pipe(listTagEntries(), storageFailed)
+			const entries = yield* asNotesError(listTagEntries())
 			yield* Result.match(yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})), {
 				onFailure: error => change(note.id, () => ({issue: Option.some(error.message), status: 'failed'})),
 				onSuccess: organization =>
@@ -335,8 +337,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// One note at a time, so two notes read together cannot create rival tags for the same topic.
 		function tag(userId: string, id: NoteId, stills: Picture[]) {
 			return pipe(
+				findNote(id),
 				Effect.flatMap(
-					findNote(id),
 					Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})
 				),
 				Effect.withSpan('Notes.tag', {attributes: {'note.id': id}})
@@ -346,11 +348,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// TikTok's preview image links expire within days, so the server keeps the image; a regenerated note keeps its own.
 		const keepImages = Effect.fnUntraced(function* (note: Note, page: Extraction) {
 			yield* pipe(
-				Effect.forEach(
-					Option.toArray(Option.filter(page.image, () => Option.isNone(note.image))),
-					image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
-					{concurrency: 'unbounded', discard: true}
-				),
+				Option.toArray(Option.filter(page.image, () => Option.isNone(note.image))),
+				Effect.forEach(image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)), {
+					concurrency: 'unbounded',
+					discard: true
+				}),
 				Effect.ignore({log: 'Warn', message: 'The preview image was not kept'})
 			)
 			const slides = yield* Effect.forEach(
@@ -382,14 +384,18 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Effect.flatMap(read =>
 							pipe(
 								Option.filter(read, () => Option.isNone(note.transcript)),
-								Option.map(details => pipe(details.transcript, optional('No transcript', Option.none<string>))),
+								Option.map(details => optional('No transcript', Option.none<string>)(details.transcript)),
 								Effect.transposeOption,
 								Effect.map(Option.flatten),
 								Effect.flatMap(transcript =>
 									change(note.id, item => ({
-										...Option.match(
-											Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
-											{onNone: () => ({}), onSome: details => ({content: details.info, issue: Option.none()})}
+										...pipe(
+											read,
+											Option.filter(() => sourceOf(input.url) !== 'X' || input.useInfo),
+											Option.match({
+												onNone: () => ({}),
+												onSome: details => ({content: details.info, issue: Option.none()})
+											})
 										),
 										transcript: Option.orElse(transcript, () => item.transcript)
 									}))
@@ -397,7 +403,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							)
 						)
 					),
-					pipe(media.frames(input.video), optional('No video frames', Array.empty<Still>))
+					optional('No video frames', Array.empty<Still>)(media.frames(input.video))
 				],
 				{concurrency: 2}
 			)
@@ -414,7 +420,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							onTrue: () => ({issue: Option.some(error.message)})
 						}),
 					onSuccess: page => ({
-						author: Option.orElse(Option.filter(page.author, String.isNonEmpty), () => item.author),
+						author: pipe(
+							page.author,
+							Option.filter(String.isNonEmpty),
+							Option.orElse(() => item.author)
+						),
 						content: page.text,
 						issue: Option.none(),
 						title: Boolean.match(String.isNonEmpty(page.title) && Option.contains(item.url, item.title), {
@@ -429,15 +439,16 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				onSuccess: page => keepImages(note, page)
 			})
 			// A video site can refuse the page reader and still answer yt-dlp; a read X post names its video or has none.
-			return yield* Option.match(
-				Result.match(extraction, {
+			return yield* pipe(
+				extraction,
+				Result.match({
 					onFailure: () => Option.liftPredicate(link, hasVideo),
 					onSuccess: page =>
 						Option.orElse(Option.fromUndefinedOr(page.video), () =>
-							Option.liftPredicate(page.url, address => hasVideo(address) && sourceFor(address) !== 'X')
+							Option.liftPredicate(page.url, address => hasVideo(address) && sourceOf(address) !== 'X')
 						)
 				}),
-				{
+				Option.match({
 					onNone: () => tag(userId, note.id, slides),
 					onSome: video =>
 						watch(userId, note, {
@@ -446,77 +457,75 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							useInfo: Result.isFailure(extraction),
 							video
 						})
-				}
+				})
 			)
 		})
 
 		const organizeFile = Effect.fnUntraced(function* (userId: string, note: Note, type: FileType) {
 			if (!isVideo(type)) return yield* tag(userId, note.id, [])
 			const stored = path.join(files, note.id)
-			const stills = yield* pipe(media.fileFrames(stored), optional('No video frames', Array.empty<Still>))
+			const stills = yield* optional('No video frames', Array.empty<Still>)(media.fileFrames(stored))
 			yield* pipe(
-				Option.match(Array.head(stills), {
+				Array.head(stills),
+				Option.match({
 					onNone: () => Effect.void,
 					onSome: frame => storeImage(note.id, {bytes: frame.bytes, type: 'image/jpeg'})
 				}),
 				Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
 			)
-			yield* Option.match(
-				yield* pipe(media.fileTranscript(userId, stored), optional('No transcript', Option.none<string>)),
-				{onNone: () => Effect.void, onSome: text => change(note.id, () => ({transcript: Option.some(text)}))}
-			)
-			yield* tag(userId, note.id, Array.map(Array.drop(stills, 1), still))
+			yield* Option.match(yield* optional('No transcript', Option.none<string>)(media.fileTranscript(userId, stored)), {
+				onNone: () => Effect.void,
+				onSome: text => change(note.id, () => ({transcript: Option.some(text)}))
+			})
+			yield* tag(userId, note.id, pipe(stills, Array.drop(1), Array.map(still)))
 		})
 
 		function start(userId: string, note: Note) {
-			return pipe(
-				Effect.option(Effect.currentSpan),
-				Effect.flatMap(request =>
-					pipe(
-						change(note.id, () => ({requester: userId})),
-						Effect.andThen(
-							Option.match(note.file, {
-								onNone: () =>
-									Option.match(note.url, {
-										onNone: () => tag(userId, note.id, []),
-										onSome: link => reading.withPermit(organizeLink(userId, note, link))
-									}),
-								onSome: type => reading.withPermit(organizeFile(userId, note, type))
-							})
-						),
-						Effect.tapCause(cause =>
-							Boolean.match(Cause.hasInterruptsOnly(cause), {
-								onFalse: () =>
-									pipe(
-										change(note.id, item =>
-											Boolean.match(item.status === 'organizing', {
-												onFalse: () => ({}),
-												onTrue: () => ({
-													issue: Option.some('Tagging stopped before it finished.'),
-													status: 'failed' as const
-												})
+			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
+				pipe(
+					change(note.id, () => ({requester: userId})),
+					Effect.andThen(
+						Option.match(note.file, {
+							onNone: () =>
+								Option.match(note.url, {
+									onNone: () => tag(userId, note.id, []),
+									onSome: link => reading.withPermit(organizeLink(userId, note, link))
+								}),
+							onSome: type => reading.withPermit(organizeFile(userId, note, type))
+						})
+					),
+					Effect.tapCause(cause =>
+						Boolean.match(Cause.hasInterruptsOnly(cause), {
+							onFalse: () =>
+								Effect.ignore(
+									change(note.id, item =>
+										Boolean.match(item.status === 'organizing', {
+											onFalse: () => ({}),
+											onTrue: () => ({
+												issue: Option.some('Tagging stopped before it finished.'),
+												status: 'failed' as const
 											})
-										),
-										Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
+										})
 									),
-								onTrue: () => Effect.void
-							})
-						),
-						// A finished or cancelled capture must not keep its request's trace open; the pipeline links back to it instead.
-						Effect.withSpan('Notes.organize', {
-							attributes: {'note.id': note.id},
-							links: Option.toArray(Option.map(request, span => ({attributes: {'link.type': 'follows-from'}, span}))),
-							root: true
-						}),
-						effect => FiberMap.run(runs, note.id, effect),
-						Effect.asVoid
-					)
+									{log: 'Warn', message: 'A stopped tagging run could not be recorded'}
+								),
+							onTrue: () => Effect.void
+						})
+					),
+					// A finished or cancelled capture must not keep its request's trace open; the pipeline links back to it instead.
+					Effect.withSpan('Notes.organize', {
+						attributes: {'note.id': note.id},
+						links: Option.toArray(Option.map(request, span => ({attributes: {'link.type': 'follows-from'}, span}))),
+						root: true
+					}),
+					effect => FiberMap.run(runs, note.id, effect),
+					Effect.asVoid
 				)
 			)
 		}
 
 		// A note a restart interrupted resumes for the person who saved it.
-		yield* Effect.forEach(yield* pipe(listOrganizing(), storageFailed), note => start(note.requester, note), {
+		yield* Effect.forEach(yield* asNotesError(listOrganizing()), note => start(note.requester, note), {
 			concurrency: 1,
 			discard: true
 		})
@@ -528,7 +537,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// The note just saved, or the one it joined, as the list shows it.
 		function savedItem(id: NoteId) {
 			return Effect.flatMap(
-				pipe(findItem(id), storageFailed),
+				asNotesError(findItem(id)),
 				Option.match({onNone: () => Effect.fail(missing), onSome: Effect.succeed})
 			)
 		}
@@ -552,12 +561,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				Effect.catchTag('PlatformError', cause =>
 					Effect.fail(NotesError.make({cause, message: 'The upload could not be written.'}))
 				),
-				Effect.andThen(pipe(fs.rename(partial, stored), storageFailed)),
+				Effect.andThen(asNotesError(fs.rename(partial, stored))),
 				Effect.onError(() =>
-					pipe(
-						fs.remove(partial, {force: true}),
-						Effect.ignore({log: 'Warn', message: 'A broken upload stays on disk'})
-					)
+					Effect.ignore(fs.remove(partial, {force: true}), {log: 'Warn', message: 'A broken upload stays on disk'})
 				)
 			)
 			return yield* pipe(
@@ -574,7 +580,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				}),
 				Effect.flatMap(notes.insert),
 				Reactivity.mutation(['notes']),
-				storageFailed
+				asNotesError
 			)
 		})
 
@@ -599,10 +605,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 										id: input.id,
 										image: Option.none(),
 										requester: userId,
-										source: Option.match(url, {onNone: () => 'Note' as const, onSome: sourceFor}),
+										source: Option.match(url, {onNone: () => 'Note' as const, onSome: sourceOf}),
 										text,
 										title: pipe(
-											Option.liftPredicate(commentFor(text), String.isNonEmpty),
+											Option.liftPredicate(commentOf(text), String.isNonEmpty),
 											Option.orElse(() => url),
 											Option.getOrElse(() => text),
 											String.slice(0, 200)
@@ -614,19 +620,20 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								),
 							// A share of a saved note adds its new words, unless it is the same capture sent again.
 							onSome: found =>
-								Option.match(
-									Option.filter(withWords(found, text), () => found.id !== input.id),
-									{
+								pipe(
+									withWords(found, text),
+									Option.filter(() => found.id !== input.id),
+									Option.match({
 										onNone: () => Effect.succeed({fresh: false, note: found}),
 										onSome: merged =>
 											Effect.map(notes.update({...editable(found), text: merged}), note => ({fresh: false, note}))
-									}
+									})
 								)
 						})
 					),
 					Reactivity.mutation(['notes']),
 					sql.withTransaction,
-					storageFailed
+					asNotesError
 				)
 				const item = yield* savedItem(saved.note.id)
 				if (saved.fresh) yield* start(userId, saved.note)
@@ -643,7 +650,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				return item
 			}, withReactivity),
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: Stream.mapError(listEvents(sql.reactive(['notes'], listItems())), storageFailure),
+			events: Stream.mapError(listEvents(sql.reactive(['notes'], listItems())), asStorageNotesError),
 			get: Effect.fn('Notes.get')(function* (id: NoteId) {
 				return yield* savedNote(id)
 			}),
@@ -654,7 +661,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					Effect.flatMap(Effect.fromOption),
 					Effect.mapError(() => NotesError.make({message: 'This note has no preview image.'}))
 				)
-				return {bytes: yield* pipe(fs.readFile(path.join(images, id)), storageFailed), type}
+				return {bytes: yield* asNotesError(fs.readFile(path.join(images, id))), type}
 			}),
 			item: savedItem,
 			// A page of the notes matching a query, newest first, and how many match in all.
@@ -664,14 +671,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				query: string
 			}) {
 				const words = queryWords(input.query)
-				const found = yield* pipe(pageItems({...words, cursor: input.cursor, limit: input.limit + 1}), storageFailed)
-				const total = yield* pipe(countMatching(words), storageFailed)
+				const found = yield* asNotesError(pageItems({...words, cursor: input.cursor, limit: input.limit + 1}))
+				const total = yield* asNotesError(countMatching(words))
 				const page = Array.take(found, input.limit)
 				return {
 					items: page,
-					next: Option.map(
-						Option.filter(Array.last(page), () => found.length > input.limit),
-						note => NotesCursor.make({createdAt: note.createdAt, id: note.id})
+					next: pipe(
+						Array.last(page),
+						Option.filter(() => found.length > input.limit),
+						Option.map(note => NotesCursor.make({createdAt: note.createdAt, id: note.id}))
 					),
 					total: total.count
 				}
@@ -683,9 +691,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}, withReactivity),
 			remove: Effect.fn('Notes.remove')(function* (id: NoteId) {
 				yield* FiberMap.remove(runs, id)
-				yield* pipe(notes.delete(id), Reactivity.mutation(['notes']), storageFailed)
-				yield* pipe(fs.remove(path.join(images, id), {force: true}), storageFailed)
-				yield* pipe(fs.remove(path.join(files, id), {force: true}), storageFailed)
+				yield* pipe(notes.delete(id), Reactivity.mutation(['notes']), asNotesError)
+				yield* asNotesError(fs.remove(path.join(images, id), {force: true}))
+				yield* asNotesError(fs.remove(path.join(files, id), {force: true}))
 			}, withReactivity),
 			// The ids matching a query, read again after each commit; `#word` names a tag.
 			search: (query: string) =>
@@ -698,7 +706,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						)
 					),
 					Stream.changes,
-					Stream.mapError(storageFailure)
+					Stream.mapError(asStorageNotesError)
 				)
 		}
 	})
@@ -754,15 +762,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 }
 
 // Reading sources and organizing notes are the notes' own internals; tests provide stand-ins to `Notes.layer` instead.
-export const layerNotes = pipe(
+export const layerNotes = Layer.provide(
 	Layer.unwrap(
-		pipe(
-			dataDirectory,
-			Effect.mapBoth({
-				onFailure: cause => NotesError.make({cause, message: 'The notes folder could not be read.'}),
-				onSuccess: Notes.layer
-			})
-		)
+		Effect.mapBoth(dataDirectory, {
+			onFailure: cause => NotesError.make({cause, message: 'The notes folder could not be read.'}),
+			onSuccess: Notes.layer
+		})
 	),
-	Layer.provide(Layer.mergeAll(Sources.layer, Organizer.layer))
+	Layer.mergeAll(Sources.layer, Organizer.layer)
 )

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { Questionnaire as QuestionnairePrimitive } from "@shadcn/react/questionnaire"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 
 import { buttonVariants, type Button } from "#components/ui/button.tsx"
 import { CheckIcon } from "@phosphor-icons/react"

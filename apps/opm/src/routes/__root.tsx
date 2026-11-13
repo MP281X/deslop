@@ -9,7 +9,7 @@ import {Suspense, useState} from 'react'
 import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 
-import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/chapters.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'

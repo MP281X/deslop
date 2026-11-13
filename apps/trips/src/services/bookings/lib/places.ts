@@ -49,34 +49,37 @@ function words(text: string) {
 function stationMatch(name: string, matches: StopMatches) {
 	const named = Array.filter(matches, match => {
 		const own = words(
-			`${match.name} ${Array.join(
-				Array.map(match.areas ?? [], area => area.name),
-				' '
+			`${match.name} ${pipe(
+				match.areas ?? [],
+				Array.map(area => area.name),
+				Array.join(' ')
 			)}`
 		)
-		return Option.exists(
-			Array.findFirst(words(name), word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
-			word => Array.contains(own, word)
+		return pipe(
+			words(name),
+			Array.findFirst(word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
+			Option.exists(word => Array.contains(own, word))
 		)
 	})
-	return Option.map(
-		Option.orElse(
-			Array.findFirst(named, match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
-			() => Array.head(named)
-		),
-		match =>
-			({
-				...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
-				code: match.id,
-				latitude: match.lat,
-				longitude: match.lon,
-				name: pipe(
-					String.toLowerCase(match.name),
-					String.split(' '),
-					Array.map(word => String.capitalize(word)),
-					Array.join(' ')
-				)
-			}) satisfies Place
+	return pipe(
+		named,
+		Array.findFirst(match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
+		Option.orElse(() => Array.head(named)),
+		Option.map(
+			match =>
+				({
+					code: match.id,
+					latitude: match.lat,
+					longitude: match.lon,
+					name: pipe(
+						String.toLowerCase(match.name),
+						String.split(' '),
+						Array.map(word => String.capitalize(word)),
+						Array.join(' ')
+					),
+					...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})})
+				}) satisfies Place
+		)
 	)
 }
 
@@ -136,9 +139,11 @@ export class Places extends Context.Service<
 					const airports = yield* Effect.mapError(index, cause =>
 						BookingsError.make({cause, message: 'The airport list could not be read.'})
 					)
-					const airport = yield* Effect.mapError(
-						Effect.fromOption(Record.get(airports, String.toUpperCase(String.trim(code)))),
-						() => BookingsError.make({message: `Unknown airport code ${code}.`})
+					const airport = yield* pipe(
+						airports,
+						Record.get(String.toUpperCase(String.trim(code))),
+						Effect.fromOption,
+						Effect.mapError(() => BookingsError.make({message: `Unknown airport code ${code}.`}))
 					)
 					return {
 						city: airport.city,
@@ -150,9 +155,11 @@ export class Places extends Context.Service<
 					} satisfies BookedPlace
 				}),
 				station: Effect.fn('Places.station')(function* (name) {
+					const key: string = String.toLowerCase(String.trim(name))
 					return Option.getOrElse(
 						yield* pipe(
-							Cache.get(stations, String.toLowerCase(String.trim(name))),
+							stations,
+							Cache.get(key),
 							Effect.mapError(cause =>
 								BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
 							)

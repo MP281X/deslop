@@ -17,7 +17,6 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 
-import {AccountAvatar} from '#lib/components.tsx'
 import {
 	accountMenuOpenAtom,
 	addPasskeyAtom,
@@ -25,7 +24,8 @@ import {
 	menuSignOutAtom,
 	passkeysAtom,
 	resumePasskeyAtom
-} from '#lib/utils.ts'
+} from '#lib/auth.ts'
+import {AccountAvatar} from '#lib/components.tsx'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 

@@ -22,7 +22,7 @@ import {TestClock} from 'effect/testing'
 
 import {keepValueThroughOutages} from '#client/live-stream.ts'
 import {adminIds} from '#server/auth.ts'
-import {AuthError, isAdmin, isDenied, needsSignIn, rejected} from '#shared/auth.ts'
+import {AuthError, isAdmin, isDenied, needsSignIn, asAuthError} from '#shared/auth.ts'
 
 function namesOf(error: AuthError) {
 	return Array.map(Cause.prettyErrors(Cause.fail(error)), rendered => rendered.name)
@@ -37,35 +37,36 @@ it('names an authorization outage apart from a refusal', () => {
 })
 
 function adminsWith(env: Record<string, string>) {
-	return pipe(adminIds, Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)))
+	return Effect.provideService(adminIds, ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env))
 }
 
 const readFixture = Effect.gen(function* () {
 	const clock = yield* Clock.Clock
 	const incoming = yield* Queue.unbounded<Effect.Effect<string, AuthError | string>>()
-	const empty = Atom.make(false)
-	const atom = Atom.make(get => {
-		if (get(empty)) return keepValueThroughOutages(get, Stream.empty)
-		return pipe(
-			keepValueThroughOutages(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
+	const emptyAtom = Atom.make(false)
+	const valueAtom = Atom.make(get => {
+		if (get(emptyAtom)) return keepValueThroughOutages(get, Stream.empty)
+		return Stream.provideService(
+			keepValueThroughOutages(get, Stream.mapEffect(Stream.fromQueue(incoming), Function.identity), stream =>
 				Stream.retry(stream, $ =>
-					pipe(
+					Schedule.while(
 						$(Schedule.spaced('1 second')),
-						Schedule.while(metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant')
+						metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant'
 					)
 				)
 			),
-			Stream.provideService(Clock.Clock, clock)
+			Clock.Clock,
+			clock
 		)
 	})
 	const registry = yield* AtomRegistry.AtomRegistry
-	yield* Atom.mount(atom)
+	yield* Atom.mount(valueAtom)
 	return {
-		atom,
-		changed: () => Effect.forkChild(pipe(AtomRegistry.toStream(registry, atom), Stream.drop(1), Stream.runHead)),
-		empty,
+		changed: () => Effect.forkChild(pipe(AtomRegistry.toStream(registry, valueAtom), Stream.drop(1), Stream.runHead)),
+		emptyAtom,
 		incoming,
-		registry
+		registry,
+		valueAtom
 	}
 })
 
@@ -77,9 +78,9 @@ it.layer(AtomRegistry.layer)(test => {
 				const refused = yield* env.changed()
 				yield* Queue.offer(env.incoming, Effect.fail(AuthError.make({error: 'access_denied', message: 'Denied'})))
 				yield* Fiber.join(refused)
-				env.registry.set(env.empty, true)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
-				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+				env.registry.set(env.emptyAtom, true)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.valueAtom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.valueAtom)), isDenied))
 			})
 		)
 	)
@@ -107,31 +108,31 @@ it.layer(AtomRegistry.layer)(test => {
 				const first = yield* env.changed()
 				yield* Queue.offer(env.incoming, Effect.succeed('private'))
 				yield* Fiber.join(first)
-				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.valueAtom)), Option.some('private'))
 				const refusal = yield* env.changed()
 				yield* Queue.offer(env.incoming, Effect.failCause(scenario.cause))
 				yield* Fiber.join(refusal)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
-				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.valueAtom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.valueAtom)), isDenied))
 				yield* TestClock.adjust('1 second')
-				env.registry.set(env.empty, true)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
-				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
-				env.registry.set(env.empty, false)
+				env.registry.set(env.emptyAtom, true)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.valueAtom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.valueAtom)), isDenied))
+				env.registry.set(env.emptyAtom, false)
 				const failed = yield* env.changed()
 				yield* Queue.offer(env.incoming, Effect.fail('Later outage'))
 				yield* Fiber.join(failed)
-				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.atom))))
-				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
-				env.registry.refresh(env.atom)
+				assert.isTrue(Option.isNone(AsyncResult.value(env.registry.get(env.valueAtom))))
+				assert.isTrue(Option.exists(AsyncResult.error(env.registry.get(env.valueAtom)), isDenied))
+				env.registry.refresh(env.valueAtom)
 				const fresh = yield* env.changed()
 				yield* Queue.offer(env.incoming, Effect.succeed('private'))
 				yield* Fiber.join(fresh)
-				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.valueAtom)), Option.some('private'))
 				const outage = yield* env.changed()
 				yield* Queue.offer(env.incoming, Effect.fail('Ordinary outage'))
 				yield* Fiber.join(outage)
-				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.valueAtom)), Option.some('private'))
 			})
 		)
 	)
@@ -149,8 +150,8 @@ it.layer(AtomRegistry.layer)(test => {
 					Effect.fail(AuthError.make({error: 'temporarily_unavailable', message: 'Retry later'}))
 				)
 				yield* Fiber.join(outage)
-				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.atom)), Option.some('private'))
-				assert.isFalse(Option.exists(AsyncResult.error(env.registry.get(env.atom)), isDenied))
+				assert.deepStrictEqual(AsyncResult.value(env.registry.get(env.valueAtom)), Option.some('private'))
+				assert.isFalse(Option.exists(AsyncResult.error(env.registry.get(env.valueAtom)), isDenied))
 			})
 		)
 	)
@@ -160,35 +161,34 @@ it.layer(AtomRegistry.layer)(test => {
 			Effect.gen(function* () {
 				const clock = yield* Clock.Clock
 				const incoming = yield* Queue.unbounded<Effect.Effect<string, string>>()
-				const atom = Atom.make(get =>
-					pipe(
-						keepValueThroughOutages(
-							get,
-							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)),
-							stream => Stream.retry(stream, Schedule.spaced('1 second'))
+				const valueAtom = Atom.make(get =>
+					Stream.provideService(
+						keepValueThroughOutages(get, Stream.mapEffect(Stream.fromQueue(incoming), Function.identity), stream =>
+							Stream.retry(stream, Schedule.spaced('1 second'))
 						),
-						Stream.provideService(Clock.Clock, clock)
+						Clock.Clock,
+						clock
 					)
 				)
 				const registry = yield* AtomRegistry.AtomRegistry
-				yield* Atom.mount(atom)
+				yield* Atom.mount(valueAtom)
 				const loaded = yield* Effect.forkChild(
-					pipe(AtomRegistry.toStream(registry, atom), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
+					pipe(AtomRegistry.toStream(registry, valueAtom), Stream.filter(AsyncResult.isSuccess), Stream.runHead)
 				)
 				yield* Queue.offer(incoming, Effect.fail('Dropped before the first value'))
 				yield* TestClock.adjust('1 second')
-				assert.isFalse(AsyncResult.isFailure(registry.get(atom)))
+				assert.isFalse(AsyncResult.isFailure(registry.get(valueAtom)))
 				yield* Queue.offer(incoming, Effect.succeed('private'))
 				yield* Fiber.join(loaded)
 				yield* Queue.offer(incoming, Effect.fail('Dropped on resume'))
 				yield* TestClock.adjust('1 second')
-				assert.isTrue(AsyncResult.isSuccess(registry.get(atom)))
+				assert.isTrue(AsyncResult.isSuccess(registry.get(valueAtom)))
 				const outage = yield* Effect.forkChild(
-					pipe(AtomRegistry.toStream(registry, atom), Stream.filter(AsyncResult.isFailure), Stream.runHead)
+					pipe(AtomRegistry.toStream(registry, valueAtom), Stream.filter(AsyncResult.isFailure), Stream.runHead)
 				)
 				yield* Queue.offer(incoming, Effect.fail('Still down'))
 				yield* Fiber.join(outage)
-				assert.deepStrictEqual(AsyncResult.value(registry.get(atom)), Option.some('private'))
+				assert.deepStrictEqual(AsyncResult.value(registry.get(valueAtom)), Option.some('private'))
 			})
 		)
 	)
@@ -219,9 +219,9 @@ it.effect(
 	'keeps an auth failure as it is and wraps anything else',
 	Effect.fnUntraced(function* () {
 		const signIn = AuthError.make({message: 'Sign in first'})
-		assert.strictEqual(yield* Effect.flip(pipe(Effect.fail(signIn), rejected('The app could not be read.'))), signIn)
+		assert.strictEqual(yield* Effect.flip(asAuthError('The app could not be read.')(Effect.fail(signIn))), signIn)
 		const cause = {_tag: 'StorageError', message: 'The store is unreadable.'}
-		const error = yield* Effect.flip(pipe(Effect.fail(cause), rejected('The app could not be read.')))
+		const error = yield* Effect.flip(asAuthError('The app could not be read.')(Effect.fail(cause)))
 		assert.instanceOf(error, AuthError)
 		assert.strictEqual(error.cause, cause)
 	})

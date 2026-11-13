@@ -95,9 +95,10 @@ export function runTrace(event: WorkflowRun) {
 			startTimeUnixNano: nanos(run.run_started_at),
 			status: statusOf(run.conclusion, `${run.display_title} failed`),
 			...runIds(event),
-			...Option.match(
-				Option.liftPredicate(event.action, action => action === 'completed'),
-				{onNone: () => ({}), onSome: () => ({endTimeUnixNano: nanos(run.updated_at)})}
+			...pipe(
+				event.action,
+				Option.liftPredicate(action => action === 'completed'),
+				Option.match({onNone: () => ({}), onSome: () => ({endTimeUnixNano: nanos(run.updated_at)})})
 			)
 		}
 	])
@@ -107,12 +108,12 @@ export function runTrace(event: WorkflowRun) {
 function stepsOf(job: WorkflowJob['workflow_job']) {
 	return Array.getSomes(
 		Array.map(job.steps, step =>
-			pipe(
+			Option.map(
 				Option.all({
 					completed: Option.fromNullishOr(step.completed_at),
 					started: Option.fromNullishOr(step.started_at)
 				}),
-				Option.map(times => ({...step, ...times}))
+				times => ({...step, ...times})
 			)
 		)
 	)
@@ -193,42 +194,49 @@ export function jobLogs(event: WorkflowJob, log: string) {
 		start: DateTime.toEpochMillis(DateTime.makeUnsafe(step.started))
 	}))
 	// Log lines and steps both arrive in time order, so one pointer moves through the steps once.
-	const [, lines] = Array.mapAccum(String.split('\n')(log), 0, (stepIndex, raw) => {
-		const entry = pipe(
-			raw,
-			String.replaceAll(ANSI, ''),
-			String.trim,
-			String.match(LOG_LINE),
-			Option.flatMap(match => {
-				const message = match[2] ?? ''
-				return Option.map(DateTime.make(match[1] ?? ''), date => ({
-					...Option.match(String.match(LOG_COMMAND)(message), {
-						onNone: () => ({command: '', message}),
-						onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
-					}),
-					time: DateTime.toEpochMillis(date)
+	const [, lines] = pipe(
+		log,
+		String.split('\n'),
+		Array.mapAccum(0, (stepIndex, raw) => {
+			const entry = pipe(
+				raw,
+				String.replaceAll(ANSI, ''),
+				String.trim,
+				String.match(LOG_LINE),
+				Option.flatMap(match => {
+					const message = match[2] ?? ''
+					return Option.map(DateTime.make(match[1] ?? ''), date => ({
+						...Option.match(String.match(LOG_COMMAND)(message), {
+							onNone: () => ({command: '', message}),
+							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
+						}),
+						time: DateTime.toEpochMillis(date)
+					}))
+				}),
+				Option.filter(
+					line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup'
+				)
+			)
+			const next = Option.match(entry, {
+				onNone: () => stepIndex,
+				onSome: line => stepIndexAfter(steps, stepIndex, line.time)
+			})
+			return [
+				next,
+				Option.map(entry, line => ({
+					body: {stringValue: line.message},
+					severityNumber: severityOf(line.command),
+					spanId: pipe(
+						Option.fromUndefinedOr(steps[next]),
+						Option.filter(step => line.time >= step.start),
+						Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
+					),
+					timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
+					traceId
 				}))
-			}),
-			Option.filter(line => String.trim(line.message) !== '' && line.command !== 'group' && line.command !== 'endgroup')
-		)
-		const next = Option.match(entry, {
-			onNone: () => stepIndex,
-			onSome: line => stepIndexAfter(steps, stepIndex, line.time)
+			] as const
 		})
-		return [
-			next,
-			Option.map(entry, line => ({
-				body: {stringValue: line.message},
-				severityNumber: severityOf(line.command),
-				spanId: Option.match(
-					Option.filter(Option.fromUndefinedOr(steps[next]), step => line.time >= step.start),
-					{onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId}
-				),
-				timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
-				traceId
-			}))
-		] as const
-	})
+	)
 	const records = Array.getSomes(lines)
 	return LogsRequest.make({
 		resourceLogs: [

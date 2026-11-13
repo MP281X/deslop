@@ -1,3 +1,3 @@
-import {metro} from '@deslop/runtime/config/metro'
+import {makeMetroConfig} from '@deslop/runtime/config/metro'
 
-export default metro(import.meta.dirname)
+export default makeMetroConfig(import.meta.dirname)

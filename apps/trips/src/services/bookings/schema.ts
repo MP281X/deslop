@@ -11,16 +11,12 @@ export const IMAGE_BYTES = 4_000_000
 
 export type BookingSource = typeof BookingSource.Type
 export const BookingSource = Schema.Union([
-	Schema.TaggedStruct('text', {
-		text: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(60_000)))
-	}),
-	Schema.TaggedStruct('image', {
-		image: pipe(Schema.Uint8Array, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES)))
-	})
+	Schema.TaggedStruct('text', {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}),
+	Schema.TaggedStruct('image', {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))})
 ])
 
 export type BookingId = typeof BookingId.Type
-export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()))
+export const BookingId = Schema.String.check(Schema.isUUID())
 
 // Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type

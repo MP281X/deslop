@@ -40,16 +40,12 @@ function articleText(article: FxArticle) {
 		Array.map(Array.reverse(article.content.entityMap), entity => [entity.key, entity] as const)
 	)
 	const lines = Array.filterMap(article.content.blocks, block => {
-		const attached = pipe(
-			block.entityRanges,
-			Array.filterMap(range =>
-				Result.fromOption(
-					pipe(
-						HashMap.get(entities, `${range.key}`),
-						Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url)
-					),
-					() => undefined
-				)
+		const attached = Array.filterMap(block.entityRanges, range =>
+			pipe(
+				entities,
+				HashMap.get(`${range.key}`),
+				Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url),
+				Result.fromOption(() => undefined)
 			)
 		)
 		const text = pipe([String.trim(block.text), ...attached], Array.filter(String.isNonEmpty), Array.join(' '))
@@ -105,20 +101,21 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 	const replies = conversation.replies ?? []
 	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
 	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
+
 	const followUps = pipe(
-		Array.sort(
-			Array.filter(replies, post => post.author.id === status.author.id),
-			byTime
-		),
+		replies,
+		Array.filter(post => post.author.id === status.author.id),
+		Array.sort(byTime),
 		Array.mapAccum(HashSet.make(status.id), (chain, post) => {
 			if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
 			return [HashSet.add(chain, post.id), Option.some(post)] as const
 		}),
 		result => Array.getSomes(result[1])
 	)
-	const earlier = Array.sort(
-		Array.filter(conversation.thread ?? [], post => post.id !== status.id),
-		byTime
+	const earlier = pipe(
+		conversation.thread ?? [],
+		Array.filter(post => post.id !== status.id),
+		Array.sort(byTime)
 	)
 	const shown = [status, ...followUps, ...Option.toArray(quote)]
 	// The posts above the saved one come after it, so its own links and photos lead.
@@ -145,12 +142,10 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 		posts: pipe(
 			links,
 			Array.filterMap(link =>
-				Result.fromOption(
-					pipe(
-						String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
-						Option.flatMap(match => Array.get(match, 1))
-					),
-					() => undefined
+				pipe(
+					String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
+					Option.flatMap(match => Array.get(match, 1)),
+					Result.fromOption(() => undefined)
 				)
 			),
 			Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),
@@ -177,7 +172,7 @@ export function conversationExtraction(
 		image: Option.orElse(Array.head(photos), () =>
 			Option.map(Array.head(media), item => item.thumbnail_url ?? item.url)
 		),
-		slides: Array.take(Array.drop(photos, 1), 30),
+		slides: pipe(photos, Array.drop(1), Array.take(30)),
 		text: pipe(
 			[
 				section('Earlier in the conversation', Array.map(plan.earlier, said)),
@@ -193,15 +188,14 @@ export function conversationExtraction(
 						Array.filter(post => post.author.id === plan.status.author.id && !HashSet.has(plan.followUpIds, post.id)),
 						Array.sort(byTime),
 						Array.map(answer =>
-							Option.match(
-								Option.flatMap(Option.fromNullishOr(answer.replying_to?.status), parentId =>
-									HashMap.get(plan.byId, parentId)
-								),
-								{
+							pipe(
+								Option.fromNullishOr(answer.replying_to?.status),
+								Option.flatMap(parentId => HashMap.get(plan.byId, parentId)),
+								Option.match({
 									onNone: () => plainText(answer.text),
 									onSome: question =>
 										`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
-								}
+								})
 							)
 						)
 					)

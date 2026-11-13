@@ -18,17 +18,16 @@ export function prunedTools(
 	installed: Record<string, {id: string; generation: string}>
 ) {
 	const connected = HashSet.fromIterable(
-		Array.map(
-			Array.filter(definitions, server => server.status !== 'Not connected'),
-			server => Tuple.make(server.id, server.generation)
+		pipe(
+			definitions,
+			Array.filter(server => server.status !== 'Not connected'),
+			Array.map(server => Tuple.make(server.id, server.generation))
 		)
 	)
-	return Array.map(
-		Array.filter(
-			Record.toEntries(installed),
-			entry => !HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))
-		),
-		entry => entry[0]
+	return pipe(
+		Record.toEntries(installed),
+		Array.filter(entry => !HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))),
+		Array.map(entry => entry[0])
 	)
 }
 

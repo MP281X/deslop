@@ -25,26 +25,24 @@ vi.mock('react-native', () => ({Alert: {alert: () => {}}}))
 
 class RemovalError extends Schema.TaggedError<RemovalError>()('RemovalError', {message: Schema.String}) {}
 
-function harness(failure = false) {
-	return Effect.gen(function* () {
-		const calls = yield* Ref.make(0)
-		const removal = makeRemoval({
-			notRemoved: 'Not Deleted',
-			remove: () => {
-				if (failure) return Effect.fail(RemovalError.make({message: 'The server refused'}))
-				return Ref.update(calls, count => count + 1)
-			}
-		})
-		return {calls, machine: removal.machine(ID), removeAtom: removal.removeAtom}
+const harness = Effect.fnUntraced(function* (failure: boolean) {
+	const calls = yield* Ref.make(0)
+	const removal = makeRemoval({
+		notRemoved: 'Not Deleted',
+		remove: () => {
+			if (failure) return Effect.fail(RemovalError.make({message: 'The server refused'}))
+			return Ref.update(calls, count => count + 1)
+		}
 	})
-}
+	return {calls, machine: removal.machine(ID), removeAtom: removal.removeAtom}
+})
 
 it.layer(AtomRegistry.layer)(test => {
 	test.effect(
 		'removes once after eight seconds with no row mounted, through the machine atom a row renders',
 		Effect.fnUntraced(function* () {
 			Atom.runtime.addGlobalLayer(Layer.succeed(Clock.Clock, yield* Clock.Clock))
-			const scenario = yield* harness()
+			const scenario = yield* harness(false)
 			assert.isTrue(AtomMachine.isMachineAtom(scenario.machine))
 			yield* Atom.set(scenario.removeAtom, ID)
 			yield* TestClock.adjust('8 seconds')
@@ -58,7 +56,7 @@ it.layer(AtomRegistry.layer)(test => {
 		'restores before the eight seconds, so the server is never called',
 		Effect.fnUntraced(function* () {
 			Atom.runtime.addGlobalLayer(Layer.succeed(Clock.Clock, yield* Clock.Clock))
-			const scenario = yield* harness()
+			const scenario = yield* harness(false)
 			yield* Atom.set(scenario.removeAtom, ID)
 			yield* Atom.set(scenario.machine.send, {_tag: 'Restored'})
 			yield* TestClock.adjust('16 seconds')

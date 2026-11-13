@@ -88,12 +88,12 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 	const path = yield* Path.Path
 	const calls = yield* Ref.make(Array.empty<{code: string; questions: string[]}>())
 	const server = yield* Layer.build(
-		pipe(
+		Layer.provideMerge(
 			HttpRouter.serve(
 				HttpRouter.add(
 					'POST',
 					'/ai/openrouter/alpha/decisions',
-					pipe(
+					Effect.orDie(
 						Effect.gen(function* () {
 							const asked = yield* HttpServerRequest.schemaBodyJson(Asked)
 							yield* Ref.update(calls, made => [
@@ -112,12 +112,11 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 								),
 								usage: {cost: 0.0001}
 							})
-						}),
-						Effect.orDie
+						})
 					)
 				)
 			),
-			Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0}))
+			NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0})
 		)
 	)
 	const gateway = HttpServer.formatAddress(Context.get(server, HttpServer.HttpServer).address)
@@ -164,9 +163,10 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 			{concurrency: 'unbounded'}
 		)
 		// Log lines open with their time; the rest is the findings and, after them, the tactics.
-		const printed = Array.filter(
-			String.split('\n')(output[0]),
-			line => String.isNonEmpty(line) && !String.startsWith('[')(line)
+		const printed = pipe(
+			output[0],
+			String.split('\n'),
+			Array.filter(line => String.isNonEmpty(line) && !String.startsWith('[')(line))
 		)
 		const made = yield* Ref.get(calls)
 		return {
@@ -177,7 +177,7 @@ const fixture = Effect.fnUntraced(function* (misjudged: string) {
 				printed,
 				Array.filter(line => Option.isSome(String.match(/ \d+(?:\.\d+)?$/u)(line))),
 				Array.map(line => {
-					const words = String.split(' ')(line)
+					const words = String.split(line, ' ')
 					return Array.join([...Array.take(words, 2), ...Option.toArray(Array.last(words))], ' ')
 				})
 			),

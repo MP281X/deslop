@@ -65,7 +65,7 @@ export const layerPeerAuth = Layer.effectContext(
 )
 type RemoteClient = Effect.Success<typeof makeRemoteClient>
 
-function changeFailed<A, E>(effect: Effect.Effect<A, E>) {
+function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
 		return DeployError.make({cause, message: 'Worker exposure change failed'})
@@ -104,7 +104,7 @@ export class Fleet extends Context.Service<
 			const lastMetrics = yield* Ref.make<Record<string, MachineHistory>>({})
 			const exposures = yield* Exposures
 			const workers = yield* Effect.forEach(
-				yield* pipe(Config.Array(Schema.String, 'DEPLOY_WORKERS'), Config.withDefault([])),
+				yield* Config.withDefault(Config.Array(Schema.String, 'DEPLOY_WORKERS'), []),
 				entry => {
 					const [name, url] = String.split(entry, '=')
 					return Schema.decodeUnknownEffect(Worker)({name, url})
@@ -140,8 +140,9 @@ export class Fleet extends Context.Service<
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
 					return yield* pipe(
-						Effect.flatMap(makeRemoteClient, client => use(client, peerHeaders)),
-						// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
+						makeRemoteClient,
+						Effect.flatMap(client => use(client, peerHeaders)),
+						// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote invocation owns its socket and client lifetime.
 						Effect.provide(
 							pipe(
 								RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
@@ -157,7 +158,9 @@ export class Fleet extends Context.Service<
 			)
 			function selectedWorker(target: string) {
 				return pipe(
-					Effect.fromOption(Array.findFirst(workers, worker => worker.name === target)),
+					workers,
+					Array.findFirst(worker => worker.name === target),
+					Effect.fromOption,
 					Effect.mapError(cause =>
 						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
 					)
@@ -188,13 +191,13 @@ export class Fleet extends Context.Service<
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
 						client('exposures.expose', Struct.omit(input, ['target']), {headers})
 					)
-				}, changeFailed),
+				}, asDeployError),
 				hide: Effect.fnUntraced(function* (input) {
 					if (input.target === undefined || input.target === '') return yield* exposures.hide(input.name)
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
 						client('exposures.hide', {name: input.name}, {headers})
 					)
-				}, changeFailed),
+				}, asDeployError),
 				history: metrics.read,
 				local,
 				metrics: Effect.fnUntraced(function* (query) {

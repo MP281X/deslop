@@ -18,7 +18,7 @@ import {
 	SessionHandle,
 	clientIdOf,
 	failureOptions,
-	rejected
+	asAuthError
 } from '#shared/auth.ts'
 
 const SIGN_IN_COOKIE = '__Host-sign-in'
@@ -62,31 +62,29 @@ function layerSignIn(issuer: string) {
 				})
 			}
 			// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
-			function toNext<E, R>(
+			function withRedirect<E, R>(
 				handle: (
 					request: HttpServerRequest.HttpServerRequest,
 					next: URL
 				) => Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>
 			) {
 				return Effect.flatMap(HttpServerRequest.HttpServerRequest, request =>
-					Option.match(
-						Option.filter(
-							Option.liftThrowable(
-								() => new URL(new URL(request.url, canonical).searchParams.get('next') ?? canonical, canonical)
-							)(),
-							next => next.origin === canonical
-						),
-						{
+					pipe(
+						Option.liftThrowable(
+							() => new URL(new URL(request.url, canonical).searchParams.get('next') ?? canonical, canonical)
+						)(),
+						Option.filter(next => next.origin === canonical),
+						Option.match({
 							onNone: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
 							onSome: next => handle(request, next)
-						}
+						})
 					)
 				)
 			}
 			yield* router.add(
 				'GET',
 				'/auth/sign-in',
-				toNext(
+				withRedirect(
 					Effect.fnUntraced(function* (_, next) {
 						const verifier = Base64Url.encode(yield* random.randomBytes(32))
 						const state = Base64Url.encode(yield* random.randomBytes(16))
@@ -158,7 +156,7 @@ function layerSignIn(issuer: string) {
 					const started = yield* Effect.result(
 						pipe(
 							HttpServerRequest.schemaBodyJson(CodeGrant),
-							rejected('The sign-in request is invalid'),
+							asAuthError('The sign-in request is invalid'),
 							Effect.flatMap(sessions.start)
 						)
 					)
@@ -175,7 +173,7 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'GET',
 				'/auth/sign-out',
-				toNext((request, next) =>
+				withRedirect((request, next) =>
 					Effect.as(
 						ended(request.headers),
 						HttpServerResponse.expireCookieUnsafe(
@@ -191,9 +189,10 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'POST',
 				'/auth/sign-out',
-				Effect.as(
-					Effect.flatMap(HttpServerRequest.HttpServerRequest, request => ended(request.headers)),
-					HttpServerResponse.empty({status: 204})
+				pipe(
+					HttpServerRequest.HttpServerRequest,
+					Effect.flatMap(request => ended(request.headers)),
+					Effect.as(HttpServerResponse.empty({status: 204}))
 				)
 			)
 		})

@@ -12,7 +12,7 @@ import {Suspense} from 'react'
 import {SessionGate} from '@deslop/components-mobile/screens'
 import {colors, text} from '@deslop/components-mobile/theme'
 
-import {primary, session} from '#lib/utils.ts'
+import {primary, session} from '#lib/session.ts'
 import {HomeRoute} from '#routes/(home)/index.tsx'
 import logo from '#routes/icon.png'
 

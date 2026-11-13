@@ -1,4 +1,4 @@
-import {Array, Option, Predicate} from 'effect'
+import {Array, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -33,8 +33,9 @@ function fix(input: {
 			)
 	)
 	if (!imported) return []
-	return Option.getOrElse(
-		Option.flatMap(elementType(input.annotation.typeAnnotation), element =>
+	return pipe(
+		elementType(input.annotation.typeAnnotation),
+		Option.flatMap(element =>
 			Option.map(
 				effectImport({context: input.context, fixer: input.fixer, name: 'Array', node: input.init}),
 				imports => [
@@ -44,7 +45,7 @@ function fix(input: {
 				]
 			)
 		),
-		() => []
+		Option.getOrElse(() => [])
 	)
 }
 

@@ -17,7 +17,7 @@ import {space} from '@deslop/components-mobile/theme'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
-import {readerAtom, unreachableAtom} from '#lib/utils.ts'
+import {readerAtom, unreachableAtom} from '#lib/chapters.ts'
 import {PageStrip} from '#modules/native/index.ts'
 import {byNumber} from '#services/chapters/lib/utils.ts'
 import type {ChapterList, Series} from '#services/chapters/schema.ts'
@@ -46,7 +46,8 @@ export function ReaderSkeleton(props: {number: number}) {
 export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
 	const reader = `${props.series}:${props.number}`
 	const following = pipe(
-		Array.sort(props.chapters, byNumber),
+		props.chapters,
+		Array.sort(byNumber),
 		Array.filter(chapter => chapter.series === props.series && chapter.number >= props.number)
 	)
 	const [state, turn] = useAtom(readerAtom(reader))

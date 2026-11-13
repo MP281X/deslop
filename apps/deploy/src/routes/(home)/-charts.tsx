@@ -1,13 +1,14 @@
-import {Array, Boolean, DateTime, Match, Number, Option, Order, String, pipe, type Record} from 'effect'
+import type {Record} from 'effect'
+import {Array, Boolean, DateTime, Match, Number, Option, Order, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
 import type {PointerEvent} from 'react'
 
+import {cn} from '@deslop/components-web/classes'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
-import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bytes, rate} from '#routes/(home)/-rows.ts'
@@ -47,16 +48,17 @@ function x(history: MachineHistory, minutes: number, at: number) {
 
 // The sample nearest the pointer's horizontal place on the chart.
 function nearest(history: MachineHistory, minutes: number, at: number) {
-	return Array.match(
-		Array.map(history.samples, (sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
-		{
+	return pipe(
+		history.samples,
+		Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
+		Array.match({
 			onEmpty: () => 0,
 			onNonEmpty: entries =>
 				Array.min(
 					entries,
 					Order.mapInput(Order.Number, entry => entry.distance)
 				).index
-		}
+		})
 	)
 }
 
@@ -210,13 +212,15 @@ function UsageChart(props: {
 								aria-hidden="true"
 								className="pointer-events-none absolute top-(--tip-y) left-(--tip-x) size-px"
 								style={{
-									'--tip-x': `${Option.getOrElse(
-										Option.map(Option.fromUndefinedOr(cursor), value => value.x),
-										() => 0
+									'--tip-x': `${pipe(
+										Option.fromUndefinedOr(cursor),
+										Option.map(value => value.x),
+										Option.getOrElse(() => 0)
 									)}%`,
-									'--tip-y': `${Option.getOrElse(
-										Option.map(Option.fromUndefinedOr(cursor), value => value.y),
-										() => 0
+									'--tip-y': `${pipe(
+										Option.fromUndefinedOr(cursor),
+										Option.map(value => value.y),
+										Option.getOrElse(() => 0)
 									)}%`
 								}}
 							/>
@@ -245,9 +249,10 @@ function TimeAxis(props: {className?: string; minutes: number; now: number}) {
 			aria-hidden="true"
 			className={cn('text-muted-foreground relative h-4 font-mono text-xs tabular-nums', props.className)}
 		>
-			{Array.map(
-				Array.filter(chartTicks(props.minutes, props.now), tick => tick.label),
-				tick => (
+			{pipe(
+				chartTicks(props.minutes, props.now),
+				Array.filter(tick => tick.label),
+				Array.map(tick => (
 					<span
 						key={tick.at}
 						className={cn(
@@ -273,7 +278,7 @@ function TimeAxis(props: {className?: string; minutes: number; now: number}) {
 							Match.orElse(() => time.format(tick.at))
 						)}
 					</span>
-				)
+				))
 			)}
 		</div>
 	)

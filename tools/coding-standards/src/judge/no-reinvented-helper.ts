@@ -22,7 +22,9 @@ export const noReinventedHelper = question(
 			cases: [
 				'Grouping, deduplicating, chunking, zipping, partitioning, flattening, summing or finding a minimum or maximum by hand, including a reduce with a fixed floor',
 				'Hand-written retries, timeouts, debouncing or delays where the library `code` uses has them',
-				'Hand-written padding, trimming, case conversion, deep equality or comparators the library offers'
+				'Hand-written padding, trimming, case conversion, deep equality or comparators the library offers',
+				'An operation a library already offers for the same job, such as a client query or mutation',
+				'A function whose body is one call with its parameters and fixed imported values, where the direct call reads as clearly at its sites; exact forwarding and fixed literals are owned by lint'
 			],
 			example: `
 				function longest(notes: Note[]) {

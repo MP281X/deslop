@@ -59,7 +59,11 @@ const open = Effect.fnUntraced(function* (database: Context.Context<Database>, e
 // The events the phone reads, collected from now on.
 const watch = Effect.fnUntraced(function* (bookings: typeof Bookings.Service) {
 	const events = yield* Queue.unbounded<BookingsEvent>()
-	yield* Effect.forkScoped(Stream.runForEach(bookings.events, event => Queue.offer(events, event)))
+	yield* pipe(
+		bookings.events,
+		Stream.runForEach(event => Queue.offer(events, event)),
+		Effect.forkScoped
+	)
 	return events
 })
 
@@ -156,9 +160,10 @@ it.layer(NodeCrypto.layer)('Bookings', test => {
 					return Option.getOrThrow(Array.head(written.upserted)).id
 				})
 			)
-			const rows = yield* Effect.provideContext(
-				Effect.flatMap(SqlClient.SqlClient, sql => sql<{id: string; number: string}>`SELECT id, number FROM flights`),
-				database
+			const rows = yield* pipe(
+				SqlClient.SqlClient,
+				Effect.flatMap(sql => sql<{id: string; number: string}>`SELECT id, number FROM flights`),
+				Effect.provideContext(database)
 			)
 			assert.deepStrictEqual(rows, [{id, number: '553'}])
 			const bookings = yield* open(database, extractor)

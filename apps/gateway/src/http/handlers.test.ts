@@ -41,10 +41,10 @@ import type {User} from '@deslop/runtime/shared/auth'
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
-import type {AiProvider, AiUsageReport} from '#services/ai/schema.ts'
-import {AiProxy} from '#services/ai/service.ts'
+import type {AiProvider, AiUsageReport} from '#services/ai-proxy/schema.ts'
+import {AiProxy} from '#services/ai-proxy/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
-import {ConnectionInfo} from '#services/connections/schema.ts'
+import {ConnectionItem} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
@@ -154,7 +154,7 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 	})
 }
 
-function getUpstream(url: string) {
+function makeUpstreamResponse(url: string) {
 	if (url === 'https://challenge.example.com/mcp') {
 		return new Response(undefined, {
 			headers: {
@@ -170,7 +170,7 @@ function upstreamHttpResponse(request: Request, challengeMethods?: string[]) {
 	const metadata = discoveryResponse(request.url, challengeMethods)
 	if (metadata !== undefined) return metadata
 	if (request.method === 'GET') return new Response(undefined, {status: 405})
-	if (request.url === 'https://challenge.example.com/mcp') return getUpstream(request.url)
+	if (request.url === 'https://challenge.example.com/mcp') return makeUpstreamResponse(request.url)
 	return undefined
 }
 
@@ -208,9 +208,10 @@ function layerAuth(verified: Ref.Ref<number>) {
 					if (!String.startsWith('agent.')(token)) {
 						return account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
 					}
-					return Effect.andThen(
-						Ref.update(verified, count => count + 1),
-						account(String.split(token, '.')[1])
+					return pipe(
+						verified,
+						Ref.update(count => count + 1),
+						Effect.andThen(account(String.split(token, '.')[1]))
 					)
 				}
 			})
@@ -321,7 +322,11 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					)
 				}
 				if (
-					!Option.contains(MutableHashMap.get(sessions, request.headers.get('mcp-session-id') ?? ''), authorization)
+					!pipe(
+						sessions,
+						MutableHashMap.get(request.headers.get('mcp-session-id') ?? ''),
+						Option.contains(authorization)
+					)
 				) {
 					return new Response(undefined, {status: 404})
 				}
@@ -335,9 +340,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 							{text: 'search result', type: 'text'},
 							{data: 'aGVsbG8=', mimeType: 'image/png', type: 'image'}
 						],
-						isError:
-							message.params?.['arguments'] !== undefined &&
-							Schema.is(Schema.Struct({query: Schema.Literal('fail')}))(message.params['arguments']),
+						isError: Schema.is(Schema.Struct({query: Schema.Literal('fail')}))(message.params?.['arguments']),
 						structuredContent: {query: message.params?.['arguments']}
 					}
 				})
@@ -424,10 +427,10 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		memoMap,
 		scope
 	)
-	const rpc = yield* Layer.buildWithMemoMap(
-		pipe(RpcHandlers, Layer.provideMerge(Layer.succeedContext(services))),
-		memoMap,
-		scope
+	const rpc = yield* pipe(
+		RpcHandlers,
+		Layer.provideMerge(Layer.succeedContext(services)),
+		Layer.buildWithMemoMap(memoMap, scope)
 	)
 	const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), rpc)
 	const web = yield* Effect.acquireRelease(
@@ -463,7 +466,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			),
 		discoveryDelay,
 		grants,
-		keys: (session: string) => client('ai.keys', undefined, {headers: {cookie: session}}),
+		keys: (session: string) => client('ai-proxy.list', undefined, {headers: {cookie: session}}),
 		list: (session: string = SESSION) =>
 			Effect.flatMap(
 				Stream.runHead(client('connections.watch', undefined, {headers: {cookie: session}})),
@@ -484,7 +487,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 			),
 		sessions,
 		setKey: (session: string, aiProvider: AiProvider, secret: string) =>
-			client('ai.setKey', {provider: aiProvider, secret: Redacted.make(secret)}, {headers: {cookie: session}}),
+			client('ai-proxy.setKey', {provider: aiProvider, secret: Redacted.make(secret)}, {headers: {cookie: session}}),
 		sql: Context.get(database, SqlClient.SqlClient),
 		stall,
 		stallReady,
@@ -635,9 +638,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(response.status, 302)
 			assert.strictEqual(response.headers.get('location'), '/')
 			assert.isTrue(
-				Option.exists(
-					Option.flatMap(Array.head(yield* gateway.list()), server => server.error),
-					String.isNonEmpty
+				pipe(
+					Array.head(yield* gateway.list()),
+					Option.flatMap(server => server.error),
+					Option.exists(String.isNonEmpty)
 				)
 			)
 			assert.strictEqual(gateway.registrations.length, 0)
@@ -661,9 +665,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				assert.strictEqual(response.status, 302)
 				assert.strictEqual(response.headers.get('location'), '/')
 				assert.isTrue(
-					Option.exists(
-						Option.flatMap(Array.head(yield* gateway.list()), server => server.error),
-						String.includes('S256 PKCE')
+					pipe(
+						Array.head(yield* gateway.list()),
+						Option.flatMap(server => server.error),
+						Option.exists(String.includes('S256 PKCE'))
 					)
 				)
 				assert.strictEqual(gateway.registrations.length, 0)
@@ -745,9 +750,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual(gateway.grants.length, 0)
 			assert.strictEqual((yield* answerWith({iss: 'https://identity.example.com'})).headers.get('location'), '/')
 			assert.deepStrictEqual(
-				Array.map(
-					Array.filter(MutableList.toArray(gateway.grants), grant => grant.grant === 'authorization_code'),
-					grant => grant.resource
+				pipe(
+					MutableList.toArray(gateway.grants),
+					Array.filter(grant => grant.grant === 'authorization_code'),
+					Array.map(grant => grant.resource)
 				),
 				['https://challenge.example.com/mcp']
 			)
@@ -766,22 +772,22 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const added = yield* gateway.add('https://public.example.com/mcp')
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
-				return Array.filter(
-					Array.map(
-						(yield* Schema.decodeEffect(
-							Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
-						)(yield* Effect.promise(() => response.text()))).result.tools,
-						tool => tool.name
-					),
-					String.startsWith(`${added.id}__`)
+				return pipe(
+					(yield* Schema.decodeEffect(
+						Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
+					)(yield* Effect.promise(() => response.text()))).result.tools,
+					Array.map(tool => tool.name),
+					Array.filter(String.startsWith(`${added.id}__`))
 				)
 			})
 			const remote = yield* listed()
 			assert.strictEqual(remote.length, 3)
 			assert.strictEqual(Array.dedupe(remote).length, 3)
 			for (const name of remote) assert.match(name, /^[a-zA-Z0-9_-]{1,64}$/u)
-			const encoded = yield* Effect.fromOption(
-				Array.findFirst(remote, String.startsWith(`${added.id}__search_docs__encoded_`))
+			const encoded = yield* pipe(
+				remote,
+				Array.findFirst(String.startsWith(`${added.id}__search_docs__encoded_`)),
+				Effect.fromOption
 			)
 			yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'dotted'}, name: encoded})
 			assert.isTrue(
@@ -827,7 +833,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				MutableList.append(timings, Duration.toMillis(duration))
 				MutableList.append(listings, tools)
 			}
-			assert.isBelow(Option.getOrThrow(Array.get(Array.sort(MutableList.toArray(timings), Order.Number), 2)), 100)
+			assert.isBelow(Option.getOrThrow(pipe(MutableList.toArray(timings), Array.sort(Order.Number), Array.get(2))), 100)
 			assert.isTrue(
 				Array.some(
 					Option.getOrThrow(Array.last(MutableList.toArray(listings))),
@@ -897,26 +903,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Ref.set(gateway.toolNames, ['search_docs', 'create_doc'])
 			yield* TestClock.adjust('30 seconds')
 			assert.deepStrictEqual(
-				Array.filter(
-					Array.map(
-						(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
-						tool => tool.name
-					),
-					String.startsWith(`${added.id}__`)
+				pipe(
+					(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+					Array.map(tool => tool.name),
+					Array.filter(String.startsWith(`${added.id}__`))
 				),
 				[`${added.id}__search`]
 			)
 			yield* Deferred.await(changed)
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.filter(
-						Array.map(
-							(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
-							tool => tool.name
-						),
-						String.startsWith(`${added.id}__`)
-					),
-					Order.String
+				pipe(
+					(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
+					Array.map(tool => tool.name),
+					Array.filter(String.startsWith(`${added.id}__`)),
+					Array.sort(Order.String)
 				),
 				[`${added.id}__create_doc`, `${added.id}__search_docs`]
 			)
@@ -1008,7 +1008,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				[Schema.is(AuthError)(stranger), stranger.error, Schema.is(AuthError)(self), self.error],
 				[true, 'access_denied', true, undefined]
 			)
-			const snapshotText = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(ConnectionInfo)))(
+			const snapshotText = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Array(ConnectionItem)))(
 				yield* gateway.list()
 			)
 			assert.isFalse(String.includes('access_token')(snapshotText))
@@ -1023,10 +1023,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const added = yield* gateway.add('https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			const updates = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('connections.usage', '24h', {headers: {cookie: SESSION}}), value =>
-					Queue.offer(updates, value)
-				)
+			yield* pipe(
+				gateway.client('connections.usage', '24h', {headers: {cookie: SESSION}}),
+				Stream.runForEach(value => Queue.offer(updates, value)),
+				Effect.forkScoped
 			)
 			const first = yield* Queue.take(updates)
 			assert.deepStrictEqual(first, {
@@ -1074,10 +1074,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			])
 			// The page's day view sums the same hours into one day.
 			const daily = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('connections.usage', '30d', {headers: {cookie: SESSION}}), value =>
-					Queue.offer(daily, value)
-				)
+			yield* pipe(
+				gateway.client('connections.usage', '30d', {headers: {cookie: SESSION}}),
+				Stream.runForEach(value => Queue.offer(daily, value)),
+				Effect.forkScoped
 			)
 			assert.deepStrictEqual((yield* Queue.take(daily)).report, [{id: added.id, series: [{at: 0, calls: 3}]}])
 		})
@@ -1089,15 +1089,15 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
 			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('ai.usage', '24h', {headers: {cookie: SESSION}}), value =>
-					Queue.offer(mine, value)
-				)
+			yield* pipe(
+				gateway.client('ai-proxy.usage', '24h', {headers: {cookie: SESSION}}),
+				Stream.runForEach(value => Queue.offer(mine, value)),
+				Effect.forkScoped
 			)
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('ai.usage', '24h', {headers: {cookie: 'session=stranger'}}), value =>
-					Queue.offer(theirs, value)
-				)
+			yield* pipe(
+				gateway.client('ai-proxy.usage', '24h', {headers: {cookie: 'session=stranger'}}),
+				Stream.runForEach(value => Queue.offer(theirs, value)),
+				Effect.forkScoped
 			)
 			assert.deepStrictEqual((yield* Queue.take(mine)).report.byProvider, [])
 			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [])
@@ -1275,9 +1275,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				)
 			}
 			assert.deepStrictEqual(
-				Array.map(
-					Array.filter(yield* gateway.list(), server => server.id === added.id),
-					server => server.icons
+				pipe(
+					yield* gateway.list(),
+					Array.filter(server => server.id === added.id),
+					Array.map(server => server.icons)
 				),
 				[[{src: 'https://example.com/icon.png', theme: 'dark'}]]
 			)

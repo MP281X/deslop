@@ -54,6 +54,7 @@ import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
+import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -66,7 +67,6 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
-import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
@@ -207,7 +207,11 @@ function NoteRow(props: {
 								{Option.match(props.note.url, {
 									onNone: () => undefined,
 									onSome: url => (
-										<Button onPress={() => Linking.openURL(url)}>
+										<Button
+											onPress={() => {
+												Linking.openURL(url)
+											}}
+										>
 											<Label
 												title={Option.match(appOf(props.note), {
 													onNone: () => 'Open Link',
@@ -368,17 +372,21 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 											))}
 										</ToggleGroup>
 										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{Array.map(Array.take(notes, limit), (note, position) => (
-											<NoteRow
-												key={note.id}
-												note={note}
-												onAppear={() => {
-													if (position === limit - 1) setLimit(limit + 80)
-												}}
-												onOpen={props.onOpen}
-												onRegenerate={id => regenerate(id)}
-											/>
-										))}
+										{pipe(
+											notes,
+											Array.take(limit),
+											Array.map((note, position) => (
+												<NoteRow
+													key={note.id}
+													note={note}
+													onAppear={() => {
+														if (position === limit - 1) setLimit(limit + 80)
+													}}
+													onOpen={props.onOpen}
+													onRegenerate={id => regenerate(id)}
+												/>
+											))
+										)}
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>

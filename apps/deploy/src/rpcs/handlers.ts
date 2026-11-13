@@ -1,4 +1,4 @@
-import {Cache, Duration, Effect, Number, Schedule, Scope, Stream} from 'effect'
+import {Cache, Duration, Effect, Number, Schedule, Scope, Stream, pipe} from 'effect'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Fleet} from '#services/fleet/service.ts'
@@ -10,41 +10,35 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const fleet = yield* Fleet
 		// A cache lookup inherits its caller's scope; shared sources belong to this layer, not the first RPC.
 		const scope = yield* Effect.scope
-		const inventory = yield* Stream.share(
-			Stream.concat(
-				Stream.fromEffect(fleet.local),
-				Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))
-			),
-			{capacity: 1, replay: 1, strategy: 'sliding'}
+		const inventory = yield* pipe(
+			Stream.fromEffect(fleet.local),
+			Stream.concat(Stream.fromEffectSchedule(fleet.snapshot, Schedule.spaced('5 seconds'))),
+			Stream.share({capacity: 1, replay: 1, strategy: 'sliding'})
 		)
 		// Viewers share one range sampler; the source stops when its last viewer leaves.
 		const metrics = yield* Cache.make({
 			capacity: HistoryQuery.fields.minutes.literals.length,
 			lookup: (minutes: HistoryQuery['minutes']) => {
 				const query = {minutes}
-				return Effect.provideService(
-					Stream.share(
-						Stream.concat(
-							Stream.concat(Stream.fromEffect(fleet.current(query)), Stream.fromEffect(fleet.metrics(query))),
-							Stream.merge(
+				return pipe(
+					Stream.fromEffect(fleet.current(query)),
+					Stream.concat(Stream.fromEffect(fleet.metrics(query))),
+					Stream.concat(
+						Stream.merge(
+							Stream.fromEffectSchedule(
+								fleet.current(query),
+								Schedule.spaced(Duration.millis(Number.min(resolution(minutes), 30_000)))
+							),
+							Stream.drain(
 								Stream.fromEffectSchedule(
-									fleet.current(query),
-									Schedule.spaced(Duration.millis(Number.min(resolution(minutes), 30_000)))
-								),
-								Stream.drain(
-									Stream.fromEffectSchedule(
-										fleet.metrics(query),
-										Schedule.spaced(
-											Duration.millis(Number.clamp(resolution(minutes), {maximum: 30_000, minimum: 5000}))
-										)
-									)
+									fleet.metrics(query),
+									Schedule.spaced(Duration.millis(Number.clamp(resolution(minutes), {maximum: 30_000, minimum: 5000})))
 								)
 							)
-						),
-						{capacity: 1, replay: 1, strategy: 'sliding'}
+						)
 					),
-					Scope.Scope,
-					scope
+					Stream.share({capacity: 1, replay: 1, strategy: 'sliding'}),
+					Effect.provideService(Scope.Scope, scope)
 				)
 			}
 		})

@@ -3,18 +3,23 @@ import {Boolean, Context, Effect, Layer, Option, Schema, pipe} from 'effect'
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
+import {requireNativeModule} from 'expo'
 import {File, Paths} from 'expo-file-system'
 
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 
-import {alertFailure, clipboardChangeCount, writeAtomically} from '#lib/utils.ts'
+import {alertFailure} from '#lib/alerts.ts'
+import {writeAtomically} from '#lib/files.ts'
 
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
 
+function clipboardChangeCount() {
+	return requireNativeModule<{clipboardChangeCount: () => number}>('DeslopComponents').clipboardChangeCount()
+}
+
 export type ClipboardCopy = {readonly count: string; readonly kind: ClipboardKind}
-type Offered = ClipboardCopy
-type Answer = Offered & {readonly save: boolean}
+type Answer = ClipboardCopy & {readonly save: boolean}
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -62,7 +67,7 @@ const clipboardMachine = Machine.make({
 		inspect: Effect.gen(function* () {
 			const offer = yield* ClipboardOffer
 			const count = `${clipboardChangeCount()}`
-			if (offer.file.exists && offer.file.textSync() === count) return Option.none<Offered>()
+			if (offer.file.exists && offer.file.textSync() === count) return Option.none<ClipboardCopy>()
 			return Option.map(yield* offer.detect, kind => ({count, kind}))
 		})
 	},

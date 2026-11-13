@@ -10,8 +10,8 @@ import {Suspense} from 'react'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
+import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/auth.ts'
 import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
-import {codeAtom, consentAtom, linkedCodeAtom, signInLabel} from '#lib/utils.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 

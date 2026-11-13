@@ -4,7 +4,7 @@ import {Context, DateTime, Effect, Function, Layer, Option, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
-import {AiGateway, AiUnavailable} from '@deslop/runtime/server/ai'
+import {AiGateway, AiUnavailableError} from '@deslop/runtime/server/ai'
 
 import {Organizer} from './organization.ts'
 
@@ -62,7 +62,7 @@ it.effect(
 		const error = yield* Effect.flip(
 			(yield* open(gateway, client)).organize('github:1', {images: [], note: NOTE, tags: []})
 		)
-		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- the gateway's own instruction is what must reach the note
+		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The gateway's instruction must reach the note unchanged.
 		assert.strictEqual(error.message, 'Add an Anthropic key in Gateway')
 	})
 )
@@ -71,7 +71,7 @@ it.effect(
 	'names the missing gateway when the app was started without one',
 	Effect.fnUntraced(function* () {
 		const gateway = AiGateway.of({
-			apiUrl: () => Effect.fail(AiUnavailable.make({message: 'Start the app with --gateway'})),
+			apiUrl: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --gateway'})),
 			authorize: () => Effect.succeed(Function.identity)
 		})
 		const error = yield* Effect.flip(
@@ -80,7 +80,7 @@ it.effect(
 				HttpClient.make(() => Effect.die('No gateway, no request'))
 			)).organize('github:1', {images: [], note: NOTE, tags: []})
 		)
-		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- the runtime's instruction is what must reach the note
+		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The runtime's instruction must reach the note unchanged.
 		assert.strictEqual(error.message, 'Start the app with --gateway')
 	})
 )

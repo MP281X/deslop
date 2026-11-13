@@ -4,7 +4,7 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {AiProvider} from '#services/ai/schema.ts'
+import {AiProvider} from '#services/ai-proxy/schema.ts'
 import {ConnectionStatus, ServerId} from '#services/connections/schema.ts'
 
 export const ToolContracts = Toolkit.make(

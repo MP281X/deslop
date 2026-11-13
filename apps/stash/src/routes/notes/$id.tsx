@@ -79,6 +79,50 @@ function Cover(props: {note: NoteItem}) {
 	)
 }
 
+function BodyLine(props: {line: string}) {
+	return pipe(
+		Match.value(props.line),
+		// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
+		Match.when(
+			candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
+			() => (
+				<Text modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}>
+					{String.replace(/^#+\s*/u, '')(props.line)}
+				</Text>
+			)
+		),
+		Match.when(
+			candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
+			() => (
+				<HStack alignment="firstTextBaseline" spacing={space[2]}>
+					<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
+						{Boolean.match(String.startsWith('- ')(props.line), {
+							onFalse: () => String.replace(/\s.*$/u, '')(props.line),
+							onTrue: () => '•'
+						})}
+					</Text>
+					<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
+						{String.replace(/^\S+\s/u, '')(props.line)}
+					</Text>
+				</HStack>
+			)
+		),
+		Match.when(String.startsWith('> '), () => (
+			<Text
+				markdownEnabled
+				modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
+			>
+				{String.slice(2)(props.line)}
+			</Text>
+		)),
+		Match.orElse(() => (
+			<Text markdownEnabled modifiers={prose}>
+				{props.line}
+			</Text>
+		))
+	)
+}
+
 function Body(props: {text: string}) {
 	return (
 		<VStack
@@ -86,54 +130,15 @@ function Body(props: {text: string}) {
 			spacing={space[3]}
 			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
 		>
-			{Array.map(
-				Array.filter(Array.map(String.split(props.text, '\n'), String.trim), String.isNonEmpty),
-				(line, index) =>
-					pipe(
-						Match.value(line),
-						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
-						Match.when(
-							candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
-							() => (
-								<Text
-									key={index}
-									modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}
-								>
-									{String.replace(/^#+\s*/u, '')(line)}
-								</Text>
-							)
-						),
-						Match.when(
-							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
-							() => (
-								<HStack key={index} alignment="firstTextBaseline" spacing={space[2]}>
-									<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
-										{Boolean.match(String.startsWith('- ')(line), {
-											onFalse: () => String.replace(/\s.*$/u, '')(line),
-											onTrue: () => '•'
-										})}
-									</Text>
-									<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
-										{String.replace(/^\S+\s/u, '')(line)}
-									</Text>
-								</HStack>
-							)
-						),
-						Match.when(String.startsWith('> '), () => (
-							<Text
-								key={index}
-								markdownEnabled
-								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
-							>
-								{String.slice(2)(line)}
-							</Text>
-						)),
-						Match.orElse(() => (
-							<Text key={index} markdownEnabled modifiers={prose}>
-								{line}
-							</Text>
-						))
-					)
+			{pipe(
+				props.text,
+				String.split('\n'),
+				Array.map(String.trim),
+				Array.filter(String.isNonEmpty),
+				Array.map((line, index) => (
+					// oxlint-disable-next-line react/no-array-index-key -- Note lines have no identity beyond their position; editing text replaces that position's contents.
+					<BodyLine key={index} line={line} />
+				))
 			)}
 		</VStack>
 	)
@@ -326,9 +331,10 @@ function NoteScreen(props: {
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	return Option.match(
-		Array.findFirst(props.notes, item => item.id === props.id),
-		{
+	return pipe(
+		props.notes,
+		Array.findFirst(item => item.id === props.id),
+		Option.match({
 			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
 			onSome: item => (
 				<Toolbar>
@@ -343,13 +349,17 @@ function NoteScreen(props: {
 											<Button
 												label="Open Link"
 												systemImage="arrow.up.right"
-												onPress={() => Linking.openURL(url)}
+												onPress={() => {
+													Linking.openURL(url)
+												}}
 												modifiers={[labelStyle('iconOnly')]}
 											/>
 										),
 										onSome: brand => (
 											<Button
-												onPress={() => Linking.openURL(url)}
+												onPress={() => {
+													Linking.openURL(url)
+												}}
 												modifiers={[
 													accessibilityLabel(
 														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
@@ -382,7 +392,7 @@ function NoteScreen(props: {
 					</Toolbar.Content>
 				</Toolbar>
 			)
-		}
+		})
 	)
 }
 

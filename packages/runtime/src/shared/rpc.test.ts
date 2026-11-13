@@ -24,7 +24,7 @@ import {HttpRouter, HttpServer} from 'effect/http'
 import {Rpc, RpcClient, RpcGroup, RpcSchema, RpcSerialization} from 'effect/rpc'
 import {Socket} from 'effect/socket'
 
-import {layerProtocol, layerRpc} from '#server/http.ts'
+import {layerServerProtocol, layerRpc} from '#server/http.ts'
 import {RpcStream, layerRpcStreamClient} from '#shared/rpc.ts'
 import {RPC_PATH} from '#shared/schema.ts'
 
@@ -113,7 +113,7 @@ it.layer(NodeServices.layer)('RPC streams', test => {
 								handlers: TestRpcs.toLayer({'test.echo': Effect.succeed, 'test.watch': () => Stream.make('tick')})
 							})
 						),
-						Layer.provide(layerProtocol),
+						Layer.provide(layerServerProtocol),
 						Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0})),
 						Layer.provide(Layer.succeed(Tracer.Tracer, tracer))
 					)

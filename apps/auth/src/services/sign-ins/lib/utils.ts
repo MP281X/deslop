@@ -12,14 +12,15 @@ export function typedCode(text: string) {
 }
 
 export function codeFrom(bytes: Uint8Array) {
-	return Array.join(
-		Array.map(Array.fromIterable(bytes), byte =>
+	return pipe(
+		Array.fromIterable(bytes),
+		Array.map(byte =>
 			pipe(
 				CODE_LETTERS,
 				String.charAt(byte % CODE_LETTERS.length),
 				Option.getOrElse(() => '')
 			)
 		),
-		''
+		Array.join('')
 	)
 }

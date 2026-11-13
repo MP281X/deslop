@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 
 import { Button } from "#components/ui/button.tsx"
 import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react"

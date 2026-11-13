@@ -243,7 +243,11 @@ function visits(node: Node, depth: number): Visit[] {
 		{depth, node: child, parent: Option.some(node)},
 		...visits(
 			child,
-			Boolean.match(Array.contains(FUNCTIONS, child.type), {onFalse: () => depth, onTrue: () => depth + 1})
+			pipe(
+				FUNCTIONS,
+				Array.contains<string>(child.type),
+				Boolean.match({onFalse: () => depth, onTrue: () => depth + 1})
+			)
 		)
 	])
 }
@@ -302,7 +306,9 @@ function pinsOutcome(node: Node): boolean {
 	}
 	if (node.type === 'TemplateLiteral') return Array.some(node.quasis, quasi => String.isNonEmpty(quasi.value.raw))
 	if (node.type === 'UnaryExpression') return pinsOutcome(node.argument)
-	if (node.type === 'ArrayExpression') return Array.some(Array.filter(node.elements, Predicate.isNotNull), pinsOutcome)
+	if (node.type === 'ArrayExpression') {
+		return pipe(node.elements, Array.filter(Predicate.isNotNull), Array.some(pinsOutcome))
+	}
 	if (node.type === 'ObjectExpression') {
 		return Array.some(node.properties, property => property.type === 'Property' && pinsOutcome(property.value))
 	}
@@ -343,12 +349,14 @@ export type Features = ReturnType<typeof features>
 export function features(text: string, imports: string) {
 	// A unit comes from a file that parsed and an example is written to parse, so one wrapping parses without errors; the method wrapping, last, is read as it parses.
 	const parsed = pipe(
-		Array.findFirst(WRAPPINGS, wrapping =>
+		WRAPPINGS,
+		Array.findFirst(wrapping =>
 			Option.liftPredicate(parse(wrapping, text), found => Array.isArrayEmpty(found.result.errors))
 		),
 		Option.getOrElse(() => parse(METHOD, text))
 	)
 	const all = visits(parsed.result.program, 0)
+
 	const calls = Array.flatMap(all, visit => {
 		if (visit.node.type !== 'CallExpression') return []
 		return [{...visit, name: calleeName(visit.node.callee), node: visit.node}]
@@ -375,7 +383,7 @@ export function features(text: string, imports: string) {
 					(visit.node.operator !== '=' || visit.node.left.type === 'MemberExpression'))
 		)
 	const assertionNames = pipe(
-		String.split('\n')(imports),
+		String.split(imports, '\n'),
 		Array.filter(matches(ASSERTION_SOURCES)),
 		Array.flatMap(line => Option.toArray(String.match(/\{([^}]*)\}/u)(line))),
 		Array.flatMap(found => Option.toArray(Array.get(found, 1))),
@@ -427,12 +435,15 @@ export function features(text: string, imports: string) {
 			return (
 				values.length >= 2 &&
 				Option.exists(calleeName(assertion.node.callee), matches(EXACT_MATCHERS)) &&
-				Array.some(
-					Array.drop(values, 1),
-					value =>
-						isExactLiteral(value) &&
-						pinsOutcome(value) &&
-						String.split(String.slice(value.start, value.end)(parsed.source))(parsed.source).length === 2
+				pipe(
+					values,
+					Array.drop(1),
+					Array.some(
+						value =>
+							isExactLiteral(value) &&
+							pinsOutcome(value) &&
+							String.split(parsed.source, String.slice(value.start, value.end)(parsed.source)).length === 2
+					)
 				)
 			)
 		}),

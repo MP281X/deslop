@@ -18,7 +18,7 @@ export type Question = {
 
 // An example is written indented inside its question; Jev reads it without the opening and closing lines and their shared indent.
 function dedent(example: string) {
-	const lines = Array.dropRight(Array.drop(String.split('\n')(example), 1), 1)
+	const lines = pipe(String.split(example, '\n'), Array.drop(1), Array.dropRight(1))
 	const indent = Array.match(
 		pipe(
 			lines,
@@ -27,7 +27,7 @@ function dedent(example: string) {
 		),
 		{onEmpty: () => 0, onNonEmpty: Array.min(Order.Number)}
 	)
-	return Array.join(Array.map(lines, String.slice(indent)), '\n')
+	return pipe(lines, Array.map(String.slice(indent)), Array.join('\n'))
 }
 
 export function question(

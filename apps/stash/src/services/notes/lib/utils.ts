@@ -32,20 +32,16 @@ function withoutTrailingPunctuation(link: string): string {
 
 // youtu.be, Shorts, live and embed links and the mobile site all name one video by its id.
 function youTubeId(url: URL) {
-	if (url.hostname === 'youtu.be') return Array.findFirst(String.split(url.pathname, '/'), String.isNonEmpty)
+	if (url.hostname === 'youtu.be') {
+		return pipe(url.pathname, String.split('/'), Array.findFirst(String.isNonEmpty))
+	}
 	if (Option.isNone(String.match(/(?:^|\.)youtube\.com$/u)(url.hostname))) return Option.none<string>()
-	return pipe(
-		Option.fromNullishOr(url.searchParams.get('v')),
-		Option.orElse(() =>
-			pipe(
-				String.match(/^\/(?:shorts|live|embed)\/([\w-]+)/u)(url.pathname),
-				Option.flatMap(match => Array.get(match, 1))
-			)
-		)
+	return Option.orElse(Option.fromNullishOr(url.searchParams.get('v')), () =>
+		Option.flatMap(String.match(/^\/(?:shorts|live|embed)\/([\w-]+)/u)(url.pathname), match => Array.get(match, 1))
 	)
 }
 
-export function sourceFor(url: string) {
+export function sourceOf(url: string) {
 	const host = new URL(url).hostname
 	if (Array.contains(X_HOSTS, host) || host === 't.co') return 'X'
 	if (host === 'tiktok.com' || String.endsWith('.tiktok.com')(host)) return 'TikTok'
@@ -55,7 +51,7 @@ export function sourceFor(url: string) {
 function withoutTracking(link: string) {
 	const url = new URL(link)
 	if (Array.contains(X_HOSTS, url.hostname)) url.hostname = 'x.com'
-	if (sourceFor(url.href) === 'Website') {
+	if (sourceOf(url.href) === 'Website') {
 		for (const key of TRACKING_PARAMETERS) url.searchParams.delete(key)
 	} else {
 		url.search = ''
@@ -91,15 +87,15 @@ export function isYouTube(url: string) {
 
 export function hasVideo(url: string) {
 	const link = new URL(url)
-	if (sourceFor(url) === 'TikTok') return !String.includes('/photo/')(link.pathname)
-	return sourceFor(url) === 'X' || isYouTube(url)
+	if (sourceOf(url) === 'TikTok') return !String.includes('/photo/')(link.pathname)
+	return sourceOf(url) === 'X' || isYouTube(url)
 }
 
 export function plainText(text: string) {
 	return pipe(text, String.replaceAll(/\s+/gu, ' '), String.trim)
 }
 
-export function commentFor(text: string) {
+export function commentOf(text: string) {
 	return pipe(text, String.replaceAll(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
 }
 
@@ -110,9 +106,10 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 		Record.toEntries,
 		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),
 		Array.sort(
-			Order.combine(
-				Order.mapInput(Order.flip(Order.Number), (entry: {count: number; tag: string}) => entry.count),
-				Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag)
+			pipe(
+				Order.flip(Order.Number),
+				Order.mapInput((entry: {count: number; tag: string}) => entry.count),
+				Order.combine(Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag))
 			)
 		)
 	)

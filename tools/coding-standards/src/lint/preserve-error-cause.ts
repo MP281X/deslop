@@ -10,7 +10,7 @@ import {
 	memberName,
 	resolveBinding,
 	returnedExpression,
-	variableFor,
+	variableOf,
 	variableFromScope
 } from '#lib/ast.ts'
 
@@ -113,18 +113,17 @@ function causeField(parameter?: ESTree.ParamPattern) {
 }
 
 function insertField(input: {field: string; fields: ESTree.ObjectExpression; fixer: Fixer}) {
-	return Option.match(
-		Array.findFirst(input.fields.properties, property =>
-			Option.exists(keyName(property), key => String.Order(key, 'cause') > 0)
-		),
-		{
+	return pipe(
+		input.fields.properties,
+		Array.findFirst(property => Option.exists(keyName(property), key => String.Order(key, 'cause') > 0)),
+		Option.match({
 			onNone: () =>
 				Option.match(Array.last(input.fields.properties), {
 					onNone: () => input.fixer.replaceText(input.fields, `{${input.field}}`),
 					onSome: last => input.fixer.insertTextAfter(last, `, ${input.field}`)
 				}),
 			onSome: property => input.fixer.insertTextBefore(property, `${input.field}, `)
-		}
+		})
 	)
 }
 
@@ -173,7 +172,7 @@ function hasCauseField(context: Context, node: ESTree.Node): boolean {
 // The error is declared in this file with a `cause: Schema.Defect()` field; an imported one, or one with another field, is left to a person.
 function declaresCause(context: Context, node?: ESTree.Node | null) {
 	return Option.exists(constructedClass(node), name =>
-		Option.exists(variableFor(context, name), variable =>
+		Option.exists(variableOf(context, name), variable =>
 			Array.some(
 				variable.defs,
 				definition =>
@@ -198,8 +197,9 @@ function fix(input: {context: Context; fixer: Fixer; node: ESTree.Node}) {
 	) {
 		return []
 	}
-	return Option.getOrElse(
-		Option.flatMap(constructedFields(returnedExpression(node)), fields => {
+	return pipe(
+		constructedFields(returnedExpression(node)),
+		Option.flatMap(fields => {
 			if (Array.some(fields.properties, property => property.type === 'SpreadElement' || causeKey(property))) {
 				return Option.none()
 			}
@@ -220,7 +220,7 @@ function fix(input: {context: Context; fixer: Fixer; node: ESTree.Node}) {
 			}
 			return Option.some([input.fixer.replaceTextRange([open.range[0], close.range[1]], '(cause)'), insertion])
 		}),
-		() => []
+		Option.getOrElse(() => [])
 	)
 }
 
@@ -252,9 +252,10 @@ export const preserveErrorCause = defineRule({
 			const name = effectMethod({context, node})
 			if (Option.contains(name, 'mapError')) {
 				const bare = detailedFailure(context, node)
-				Array.forEach(
-					Array.filter(node.arguments, argument => dropsCause(context, argument, bare)),
-					callback => report(context, callback)
+				pipe(
+					node.arguments,
+					Array.filter(argument => dropsCause(context, argument, bare)),
+					Array.forEach(callback => report(context, callback))
 				)
 				return
 			}

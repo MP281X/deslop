@@ -13,14 +13,14 @@ import {createElement} from 'react'
 import {renderToString} from 'react-dom/server'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {layerServerProtocol, layerRpc} from '@deslop/runtime/server/http'
 import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
-import type {serversAtom} from '#lib/utils.ts'
+import type {serversAtom} from '#lib/gateway.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {ConnectionInfo} from '#services/connections/schema.ts'
+import {ConnectionItem} from '#services/connections/schema.ts'
 
-const sample = ConnectionInfo.make({
+const sample = ConnectionItem.make({
 	error: Option.none(),
 	icons: [],
 	id: 'private',
@@ -33,11 +33,11 @@ const sample = ConnectionInfo.make({
 const fixture = Effect.gen(function* () {
 	const opened = yield* Queue.unbounded<void>()
 	const complete = yield* Ref.make(false)
-	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionInfo[], AuthError>>()
+	const answers = yield* Queue.unbounded<Effect.Effect<ConnectionItem[], AuthError>>()
 	const handlers = RpcContracts.toLayer({
-		'ai.keys': () => Effect.never,
-		'ai.setKey': () => Effect.never,
-		'ai.usage': () => Stream.never,
+		'ai-proxy.list': () => Effect.never,
+		'ai-proxy.setKey': () => Effect.never,
+		'ai-proxy.usage': () => Stream.never,
 		'connections.add': () => Effect.never,
 		'connections.usage': () => Stream.never,
 		'connections.watch': () =>
@@ -45,30 +45,28 @@ const fixture = Effect.gen(function* () {
 				Effect.gen(function* () {
 					yield* Queue.offer(opened, undefined)
 					if (yield* Ref.get(complete)) return Stream.empty
-					return pipe(Stream.fromQueue(answers), Stream.mapEffect(Function.identity))
+					return Stream.mapEffect(Stream.fromQueue(answers), Function.identity)
 				})
 			)
 	})
 	const context = yield* Layer.build(
 		pipe(
 			HttpRouter.serve(
-				pipe(
+				Layer.provide(
 					Layer.mergeAll(
-						ServerRuntime.layerRpc({group: RpcContracts, handlers}),
+						layerRpc({group: RpcContracts, handlers}),
 						HttpRouter.add(
 							'GET',
 							'/api/runtime',
 							HttpServerResponse.jsonUnsafe({name: 'gateway', traces: '', version: '0.1.0'})
 						)
 					),
-					Layer.provide(
-						Layer.succeedContext(
-							Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => Effect.succeed(DEVELOPER)}))
-						)
+					Layer.succeedContext(
+						Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => Effect.succeed(DEVELOPER)}))
 					)
 				)
 			),
-			Layer.provide(ServerRuntime.layerProtocol),
+			Layer.provide(layerServerProtocol),
 			Layer.provideMerge(NodeHttpServer.layerTest)
 		)
 	)
@@ -90,7 +88,7 @@ const fixture = Effect.gen(function* () {
 			})
 	)
 	/* oxlint-enable no-restricted-globals, no-restricted-properties */
-	const atoms = yield* Effect.promise(() => import('#lib/utils.ts'))
+	const atoms = yield* Effect.promise(() => import('#lib/gateway.ts'))
 	const registry = yield* Effect.acquireRelease(
 		Effect.sync(() => AtomRegistry.make()),
 		value => Effect.sync(() => value.dispose())

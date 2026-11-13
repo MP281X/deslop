@@ -59,7 +59,8 @@ export class Gateway extends Context.Service<
 		readonly removed: Effect.Effect<void, AuthError>
 	}
 >()('@deslop/gateway/services/gateway/service/Gateway') {
-	static readonly layer = Layer.effect(Gateway)(
+	static readonly layer = Layer.effect(
+		Gateway,
 		Effect.gen(function* () {
 			const registry = yield* McpServer.McpServer
 			const auth = yield* Auth
@@ -101,9 +102,10 @@ export class Gateway extends Context.Service<
 			})
 			const updateVisible = Effect.fnUntraced(function* (server: ConnectionState, names: HashSet.HashSet<string>) {
 				const changed = yield* Ref.modify(visible, current => {
-					const next = HashSet.union(
-						HashSet.filter(current, name => !String.startsWith(`${server.id}__`)(name)),
-						names
+					const next = pipe(
+						current,
+						HashSet.filter(name => !String.startsWith(`${server.id}__`)(name)),
+						HashSet.union(names)
 					)
 					return [!Equal.equals(current, next), next]
 				})
@@ -122,7 +124,7 @@ export class Gateway extends Context.Service<
 					})
 				).layer
 			)
-			const upstreamFor = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
+			const resolveUpstream = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
 				const current = yield* connections.get(server.id)
 				if (current.generation !== server.generation || current.status !== 'Connected') {
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
@@ -144,20 +146,20 @@ export class Gateway extends Context.Service<
 			) {
 				return pipe(
 					Effect.gen(function* () {
-						const upstream = yield* upstreamFor(server, headers)
+						const upstream = yield* resolveUpstream(server, headers)
 						const context = yield* Effect.context()
 						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
 							authProvider: {
 								onUnauthorized: () =>
 									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider contract requires a Promise<void>.
 									Effect.runPromise(
-										pipe(
+										Effect.provideContext(
 											Effect.gen(function* () {
 												if (server.mode === 'oauth') {
 													upstream.token = yield* connections.token(server.id, server.generation, upstream.token)
 												}
 											}),
-											Effect.provideContext(context)
+											context
 										)
 									),
 								token: () =>
@@ -203,9 +205,10 @@ export class Gateway extends Context.Service<
 				},
 				// The agent reads the failure as a tool result; the trace keeps its cause.
 				(effect, server) =>
-					Effect.catch(
-						Effect.tapCause(effect, cause => Effect.logWarning(`${server.name} call failed`, cause)),
-						cause =>
+					pipe(
+						effect,
+						Effect.tapCause(cause => Effect.logWarning(`${server.name} call failed`, cause)),
+						Effect.catch(cause =>
 							Effect.succeed(
 								McpSchema.CallToolResult.make({
 									content: [
@@ -217,13 +220,14 @@ export class Gateway extends Context.Service<
 									isError: true
 								})
 							)
+						)
 					)
 			)
 			const discover = Effect.fnUntraced(function* (server: ConnectionState, headers: Headers.Headers) {
 				if (server.status !== 'Connected') {
 					return yield* updateVisible(server, HashSet.empty())
 				}
-				const found = yield* pipe(
+				const found = yield* Effect.timeout(
 					withClient(server, headers, client =>
 						pipe(
 							Effect.tryPromise({
@@ -231,11 +235,11 @@ export class Gateway extends Context.Service<
 								try: signal => client.listTools(undefined, {signal})
 							}),
 							Effect.flatMap(result =>
-								pipe(
+								Effect.map(
 									Schema.decodeUnknownEffect(RemoteTools)(
 										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 									),
-									Effect.map(tools => ({tools, upstreamTools: result.tools}))
+									tools => ({tools, upstreamTools: result.tools})
 								)
 							),
 							Effect.mapBoth({
@@ -248,7 +252,7 @@ export class Gateway extends Context.Service<
 							})
 						)
 					),
-					Effect.timeout('20 seconds')
+					'20 seconds'
 				)
 				const latest = yield* connections.get(server.id)
 				if (latest.generation !== server.generation || latest.status === 'Not connected') {
@@ -349,9 +353,10 @@ export class Gateway extends Context.Service<
 				if (Option.isNone(last)) return
 				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
 				if (now - Option.getOrThrow(last) < 30_000) return
-				yield* Effect.forkIn(
-					Effect.withSpan(refreshes.withPermitsIfAvailable(1)(read(headers)), 'Gateway.refresh'),
-					scope
+				yield* pipe(
+					refreshes.withPermitsIfAvailable(1)(read(headers)),
+					Effect.withSpan('Gateway.refresh'),
+					Effect.forkIn(scope)
 				)
 			})
 			return Gateway.of({

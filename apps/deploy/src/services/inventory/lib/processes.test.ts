@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Option, PlatformError, String, pipe} from 'effect'
+import {Array, Effect, FileSystem, Option, PlatformError, String} from 'effect'
 
 import {commandLabel} from './command.ts'
 import {attachProcesses, processReadings, processes} from './processes.ts'
@@ -26,7 +26,7 @@ function reading(time: number) {
 it.effect(
 	'collects names with spaces, parent/RSS, cwd labels and masked arguments, and tolerates an exited process',
 	() =>
-		pipe(
+		Effect.provideService(
 			Effect.gen(function* () {
 				const collected = yield* processes
 				assert.strictEqual(collected.total, 800)
@@ -73,41 +73,39 @@ it.effect(
 					}
 				])
 			}),
-			Effect.provideService(
-				FileSystem.FileSystem,
-				FileSystem.makeNoop({
-					readDirectory: () => Effect.succeed(['42', '7', '99', 'self']),
-					readFileString: Effect.fnUntraced(function* (path) {
-						if (path === '/proc/stat') return 'cpu 100 0 100 600 0 0 0 0\n'
-						if (path === '/proc/42/stat' || path === '/proc/7/stat') {
-							return `${path} (Web Content) S 0 0 0 0 0 0 0 0 0 0 10 0 0 0 0 0 0 0 100`
-						}
-						if (String.endsWith('/cgroup')(path)) return '0::/user.slice/scope.service\n'
-						if (path === '/proc/42/cmdline') return 'firefox\0--type=renderer\0'
-						// Secrets in arguments stay on the worker.
-						if (path === '/proc/7/cmdline') {
-							return `node\0server.js\0--api-token\0abc\0GITHUB_TOKEN=ghp_x\0https://user:pw@example.com/x\0${String.repeat(40)('a')}\0--session-id=abc\0--allow-dangerously-skip-permissions\0--mode\0off\0--oauth2-bearer\0-short-secret`
-						}
-						if (path === '/proc/42/status') return 'Name:\tWeb Content\nPid:\t42\nPPid:\t7\nVmRSS:\t1024 kB\n'
-						if (path === '/proc/7/status') return 'Name:\tworker\nPid:\t7\nPPid:\t1\n'
-						return yield* PlatformError.badArgument({
-							description: 'Process exited',
-							method: 'readFileString',
-							module: 'fixture'
-						})
-					}),
-					readLink: Effect.fnUntraced(function* (path) {
-						if (path === '/proc/7/cwd') {
-							return '/home/mp281x/.t3/worktrees/deslop/t3-42831c07-bd2adb498ae2fa17/apps/auth'
-						}
-						return yield* PlatformError.badArgument({
-							description: 'Process exited',
-							method: 'readLink',
-							module: 'fixture'
-						})
+			FileSystem.FileSystem,
+			FileSystem.makeNoop({
+				readDirectory: () => Effect.succeed(['42', '7', '99', 'self']),
+				readFileString: Effect.fnUntraced(function* (path) {
+					if (path === '/proc/stat') return 'cpu 100 0 100 600 0 0 0 0\n'
+					if (path === '/proc/42/stat' || path === '/proc/7/stat') {
+						return `${path} (Web Content) S 0 0 0 0 0 0 0 0 0 0 10 0 0 0 0 0 0 0 100`
+					}
+					if (String.endsWith('/cgroup')(path)) return '0::/user.slice/scope.service\n'
+					if (path === '/proc/42/cmdline') return 'firefox\0--type=renderer\0'
+					// Secrets in arguments stay on the worker.
+					if (path === '/proc/7/cmdline') {
+						return `node\0server.js\0--api-token\0abc\0GITHUB_TOKEN=ghp_x\0https://user:pw@example.com/x\0${String.repeat(40)('a')}\0--session-id=abc\0--allow-dangerously-skip-permissions\0--mode\0off\0--oauth2-bearer\0-short-secret`
+					}
+					if (path === '/proc/42/status') return 'Name:\tWeb Content\nPid:\t42\nPPid:\t7\nVmRSS:\t1024 kB\n'
+					if (path === '/proc/7/status') return 'Name:\tworker\nPid:\t7\nPPid:\t1\n'
+					return yield* PlatformError.badArgument({
+						description: 'Process exited',
+						method: 'readFileString',
+						module: 'fixture'
+					})
+				}),
+				readLink: Effect.fnUntraced(function* (path) {
+					if (path === '/proc/7/cwd') {
+						return '/home/mp281x/.t3/worktrees/deslop/t3-42831c07-bd2adb498ae2fa17/apps/auth'
+					}
+					return yield* PlatformError.badArgument({
+						description: 'Process exited',
+						method: 'readLink',
+						module: 'fixture'
 					})
 				})
-			)
+			})
 		)
 )
 

@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option, pipe} from 'effect'
+import {Array, Boolean, DateTime, Option} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -14,8 +14,8 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 
+import {accountAtom, admitAtom, peopleAtom} from '#lib/auth.ts'
 import {AccountAvatar, PeopleRowsSkeleton} from '#lib/components.tsx'
-import {accountAtom, admitAtom, peopleAtom} from '#lib/utils.ts'
 import type {Person} from '#services/people/schema.ts'
 
 // The row's own line, then its failed answer beneath it; its actions sit at its end.
@@ -62,7 +62,7 @@ function Since(props: {since: number}) {
 	return (
 		<ItemActions>
 			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{pipe(DateTime.makeUnsafe(props.since), DateTime.formatLocal({month: 'short', year: 'numeric'}))}
+				{DateTime.formatLocal(DateTime.makeUnsafe(props.since), {month: 'short', year: 'numeric'})}
 			</span>
 		</ItemActions>
 	)

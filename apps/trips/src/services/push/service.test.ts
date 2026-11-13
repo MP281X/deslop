@@ -100,12 +100,12 @@ const open = Effect.fnUntraced(function* (
 					Layer.succeed(
 						Bookings,
 						Bookings.of({
-							changes: Stream.never,
 							events: Stream.never,
 							list: Effect.succeed(list),
 							remove: () => Effect.void,
 							replace: () => Effect.undefined,
-							save: () => Effect.undefined
+							save: () => Effect.undefined,
+							watch: Stream.never
 						})
 					)
 				),
@@ -165,7 +165,11 @@ const open = Effect.fnUntraced(function* (
 })
 
 function ended(activities: readonly Activity[], index: number) {
-	return Option.exists(Array.get(activities, index), activity => Option.isSome(activity.endedAt))
+	return pipe(
+		activities,
+		Array.get(index),
+		Option.exists(activity => Option.isSome(activity.endedAt))
+	)
 }
 
 it.layer(NodeCrypto.layer)(test => {
@@ -201,9 +205,10 @@ it.layer(NodeCrypto.layer)(test => {
 				number: '554'
 			})
 			const fixture = yield* open(
-				Effect.map(
-					Ref.getAndUpdate(yield* Ref.make(0), count => count + 1),
-					count => Boolean.match(count === 0, {onFalse: () => 200, onTrue: () => 503})
+				pipe(
+					yield* Ref.make(0),
+					Ref.getAndUpdate(count => count + 1),
+					Effect.map(count => Boolean.match(count === 0, {onFalse: () => 200, onTrue: () => 503}))
 				),
 				[],
 				[first, second]

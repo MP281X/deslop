@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, String} from 'effect'
+import {Array, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -58,15 +58,15 @@ export const swiftuiThemeValues = defineRule({
 				// A colour comes as the argument itself or as an option such as strokeBorder({content}).
 				if (
 					Array.contains(PAINTS, name) &&
-					Array.some(
-						Array.flatMap(node.arguments, argument => [
-							argument,
-							...Array.map(properties(argument), property => property.value)
-						]),
-						value =>
-							value.type === 'Literal' &&
-							Predicate.isString(value.value) &&
-							Option.isSome(String.match(/^#[\da-f]{3,8}$/iu)(value.value))
+					pipe(
+						node.arguments,
+						Array.flatMap(argument => [argument, ...Array.map(properties(argument), property => property.value)]),
+						Array.some(
+							value =>
+								value.type === 'Literal' &&
+								Predicate.isString(value.value) &&
+								Option.isSome(String.match(/^#[\da-f]{3,8}$/iu)(value.value))
+						)
 					)
 				) {
 					report(context, node, 'Paint with the theme’s colors, which follow light and dark, not a hex string.')

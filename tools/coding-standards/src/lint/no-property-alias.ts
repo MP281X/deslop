@@ -242,13 +242,10 @@ export const noPropertyAlias = defineRule({
 			'Program:exit': () => {
 				const nodes = MutableList.toArray(writes)
 				for (const candidate of MutableList.toArray(candidates)) {
-					pipe(
-						variableFromScope({name: candidate.name, scope: context.sourceCode.getScope(candidate.node)}),
-						Option.match({
-							onNone: Function.constVoid,
-							onSome: variable => report({...candidate, context, variable, writes: nodes})
-						})
-					)
+					Option.match(variableFromScope({name: candidate.name, scope: context.sourceCode.getScope(candidate.node)}), {
+						onNone: Function.constVoid,
+						onSome: variable => report({...candidate, context, variable, writes: nodes})
+					})
 				}
 			},
 			UnaryExpression: node => {

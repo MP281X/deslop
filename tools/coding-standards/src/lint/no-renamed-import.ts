@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array, Option, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer, Reference} from 'vite-plus/lint/plugins'
@@ -27,8 +27,9 @@ function fix(input: {context: Context; fixer: Fixer; imported: string; node: EST
 		reference => reference.identifier.name === input.imported
 	)
 	if (unresolved || Option.isSome(boundVariable({name: input.imported, scope}))) return []
-	return Option.getOrElse(
-		Option.flatMap(variableFromScope({name: input.node.local.name, scope}), variable => {
+	return pipe(
+		variableFromScope({name: input.node.local.name, scope}),
+		Option.flatMap(variable => {
 			if (Array.some(variable.references, reference => captured({...input, reference}))) return Option.none()
 			return Option.some([
 				input.fixer.removeRange([input.node.imported.range[1], input.node.local.range[1]]),
@@ -40,7 +41,7 @@ function fix(input: {context: Context; fixer: Fixer; imported: string; node: EST
 				})
 			])
 		}),
-		() => []
+		Option.getOrElse(() => [])
 	)
 }
 
@@ -54,6 +55,8 @@ export const noRenamedImport = defineRule({
 		},
 		ImportSpecifier: node => {
 			const imported = exportedName(node.imported)
+			// Expo exports generic verbs; the named import gives them their domain without a namespace.
+			if (node.parent.type === 'ImportDeclaration' && String.startsWith('expo-')(node.parent.source.value)) return
 			if (imported === node.local.name || (imported === 'it' && node.local.name === 'test')) return
 			context.report({
 				fix: fixer => {

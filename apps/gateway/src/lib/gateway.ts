@@ -23,7 +23,7 @@ export const ENDPOINT = `${window.location.origin}/mcp`
 
 addPageTelemetry('@deslop/gateway')
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/gateway/lib/gateway/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: layerPageProtocol
 }) {}
@@ -49,14 +49,11 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	Machine.make({
 		effects: {
 			add: Effect.fnUntraced(function* (url: string) {
-				yield* pipe(
-					Schema.decodeEffect(ServerUrl)(url),
-					Effect.mapError(cause =>
-						AuthError.make({
-							cause,
-							message: 'Enter a public HTTPS MCP URL without credentials or a fragment, outside the gateway itself.'
-						})
-					)
+				yield* Effect.mapError(Schema.decodeEffect(ServerUrl)(url), cause =>
+					AuthError.make({
+						cause,
+						message: 'Enter a public HTTPS MCP URL without credentials or a fragment, outside the gateway itself.'
+					})
 				)
 				const server = yield* Effect.flatMap(RpcClient, client => client('connections.add', {url}))
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
@@ -87,25 +84,26 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 )
 
 // Read like the live streams, so a refusal clears the keys too; saving a key rereads them.
-export const aiKeysAtom = pipe(
+export const aiKeysAtom = RpcClient.runtime.factory.withReactivity(['aiKeys'])(
 	RpcClient.runtime.atom(get =>
 		keepValueThroughOutages(
 			get,
-			Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai.keys', undefined))),
+			Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai-proxy.list', undefined))),
 			reconnectOnDrop
 		)
-	),
-	RpcClient.runtime.factory.withReactivity(['aiKeys'])
+	)
 )
 
 // A period's report now and after each recorded call; the server reopens the window at each bucket boundary.
-export const aiUsageAtom = Atom.family((period: Period) => Atom.keepAlive(liveAtom(RpcClient, 'ai.usage', period)))
+export const aiUsageAtom = Atom.family((period: Period) =>
+	Atom.keepAlive(liveAtom(RpcClient, 'ai-proxy.usage', period))
+)
 
 export const mcpUsageAtom = Atom.family((period: Period) =>
 	Atom.keepAlive(liveAtom(RpcClient, 'connections.usage', period))
 )
 
-export const setKeyAtom = RpcClient.mutation('ai.setKey')
+export const setKeyAtom = RpcClient.mutation('ai-proxy.setKey')
 
 // The copy button's check, set by the copy and cleared a moment later.
 export const copiedAtom = Atom.make(false)

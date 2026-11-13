@@ -28,7 +28,7 @@ export class AiKey extends Model.Class<AiKey>('AiKey')({
 }) {
 	static readonly table = 'ai_keys'
 }
-export type AiKeyInfo = typeof AiKey.json.Type
+export type AiKeyItem = typeof AiKey.json.Type
 
 // One person's calls to one provider in one hour: what the known prices sum to, and how many calls had none.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({

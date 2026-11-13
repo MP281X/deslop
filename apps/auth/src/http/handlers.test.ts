@@ -74,12 +74,12 @@ const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
 type PersonParams = typeof PersonParams.Type
 const PersonParams = Schema.Struct({id: Schema.NonEmptyString})
 
-const me = pipe(
+const me = Layer.provide(
 	HttpRouter.add('GET', '/me', Effect.flatMap(CurrentUser, HttpServerResponse.schemaJson(User))),
-	Layer.provide(HttpAuth.layer)
+	HttpAuth.layer
 )
 
-const mcp = pipe(
+const mcp = Layer.provide(
 	McpServer.layerHttp({
 		instructions:
 			'Use matching lists for sessions, passkeys or people; answer_sign_in handles only a sign-in the caller started.',
@@ -89,7 +89,7 @@ const mcp = pipe(
 		registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner)),
 		version: '1'
 	}),
-	Layer.provide(HttpAuth.layer)
+	HttpAuth.layer
 )
 
 const requestOwner = Effect.gen(function* () {
@@ -150,7 +150,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 						HttpRouter.add(
 							'GET',
 							'/auth/request',
-							pipe(
+							Effect.catchTag(
 								Effect.gen(function* () {
 									const params = yield* HttpServerRequest.schemaSearchParams(RequestParams)
 									return yield* HttpServerResponse.schemaJson(AuthorizationStatus)(
@@ -162,45 +162,43 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 										)
 									)
 								}),
-								Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
+								'AuthError',
+								() => Effect.succeed(HttpServerResponse.empty({status: 400}))
 							)
 						),
-						pipe(
+						Layer.provide(
 							Layer.mergeAll(
 								HttpRouter.add(
 									'GET',
 									'/people',
-									pipe(
+									refused(
 										Effect.gen(function* () {
 											return yield* HttpServerResponse.schemaJson(Schema.Array(Person))(
 												yield* (yield* People).list(yield* CurrentUser)
 											)
-										}),
-										refused
+										})
 									)
 								),
 								HttpRouter.add(
 									'POST',
 									'/admit',
-									pipe(
+									refused(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AdmitParams)
 											yield* (yield* People).admit(input, yield* CurrentUser)
 											return HttpServerResponse.empty()
-										}),
-										refused
+										})
 									)
 								),
 								HttpRouter.add(
 									'POST',
 									'/remove-person',
-									pipe(
+									refused(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(PersonParams)
 											yield* (yield* People).remove(input.id, yield* CurrentUser)
 											return HttpServerResponse.empty()
-										}),
-										refused
+										})
 									)
 								),
 								HttpRouter.add(
@@ -209,7 +207,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									Effect.gen(function* () {
 										return yield* HttpServerResponse.schemaJson(Schema.Array(SignedInApp.json))(
 											yield* Effect.flatMap(
-												Stream.runHead((yield* Tokens).apps(yield* requestOwner)),
+												Stream.runHead((yield* Tokens).watchApps(yield* requestOwner)),
 												Effect.fromOption
 											)
 										)
@@ -218,19 +216,20 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 								HttpRouter.add(
 									'POST',
 									'/disconnect',
-									pipe(
+									Effect.catchTag(
 										Effect.gen(function* () {
 											const params = yield* HttpServerRequest.schemaSearchParams(FamilyParams)
 											yield* (yield* Tokens).disconnect(params.family, yield* requestOwner)
 											return HttpServerResponse.empty()
 										}),
-										Effect.catchTag('AuthError', () => Effect.succeed(HttpServerResponse.empty({status: 400})))
+										'AuthError',
+										() => Effect.succeed(HttpServerResponse.empty({status: 400}))
 									)
 								),
 								HttpRouter.add(
 									'GET',
 									'/passkey-options',
-									pipe(
+									refused(
 										Effect.gen(function* () {
 											return yield* HttpServerResponse.schemaJson(CreationOptions)(
 												yield* (yield* Passkeys).registration(
@@ -238,14 +237,13 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 													yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
 												)
 											)
-										}),
-										refused
+										})
 									)
 								),
 								HttpRouter.add(
 									'POST',
 									'/add-passkey',
-									pipe(
+									refused(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AddPasskeyParams)
 											yield* (yield* Passkeys).add(input.response, {
@@ -254,8 +252,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 												via: yield* (yield* Tokens).sessionVia((yield* HttpServerRequest.HttpServerRequest).headers)
 											})
 											return HttpServerResponse.empty()
-										}),
-										refused
+										})
 									)
 								),
 								HttpRouter.add(
@@ -264,7 +261,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									Effect.gen(function* () {
 										return yield* HttpServerResponse.schemaJson(Schema.Array(Passkey.json))(
 											yield* Effect.flatMap(
-												Stream.runHead((yield* Passkeys).list(yield* requestOwner)),
+												Stream.runHead((yield* Passkeys).watch(yield* requestOwner)),
 												Effect.fromOption
 											)
 										)
@@ -273,13 +270,12 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 								HttpRouter.add(
 									'POST',
 									'/answer',
-									pipe(
+									refused(
 										Effect.gen(function* () {
 											const input = yield* HttpServerRequest.schemaBodyJson(AnswerParams)
 											yield* (yield* SignIns).answer(input, yield* requestOwner, 'Session')
 											return HttpServerResponse.empty()
-										}),
-										refused
+										})
 									)
 								),
 								HttpRouter.add(
@@ -317,7 +313,7 @@ const servers = Effect.fnUntraced(function* (saved?: string) {
 									})
 								)
 							),
-							Layer.provide(HttpAuth.layer)
+							HttpAuth.layer
 						)
 					),
 					Layer.provideMerge(layerIssuerAuth),
@@ -593,9 +589,10 @@ const people = Effect.fnUntraced(function* (
 // An unsigned big-endian number as a DER INTEGER: leading zeros dropped, one put back where the top bit would read as a sign.
 function derInteger(half: readonly number[]) {
 	const trimmed = Array.dropWhile(half, byte => byte === 0)
-	const value = Boolean.match(
-		Option.exists(Array.head(trimmed), byte => byte >= 0x80),
-		{onFalse: () => trimmed, onTrue: () => [0, ...trimmed]}
+	const value = pipe(
+		Array.head(trimmed),
+		Option.exists(byte => byte >= 0x80),
+		Boolean.match({onFalse: () => trimmed, onTrue: () => [0, ...trimmed]})
 	)
 	return [0x02, value.length, ...value]
 }
@@ -674,7 +671,7 @@ const authenticator = Effect.fnUntraced(function* () {
 				0x20,
 				0x01,
 				0x21,
-				...cborBytes(Uint8Array.from(Array.take(Array.drop(point, 1), 32))),
+				...cborBytes(Uint8Array.from(pipe(point, Array.drop(1), Array.take(32)))),
 				0x22,
 				...cborBytes(Uint8Array.from(Array.drop(point, 33)))
 			]
@@ -908,9 +905,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				const apps = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
 					yield* Effect.promise(() => list.text())
 				)
-				const browser = yield* Effect.fromOption(Array.findFirst(apps, app => app.kind === 'Browser'))
+				const browser = yield* pipe(
+					apps,
+					Array.findFirst(app => app.kind === 'Browser'),
+					Effect.fromOption
+				)
 				assert.deepStrictEqual(
-					(yield* Effect.fromOption(Array.findFirst(apps, app => app.client === 'Scope'))).parent,
+					(yield* pipe(
+						apps,
+						Array.findFirst(app => app.client === 'Scope'),
+						Effect.fromOption
+					)).parent,
 					Option.some(browser.family)
 				)
 				const unspent = yield* authorizeWeb(web.issuer, session)
@@ -977,9 +982,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				{concurrency: 'unbounded'}
 			)
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(responses, response => response.status),
-					Order.Number
+				pipe(
+					responses,
+					Array.map(response => response.status),
+					Array.sort(Order.Number)
 				),
 				[204, 400]
 			)
@@ -1344,9 +1350,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				{concurrency: 'unbounded'}
 			)
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(responses, response => response.status),
-					Order.Number
+				pipe(
+					responses,
+					Array.map(response => response.status),
+					Array.sort(Order.Number)
 				),
 				[204, 400]
 			)
@@ -1595,13 +1602,18 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				concurrency: 'unbounded'
 			})
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(responses, response => response.status),
-					Order.Number
+				pipe(
+					responses,
+					Array.map(response => response.status),
+					Array.sort(Order.Number)
 				),
 				[200, 400]
 			)
-			const winner = yield* Effect.fromOption(Array.findFirst(responses, response => response.status === 200))
+			const winner = yield* pipe(
+				responses,
+				Array.findFirst(response => response.status === 200),
+				Effect.fromOption
+			)
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => winner.text())
 			)
@@ -2060,12 +2072,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				}
 			})
 			const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
-				Effect.map(
-					Effect.flatMap(
-						Effect.promise(() => response.text()),
-						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))
-					),
-					Array.filter(app => app.kind === 'App')
+				pipe(
+					Effect.promise(() => response.text()),
+					Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))),
+					Effect.map(Array.filter(app => app.kind === 'App'))
 				)
 			)
 			// Traefik appends the connecting address last; the entry before it is whatever the client sent.
@@ -2075,9 +2085,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.strictEqual((yield* refresh(web.issuer, first.clientId, first.tokens.refresh_token)).status, 400)
 			yield* signInFrom('1.1.1.1')
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(yield* apps, app => app.device),
-					String.Order
+				pipe(
+					yield* apps,
+					Array.map(app => app.device),
+					Array.sort(String.Order)
 				),
 				['1.1.1.1', '93.184.216.34']
 			)
@@ -2132,13 +2143,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			// The approved browser is listed among the account's sign-ins, and signing it out there ends its session.
 			const listed = yield* send(web.issuer, '/apps', {headers: {cookie: admin}})
-			const browserApp = yield* Effect.fromOption(
-				Array.findFirst(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
-						yield* Effect.promise(() => listed.text())
-					),
-					app => app.client === 'Safari' && app.device === 'iPhone'
-				)
+			const browserApp = yield* pipe(
+				yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
+					yield* Effect.promise(() => listed.text())
+				),
+				Array.findFirst(app => app.client === 'Safari' && app.device === 'iPhone'),
+				Effect.fromOption
 			)
 			assert.strictEqual(
 				(yield* send(web.issuer, `/disconnect?family=${browserApp.family}`, {headers: {cookie: admin}, method: 'POST'}))
@@ -2236,33 +2246,36 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				})
 			)(yield* toolResult(yield* callTool(web.issuer, agent, 'list_sessions', {})))
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(listed.sessions, session => session.client),
-					String.Order
+				pipe(
+					listed.sessions,
+					Array.map(session => session.client),
+					Array.sort(String.Order)
 				),
 				['Browser', 'Browser', 'Opencode']
 			)
 			assert.isTrue(
 				Array.every(listed.sessions, session => session.device === undefined || session.device !== session.address)
 			)
-			const command = yield* Effect.fromOption(
-				Array.findFirst(listed.sessions, session => session.client === 'Opencode')
+			const command = yield* pipe(
+				listed.sessions,
+				Array.findFirst(session => session.client === 'Opencode'),
+				Effect.fromOption
 			)
 			assert.deepStrictEqual([command.address, command.device], ['93.184.216.34', undefined])
-			const browser = yield* Effect.fromOption(
-				Array.findFirst(listed.sessions, session => session.client === 'Browser')
+			const browser = yield* pipe(
+				listed.sessions,
+				Array.findFirst(session => session.client === 'Browser'),
+				Effect.fromOption
 			)
 			assert.strictEqual((yield* callTool(web.issuer, agent, 'sign_out_session', {id: browser.id})).status, 200)
 			assert.deepStrictEqual(
-				Array.sort(
-					Array.map(
-						[
-							yield* send(web.issuer, '/me', {headers: {cookie: first}}),
-							yield* send(web.issuer, '/me', {headers: {cookie: second}})
-						],
-						response => response.status
-					),
-					Order.Number
+				pipe(
+					[
+						yield* send(web.issuer, '/me', {headers: {cookie: first}}),
+						yield* send(web.issuer, '/me', {headers: {cookie: second}})
+					],
+					Array.map(response => response.status),
+					Array.sort(Order.Number)
 				),
 				[200, 401]
 			)

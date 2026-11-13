@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream} from 'effect'
+import {Array, Clock, DateTime, Effect, Number, Option, Order, Predicate, Stream, pipe} from 'effect'
 
 import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -26,13 +26,17 @@ export const problemSinceAtom = Atom.family((source: Atom.Atom<AsyncResult.Async
 export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResult.AsyncResult<unknown, unknown>>[]) =>
 	Atom.readable(
 		get =>
-			Array.match(
-				Array.flatMap(readers, reader => {
+			pipe(
+				readers,
+				Array.flatMap(reader => {
 					const result = get(reader)
 					if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return []
 					return Option.toArray(get(problemSinceAtom(reader)))
 				}),
-				{onEmpty: () => Option.none<number>(), onNonEmpty: ages => Option.some(Array.min(ages, Order.Number))}
+				Array.match({
+					onEmpty: () => Option.none<number>(),
+					onNonEmpty: ages => Option.some(Array.min(ages, Order.Number))
+				})
 			),
 		refresh => Array.forEach(readers, reader => refresh(reader))
 	)
@@ -47,7 +51,13 @@ const ageAtom = Atom.family((identity: number | string) =>
 						const seconds = Number.max(
 							0,
 							Math.floor(
-								(now - Option.getOrElse(Option.filter(Option.some(identity), Predicate.isNumber), () => started)) / 1000
+								(now -
+									pipe(
+										Option.some(identity),
+										Option.filter(Predicate.isNumber),
+										Option.getOrElse(() => started)
+									)) /
+									1000
 							)
 						)
 						if (seconds < 60) return `${seconds}s`

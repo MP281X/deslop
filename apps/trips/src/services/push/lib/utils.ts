@@ -1,4 +1,4 @@
-import {Array, Number, Option, Result, String} from 'effect'
+import {Array, Number, Option, Result, String, pipe} from 'effect'
 
 import {
 	ACTIVITY_LIFETIME,
@@ -33,9 +33,10 @@ export function alertKey(alert: Alert) {
 // `sent` holds the keys sent for the booking, oldest first.
 export function announced(sent: readonly string[], alert: Alert) {
 	if (alert.value === undefined || alert.category === 'delay') return Array.contains(sent, alertKey(alert))
-	return Option.exists(
-		Array.findLast(sent, found => String.startsWith(`${alert.category}:`)(found)),
-		found => found === alertKey(alert)
+	return pipe(
+		sent,
+		Array.findLast(found => String.startsWith(`${alert.category}:`)(found)),
+		Option.exists(found => found === alertKey(alert))
 	)
 }
 
@@ -128,32 +129,33 @@ function trainAlerts(train: Train) {
 			}),
 			() => train.status === 'cancelled'
 		),
-		Option.map(
-			// Worth a notification only while the train is still to board.
-			Option.flatMapNullishOr(
-				Option.filter(train.live, live => live.state === 'scheduled'),
-				live => live.departurePlatform
-			),
-			platform =>
-				({
-					body: line([Option.some(`${train.from.name} at ${departure}`), labelled('coach', train.coach)]),
-					category: 'platform',
-					title: `${title} · Platform ${platform}`,
-					value: platform
-				}) satisfies Alert
+		pipe(
+			train.live,
+			Option.filter(live => live.state === 'scheduled'),
+			Option.flatMapNullishOr(live => live.departurePlatform),
+			Option.map(
+				platform =>
+					({
+						body: line([Option.some(`${train.from.name} at ${departure}`), labelled('coach', train.coach)]),
+						category: 'platform',
+						title: `${title} · Platform ${platform}`,
+						value: platform
+					}) satisfies Alert
+			)
 		),
-		Option.map(
-			Option.filter(
-				Option.map(train.live, live => live.delayMinutes),
-				delay => delay >= 10
-			),
-			delay =>
-				({
-					body: `Now leaves ${train.from.name} at ${departure}`,
-					category: 'delay',
-					title: `${title} is ${delay} min late`,
-					value: `${Number.round(delay / 10, 0) * 10}`
-				}) satisfies Alert
+		pipe(
+			train.live,
+			Option.map(live => live.delayMinutes),
+			Option.filter(delay => delay >= 10),
+			Option.map(
+				delay =>
+					({
+						body: `Now leaves ${train.from.name} at ${departure}`,
+						category: 'delay',
+						title: `${title} is ${delay} min late`,
+						value: `${Number.round(delay / 10, 0) * 10}`
+					}) satisfies Alert
+			)
 		)
 	])
 }
@@ -201,17 +203,20 @@ function flightAlerts(flight: Flight, now: number) {
 			}),
 			() => delay >= 15 && !cancelled
 		),
-		Option.map<number, Alert>(
-			Option.filter(flight.boardingAt, at => now >= at - 10 * MINUTE && now < departureOf(flight)),
-			at =>
-				({
-					body: line([
-						Option.orElseSome(labelled('Gate', Option.fromUndefinedOr(live?.departureGate)), () => 'Check the gate'),
-						labelled('group', flight.boardingGroup)
-					]),
-					category: 'boarding',
-					title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
-				}) satisfies Alert
+		pipe(
+			flight.boardingAt,
+			Option.filter(at => now >= at - 10 * MINUTE && now < departureOf(flight)),
+			Option.map<number, Alert>(
+				at =>
+					({
+						body: line([
+							Option.orElseSome(labelled('Gate', Option.fromUndefinedOr(live?.departureGate)), () => 'Check the gate'),
+							labelled('group', flight.boardingGroup)
+						]),
+						category: 'boarding',
+						title: `${title} boards at ${clockAt(at, flight.from.timeZone)}`
+					}) satisfies Alert
+			)
 		),
 		Option.map(
 			Option.fromUndefinedOr(live?.belt),
@@ -222,7 +227,7 @@ function flightAlerts(flight: Flight, now: number) {
 }
 
 // The changes worth a notification, each under a key sent once; a delay counts in steps so a drifting estimate stays quiet.
-export function alertsFor(booking: Booking, now: number) {
+export function alertsOf(booking: Booking, now: number) {
 	if (booking._tag === 'stay' || now > arrivalOf(booking) + HOUR || now < booking.departs - 30 * HOUR) {
 		return Array.empty<Alert>()
 	}

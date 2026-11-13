@@ -18,11 +18,9 @@ const SKIPPED = Schema.decodeSync(Schema.fromJsonString(WorkflowJob.fields.workf
 	'[{"completed_at": null, "conclusion": "skipped", "name": "Post checkout", "number": 3, "started_at": null}]'
 )
 
-const layer = pipe(
+const layer = Layer.provide(
 	Telemetry.layer,
-	Layer.provide(
-		Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer)
-	)
+	Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer)
 )
 
 const run = WorkflowRun.make({
@@ -112,12 +110,10 @@ it('attaches a job log to the step each line falls in, the job otherwise', () =>
 it('names a retry attempt after its build number', () => {
 	const retry = runTrace({...run, workflow_run: {...run.workflow_run, run_attempt: 2}})
 	assert.deepStrictEqual(
-		Array.map(
-			Array.filter(
-				Option.getOrThrow(Array.head(retry.resourceSpans?.[0]?.scopeSpans?.[0]?.spans ?? [])).attributes ?? [],
-				attribute => attribute.key === 'trace.label'
-			),
-			attribute => attribute.value['stringValue']
+		pipe(
+			Option.getOrThrow(Array.head(retry.resourceSpans?.[0]?.scopeSpans?.[0]?.spans ?? [])).attributes ?? [],
+			Array.filter(attribute => attribute.key === 'trace.label'),
+			Array.map(attribute => attribute.value['stringValue'])
 		),
 		['#101.2']
 	)

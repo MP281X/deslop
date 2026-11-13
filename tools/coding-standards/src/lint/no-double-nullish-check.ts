@@ -3,7 +3,7 @@ import {Array, Option, Result, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
-import {effectImport, variableFor} from '#lib/ast.ts'
+import {effectImport, variableOf} from '#lib/ast.ts'
 
 const VARIANTS = {
 	'&&': {comparison: '!==', guard: 'isNotNullish', message: 'Use Predicate.isNotNullish.'},
@@ -18,7 +18,7 @@ function nullishOperand(input: {context: Context; node: ESTree.Expression}) {
 	if (
 		input.node.type === 'Identifier' &&
 		input.node.name === 'undefined' &&
-		!Option.exists(variableFor(input.context, input.node), variable => Array.isArrayNonEmpty(variable.defs))
+		!Option.exists(variableOf(input.context, input.node), variable => Array.isArrayNonEmpty(variable.defs))
 	) {
 		return Option.some('undefined')
 	}
@@ -80,12 +80,8 @@ export const noDoubleNullishCheck = defineRule({
 			const checks = Array.map(operands({node, operator: node.operator}), operand =>
 				comparedNullish({context, node: operand, operator: variant.comparison})
 			)
-			if (
-				pipe(
-					Array.filterMap(checks, check => Result.fromOption(check, () => undefined)),
-					present => Array.some(present, first => Array.some(present, second => doubled({context, first, second})))
-				)
-			) {
+			const present = Array.filterMap(checks, check => Result.fromOption(check, () => undefined))
+			if (Array.some(present, first => Array.some(present, second => doubled({context, first, second})))) {
 				context.report({
 					fix: fixer =>
 						pipe(

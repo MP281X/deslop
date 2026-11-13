@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Number, Option, Order, Stream, String} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, Order, Stream, String, pipe} from 'effect'
 
 import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -8,6 +8,7 @@ import {AsyncResult, Atom} from 'effect/reactivity'
 import {Suspense} from 'react'
 import type {ReactNode} from 'react'
 
+import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
@@ -17,17 +18,17 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn} from '@deslop/components-web/utils'
 
-import {inventoryAtom, openExposeAtom, runAtom} from '#lib/utils.ts'
+import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import {counted, host, impactGroups, middleEllipsis, runRequest} from '#routes/(home)/-rows.ts'
+import {counted, host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
 	dot,
 	failureAge,
 	nextRun,
 	reasonLine,
 	reasonOf,
+	requestOf,
 	type Row,
 	status,
 	workloadName
@@ -72,12 +73,10 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 	return (
 		<>
 			{Array.map(
-				Array.dedupeWith(
-					Array.filter(
-						props.row.listeners,
-						listener => listener.address !== 'container' && !HashSet.has(exposedPorts, listener.port)
-					),
-					(first: InventoryItem, second: InventoryItem) => first.port === second.port
+				pipe(
+					props.row.listeners,
+					Array.filter(listener => listener.address !== 'container' && !HashSet.has(exposedPorts, listener.port)),
+					Array.dedupeWith((first: InventoryItem, second: InventoryItem) => first.port === second.port)
 				),
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
@@ -263,7 +262,7 @@ function AppRow(props: {
 						onFalse: () => null,
 						onTrue: () => (
 							<span className="flex size-5 shrink-0 items-center justify-center">
-								<RunNow disabled={running} item={props.row.item} onRun={() => run(runRequest(props.row.item))} />
+								<RunNow disabled={running} item={props.row.item} onRun={() => run(requestOf(props.row.item))} />
 							</span>
 						)
 					})}

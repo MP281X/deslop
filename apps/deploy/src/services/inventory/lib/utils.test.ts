@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Schema} from 'effect'
+import {Array, Schema, Struct} from 'effect'
 
 import {
 	availablePorts,
@@ -108,7 +108,7 @@ it('keeps application listeners but excludes non-loopback, UDP, stale and privil
 it('keeps app activity and failures without nameless listeners or ordinary system daemons', () => {
 	assert.isTrue(important(listener))
 	assert.isFalse(important({...listener, process: ''}))
-	assert.isFalse(important({...listener, process: undefined}))
+	assert.isFalse(important(Struct.omit(listener, ['process'])))
 	assert.isTrue(important({...listener, state: 'stale · LISTEN'}))
 	assert.isFalse(important({...listener, process: 'ssh'}))
 	assert.isFalse(important({...listener, process: 'cloudflared'}))

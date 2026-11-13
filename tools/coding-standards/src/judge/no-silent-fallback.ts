@@ -14,7 +14,8 @@ export const noSilentFallback = question(
 				'Best-effort normalization that keeps an unrecognized input unchanged',
 				'Probes whose negative answer is what they observe, and data `code` treats as optional',
 				'Optional display enrichment that leaves the main value unchanged when it is missing or cannot be decoded',
-				'A fallback that is logged, reported or marked, such as stale or partial, including a redirect to a page that shows the failure',
+				'A best-effort operation explicitly allowed to fail without changing the main answer; logging alone does not establish that contract',
+				'A failure presented as a distinct failure, not ordinary successful data',
 				'Bad examples inside source text used as test fixtures'
 			],
 			example: `
@@ -25,7 +26,7 @@ export const noSilentFallback = question(
 		},
 		yes: {
 			cases: [
-				'Catching a failed read, request or decode and returning an empty or default value, unlogged and unmarked',
+				'A reachable operation failure returned as plausible ordinary data contrary to the visible caller contract, even when logged; static empty recovery and discarded-failure patterns belong to lint',
 				'Replacing a missing or malformed required number or time with a plausible one, such as zero, the epoch or now',
 				'Dropping the parts of a value that failed to parse and computing an apparently valid result from the rest',
 				'Returning content known to be incomplete when the request that completes it fails'
