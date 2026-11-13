@@ -8,14 +8,15 @@
 - **Compatibility.** Never considered: the apps are personal software that their one user also develops. A change may break any URL, route, RPC or tool name, environment key, wire format, stored shape or installed build; keep no alias, redirect, fallback, version check, conversion or transition window for the old one, and delete any that exists.
 - **Data.** A table changes shape through a numbered SQL migration, the only migration allowed and the only code that knows an earlier shape. Everything stored outside SQL is disposable, production included, except Stash's notes until they are loaded into their tables by hand.
 - **Releases.** Linear and squash-merged; a newer merge cancels an older release run.
+- **Release job conditions.** GitHub propagates skipped jobs through dependency chains; jobs after optional verification need an explicit status function and the successful gate's result.
 
 ## Commands
 
 - **Verify.** `vp run fix`, then `vp run test`; `fix` covers CI's `vp run check` in `vite.config.ts`.
 - **Judge.** `vp run judge` after Verify passes; it spends the signed-in person's OpenRouter key, so never in CI. The agent configuration says who runs it and when.
-- **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. Before the first mobile push: `.github/releasing.md`, **Publish an iOS app**.
+- **Generators.** `vp create app -- --name <name>` (`--kind mobile` for iOS) and `vp create package -- --name <name>`, then `vp install`; never copy one. A new app's first release, mobile before its first push: `.github/releasing.md`, **A new app**.
 - **Updates.** `vp update -r`; `vp outdated -r` then lists only pins. New checks since the last review: `@effect/tsgo`'s README table and changelog, each lint plugin's `rules` against its previous version, Fallow's release notes. Count a candidate rule's hits with `vp exec effect-tsgo --tsrs-lint vp lint -D <rule>`; ask before one that reverses a house form or rewrites hundreds of sites, with a bad example, a good example and its count.
-- **Releases.** `.github/releasing.md`: Simulator builds, deploy, native tools, publishing packages and iOS apps.
+- **Releases.** `.github/releasing.md`: a new app or tool, following a release, Simulator builds, native tools.
 - **Agent configuration.** `.claude/agents/pair.md` = `.codex/instructions.md` from `# Work` down. Each file keeps its own `# Harness` lines for its harness's tools. Skills live in `.claude/skills`, shared by both harnesses. Change the installed `~/deslop` only through a merged PR, never while other threads use it.
 - **Standards policy.** Define each policy once, in the best tool; prove replacements with the custom rule's failing cases. Only custom rules have tests; upgrades never opt into new rules, and declined rules stay out. The compiler and Effect rules own their checks. Parser checks are static; codebase-wide checks belong to review. No per-package typecheck scripts. Checks must be reachable in consuming codebases, including prevention of encountered patterns. Custom rules must add coverage or safe fixes beyond native rules; accept intended forms and make fixes converge. The repository's explicit dependency allowlist lives in root lint, not the published preset. Oxlint applies import-group negations across patterns: compose the allowlist and preset restrictions in one ordered group.
 
@@ -37,6 +38,7 @@
 - **Tests.** A fix alone earns no test.
 - **Dependencies.** Keep dependencies in their owning packages on `latest`; pin only for peers, the Expo SDK or Vite+; update coupled packages together. Tools use their own flags and defaults, no wrapper scripts. Libraries only through published releases: no patches, forks, overrides or shims, except shadcn registry components. Correct wrong metadata with `packageExtensions` and a comment naming the upstream defect.
 - **Native ownership.** Expo autolinks transitive native dependencies and applies their automatic config plugins even when an app never imports them. App-only native modules and their helpers belong in the apps that use them, not shared packages.
+- **Native fingerprints.** The shared Expo config helper's source is excluded; resolved configuration does not include inline plugin or mod bodies. Their implementations need their own fingerprinted module.
 
 ## Design
 

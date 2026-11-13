@@ -1,3 +1,4 @@
+// This file's text is not part of the native fingerprint; plugins and mods live in their own module.
 import {Boolean, Config, Effect, Option} from 'effect'
 
 import type {ExpoConfig} from 'expo/config'

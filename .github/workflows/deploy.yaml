@@ -13,14 +13,82 @@ concurrency:
 permissions:
   contents: read
 
+# bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  tree:
+    name: Previously verified tree
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      verified: ${{ steps.proof.outputs.verified }}
+    steps:
+      - uses: actions/checkout@v7
+      # GitHub's run record is the proof, not a PR-writable artifact, cache or named check.
+      # A missing/failed lookup leaves the output unset and runs Verify normally.
+      - name: Is this tree already verified?
+        id: proof
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pulls=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")
+          head=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg sha "$GITHUB_SHA" '
+            [.[] | select(.merged_at != null and .merge_commit_sha == $sha
+              and .base.ref == "main" and .base.repo.full_name == $repo and .head.repo.full_name == $repo)]
+            | if length == 1 then .[0].head.sha else empty end' <<< "$pulls")
+          [[ -n $head ]] || exit 0
+
+          git fetch --no-tags --depth=1 origin "$head"
+          tree=$(git rev-parse 'HEAD^{tree}')
+          [[ $tree == "$(git rev-parse "$head^{tree}")" ]] || exit 0
+
+          runs=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?head_sha=$head&event=push&status=success&per_page=100")
+          run=$(jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head" '
+            [.[] | .workflow_runs[] | select(.head_sha == $head and .event == "push"
+              and .status == "completed" and .conclusion == "success"
+              and .path == ".github/workflows/verify.yaml"
+              and .repository.full_name == $repo and .head_repository.full_name == $repo)]
+            | first | .id // empty' <<< "$runs")
+          [[ -n $run ]] || exit 0
+          echo "- Tree $tree already passed [Verify]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run)." >> "$GITHUB_STEP_SUMMARY"
+          echo "verified=true" >> "$GITHUB_OUTPUT"
+
   verify:
     name: Verify
+    needs: tree
+    if: ${{ !cancelled() && needs.tree.outputs.verified != 'true' }}
     uses: ./.github/workflows/verify.yaml
+
+  verified:
+    name: Verified
+    needs: [tree, verify]
+    if: ${{ !cancelled() && (needs.tree.outputs.verified == 'true' || needs.verify.result == 'success') }}
+    runs-on: ubuntu-26.04
+    outputs:
+      mobile: ${{ steps.apps.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Discover mobile apps
+        id: apps
+        run: |
+          shopt -s nullglob
+          apps=(apps/*/app.config.ts)
+          apps=("${apps[@]%/app.config.ts}")
+          apps=("${apps[@]#apps/}")
+          mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Packages
-    needs: verify
+    needs: verified
+    if: ${{ !cancelled() && needs.verified.result == 'success' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -52,7 +120,8 @@ jobs:
           apps=("${apps[@]#apps/}")
           publish() {
             cd "apps/$1"
-            fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
+            # find fails on an app without bin/ after listing what exists.
+            fingerprint=$({ { find dist bin README.md -type f 2>/dev/null || true; } | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
             if ! published=$(npm view "@deslop/$1" fingerprint 2> "$RUNNER_TEMP/view-$1"); then
               # Only a missing package is a first publish; any other failure, such as the registry being down, fails the app.
               grep -q E404 "$RUNNER_TEMP/view-$1" || { cat "$RUNNER_TEMP/view-$1" >&2; return 1; }
@@ -76,8 +145,8 @@ jobs:
 
   app:
     name: App
-    needs: verify
-    if: needs.verify.outputs.mobile != '[]'
+    needs: verified
+    if: ${{ !cancelled() && needs.verified.result == 'success' && needs.verified.outputs.mobile != '[]' }}
     permissions:
       contents: read
       actions: read
@@ -85,7 +154,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.verify.outputs.mobile) }}
+        app: ${{ fromJSON(needs.verified.outputs.mobile) }}
     uses: ./.github/workflows/release-app.yaml
     with:
       app: ${{ matrix.app }}

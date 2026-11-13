@@ -12,6 +12,168 @@ const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu'
 const BANNED_BASE_UI = ['alert-dialog', 'context-menu', 'drawer', 'toast']
 const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
 
+const repositoryRestrictedImports = {
+	paths: [
+		...restrictedImports.paths,
+		...Array.map(['@phosphor-icons/react', '@phosphor-icons/react/ssr', '@phosphor-icons/react/dist/ssr'], name => ({
+			importNames: Array.flatMap(SPINNER_ICONS, icon => [icon, `${icon}Icon`]),
+			message: 'AGENTS.md Design: pending actions have no spinners.',
+			name
+		})),
+		{
+			importNames: ['AlertDialog', 'ContextMenu', 'Drawer', 'Toast'],
+			message: 'AGENTS.md Design bans this primitive.',
+			name: '@base-ui/react'
+		}
+	],
+	patterns: [
+		{
+			// All restrictions share one ordered group: Oxlint applies a group's negations to other patterns too.
+			group: [
+				'*',
+				'!node:*',
+				'!node:*/**',
+				'!#*',
+				'!#*/**',
+				'!.',
+				'!./**',
+				'!..',
+				'!../**',
+				'!@deslop',
+				'!@deslop/**',
+				'!**/*.css',
+				'!**/*.svg',
+				'!**/*.png',
+				'!**/*.jpg',
+				'!**/*.jpeg',
+				'!**/*.webp',
+				'!**/*.gif',
+				'!**/*.ico',
+				'!**/*.woff',
+				'!**/*.woff2',
+				'!**/*.ttf',
+				'!**/*.otf',
+				'!**/*\\?*',
+				'!@bacons',
+				'!@base-ui',
+				'!@effect',
+				'!@expo',
+				'!@fontsource-variable',
+				'!@modelcontextprotocol',
+				'!@phosphor-icons',
+				'!@shadcn',
+				'!@simplewebauthn',
+				'!@tailwindcss',
+				'!@tanstack',
+				'!@typeonce',
+				'!@types',
+				'!@vitejs',
+				...Array.flatMap(
+					[
+						'@bacons/apple-targets',
+						'@base-ui/react',
+						'@deslop/coding-standards',
+						'@deslop/components-mobile',
+						'@deslop/components-web',
+						'@deslop/create-package',
+						'@deslop/runtime',
+						'@effect/ai-anthropic',
+						'@effect/ai-openrouter',
+						'@effect/atom-react',
+						'@effect/platform-node',
+						'@effect/sql-sqlite-node',
+						'@effect/tsgo',
+						'@effect/vitest',
+						'@expo/ui',
+						'@fontsource-variable/geist',
+						'@fontsource-variable/geist-mono',
+						'@fontsource-variable/ibm-plex-sans',
+						'@fontsource-variable/jetbrains-mono',
+						'@modelcontextprotocol/client',
+						'@phosphor-icons/react',
+						'@shadcn/lint',
+						'@shadcn/react',
+						'@simplewebauthn/browser',
+						'@simplewebauthn/server',
+						'@tailwindcss/vite',
+						'@tanstack/react-hotkeys',
+						'@tanstack/react-router',
+						'@tanstack/router-generator',
+						'@tanstack/router-plugin',
+						'@typeonce/effect-machine',
+						'@typeonce/effect-machine-react',
+						'@typeonce/oxlint-plugin-effect-machine',
+						'@types/node',
+						'@types/react',
+						'@types/react-dom',
+						'@vitejs/plugin-react',
+						'cheerio',
+						'class-variance-authority',
+						'clsx',
+						'cmdk',
+						'date-fns',
+						'domhandler',
+						'effect',
+						'embla-carousel-react',
+						'expo',
+						'expo-application',
+						'expo-asset',
+						'expo-auth-session',
+						'expo-calendar',
+						'expo-clipboard',
+						'expo-constants',
+						'expo-crypto',
+						'expo-file-system',
+						'expo-location',
+						'expo-notifications',
+						'expo-secure-store',
+						'expo-updates',
+						'expo-web-browser',
+						'expo-widgets',
+						'fallow',
+						'input-otp',
+						'oxc-parser',
+						'oxc-transform-react',
+						'oxlint-plugin-eslint',
+						'oxlint-plugin-react-doctor',
+						'react',
+						'react-day-picker',
+						'react-dom',
+						'react-native',
+						'react-resizable-panels',
+						'recharts',
+						'scheduler',
+						'shadcn',
+						'shiki',
+						'tailwind-merge',
+						'tailwindcss',
+						'toqr',
+						'tsrs',
+						'vite',
+						'vite-plus',
+						'vitest'
+					],
+					name => [`!${name}`, `!${name}/**`]
+				),
+				...Array.flatMap(restrictedImports.patterns, pattern => pattern.group),
+				// Last, so they win over the allowlist above: every spelling of a banned primitive and the libraries behind it.
+				...Array.flatMap(BANNED_PRIMITIVES, name => [`**/ui/${name}`, `**/ui/${name}.tsx`]),
+				...Array.flatMap(BANNED_BASE_UI, name => [`@base-ui/react/**/${name}`, `@base-ui/react/**/${name}/**`]),
+				...Array.flatMap(SPINNER_ICONS, icon => [
+					`@phosphor-icons/react/**/${icon}`,
+					`@phosphor-icons/react/**/${icon}.*`
+				]),
+				'cmdk',
+				'cmdk/**',
+				'embla-carousel*',
+				'embla-carousel*/**'
+			],
+			message:
+				'Not a dependency of this repository (ask before adding one), not its public export, or what AGENTS.md Design bans.'
+		}
+	]
+}
+
 export default defineConfig({
 	create: {
 		templates: [
@@ -69,6 +231,27 @@ export default defineConfig({
 		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 		overrides: [
 			{
+				files: ['packages/runtime/src/config/expo.ts'],
+				rules: {
+					'eslint/no-restricted-imports': [
+						'error',
+						{
+							...repositoryRestrictedImports,
+							patterns: Array.map(repositoryRestrictedImports.patterns, pattern => ({
+								group: [
+									...pattern.group,
+									'expo/config-plugins',
+									'expo/config-plugins/**',
+									'@expo/config-plugins',
+									'@expo/config-plugins/**'
+								],
+								message: `${pattern.message} This file's text is not part of the native fingerprint; plugins and mods live in their own module.`
+							}))
+						}
+					]
+				}
+			},
+			{
 				// Skill scripts run inside an app's page through preview_evaluate, with no Effect runtime and no type information.
 				files: ['.claude/skills/**/*.js'],
 				rules: {
@@ -112,176 +295,7 @@ export default defineConfig({
 				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		],
-		rules: {
-			...deslopRules,
-			'eslint/no-restricted-imports': [
-				'error',
-				{
-					paths: [
-						...restrictedImports.paths,
-						...Array.map(
-							['@phosphor-icons/react', '@phosphor-icons/react/ssr', '@phosphor-icons/react/dist/ssr'],
-							name => ({
-								importNames: Array.flatMap(SPINNER_ICONS, icon => [icon, `${icon}Icon`]),
-								message: 'AGENTS.md Design: pending actions have no spinners.',
-								name
-							})
-						),
-						{
-							importNames: ['AlertDialog', 'ContextMenu', 'Drawer', 'Toast'],
-							message: 'AGENTS.md Design bans this primitive.',
-							name: '@base-ui/react'
-						}
-					],
-					patterns: [
-						{
-							// All restrictions share one ordered group: Oxlint applies a group's negations to other patterns too.
-							group: [
-								'*',
-								'!node:*',
-								'!node:*/**',
-								'!#*',
-								'!#*/**',
-								'!.',
-								'!./**',
-								'!..',
-								'!../**',
-								'!@deslop',
-								'!@deslop/**',
-								'!**/*.css',
-								'!**/*.svg',
-								'!**/*.png',
-								'!**/*.jpg',
-								'!**/*.jpeg',
-								'!**/*.webp',
-								'!**/*.gif',
-								'!**/*.ico',
-								'!**/*.woff',
-								'!**/*.woff2',
-								'!**/*.ttf',
-								'!**/*.otf',
-								'!**/*\\?*',
-								'!@bacons',
-								'!@base-ui',
-								'!@effect',
-								'!@expo',
-								'!@fontsource-variable',
-								'!@modelcontextprotocol',
-								'!@phosphor-icons',
-								'!@shadcn',
-								'!@simplewebauthn',
-								'!@tailwindcss',
-								'!@tanstack',
-								'!@typeonce',
-								'!@types',
-								'!@vitejs',
-								...Array.flatMap(
-									[
-										'@bacons/apple-targets',
-										'@base-ui/react',
-										'@deslop/coding-standards',
-										'@deslop/components-mobile',
-										'@deslop/components-web',
-										'@deslop/create-package',
-										'@deslop/runtime',
-										'@effect/ai-anthropic',
-										'@effect/ai-openrouter',
-										'@effect/atom-react',
-										'@effect/platform-node',
-										'@effect/sql-sqlite-node',
-										'@effect/tsgo',
-										'@effect/vitest',
-										'@expo/ui',
-										'@fontsource-variable/geist',
-										'@fontsource-variable/geist-mono',
-										'@fontsource-variable/ibm-plex-sans',
-										'@fontsource-variable/jetbrains-mono',
-										'@modelcontextprotocol/client',
-										'@phosphor-icons/react',
-										'@shadcn/lint',
-										'@shadcn/react',
-										'@simplewebauthn/browser',
-										'@simplewebauthn/server',
-										'@tailwindcss/vite',
-										'@tanstack/react-hotkeys',
-										'@tanstack/react-router',
-										'@tanstack/router-generator',
-										'@tanstack/router-plugin',
-										'@typeonce/effect-machine',
-										'@typeonce/effect-machine-react',
-										'@typeonce/oxlint-plugin-effect-machine',
-										'@types/node',
-										'@types/react',
-										'@types/react-dom',
-										'@vitejs/plugin-react',
-										'cheerio',
-										'class-variance-authority',
-										'clsx',
-										'cmdk',
-										'date-fns',
-										'domhandler',
-										'effect',
-										'embla-carousel-react',
-										'expo',
-										'expo-application',
-										'expo-asset',
-										'expo-auth-session',
-										'expo-calendar',
-										'expo-clipboard',
-										'expo-constants',
-										'expo-crypto',
-										'expo-file-system',
-										'expo-location',
-										'expo-notifications',
-										'expo-secure-store',
-										'expo-updates',
-										'expo-web-browser',
-										'expo-widgets',
-										'fallow',
-										'input-otp',
-										'oxc-parser',
-										'oxc-transform-react',
-										'oxlint-plugin-eslint',
-										'oxlint-plugin-react-doctor',
-										'react',
-										'react-day-picker',
-										'react-dom',
-										'react-native',
-										'react-resizable-panels',
-										'recharts',
-										'scheduler',
-										'shadcn',
-										'shiki',
-										'tailwind-merge',
-										'tailwindcss',
-										'toqr',
-										'tsrs',
-										'vite',
-										'vite-plus',
-										'vitest'
-									],
-									name => [`!${name}`, `!${name}/**`]
-								),
-								...Array.flatMap(restrictedImports.patterns, pattern => pattern.group),
-								// Last, so they win over the allowlist above: every spelling of a banned primitive and the libraries behind it.
-								...Array.flatMap(BANNED_PRIMITIVES, name => [`**/ui/${name}`, `**/ui/${name}.tsx`]),
-								...Array.flatMap(BANNED_BASE_UI, name => [`@base-ui/react/**/${name}`, `@base-ui/react/**/${name}/**`]),
-								...Array.flatMap(SPINNER_ICONS, icon => [
-									`@phosphor-icons/react/**/${icon}`,
-									`@phosphor-icons/react/**/${icon}.*`
-								]),
-								'cmdk',
-								'cmdk/**',
-								'embla-carousel*',
-								'embla-carousel*/**'
-							],
-							message:
-								'Not a dependency of this repository (ask before adding one), not its public export, or what AGENTS.md Design bans.'
-						}
-					]
-				}
-			]
-		}
+		rules: {...deslopRules, 'eslint/no-restricted-imports': ['error', repositoryRestrictedImports]}
 	},
 	run: {
 		// Each package's test script replays from the cache while its inputs are unchanged; a stopped preview server exits 130, so it is never cached.

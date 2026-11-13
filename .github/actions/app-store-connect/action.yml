@@ -1,0 +1,34 @@
+name: App Store Connect
+description: Sets ASC_TOKEN, a masked 20-minute App Store Connect API token signed with the team key, for the job's later steps.
+
+inputs:
+  key-id:
+    description: The key's ID, secret `ASC_KEY_ID`.
+    required: true
+  issuer-id:
+    description: The team's issuer ID, secret `ASC_ISSUER_ID`.
+    required: true
+  key:
+    description: The `.p8` file's contents, secret `ASC_KEY_P8`.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # An ES256 JSON Web Token as Apple specifies: https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests
+    - name: Sign an App Store Connect token
+      shell: bash
+      env:
+        ASC_ISSUER_ID: ${{ inputs.issuer-id }}
+        ASC_KEY: ${{ inputs.key }}
+        ASC_KEY_ID: ${{ inputs.key-id }}
+      run: |
+        token=$(node --input-type=module --eval "
+          import {sign} from 'node:crypto'
+          const part = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+          const now = Math.floor(Date.now() / 1000)
+          const body = part({alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT'}) + '.' + part({aud: 'appstoreconnect-v1', exp: now + 1200, iat: now, iss: process.env.ASC_ISSUER_ID})
+          console.log(body + '.' + sign('sha256', Buffer.from(body), {dsaEncoding: 'ieee-p1363', key: process.env.ASC_KEY}).toString('base64url'))
+        ")
+        echo "::add-mask::$token"
+        echo "ASC_TOKEN=$token" >> "$GITHUB_ENV"

@@ -1,0 +1,89 @@
+name: App Store signing
+
+# Once per new iPhone app, started by an agent before the app's first release: `.github/releasing.md`.
+# The one place this repository drives an interactive tool. eas-cli registers a new app's identifiers and gives it the team's certificate only
+# interactively; its non-interactive mode stops at the missing certificate. Expect answers the two prompts a new app gets and fails on any other.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: The app's folder in apps/
+        required: true
+
+permissions:
+  contents: read
+
+# bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
+defaults:
+  run:
+    shell: bash
+
+env:
+  APP_VARIANT: production
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+jobs:
+  signing:
+    name: Signing
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/${{ inputs.app }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with: {eas: 'true'}
+      - uses: ./.github/actions/app-store-connect
+        with:
+          key-id: ${{ secrets.ASC_KEY_ID }}
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          key: ${{ secrets.ASC_KEY_P8 }}
+
+      # Setup turns Apple capabilities on and off to match the app's entitlements, so it only touches identifiers that were never signed for the App Store.
+      - name: Refuse an app that is already signed
+        run: |
+          ids=$(vp exec expo config --type public --json | jq -c '[.ios.bundleIdentifier] + [.extra.eas.build.experimental.ios.appExtensions[]?.bundleIdentifier]')
+          query=$(jq -r 'join(",")' <<< "$ids")
+          signed=$(curl --fail-with-body --silent --show-error --globoff --header "Authorization: Bearer $ASC_TOKEN" \
+            "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=$query&include=profiles&limit=200&limit[profiles]=50" |
+            jq -c --argjson ids "$ids" '
+              [.included[]? | select(.type == "profiles" and .attributes.profileType == "IOS_APP_STORE") | .id] as $store
+              | [.data[] | select(.attributes.identifier | IN($ids[]))
+                | select(any(.relationships.profiles.data[]?; .id | IN($store[])))
+                | .attributes.identifier]')
+          unsigned=$(jq -nc --argjson ids "$ids" --argjson signed "$signed" '$ids - $signed')
+          if [[ $unsigned == '[]' ]]; then
+            echo "::error::Already signed for the App Store: $(jq -r 'join(", ")' <<< "$signed"). Releases build with that signing; there is nothing to set up."
+            exit 1
+          elif [[ $signed != '[]' ]]; then
+            echo "::error::Partly signed: App Store profiles for $(jq -r 'join(", ")' <<< "$signed"), none for $(jq -r 'join(", ")' <<< "$unsigned"); an earlier run stopped partway. Delete the App Store profiles of $(jq -r 'join(", ")' <<< "$signed") at https://developer.apple.com/account/resources/profiles/list, then run this workflow again."
+            exit 1
+          fi
+
+      - name: Set up signing
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          EXPO_APPLE_TEAM_ID: 99K7MQUK7F
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          # Plain prompts: each starts with "?" after the line reset, which nothing else prints; a coloured one counts as unexpected.
+          NODE_DISABLE_COLORS: 1
+        run: |
+          (umask 077 && printf '%s\n' "$ASC_KEY_P8" > "$EXPO_ASC_API_KEY_PATH")
+          sudo apt-get update --quiet > /dev/null && sudo apt-get install --yes --quiet --no-install-recommends expect > /dev/null
+          # shellcheck disable=SC2016 # $expect_out is expect's
+          expect -c '
+            set timeout 600
+            spawn eas credentials:configure-build --platform ios --profile production
+            expect {
+              -re {\x1b\[1G\? Reuse this distribution certificate\?} { send "\r"; exp_continue }
+              -re {\x1b\[1G\? Generate a new Apple Provisioning Profile\?} { send "\r"; exp_continue }
+              -re {\x1b\[1G(?:\x1b\[36m)?\?(?:\x1b\[39m)? ([^\r\n]*)} { puts "\n::error::Unexpected prompt: $expect_out(1,string)"; exit 1 }
+              timeout { puts "\n::error::No prompt and no exit in ten minutes"; exit 1 }
+              eof
+            }
+            exit [lindex [wait] 3]
+          '

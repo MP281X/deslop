@@ -10,11 +10,17 @@ env:
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
   RELEASE_NUMBER: ${{ github.run_number }}
 
+# bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   update:
     name: Update
     runs-on: ubuntu-26.04
     outputs:
+      app-store: ${{ steps.app-store.outputs.id }}
       artifact: ${{ steps.fingerprint.outputs.artifact }}
       native: ${{ steps.fingerprint.outputs.native }}
     defaults:
@@ -31,7 +37,8 @@ jobs:
         id: changes
         run: |
           group=$(eas update:list --branch production --limit 1 --json --non-interactive | jq -r '.currentPage[0].group // empty')
-          commit=$([[ -n $group ]] && eas update:view "$group" --json | jq -r '.[0].gitCommitHash' || true)
+          commit=
+          if [[ -n $group ]]; then commit=$(eas update:view "$group" --json | jq -r '.[0].gitCommitHash'); fi
           changed=true
           if [[ -n $commit ]] && git cat-file -e "$commit^{commit}" && git diff --quiet "$commit" -- . ../../packages ../../pnpm-lock.yaml; then changed=false; fi
           echo "changed=$changed" >> "$GITHUB_OUTPUT"
@@ -42,9 +49,37 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          artifact="${{ inputs.app }}-app-store-$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)"
+          hash=$(eas fingerprint:generate --platform ios --build-profile production --json --non-interactive | jq -r .hash)
+          artifact="${{ inputs.app }}-app-store-$hash"
+          native=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length == 0')
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
-          echo "native=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length == 0')" >> "$GITHUB_OUTPUT"
+          echo "native=$native" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/app-store-connect
+        if: steps.fingerprint.outputs.native == 'true'
+        with:
+          key-id: ${{ secrets.ASC_KEY_ID }}
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          key: ${{ secrets.ASC_KEY_P8 }}
+
+      # Only the App Store Connect website creates an app record, so a new app's release fails here until it exists; a new record gets an internal TestFlight group with the testers of the team's other internal groups.
+      - name: Find the App Store app
+        id: app-store
+        if: steps.fingerprint.outputs.native == 'true'
+        run: |
+          api() { curl --fail-with-body --silent --show-error --globoff --header "Authorization: Bearer $ASC_TOKEN" --header 'Content-Type: application/json' "https://api.appstoreconnect.apple.com/v1/$1" "${@:2}"; }
+          bundle=$(vp exec expo config --type public --json | jq -r .ios.bundleIdentifier)
+          app=$(api "apps?filter[bundleId]=$bundle" | jq -r --arg bundle "$bundle" '.data[] | select(.attributes.bundleId == $bundle) | .id')
+          if [[ -z $app ]]; then
+            echo "::error::No App Store Connect app has the bundle ID $bundle. Create it at https://appstoreconnect.apple.com/apps (+, New App, iOS, bundle ID $bundle), then run: gh run rerun $GITHUB_RUN_ID --failed"
+            exit 1
+          fi
+          groups=$(api "betaGroups?filter[app]=$app&filter[isInternalGroup]=true" | jq '.data | length')
+          if [[ $groups == 0 ]]; then
+            testers=$(api 'betaGroups?filter[isInternalGroup]=true&include=betaTesters&limit=200' | jq -c '[.included[]? | select(.type == "betaTesters") | {type, id}] | unique')
+            api betaGroups --data "$(jq -cn --arg app "$app" --argjson testers "$testers" '{data: {type: "betaGroups", attributes: {name: "Internal", isInternalGroup: true, hasAccessToAllBuilds: true}, relationships: {app: {data: {type: "apps", id: $app}}, betaTesters: {data: $testers}}}}')" > /dev/null
+          fi
+          echo "id=$app" >> "$GITHUB_OUTPUT"
 
       - name: Publish the EAS Update
         if: steps.changes.outputs.changed == 'true' && steps.fingerprint.outputs.native == 'false'
@@ -53,7 +88,7 @@ jobs:
   app-store:
     name: App Store
     needs: update
-    if: needs.update.outputs.native == 'true'
+    if: ${{ !cancelled() && needs.update.result == 'success' && needs.update.outputs.native == 'true' }}
     concurrency: ios-${{ inputs.app }}
     runs-on: xcode-27
     timeout-minutes: 60
@@ -68,9 +103,23 @@ jobs:
         with: {eas: 'true', ios: 'true'}
       - name: Build the App Store app
         run: eas build --local --profile production --platform ios --non-interactive --output "$RUNNER_TEMP/app.ipa"
-      # EAS hands the build to Apple on its own servers; waiting for that kept the Mac idle for about 14 minutes.
-      - name: Submit to the App Store
-        run: eas submit --profile production --platform ios --non-interactive --no-wait --path "$RUNNER_TEMP/app.ipa"
+      - name: Upload to the App Store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APP_STORE_ID: ${{ needs.update.outputs.app-store }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          xcrun altool --upload-package "$RUNNER_TEMP/app.ipa" --api-key "$ASC_KEY_ID" --api-issuer "$ASC_ISSUER_ID"
+          echo "- ${{ inputs.app }} uploaded: https://appstoreconnect.apple.com/apps/$APP_STORE_ID/testflight/ios" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove the App Store Connect key
+        if: always()
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
       - name: Publish the EAS Update for the new build
         run: eas update --channel production --environment production --platform ios --non-interactive --message "$(git log -1 --format=%s)"
       - name: Record the shipped build

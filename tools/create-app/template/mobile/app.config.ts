@@ -1,7 +1,7 @@
 import {makeExpoConfig} from '@deslop/runtime/config/expo'
 
 export default makeExpoConfig({
-	// `npx eas-cli init` prints the project id.
-	projectId: '00000000-0000-0000-0000-000000000000',
+	// Empty until `eas init` creates the Expo project and prints its id: `.github/releasing.md`.
+	projectId: '',
 	slug: 'template-app'
 }).config
