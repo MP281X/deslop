@@ -13,6 +13,11 @@ concurrency:
 permissions:
   contents: read
 
+# bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   tree:
     name: Previously verified tree
@@ -77,7 +82,8 @@ jobs:
           apps=(apps/*/app.config.ts)
           apps=("${apps[@]%/app.config.ts}")
           apps=("${apps[@]#apps/}")
-          echo "mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')" >> "$GITHUB_OUTPUT"
+          mobile=$(printf '%s\n' "${apps[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
 
   publish:
     name: Packages
@@ -114,7 +120,8 @@ jobs:
           apps=("${apps[@]#apps/}")
           publish() {
             cd "apps/$1"
-            fingerprint=$({ find dist bin README.md -type f 2>/dev/null | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
+            # find fails on an app without bin/ after listing what exists.
+            fingerprint=$({ { find dist bin README.md -type f 2>/dev/null || true; } | LC_ALL=C sort | xargs sha256sum; jq -S 'del(.version)' package.json; } | sha256sum | cut -c1-64)
             if ! published=$(npm view "@deslop/$1" fingerprint 2> "$RUNNER_TEMP/view-$1"); then
               # Only a missing package is a first publish; any other failure, such as the registry being down, fails the app.
               grep -q E404 "$RUNNER_TEMP/view-$1" || { cat "$RUNNER_TEMP/view-$1" >&2; return 1; }

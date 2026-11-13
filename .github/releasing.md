@@ -9,7 +9,8 @@ After `vp create app -- --name <name>` (`--kind mobile` for iPhone) and `vp inst
 1. **Expo** (agent, iPhone, before the first push). In `apps/<name>`, `npx --yes eas-cli@latest init --non-interactive --account mp281x.xyz` creates the project, then fails to write the dynamic config and prints its `extra.eas.projectId`: set it as `projectId` in `app.config.ts`. Then `npx --yes eas-cli@latest channel:create production --non-interactive`; Release's change check reads that branch.
 2. **Sign-in** (agent, iPhone). Add `<name>://auth/callback` and `<name>-dev://auth/callback` to Auth's `allowedRedirect`.
 3. **Signing** (agent, iPhone, once the branch is pushed). `gh workflow run app-store-signing.yaml --ref <branch> -f app=<name>`, then read its log with `gh run watch <run-id>` and `gh run view <run-id> --log`. It registers the bundle identifiers of the app and its extensions with their capabilities, and gives them the team's distribution certificate and new App Store profiles on Expo; releases then build with that signing and never change it. It is the one place this repository drives an interactive tool: it answers eas-cli's two prompts for a new app and stops on any other. Its failures:
-   - **Already signed for the App Store**: an identifier already has an App Store profile, so there is nothing to set up.
+   - **Already signed for the App Store**: every identifier has an App Store profile, so there is nothing to set up.
+   - **Partly signed**: an earlier run signed some identifiers (often the app, not its extension) and stopped. The user deletes the App Store profiles it names in [Apple's profile list](https://developer.apple.com/account/resources/profiles/list), in a browser; then the agent starts the workflow again.
    - **Unexpected prompt: Generate a new Apple Distribution Certificate?**: the team has no valid certificate on Expo; a new one is the user's call, made with `eas credentials`.
    - **Unexpected prompt: anything else**: eas-cli changed; add the prompt to the workflow only if its default is the intended answer.
    - **Apple answers 403**: the App Manager key reads apps, identifiers, certificates, profiles and TestFlight groups (checked), but creating identifiers and profiles is unproven; on a 403, generate a key with Admin access and replace `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8`.
@@ -25,9 +26,9 @@ After `vp create app -- --name <name>` (`--kind mobile` for iPhone) and `vp inst
    Then publish and trust it. Each command prints an npmjs.com URL for the user to approve within about five minutes: run it in the background and post the URL. Skipping two-factor checks for five minutes on the first approval lets the next command through without one.
 
    ```bash
-   npm whoami || script -qfc 'npm login --auth-type=web' /dev/null
-   script -qfc "npm publish $PACK/deslop-<name>-0.1.0.tgz --auth-type=web" /dev/null
-   script -qfc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
+   npm whoami || script -qefc 'npm login --auth-type=web' /dev/null
+   script -qefc "npm publish $PACK/deslop-<name>-0.1.0.tgz --auth-type=web" /dev/null
+   script -qefc 'npm trust github @deslop/<name> --file deploy.yaml --repo MP281X/deslop --allow-publish --yes' /dev/null
    ```
 
 6. **TestFlight** (automatic, after the merge). Release finds the record by bundle ID, gives it an internal TestFlight group with every build and the testers of the team's other internal groups, builds, uploads and links the TestFlight page in the run's summary. Without a record the app's release fails, naming the bundle ID, the link and the `gh run rerun <run-id> --failed` that retries it once the record exists; the other apps still ship.

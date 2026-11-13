@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
+defaults:
+  run:
+    shell: bash
+
 env:
   APP_VARIANT: production
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -38,17 +43,21 @@ jobs:
       # Setup turns Apple capabilities on and off to match the app's entitlements, so it only touches identifiers that were never signed for the App Store.
       - name: Refuse an app that is already signed
         run: |
-          set -o pipefail
           ids=$(vp exec expo config --type public --json | jq -c '[.ios.bundleIdentifier] + [.extra.eas.build.experimental.ios.appExtensions[]?.bundleIdentifier]')
+          query=$(jq -r 'join(",")' <<< "$ids")
           signed=$(curl --fail-with-body --silent --show-error --globoff --header "Authorization: Bearer $ASC_TOKEN" \
-            "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=$(jq -r 'join(",")' <<< "$ids")&include=profiles&limit=200&limit[profiles]=50" |
-            jq -r --argjson ids "$ids" '
+            "https://api.appstoreconnect.apple.com/v1/bundleIds?filter[identifier]=$query&include=profiles&limit=200&limit[profiles]=50" |
+            jq -c --argjson ids "$ids" '
               [.included[]? | select(.type == "profiles" and .attributes.profileType == "IOS_APP_STORE") | .id] as $store
-              | .data[] | select(.attributes.identifier | IN($ids[]))
-              | select(any(.relationships.profiles.data[]?; .id | IN($store[])))
-              | .attributes.identifier')
-          if [[ -n $signed ]]; then
-            echo "::error::Already signed for the App Store: $signed. Its releases build with the signing it has; see .github/releasing.md"
+              | [.data[] | select(.attributes.identifier | IN($ids[]))
+                | select(any(.relationships.profiles.data[]?; .id | IN($store[])))
+                | .attributes.identifier]')
+          unsigned=$(jq -nc --argjson ids "$ids" --argjson signed "$signed" '$ids - $signed')
+          if [[ $unsigned == '[]' ]]; then
+            echo "::error::Already signed for the App Store: $(jq -r 'join(", ")' <<< "$signed"). Releases build with that signing; there is nothing to set up."
+            exit 1
+          elif [[ $signed != '[]' ]]; then
+            echo "::error::Partly signed: App Store profiles for $(jq -r 'join(", ")' <<< "$signed"), none for $(jq -r 'join(", ")' <<< "$unsigned"); an earlier run stopped partway. Delete the App Store profiles of $(jq -r 'join(", ")' <<< "$signed") at https://developer.apple.com/account/resources/profiles/list, then run this workflow again."
             exit 1
           fi
 
