@@ -69,7 +69,8 @@ import {
 	SignInLookup,
 	SignedInApp,
 	SigningKey,
-	SpentRefreshToken
+	SpentRefreshToken,
+	TokenParts
 } from '#services/tokens/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
@@ -90,14 +91,7 @@ const expired = AuthError.make({error: 'invalid_grant', message: 'The authorizat
 function parts(token: string) {
 	return Option.flatMap(
 		String.match(/^(?<family>[\w-]{16,64})\.(?:(?<generation>\d{1,9})\.)?(?<secret>[\w-]{16,64})$/u)(token),
-		found =>
-			Schema.decodeUnknownOption(
-				Schema.Struct({
-					family: SignInFamily,
-					generation: Schema.OptionFromOptional(Schema.FiniteFromString),
-					secret: Schema.NonEmptyString
-				})
-			)(found.groups)
+		found => Schema.decodeUnknownOption(TokenParts)(found.groups)
 	)
 }
 
@@ -575,7 +569,10 @@ export class Tokens extends Context.Service<
 							}
 							// Only a spent token's secret proves a replay; a guess at the family ends nothing.
 							if (
-								Option.exists(presented.generation, generation => generation < grant.generation) &&
+								Option.match(presented.generation, {
+									onNone: () => true,
+									onSome: generation => generation < grant.generation
+								}) &&
 								Option.isSome(yield* isSpent({family: grant.family, hash: presentedHash}))
 							) {
 								yield* deleteFamily(grant.family)

@@ -6,6 +6,13 @@ import {Model} from 'effect/schema'
 import {ClientId, ClientRegistration, SignInFamily, User} from '@deslop/runtime/shared/auth'
 import {DurationFromSeconds} from '@deslop/runtime/shared/time'
 
+type TokenParts = typeof TokenParts.Type
+export const TokenParts = Schema.Struct({
+	family: SignInFamily,
+	generation: Schema.OptionFromOptional(Schema.FiniteFromString),
+	secret: Schema.NonEmptyString
+})
+
 export type IncarnationId = typeof IncarnationId.Type
 export const IncarnationId = pipe(Schema.NonEmptyString, Schema.brand('IncarnationId'))
 
