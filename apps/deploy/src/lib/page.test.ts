@@ -126,7 +126,7 @@ it.effect(
 	'keeps the bar, tabs and axis real outside initial suspension',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(AsyncResult.initial(), AsyncResult.initial())
-		assert.include(html, 'aria-label="History range"')
+		assert.include(html, 'aria-label="Range"')
 		assert.include(html, 'aria-label="Usage history"')
 		assert.include(html, 'aria-label="Apps loading"')
 		assert.include(html, 'aria-label="Select an app"')
@@ -197,7 +197,7 @@ it.effect(
 		)
 		assert.include(html, 'Open private')
 		assert.include(html, 'Memory over time')
-		assert.strictEqual(Array.length(String.split(html, 'aria-label="Data out of date"')) - 1, 1)
+		assert.strictEqual(Array.length(String.split(html, 'aria-label="Out of date"')) - 1, 1)
 		assert.notInclude(html, 'Inventory out of date')
 		assert.notInclude(html, 'History out of date')
 		assert.notInclude(html, 'Inventory decode failed')
@@ -215,6 +215,6 @@ it.effect(
 		)
 		assert.include(html, 'Access denied')
 		assert.notInclude(html, 'Open private')
-		assert.notInclude(html, 'aria-label="Data out of date"')
+		assert.notInclude(html, 'aria-label="Out of date"')
 	})
 )

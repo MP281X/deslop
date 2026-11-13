@@ -228,7 +228,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 		Option.exists(current => current.save)
 	)
 	const blocking = Option.getOrUndefined(blockingFailure(loaded))
-	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
+	if (blocking !== undefined) return <FailureContent cause={blocking} onRetry={refresh} />
 	const bookings = AsyncResult.getOrElse(loaded, () => [])
 	const matches = matchesOf(bookings, props.searched)
 	const current = Array.filter(
@@ -256,7 +256,7 @@ function Bookings(props: {onOpen: (id: Booking['id']) => void; searched: string}
 		<VStack spacing={0} modifiers={[frame({maxHeight: Infinity})]}>
 			{AsyncResult.isFailure(loaded) && (
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity}), padding({horizontal: space[4]})]}>
-					<Problem label="Bookings not updating" onRetry={refresh} />
+					<Problem label="Out of date" onRetry={refresh} />
 				</HStack>
 			)}
 			{adding && (

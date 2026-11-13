@@ -140,7 +140,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 
 function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; searched: string; series: Series}) {
 	return (
-		<Loaded atom={chaptersAtom} name="Chapters">
+		<Loaded atom={chaptersAtom}>
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
@@ -199,7 +199,7 @@ export function ChaptersRoute(props: {
 				{/* The chapters on screen stay through an outage; a dot in the bar marks that they stopped updating. */}
 				{AsyncResult.isFailure(loaded) && Option.isNone(blockingFailure(loaded)) && (
 					<ToolbarItem placement="topBarLeading">
-						<Problem label="Chapters not updating" onRetry={refresh} />
+						<Problem label="Out of date" onRetry={refresh} />
 					</ToolbarItem>
 				)}
 				<ToolbarItem placement="topBarTrailing">

@@ -306,10 +306,10 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 	const refreshSearch = useAtomRefresh(searchAtom)
 	const found = pipe(search, AsyncResult.value, Option.flatten)
 	return (
-		<Loaded atom={notesAtom} name="Notes">
+		<Loaded atom={notesAtom}>
 			{all => {
 				if (AsyncResult.isFailure(search) && Option.exists(AsyncResult.error(search), isDenied)) {
-					return <FailureContent cause={search.cause} name="Search" onRetry={refreshSearch} />
+					return <FailureContent cause={search.cause} onRetry={refreshSearch} />
 				}
 				const notes = Array.filter(
 					all,
@@ -433,7 +433,7 @@ export function HomeRoute(props: {
 						<Problem
 							label={Boolean.match(AsyncResult.isFailure(notes), {
 								onFalse: () => 'Search unavailable',
-								onTrue: () => 'Notes not updating'
+								onTrue: () => 'Out of date'
 							})}
 							onRetry={() => {
 								refreshNotes()

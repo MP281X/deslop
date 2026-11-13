@@ -48,13 +48,13 @@ function BlankScreen() {
 
 // A blocking failure is one destructive button carrying its reason; a denial is a lock with no retry.
 // judge-ignore no-hero-failure -- the compact error the question allows: one destructive Retry carrying its icon and short reason, centred only because a blocking failure has the screen to itself
-export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string; onRetry: () => void}) {
+export function FailureContent(props: {cause: Cause.Cause<unknown>; onRetry: () => void}) {
 	return (
 		<VStack spacing={space[6]} modifiers={FULL_SCREEN}>
 			{Boolean.match(isDeniedCause(props.cause), {
 				onFalse: () => (
 					<Button
-						label={`Can’t Reach ${props.name}`}
+						label="Can’t Load This View"
 						systemImage="arrow.clockwise"
 						role="destructive"
 						onPress={props.onRetry}
@@ -73,7 +73,7 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 							font({textStyle: 'largeTitle'}),
 							imageScale('large'),
 							foregroundStyle(colors.foreground),
-							accessibilityLabel('You don’t have access')
+							accessibilityLabel('Access denied')
 						]}
 					/>
 				)
@@ -87,17 +87,16 @@ export function FailureContent(props: {cause: Cause.Cause<unknown>; name: string
 export function Loaded<A, E>(props: {
 	atom: Atom.Atom<AsyncResult.AsyncResult<A, E>>
 	children: (value: A) => ReactNode
-	name: string
 }) {
 	const loaded = useAtomSuspense(props.atom, {includeFailure: true})
 	const refresh = useAtomRefresh(props.atom)
 	return Option.match(blockingFailure(loaded), {
 		onNone: () => Option.match(AsyncResult.value(loaded), {onNone: () => null, onSome: props.children}),
-		onSome: cause => <FailureContent cause={cause} name={props.name} onRetry={refresh} />
+		onSome: cause => <FailureContent cause={cause} onRetry={refresh} />
 	})
 }
 
-// The app's mark and GitHub sign-in at the bottom.
+// The app's mark and the sign-in at the bottom, which opens Auth's own page with every way in.
 function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint: ColorValue; waiting: boolean}) {
 	return (
 		<Host style={{flex: 1}}>
@@ -118,7 +117,7 @@ function SignInScreen(props: {logo: number | string; onSignIn: () => void; tint:
 						disabled(props.waiting)
 					]}
 				>
-					<Text modifiers={[text.title]}>Sign in with GitHub</Text>
+					<Text modifiers={[text.title]}>Sign In</Text>
 				</Button>
 			</VStack>
 		</Host>

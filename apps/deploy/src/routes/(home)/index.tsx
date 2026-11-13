@@ -148,7 +148,7 @@ function MetricsContent(props: {children: ReactNode; minutes: HistoryQuery['minu
 }
 
 function DataProblem(props: {minutes: HistoryQuery['minutes']}) {
-	return <StaleProblem label="Data out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
+	return <StaleProblem label="Out of date" readers={[inventoryAtom, metricsAtom(props.minutes)]} />
 }
 
 function ProcessList(props: {row: Row}) {

@@ -19,7 +19,7 @@ import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
 
 function Destination(props: {number: ChapterNumber; series: Series}) {
 	return (
-		<Loaded atom={chaptersAtom} name="Chapters">
+		<Loaded atom={chaptersAtom}>
 			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} />}
 		</Loaded>
 	)

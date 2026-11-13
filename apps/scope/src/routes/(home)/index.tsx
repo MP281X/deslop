@@ -244,7 +244,7 @@ function OperationsPane(props: {
 					{overview =>
 						Array.match(operationsOf(overview, Option.fromUndefinedOr(props.source)), {
 							onEmpty: () => (
-								<EmptyState label="No traces in this frame" icon={<ChartBarHorizontalIcon weight="light" />} />
+								<EmptyState label="No traces in this range" icon={<ChartBarHorizontalIcon weight="light" />} />
 							),
 							onNonEmpty: rows => {
 								const names = Array.groupBy(rows, row => row.operation.name)

@@ -24,7 +24,7 @@ export function HomeRoute() {
 						</Text>
 					}
 				>
-					<Loaded atom={nameAtom} name="template-app">
+					<Loaded atom={nameAtom}>
 						{name => <Text modifiers={[text.body, foregroundStyle(colors.foreground)]}>{name}</Text>}
 					</Loaded>
 				</Suspense>
