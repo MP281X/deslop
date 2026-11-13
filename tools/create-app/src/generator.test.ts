@@ -145,12 +145,34 @@ it.layer(NodeServices.layer)(test => {
 				)
 				const donor = path.join(root, 'apps', app.donor)
 				yield* compareStructure(root, target, donor, app.kind)
-				yield* checkServiceBoundaries(root, target, donor)
 				// A real install supplies exactly these package dependencies; the full public-command journey installs them too.
 				if (yield* fs.exists(path.join(target, 'node_modules'))) {
 					yield* fs.remove(path.join(target, 'node_modules'), {recursive: true})
 				}
 				yield* fs.symlink(path.join(donor, 'node_modules'), path.join(target, 'node_modules'))
+				// Check the starter before adding real-service fixtures: borrowed modules must not hide a missing manifest dependency.
+				assert.strictEqual(
+					yield* Effect.flatMap(
+						ChildProcess.make(
+							'vp',
+							[
+								'exec',
+								'fallow',
+								'dead-code',
+								'--workspace',
+								`@deslop/${name}`,
+								'--format',
+								'compact',
+								'--fail-on-issues',
+								'--quiet'
+							],
+							{cwd: root, stderr: 'inherit', stdout: 'inherit'}
+						),
+						child => child.exitCode
+					),
+					0
+				)
+				yield* checkServiceBoundaries(root, target, donor)
 				for (const check of [
 					['vp', ['exec', 'tsrs', '--noEmit', '--fast', '-p', path.join(target, 'tsconfig.json')]],
 					[
