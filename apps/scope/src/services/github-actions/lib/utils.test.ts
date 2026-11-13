@@ -7,8 +7,9 @@ import {Array, DateTime, Duration, Effect, Layer, Option, Schema, Stream, pipe} 
 import {Reactivity} from 'effect/reactivity'
 import {TestClock} from 'effect/testing'
 
-import {jobLogs, jobTrace, runTrace} from '#services/github/lib/utils.ts'
-import {WorkflowJob, WorkflowRun, WorkflowRunAttempt} from '#services/github/schema.ts'
+import {jobLogs, jobTrace, runTrace} from './utils.ts'
+
+import {WorkflowJob, WorkflowRun, WorkflowRunAttempt} from '#services/github-actions/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 

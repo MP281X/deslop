@@ -12,9 +12,9 @@ import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
 import {HttpHandlers} from '#http/handlers.ts'
-import {runIds} from '#services/github/lib/utils.ts'
-import type {WorkflowJob} from '#services/github/schema.ts'
-import {WorkflowRun} from '#services/github/schema.ts'
+import {runIds} from '#services/github-actions/lib/utils.ts'
+import type {WorkflowJob} from '#services/github-actions/schema.ts'
+import {WorkflowRun} from '#services/github-actions/schema.ts'
 import {FindTracesParams, TraceId} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 

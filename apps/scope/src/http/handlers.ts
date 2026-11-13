@@ -3,8 +3,8 @@ import {Config, Effect, Layer, Option, Redacted, Schema, SchemaGetter, String, p
 import {Mac} from 'effect/crypto'
 import {HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse} from 'effect/http'
 
-import {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
-import {GitHub} from '#services/github/service.ts'
+import {WorkflowJob, WorkflowRun} from '#services/github-actions/schema.ts'
+import {GitHubActions} from '#services/github-actions/service.ts'
 import type {TelemetryError} from '#services/telemetry/schema.ts'
 import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
@@ -79,7 +79,7 @@ export const HttpHandlers = Layer.provide(
 				onNone: () => Effect.void,
 				onSome: Effect.fnUntraced(function* (secret) {
 					const key = yield* Mac.key(Mac.hmacSha256, new TextEncoder().encode(Redacted.value(secret)))
-					const github = yield* GitHub
+					const github = yield* GitHubActions
 					yield* router.add(
 						'POST',
 						'/v1/github',
@@ -115,5 +115,5 @@ export const HttpHandlers = Layer.provide(
 			})
 		})
 	),
-	GitHub.layer
+	GitHubActions.layer
 )
