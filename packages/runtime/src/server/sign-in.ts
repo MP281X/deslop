@@ -133,7 +133,7 @@ function layerSignIn(issuer: string) {
 										}
 										return yield* sessions.start({
 											client_id: yield* clientId,
-											code: yield* Effect.fromOption(params.code),
+											code: Option.getOrThrow(params.code),
 											code_verifier: saved.verifier,
 											redirect_uri: callback
 										})
