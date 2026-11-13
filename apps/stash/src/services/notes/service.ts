@@ -7,7 +7,6 @@ import {
 	Effect,
 	FiberMap,
 	FileSystem,
-	HashSet,
 	Layer,
 	Option,
 	Path,
@@ -28,6 +27,8 @@ import {dataDirectory} from '@deslop/runtime/server/store'
 import type {UserId} from '@deslop/runtime/shared/auth'
 import {listEvents} from '@deslop/runtime/shared/list'
 
+import {changeNote, newNote} from './lib/changes.ts'
+import type {NoteChange} from './lib/changes.ts'
 import {Sources} from './lib/extraction.ts'
 import {Organizer} from './lib/organization.ts'
 import {reconcileOrganization} from './lib/tags.ts'
@@ -37,34 +38,12 @@ import type {Still} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 import {captureUrl, commentOf, hasVideo, queryWords, sourceOf} from '#services/notes/lib/utils.ts'
 import type {Capture, Extraction, FileType, Image, Picture} from '#services/notes/schema.ts'
-import {
-	ImageType,
-	Note,
-	NoteId,
-	NoteItem,
-	NotesCursor,
-	NotesError,
-	NoteTag,
-	Tag,
-	TagEntry
-} from '#services/notes/schema.ts'
+import {Note, NoteId, NoteItem, NotesCursor, NotesError, NoteTag, Tag, TagEntry} from '#services/notes/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
 		readonly notes: never
 	}
-}
-
-// The note's text with the words a later share adds, if it adds any.
-function withWords(note: Note, text: string) {
-	const known = HashSet.fromIterable(pipe(note.text, String.toLowerCase, String.split(/\s+/u)))
-	return pipe(
-		commentOf(text),
-		String.split(' '),
-		Array.filter(word => String.isNonEmpty(word) && !HashSet.has(known, String.toLowerCase(word))),
-		Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
-		Option.map(added => `${note.text}\n${Array.join(added, ' ')}`)
-	)
 }
 
 // The note's columns an update writes, to change only some of them.
@@ -94,19 +73,6 @@ function asStorageNotesError(cause: unknown) {
 const asNotesError = Effect.mapError(asStorageNotesError)
 
 const missing = NotesError.make({message: 'No note has this id; find its id with search_notes.'})
-
-// The note fields a new note starts without.
-const UNREAD = {
-	author: Option.none(),
-	body: Option.none(),
-	content: '',
-	issue: Option.none(),
-	screenText: Option.none(),
-	status: 'organizing',
-	summary: '',
-	topics: Option.none(),
-	transcript: Option.none()
-} as const
 
 export class Notes extends Context.Service<Notes>()('@deslop/stash/services/notes/service/Notes', {
 	make: Effect.fnUntraced(function* (directory: string) {
@@ -236,14 +202,18 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		}
 
 		// The note is read again inside the write, so a change made meanwhile is kept and a note removed meanwhile stays removed.
-		function change(id: NoteId, patch: (note: Note) => Partial<typeof Note.update.Type>) {
+		function storeChange(note: Note, update: NoteChange) {
+			return Option.match(changeNote(note, update), {
+				onNone: () => notes.delete(note.id),
+				onSome: next => Effect.asVoid(notes.update(editable(next)))
+			})
+		}
+
+		function change(id: NoteId, update: NoteChange) {
 			return pipe(
 				Effect.flatMap(
 					findNote(id),
-					Option.match({
-						onNone: () => Effect.void,
-						onSome: note => Effect.asVoid(notes.update({...editable(note), ...patch(note)}))
-					})
+					Option.match({onNone: () => Effect.void, onSome: note => storeChange(note, update)})
 				),
 				Reactivity.mutation(['notes']),
 				sql.withTransaction,
@@ -253,7 +223,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		const storeImage = Effect.fnUntraced(function* (id: NoteId, image: Image) {
 			yield* asNotesError(fs.writeFile(path.join(images, id), image.bytes, {mode: 0o600}))
-			yield* change(id, () => ({image: Option.some(image.type)}))
+			yield* change(id, {image: image.type, type: 'image'})
 		})
 
 		const writeOrganization = Effect.fnUntraced(function* (
@@ -269,16 +239,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						insertNoteTags(Array.map(tags, (entry, position) => ({noteId: note.id, position, tag: entry.name})))
 					)
 			})
-			yield* notes.update({
-				...editable(note),
-				body: Option.some(found.organization.body),
-				issue: Option.none(),
-				screenText: Option.some(found.organization.screenText),
-				status: 'ready',
-				summary: found.organization.summary,
-				title: found.organization.title,
-				topics: Option.some(found.organization.topics)
-			})
+			yield* storeChange(note, {organization: found.organization, type: 'organize'})
 		})
 
 		// The organized note, its tags and their definitions land together or not at all, and watchers hear of it once it commits; a note removed meanwhile stays removed.
@@ -316,14 +277,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				String.isEmpty(commentOf(note.text)) &&
 				Array.isReadonlyArrayEmpty(pictures)
 			) {
-				return yield* change(note.id, item => ({
-					issue: Option.orElse(item.issue, () => Option.some('Nothing to read at this link.')),
-					status: 'failed'
-				}))
+				return yield* change(note.id, {type: 'empty'})
 			}
 			const entries = yield* asNotesError(listTagEntries())
 			yield* Result.match(yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})), {
-				onFailure: error => change(note.id, () => ({issue: Option.some(error.message), status: 'failed'})),
+				onFailure: error => change(note.id, {message: error.message, type: 'fail'}),
 				onSuccess: organization =>
 					organized(
 						note.id,
@@ -393,17 +351,15 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								Effect.transposeOption,
 								Effect.map(Option.flatten),
 								Effect.flatMap(transcript =>
-									change(note.id, item => ({
-										...pipe(
+									change(note.id, {
+										content: pipe(
 											read,
 											Option.filter(() => sourceOf(input.url) !== 'X' || input.useInfo),
-											Option.match({
-												onNone: () => ({}),
-												onSome: details => ({content: details.info, issue: Option.none()})
-											})
+											Option.map(details => details.info)
 										),
-										transcript: Option.orElse(transcript, () => item.transcript)
-									}))
+										transcript,
+										type: 'video'
+									})
 								)
 							)
 						)
@@ -417,28 +373,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		const organizeLink = Effect.fnUntraced(function* (userId: UserId, note: Note, link: string) {
 			const extraction = yield* Effect.result(sources.extract(link))
-			yield* change(note.id, item =>
-				Result.match(extraction, {
-					onFailure: error =>
-						Boolean.match(String.isEmpty(item.content), {
-							onFalse: () => ({}),
-							onTrue: () => ({issue: Option.some(error.message)})
-						}),
-					onSuccess: page => ({
-						author: pipe(
-							page.author,
-							Option.filter(String.isNonEmpty),
-							Option.orElse(() => item.author)
-						),
-						content: page.text,
-						issue: Option.none(),
-						title: Boolean.match(String.isNonEmpty(page.title) && Option.contains(item.url, item.title), {
-							onFalse: () => item.title,
-							onTrue: () => page.title
-						})
-					})
-				})
-			)
+			yield* change(note.id, {extraction, type: 'extract'})
 			const slides = yield* Result.match(extraction, {
 				onFailure: () => Effect.succeed(Array.empty<Picture>()),
 				onSuccess: page => keepImages(note, page)
@@ -480,7 +415,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			)
 			yield* Option.match(yield* optional('No transcript', Option.none<string>)(media.fileTranscript(userId, stored)), {
 				onNone: () => Effect.void,
-				onSome: text => change(note.id, () => ({transcript: Option.some(text)}))
+				onSome: text => change(note.id, {content: Option.none(), transcript: Option.some(text), type: 'video'})
 			})
 			yield* tag(userId, note.id, pipe(stills, Array.drop(1), Array.map(still)))
 		})
@@ -488,7 +423,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		function start(userId: UserId, note: Note) {
 			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
 				pipe(
-					change(note.id, () => ({requester: userId})),
+					change(note.id, {requester: userId, type: 'request'}),
 					Effect.andThen(
 						Option.match(note.file, {
 							onNone: () =>
@@ -502,18 +437,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					Effect.tapCause(cause =>
 						Boolean.match(Cause.hasInterruptsOnly(cause), {
 							onFalse: () =>
-								Effect.ignore(
-									change(note.id, item =>
-										Boolean.match(item.status === 'organizing', {
-											onFalse: () => ({}),
-											onTrue: () => ({
-												issue: Option.some('Tagging stopped before it finished.'),
-												status: 'failed' as const
-											})
-										})
-									),
-									{log: 'Warn', message: 'A stopped tagging run could not be recorded'}
-								),
+								Effect.ignore(change(note.id, {type: 'stop'}), {
+									log: 'Warn',
+									message: 'A stopped tagging run could not be recorded'
+								}),
 							onTrue: () => Effect.void
 						})
 					),
@@ -572,17 +499,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				)
 			)
 			return yield* pipe(
-				Note.insert.makeEffect({
-					...UNREAD,
-					file: Option.some(input.type),
-					id: input.id,
-					image: Option.filter(Option.some(input.type), Schema.is(ImageType)),
-					requester: userId,
-					source: 'Note',
-					text: '',
-					title: Boolean.match(Schema.is(ImageType)(input.type), {onFalse: () => 'video', onTrue: () => 'image'}),
-					url: Option.none()
-				}),
+				Note.insert.makeEffect(newNote(userId, {id: input.id, text: ''}, Option.none(), Option.some(input.type))),
 				Effect.flatMap(notes.insert),
 				Reactivity.mutation(['notes']),
 				asNotesError
@@ -604,36 +521,16 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Option.match({
 							onNone: () =>
 								pipe(
-									Note.insert.makeEffect({
-										...UNREAD,
-										file: Option.none(),
-										id: input.id,
-										image: Option.none(),
-										requester: userId,
-										source: Option.match(url, {onNone: () => 'Note' as const, onSome: sourceOf}),
-										text,
-										title: pipe(
-											Option.liftPredicate(commentOf(text), String.isNonEmpty),
-											Option.orElse(() => url),
-											Option.getOrElse(() => text),
-											String.slice(0, 200)
-										),
-										url
-									}),
+									Note.insert.makeEffect(newNote(userId, {...input, text}, url, Option.none())),
 									Effect.flatMap(notes.insert),
 									Effect.map(note => ({fresh: true, note}))
 								),
 							// A share of a saved note adds its new words, unless it is the same capture sent again.
 							onSome: found =>
-								pipe(
-									withWords(found, text),
-									Option.filter(() => found.id !== input.id),
-									Option.match({
-										onNone: () => Effect.succeed({fresh: false, note: found}),
-										onSome: merged =>
-											Effect.map(notes.update({...editable(found), text: merged}), note => ({fresh: false, note}))
-									})
-								)
+								Option.match(changeNote(found, {capture: {...input, text}, type: 'share'}), {
+									onNone: () => Effect.succeed({fresh: false, note: found}),
+									onSome: merged => Effect.map(notes.update(editable(merged)), note => ({fresh: false, note}))
+								})
 						})
 					),
 					Reactivity.mutation(['notes']),
@@ -695,12 +592,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			}),
 			regenerate: Effect.fn('Notes.regenerate')(function* (userId: UserId, id: NoteId) {
 				yield* FiberMap.remove(runs, id)
-				yield* change(id, () => ({issue: Option.none(), status: 'organizing', transcript: Option.none()}))
+				yield* change(id, {type: 'retry'})
 				yield* start(userId, yield* savedNote(id))
 			}, withReactivity),
 			remove: Effect.fn('Notes.remove')(function* (id: NoteId) {
 				yield* FiberMap.remove(runs, id)
-				yield* pipe(notes.delete(id), Reactivity.mutation(['notes']), asNotesError)
+				yield* change(id, {type: 'remove'})
 				yield* asNotesError(fs.remove(path.join(images, id), {force: true}))
 				yield* asNotesError(fs.remove(path.join(files, id), {force: true}))
 			}, withReactivity),
