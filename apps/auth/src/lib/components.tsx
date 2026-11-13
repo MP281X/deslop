@@ -9,13 +9,12 @@ import {useState} from 'react'
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
 import {ageOf} from '@deslop/components-web/format'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
-import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {appsAtom, consentAtom, minuteAtom, requestCode} from '#lib/auth.ts'
 import android from '#lib/brands/android.svg'
@@ -28,23 +27,6 @@ import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
-
-// A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
-export function AccountAvatar(props: {id: UserId; name: string; small?: boolean}) {
-	return (
-		<Avatar
-			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
-			variant="plain"
-			className={cn(props.small === true && 'size-4')}
-		>
-			<AvatarImage
-				src={`https://avatars.githubusercontent.com/u/${String.replace('github:', '')(props.id)}?s=96`}
-				alt={props.name}
-			/>
-			<AvatarFallback>{String.toUpperCase(String.slice(0, 1)(props.name))}</AvatarFallback>
-		</Avatar>
-	)
-}
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
 function AppIcon(props: {origin: string}) {
@@ -65,27 +47,10 @@ function AppIcon(props: {origin: string}) {
 	)
 }
 
-function ClientRowSkeleton() {
-	return (
-		<Item aria-hidden size="row">
-			<ItemMedia className="size-4">
-				<Skeleton className="size-4" />
-			</ItemMedia>
-			<ItemContent>
-				<Skeleton className="h-3 w-2/5" />
-			</ItemContent>
-			<ItemActions>
-				<Skeleton className="h-3 w-12 shrink-0" />
-				<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
-			</ItemActions>
-		</Item>
-	)
-}
-
 // The row whose code lookup is running, where the found sign-in will sit.
 function PendingRowSkeleton() {
 	return (
-		<div role="listitem" className="bg-primary/10">
+		<div className="bg-primary/10">
 			<Item aria-hidden size="row">
 				<ItemMedia className="size-4">
 					<Skeleton className="size-4" />
@@ -107,14 +72,19 @@ function PendingRowSkeleton() {
 export function SignInRowsSkeleton(props: {pending?: boolean}) {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label="Signed in" role="status">
-				<div role="list" aria-label="Signed-in clients">
-					{props.pending === true && <PendingRowSkeleton />}
-					{Array.map(Array.range(1, 9), row => (
-						<ClientRowSkeleton key={row} />
-					))}
-				</div>
-			</div>
+			{props.pending === true && <PendingRowSkeleton />}
+			<RowsSkeleton label="Signed in" rows={9}>
+				<ItemMedia className="size-4">
+					<Skeleton className="size-4" />
+				</ItemMedia>
+				<ItemContent>
+					<Skeleton className="h-3 w-2/5" />
+				</ItemContent>
+				<ItemActions>
+					<Skeleton className="h-3 w-12 shrink-0" />
+					<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
+				</ItemActions>
+			</RowsSkeleton>
 		</Card>
 	)
 }
@@ -123,24 +93,18 @@ export function SignInRowsSkeleton(props: {pending?: boolean}) {
 export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
-			<div aria-busy="true" aria-label="People" role="status">
-				<div role="list" aria-label="People">
-					{Array.map(Array.range(1, 3), row => (
-						<Item key={row} aria-hidden size="row">
-							<ItemMedia className="size-4">
-								<Skeleton className="size-4" />
-							</ItemMedia>
-							<ItemContent>
-								<Skeleton className="h-3 w-2/5" />
-								<Skeleton className="h-3 w-16" />
-							</ItemContent>
-							<ItemActions>
-								<Skeleton className="h-3 w-16 shrink-0" />
-							</ItemActions>
-						</Item>
-					))}
-				</div>
-			</div>
+			<RowsSkeleton label="People" rows={3}>
+				<ItemMedia className="size-4">
+					<Skeleton className="size-4" />
+				</ItemMedia>
+				<ItemContent>
+					<Skeleton className="h-3 w-2/5" />
+					<Skeleton className="h-3 w-16" />
+				</ItemContent>
+				<ItemActions>
+					<Skeleton className="h-3 w-16 shrink-0" />
+				</ItemActions>
+			</RowsSkeleton>
 		</Card>
 	)
 }

@@ -2,7 +2,7 @@ import {Array, Boolean, Option, String} from 'effect'
 
 import {CubeIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 
-import {appMarks} from '@deslop/components-web/apps'
+import {AppMark, ThemedMark} from '@deslop/components-web/marks'
 import {Bun} from '@deslop/components-web/ui/svgs/bun'
 import {Cloudflare} from '@deslop/components-web/ui/svgs/cloudflare'
 import {Docker} from '@deslop/components-web/ui/svgs/docker'
@@ -30,24 +30,16 @@ const brands = [
 ]
 
 export function ApplicationIcon(props: {name: string; process?: string; container?: boolean; small?: boolean}) {
-	// An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`.
-	const own = appMarks[String.split(props.name, /[ -]/u)[0]]
 	const brand = Option.getOrUndefined(
 		Array.findFirst(brands, candidate => candidate.pattern.test(`${props.name} ${props.process ?? ''}`))
 	)
 	function mark() {
-		if (own !== undefined) return <img src={own} alt="" className="pixelated size-full object-contain" />
 		if (brand !== undefined) {
 			// A brand's artwork fills its viewBox, so a 16px box would read heavier than the pixel marks' inset artwork.
 			return (
 				<span className="flex size-3 items-center justify-center">
 					{Boolean.match(brand.light === brand.dark, {
-						onFalse: () => (
-							<>
-								<brand.light className="size-full dark:hidden" />
-								<brand.dark className="hidden size-full dark:block" />
-							</>
-						),
+						onFalse: () => <ThemedMark light={brand.light} dark={brand.dark} className="size-full" />,
 						onTrue: () => <brand.light className="size-full" />
 					})}
 				</span>
@@ -62,7 +54,8 @@ export function ApplicationIcon(props: {name: string; process?: string; containe
 	}
 	return (
 		<span className="text-muted-foreground inline-flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-			{mark()}
+			{/* An app's own mark, also on what is named after it, such as `stash preview` or `stash-update`. */}
+			<AppMark name={String.split(props.name, /[ -]/u)[0]} fallback={mark()} />
 		</span>
 	)
 }

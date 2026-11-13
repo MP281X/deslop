@@ -1,24 +1,23 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Match, Option, pipe} from 'effect'
+import {Array, DateTime, Duration, Match, Option, pipe} from 'effect'
 
-import {ArrowRightIcon, CheckIcon, CopyIcon, HourglassIcon, KeyIcon} from '@phosphor-icons/react'
+import {ArrowRightIcon, HourglassIcon, KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 import {toQR} from 'toqr'
 
+import {CopyButton} from '@deslop/components-web/copy-button'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {timerOf} from '@deslop/components-web/format'
 import {GitHubIcon} from '@deslop/components-web/icons'
-import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 
 import {
 	approveLink,
-	copyCodeAtom,
 	passkeySignInAtom,
 	requestAtom,
 	requestCode,
@@ -58,30 +57,6 @@ function QrCode(props: {className?: string; text: string}) {
 	)
 }
 
-function Code(props: {id: SignInCode}) {
-	const [copy, copyCode] = useAtom(copyCodeAtom)
-	const copied = AsyncResult.isWaiting(copy)
-	return (
-		<>
-			<Button
-				variant="ghost"
-				aria-label={`Copy the code ${requestCode(props.id)}`}
-				onClick={() => copyCode(requestCode(props.id))}
-			>
-				{requestCode(props.id)}
-				{Boolean.match(copied, {
-					onFalse: () => <CopyIcon className="text-muted-foreground" />,
-					onTrue: () => <CheckIcon className="text-primary" />
-				})}
-				<span role="status" className="sr-only">
-					{copied && 'Copied'}
-				</span>
-			</Button>
-			<ResultError result={copy} />
-		</>
-	)
-}
-
 // Its own component, so only the time re-renders each second; only the last minute carries the warning dot.
 function Countdown(props: {expiresAt: DateTime.Utc}) {
 	const now = useAtomSuspense(secondAtom).value
@@ -113,7 +88,9 @@ function CodeCard(props: {request: PendingAuthorization}) {
 						<QrCode text={approveLink(props.request.id)} className="size-32" />
 					</span>
 					<div className="flex min-w-0 flex-col gap-2">
-						<Code id={props.request.id} />
+						<CopyButton label={`Copy the code ${requestCode(props.request.id)}`} value={requestCode(props.request.id)}>
+							{requestCode(props.request.id)}
+						</CopyButton>
 						<Countdown expiresAt={props.request.expiresAt} />
 					</div>
 				</div>

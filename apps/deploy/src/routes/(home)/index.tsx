@@ -46,28 +46,6 @@ export const Search = Schema.Struct({
 })
 const route = getRouteApi('/(home)/')
 
-// The range as one stock control: the same five tabs in the bar at every width.
-function RangeTabs(props: {
-	minutes: HistoryQuery['minutes']
-	onChange: (minutes: HistoryQuery['minutes']) => void
-	ranges: readonly {label: string; minutes: HistoryQuery['minutes']}[]
-}) {
-	return (
-		<AppBarChoice
-			label="History range"
-			value={`${Duration.toMinutes(props.minutes)}`}
-			options={Array.map(props.ranges, range => ({label: range.label, value: `${Duration.toMinutes(range.minutes)}`}))}
-			onChange={value => {
-				pipe(
-					props.ranges,
-					Array.findFirst(range => `${Duration.toMinutes(range.minutes)}` === value),
-					Option.map(range => props.onChange(range.minutes))
-				)
-			}}
-		/>
-	)
-}
-
 // The machines as the bar's section control: its icon in the machine's colour and its name; an unreachable one keeps a dot. One machine needs no control.
 function machineName(worker: WorkerId) {
 	return String.split(worker, '.')[0]
@@ -491,7 +469,12 @@ function HomeRoute() {
 					onFalse: () => (
 						<div className="flex items-center gap-1 max-sm:-ml-3">
 							<DataProblem minutes={minutes} />
-							<RangeTabs minutes={minutes} onChange={range => view({range: Option.some(range)})} ranges={RANGES} />
+							<AppBarChoice
+								label="Range"
+								value={minutes}
+								options={RANGES}
+								onChange={range => view({range: Option.some(range)})}
+							/>
 						</div>
 					),
 					onTrue: () => <DataProblem minutes={minutes} />

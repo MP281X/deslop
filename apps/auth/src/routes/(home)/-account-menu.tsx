@@ -6,6 +6,7 @@ import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
 import {AsyncResult} from 'effect/reactivity'
 
+import {AccountAvatar} from '@deslop/components-web/app-bar'
 import {Button} from '@deslop/components-web/ui/button'
 import {
 	DropdownMenu,
@@ -25,7 +26,6 @@ import {
 	passkeysAtom,
 	resumePasskeyAtom
 } from '#lib/auth.ts'
-import {AccountAvatar} from '#lib/components.tsx'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
@@ -88,9 +88,9 @@ export function AccountMenu(props: {account: SignedAccount}) {
 		<DropdownMenu open={open} onOpenChange={setOpen}>
 			<DropdownMenuTrigger
 				aria-label="Account"
-				render={<Button variant="ghost" size="icon" className="max-sm:size-11" />}
+				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
 			>
-				<AccountAvatar id={props.account.id} name={props.account.name} />
+				<AccountAvatar account={props.account} />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-48">
 				<DropdownMenuGroup>

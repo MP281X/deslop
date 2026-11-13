@@ -1,8 +1,8 @@
-import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
+import {useAtom, useAtomSet} from '@effect/atom-react'
 
 import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
+import {HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -11,6 +11,7 @@ import {Suspense, useState} from 'react'
 
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
+import {CopyButton} from '@deslop/components-web/copy-button'
 import {Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {countOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
@@ -24,17 +25,7 @@ import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-w
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
-import {
-	addAtom,
-	aiKeysAtom,
-	aiUsageAtom,
-	connectAtom,
-	copiedAtom,
-	copyAtom,
-	mcpUsageAtom,
-	serversAtom,
-	setKeyAtom
-} from '#lib/gateway.ts'
+import {addAtom, aiKeysAtom, aiUsageAtom, connectAtom, mcpUsageAtom, serversAtom, setKeyAtom} from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
@@ -156,7 +147,16 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 					<ItemDescription>{new URL(props.server.url).hostname}</ItemDescription>
 				</ItemContent>
 				<ItemActions>
-					{failed && <StatusDot status="error" />}
+					{failed && (
+						<span
+							role="img"
+							className="flex shrink-0 items-center"
+							aria-label={Option.getOrElse(props.server.error, () => 'Authorization expired')}
+							title={Option.getOrElse(props.server.error, () => 'Authorization expired')}
+						>
+							<StatusDot status="error" />
+						</span>
+					)}
 					{Boolean.match(needsUser, {
 						onFalse: () =>
 							props.server.tools > 0 && (
@@ -246,9 +246,14 @@ function KeyRow(props: {
 				</ItemContent>
 				<ItemActions>
 					{Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
-						<StatusDot status="error" />
+						<span role="img" className="flex shrink-0 items-center" aria-label="Key refused" title="Key refused">
+							<StatusDot status="error" />
+						</span>
 					)}
-					<Sparkline color="var(--primary)" values={providerSeries(props.report, props.provider, props.period)} />
+					<Sparkline
+						color="var(--muted-foreground)"
+						values={providerSeries(props.report, props.provider, props.period)}
+					/>
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
 				</ItemActions>
 			</Item>
@@ -403,46 +408,6 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 	)
 }
 
-function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period}) {
-	return (
-		<AppBarChoice
-			label="Period"
-			options={PERIODS}
-			value={props.period}
-			onChange={value =>
-				pipe(
-					PERIODS,
-					Array.findFirst(entry => entry.value === value),
-					Option.map(entry => props.onPeriod(entry.value))
-				)
-			}
-		/>
-	)
-}
-
-// Copies the gateway's MCP URL; the button shows a check for a moment after a copy and turns destructive when it fails.
-function CopyEndpoint() {
-	const [result, copy] = useAtom(copyAtom(`${window.location.origin}/mcp`))
-	const copied = useAtomValue(copiedAtom)
-	// A retry in flight is no longer the failure it follows.
-	const failed = AsyncResult.isFailure(result) && !result.waiting
-	return (
-		<Button
-			variant={Boolean.match(failed, {onFalse: () => 'ghost' as const, onTrue: () => 'destructive' as const})}
-			size="icon-sm"
-			className="ms-2.5 max-sm:size-11"
-			aria-label={Boolean.match(failed, {
-				onFalse: () => Boolean.match(copied, {onFalse: () => 'Copy MCP URL', onTrue: () => 'Copied'}),
-				onTrue: () => 'Cannot copy'
-			})}
-			title={Boolean.match(failed, {onFalse: () => undefined, onTrue: () => 'Cannot copy'})}
-			onClick={() => copy()}
-		>
-			{Boolean.match(copied, {onFalse: () => <CopyIcon />, onTrue: () => <CheckIcon />})}
-		</Button>
-	)
-}
-
 function GatewayProblem(props: {period: Period}) {
 	return (
 		<StaleProblem
@@ -477,13 +442,20 @@ function HomeRoute() {
 				controls={
 					<>
 						<GatewayProblem period={period} />
-						<PeriodTabs
-							period={period}
-							onPeriod={next => {
+						<AppBarChoice
+							label="Range"
+							options={PERIODS}
+							value={period}
+							onChange={next => {
 								navigate({search: previous => ({...previous, period: next})})
 							}}
 						/>
-						<CopyEndpoint />
+						<CopyButton
+							label="Copy MCP URL"
+							value={`${window.location.origin}/mcp`}
+							size="icon-sm"
+							className="ms-2.5 max-sm:size-11"
+						/>
 					</>
 				}
 			/>

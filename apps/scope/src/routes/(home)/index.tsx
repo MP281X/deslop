@@ -9,11 +9,11 @@ import {Suspense, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
-import {appMarks} from '@deslop/components-web/apps'
 import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
+import {AppMark} from '@deslop/components-web/marks'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
@@ -37,7 +37,7 @@ import {
 } from '#lib/telemetry.ts'
 import type {ActiveOperation, NavigationEvent, OperationKey} from '#lib/telemetry.ts'
 import {Flame, SpansSkeleton, TimeAxis} from '#routes/(home)/-flame.tsx'
-import {CiMark, DetailSkeleton, SpanDetail} from '#routes/(home)/-span.tsx'
+import {DetailSkeleton, OutsideMark, SpanDetail} from '#routes/(home)/-span.tsx'
 import icon from '#routes/icon.svg'
 import {Range, rangeStart} from '#services/telemetry/schema.ts'
 import type {
@@ -119,23 +119,7 @@ function TracesSkeleton(props: {label: string}) {
 	)
 }
 
-// An app's mark: its own icon, GitHub's for CI, else a server glyph; never a letter tile. A heading names the app, so the mark is decorative.
-function AppMark(props: {app: Overview['apps'][number]}) {
-	return Option.match(Option.fromUndefinedOr(appMarks[props.app.name]), {
-		onNone: () =>
-			pipe(
-				props.app.ci,
-				Option.contains(true),
-				Boolean.match({
-					onFalse: () => <HardDrivesIcon aria-hidden className="text-muted-foreground size-4 shrink-0" />,
-					onTrue: () => <CiMark />
-				})
-			),
-		onSome: mark => <img src={mark} alt="" className="pixelated size-4 shrink-0" />
-	})
-}
-
-// The bar's app choice: one mark per app; one is always chosen, and choosing the chosen tab again does nothing.
+// The bar's app choice: one mark per app, its own icon, GitHub's for CI, else a server glyph, never a letter tile; one is always chosen, and choosing the chosen tab again does nothing.
 function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 	const search = route.useSearch()
 	return (
@@ -155,28 +139,10 @@ function SourceTabs(props: {apps: Overview['apps']; source?: AppName}) {
 						/>
 					}
 				>
-					<AppMark app={app} />
+					<AppMark name={app.name} fallback={<OutsideMark ci={Option.contains(app.ci, true)} />} />
 				</AppBarTab>
 			))}
 		</AppBarTabs>
-	)
-}
-
-// The page's time frame as one stock control: the same four tabs at every width.
-function RangeTabs(props: {onChange: (range: Range) => void; range: Range}) {
-	return (
-		<AppBarChoice
-			label="Time frame"
-			value={props.range}
-			options={RANGES}
-			onChange={value => {
-				pipe(
-					RANGES,
-					Array.findFirst(entry => entry.value === value),
-					Option.map(entry => props.onChange(entry.value))
-				)
-			}}
-		/>
 	)
 }
 
@@ -781,7 +747,7 @@ function HomeRoute() {
 					<>
 						<StaleMark range={range} trace={Option.getOrUndefined(selection.activeTrace)} />
 						{Boolean.match(isMobile && pane !== 'Operations', {
-							onFalse: () => <RangeTabs range={range} onChange={selectRange} />,
+							onFalse: () => <AppBarChoice label="Range" value={range} options={RANGES} onChange={selectRange} />,
 							onTrue: () => null
 						})}
 					</>
