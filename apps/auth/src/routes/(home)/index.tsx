@@ -1,12 +1,12 @@
-import {useAtomMount, useAtomSet} from '@effect/atom-react'
+import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Boolean, Option, Predicate} from 'effect'
 
 import {CheckIcon, KeyIcon, XIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
+import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
-import {Loaded} from '@deslop/components-web/fallbacks'
 import {Field, FieldError} from '@deslop/components-web/ui/field'
 import {InputGroup, InputGroupAddon, InputGroupInput} from '@deslop/components-web/ui/input-group'
 
@@ -117,7 +117,10 @@ function SignInsRoute() {
 	function type(typed: string) {
 		send({_tag: 'Typed', typed})
 	}
-	return <Loaded atom={codeViewAtom}>{view => <Content {...view} onType={type} />}</Loaded>
+	return Option.match(AsyncResult.value(useAtomValue(codeViewAtom)), {
+		onNone: () => null,
+		onSome: view => <Content {...view} onType={type} />
+	})
 }
 
 export const Route = createFileRoute('/(home)/')({component: SignInsRoute})

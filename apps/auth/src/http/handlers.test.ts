@@ -2251,7 +2251,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					Array.map(session => session.client),
 					Array.sort(String.Order)
 				),
-				['Browser', 'Opencode']
+				['Browser', 'Browser', 'Opencode']
 			)
 			assert.isTrue(
 				Array.every(listed.sessions, session => session.device === undefined || session.device !== session.address)

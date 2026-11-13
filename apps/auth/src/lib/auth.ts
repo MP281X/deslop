@@ -53,29 +53,6 @@ export const accountAtom = Atom.keepAlive(
 	)
 )
 
-type AuthPage =
-	| {_tag: 'SigningOut'}
-	| {_tag: 'Request'; account: Option.Option<SignedAccount>; id: SignInCode}
-	| {_tag: 'SignIn'}
-	| {_tag: 'Signed'; account: SignedAccount}
-
-export const pageAtom = Atom.family((search: Search) =>
-	Atom.map(
-		accountAtom,
-		AsyncResult.map(account => {
-			if (Option.isSome(search['sign-out'])) return {_tag: 'SigningOut'} satisfies AuthPage
-			return Option.match(search.request, {
-				onNone: () =>
-					Option.match(account, {
-						onNone: () => ({_tag: 'SignIn'}) satisfies AuthPage,
-						onSome: signed => ({_tag: 'Signed', account: signed}) satisfies AuthPage
-					}),
-				onSome: id => ({_tag: 'Request', account, id}) satisfies AuthPage
-			})
-		})
-	)
-)
-
 const Answered = {accept: Schema.Boolean, request: PendingAuthorization}
 
 // The code the waiting page shows, typed or opened from its link, proves the request is yours: RFC 8628's device flow.

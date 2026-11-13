@@ -16,6 +16,7 @@ import {ClientId, GitHubId, SESSION_COOKIE, UserId, isDenied} from '@deslop/runt
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
+import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {Member} from '#services/people/schema.ts'
 import {People, layerIssuerAuth} from '#services/people/service.ts'
@@ -37,7 +38,21 @@ const open = Effect.gen(function* () {
 		Layer.provideMerge(layerIssuerAuth),
 		Layer.provideMerge(SignIns.layer),
 		Layer.provideMerge(People.layer),
-		Layer.provideMerge(Layer.merge(Tokens.layer, Passkeys.layer)),
+		Layer.provideMerge(
+			Layer.mergeAll(
+				Tokens.layer,
+				Passkeys.layer,
+				Layer.succeed(
+					GitHub,
+					GitHub.of({
+						cancel: () => Effect.die('Unused GitHub cancellation'),
+						finish: () => Effect.die('Unused GitHub callback'),
+						profile: () => Effect.succeed({id: GitHubId.make(42), login: 'admin', name: Option.none()}),
+						start: () => Effect.die('Unused GitHub redirect')
+					})
+				)
+			)
+		),
 		Layer.provide(Layer.succeedContext(database)),
 		Layer.provide(
 			ConfigProvider.layer(
@@ -232,16 +247,17 @@ it.layer(NodeCrypto.layer)(test => {
 	)
 
 	test.effect(
-		'shows an admin by GitHub id until their first sign-in supplies a profile',
+		'shows an admin by their GitHub profile before their first sign-in, live',
 		Effect.fnUntraced(function* () {
-			const fixture = yield* open
 			assert.deepStrictEqual(
-				Array.map(yield* first(fixture.people.watch(ADMIN)), person => `${person.name}:${person.role}`),
-				['GitHub 42:Admin']
-			)
-			yield* fixture.people.register({id: GitHubId.make(42), login: 'admin', name: Option.none()})
-			assert.deepStrictEqual(
-				Array.map(yield* first(fixture.people.watch(ADMIN)), person => `${person.name}:${person.role}`),
+				Array.map(
+					yield* first(
+						Stream.filter((yield* open).people.watch(ADMIN), listed =>
+							Array.some(listed, person => person.name === 'admin')
+						)
+					),
+					person => `${person.name}:${person.role}`
+				),
 				['admin:Admin']
 			)
 		})

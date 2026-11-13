@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, Order, Record, String, Struct, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -268,6 +268,31 @@ function PendingRow(props: {request: PendingAuthorization}) {
 	)
 }
 
+function newest(apps: readonly [SignedInApp, ...SignedInApp[]]) {
+	return Array.reduce(apps, apps[0].lastActive, (latest, app) => DateTime.max(latest, app.lastActive))
+}
+
+function clientsOf(signIns: readonly SignedInApp[]) {
+	return pipe(
+		Array.groupBy(signIns, signIn => `${signIn.client} · ${signIn.device}`),
+		Record.values,
+		Array.filter(Array.isReadonlyArrayNonEmpty),
+		Array.sort(Order.flip(Order.mapInput(DateTime.Order, newest))),
+		Array.map(group => {
+			const lastActive = newest(group)
+			return {
+				...Struct.pick(group[0], ['client', 'device', 'family', 'icon', 'kind', 'parent']),
+				address: pipe(
+					group,
+					Array.findFirst(signIn => DateTime.Equivalence(signIn.lastActive, lastActive)),
+					Option.flatMap(signIn => signIn.address)
+				),
+				lastActive
+			}
+		})
+	)
+}
+
 // A retry restarts the live sign-ins reader.
 const signInListAtom = Atom.readable(
 	get => AsyncResult.all({now: get(minuteAtom), signIns: get(appsAtom)}),
@@ -280,8 +305,9 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 	return (
 		<Loaded atom={signInListAtom}>
 			{data => {
+				const clients = clientsOf(data.signIns)
 				const checking = props.checking === true && Option.isNone(props.pending)
-				if (Array.isReadonlyArrayEmpty(data.signIns) && Option.isNone(props.pending) && !checking) {
+				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
 				}
 				return (
@@ -299,7 +325,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 									</div>
 								)
 							})}
-							{Array.map(data.signIns, client => (
+							{Array.map(clients, client => (
 								<ClientRow key={client.family} client={client} now={data.now} />
 							))}
 						</div>

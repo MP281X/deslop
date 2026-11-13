@@ -238,10 +238,10 @@ export function clientIconOf(clientId: ClientId) {
 	return pipe(
 		clientOf(clientId),
 		Option.flatMap(client =>
-			Array.findFirst(
-				client.redirects,
-				redirect => webRedirect(redirect) || Option.isSome(String.match(/^(?:stash|opm|trips)(?:-dev)?:/u)(redirect))
-			)
+			Array.findFirst(client.redirects, redirect => {
+				const protocol = new URL(redirect).protocol
+				return webRedirect(redirect) || (protocol !== 'http:' && protocol !== 'https:')
+			})
 		),
 		Option.map(redirect => {
 			const url = new URL(redirect)
@@ -251,16 +251,11 @@ export function clientIconOf(clientId: ClientId) {
 	)
 }
 
-// Both transports show the same rows, with a browser's child activity merged before grouping.
+// Every live root family remains addressable; only the page may group rows for presentation.
 export function signedInClientsOf(signIns: readonly SignedInApp[]) {
-	return pipe(
-		Array.groupBy(withChildActivity(signIns), signIn => `${signIn.client} · ${signIn.device}`),
-		Record.values,
-		Array.filter(Array.isReadonlyArrayNonEmpty),
-		Array.map(group =>
-			Array.reduce(group, group[0], Order.max(Order.mapInput(DateTime.Order, (row: SignedInApp) => row.lastActive)))
-		),
-		Array.sort(Order.flip(Order.mapInput(DateTime.Order, (row: SignedInApp) => row.lastActive)))
+	return Array.sort(
+		withChildActivity(signIns),
+		Order.flip(Order.mapInput(DateTime.Order, (row: SignedInApp) => row.lastActive))
 	)
 }
 

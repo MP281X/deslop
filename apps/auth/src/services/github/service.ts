@@ -25,6 +25,7 @@ export class GitHub extends Context.Service<
 			code: string,
 			state: OAuthState
 		) => Effect.Effect<{flow: SignInParams; profile: GitHubUser}, AuthError>
+		readonly profile: (id: GitHubId) => Effect.Effect<GitHubUser, AuthError>
 		readonly start: (flow: SignInParams) => Effect.Effect<{state: OAuthState; url: string}, AuthError>
 	}
 >()('@deslop/auth/services/github/service/GitHub') {
@@ -52,6 +53,7 @@ export class GitHub extends Context.Service<
 					finish: Effect.fn('GitHub.finish')(function* (_code: string, state: OAuthState) {
 						return {flow: Struct.omit(yield* take(state), ['verifier']), profile: DEVELOPER_PROFILE}
 					}),
+					profile: () => Effect.withSpan(Effect.succeed(DEVELOPER_PROFILE), 'GitHub.profile'),
 					start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 						const state = OAuthState.make(yield* nonce)
 						yield* flows.create(state, {...flow, verifier: Option.none()})
@@ -64,6 +66,13 @@ export class GitHub extends Context.Service<
 			const provider = yield* Config.all({
 				clientId: Config.schema(GitHubClientId, 'GITHUB_CLIENT_ID'),
 				secret: Config.Redacted('GITHUB_CLIENT_SECRET')
+			})
+			const user = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest) {
+				return yield* pipe(
+					client.execute(HttpClientRequest.setHeaders(request, HEADERS)),
+					Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser)),
+					Effect.timeout('10 seconds')
+				)
 			})
 			return GitHub.of({
 				cancel,
@@ -83,16 +92,14 @@ export class GitHub extends Context.Service<
 						Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubToken)),
 						Effect.timeout('10 seconds')
 					)
-					const profile = yield* pipe(
-						HttpClientRequest.get('https://api.github.com/user'),
-						HttpClientRequest.bearerToken(token.access_token),
-						HttpClientRequest.setHeaders(HEADERS),
-						client.execute,
-						Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubUser)),
-						Effect.timeout('10 seconds')
+					const profile = yield* user(
+						HttpClientRequest.bearerToken(HttpClientRequest.get('https://api.github.com/user'), token.access_token)
 					)
 					return {flow, profile}
 				}, asAuthError('GitHub sign-in failed')),
+				profile: Effect.fn('GitHub.profile')(function* (id: GitHubId) {
+					return yield* user(HttpClientRequest.get(`https://api.github.com/user/${id}`))
+				}, asAuthError('Cannot read the GitHub profile')),
 				start: Effect.fn('GitHub.start')(function* (flow: SignInParams) {
 					const state = OAuthState.make(yield* nonce)
 					const verifier = yield* nonce
