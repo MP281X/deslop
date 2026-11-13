@@ -61,6 +61,7 @@ import {noWallClock} from '#lint/no-wall-clock.ts'
 import {preferPredicate} from '#lint/prefer-predicate.ts'
 import {preserveErrorCause} from '#lint/preserve-error-cause.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
+import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
 import {swiftuiThemeValues} from '#lint/swiftui-theme-values.ts'
 
@@ -106,6 +107,7 @@ const SET_MESSAGE =
 const DESLOP_RULES = {'icon-weight': iconWeight}
 
 const RULES = {
+	'service-method-span': serviceMethodSpan,
 	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'module-constant': moduleConstant,

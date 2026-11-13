@@ -115,6 +115,28 @@ function customCodes(output: OxlintOutput) {
 describe('deslop Oxlint plugin', {concurrent: true}, () => {
 	it.layer(NodeServices.layer)(testApi => {
 		testApi.effect(
+			'traces public service generators without tracing callback properties',
+			Effect.fnUntraced(function* () {
+				const source = [
+					"import {Context, Effect} from 'effect'",
+					'',
+					'class Notes extends Context.Service<Notes>()("Notes", {make: Effect.gen(function* () {',
+					'const helper = {read: Effect.fnUntraced(function* () { return 1 })}',
+					'return {read: Effect.fnUntraced(function* () { return 1 }), write: Effect.fn("Notes.write")(function* () { return 2 })} // reported',
+					'})}) {}',
+					'function unrelated() { return {read: Effect.fnUntraced(function* () { return 1 })} }'
+				]
+				const result = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')})
+				assert.deepStrictEqual(
+					reportedLines(result, 'service-method-span').reported,
+					reportedLines(result, 'service-method-span').marked
+				)
+				const fixed = yield* lintSource({'services/notes/service.ts': Array.join(source, '\n')}, ['--fix'])
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Notes.read')")
+				assert.deepStrictEqual(reportedLines(fixed, 'service-method-span').reported, [])
+			})
+		)
+		testApi.effect(
 			'checks service ownership names against their folders',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
