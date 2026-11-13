@@ -37,8 +37,7 @@ const ToolHandlers = ToolContracts.toLayer(
 							...pipe(
 								server.instructions,
 								Option.filter(() => input.server === server.id),
-								pipelineSubject1363 =>
-									Option.match(pipelineSubject1363, {onNone: () => ({}), onSome: instructions => ({instructions})})
+								Option.match({onNone: () => ({}), onSome: instructions => ({instructions})})
 							),
 							...Struct.pick(server, ['id', 'status', 'tools'])
 						}))

@@ -24,11 +24,7 @@ function restarted<A, E, R>(directory: string, use: (metrics: Metrics['Service']
 function statement<A, E>(directory: string, run: (sql: SqlClient.SqlClient) => Effect.Effect<A, E>) {
 	return Effect.scoped(
 		Effect.flatMap(Layer.build(layerDataStore(directory)), context =>
-			pipe(
-				SqlClient.SqlClient,
-				pipelineSubject1114 => Effect.provideContext(pipelineSubject1114, context),
-				pipelineSubject1099 => Effect.flatMap(pipelineSubject1099, run)
-			)
+			pipe(SqlClient.SqlClient, Effect.provideContext(context), Effect.flatMap(run))
 		)
 	)
 }

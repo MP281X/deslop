@@ -42,11 +42,7 @@ function articleText(article: FxArticle) {
 	const lines = Array.filterMap(article.content.blocks, block => {
 		const attached = Array.filterMap(block.entityRanges, range =>
 			Result.fromOption(
-				pipe(
-					entities,
-					subject1753 => HashMap.get(subject1753, `${range.key}`),
-					Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url)
-				),
+				Option.flatMapNullishOr(HashMap.get(entities, `${range.key}`), entity => entity.value.data.markdown ?? entity.value.data.url),
 				() => undefined
 			)
 		)
@@ -149,8 +145,8 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 			Array.filterMap(link =>
 				pipe(
 					String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
-					subject5158 => Option.flatMap(subject5158, match => Array.get(match, 1)),
-					subject5134 => Result.fromOption(subject5134, () => undefined)
+					Option.flatMap(match => Array.get(match, 1)),
+					Result.fromOption(() => undefined)
 				)
 			),
 			Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),
@@ -196,12 +192,11 @@ export function conversationExtraction(
 							pipe(
 								Option.fromNullishOr(answer.replying_to?.status),
 								Option.flatMap(parentId => HashMap.get(plan.byId, parentId)),
-								pipelineSubject6711 =>
-									Option.match(pipelineSubject6711, {
-										onNone: () => plainText(answer.text),
-										onSome: question =>
-											`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
-									})
+								Option.match({
+									onNone: () => plainText(answer.text),
+									onSome: question =>
+										`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
+								})
 							)
 						)
 					)

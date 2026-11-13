@@ -167,7 +167,7 @@ const open = Effect.fnUntraced(function* (
 function ended(activities: readonly Activity[], index: number) {
 	return pipe(
 		activities,
-		pipelineSubject4972 => Array.get(pipelineSubject4972, index),
+		Array.get(index),
 		Option.exists(activity => Option.isSome(activity.endedAt))
 	)
 }

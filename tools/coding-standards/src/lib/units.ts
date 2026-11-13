@@ -76,7 +76,7 @@ function identifiers(node: Node): string[] {
 		...Option.toArray(
 			pipe(
 				field(node, 'name'),
-				pipelineSubject2942 => Option.filter(pipelineSubject2942, Predicate.isString),
+				Option.filter(Predicate.isString),
 				Option.filter(() => matches(/Identifier$/u)(node.type))
 			)
 		),

@@ -151,19 +151,17 @@ const noKey = Organizer.of({
 function counting(calls: Ref.Ref<number>) {
 	return Organizer.of({
 		organize: Effect.fnUntraced(function* (_userId, input) {
-			return yield* pipe(
-				calls,
-				Ref.update(count => count + 1),
-				pipelineSubject4373 =>
-					Effect.as(pipelineSubject4373, {
-						body: '',
-						definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
-						screenText: '',
-						summary: `About ${input.note.content}`,
-						tags: ['cooking', 'soup'],
-						title: 'Soup',
-						topics: 'lentils; cumin'
-					})
+			return yield* Effect.as(
+				Ref.update(calls, count => count + 1),
+				{
+					body: '',
+					definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
+					screenText: '',
+					summary: `About ${input.note.content}`,
+					tags: ['cooking', 'soup'],
+					title: 'Soup',
+					topics: 'lentils; cumin'
+				}
 			)
 		})
 	})
@@ -337,11 +335,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 						directory,
 						organizer: Organizer.of({
 							organize: Effect.fnUntraced(function* (userId) {
-								return yield* pipe(
-									reached,
-									pipelineSubject11291 => Queue.offer(pipelineSubject11291, userId),
-									pipelineSubject11276 => Effect.andThen(pipelineSubject11276, Effect.never)
-								)
+								return yield* pipe(reached, Queue.offer(userId), Effect.andThen(Effect.never))
 							})
 						}),
 						sources: recipe
@@ -356,11 +350,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory,
 				organizer: Organizer.of({
 					organize: Effect.fnUntraced(function* (userId, input) {
-						return yield* pipe(
-							reached,
-							pipelineSubject11701 => Queue.offer(pipelineSubject11701, userId),
-							pipelineSubject11686 => Effect.andThen(pipelineSubject11686, counting(calls).organize(userId, input))
-						)
+						return yield* Effect.andThen(Queue.offer(reached, userId), counting(calls).organize(userId, input))
 					})
 				}),
 				sources: recipe
@@ -488,18 +478,16 @@ it.layer(NodeServices.layer)('Notes', test => {
 				}),
 				organizer: Organizer.of({
 					organize: Effect.fnUntraced(function* (userId, input) {
-						return yield* pipe(
-							seen,
-							pipelineSubject16035 =>
-								Ref.set(
-									pipelineSubject16035,
-									Option.some({
-										images: Array.map(input.images, image => image.bytes),
-										labels: Array.map(input.images, image => image.label),
-										transcript: input.note.transcript
-									})
-								),
-							pipelineSubject16012 => Effect.andThen(pipelineSubject16012, counting(calls).organize(userId, input))
+						return yield* Effect.andThen(
+							Ref.set(
+								seen,
+								Option.some({
+									images: Array.map(input.images, image => image.bytes),
+									labels: Array.map(input.images, image => image.label),
+									transcript: input.note.transcript
+								})
+							),
+							counting(calls).organize(userId, input)
 						)
 					})
 				}),
@@ -535,20 +523,14 @@ it.layer(NodeServices.layer)('Notes', test => {
 				media: Media.of({
 					...noVideo,
 					frames: link =>
-						pipe(
-							lookups,
-							Ref.update(links => Array.append(links, link)),
-							pipelineSubject17466 => Effect.andThen(pipelineSubject17466, Effect.as(sampled.await, []))
+						Effect.andThen(
+							Ref.update(lookups, links => Array.append(links, link)),
+							Effect.as(sampled.await, [])
 						),
 					read: (_userId, link, fallback) =>
-						pipe(
-							lookups,
-							Ref.update(links => Array.append(links, `${link} | ${fallback ?? ''}`)),
-							pipelineSubject17637 =>
-								Effect.as(pipelineSubject17637, {
-									info: 'Video metadata',
-									transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')
-								})
+						Effect.as(
+							Ref.update(lookups, links => Array.append(links, `${link} | ${fallback ?? ''}`)),
+							{info: 'Video metadata', transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')}
 						)
 				}),
 				organizer: counting(calls),
@@ -638,7 +620,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* pipe(
 				5,
 				Array.makeBy(() => Effect.yieldNow),
-				pipelineSubject21217 => Effect.forEach(pipelineSubject21217, Function.identity, {concurrency: 1, discard: true})
+				Effect.forEach(Function.identity, {concurrency: 1, discard: true})
 			)
 			const [first, second] = tagList
 			assert.isDefined(first)
@@ -726,14 +708,12 @@ it.layer(NodeServices.layer)('Notes', test => {
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				organizer: Organizer.of({
 					organize: Effect.fnUntraced(function* (userId, input) {
-						return yield* pipe(
-							seen,
-							pipelineSubject24633 =>
-								Ref.set(
-									pipelineSubject24633,
-									Array.map(input.images, image => image.bytes)
-								),
-							pipelineSubject24610 => Effect.andThen(pipelineSubject24610, tagger.organize(userId, input))
+						return yield* Effect.andThen(
+							Ref.set(
+								seen,
+								Array.map(input.images, image => image.bytes)
+							),
+							tagger.organize(userId, input)
 						)
 					})
 				}),

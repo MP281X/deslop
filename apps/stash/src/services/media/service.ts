@@ -123,11 +123,7 @@ export class Media extends Context.Service<
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Path.Path, path),
 					Effect.mapError(cause =>
-						pipe(
-							cause,
-							pipelineSubject4209 => Option.liftPredicate(pipelineSubject4209, Schema.is(MediaError)),
-							Option.getOrElse(() => MediaError.make({cause, message: 'Cannot extract the media'}))
-						)
+						Option.getOrElse(Option.liftPredicate(cause, Schema.is(MediaError)), () => MediaError.make({cause, message: 'Cannot extract the media'}))
 					)
 				)
 			}
@@ -226,10 +222,9 @@ export class Media extends Context.Service<
 				}
 				return yield* whisper.withPermit(
 					Effect.gen(function* () {
-						const files = pipe(
-							yield* fs.readDirectory(work),
-							pipelineSubject7246 => Array.filter(pipelineSubject7246, String.endsWith('.flac')),
-							pipelineSubject7227 => Array.sort(pipelineSubject7227, Order.String)
+						const files = Array.sort(
+							Array.filter(yield* fs.readDirectory(work), String.endsWith('.flac')),
+							Order.String
 						)
 						return speechOnly(
 							pipe(
@@ -406,17 +401,11 @@ export class Media extends Context.Service<
 				if (sampled.exitCode !== 0) {
 					return yield* MediaError.make({message: `ffmpeg cannot sample the video: ${sampled.stderr}`})
 				}
-				return yield* pipe(
-					yield* fs.readDirectory(work),
-					pipelineSubject13826 => Array.filter(pipelineSubject13826, String.startsWith('frame-')),
-					pipelineSubject13815 => Array.sort(pipelineSubject13815, Order.String),
-					pipelineSubject13794 =>
-						Effect.forEach(
-							pipelineSubject13794,
-							(file, index) =>
-								Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
-							{concurrency: 'unbounded'}
-						)
+				return yield* Effect.forEach(
+					Array.sort(Array.filter(yield* fs.readDirectory(work), String.startsWith('frame-')), Order.String),
+					(file, index) =>
+						Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
+					{concurrency: 'unbounded'}
 				)
 			})
 

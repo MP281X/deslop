@@ -694,14 +694,10 @@ export class Tokens extends Context.Service<
 						const key = yield* hash(code)
 						const now = yield* Clock.currentTimeMillis
 						yield* Ref.update(codes, current =>
-							pipe(
-								current,
-								HashMap.filter(entry => entry.expiresAt > now),
-								pipelineSubject25899 =>
-									HashMap.set(pipelineSubject25899, key, {
-										expiresAt: now + 60_000,
-										state: {_tag: 'Fresh', owner, request}
-									})
+							HashMap.set(
+								HashMap.filter(current, entry => entry.expiresAt > now),
+								key,
+								{expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}}
 							)
 						)
 						return code

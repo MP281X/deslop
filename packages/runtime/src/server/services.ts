@@ -33,7 +33,7 @@ export const installService = Effect.fnUntraced(function* (
 	yield* fs.makeDirectory(directory, {recursive: true})
 	yield* fs.writeFileString(
 		path.join(directory, unit),
-		`[Unit]\nDescription=Deslop ${name}\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment=NODE_ENV=production\nEnvironment=${systemdArgument(`PATH=${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin`)}\nEnvironmentFile=-${String.replaceAll('%', '%%')(`${home}/.deslop/${name}.env`)}\nExecStart=${pipe(command, pipelineSubject1761 => Array.map(pipelineSubject1761, systemdArgument), Array.join(' '))}\nRestart=on-failure\nRestartSec=3\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
+		`[Unit]\nDescription=Deslop ${name}\nAfter=network-online.target\n\n[Service]\nType=simple\nEnvironment=NODE_ENV=production\nEnvironment=${systemdArgument(`PATH=${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin`)}\nEnvironmentFile=-${String.replaceAll('%', '%%')(`${home}/.deslop/${name}.env`)}\nExecStart=${Array.join(Array.map(command, systemdArgument), ' ')}\nRestart=on-failure\nRestartSec=3\nUMask=0077\n\n[Install]\nWantedBy=default.target\n`,
 		{mode: 0o600}
 	)
 	yield* systemctl('daemon-reload')
@@ -51,7 +51,7 @@ export const installUpdateService = Effect.fnUntraced(function* (name: string, c
 	const unit = `deslop-${name}-update`
 	yield* fs.writeFileString(
 		path.join(directory, `${unit}.service`),
-		`[Unit]\nDescription=Update Deslop ${name}\n\n[Service]\nType=oneshot\nExecStart=${pipe(command, pipelineSubject2698 => Array.map(pipelineSubject2698, systemdArgument), Array.join(' '))}\nUMask=0077\n`,
+		`[Unit]\nDescription=Update Deslop ${name}\n\n[Service]\nType=oneshot\nExecStart=${Array.join(Array.map(command, systemdArgument), ' ')}\nUMask=0077\n`,
 		{mode: 0o600}
 	)
 	yield* fs.writeFileString(

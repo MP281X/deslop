@@ -40,7 +40,7 @@ it.layer(NodeServices.layer)('Service update', test => {
 							Array.map(arg =>
 								pipe(
 									arg,
-									pipelineSubject1787 => Option.liftPredicate(pipelineSubject1787, Predicate.isString),
+									Option.liftPredicate(Predicate.isString),
 									Option.getOrElse(() => '<redacted>')
 								)
 							),

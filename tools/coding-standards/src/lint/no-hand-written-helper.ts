@@ -114,14 +114,13 @@ function padded(context: Context, node: ESTree.Node) {
 function capitalize(input: {context: Context; fixer: Fixer; node: ESTree.Node; text: ESTree.Node}) {
 	return pipe(
 		effectImport({context: input.context, fixer: input.fixer, name: 'String', node: input.node}),
-		subject4779 =>
-			Option.map(subject4779, imports =>
-				Array.append(
-					imports,
-					input.fixer.replaceText(input.node, `String.capitalize(${input.context.sourceCode.getText(input.text)})`)
-				)
-			),
-		subject4953 => Option.getOrElse(subject4953, () => [])
+		Option.map(imports =>
+			Array.append(
+				imports,
+				input.fixer.replaceText(input.node, `String.capitalize(${input.context.sourceCode.getText(input.text)})`)
+			)
+		),
+		Option.getOrElse(() => [])
 	)
 }
 

@@ -25,8 +25,7 @@ export const appMarks: Record<string, string> = Record.fromEntries(
 		pipe(
 			String.match(/\/(?<app>[^/]+)\/src\/routes\/icon\.svg$/u)(entry[0]),
 			Option.flatMap(match => Option.fromUndefinedOr(match.groups?.['app'])),
-			pipelineSubject828 =>
-				Option.match(pipelineSubject828, {onNone: () => [], onSome: app => [[app, entry[1]] as const]})
+			Option.match({onNone: () => [], onSome: app => [[app, entry[1]] as const]})
 		)
 	)
 )

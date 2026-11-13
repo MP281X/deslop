@@ -9,11 +9,7 @@ function instant(value?: string | null) {
 }
 
 function text(value?: string | null) {
-	return pipe(
-		Option.fromNullishOr(value),
-		pipelineSubject618 => Option.map(pipelineSubject618, String.trim),
-		pipelineSubject604 => Option.filter(pipelineSubject604, String.isNonEmpty)
-	)
+	return pipe(Option.fromNullishOr(value), Option.map(String.trim), Option.filter(String.isNonEmpty))
 }
 
 // The operation that leaves the booked airport closest to the booked time; a codeshare or a schedule change keeps the same one.
@@ -30,11 +26,7 @@ export function pickFlight(flights: FaFlights['flights'], flight: Flight) {
 				instant(candidate.scheduled_out),
 				Option.map(out => Math.abs(out - flight.departs)),
 				Option.filter(gap => gap < 12 * HOUR),
-				pipelineSubject1186 =>
-					Option.match(pipelineSubject1186, {
-						onNone: () => Result.failVoid,
-						onSome: gap => Result.succeed({candidate, gap})
-					})
+				Option.match({onNone: () => Result.failVoid, onSome: gap => Result.succeed({candidate, gap})})
 			)
 		),
 		matches => {
@@ -167,11 +159,7 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			Option.getOrElse(() => 0)
 		),
 		...Option.match(
-			pipe(
-				from,
-				pipelineSubject6183 => Option.filter(pipelineSubject6183, left),
-				Option.flatMap(stop => Option.fromNullishOr(stop.ritardo))
-			),
+			Option.flatMap(Option.filter(from, left), stop => Option.fromNullishOr(stop.ritardo)),
 			{onNone: () => ({}), onSome: departureDelay => ({departureDelay})}
 		),
 		...pipe(
@@ -179,8 +167,8 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 				at: Option.fromNullishOr(answer.oraUltimoRilevamento),
 				station: text(answer.stazioneUltimoRilevamento)
 			}),
-			subject6456 => Option.filter(subject6456, seen => seen.station !== '--'),
-			subject6443 => Option.match(subject6443, {onNone: () => ({}), onSome: lastSeen => ({lastSeen})})
+			Option.filter(seen => seen.station !== '--'),
+			Option.match({onNone: () => ({}), onSome: lastSeen => ({lastSeen})})
 		),
 		state: trainState(from, to)
 	}
@@ -240,10 +228,9 @@ export function isStale(booking: Booking, now: number) {
 	if (booking._tag === 'stay') return false
 	return pipe(
 		booking.live,
-		subject9137 => Option.filter(subject9137, live => live.state !== 'arrived'),
-		subject9188 =>
-			Option.exists(subject9188, live =>
-				Option.exists(checkEvery(booking, live.checkedAt), every => now - live.checkedAt > 2 * every + 2 * MINUTE)
-			)
+		Option.filter(live => live.state !== 'arrived'),
+		Option.exists(live =>
+			Option.exists(checkEvery(booking, live.checkedAt), every => now - live.checkedAt > 2 * every + 2 * MINUTE)
+		)
 	)
 }

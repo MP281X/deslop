@@ -118,7 +118,7 @@ export function rootVolume(text: string) {
 		String.trim(text),
 		String.split('\n'),
 		Array.drop(1),
-		pipelineSubject3445 => Array.filter(pipelineSubject3445, String.isNonEmpty),
+		Array.filter(String.isNonEmpty),
 		Array.map(line => {
 			const fields = String.split(String.trim(line), /\s+/u)
 			const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
@@ -185,12 +185,7 @@ export function sample(current: Counters, memory: string, disk: string, previous
 			})
 		),
 		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
-			pipe(
-				String.trim(load ?? ''),
-				String.split(/\s+/u),
-				pipelineSubject5790 => Array.filter(pipelineSubject5790, String.isNonEmpty),
-				Array.take(3)
-			)
+			pipe(String.trim(load ?? ''), String.split(/\s+/u), Array.filter(String.isNonEmpty), Array.take(3))
 		),
 		previous
 	)
@@ -228,7 +223,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 		Record.fromEntries(
 			pipe(
 				point.apps,
-				pipelineSubject7269 => Option.getOrElse(pipelineSubject7269, Array.empty),
+				Option.getOrElse(Array.empty),
 				Array.map(app => [app.id, app] as const)
 			)
 		)
@@ -278,12 +273,10 @@ export function rollup(point: Point, stored: readonly Sample[]) {
 	return Array.map(HistoryQuery.fields.minutes.literals, minutes => {
 		const step = SERIES[minutes]
 		const fresh: Sample = {...point, since: point.time, step}
-		return pipe(
-			buckets,
-			pipelineSubject9020 => Record.get(pipelineSubject9020, `${step}:${Math.floor(point.time / step)}`),
-			pipelineSubject9007 =>
-				Option.match(pipelineSubject9007, {onNone: () => fresh, onSome: row => merge([row, fresh])})
-		)
+		return Option.match(Record.get(buckets, `${step}:${Math.floor(point.time / step)}`), {
+			onNone: () => fresh,
+			onSome: row => merge([row, fresh])
+		})
 	})
 }
 
@@ -307,7 +300,7 @@ export function bandName(id: string, labels: Record<string, string>) {
 	if (id === 'system') return 'System'
 	return pipe(
 		labels,
-		pipelineSubject9936 => Record.get(pipelineSubject9936, id),
+		Record.get(id),
 		Option.getOrElse(() =>
 			String.replaceAll(
 				/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
@@ -380,7 +373,7 @@ export function appShares(current: AppReading, previous?: AppReading) {
 					onNonEmpty: () => ({
 						cpu: pipe(
 							(Number.sumAll(deltas) / 10_000 / elapsed) * 100,
-							pipelineSubject13253 => Number.clamp(pipelineSubject13253, {maximum: 100, minimum: 0}),
+							Number.clamp({maximum: 100, minimum: 0}),
 							Number.round(2)
 						)
 					})
@@ -413,41 +406,25 @@ function series(machine: MachineHistory, minutes: number, read: (sample: Sample)
 	return Array.makeBy(60, index =>
 		pipe(
 			Option.fromUndefinedOr(bySlot[`${index}`]),
-			pipelineSubject14111 => Option.flatMap(pipelineSubject14111, read),
-			pipelineSubject14100 => Option.map(pipelineSubject14100, value => Number.round(value, 1))
+			Option.flatMap(read),
+			Option.map(value => Number.round(value, 1))
 		)
 	)
 }
 
 function appsOf(labels: Record<string, string>, latest: Sample) {
-	const sorted = pipe(
-		latest.apps,
-		pipelineSubject14302 => Option.getOrElse(pipelineSubject14302, Array.empty),
-		Array.map(
-			app =>
-				({
-					...pipe(
-						Option.fromUndefinedOr(app.cpu),
-						subject15011 => Option.map(subject15011, value => Number.round(value, 1)),
-						subject14998 => Option.match(subject14998, {onNone: () => ({}), onSome: cpu => ({cpu})})
-					),
-					mib: Number.round(app.memory / 1024 ** 2, 0),
-					name: bandName(app.id, labels)
-				}) satisfies AppUsage
-		),
-		pipelineSubject14274 =>
-			Array.sort(
-				pipelineSubject14274,
-				pipe(
-					Order.flip(Order.Number),
-					Order.mapInput((app: AppUsage) => app.mib),
-					pipelineSubject14993 =>
-						Order.combine(
-							pipelineSubject14993,
-							Order.mapInput(Order.String, (app: AppUsage) => app.name)
-						)
-				)
-			)
+	const sorted = Array.sort(
+		Array.map(Option.getOrElse(latest.apps, Array.empty), app =>
+					({
+						...pipe(
+							Option.fromUndefinedOr(app.cpu),
+							subject15011 => Option.map(subject15011, value => Number.round(value, 1)),
+							subject14998 => Option.match(subject14998, {onNone: () => ({}), onSome: cpu => ({cpu})})
+						),
+						mib: Number.round(app.memory / 1024 ** 2, 0),
+						name: bandName(app.id, labels)
+					}) satisfies AppUsage),
+		Order.combine(pipe(Order.flip(Order.Number), Order.mapInput((app: AppUsage) => app.mib)), Order.mapInput(Order.String, (app: AppUsage) => app.name))
 	)
 	if (sorted.length <= 15) return sorted
 	const rest = Array.drop(sorted, 15)
@@ -488,8 +465,8 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 					}),
 					...pipe(
 						machine.load,
-						subject17261 => Option.liftPredicate(subject17261, Array.isReadonlyArrayNonEmpty),
-						subject17248 => Option.match(subject17248, {onNone: () => ({}), onSome: load => ({load})})
+						Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
+						Option.match({onNone: () => ({}), onSome: load => ({load})})
 					),
 					memoryGiB: Number.round(point.memoryUsed / 1024 ** 3, 1),
 					memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)

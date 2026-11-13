@@ -98,11 +98,7 @@ export function runTrace(event: WorkflowRun) {
 			...pipe(
 				event.action,
 				Option.liftPredicate(action => action === 'completed'),
-				pipelineSubject3556 =>
-					Option.match(pipelineSubject3556, {
-						onNone: () => ({}),
-						onSome: () => ({endTimeUnixNano: nanos(run.updated_at)})
-					})
+				Option.match({onNone: () => ({}), onSome: () => ({endTimeUnixNano: nanos(run.updated_at)})})
 			)
 		}
 	])
@@ -233,11 +229,7 @@ export function jobLogs(event: WorkflowJob, log: string) {
 					spanId: pipe(
 						Option.fromUndefinedOr(steps[next]),
 						Option.filter(step => line.time >= step.start),
-						pipelineSubject7963 =>
-							Option.match(pipelineSubject7963, {
-								onNone: () => jobSpanId(event.workflow_job.id),
-								onSome: step => step.spanId
-							})
+						Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
 					),
 					timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
 					traceId

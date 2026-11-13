@@ -174,15 +174,14 @@ export function Waiting(props: {account: Option.Option<SignedAccount>; id: strin
 				pipe(
 					props.account,
 					Option.filter(signed => signed.role !== 'Waiting'),
-					pipelineSubject5819 =>
-						Option.match(pipelineSubject5819, {
-							onNone: () => <CodeCard request={value.request} />,
-							onSome: () => (
-								<Suspense fallback={<SignInRowsSkeleton pending />}>
-									<SignInList pending={Option.some(value.request)} />
-								</Suspense>
-							)
-						})
+					Option.match({
+						onNone: () => <CodeCard request={value.request} />,
+						onSome: () => (
+							<Suspense fallback={<SignInRowsSkeleton pending />}>
+								<SignInList pending={Option.some(value.request)} />
+							</Suspense>
+						)
+					})
 				)
 		})
 	)

@@ -186,7 +186,7 @@ export const noNativeMethodCall = defineRule({
 				Option.flatMap(name =>
 					pipe(
 						REPLACEMENTS,
-						pipelineSubject7915 => Record.get(pipelineSubject7915, name),
+						Record.get(name),
 						Option.map(replacement => ({name, replacement}))
 					)
 				),

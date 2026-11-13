@@ -95,11 +95,7 @@ export const byStart = Order.mapInput(Order.Number, startOf)
 export function titleOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
 	if (booking._tag === 'flight') return `${booking.airlineCode} ${booking.number}`
-	const brand = pipe(
-		TRAIN_BRANDS,
-		pipelineSubject3118 => Record.get(pipelineSubject3118, String.toLowerCase(String.trim(booking.operatorName))),
-		Option.getOrElse(() => String.toUpperCase(String.slice(0, 3)(booking.operatorName)))
-	)
+	const brand = Option.getOrElse(Record.get(TRAIN_BRANDS, String.toLowerCase(String.trim(booking.operatorName))), () => String.toUpperCase(String.slice(0, 3)(booking.operatorName)))
 	return `${brand} ${booking.number}`
 }
 
@@ -212,19 +208,16 @@ export function upsert(current: BookingList, incoming: BookingList) {
 		pipe(
 			bookings,
 			Array.findFirst(existing => sameReservation(existing, booking)),
-			pipelineSubject7365 =>
-				Option.match(pipelineSubject7365, {
-					onNone: () => [[...bookings, booking], undefined] as const,
-					onSome: existing => {
-						const merged = combine(existing, booking)
-						return [
-							Array.map(bookings, item =>
-								Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})
-							),
-							undefined
-						] as const
-					}
-				})
+			Option.match({
+				onNone: () => [[...bookings, booking], undefined] as const,
+				onSome: existing => {
+					const merged = combine(existing, booking)
+					return [
+						Array.map(bookings, item => Boolean.match(item === existing, {onFalse: () => item, onTrue: () => merged})),
+						undefined
+					] as const
+				}
+			})
 		)
 	)[0]
 }
@@ -400,8 +393,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: number) {
 			flight.live,
 			Option.flatMapNullishOr(live => live.takeoffActual),
 			Option.filter(() => phase === 'airborne'),
-			pipelineSubject13212 =>
-				Option.match(pipelineSubject13212, {onNone: () => ({}), onSome: progressFrom => ({progressFrom})})
+			Option.match({onNone: () => ({}), onSome: progressFrom => ({progressFrom})})
 		),
 		arrivalNote: flight.to.city ?? flight.to.name,
 		arrivalTime: clockAt(arrivalOf(flight), flight.to.timeZone),

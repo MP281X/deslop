@@ -161,15 +161,10 @@ type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browse
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
-		return pipe(
-			BROWSERS,
-			pipelineSubject5749 => Record.get(pipelineSubject5749, props.client.name),
-			pipelineSubject5736 =>
-				Option.match(pipelineSubject5736, {
-					onNone: () => <GlobeIcon />,
-					onSome: src => <img src={src} alt="" className="size-3.5" />
-				})
-		)
+		return Option.match(Record.get(BROWSERS, props.client.name), {
+			onNone: () => <GlobeIcon />,
+			onSome: src => <img src={src} alt="" className="size-3.5" />
+		})
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
 		return <img src={claude} alt="" className="size-3.5" />
@@ -237,15 +232,14 @@ function PendingMark(props: {catalog: readonly {name: string; origin: string}[];
 		props.catalog,
 		Array.findFirst(app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)),
 		Option.map(app => app.origin),
-		pipelineSubject8396 =>
-			Option.match(pipelineSubject8396, {
-				onNone: () =>
-					Boolean.match(props.request.kind === 'Browser', {
-						onFalse: () => <HardDrivesIcon />,
-						onTrue: () => <GlobeIcon />
-					}),
-				onSome: origin => <AppIcon origin={origin} />
-			})
+		Option.match({
+			onNone: () =>
+				Boolean.match(props.request.kind === 'Browser', {
+					onFalse: () => <HardDrivesIcon />,
+					onTrue: () => <GlobeIcon />
+				}),
+			onSome: origin => <AppIcon origin={origin} />
+		})
 	)
 }
 

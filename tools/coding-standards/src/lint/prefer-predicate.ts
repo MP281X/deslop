@@ -158,8 +158,8 @@ function fix(input: {context: Context; fixer: Fixer; node: ESTree.UnaryExpressio
 	)
 	return pipe(
 		effectImport({context: input.context, fixer: input.fixer, name: 'Predicate', node: input.node}),
-		subject6130 => Option.map(subject6130, imports => Array.append(imports, replacement)),
-		subject6191 => Option.getOrElse(subject6191, () => [])
+		Option.map(imports => Array.append(imports, replacement)),
+		Option.getOrElse(() => [])
 	)
 }
 

@@ -81,18 +81,16 @@ function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 		replace: (before, after) =>
 			pipe(
 				state,
-				pipelineSubject2088 =>
-					Ref.update(
-						pipelineSubject2088,
-						Array.map(booking =>
-							pipe(
-								booking,
-								pipelineSubject2176 => Equal.equals(pipelineSubject2176, before),
-								pipelineSubject2162 => Boolean.match(pipelineSubject2162, {onFalse: () => booking, onTrue: () => after})
-							)
+				Ref.update(
+					Array.map(booking =>
+						pipe(
+							booking,
+							pipelineSubject2176 => Equal.equals(pipelineSubject2176, before),
+							Boolean.match({onFalse: () => booking, onTrue: () => after})
 						)
-					),
-				pipelineSubject2068 => Effect.andThen(pipelineSubject2068, Effect.undefined)
+					)
+				),
+				Effect.andThen(Effect.undefined)
 			),
 		save: () => Effect.undefined,
 		watch: Stream.never
@@ -128,14 +126,9 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state, listed),
 				HttpClient.make(request =>
-					pipe(
-						calls,
-						Ref.update(count => count + 1),
-						pipelineSubject3527 =>
-							Effect.as(
-								pipelineSubject3527,
-								HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
-							)
+					Effect.as(
+						Ref.update(calls, count => count + 1),
+						HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
 					)
 				)
 			)
@@ -242,11 +235,9 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state),
 				HttpClient.make(request =>
-					pipe(
-						calls,
-						Ref.update(count => count + 1),
-						pipelineSubject7209 =>
-							Effect.as(pipelineSubject7209, HttpClientResponse.fromWeb(request, Response.json({flights: []})))
+					Effect.as(
+						Ref.update(calls, count => count + 1),
+						HttpClientResponse.fromWeb(request, Response.json({flights: []}))
 					)
 				)
 			)

@@ -33,11 +33,10 @@ export const staleSinceAtom = Atom.family((readers: readonly Atom.Atom<AsyncResu
 					if (!AsyncResult.isFailure(result) || Option.isNone(AsyncResult.value(result))) return []
 					return Option.toArray(get(problemSinceAtom(reader)))
 				}),
-				pipelineSubject1428 =>
-					Array.match(pipelineSubject1428, {
-						onEmpty: () => Option.none<number>(),
-						onNonEmpty: ages => Option.some(Array.min(ages, Order.Number))
-					})
+				Array.match({
+					onEmpty: () => Option.none<number>(),
+					onNonEmpty: ages => Option.some(Array.min(ages, Order.Number))
+				})
 			),
 		refresh => Array.forEach(readers, reader => refresh(reader))
 	)
@@ -55,7 +54,7 @@ const ageAtom = Atom.family((identity: number | string) =>
 								(now -
 									pipe(
 										Option.some(identity),
-										pipelineSubject2233 => Option.filter(pipelineSubject2233, Predicate.isNumber),
+										Option.filter(Predicate.isNumber),
 										Option.getOrElse(() => started)
 									)) /
 									1000

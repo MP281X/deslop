@@ -95,11 +95,10 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				found,
 				Option.flatMap(place => Option.fromUndefinedOr(place.timeZone)),
 				Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')),
-				pipelineSubject3522 =>
-					Option.match(pipelineSubject3522, {
-						onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
-						onSome: Effect.succeed
-					})
+				Option.match({
+					onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
+					onSome: Effect.succeed
+				})
 			)
 			return {...Option.getOrElse(found, () => Place.make({name})), timeZone}
 		})
@@ -164,21 +163,15 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			yield* Effect.forEach(
 				upsert(current, incoming),
 				booking =>
-					pipe(
-						stored,
-						pipelineSubject6165 => Record.get(pipelineSubject6165, booking.id),
-						pipelineSubject6152 =>
-							Option.match(pipelineSubject6152, {
-								onNone: () => insert(booking),
-								onSome: before =>
-									pipe(
-										before,
-										pipelineSubject6395 => Equal.equals(pipelineSubject6395, booking),
-										pipelineSubject6381 =>
-											Boolean.match(pipelineSubject6381, {onFalse: () => update(booking), onTrue: () => Effect.void})
-									)
-							})
-					),
+					Option.match(Record.get(stored, booking.id), {
+						onNone: () => insert(booking),
+						onSome: before =>
+							pipe(
+								before,
+								pipelineSubject6395 => Equal.equals(pipelineSubject6395, booking),
+								Boolean.match({onFalse: () => update(booking), onTrue: () => Effect.void})
+							)
+					}),
 				{concurrency: 1, discard: true}
 			)
 		})
@@ -203,8 +196,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 						pipe(
 							current,
 							Array.some(row => Equal.equals(row, before)),
-							pipelineSubject7254 =>
-								Boolean.match(pipelineSubject7254, {onFalse: () => Effect.void, onTrue: () => update(after)})
+							Boolean.match({onFalse: () => Effect.void, onTrue: () => update(after)})
 						)
 					),
 					Reactivity.mutation(['bookings']),

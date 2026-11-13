@@ -41,19 +41,12 @@ function rank(row: Row) {
 	return 2
 }
 
-export const order = pipe(
-	Order.Number,
-	pipelineSubject1706 => Order.mapInput(pipelineSubject1706, rank),
-	pipelineSubject1689 =>
-		Order.combine(
-			pipelineSubject1689,
-			Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
-		),
-	pipelineSubject1673 =>
-		Order.combine(
-			pipelineSubject1673,
-			Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
-		)
+export const order = Order.combine(
+	Order.combine(
+		Order.mapInput(Order.Number, rank),
+		Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
+	),
+	Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
 )
 
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
@@ -78,7 +71,7 @@ export function ranged(rows: readonly Row[], minutes: number, history?: MachineH
 		Array.flatMap(history.samples, sample =>
 			pipe(
 				sample.apps,
-				pipelineSubject3011 => Option.getOrElse(pipelineSubject3011, Array.empty),
+				Option.getOrElse(Array.empty),
 				Array.map(app => app.id)
 			)
 		)

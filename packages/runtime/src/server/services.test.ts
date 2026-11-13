@@ -32,26 +32,21 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 			const started = yield* Queue.unbounded<void>()
 			const spawner = ChildProcessSpawner.make(() =>
 				Effect.acquireRelease(
-					pipe(
-						started,
-						pipelineSubject831 => Queue.offer(pipelineSubject831, undefined),
-						pipelineSubject814 =>
-							Effect.as(
-								pipelineSubject814,
-								ChildProcessSpawner.makeHandle({
-									all: Stream.empty,
-									exitCode: Effect.never,
-									getInputFd: () => Sink.drain,
-									getOutputFd: () => Stream.empty,
-									isRunning: Effect.succeed(true),
-									kill: () => Effect.void,
-									pid: ChildProcessSpawner.ProcessId(1),
-									stderr: Stream.empty,
-									stdin: Sink.drain,
-									stdout: Stream.empty,
-									unref: Effect.succeed(Effect.void)
-								})
-							)
+					Effect.as(
+						Queue.offer(started, undefined),
+						ChildProcessSpawner.makeHandle({
+							all: Stream.empty,
+							exitCode: Effect.never,
+							getInputFd: () => Sink.drain,
+							getOutputFd: () => Stream.empty,
+							isRunning: Effect.succeed(true),
+							kill: () => Effect.void,
+							pid: ChildProcessSpawner.ProcessId(1),
+							stderr: Stream.empty,
+							stdin: Sink.drain,
+							stdout: Stream.empty,
+							unref: Effect.succeed(Effect.void)
+						})
 					),
 					() => Ref.set(released, true)
 				)
@@ -86,7 +81,7 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 								...Array.map(command.args, arg =>
 									pipe(
 										arg,
-										pipelineSubject2346 => Option.liftPredicate(pipelineSubject2346, Predicate.isString),
+										Option.liftPredicate(Predicate.isString),
 										Option.getOrElse(() => '<redacted>')
 									)
 								)

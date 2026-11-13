@@ -131,10 +131,7 @@ function server<A, E>(app: App<A, E>) {
 		HttpRouter.serve(
 			pipe(
 				Option.match(Option.fromUndefinedOr(app.auth), {
-					onNone: () =>
-						pipe(routes, Layer.merge(layerSessionRoutes), pipelineSubject4548 =>
-							Layer.provide(pipelineSubject4548, Auth.layer)
-						),
+					onNone: () => Layer.provide(Layer.merge(routes, layerSessionRoutes), Auth.layer),
 					onSome: auth => Layer.provide(routes, auth)
 				}),
 				Layer.provideMerge(AiGateway.layer),

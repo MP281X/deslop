@@ -112,7 +112,7 @@ export function agentStatus(name: string) {
 				Array.filter(line =>
 					Option.isSome(String.match(/^\s*(?:path|state|pid|last exit code|last terminating signal) =/u)(line))
 				),
-				pipelineSubject4395 => Array.map(pipelineSubject4395, String.trim),
+				Array.map(String.trim),
 				Array.join('\n')
 			)}\n`
 	)

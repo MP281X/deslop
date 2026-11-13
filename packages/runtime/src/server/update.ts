@@ -63,10 +63,10 @@ export const updateRelease = Effect.fnUntraced(function* (name: string) {
 	yield* activateRelease(name, path.join(directory, 'node_modules', '@deslop', name))
 	yield* restartService(name)
 	const kept = [latest, ...Option.toArray(Option.map(previous, link => path.basename(path.resolve(link, '../../..'))))]
-	yield* pipe(yield* fs.readDirectory(path.join(root, 'releases')), Array.difference(kept), pipelineSubject2771 =>
-		Effect.forEach(pipelineSubject2771, entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}), {
-			concurrency: 1
-		})
+	yield* pipe(
+		yield* fs.readDirectory(path.join(root, 'releases')),
+		Array.difference(kept),
+		Effect.forEach(entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}), {concurrency: 1})
 	)
 	return `Updated ${name} from ${running} to ${latest}\n`
 })

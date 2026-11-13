@@ -221,19 +221,11 @@ export class Inventory extends Context.Service<
 						id: `${worker}:${scope}:${row.unit}`,
 						kind: 'service',
 						name: row.unit,
-						...pipe(
-							scheduled,
-							pipelineSubject7379 => HashMap.get(pipelineSubject7379, row.unit),
-							pipelineSubject7366 =>
-								Option.match(pipelineSubject7366, {
-									onNone: () => ({}),
-									onSome: next =>
-										Option.match(next, {
-											onNone: () => ({scheduled: true}),
-											onSome: time => ({next: time, scheduled: true})
-										})
-								})
-						),
+						...Option.match(HashMap.get(scheduled, row.unit), {
+							onNone: () => ({}),
+							onSome: next =>
+								Option.match(next, {onNone: () => ({scheduled: true}), onSome: time => ({next: time, scheduled: true})})
+						}),
 						scope,
 						state: `${row.active} · ${row.sub}`,
 						url: '',
@@ -247,11 +239,8 @@ export class Inventory extends Context.Service<
 					pipe(
 						text,
 						String.split('\n'),
-						pipelineSubject7836 => Array.filter(pipelineSubject7836, String.isNonEmpty),
-						pipelineSubject7814 =>
-							Effect.forEach(pipelineSubject7814, line => Schema.decodeEffect(Schema.fromJsonString(Container))(line), {
-								concurrency: 1
-							})
+						Array.filter(String.isNonEmpty),
+						Effect.forEach(line => Schema.decodeEffect(Schema.fromJsonString(Container))(line), {concurrency: 1})
 					)
 				),
 				Effect.map(rows =>
@@ -347,11 +336,8 @@ export class Inventory extends Context.Service<
 						Array.getSomes(
 							pipe(
 								launchd.agents,
-								subject11493 => Result.getOrElse(subject11493, () => []),
-								subject11474 =>
-									Array.map(subject11474, agent =>
-										Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
-									)
+								Result.getOrElse(() => []),
+								Array.map(agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const))
 							)
 						)
 					)
@@ -398,21 +384,25 @@ export class Inventory extends Context.Service<
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
 								portItems(lsofSockets(text), worker, http, {
 									cwd: Effect.fnUntraced(function* (processId) {
-										return pipe(
-											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
-											Option.getOrElse(() => ''),
-											String.split('\n'),
-											pipelineSubject13168 => Array.findFirst(pipelineSubject13168, String.startsWith('n')),
-											pipelineSubject13157 => Option.map(pipelineSubject13157, String.slice(1))
+										return Option.map(
+											Array.findFirst(
+												pipe(
+													yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
+													Option.getOrElse(() => ''),
+													String.split('\n')
+												),
+												String.startsWith('n')
+											),
+											String.slice(1)
 										)
 									}),
 									unit: processId =>
 										Effect.succeed(
 											pipe(
 												owned,
-												subject13897 => Array.findFirst(subject13897, record => `${record.process.pid}` === processId),
-												subject13975 => Option.map(subject13975, record => record.unit),
-												subject14022 => Option.getOrElse(subject14022, () => '')
+												Array.findFirst(record => `${record.process.pid}` === processId),
+												Option.map(record => record.unit),
+												Option.getOrElse(() => '')
 											)
 										)
 								})
@@ -500,8 +490,7 @@ export class Inventory extends Context.Service<
 														...pipe(
 															String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)(handler[1].Proxy ?? ''),
 															Option.flatMap(match => Number.parse(match[1] ?? '')),
-															pipelineSubject16997 =>
-																Option.match(pipelineSubject16997, {onNone: () => ({}), onSome: port => ({port})})
+															Option.match({onNone: () => ({}), onSome: port => ({port})})
 														),
 														state: 'observed',
 														url: `https://${site[0]}${handler[0]}`,

@@ -46,8 +46,10 @@ function lsofSocket(file: OpenFile) {
 // A Mac's listening sockets from `lsof -nP +c0 -iTCP -sTCP:LISTEN -iUDP -F pctPnT`, read as `socketLine` reads ss: an IPv4 wildcard is 0.0.0.0, an IPv6 one `*`, and a socket that several descriptors share is listed once.
 export function lsofSockets(text: string) {
 	const empty: OpenFile = {address: '', pid: '', process: '', protocol: '', state: '', type: ''}
-	const scanned = pipe(text, String.split('\n'), pipelineSubject1818 =>
-		Array.reduce(pipelineSubject1818, {file: empty, sockets: Array.empty<Socket>()}, (scan, line) => {
+	const scanned = pipe(
+		text,
+		String.split('\n'),
+		Array.reduce({file: empty, sockets: Array.empty<Socket>()}, (scan, line) => {
 			const value = String.slice(1)(line)
 			const flushed = [...scan.sockets, ...Option.toArray(lsofSocket(scan.file))]
 			if (String.startsWith('p')(line)) return {file: {...empty, pid: value}, sockets: flushed}

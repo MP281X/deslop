@@ -22,10 +22,9 @@ it.effect(
 						HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
 							request =>
 								Effect.flatMap(request, input =>
-									pipe(
-										calls,
-										Ref.update(count => count + 1),
-										pipelineSubject1028 => Effect.as(pipelineSubject1028, HttpClientResponse.fromWeb(input, response))
+									Effect.as(
+										Ref.update(calls, count => count + 1),
+										HttpClientResponse.fromWeb(input, response)
 									)
 								),
 							Effect.succeed
@@ -51,15 +50,7 @@ it.effect(
 						Layer.succeed(
 							HttpClient.HttpClient,
 							HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
-								request =>
-									Effect.andThen(
-										request,
-										pipe(
-											entered,
-											pipelineSubject1894 => Queue.offer(pipelineSubject1894, undefined),
-											pipelineSubject1879 => Effect.andThen(pipelineSubject1879, Effect.never)
-										)
-									),
+								request => Effect.andThen(request, Effect.andThen(Queue.offer(entered, undefined), Effect.never)),
 								Effect.succeed
 							)
 						)

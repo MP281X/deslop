@@ -529,8 +529,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								pipe(
 									Option.fromUndefinedOr(input.next),
 									Option.filter(page => returnable(page, origin)),
-									pipelineSubject16723 =>
-										Option.match(pipelineSubject16723, {onNone: () => ({}), onSome: next => ({next})})
+									Option.match({onNone: () => ({}), onSome: next => ({next})})
 								)
 							),
 							SESSION_COOKIE,

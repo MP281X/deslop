@@ -89,8 +89,8 @@ function Body(props: {text: string}) {
 			{pipe(
 				props.text,
 				String.split('\n'),
-				pipelineSubject2628 => Array.map(pipelineSubject2628, String.trim),
-				pipelineSubject2615 => Array.filter(pipelineSubject2615, String.isNonEmpty),
+				Array.map(String.trim),
+				Array.filter(String.isNonEmpty),
 				Array.map((line, index) =>
 					pipe(
 						Match.value(line),
@@ -338,62 +338,61 @@ function NoteScreen(props: {
 	return pipe(
 		props.notes,
 		Array.findFirst(item => item.id === props.id),
-		pipelineSubject10185 =>
-			Option.match(pipelineSubject10185, {
-				onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
-				onSome: item => (
-					<Toolbar>
-						<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
-						<Toolbar.Content>
-							{Option.match(item.url, {
-								onNone: () => undefined,
-								onSome: url => (
-									<ToolbarItem placement="topBarTrailing">
-										{Option.match(brandOf(item), {
-											onNone: () => (
-												<Button
-													label="Open Link"
-													systemImage="arrow.up.right"
-													onPress={() => openLink(url)}
-													modifiers={[labelStyle('iconOnly')]}
-												/>
-											),
-											onSome: brand => (
-												<Button
-													onPress={() => openLink(url)}
-													modifiers={[
-														accessibilityLabel(
-															Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
-														)
-													]}
-												>
-													<BrandLogo brand={kinds[brand].logo} size={20} />
-												</Button>
-											)
-										})}
-									</ToolbarItem>
-								)
-							})}
-							<ToolbarItem placement="topBarTrailing">
-								<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-									{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
-									<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
-									<Button
-										label="Delete"
-										systemImage="trash"
-										role="destructive"
-										onPress={() => {
-											remove(props.id)
-											props.onClose()
-										}}
-										modifiers={[tint(colors.destructive)]}
-									/>
-								</Menu>
-							</ToolbarItem>
-						</Toolbar.Content>
-					</Toolbar>
-				)
-			})
+		Option.match({
+			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
+			onSome: item => (
+				<Toolbar>
+					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
+					<Toolbar.Content>
+						{Option.match(item.url, {
+							onNone: () => undefined,
+							onSome: url => (
+								<ToolbarItem placement="topBarTrailing">
+									{Option.match(brandOf(item), {
+										onNone: () => (
+											<Button
+												label="Open Link"
+												systemImage="arrow.up.right"
+												onPress={() => openLink(url)}
+												modifiers={[labelStyle('iconOnly')]}
+											/>
+										),
+										onSome: brand => (
+											<Button
+												onPress={() => openLink(url)}
+												modifiers={[
+													accessibilityLabel(
+														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
+													)
+												]}
+											>
+												<BrandLogo brand={kinds[brand].logo} size={20} />
+											</Button>
+										)
+									})}
+								</ToolbarItem>
+							)
+						})}
+						<ToolbarItem placement="topBarTrailing">
+							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
+								{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
+								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
+								<Button
+									label="Delete"
+									systemImage="trash"
+									role="destructive"
+									onPress={() => {
+										remove(props.id)
+										props.onClose()
+									}}
+									modifiers={[tint(colors.destructive)]}
+								/>
+							</Menu>
+						</ToolbarItem>
+					</Toolbar.Content>
+				</Toolbar>
+			)
+		})
 	)
 }
 

@@ -53,16 +53,10 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 		signIns,
 		Array.filter(signIn => Option.isNone(signIn.parent)),
 		Array.map(signIn => {
-			const latest = pipe(
-				children,
-				pipelineSubject2415 => Record.get(pipelineSubject2415, signIn.family),
-				option => Option.getOrElse(option, () => []),
-				pipelineSubject2380 =>
-					Array.reduce(
-						pipelineSubject2380,
-						signIn,
-						Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
-					)
+			const latest = Array.reduce(
+				Option.getOrElse(Record.get(children, signIn.family), () => []),
+				signIn,
+				Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
 			)
 			return {
 				address: latest.address,
@@ -245,7 +239,7 @@ export function matchingRedirect(client: ClientRegistration, requested: Option.O
 						Option.flatMap(portless(redirect), saved => Option.filter(portless(asked), target => target === saved))
 					)
 				}),
-				pipelineSubject8416 => Option.as(pipelineSubject8416, asked)
+				Option.as(asked)
 			)
 	})
 }
@@ -274,7 +268,7 @@ export const clientRequest = Effect.fnUntraced(function* (
 		!pipe(
 			params.scope ?? '',
 			String.split(' '),
-			pipelineSubject9681 => Array.filter(pipelineSubject9681, String.isNonEmpty),
+			Array.filter(String.isNonEmpty),
 			Array.every(scope => scope === 'deslop' || scope === 'offline_access')
 		)
 	) {

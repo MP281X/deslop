@@ -134,17 +134,16 @@ export function pageText(html: string, url: URL) {
 					Array.filterMap(link =>
 						pipe(
 							Option.fromUndefinedOr(link.attr('href')),
-							subject4536 =>
-								Option.map(subject4536, href => ({
-									href,
-									size: pipe(
-										String.match(/(\d+)x\d+/u)(link.attr('sizes') ?? ''),
-										Option.flatMap(match => Array.get(match, 1)),
-										Option.flatMap(Number.parse),
-										Option.getOrElse(() => 0)
-									)
-								})),
-							subject4510 => Result.fromOption(subject4510, () => undefined)
+							Option.map(href => ({
+								href,
+								size: pipe(
+									String.match(/(\d+)x\d+/u)(link.attr('sizes') ?? ''),
+									Option.flatMap(match => Array.get(match, 1)),
+									Option.flatMap(Number.parse),
+									Option.getOrElse(() => 0)
+								)
+							})),
+							Result.fromOption(() => undefined)
 						)
 					),
 					Option.liftPredicate(Array.isArrayNonEmpty),

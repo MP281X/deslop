@@ -11,11 +11,7 @@ import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 
 export function placeLine(place: Place) {
-	return pipe(
-		[place.name, place.address ?? place.city ?? ''],
-		pipelineSubject520 => Array.filter(pipelineSubject520, String.isNonEmpty),
-		Array.join(', ')
-	)
+	return pipe([place.name, place.address ?? place.city ?? ''], Array.filter(String.isNonEmpty), Array.join(', '))
 }
 
 type Coordinates = {latitude: number; longitude: number}
@@ -46,11 +42,10 @@ export function ridesOf(booking: Booking, bookings: BookingList, now: number) {
 	return pipe(
 		stay,
 		Option.filter(() => now > departureOf(booking) - 30 * MINUTE),
-		pipelineSubject1591 =>
-			Option.match(pipelineSubject1591, {
-				onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
-				onSome: next => [next] satisfies Ride[]
-			})
+		Option.match({
+			onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
+			onSome: next => [next] satisfies Ride[]
+		})
 	)
 }
 

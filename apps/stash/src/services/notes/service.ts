@@ -348,14 +348,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		const keepImages = Effect.fnUntraced(function* (note: Note, page: Extraction) {
 			yield* pipe(
 				Option.toArray(Option.filter(page.image, () => Option.isNone(note.image))),
-				pipelineSubject12160 =>
-					Effect.forEach(
-						pipelineSubject12160,
-						image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
-						{concurrency: 'unbounded', discard: true}
-					),
-				pipelineSubject12146 =>
-					Effect.ignore(pipelineSubject12146, {log: 'Warn', message: 'The preview image was not kept'})
+				Effect.forEach(image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)), {
+					concurrency: 'unbounded',
+					discard: true
+				}),
+				Effect.ignore({log: 'Warn', message: 'The preview image was not kept'})
 			)
 			const slides = yield* Effect.forEach(
 				page.slides ?? [],
@@ -394,11 +391,10 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 										...pipe(
 											read,
 											Option.filter(() => sourceOf(input.url) !== 'X' || input.useInfo),
-											pipelineSubject13782 =>
-												Option.match(pipelineSubject13782, {
-													onNone: () => ({}),
-													onSome: details => ({content: details.info, issue: Option.none()})
-												})
+											Option.match({
+												onNone: () => ({}),
+												onSome: details => ({content: details.info, issue: Option.none()})
+											})
 										),
 										transcript: Option.orElse(transcript, () => item.transcript)
 									}))
@@ -425,7 +421,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					onSuccess: page => ({
 						author: pipe(
 							page.author,
-							pipelineSubject14773 => Option.filter(pipelineSubject14773, String.isNonEmpty),
+							Option.filter(String.isNonEmpty),
 							Option.orElse(() => item.author)
 						),
 						content: page.text,
@@ -444,25 +440,23 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			// A video site can refuse the page reader and still answer yt-dlp; a read X post names its video or has none.
 			return yield* pipe(
 				extraction,
-				subject15673 =>
-					Result.match(subject15673, {
-						onFailure: () => Option.liftPredicate(link, hasVideo),
-						onSuccess: page =>
-							Option.orElse(Option.fromUndefinedOr(page.video), () =>
-								Option.liftPredicate(page.url, address => hasVideo(address) && sourceOf(address) !== 'X')
-							)
-					}),
-				subject15655 =>
-					Option.match(subject15655, {
-						onNone: () => tag(userId, note.id, slides),
-						onSome: video =>
-							watch(userId, note, {
-								slides,
-								url: Result.match(extraction, {onFailure: () => link, onSuccess: page => page.url}),
-								useInfo: Result.isFailure(extraction),
-								video
-							})
-					})
+				Result.match({
+					onFailure: () => Option.liftPredicate(link, hasVideo),
+					onSuccess: page =>
+						Option.orElse(Option.fromUndefinedOr(page.video), () =>
+							Option.liftPredicate(page.url, address => hasVideo(address) && sourceOf(address) !== 'X')
+						)
+				}),
+				Option.match({
+					onNone: () => tag(userId, note.id, slides),
+					onSome: video =>
+						watch(userId, note, {
+							slides,
+							url: Result.match(extraction, {onFailure: () => link, onSuccess: page => page.url}),
+							useInfo: Result.isFailure(extraction),
+							video
+						})
+				})
 			)
 		})
 
@@ -472,23 +466,17 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			const stills = yield* optional('No video frames', Array.empty<Still>)(media.fileFrames(stored))
 			yield* pipe(
 				Array.head(stills),
-				pipelineSubject16356 =>
-					Option.match(pipelineSubject16356, {
-						onNone: () => Effect.void,
-						onSome: frame => storeImage(note.id, {bytes: frame.bytes, type: 'image/jpeg'})
-					}),
-				pipelineSubject16342 =>
-					Effect.ignore(pipelineSubject16342, {log: 'Warn', message: 'The video preview was not kept'})
+				Option.match({
+					onNone: () => Effect.void,
+					onSome: frame => storeImage(note.id, {bytes: frame.bytes, type: 'image/jpeg'})
+				}),
+				Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
 			)
 			yield* Option.match(yield* optional('No transcript', Option.none<string>)(media.fileTranscript(userId, stored)), {
 				onNone: () => Effect.void,
 				onSome: text => change(note.id, () => ({transcript: Option.some(text)}))
 			})
-			yield* tag(
-				userId,
-				note.id,
-				pipe(stills, Array.drop(1), pipelineSubject16826 => Array.map(pipelineSubject16826, still))
-			)
+			yield* tag(userId, note.id, Array.map(Array.drop(stills, 1), still))
 		})
 
 		function start(userId: string, note: Note) {
@@ -634,12 +622,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								pipe(
 									withWords(found, text),
 									Option.filter(() => found.id !== input.id),
-									pipelineSubject21971 =>
-										Option.match(pipelineSubject21971, {
-											onNone: () => Effect.succeed({fresh: false, note: found}),
-											onSome: merged =>
-												Effect.map(notes.update({...editable(found), text: merged}), note => ({fresh: false, note}))
-										})
+									Option.match({
+										onNone: () => Effect.succeed({fresh: false, note: found}),
+										onSome: merged =>
+											Effect.map(notes.update({...editable(found), text: merged}), note => ({fresh: false, note}))
+									})
 								)
 						})
 					),

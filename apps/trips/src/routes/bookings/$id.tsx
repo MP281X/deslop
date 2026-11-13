@@ -262,79 +262,76 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 	return pipe(
 		props.bookings,
 		Array.findFirst(booking => booking.id === props.id),
-		pipelineSubject7867 =>
-			Option.match(pipelineSubject7867, {
-				onNone: () => (
-					<Empty
-						systemImage="trash"
-						label="Booking Deleted"
-						modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}
-					/>
-				),
-				onSome: booking => {
-					const status = statusOf(booking, now)
-					return (
-						<Toolbar modifiers={[navigationTitle(titleOf(booking)), navigationBarTitleDisplayMode('inline')]}>
-							<Form
-								modifiers={[
-									tint(primary),
-									// A failed refresh already alerted, and the exit never rejects, so the pull ends either way.
-									refreshable(async () => {
-										await refresh(booking.id)
-									})
-								]}
-							>
-								<Section>
-									<VStack
-										alignment="leading"
-										spacing={space[3]}
-										modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}
-									>
-										<VStack alignment="leading" spacing={space[2]}>
-											<Text
-												modifiers={[font({textStyle: 'title2', weight: 'bold'}), foregroundStyle(colors.foreground)]}
-											>
-												{routeOf(booking)}
-											</Text>
-											{Option.match(problemOf(booking, status, now), {
-												onNone: () => undefined,
-												onSome: problem => (
-													<HStack spacing={space[2]}>
-														<StatusDot status={problem.status} />
-														<Text modifiers={[text.title, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
-													</HStack>
-												)
-											})}
-										</VStack>
-										<Divider />
-										{booking._tag === 'flight' && <FlightEssentials flight={booking} />}
-										{booking._tag === 'train' && <TrainEssentials train={booking} />}
-										{booking._tag === 'stay' && <StayEssentials stay={booking} />}
+		Option.match({
+			onNone: () => (
+				<Empty
+					systemImage="trash"
+					label="Booking Deleted"
+					modifiers={[navigationTitle(''), navigationBarTitleDisplayMode('inline')]}
+				/>
+			),
+			onSome: booking => {
+				const status = statusOf(booking, now)
+				return (
+					<Toolbar modifiers={[navigationTitle(titleOf(booking)), navigationBarTitleDisplayMode('inline')]}>
+						<Form
+							modifiers={[
+								tint(primary),
+								// A failed refresh already alerted, and the exit never rejects, so the pull ends either way.
+								refreshable(async () => {
+									await refresh(booking.id)
+								})
+							]}
+						>
+							<Section>
+								<VStack
+									alignment="leading"
+									spacing={space[3]}
+									modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}
+								>
+									<VStack alignment="leading" spacing={space[2]}>
+										<Text modifiers={[font({textStyle: 'title2', weight: 'bold'}), foregroundStyle(colors.foreground)]}>
+											{routeOf(booking)}
+										</Text>
+										{Option.match(problemOf(booking, status, now), {
+											onNone: () => undefined,
+											onSome: problem => (
+												<HStack spacing={space[2]}>
+													<StatusDot status={problem.status} />
+													<Text modifiers={[text.title, foregroundStyle(tones[problem.tone])]}>{problem.label}</Text>
+												</HStack>
+											)
+										})}
 									</VStack>
-								</Section>
-								{booking._tag === 'flight' && <FlightFields flight={booking} />}
-								{booking._tag === 'train' && <TrainFields train={booking} />}
-								{booking._tag === 'stay' && <StayFields stay={booking} />}
-								{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
-							</Form>
-							<Toolbar.Content>
-								<ToolbarItem placement="topBarTrailing">
-									<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-										<Button
-											label="Delete"
-											systemImage="trash"
-											role="destructive"
-											onPress={() => {
-												remove(props.id)
-												props.onClose()
-											}}
-										/>
-									</Menu>
-								</ToolbarItem>
-							</Toolbar.Content>
-						</Toolbar>
-					)
-				}
-			})
+									<Divider />
+									{booking._tag === 'flight' && <FlightEssentials flight={booking} />}
+									{booking._tag === 'train' && <TrainEssentials train={booking} />}
+									{booking._tag === 'stay' && <StayEssentials stay={booking} />}
+								</VStack>
+							</Section>
+							{booking._tag === 'flight' && <FlightFields flight={booking} />}
+							{booking._tag === 'train' && <TrainFields train={booking} />}
+							{booking._tag === 'stay' && <StayFields stay={booking} />}
+							{booking.status === 'confirmed' && <Rides booking={booking} bookings={props.bookings} now={now} />}
+						</Form>
+						<Toolbar.Content>
+							<ToolbarItem placement="topBarTrailing">
+								<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
+									<Button
+										label="Delete"
+										systemImage="trash"
+										role="destructive"
+										onPress={() => {
+											remove(props.id)
+											props.onClose()
+										}}
+									/>
+								</Menu>
+							</ToolbarItem>
+						</Toolbar.Content>
+					</Toolbar>
+				)
+			}
+		})
 	)
 }

@@ -93,7 +93,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 					<ItemDescription>
 						{pipe(
 							[props.chapter.title, postedOn(props.chapter.postedAt)],
-							pipelineSubject3000 => Array.filter(pipelineSubject3000, String.isNonEmpty),
+							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
 						)}
 					</ItemDescription>
@@ -102,20 +102,19 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 				{pipe(
 					props.chapter.reading,
 					Option.filter(reading => !reading.done && reading.page > 0),
-					pipelineSubject3305 =>
-						Option.match(pipelineSubject3305, {
-							onNone: () => null,
-							onSome: reading => (
-								<ItemActions>
-									<ChapterProgress
-										fraction={reading.page / Number.max(props.chapter.pages.length, 1)}
-										accent={primary}
-										read={colors.foreground}
-										modifiers={[frame({height: 14, width: 14})]}
-									/>
-								</ItemActions>
-							)
-						})
+					Option.match({
+						onNone: () => null,
+						onSome: reading => (
+							<ItemActions>
+								<ChapterProgress
+									fraction={reading.page / Number.max(props.chapter.pages.length, 1)}
+									accent={primary}
+									read={colors.foreground}
+									modifiers={[frame({height: 14, width: 14})]}
+								/>
+							</ItemActions>
+						)
+					})
 				)}
 			</Item>
 			<SwipeActions.Actions edge="leading">
@@ -149,31 +148,26 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
-				return pipe(
-					chapters,
-					pipelineSubject4852 => Array.sort(pipelineSubject4852, Order.flip(byNumber)),
-					Array.filter(
-						chapter =>
-							String.startsWith(needle)(`${chapter.number}`) ||
-							String.includes(needle)(String.toLowerCase(chapter.title))
-					),
-					pipelineSubject4821 =>
-						Array.match(pipelineSubject4821, {
-							onEmpty: () =>
-								Boolean.match(String.isEmpty(needle), {
-									onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
-									onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
-								}),
-							onNonEmpty: matches => (
-								<ItemGroup>
-									<Section>
-										{Array.map(matches, chapter => (
-											<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
-										))}
-									</Section>
-								</ItemGroup>
-							)
-						})
+				return Array.match(
+					Array.filter(Array.sort(chapters, Order.flip(byNumber)), chapter =>
+								String.startsWith(needle)(`${chapter.number}`) ||
+								String.includes(needle)(String.toLowerCase(chapter.title))),
+					{
+						onEmpty: () =>
+							Boolean.match(String.isEmpty(needle), {
+								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
+								onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
+							}),
+						onNonEmpty: matches => (
+							<ItemGroup>
+								<Section>
+									{Array.map(matches, chapter => (
+										<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
+									))}
+								</Section>
+							</ItemGroup>
+						)
+					}
 				)
 			}}
 		</Loaded>

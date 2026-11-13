@@ -93,12 +93,10 @@ const readerStateAtom = Atom.family((_reader: string) =>
 function turnPage(state: ReaderState, turn: PageTurn) {
 	const shown = Array.take(turn.following, state.shown)
 	return pipe(
-		shown,
-		pipelineSubject4141 =>
-			Array.zip(
-				pipelineSubject4141,
-				Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
-			),
+		Array.zip(
+			shown,
+			Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+		),
 		Array.findFirst(pair => turn.index < pair[1] + pair[0].pages.length),
 		Option.map(pair => {
 			const chapter = pair[0]

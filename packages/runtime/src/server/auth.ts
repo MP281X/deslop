@@ -57,18 +57,13 @@ export class Auth extends Context.Service<
 			RpcAuth,
 			RpcAuth.of((effect, request) =>
 				Effect.flatMap(auth.user(request.headers), user =>
-					pipe(
-						effect,
-						subject2215 => Effect.provideService(subject2215, CurrentUser, user),
-						subject2189 =>
-							Effect.raceFirst(
-								subject2189,
-								pipe(
-									Effect.delay(auth.user(request.headers), '5 minutes'),
-									Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
-									Effect.forever
-								)
-							)
+					Effect.raceFirst(
+						pipe(effect, subject2215 => Effect.provideService(subject2215, CurrentUser, user)),
+						pipe(
+							Effect.delay(auth.user(request.headers), '5 minutes'),
+							Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
+							Effect.forever
+						)
 					)
 				)
 			)
@@ -133,18 +128,19 @@ export class Auth extends Context.Service<
 					return Auth.makeContext(
 						Auth.of({
 							token: headers =>
-								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject4856 =>
-									Option.match(pipelineSubject4856, {
+								pipe(
+									bearerOf(headers),
+									Option.filter(isJwt),
+									Option.match({
 										onNone: () => Effect.map(session(headers), current => current.token),
 										onSome: token => Effect.as(verified(token), token)
 									})
 								),
 							user: headers =>
-								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject5095 =>
-									Option.match(pipelineSubject5095, {
-										onNone: () => Effect.map(session(headers), current => current.user),
-										onSome: verified
-									})
+								pipe(
+									bearerOf(headers),
+									Option.filter(isJwt),
+									Option.match({onNone: () => Effect.map(session(headers), current => current.user), onSome: verified})
 								)
 						})
 					)
@@ -188,11 +184,10 @@ export function layerMcpAuth(resource: string) {
 						})
 					}
 					const user = yield* Effect.result(
-						pipe(bearer, Option.filter(isJwt), pipelineSubject6816 =>
-							Option.match(pipelineSubject6816, {
-								onNone: () => Effect.fail(signInFirst),
-								onSome: () => auth.user(headers)
-							})
+						pipe(
+							bearer,
+							Option.filter(isJwt),
+							Option.match({onNone: () => Effect.fail(signInFirst), onSome: () => auth.user(headers)})
 						)
 					)
 					if (Result.isFailure(user)) {

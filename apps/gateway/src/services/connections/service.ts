@@ -519,8 +519,7 @@ export class Connections extends Context.Service<
 					const id = pipe(
 						taken,
 						Array.some(row => row.id === base),
-						pipelineSubject21597 =>
-							Boolean.match(pipelineSubject21597, {onFalse: () => base, onTrue: () => `${base}_${suffix}`})
+						Boolean.match({onFalse: () => base, onTrue: () => `${base}_${suffix}`})
 					)
 					const connection = yield* discover(
 						{generation: yield* nonce, id, name: String.capitalize(base), url},

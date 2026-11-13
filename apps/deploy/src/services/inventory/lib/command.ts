@@ -22,12 +22,7 @@ type Scan = {
 }
 
 function basename(value: string) {
-	return Option.getOrElse(
-		Array.last(
-			pipe(value, String.split('/'), pipelineSubject1033 => Array.filter(pipelineSubject1033, String.isNonEmpty))
-		),
-		() => value
-	)
+	return Option.getOrElse(Array.last(pipe(value, String.split('/'), Array.filter(String.isNonEmpty))), () => value)
 }
 
 function isFlag(token: string) {
@@ -71,9 +66,7 @@ function shellRest(tokens: readonly string[]) {
 		String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, '')(String.replaceAll(/['"]/gu, '')(script)),
 		String.split(/\s*(?:\|\|?|;|&&)\s*/u),
 		Array.map(segment =>
-			pipe(String.replace(/^eval\s+/u, '')(String.trim(segment)), String.split(/\s+/u), pipelineSubject2708 =>
-				Array.dropWhile(pipelineSubject2708, assignment)
-			)
+			Array.dropWhile(String.split(String.replace(/^eval\s+/u, '')(String.trim(segment)), /\s+/u), assignment)
 		),
 		Array.filter(words => String.isNonEmpty(words[0] ?? ''))
 	)
@@ -98,12 +91,11 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 						return pipe(
 							tail,
 							Array.findFirstIndex(token => !isFlag(token) && !assignment(token)),
-							pipelineSubject3576 =>
-								Option.match(pipelineSubject3576, {
-									onNone: () => Array.empty<string>(),
-									onSome: start =>
-										Array.filter(tail, (token, index) => index >= start && !isFlag(token) && !assignment(token))
-								})
+							Option.match({
+								onNone: () => Array.empty<string>(),
+								onSome: start =>
+									Array.filter(tail, (token, index) => index >= start && !isFlag(token) && !assignment(token))
+							})
 						)
 					},
 					onSome: index => Array.drop(tokens, index + 1)
@@ -126,30 +118,29 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 		return pipe(
 			tokens,
 			Array.findFirstIndex((token, index) => index > 0 && !isFlag(token)),
-			pipelineSubject4136 =>
-				Option.match(pipelineSubject4136, {
-					onNone: () => tokens,
-					onSome: index => {
-						const script = pipe(
-							tokens,
-							subject4463 => Array.get(subject4463, index),
-							Option.getOrElse(() => '')
-						)
-						// The innermost package, past pnpm's and Bun's `.pnpm` and `.bun` stores.
-						const pkg = capture(/.*node_modules\/((?:@[^/]+\/)?[^/.][^/]*)\//u, script)
-						const app = Option.orElse(capture(/\.deslop\/([^/]+)\//u, script), () =>
-							Option.flatMap(cwd, value => capture(/\/apps\/([^/]+)$/u, value))
-						)
-						return [
-							pipe(
-								pkg,
-								Option.orElse(() => app),
-								Option.getOrElse(() => basename(script))
-							),
-							...Array.drop(tokens, index + 1)
-						]
-					}
-				})
+			Option.match({
+				onNone: () => tokens,
+				onSome: index => {
+					const script = pipe(
+						tokens,
+						Array.get(index),
+						Option.getOrElse(() => '')
+					)
+					// The innermost package, past pnpm's and Bun's `.pnpm` and `.bun` stores.
+					const pkg = capture(/.*node_modules\/((?:@[^/]+\/)?[^/.][^/]*)\//u, script)
+					const app = Option.orElse(capture(/\.deslop\/([^/]+)\//u, script), () =>
+						Option.flatMap(cwd, value => capture(/\/apps\/([^/]+)$/u, value))
+					)
+					return [
+						pipe(
+							pkg,
+							Option.orElse(() => app),
+							Option.getOrElse(() => basename(script))
+						),
+						...Array.drop(tokens, index + 1)
+					]
+				}
+			})
 		)
 	}
 	return tokens
@@ -164,7 +155,7 @@ function unwrap(argv: readonly string[], cwd: Option.Option<string>) {
 				Array.head(argv),
 				Option.getOrElse(() => ''),
 				String.split(/\s+/u),
-				pipelineSubject5185 => Array.filter(pipelineSubject5185, String.isNonEmpty)
+				Array.filter(String.isNonEmpty)
 			)
 	})
 	return unwrapTokens(
@@ -200,23 +191,15 @@ function scan(
 						onTrue: () => Array.drop(args, 2)
 					}),
 					words,
-					pipe(
-						subject,
-						pipelineSubject6283 => Array.contains(pipelineSubject6283, parsed.flag),
-						pipelineSubject6269 =>
-							Boolean.match(pipelineSubject6269, {
-								onFalse: () => values,
-								onTrue: () =>
-									Boolean.match(parsed.flag === 'resume', {
-										onFalse: () =>
-											Option.match(value, {
-												onNone: () => values,
-												onSome: given => Record.set(values, parsed.flag, given)
-											}),
-										onTrue: () => Record.set(values, parsed.flag, 'resumed')
-									})
+					Boolean.match(Array.contains(subject, parsed.flag), {
+						onFalse: () => values,
+						onTrue: () =>
+							Boolean.match(parsed.flag === 'resume', {
+								onFalse: () =>
+									Option.match(value, {onNone: () => values, onSome: given => Record.set(values, parsed.flag, given)}),
+								onTrue: () => Record.set(values, parsed.flag, 'resumed')
 							})
-					)
+					})
 				)
 			}
 			if (name === 'ssh') {
@@ -255,11 +238,7 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 	// An interactive shell, such as a terminal tab, runs no script: where it sits tells it apart.
 	if (Array.contains(SHELLS, name) && Array.isReadonlyArrayEmpty(scanned.words)) {
 		return {
-			detail: pipe(
-				cwd,
-				pipelineSubject7845 => Option.map(pipelineSubject7845, basename),
-				Option.getOrElse(() => '')
-			),
+			detail: Option.getOrElse(Option.map(cwd, basename), () => ''),
 			name
 		}
 	}
@@ -285,7 +264,7 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 						ssh.host,
 						Boolean.match(String.isNonEmpty(remote.name), {onFalse: () => '', onTrue: () => `→ ${remote.name}`})
 					],
-					pipelineSubject8304 => Array.filter(pipelineSubject8304, String.isNonEmpty),
+					Array.filter(String.isNonEmpty),
 					Array.join(' ')
 				),
 				name

@@ -142,11 +142,7 @@ export function nextSearch(search: Search, event: NavigationEvent): Search {
 	return pipe(
 		Option.fromUndefinedOr(search.pane),
 		Option.flatMap(current => Record.get(UP, current)),
-		pipelineSubject4881 =>
-			Option.match(pipelineSubject4881, {
-				onNone: () => Struct.omit(search, ['pane']),
-				onSome: up => ({...search, pane: up})
-			})
+		Option.match({onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})})
 	) satisfies Search
 }
 
@@ -162,17 +158,16 @@ function openingApp(overview: Overview) {
 				)
 			)
 		),
-		pipelineSubject5582 =>
-			Array.match(pipelineSubject5582, {
-				onEmpty: () => Option.none<{app: string; start: number}>(),
-				onNonEmpty: entries =>
-					Option.some(
-						Array.max(
-							entries,
-							Order.mapInput(Order.Number, entry => entry.start)
-						)
+		Array.match({
+			onEmpty: () => Option.none<{app: string; start: number}>(),
+			onNonEmpty: entries =>
+				Option.some(
+					Array.max(
+						entries,
+						Order.mapInput(Order.Number, entry => entry.start)
 					)
-			}),
+				)
+		}),
 		Option.map(entry => entry.app),
 		Option.orElse(() => Option.map(Array.head(overview.apps), app => app.name))
 	)

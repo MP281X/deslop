@@ -44,14 +44,10 @@ export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
 export function revisionCandidates(posts: Post[], current: readonly Chapter[], deadLinks: readonly DeadLink[]) {
 	const known = HashMap.fromIterable(Array.map(current, chapter => [keyOf(chapter), chapter] as const))
 	const dead = HashSet.fromIterable(Array.map(deadLinks, item => `${item.key}\u0000${item.link}`))
-	return pipe(
-		posts,
-		pipelineSubject1709 =>
-			Array.sort(
-				pipelineSubject1709,
-				Order.mapInput(Order.Number, (post: Post) => post.postedAt)
-			),
-		Array.filterMap(post =>
+	return Array.filterMap(Array.sort(
+			posts,
+			Order.mapInput(Order.Number, (post: Post) => post.postedAt)
+		), post =>
 			pipe(
 				post.links,
 				Array.filter(
@@ -74,9 +70,7 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 						onEmpty: () => Result.failVoid,
 						onNonEmpty: links => Result.succeed({links, post})
 					})
-			)
-		)
-	)
+			))
 }
 
 function numbersOf(chapters: readonly Chapter[], kind: Series) {

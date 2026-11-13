@@ -139,20 +139,14 @@ export class Fleet extends Context.Service<
 					const url = new URL(RPC_PATH, worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
-					return yield* pipe(
-						makeRemoteClient,
-						Effect.flatMap(client => use(client, peerHeaders)),
-						pipelineSubject5527 =>
-							// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
-							Effect.provide(
-								pipelineSubject5527,
-								pipe(
-									RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
-									Layer.provide(NodeSocket.layerWebSocket(url.href)),
-									Layer.provide(RpcSerialization.layerSchemaBinary()),
-									Layer.provideMerge(layerRpcStreamClient)
-								)
-							)
+					return yield* Effect.provide(
+						Effect.flatMap(makeRemoteClient, client => use(client, peerHeaders)),
+						pipe(
+							RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
+							Layer.provide(NodeSocket.layerWebSocket(url.href)),
+							Layer.provide(RpcSerialization.layerSchemaBinary()),
+							Layer.provideMerge(layerRpcStreamClient)
+						)
 					)
 				},
 				Effect.scoped,

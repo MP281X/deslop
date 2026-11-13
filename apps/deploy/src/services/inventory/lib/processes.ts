@@ -30,12 +30,7 @@ function processStatus(status: string) {
 
 // What a process was started with, as its arguments: flags and variables named like secrets, the value after such a flag, long opaque strings and URL credentials are masked, and each argument and their number are capped.
 function commandArgs(cmdline: string) {
-	const args = pipe(
-		cmdline,
-		String.split('\0'),
-		pipelineSubject1431 => Array.filter(pipelineSubject1431, String.isNonEmpty),
-		Array.take(40)
-	)
+	const args = pipe(cmdline, String.split('\0'), Array.filter(String.isNonEmpty), Array.take(40))
 	return Array.map(args, (arg, index) => {
 		if (Option.isSome(String.match(/^-{0,2}[\w.-]+=/u)(arg)) && SECRET.test(String.split(arg, '=')[0])) {
 			return `${String.split(arg, '=')[0]}=…`
@@ -62,52 +57,49 @@ export const processes = Effect.gen(function* () {
 	const total = Number.sumAll(counts)
 	const records = yield* pipe(
 		yield* fs.readDirectory('/proc'),
-		subject2759 => Array.filter(subject2759, name => Option.isSome(String.match(/^[0-9]+$/u)(name))),
-		pipelineSubject2683 =>
-			Effect.forEach(
-				pipelineSubject2683,
-				pid =>
-					Effect.option(
-						Effect.gen(function* () {
-							const status = yield* fs.readFileString(`/proc/${pid}/status`)
-							const stat = yield* fs.readFileString(`/proc/${pid}/stat`)
-							const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
-							// A process whose arguments can't be read still counts, without its preview.
-							const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), commandArgs)
-							const fields = String.split(
-								String.slice(Option.getOrElse(String.lastIndexOf(')')(stat), () => -1) + 2)(stat),
-								/\s+/u
-							)
-							const parsed = yield* Effect.try({
-								catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
-								try: () => processStatus(status)
-							})
-							return {
-								owner: processOwner(yield* fs.readFileString(`/proc/${pid}/cgroup`)),
-								process: {
-									...parsed,
-									...Option.match(command, {onNone: () => ({}), onSome: args => ({command: args})}),
-									// The label reads the masked arguments; a kernel thread or a zombie has none, so its name stands alone.
-									label: pipe(
-										command,
-										subject4105 => Option.filter(subject4105, Array.isReadonlyArrayNonEmpty),
-										subject4161 =>
-											Option.match(subject4161, {
-												onNone: () => ({detail: '', name: parsed.name}),
-												onSome: args => commandLabel(args, cwd)
-											})
-									)
-								},
-								start: yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[19] ?? ''),
-								ticks:
-									(yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[11] ?? '')) +
-									(yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[12] ?? ''))
-							}
+		Array.filter(name => Option.isSome(String.match(/^[0-9]+$/u)(name))),
+		Effect.forEach(
+			pid =>
+				Effect.option(
+					Effect.gen(function* () {
+						const status = yield* fs.readFileString(`/proc/${pid}/status`)
+						const stat = yield* fs.readFileString(`/proc/${pid}/stat`)
+						const cwd = yield* Effect.option(fs.readLink(`/proc/${pid}/cwd`))
+						// A process whose arguments can't be read still counts, without its preview.
+						const command = Option.map(yield* Effect.option(fs.readFileString(`/proc/${pid}/cmdline`)), commandArgs)
+						const fields = String.split(
+							String.slice(Option.getOrElse(String.lastIndexOf(')')(stat), () => -1) + 2)(stat),
+							/\s+/u
+						)
+						const parsed = yield* Effect.try({
+							catch: cause => DeployError.make({cause, message: `Process ${pid} has an unreadable status.`}),
+							try: () => processStatus(status)
 						})
-					),
-				{concurrency: 16}
-			),
-		pipelineSubject2672 => Effect.map(pipelineSubject2672, Array.getSomes)
+						return {
+							owner: processOwner(yield* fs.readFileString(`/proc/${pid}/cgroup`)),
+							process: {
+								...parsed,
+								...Option.match(command, {onNone: () => ({}), onSome: args => ({command: args})}),
+								// The label reads the masked arguments; a kernel thread or a zombie has none, so its name stands alone.
+								label: pipe(
+									command,
+									Option.filter(Array.isReadonlyArrayNonEmpty),
+									Option.match({
+											onNone: () => ({detail: '', name: parsed.name}),
+											onSome: args => commandLabel(args, cwd)
+										})
+								)
+							},
+							start: yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[19] ?? ''),
+							ticks:
+								(yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[11] ?? '')) +
+								(yield* Schema.decodeEffect(Schema.FiniteFromString)(fields[12] ?? ''))
+						}
+					})
+				),
+			{concurrency: 16}
+		),
+		Effect.map(Array.getSomes)
 	)
 	return {records, time: yield* Clock.currentTimeMillis, total}
 })
@@ -195,13 +187,11 @@ export function launchdProcesses(text: string, agents: Record<string, string>) {
 	function agent(pid: string): Option.Option<string> {
 		return pipe(
 			agents,
-			pipelineSubject7403 => Record.get(pipelineSubject7403, pid),
+			Record.get(pid),
 			Option.orElse(() =>
-				pipe(
-					parents,
-					pipelineSubject7517 => Record.get(pipelineSubject7517, pid),
-					Option.filter(parent => parent !== pid),
-					pipelineSubject7483 => Option.flatMap(pipelineSubject7483, agent)
+				Option.flatMap(
+					Option.filter(Record.get(parents, pid), parent => parent !== pid),
+					agent
 				)
 			)
 		)
@@ -257,8 +247,7 @@ export function attachProcesses(
 		...item,
 		processes: pipe(
 			item.kind === 'service' || item.kind === 'container',
-			pipelineSubject9171 =>
-				Boolean.match(pipelineSubject9171, {onFalse: () => [], onTrue: () => owners[itemOwner(item)] ?? []}),
+			Boolean.match({onFalse: () => [], onTrue: () => owners[itemOwner(item)] ?? []}),
 			Array.map(record => record.process)
 		)
 	}))

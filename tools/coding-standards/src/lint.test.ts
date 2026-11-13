@@ -118,16 +118,16 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'checks service ownership names against their folders',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
+					'src/lib/utils.ts': 'export const value = 1',
 					'src/services/ai/service.ts':
 						"import {Context} from 'effect'\nexport class AiProxy extends Context.Service<AiProxy, {}>()('AiProxy') {}",
 					'src/services/ai-proxy/service.ts':
 						"import {Context} from 'effect'\nexport class AiProxy extends Context.Service<AiProxy, {}>()('AiProxy') {}",
 					'src/services/github/service.ts':
 						"import {Context} from 'effect'\nexport class GitHub extends Context.Service<GitHub, {}>()('GitHub') {}",
+					'src/services/notes/lib/utils.ts': 'export const value = 1',
 					'src/services/tracking/service.ts':
-						"import {Context} from 'effect'\nexport class Tracker extends Context.Service<Tracker, {}>()('Tracker') {}",
-					'src/lib/utils.ts': 'export const value = 1',
-					'src/services/notes/lib/utils.ts': 'export const value = 1'
+						"import {Context} from 'effect'\nexport class Tracker extends Context.Service<Tracker, {}>()('Tracker') {}"
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(service-schema-file)',

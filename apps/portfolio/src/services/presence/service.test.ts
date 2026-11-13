@@ -15,7 +15,7 @@ function idsOf(visitors: PortfolioVisitors) {
 	return pipe(
 		visitors,
 		Array.map(visitor => visitor.id),
-		pipelineSubject573 => Array.sort(pipelineSubject573, Order.String)
+		Array.sort(Order.String)
 	)
 }
 

@@ -55,21 +55,20 @@ const tailscale = Effect.gen(function* () {
 				Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
 					yield* pipe(
 						command.args,
-						subject1604 => Array.contains(subject1604, 'serve'),
-						pipelineSubject1580 =>
-							Boolean.match(pipelineSubject1580, {
-								onFalse: () =>
-									Effect.succeed({
-										Self: {
-											DNSName: 'dev.tailnet-8c4c.ts.net.',
-											HostName: 'dev',
-											OS: 'linux',
-											Online: true,
-											TailscaleIPs: []
-										}
-									}),
-								onTrue: () => Ref.get(current)
-							})
+						Array.contains('serve'),
+						Boolean.match({
+							onFalse: () =>
+								Effect.succeed({
+									Self: {
+										DNSName: 'dev.tailnet-8c4c.ts.net.',
+										HostName: 'dev',
+										OS: 'linux',
+										Online: true,
+										TailscaleIPs: []
+									}
+								}),
+							onTrue: () => Ref.get(current)
+						})
 					)
 				),
 				cause => PlatformError.badArgument({cause, method: 'encode', module: 'fixture'})

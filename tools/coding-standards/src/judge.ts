@@ -229,8 +229,10 @@ const trackedFiles = Effect.fnUntraced(function* (ignore: readonly string[]) {
 		],
 		{stderr: 'pipe', stdout: 'pipe'}
 	)
-	return pipe(yield* Stream.mkString(Stream.decodeText(handle.stdout)), String.split('\n'), pipelineSubject9247 =>
-		Array.filter(pipelineSubject9247, String.isNonEmpty)
+	return pipe(
+		yield* Stream.mkString(Stream.decodeText(handle.stdout)),
+		String.split('\n'),
+		Array.filter(String.isNonEmpty)
 	)
 }, Effect.scoped)
 
@@ -298,11 +300,7 @@ const answer = Effect.fnUntraced(function* <R>(
 	)
 	const remembered = Array.flatMap(asked.questions, named =>
 		Option.toArray(
-			pipe(
-				record,
-				pipelineSubject12014 => Record.get(pipelineSubject12014, named.key),
-				Option.map(score => ({named, score}))
-			)
+			Option.map(Record.get(record, named.key), score => ({named, score}))
 		)
 	)
 	const missing = Array.filter(asked.questions, named => !Record.has(record, named.key))
@@ -315,11 +313,7 @@ const answer = Effect.fnUntraced(function* <R>(
 					onSome: answers => {
 						const scored = Array.flatMap(questions, named =>
 							Option.toArray(
-								pipe(
-									answers,
-									pipelineSubject12533 => Record.get(pipelineSubject12533, named.name),
-									Option.map(score => ({named, score}))
-								)
+								Option.map(Record.get(answers, named.name), score => ({named, score}))
 							)
 						)
 						return Effect.as(
@@ -369,27 +363,24 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 					// A file deleted in the working tree stays tracked until the deletion is staged.
 					return yield* pipe(
 						yield* Effect.option(fs.readFileString(file)),
-						pipelineSubject13910 =>
-							Option.match(pipelineSubject13910, {onNone: () => [], onSome: source => units(file, source)}),
-						pipelineSubject13888 =>
-							Effect.forEach(
-								pipelineSubject13888,
-								unit => {
-									const read = features(unit.text, unit.imports)
-									const kind = Array.filter(named, entry => Array.contains(ASKED[unit.kind], entry.question.kind))
-									return Effect.map(digestOf([unit.kind, unit.imports, unit.text]), key => ({
-										code: unit.text,
-										file,
-										imports: unit.imports,
-										key,
-										kind: unit.kind,
-										questions: Array.filter(kind, entry => entry.question.gate(read)),
-										skipped: Array.filter(kind, entry => !entry.question.gate(read)),
-										unit
-									}))
-								},
-								{concurrency: 'unbounded'}
-							)
+						Option.match({onNone: () => [], onSome: source => units(file, source)}),
+						Effect.forEach(
+							unit => {
+								const read = features(unit.text, unit.imports)
+								const kind = Array.filter(named, entry => Array.contains(ASKED[unit.kind], entry.question.kind))
+								return Effect.map(digestOf([unit.kind, unit.imports, unit.text]), key => ({
+									code: unit.text,
+									file,
+									imports: unit.imports,
+									key,
+									kind: unit.kind,
+									questions: Array.filter(kind, entry => entry.question.gate(read)),
+									skipped: Array.filter(kind, entry => !entry.question.gate(read)),
+									unit
+								}))
+							},
+							{concurrency: 'unbounded'}
+						)
 					)
 				}),
 			{concurrency: CONCURRENCY}
@@ -405,25 +396,23 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 					{entry, side: 'no', yes: false}
 				] as const
 		),
-		pipelineSubject14814 =>
-			Effect.forEach(
-				pipelineSubject14814,
-				example => {
-					const code = example.entry.question[example.side].example
-					return Effect.map(digestOf([example.entry.question.kind, '', code]), key => ({
-						admitted: example.entry.question.gate(features(code, '')),
-						code,
-						file: EXAMPLE_FILES[example.entry.question.kind],
-						imports: '',
-						key,
-						kind: example.entry.question.kind,
-						questions: [example.entry],
-						side: example.side,
-						yes: example.yes
-					}))
-				},
-				{concurrency: CONCURRENCY}
-			)
+		Effect.forEach(
+			example => {
+				const code = example.entry.question[example.side].example
+				return Effect.map(digestOf([example.entry.question.kind, '', code]), key => ({
+					admitted: example.entry.question.gate(features(code, '')),
+					code,
+					file: EXAMPLE_FILES[example.entry.question.kind],
+					imports: '',
+					key,
+					kind: example.entry.question.kind,
+					questions: [example.entry],
+					side: example.side,
+					yes: example.yes
+				}))
+			},
+			{concurrency: CONCURRENCY}
+		)
 	)
 	const examples = Array.filter(allExamples, example => example.admitted)
 	const spent = yield* Ref.make({calls: 0, cost: 0})

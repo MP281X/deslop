@@ -293,8 +293,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						})
 					}
 				}),
-				subject9884 => HttpClientRequest.bodyJson(subject9884, body),
-				subject9864 => Effect.flatMap(subject9864, request => send(request, notification))
+				HttpClientRequest.bodyJson(body),
+				Effect.flatMap(request => send(request, notification))
 			)
 		}
 
@@ -335,8 +335,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						'apns-push-type': 'liveactivity'
 					}
 				}),
-				subject11602 => HttpClientRequest.bodyJson(subject11602, {aps}),
-				subject11582 => Effect.flatMap(subject11582, send)
+				HttpClientRequest.bodyJson({aps}),
+				Effect.flatMap(send)
 			)
 		}
 
@@ -471,8 +471,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 						Option.isNone(activity.endedAt) &&
 						!holds(activity, window)
 				),
-				pipelineSubject15929 =>
-					Effect.forEach(pipelineSubject15929, activity => finish(activity, now), {concurrency: 1, discard: true})
+				Effect.forEach(activity => finish(activity, now), {concurrency: 1, discard: true})
 			)
 			yield* Effect.forEach(
 				showPlan(yield* asPushReadError(listDevices()), yield* asPushReadError(listActivities()), journey, window),
@@ -513,8 +512,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				alert =>
 					pipe(
 						devices,
-						pipelineSubject17824 =>
-							Effect.forEach(pipelineSubject17824, device => notify(device, alert, booking), {concurrency: 1}),
+						Effect.forEach(device => notify(device, alert, booking), {concurrency: 1}),
 						Effect.map(
 							outcomes =>
 								!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry')

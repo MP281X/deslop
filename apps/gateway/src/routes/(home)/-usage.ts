@@ -38,18 +38,19 @@ export function providerSeries(report: AiUsageReport, provider: AiProvider, rang
 	return seriesOf(range, at =>
 		pipe(
 			costs,
-			pipelineSubject1316 => HashMap.get(pipelineSubject1316, at),
+			HashMap.get(at),
 			Option.getOrElse(() => 0)
 		)
 	)
 }
 export function providerCost(report: AiUsageReport, provider: AiProvider) {
-	return pipe(
-		report.byProvider,
-		Array.findFirst(sum => sum.name === provider),
-		pipelineSubject1456 => Option.map(pipelineSubject1456, costOf),
-		Option.getOrElse(() => '—')
-	)
+	return Option.getOrElse(Option.map(
+			pipe(
+				report.byProvider,
+				Array.findFirst(sum => sum.name === provider)
+			),
+			costOf
+		), () => '—')
 }
 export function serverSeries(report: readonly McpUsageServer[], id: string, range: UsageRange) {
 	return seriesOf(range, at =>

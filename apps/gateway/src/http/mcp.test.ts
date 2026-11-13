@@ -104,11 +104,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 												...pipe(
 													OUTPUT,
 													Option.liftPredicate(() => entry.name !== 'document'),
-													pipelineSubject3723 =>
-														Option.match(pipelineSubject3723, {
-															onNone: () => ({}),
-															onSome: outputSchema => ({outputSchema})
-														})
+													Option.match({onNone: () => ({}), onSome: outputSchema => ({outputSchema})})
 												)
 											})
 										})

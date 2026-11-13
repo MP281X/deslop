@@ -51,15 +51,14 @@ function nearest(history: MachineHistory, minutes: number, at: number) {
 	return pipe(
 		history.samples,
 		Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
-		pipelineSubject2113 =>
-			Array.match(pipelineSubject2113, {
-				onEmpty: () => 0,
-				onNonEmpty: entries =>
-					Array.min(
-						entries,
-						Order.mapInput(Order.Number, entry => entry.distance)
-					).index
-			})
+		Array.match({
+			onEmpty: () => 0,
+			onNonEmpty: entries =>
+				Array.min(
+					entries,
+					Order.mapInput(Order.Number, entry => entry.distance)
+				).index
+		})
 	)
 }
 

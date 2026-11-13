@@ -43,27 +43,23 @@ export function processOwner(cgroup: string) {
 	)?.[1]
 	if (container !== undefined) return `container:${String.slice(0, 12)(container)}`
 	const segments = String.split(cgroup, /[/\n]/u)
-	const service = pipe(
-		segments,
-		pipelineSubject1304 => Array.findLastIndex(pipelineSubject1304, String.endsWith('.service')),
-		Option.getOrElse(() => -1)
-	)
+	const service = Option.getOrElse(Array.findLastIndex(segments, String.endsWith('.service')), () => -1)
 	const manager = pipe(
 		segments,
 		Array.findFirstIndex(segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),
 		Option.getOrElse(() => Infinity)
 	)
-	return pipe(
-		segments,
-		pipelineSubject1603 => Array.drop(pipelineSubject1603, manager + 1),
-		Option.liftPredicate(() => service <= manager),
-		Option.flatMap(below => Array.findFirst(below, segment => String.match(/^app-(.+)\.slice$/u)(segment))),
-		pipelineSubject1547 =>
-			Option.match(pipelineSubject1547, {
-				onNone: () =>
-					`service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`,
-				onSome: match => `service:user:${match[1]}.service`
-			})
+	return Option.match(
+		pipe(
+			Array.drop(segments, manager + 1),
+			Option.liftPredicate(() => service <= manager),
+			Option.flatMap(below => Array.findFirst(below, segment => String.match(/^app-(.+)\.slice$/u)(segment)))
+		),
+		{
+			onNone: () =>
+				`service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`,
+			onSome: match => `service:user:${match[1]}.service`
+		}
 	)
 }
 
@@ -189,8 +185,7 @@ export function workloads(items: readonly InventoryItem[]) {
 			const bindings = Array.map(item.bindings ?? [], binding => ({
 				...item,
 				...pipe(
-					bySocket,
-					pipelineSubject6846 => HashMap.get(pipelineSubject6846, socket(item.worker, binding)),
+					HashMap.get(bySocket, socket(item.worker, binding)),
 					Option.filter(() => binding.address !== 'container'),
 					Option.getOrElse(() => ({}))
 				),
@@ -402,14 +397,9 @@ function usage(nodes: readonly ProcessNode[]) {
 	}
 }
 
-const byUsage = pipe(
-	Order.flip(Order.Number),
-	Order.mapInput((node: ProcessNode) => node.memory),
-	pipelineSubject13827 =>
-		Order.combine(
-			pipelineSubject13827,
-			Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0)
-		)
+const byUsage = Order.combine(
+	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.memory),
+	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0)
 )
 
 // Children heaviest first; below 2% of the app's memory and half a percent of the machine's CPU a process barely moves the usage, so it reads muted.
@@ -449,10 +439,9 @@ export function processTree(rows: readonly Process[]) {
 	const visited = MutableHashSet.empty<number>()
 	function build(row: Process): ProcessNode {
 		MutableHashSet.add(visited, row.pid)
-		const below = pipe(
-			children[`${row.pid}`] ?? [],
-			subject16036 => Array.filter(subject16036, child => !MutableHashSet.has(visited, child.pid)),
-			pipelineSubject15624 => Array.map(pipelineSubject15624, build)
+		const below = Array.map(
+			Array.filter(children[`${row.pid}`] ?? [], child => !MutableHashSet.has(visited, child.pid)),
+			build
 		)
 		const self: ProcessNode = {
 			children: [],
@@ -550,14 +539,13 @@ function summaryOf(node: ProcessNode): ProcessSummary {
 		}),
 		...pipe(
 			Option.fromUndefinedOr(node.cpu),
-			subject19275 => Option.map(subject19275, cpu => Number.round(cpu, 1)),
-			subject19262 => Option.match(subject19262, {onNone: () => ({}), onSome: cpuValue => ({cpu: cpuValue})})
+			Option.map(cpu => Number.round(cpu, 1)),
+			Option.match({onNone: () => ({}), onSome: cpuValue => ({cpu: cpuValue})})
 		),
 		...pipe(
 			Option.fromUndefinedOr(node.label.detail),
-			pipelineSubject18908 => Option.filter(pipelineSubject18908, String.isNonEmpty),
-			pipelineSubject18895 =>
-				Option.match(pipelineSubject18895, {onNone: () => ({}), onSome: detailValue => ({detail: detailValue})})
+			Option.filter(String.isNonEmpty),
+			Option.match({onNone: () => ({}), onSome: detailValue => ({detail: detailValue})})
 		),
 		mib: Number.round(node.memory / 1024 ** 2, 0),
 		name: node.label.name
@@ -589,11 +577,10 @@ function jobOf(row: Row) {
 		...failureOf(row.item),
 		id: row.item.id,
 		name: workloadName(row.item),
-		...pipe(
-			Option.fromUndefinedOr(row.item.next),
-			subject20576 => Option.map(subject20576, iso),
-			subject20563 => Option.match(subject20563, {onNone: () => ({}), onSome: nextValue => ({next: nextValue})})
-		)
+		...Option.match(Option.map(Option.fromUndefinedOr(row.item.next), iso), {
+			onNone: () => ({}),
+			onSome: nextValue => ({next: nextValue})
+		})
 	} satisfies Job
 }
 
@@ -624,24 +611,14 @@ function rank(row: Row) {
 	return 2
 }
 
-const appOrder = pipe(
-	Order.Number,
-	pipelineSubject20761 => Order.mapInput(pipelineSubject20761, rank),
-	pipelineSubject20745 =>
-		Order.combine(
-			pipelineSubject20745,
-			Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
-		)
+const appOrder = Order.combine(
+	Order.mapInput(Order.Number, rank),
+	Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
 )
 
-const jobOrder = pipe(
-	Order.Number,
-	pipelineSubject20932 => Order.mapInput(pipelineSubject20932, rank),
-	pipelineSubject20916 =>
-		Order.combine(
-			pipelineSubject20916,
-			Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
-		)
+const jobOrder = Order.combine(
+	Order.mapInput(Order.Number, rank),
+	Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
 )
 
 // The page's list per worker as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
@@ -702,9 +679,8 @@ export function ownerNames(snapshot: Snapshot) {
 					Record.fromEntries(
 						pipe(
 							byWorker[worker] ?? [],
-							subject24134 => Array.filter(subject24134, item => item.kind === 'service' || item.kind === 'container'),
-							subject24217 =>
-								Array.flatMap(subject24217, (item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const])
+							Array.filter(item => item.kind === 'service' || item.kind === 'container'),
+							Array.flatMap((item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const])
 						)
 					)
 				] as const

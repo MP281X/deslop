@@ -26,38 +26,33 @@ function tapped(response: NotificationResponse | null) {
 
 export const openedAtom = Atom.keepAlive(
 	Atom.make(
-		pipe(
-			Stream.fromEffect(
-				Effect.map(
-					Effect.promise(() => Linking.getInitialURL()),
-					url =>
-						// A notification tapped while the app was closed launches it without a URL.
-						Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
-				)
-			),
-			pipelineSubject991 =>
-				Stream.merge(
-					pipelineSubject991,
-					Stream.callback<Option.Option<string>>(queue =>
-						Effect.gen(function* () {
-							yield* Effect.acquireRelease(
-								Effect.sync(() =>
-									Linking.addEventListener('url', event => Queue.offerUnsafe(queue, bookingIn(event.url)))
-								),
-								subscription => Effect.sync(() => subscription.remove())
-							)
-							yield* Effect.acquireRelease(
-								Effect.sync(() =>
-									addNotificationResponseReceivedListener(response => {
-										Queue.offerUnsafe(queue, tapped(response))
-									})
-								),
-								subscription => Effect.sync(() => subscription.remove())
-							)
-						})
+		Stream.flatMap(Stream.merge(
+				Stream.fromEffect(
+					Effect.map(
+						Effect.promise(() => Linking.getInitialURL()),
+						url =>
+							// A notification tapped while the app was closed launches it without a URL.
+							Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
 					)
 				),
-			Stream.flatMap(opened => Stream.fromIterable(Option.toArray(opened)))
-		)
+				Stream.callback<Option.Option<string>>(queue =>
+					Effect.gen(function* () {
+						yield* Effect.acquireRelease(
+							Effect.sync(() =>
+								Linking.addEventListener('url', event => Queue.offerUnsafe(queue, bookingIn(event.url)))
+							),
+							subscription => Effect.sync(() => subscription.remove())
+						)
+						yield* Effect.acquireRelease(
+							Effect.sync(() =>
+								addNotificationResponseReceivedListener(response => {
+									Queue.offerUnsafe(queue, tapped(response))
+								})
+							),
+							subscription => Effect.sync(() => subscription.remove())
+						)
+					})
+				)
+			), opened => Stream.fromIterable(Option.toArray(opened)))
 	)
 )

@@ -243,11 +243,7 @@ function visits(node: Node, depth: number): Visit[] {
 		{depth, node: child, parent: Option.some(node)},
 		...visits(
 			child,
-			pipe(
-				FUNCTIONS,
-				pipelineSubject6100 => Array.contains(pipelineSubject6100, child.type),
-				pipelineSubject6086 => Boolean.match(pipelineSubject6086, {onFalse: () => depth, onTrue: () => depth + 1})
-			)
+			Boolean.match(Array.contains(FUNCTIONS, child.type), {onFalse: () => depth, onTrue: () => depth + 1})
 		)
 	])
 }
@@ -307,11 +303,7 @@ function pinsOutcome(node: Node): boolean {
 	if (node.type === 'TemplateLiteral') return Array.some(node.quasis, quasi => String.isNonEmpty(quasi.value.raw))
 	if (node.type === 'UnaryExpression') return pinsOutcome(node.argument)
 	if (node.type === 'ArrayExpression') {
-		return pipe(
-			node.elements,
-			pipelineSubject8864 => Array.filter(pipelineSubject8864, Predicate.isNotNull),
-			pipelineSubject8853 => Array.some(pipelineSubject8853, pinsOutcome)
-		)
+		return Array.some(Array.filter(node.elements, Predicate.isNotNull), pinsOutcome)
 	}
 	if (node.type === 'ObjectExpression') {
 		return Array.some(node.properties, property => property.type === 'Property' && pinsOutcome(property.value))

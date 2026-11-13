@@ -208,10 +208,9 @@ function layerAuth(verified: Ref.Ref<number>) {
 					if (!String.startsWith('agent.')(token)) {
 						return account(Cookies.parseHeader(headers['cookie'] ?? '')['session'])
 					}
-					return pipe(
-						verified,
-						Ref.update(count => count + 1),
-						pipelineSubject7820 => Effect.andThen(pipelineSubject7820, account(String.split(token, '.')[1]))
+					return Effect.andThen(
+						Ref.update(verified, count => count + 1),
+						account(String.split(token, '.')[1])
 					)
 				}
 			})
@@ -424,11 +423,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		memoMap,
 		scope
 	)
-	const rpc = yield* pipe(
-		RpcHandlers,
-		pipelineSubject16349 => Layer.provideMerge(pipelineSubject16349, Layer.succeedContext(services)),
-		Layer.buildWithMemoMap(memoMap, scope)
-	)
+	const rpc = yield* Layer.buildWithMemoMap(Layer.provideMerge(RpcHandlers, Layer.succeedContext(services)), memoMap, scope)
 	const client = yield* Effect.provideContext(RpcTest.makeClient(RpcContracts, {flatten: true}), rpc)
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
@@ -638,7 +633,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					Array.head(yield* gateway.list()),
 					Option.flatMap(server => server.error),
-					pipelineSubject23463 => Option.exists(pipelineSubject23463, String.isNonEmpty)
+					Option.exists(String.isNonEmpty)
 				)
 			)
 			assert.strictEqual(gateway.registrations.length, 0)
@@ -662,10 +657,9 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				assert.strictEqual(response.status, 302)
 				assert.strictEqual(response.headers.get('location'), '/')
 				assert.isTrue(
-					pipe(
-						Array.head(yield* gateway.list()),
-						Option.flatMap(server => server.error),
-						pipelineSubject24513 => Option.exists(pipelineSubject24513, String.includes('S256 PKCE'))
+					Option.exists(
+						Option.flatMap(Array.head(yield* gateway.list()), server => server.error),
+						String.includes('S256 PKCE')
 					)
 				)
 				assert.strictEqual(gateway.registrations.length, 0)
@@ -769,12 +763,11 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const added = yield* gateway.add('https://public.example.com/mcp')
 			const listed = Effect.fnUntraced(function* () {
 				const response = yield* modern(gateway.web, TOKEN, 'tools/list')
-				return pipe(
-					(yield* Schema.decodeEffect(
-						Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
-					)(yield* Effect.promise(() => response.text()))).result.tools,
-					Array.map(tool => tool.name),
-					pipelineSubject29233 => Array.filter(pipelineSubject29233, String.startsWith(`${added.id}__`))
+				return Array.filter(
+					Array.map((yield* Schema.decodeEffect(
+							Schema.fromJsonString(Schema.Struct({result: Schema.Struct({tools: Schema.Array(McpSchema.Tool)})}))
+						)(yield* Effect.promise(() => response.text()))).result.tools, tool => tool.name),
+					String.startsWith(`${added.id}__`)
 				)
 			})
 			const remote = yield* listed()
@@ -828,16 +821,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				MutableList.append(timings, Duration.toMillis(duration))
 				MutableList.append(listings, tools)
 			}
-			assert.isBelow(
-				Option.getOrThrow(
-					pipe(
-						MutableList.toArray(timings),
-						pipelineSubject31873 => Array.sort(pipelineSubject31873, Order.Number),
-						Array.get(2)
-					)
-				),
-				100
-			)
+			assert.isBelow(Option.getOrThrow(pipe(MutableList.toArray(timings), Array.sort(Order.Number), Array.get(2))), 100)
 			assert.isTrue(
 				Array.some(
 					Option.getOrThrow(Array.last(MutableList.toArray(listings))),
@@ -907,20 +891,20 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* Ref.set(gateway.toolNames, ['search_docs', 'create_doc'])
 			yield* TestClock.adjust('30 seconds')
 			assert.deepStrictEqual(
-				pipe(
-					(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
-					Array.map(tool => tool.name),
-					pipelineSubject34588 => Array.filter(pipelineSubject34588, String.startsWith(`${added.id}__`))
+				Array.filter(
+					Array.map((yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools, tool => tool.name),
+					String.startsWith(`${added.id}__`)
 				),
 				[`${added.id}__search`]
 			)
 			yield* Deferred.await(changed)
 			assert.deepStrictEqual(
-				pipe(
-					(yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools,
-					Array.map(tool => tool.name),
-					pipelineSubject34907 => Array.filter(pipelineSubject34907, String.startsWith(`${added.id}__`)),
-					pipelineSubject34890 => Array.sort(pipelineSubject34890, Order.String)
+				Array.sort(
+					Array.filter(
+						Array.map((yield* Effect.promise(() => client.listTools(undefined, {cacheMode: 'bypass'}))).tools, tool => tool.name),
+						String.startsWith(`${added.id}__`)
+					),
+					Order.String
 				),
 				[`${added.id}__create_doc`, `${added.id}__search_docs`]
 			)

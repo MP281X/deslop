@@ -52,7 +52,6 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		signature
 	)
 	const down = yield* Ref.make(false)
-	// oxlint-disable-next-line typescript/no-inferrable-types -- Effect.fnUntraced context types an unannotated default parameter as any.
 	const sign = Effect.fnUntraced(function* (expires: number = 600) {
 		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
 		return Redacted.value(

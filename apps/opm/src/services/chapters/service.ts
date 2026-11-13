@@ -98,11 +98,7 @@ function changed(chapters: readonly Chapter[], before: readonly Chapter[]) {
 	return Array.filter(
 		chapters,
 		chapter =>
-			!pipe(
-				previous,
-				pipelineSubject2934 => HashMap.get(pipelineSubject2934, keyOf(chapter)),
-				Option.exists(item => Equal.equals(item, chapter))
-			)
+			!Option.exists(HashMap.get(previous, keyOf(chapter)), item => Equal.equals(item, chapter))
 	)
 }
 
@@ -312,11 +308,10 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 													pipe(
 														links,
 														Array.some(item => item.key === entry[0] && item.link === link),
-														pipelineSubject11148 =>
-															Boolean.match(pipelineSubject11148, {
-																onFalse: () => [...links, DeadLink.make({key: entry[0], link})],
-																onTrue: () => links
-															})
+														Boolean.match({
+															onFalse: () => [...links, DeadLink.make({key: entry[0], link})],
+															onTrue: () => links
+														})
 													)
 												)
 										})
@@ -335,7 +330,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			yield* pipe(
 				loaded,
 				Array.filter(chapter => !HashSet.has(known, keyOf(chapter))),
-				pipelineSubject11850 => Effect.forEach(pipelineSubject11850, insertChapter, {concurrency: 1, discard: true}),
+				Effect.forEach(insertChapter, {concurrency: 1, discard: true}),
 				subject11929 =>
 					pipe(
 						subject11929,
@@ -343,19 +338,17 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 							pipe(
 								loaded,
 								Array.filter(chapter => HashSet.has(known, keyOf(chapter))),
-								pipelineSubject12030 =>
-									Effect.forEach(
-										pipelineSubject12030,
-										chapter =>
-											revise({
-												number: chapter.number,
-												pages: chapter.pages,
-												revisedAt: Option.some(chapter.postedAt),
-												series: chapter.series,
-												source: chapter.source
-											}),
-										{concurrency: 1, discard: true}
-									)
+								Effect.forEach(
+									chapter =>
+										revise({
+											number: chapter.number,
+											pages: chapter.pages,
+											revisedAt: Option.some(chapter.postedAt),
+											series: chapter.series,
+											source: chapter.source
+										}),
+									{concurrency: 1, discard: true}
+								)
 							)
 						),
 						Reactivity.mutation(['chapters']),
@@ -415,11 +408,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			yield* pipe(
 				tickets,
 				Array.filter(pair => pair[1].details?.error === 'DeviceNotRegistered'),
-				pipelineSubject14230 =>
-					Effect.forEach(pipelineSubject14230, pair => asChaptersError(removeDevice(pair[0])), {
-						concurrency: 1,
-						discard: true
-					})
+				Effect.forEach(pair => asChaptersError(removeDevice(pair[0])), {concurrency: 1, discard: true})
 			)
 			// Any other refused message keeps the chapter in the outbox for the next round.
 			const refused = Array.filter(
@@ -442,15 +431,15 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const pending = Array.filter(yield* chapters, chapter => !chapter.notified)
 			if (Array.isReadonlyArrayEmpty(pending)) return
 			const devices = yield* asChaptersError(listDevices())
-			yield* pipe(pending, Array.sort(byNumber), pipelineSubject15268 =>
+			yield* pipe(
+				pending,
+				Array.sort(byNumber),
 				Effect.forEach(
-					pipelineSubject15268,
 					chapter =>
 						pipe(
 							devices,
 							Array.chunksOf(100),
-							pipelineSubject15395 =>
-								Effect.forEach(pipelineSubject15395, batch => send(chapter, batch), {concurrency: 1, discard: true}),
+							Effect.forEach(batch => send(chapter, batch), {concurrency: 1, discard: true}),
 							subject15767 =>
 								pipe(
 									subject15767,

@@ -39,23 +39,20 @@ export const layerMcpOwner = Layer.unwrap(
 		return McpServer.middleware<{provides: CurrentOwner}>()((effect, request) =>
 			pipe(
 				local,
-				pipelineSubject1467 =>
-					Boolean.match(pipelineSubject1467, {
-						onFalse: () => Effect.flatMap(tokens.verify(request.headers), people.allowed),
-						onTrue: () => Effect.succeed({incarnation: 'local', user: DEVELOPER})
-					}),
-				subject1685 =>
-					// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- MCP's wire error exposes no internal authorization cause.
-					Effect.mapError(subject1685, error =>
-						McpSchema.McpErrorBase.make({
-							code: Boolean.match(error.error === 'temporarily_unavailable', {
-								onFalse: () => -32_001,
-								onTrue: () => -32_603
-							}),
-							message: error.message
-						})
-					),
-				subject1934 => Effect.flatMap(subject1934, owner => Effect.provideService(effect, CurrentOwner, owner))
+				Boolean.match({
+					onFalse: () => Effect.flatMap(tokens.verify(request.headers), people.allowed),
+					onTrue: () => Effect.succeed({incarnation: 'local', user: DEVELOPER})
+				}),
+				Effect.mapError(error =>
+					McpSchema.McpErrorBase.make({
+						code: Boolean.match(error.error === 'temporarily_unavailable', {
+							onFalse: () => -32_001,
+							onTrue: () => -32_603
+						}),
+						message: error.message
+					})
+				),
+				Effect.flatMap(owner => Effect.provideService(effect, CurrentOwner, owner))
 			)
 		).layer
 	})
@@ -97,12 +94,10 @@ export const ToolHandlers = ToolContracts.toLayer(
 					sessions: Array.map(found.items, app => ({
 						...Option.match(app.address, {onNone: () => ({}), onSome: address => ({address})}),
 						client: app.client,
-						...pipe(
-							app.address,
-							pipelineSubject3568 => Option.contains(pipelineSubject3568, app.device),
-							pipelineSubject3554 =>
-								Boolean.match(pipelineSubject3554, {onFalse: () => ({device: app.device}), onTrue: () => ({})})
-						),
+						...Boolean.match(Option.contains(app.address, app.device), {
+							onFalse: () => ({device: app.device}),
+							onTrue: () => ({})
+						}),
 						id: app.family,
 						lastActive: pipe(app.lastActive, DateTime.makeUnsafe, DateTime.formatIso)
 					}))
@@ -112,16 +107,15 @@ export const ToolHandlers = ToolContracts.toLayer(
 				const owner = yield* CurrentOwner
 				yield* pipe(
 					yield* Stream.runHead(passkeys.watch(owner)),
-					option => Option.getOrElse(option, () => []),
-					subject4071 => Array.findFirst(subject4071, found => found.id === input.id),
+					Option.getOrElse(() => []),
+					Array.findFirst(found => found.id === input.id),
 					Effect.fromOption,
-					subject4156 =>
-						Effect.mapError(subject4156, cause =>
-							AuthError.make({
-								cause,
-								message: 'No passkey of yours has that id; list_passkeys shows valid ids. Nothing changed.'
-							})
-						)
+					Effect.mapError(cause =>
+						AuthError.make({
+							cause,
+							message: 'No passkey of yours has that id; list_passkeys shows valid ids. Nothing changed.'
+						})
+					)
 				)
 				yield* passkeys.remove(input.id, owner)
 				return {id: input.id}
@@ -146,8 +140,8 @@ export const ToolHandlers = ToolContracts.toLayer(
 				if (
 					!pipe(
 						yield* Stream.runHead(tokens.watchApps(owner)),
-						option => Option.getOrElse(option, () => []),
-						subject5206 => Array.some(subject5206, session => session.family === input.id)
+						Option.getOrElse(() => []),
+						Array.some(session => session.family === input.id)
 					)
 				) {
 					return yield* AuthError.make({

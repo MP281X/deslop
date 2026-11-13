@@ -119,16 +119,12 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 			}
 		}),
 		Effect.flatMap(response =>
-			pipe(
-				read(response),
-				pipelineSubject3721 => Effect.when(pipelineSubject3721, Effect.succeed(response.status === 200)),
-				Effect.map(body => ({
+			Effect.map(Effect.when(read(response), Effect.succeed(response.status === 200)), body => ({
 					body,
 					location: response.headers['location'],
 					status: response.status,
 					type: response.headers['content-type'] ?? ''
 				}))
-			)
 		),
 		Effect.scoped,
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each request owns an agent pinned to its checked address or its proxy.
@@ -150,11 +146,7 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 		),
 		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
 		Effect.mapError(cause =>
-			pipe(
-				cause,
-				pipelineSubject4873 => Option.liftPredicate(pipelineSubject4873, Schema.is(NotesError)),
-				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
-			)
+			Option.getOrElse(Option.liftPredicate(cause, Schema.is(NotesError)), () => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
 		)
 	)
 })
@@ -323,9 +315,7 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 })
 
 const gitHub = Effect.fnUntraced(function* (url: URL) {
-	const path = pipe(url.pathname, String.split('/'), pipelineSubject11879 =>
-		Array.filter(pipelineSubject11879, String.isNonEmpty)
-	)
+	const path = pipe(url.pathname, String.split('/'), Array.filter(String.isNonEmpty))
 	const name = pipe(path, Array.take(2), Array.join('/'))
 	if (path.length === 2) return yield* repository(url, name)
 	return yield* pipe(

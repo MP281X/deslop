@@ -22,8 +22,8 @@ export function personOf(admins: readonly string[], row: Member) {
 		...Struct.pick(row, ['id', 'name', 'since']),
 		...pipe(
 			row.fullName,
-			pipelineSubject859 => Option.filter(pipelineSubject859, String.isNonEmpty),
-			pipelineSubject846 => Option.match(pipelineSubject846, {onNone: () => ({}), onSome: fullName => ({fullName})})
+			Option.filter(String.isNonEmpty),
+			Option.match({onNone: () => ({}), onSome: fullName => ({fullName})})
 		),
 		role: roleOf(admins, row.id, Option.some(row))
 	})

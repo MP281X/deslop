@@ -34,25 +34,19 @@ function exits(node: ESTree.Statement) {
 function earlyExit(input: Guard & {node: ESTree.Node}) {
 	if (input.node.parent?.type !== 'BlockStatement' && input.node.parent?.type !== 'Program') return false
 	const statements = input.node.parent.body
-	return pipe(
-		statements,
-		pipelineSubject1279 =>
-			Array.take(
-				pipelineSubject1279,
-				pipe(
-					statements,
-					subject1406 => Array.findFirstIndex(subject1406, statement => statement === input.node),
-					subject1472 => Option.getOrElse(subject1472, () => 0)
-				)
-			),
-		subject1512 =>
-			Array.some(
-				subject1512,
-				statement =>
-					statement.type === 'IfStatement' &&
-					exits(statement.consequent) &&
-					checks({...input, name: 'isNone', operator: '||', test: statement.test})
+	return Array.some(
+		Array.take(
+			statements,
+			pipe(
+				statements,
+				Array.findFirstIndex(statement => statement === input.node),
+				Option.getOrElse(() => 0)
 			)
+		),
+		statement =>
+			statement.type === 'IfStatement' &&
+			exits(statement.consequent) &&
+			checks({...input, name: 'isNone', operator: '||', test: statement.test})
 	)
 }
 

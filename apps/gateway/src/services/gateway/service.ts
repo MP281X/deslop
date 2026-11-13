@@ -105,7 +105,7 @@ export class Gateway extends Context.Service<
 					const next = pipe(
 						current,
 						HashSet.filter(name => !String.startsWith(`${server.id}__`)(name)),
-						pipelineSubject4540 => HashSet.union(pipelineSubject4540, names)
+						HashSet.union(names)
 					)
 					return [!Equal.equals(current, next), next]
 				})
@@ -229,29 +229,28 @@ export class Gateway extends Context.Service<
 				}
 				const found = yield* Effect.timeout(
 					withClient(server, headers, client =>
-						pipe(
-							Effect.tryPromise({
-								catch: connectionFailure(server.name),
-								try: signal => client.listTools(undefined, {signal})
-							}),
-							subject9980 =>
-								Effect.flatMap(subject9980, result =>
+						Effect.mapBoth(
+							Effect.flatMap(
+								Effect.tryPromise({
+									catch: connectionFailure(server.name),
+									try: signal => client.listTools(undefined, {signal})
+								}),
+								result =>
 									Effect.map(
 										Schema.decodeUnknownEffect(RemoteTools)(
 											Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
 										),
 										tools => ({tools, upstreamTools: result.tools})
 									)
-								),
-							subject10260 =>
-								Effect.mapBoth(subject10260, {
-									onFailure: connectionFailure(server.name),
-									onSuccess: result => ({
-										icons: serverIcons(client.getServerVersion()),
-										instructions: client.getInstructions(),
-										...result
-									})
+							),
+							{
+								onFailure: connectionFailure(server.name),
+								onSuccess: result => ({
+									icons: serverIcons(client.getServerVersion()),
+									instructions: client.getInstructions(),
+									...result
 								})
+							}
 						)
 					),
 					'20 seconds'

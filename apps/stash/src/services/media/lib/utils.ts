@@ -5,14 +5,9 @@ import type {Metadata, Comment} from '#services/media/schema.ts'
 const BLOCKED =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
 
-const byStanding = pipe(
-	Order.flip(Order.Boolean),
-	Order.mapInput((comment: Comment) => comment.is_pinned ?? false),
-	pipelineSubject415 =>
-		Order.combine(
-			pipelineSubject415,
-			Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)
-		)
+const byStanding = Order.combine(
+	Order.mapInput(Order.flip(Order.Boolean), (comment: Comment) => comment.is_pinned ?? false),
+	Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)
 )
 
 function commentLine(comment: Comment) {
@@ -115,7 +110,7 @@ export function mediaMarkdown(media: Metadata, link: string) {
 				Option.filter(comments => Array.isReadonlyArrayNonEmpty(comments)),
 				Option.map(
 					comments =>
-						`## Top comments\n\n${pipe(comments, Array.sort(byStanding), Array.take(40), pipelineSubject4177 => Array.map(pipelineSubject4177, commentLine), Array.join('\n\n'))}`
+						`## Top comments\n\n${Array.join(Array.map(pipe(comments, Array.sort(byStanding), Array.take(40)), commentLine), '\n\n')}`
 				)
 			)
 		]),
@@ -135,7 +130,7 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 				Option.map(index => {
 					const times = pipe(
 						lines,
-						pipelineSubject4749 => Array.getUnsafe(pipelineSubject4749, index),
+						Array.getUnsafe(index),
 						String.split(' --> '),
 						Array.map(time =>
 							pipe(
@@ -150,10 +145,7 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 							)
 						)
 					)
-					return pipe(
-						lines,
-						pipelineSubject5058 => Array.drop(pipelineSubject5058, index + 1),
-						Array.map(line => ({
+					return Array.map(Array.drop(lines, index + 1), line => ({
 							end: Array.lastNonEmpty(times),
 							start: Array.headNonEmpty(times),
 							text: pipe(
@@ -166,7 +158,6 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 								String.trim
 							)
 						}))
-					)
 				}),
 				Option.getOrElse(Array.empty)
 			)
@@ -177,10 +168,7 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 	return pipe(
 		cues,
 		Array.filter((cue, index) =>
-			pipe(
-				cues,
-				subject5844 => Array.get(subject5844, index - 1),
-				Option.match({
+			Option.match(Array.get(cues, index - 1), {
 					onNone: () => true,
 					onSome: previous =>
 						input.authored ||
@@ -191,7 +179,6 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 							Option.getOrElse(() => true)
 						)
 				})
-			)
 		),
 		Array.map(
 			cue =>

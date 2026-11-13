@@ -100,27 +100,18 @@ const portfolioAtom = Atom.keepAlive(
 				(scene, update) => {
 					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						pipe(
-							scene.visitors,
-							pipelineSubject3301 => Array.appendAll(pipelineSubject3301, scene.bots),
-							Array.map(visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
-						)
+						Array.map(Array.appendAll(scene.visitors, scene.bots), visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 					)
 					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
 						bots: update.bots,
-						trails: pipe(
-							scene.trails,
-							pipelineSubject3643 =>
-								Array.appendAll(
-									pipelineSubject3643,
-									Array.filter(
-										cursors,
-										visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
-									)
-								),
-							Array.takeRight(180)
-						),
+						trails: Array.takeRight(Array.appendAll(
+								scene.trails,
+								Array.filter(
+									cursors,
+									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
+								)
+							), 180),
 						visitors: update.visitors
 					}
 					return Tuple.make(next, [next])
@@ -144,8 +135,7 @@ const sendCursorAtom = RpcClient.runtime.atom(get =>
 			pipe(
 				RpcClient,
 				Effect.flatMap(client => client('presence.move', {...cursor, id: identity.id})),
-				pipelineSubject4717 =>
-					Effect.ignore(pipelineSubject4717, {log: 'Debug', message: 'The cursor move did not reach the room'})
+				Effect.ignore({log: 'Debug', message: 'The cursor move did not reach the room'})
 			)
 		)
 	)
@@ -527,8 +517,7 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 					'--identity-color': pipe(
 						props.visitors,
 						Array.findFirst(visitor => visitor.id === identity.id),
-						pipelineSubject17720 =>
-							Option.match(pipelineSubject17720, {onNone: () => identity.color, onSome: visitor => visitor.color})
+						Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
 					)
 				}}
 			/>
@@ -615,16 +604,11 @@ function RealtimeLayer(input: {
 			</div>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-					{pipe(
-						portfolio.value.visitors,
-						pipelineSubject21034 => Array.appendAll(pipelineSubject21034, portfolio.value.bots),
-						Array.map(cursor =>
+					{Array.map(Array.appendAll(portfolio.value.visitors, portfolio.value.bots), cursor =>
 							Boolean.match(cursor.id === identity.id, {
 								onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
 								onTrue: () => null
-							})
-						)
-					)}
+							}))}
 				</div>
 			</div>
 

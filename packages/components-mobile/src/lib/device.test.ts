@@ -277,14 +277,7 @@ it.layer(AtomRegistry.layer)(test => {
 			const entered = yield* Queue.unbounded<void>()
 			const answer = yield* Queue.unbounded<string>()
 			const reading = yield* Effect.forkChild(
-				readClipboard(
-					'1',
-					pipe(
-						entered,
-						pipelineSubject9315 => Queue.offer(pipelineSubject9315, undefined),
-						pipelineSubject9300 => Effect.andThen(pipelineSubject9300, Queue.take(answer))
-					)
-				)
+				readClipboard('1', Effect.andThen(Queue.offer(entered, undefined), Queue.take(answer)))
 			)
 			yield* Queue.take(entered)
 			clipboard.count = 2

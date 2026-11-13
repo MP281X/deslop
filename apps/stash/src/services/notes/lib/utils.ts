@@ -33,9 +33,7 @@ function withoutTrailingPunctuation(link: string): string {
 // youtu.be, Shorts, live and embed links and the mobile site all name one video by its id.
 function youTubeId(url: URL) {
 	if (url.hostname === 'youtu.be') {
-		return pipe(url.pathname, String.split('/'), pipelineSubject963 =>
-			Array.findFirst(pipelineSubject963, String.isNonEmpty)
-		)
+		return pipe(url.pathname, String.split('/'), Array.findFirst(String.isNonEmpty))
 	}
 	if (Option.isNone(String.match(/(?:^|\.)youtube\.com$/u)(url.hostname))) return Option.none<string>()
 	return Option.orElse(Option.fromNullishOr(url.searchParams.get('v')), () =>
@@ -108,14 +106,9 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 		Record.toEntries,
 		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),
 		Array.sort(
-			pipe(
-				Order.flip(Order.Number),
-				Order.mapInput((entry: {count: number; tag: string}) => entry.count),
-				pipelineSubject3304 =>
-					Order.combine(
-						pipelineSubject3304,
-						Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag)
-					)
+			Order.combine(
+				Order.mapInput(Order.flip(Order.Number), (entry: {count: number; tag: string}) => entry.count),
+				Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag)
 			)
 		)
 	)

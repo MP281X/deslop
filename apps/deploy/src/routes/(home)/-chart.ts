@@ -29,9 +29,7 @@ export function chartTicks(minutes: number, now: number) {
 			})
 			return DateTime.toEpochMillis(DateTime.setParts(first, {hour: DateTime.toParts(first).hour + index * 6}))
 		}
-		return DateTime.toEpochMillis(
-			pipe(start, DateTime.startOf('day'), pipelineSubject1414 => DateTime.add(pipelineSubject1414, {days: index + 1}))
-		)
+		return DateTime.toEpochMillis(DateTime.add(DateTime.startOf(start, 'day'), {days: index + 1}))
 	}
 	return pipe(
 		8,

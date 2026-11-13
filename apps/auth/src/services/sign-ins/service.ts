@@ -217,19 +217,11 @@ export class SignIns extends Context.Service<
 			}
 			function watch(code: string) {
 				return Stream.switchMap(SubscriptionRef.changes(open), current =>
-					pipe(
-						current,
-						pipelineSubject7337 => HashMap.get(pipelineSubject7337, typedCode(code)),
-						pipelineSubject7324 =>
-							Option.match(pipelineSubject7324, {
-								onNone: () =>
-									Stream.succeed(
-										Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()
-									),
-								onSome: signIn =>
-									Stream.map(signIn.ref.changes, snapshot => Option.some({signIn, state: snapshot.state}))
-							})
-					)
+					Option.match(HashMap.get(current, typedCode(code)), {
+						onNone: () =>
+							Stream.succeed(Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()),
+						onSome: signIn => Stream.map(signIn.ref.changes, snapshot => Option.some({signIn, state: snapshot.state}))
+					})
 				)
 			}
 			// Only the browser or command that started a sign-in, holding its cookie, receives the answer.

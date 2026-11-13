@@ -18,11 +18,7 @@ function classStrings(node: ESTree.Node): string[] {
 	if (node.type === 'ConditionalExpression') return Array.flatMap([node.consequent, node.alternate], classStrings)
 	if (node.type === 'LogicalExpression') return classStrings(node.right)
 	if (node.type === 'ArrayExpression') {
-		return pipe(
-			node.elements,
-			pipelineSubject1203 => Array.filter(pipelineSubject1203, Predicate.isNotNull),
-			pipelineSubject1189 => Array.flatMap(pipelineSubject1189, classStrings)
-		)
+		return Array.flatMap(Array.filter(node.elements, Predicate.isNotNull), classStrings)
 	}
 	return Array.empty<string>()
 }
@@ -49,11 +45,7 @@ export const noNativeControl = defineRule({
 							return classStrings(attribute.value)
 						}),
 						Option.exists(values =>
-							Array.some(values, value =>
-								pipe(value, String.split(/\s+/u), pipelineSubject2121 =>
-									Array.some(pipelineSubject2121, matches(CONTROL_STYLE))
-								)
-							)
+							Array.some(values, value => Array.some(String.split(value, /\s+/u), matches(CONTROL_STYLE)))
 						)
 					)
 					if (name !== 'select' && !styled) return

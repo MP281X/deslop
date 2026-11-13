@@ -41,13 +41,7 @@ function caddyConfig(rows: readonly Exposure[], storage: string) {
 function ownsMapping(status: Serve, row: Exposure) {
 	return (
 		status.AllowFunnel?.[`${row.hostname}:${row.port}`] !== true &&
-		pipe(
-			status.Web ?? {},
-			pipelineSubject1351 => Record.get(pipelineSubject1351, `${row.hostname}:${row.port}`),
-			Option.exists(
-				value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`
-			)
-		)
+		Option.exists(Record.get(status.Web ?? {}, `${row.hostname}:${row.port}`), value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`)
 	)
 }
 

@@ -414,11 +414,7 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 			const toolkit = yield* toolkitOf(
 				fleetOf({
 					expose: Effect.fnUntraced(function* (input) {
-						return yield* pipe(
-							exposed,
-							pipelineSubject15352 => Ref.set(pipelineSubject15352, Option.some(input)),
-							Effect.as('https://desktop.tailnet-8c4c.ts.net:4000')
-						)
+						return yield* Effect.as(Ref.set(exposed, Option.some(input)), 'https://desktop.tailnet-8c4c.ts.net:4000')
 					}),
 					hide: input => Ref.set(hidden, Option.some(input)),
 					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))

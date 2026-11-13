@@ -108,42 +108,43 @@ export const calendarAtom = Atom.make(get =>
 			) {
 				return
 			}
-			const calendar = yield* pipe(
-				yield* Effect.tryPromise({
-					catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
-					try: () => getCalendars(EntityTypes.EVENT)
-				}),
-				subject4511 => Array.findFirst(subject4511, found => found.title === CALENDAR),
-				pipelineSubject4314 =>
-					Option.match(pipelineSubject4314, {
-						onNone: () =>
-							Effect.tryPromise({
-								catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
-								try: () => {
-									const source = getDefaultCalendarSync().source
-									return createCalendar({
-										color: COLOR,
-										entityType: EntityTypes.EVENT,
-										name: CALENDAR,
-										source,
-										...Option.match(Option.fromUndefinedOr(source.id), {
-											onNone: () => ({}),
-											onSome: sourceId => ({sourceId})
-										}),
-										title: CALENDAR
-									})
-								}
-							}),
-						onSome: Effect.fnUntraced(function* (found) {
-							if (String.toLowerCase(found.color ?? '') !== COLOR) {
-								yield* Effect.tryPromise({
-									catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
-									try: () => found.update({color: COLOR})
+			const calendar = yield* Option.match(
+				Array.findFirst(
+					yield* Effect.tryPromise({
+						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
+						try: () => getCalendars(EntityTypes.EVENT)
+					}),
+					found => found.title === CALENDAR
+				),
+				{
+					onNone: () =>
+						Effect.tryPromise({
+							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
+							try: () => {
+								const source = getDefaultCalendarSync().source
+								return createCalendar({
+									color: COLOR,
+									entityType: EntityTypes.EVENT,
+									name: CALENDAR,
+									source,
+									...Option.match(Option.fromUndefinedOr(source.id), {
+										onNone: () => ({}),
+										onSome: sourceId => ({sourceId})
+									}),
+									title: CALENDAR
 								})
 							}
-							return found
-						})
+						}),
+					onSome: Effect.fnUntraced(function* (found) {
+						if (String.toLowerCase(found.color ?? '') !== COLOR) {
+							yield* Effect.tryPromise({
+								catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
+								try: () => found.update({color: COLOR})
+							})
+						}
+						return found
 					})
+				}
 			)
 			const now = yield* Clock.currentTimeMillis
 			const events = yield* Effect.tryPromise({

@@ -48,7 +48,7 @@ function kept(telemetry: Telemetry['Service']) {
 		pipe(
 			page.traces,
 			Array.map(entry => String.slice(0, 1)(entry.id)),
-			pipelineSubject1358 => Array.sort(pipelineSubject1358, Order.String)
+			Array.sort(Order.String)
 		)
 	)
 }
@@ -78,7 +78,7 @@ function release(version: string, key: string, start = START) {
 						{key: 'service.name', value: {stringValue: '@deslop/stash-server'}},
 						...pipe(
 							[version],
-							pipelineSubject2108 => Array.filter(pipelineSubject2108, String.isNonEmpty),
+							Array.filter(String.isNonEmpty),
 							Array.map(value => ({key: 'service.version', value: {stringValue: value}}))
 						)
 					]
@@ -144,7 +144,7 @@ function versioned(service: string, version: string, spans: readonly ReturnType<
 				{key: 'service.name', value: {stringValue: service}},
 				...pipe(
 					[version],
-					pipelineSubject4083 => Array.filter(pipelineSubject4083, String.isNonEmpty),
+					Array.filter(String.isNonEmpty),
 					Array.map(value => ({key: 'service.version', value: {stringValue: value}}))
 				)
 			]
@@ -407,7 +407,7 @@ it.layer(platform)(test => {
 				pipe(
 					Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations ?? [],
 					Array.map(operation => operation.name),
-					pipelineSubject12428 => Array.sort(pipelineSubject12428, Order.String)
+					Array.sort(Order.String)
 				),
 				['other', 'step']
 			)
@@ -1705,7 +1705,7 @@ it.layer(platform)(test => {
 					}),
 					...pipe(
 						4,
-						pipelineSubject54741 => Array.makeBy(pipelineSubject54741, Function.identity),
+						Array.makeBy(Function.identity),
 						Array.map(index =>
 							span({
 								end: `${BigInt(START) + BigInt(70 - index * 10) * 1_000_000n}`,

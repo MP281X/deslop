@@ -193,14 +193,13 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 			const now = yield* Clock.currentTimeMillis
 			const attempted = pipe(
 				yield* Ref.get(attempts),
-				pipelineSubject7386 => Record.get(pipelineSubject7386, id),
+				Record.get(id),
 				Option.getOrElse(() => 0)
 			)
 			yield* pipe(
 				yield* bookings.list,
 				Array.findFirst(item => item.id === id && admits(item, now, attempted)),
-				pipelineSubject7447 =>
-					Option.match(pipelineSubject7447, {onNone: () => Effect.void, onSome: booking => observe(booking, now)})
+				Option.match({onNone: () => Effect.void, onSome: booking => observe(booking, now)})
 			)
 		}, Semaphore.withPermit(turns))
 
@@ -213,33 +212,25 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 					isDue(
 						booking,
 						now,
-						pipe(
-							attempted,
-							pipelineSubject7983 => Record.get(pipelineSubject7983, booking.id),
-							Option.getOrElse(() => 0)
-						)
+						Option.getOrElse(Record.get(attempted, booking.id), () => 0)
 					)
 				),
-				pipelineSubject7818 =>
-					Effect.forEach(
-						pipelineSubject7818,
-						booking =>
-							pipe(
-								check(booking.id, isDue),
-								Effect.withSpan('Tracking.check'),
-								Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
-							),
-						{concurrency: 1, discard: true}
-					)
+				Effect.forEach(
+					booking =>
+						pipe(
+							check(booking.id, isDue),
+							Effect.withSpan('Tracking.check'),
+							Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
+						),
+					{concurrency: 1, discard: true}
+				)
 			)
 		})
 
 		yield* Effect.forkScoped(
-			pipe(
-				round,
-				pipelineSubject8299 =>
-					Effect.ignore(pipelineSubject8299, {log: 'Warn', message: 'The bookings to track were not read'}),
-				pipelineSubject8280 => Effect.repeat(pipelineSubject8280, Schedule.spaced('30 seconds'))
+			Effect.repeat(
+				Effect.ignore(round, {log: 'Warn', message: 'The bookings to track were not read'}),
+				Schedule.spaced('30 seconds')
 			)
 		)
 

@@ -118,21 +118,19 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			if (Array.isReadonlyArrayEmpty(pending)) return Effect.succeed(found)
 			return pipe(
 				pending,
-				pipelineSubject4010 =>
-					Effect.forEach(
-						pipelineSubject4010,
-						path =>
-							Effect.option(
-								Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
-									pipe(
-										names,
-										Array.filter(name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
-										Array.map(name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`}))
-									)
+				Effect.forEach(
+					path =>
+						Effect.option(
+							Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
+								pipe(
+									names,
+									Array.filter(name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
+									Array.map(name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`}))
 								)
-							),
-						{concurrency: 'unbounded'}
-					),
+							)
+						),
+					{concurrency: 'unbounded'}
+				),
 				Effect.flatMap(levels => {
 					const children = Array.flatten(Array.getSomes(levels))
 					return walk(

@@ -74,11 +74,10 @@ function layerSignIn(issuer: string) {
 							() => new URL(new URL(request.url, canonical).searchParams.get('next') ?? canonical, canonical)
 						)(),
 						Option.filter(next => next.origin === canonical),
-						pipelineSubject2555 =>
-							Option.match(pipelineSubject2555, {
-								onNone: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
-								onSome: next => handle(request, next)
-							})
+						Option.match({
+							onNone: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
+							onSome: next => handle(request, next)
+						})
 					)
 				)
 			}
@@ -190,10 +189,9 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'POST',
 				'/auth/sign-out',
-				pipe(
-					HttpServerRequest.HttpServerRequest,
-					Effect.flatMap(request => ended(request.headers)),
-					pipelineSubject6848 => Effect.as(pipelineSubject6848, HttpServerResponse.empty({status: 204}))
+				Effect.as(
+					Effect.flatMap(HttpServerRequest.HttpServerRequest, request => ended(request.headers)),
+					HttpServerResponse.empty({status: 204})
 				)
 			)
 		})

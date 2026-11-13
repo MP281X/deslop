@@ -130,13 +130,7 @@ it.layer(AtomRegistry.layer)(test => {
 								Layer.merge(
 									Layer.succeed(
 										HttpClient.HttpClient,
-										HttpClient.make(request =>
-											pipe(
-												entered,
-												pipelineSubject4745 => Queue.offer(pipelineSubject4745, request.url),
-												pipelineSubject4730 => Effect.andThen(pipelineSubject4730, Effect.never)
-											)
-										)
+										HttpClient.make(request => Effect.andThen(Queue.offer(entered, request.url), Effect.never))
 									),
 									Layer.succeed(Clock.Clock, clock)
 								),

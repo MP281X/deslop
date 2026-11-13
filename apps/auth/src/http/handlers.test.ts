@@ -510,7 +510,6 @@ const exchange = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof servers>>['issuer'],
 	request: Effect.Success<ReturnType<typeof authorize>>,
 	code: string,
-	// oxlint-disable-next-line typescript/no-inferrable-types -- Effect.fnUntraced context types an unannotated default parameter as any.
 	forwardedFor: string = '93.184.216.34'
 ) {
 	return yield* send(web, '/api/auth/oauth2/token', {
@@ -593,7 +592,7 @@ function derInteger(half: readonly number[]) {
 	const value = pipe(
 		Array.head(trimmed),
 		Option.exists(byte => byte >= 0x80),
-		pipelineSubject19796 => Boolean.match(pipelineSubject19796, {onFalse: () => trimmed, onTrue: () => [0, ...trimmed]})
+		Boolean.match({onFalse: () => trimmed, onTrue: () => [0, ...trimmed]})
 	)
 	return [0x02, value.length, ...value]
 }
@@ -978,7 +977,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					responses,
 					Array.map(response => response.status),
-					pipelineSubject34164 => Array.sort(pipelineSubject34164, Order.Number)
+					Array.sort(Order.Number)
 				),
 				[204, 400]
 			)
@@ -1346,7 +1345,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					responses,
 					Array.map(response => response.status),
-					pipelineSubject50183 => Array.sort(pipelineSubject50183, Order.Number)
+					Array.sort(Order.Number)
 				),
 				[204, 400]
 			)
@@ -1598,7 +1597,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					responses,
 					Array.map(response => response.status),
-					pipelineSubject59131 => Array.sort(pipelineSubject59131, Order.Number)
+					Array.sort(Order.Number)
 				),
 				[200, 400]
 			)
@@ -2061,18 +2060,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				}
 			})
 			const apps = Effect.flatMap(send(web.issuer, '/apps', {headers: {cookie: admin}}), response =>
-				pipe(
-					Effect.promise(() => response.text()),
-					pipelineSubject78515 =>
-						Effect.flatMap(
-							pipelineSubject78515,
-							Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))
-						),
-					pipelineSubject78498 =>
-						Effect.map(
-							pipelineSubject78498,
-							Array.filter(app => app.kind === 'App')
-						)
+				Effect.map(
+					Effect.flatMap(
+						Effect.promise(() => response.text()),
+						Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))
+					),
+					Array.filter(app => app.kind === 'App')
 				)
 			)
 			// Traefik appends the connecting address last; the entry before it is whatever the client sent.
@@ -2085,7 +2078,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					yield* apps,
 					Array.map(app => app.device),
-					pipelineSubject79138 => Array.sort(pipelineSubject79138, String.Order)
+					Array.sort(String.Order)
 				),
 				['1.1.1.1', '93.184.216.34']
 			)
@@ -2247,7 +2240,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				pipe(
 					listed.sessions,
 					Array.map(session => session.client),
-					pipelineSubject86613 => Array.sort(pipelineSubject86613, String.Order)
+					Array.sort(String.Order)
 				),
 				['Browser', 'Browser', 'Opencode']
 			)
@@ -2269,7 +2262,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 						yield* send(web.issuer, '/me', {headers: {cookie: second}})
 					],
 					Array.map(response => response.status),
-					pipelineSubject87378 => Array.sort(pipelineSubject87378, Order.Number)
+					Array.sort(Order.Number)
 				),
 				[200, 401]
 			)

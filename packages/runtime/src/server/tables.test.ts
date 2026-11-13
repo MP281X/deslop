@@ -113,7 +113,7 @@ const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], 
 		pipe(
 			models,
 			Array.map(model => model.table),
-			pipelineSubject4614 => Array.sort(pipelineSubject4614, Order.String)
+			Array.sort(Order.String)
 		),
 		'one model per table'
 	)

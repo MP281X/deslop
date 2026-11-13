@@ -341,8 +341,9 @@ function forwarding(context: LintContext, node: ESTree.Node) {
 	if (node.type !== 'ArrowFunctionExpression' || node.async || node.params.length !== 1) return Option.none()
 	const parameter = node.params[0]
 	const body = node.body
-	if (parameter?.type !== 'Identifier' || body.type !== 'CallExpression' || !dataFirst(context, body))
+	if (parameter?.type !== 'Identifier' || body.type !== 'CallExpression' || !dataFirst(context, body)) {
 		return Option.none()
+	}
 	const first = body.arguments[0]
 	if (first?.type !== 'Identifier' || first.name !== parameter.name) return Option.none()
 	return pipe(
@@ -466,7 +467,12 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 				const safe = Array.every(forwarded, call =>
 					Option.match(call, {
 						onNone: () => true,
-						onSome: operation => Array.every(Array.drop(operation.arguments, 1), arg => stable(context, arg))
+						onSome: operation =>
+							pipe(
+								operation.arguments,
+								Array.drop(1),
+								Array.every(arg => stable(context, arg))
+							)
 					})
 				)
 				if (safe && node.arguments.length > 2) {
@@ -485,13 +491,13 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 				if (!Array.every(steps, step => Option.isSome(forwarding(context, step)) || stable(context, step))) return []
 				const direct = Array.reduce(
 					steps,
-					{subject: text(context, first), steps: Array.empty<string>()},
+					{steps: Array.empty<string>(), subject: text(context, first)},
 					(current, step) =>
 						Option.match(forwarding(context, step), {
 							onNone: () => ({...current, steps: [...current.steps, text(context, step)]}),
 							onSome: call => ({
-								subject: forwardCall(context, call, pipelineText(current.subject, current.steps)),
-								steps: []
+								steps: [],
+								subject: forwardCall(context, call, pipelineText(current.subject, current.steps))
 							})
 						})
 				)
@@ -587,12 +593,11 @@ function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
 		fix: fixer =>
 			pipe(
 				effectImport({context, fixer, name: 'pipe', node}),
-				subject9503 =>
-					Option.map(subject9503, imports => [
-						...imports,
-						fixer.replaceText(node, `pipe(${text(context, pipeline.subject)}, ${Array.join(pipeline.steps, ', ')})`)
-					]),
-				subject9746 => Option.getOrElse(subject9746, () => [])
+				Option.map(imports => [
+					...imports,
+					fixer.replaceText(node, `pipe(${text(context, pipeline.subject)}, ${Array.join(pipeline.steps, ', ')})`)
+				]),
+				Option.getOrElse(() => [])
 			),
 		message: 'Two or more steps on a subject are a standalone pipe.',
 		node

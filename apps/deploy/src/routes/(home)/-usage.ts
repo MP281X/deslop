@@ -25,11 +25,7 @@ export function bandFill(kind: Band['kind'] | 'disk', opacity: number, name: str
 		String.split(/[^a-z0-9]+/u),
 		Array.findFirst(word => Record.has(APP_HUES, word)),
 		Option.flatMap(word => Record.get(APP_HUES, word)),
-		pipelineSubject1048 =>
-			Option.match(pipelineSubject1048, {
-				onNone: () => ({color: 'var(--primary)', opacity}),
-				onSome: color => ({color, opacity: 0.9})
-			})
+		Option.match({onNone: () => ({color: 'var(--primary)', opacity}), onSome: color => ({color, opacity: 0.9})})
 	)
 }
 
@@ -51,7 +47,7 @@ function appSeries(history: MachineHistory) {
 		Record.fromEntries(
 			pipe(
 				sample.apps,
-				pipelineSubject1862 => Option.getOrElse(pipelineSubject1862, Array.empty),
+				Option.getOrElse(Array.empty),
 				Array.map(app => [app.id, app])
 			)
 		)
@@ -85,22 +81,16 @@ function lowImpactApp(app: {cpu: readonly number[]; memory: readonly number[]}) 
 // The apps the chart folds into its low-impact band, which the list's divider uses too.
 export function lowImpactIds(history: MachineHistory) {
 	return HashSet.fromIterable(
-		pipe(
-			appSeries(history),
-			pipelineSubject3149 => Array.filter(pipelineSubject3149, lowImpactApp),
-			Array.map(app => app.id)
-		)
+		Array.map(Array.filter(appSeries(history), lowImpactApp), app => app.id)
 	)
 }
 
 export function bands(history: MachineHistory) {
 	const apps = appSeries(history)
 	const lowImpact = Array.filter(apps, lowImpactApp)
-	const large = pipe(apps, Array.difference(lowImpact), pipelineSubject3365 =>
-		Array.sort(
-			pipelineSubject3365,
-			Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory))
-		)
+	const large = Array.sort(
+		Array.difference(apps, lowImpact),
+		Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory))
 	)
 	const ranked = Array.map(
 		large,
@@ -168,10 +158,6 @@ export function runs(history: MachineHistory, minutes: number, recorded: (sample
 			]
 		})[1],
 		Array.filter(point => point.recorded),
-		pipelineSubject5661 =>
-			Array.match(pipelineSubject5661, {
-				onEmpty: () => [],
-				onNonEmpty: all => Array.groupWith(all, (point, first) => point.run === first.run)
-			})
+		Array.match({onEmpty: () => [], onNonEmpty: all => Array.groupWith(all, (point, first) => point.run === first.run)})
 	)
 }

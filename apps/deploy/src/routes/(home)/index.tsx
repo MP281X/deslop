@@ -227,30 +227,29 @@ function DetailPane(props: {
 					{pipe(
 						Option.fromUndefinedOr(props.history),
 						Option.filter(history => Array.isReadonlyArrayNonEmpty(history.samples)),
-						pipelineSubject7936 =>
-							Option.match(pipelineSubject7936, {
-								onNone: () => (
-									<EmptyChart
-										{...Option.match(Option.fromUndefinedOr(props.worker), {
-											onNone: () => ({}),
-											onSome: workerValue => ({worker: workerValue})
-										})}
-									/>
-								),
-								onSome: history => (
-									<ChartBlock
-										history={history}
-										isPhone={false}
-										// fallow-ignore-next-line code-duplication -- Chart props repeat for different resources; their render shape is not shared calculation.
-										labels={props.labels}
-										minutes={props.minutes}
-										{...Option.match(Option.fromUndefinedOr(props.selectedOwner), {
-											onNone: () => ({}),
-											onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
-										})}
-									/>
-								)
-							})
+						Option.match({
+							onNone: () => (
+								<EmptyChart
+									{...Option.match(Option.fromUndefinedOr(props.worker), {
+										onNone: () => ({}),
+										onSome: workerValue => ({worker: workerValue})
+									})}
+								/>
+							),
+							onSome: history => (
+								<ChartBlock
+									history={history}
+									isPhone={false}
+									// fallow-ignore-next-line code-duplication -- Chart props repeat for different resources; their render shape is not shared calculation.
+									labels={props.labels}
+									minutes={props.minutes}
+									{...Option.match(Option.fromUndefinedOr(props.selectedOwner), {
+										onNone: () => ({}),
+										onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
+									})}
+								/>
+							)
+						})
 					)}
 				</MetricsContent>
 			</Suspense>
@@ -290,22 +289,21 @@ function PhoneList(props: {
 					{pipe(
 						Option.fromUndefinedOr(props.history),
 						Option.filter(history => Array.isReadonlyArrayNonEmpty(history.samples)),
-						pipelineSubject9117 =>
-							Option.match(pipelineSubject9117, {
-								onNone: () => <EmptyChart />,
-								onSome: history => (
-									<ChartBlock
-										history={history}
-										isPhone
-										labels={props.labels}
-										minutes={props.minutes}
-										{...Option.match(Option.fromUndefinedOr(props.selectedOwner), {
-											onNone: () => ({}),
-											onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
-										})}
-									/>
-								)
-							})
+						Option.match({
+							onNone: () => <EmptyChart />,
+							onSome: history => (
+								<ChartBlock
+									history={history}
+									isPhone
+									labels={props.labels}
+									minutes={props.minutes}
+									{...Option.match(Option.fromUndefinedOr(props.selectedOwner), {
+										onNone: () => ({}),
+										onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
+									})}
+								/>
+							)
+						})
 					)}
 				</MetricsContent>
 			</Suspense>
@@ -494,7 +492,7 @@ function HomeRoute() {
 		...pipe(
 			snapshot,
 			Option.map(value => value.workers ?? Array.map(value.items, item => item.worker)),
-			option => Option.getOrElse(option, () => [])
+			Option.getOrElse(() => [])
 		),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
@@ -505,13 +503,13 @@ function HomeRoute() {
 	const rows = pipe(
 		snapshot,
 		Option.map(value => workloads(value.items)),
-		option => Option.getOrElse(option, () => [])
+		Option.getOrElse(() => [])
 	)
 	const free = availablePorts(rows)
 	const sources = pipe(
 		snapshot,
 		Option.map(value => value.sources),
-		option => Option.getOrElse(option, () => [])
+		Option.getOrElse(() => [])
 	)
 	const now = pipe(
 		snapshot,

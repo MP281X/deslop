@@ -26,11 +26,7 @@ function repetition(node: ESTree.Node): Option.Option<'callback' | 'loop'> {
 	if (Predicate.isNullish(node.parent)) return Option.none()
 	if (Array.contains(LOOPS, node.parent.type)) return Option.some('loop')
 	if (isFunction(node.parent)) {
-		return pipe(
-			node.parent,
-			pipelineSubject1253 => Option.liftPredicate(pipelineSubject1253, iterates),
-			pipelineSubject1243 => Option.as(pipelineSubject1243, 'callback' as const)
-		)
+		return Option.as(Option.liftPredicate(node.parent, iterates), 'callback' as const)
 	}
 	return repetition(node.parent)
 }

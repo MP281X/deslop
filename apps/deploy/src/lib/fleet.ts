@@ -60,10 +60,10 @@ export const openExposeAtom = Atom.writable(
 // Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
 export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) =>
-		pipe(
-			RpcClient,
-			Effect.flatMap(client => client('inventory.run', input)),
-			pipelineSubject2036 => Effect.zip(pipelineSubject2036, Effect.sleep('10 seconds'), {concurrent: true})
+		Effect.zip(
+			Effect.flatMap(RpcClient, client => client('inventory.run', input)),
+			Effect.sleep('10 seconds'),
+			{concurrent: true}
 		)
 	)
 )

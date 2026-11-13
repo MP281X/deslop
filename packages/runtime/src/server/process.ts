@@ -52,10 +52,7 @@ const tool = Effect.fnUntraced(function* (name: string) {
 	yield* pipe(
 		yield* fs.readDirectory(tools),
 		Array.filter(entry => entry !== version),
-		pipelineSubject1998 =>
-			Effect.forEach(pipelineSubject1998, entry => fs.remove(path.join(tools, entry), {recursive: true}), {
-				concurrency: 1
-			})
+		Effect.forEach(entry => fs.remove(path.join(tools, entry), {recursive: true}), {concurrency: 1})
 	)
 	return target
 })

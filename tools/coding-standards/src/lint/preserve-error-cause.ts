@@ -116,15 +116,14 @@ function insertField(input: {field: string; fields: ESTree.ObjectExpression; fix
 	return pipe(
 		input.fields.properties,
 		Array.findFirst(property => Option.exists(keyName(property), key => String.Order(key, 'cause') > 0)),
-		pipelineSubject4512 =>
-			Option.match(pipelineSubject4512, {
-				onNone: () =>
-					Option.match(Array.last(input.fields.properties), {
-						onNone: () => input.fixer.replaceText(input.fields, `{${input.field}}`),
-						onSome: last => input.fixer.insertTextAfter(last, `, ${input.field}`)
-					}),
-				onSome: property => input.fixer.insertTextBefore(property, `${input.field}, `)
-			})
+		Option.match({
+			onNone: () =>
+				Option.match(Array.last(input.fields.properties), {
+					onNone: () => input.fixer.replaceText(input.fields, `{${input.field}}`),
+					onSome: last => input.fixer.insertTextAfter(last, `, ${input.field}`)
+				}),
+			onSome: property => input.fixer.insertTextBefore(property, `${input.field}, `)
+		})
 	)
 }
 

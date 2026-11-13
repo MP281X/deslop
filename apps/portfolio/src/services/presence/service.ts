@@ -115,11 +115,7 @@ export class Presence extends Context.Service<
 									tabs: {
 										...transition.state.tabs,
 										[transition.event.visitor.id]:
-											pipe(
-												transition.state.tabs,
-												pipelineSubject3481 => Record.get(pipelineSubject3481, transition.event.visitor.id),
-												Option.getOrElse(() => 0)
-											) + 1
+											Option.getOrElse(Record.get(transition.state.tabs, transition.event.visitor.id), () => 0) + 1
 									},
 									visitors: upsertPortfolioVisitor(transition.state.visitors, transition.event.visitor)
 								}),
@@ -129,11 +125,7 @@ export class Presence extends Context.Service<
 								branches: 'left',
 								resolve: transition => {
 									const open =
-										pipe(
-											transition.state.tabs,
-											pipelineSubject3827 => Record.get(pipelineSubject3827, transition.event.id),
-											Option.getOrElse(() => 1)
-										) - 1
+										Option.getOrElse(Record.get(transition.state.tabs, transition.event.id), () => 1) - 1
 									if (open > 0) {
 										return transition.select.open({
 											data: {...transition.state, tabs: {...transition.state.tabs, [transition.event.id]: open}}

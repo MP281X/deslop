@@ -192,11 +192,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 						pipe(
 							reads,
 							Ref.update(count => count + 1),
-							pipelineSubject6381 =>
-								Effect.andThen(
-									pipelineSubject6381,
-									Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}')
-								)
+							Effect.andThen(Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}'))
 						)
 				})
 				const web = yield* handler({APP_URL: 'http://localhost:5000'})

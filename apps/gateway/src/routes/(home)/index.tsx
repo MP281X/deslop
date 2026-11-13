@@ -109,8 +109,10 @@ function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
 		<span className="flex size-4 shrink-0 items-center justify-center">
-			{pipe(props.sources, Array.get(failed), pipelineSubject4466 =>
-				Option.match(pipelineSubject4466, {
+			{pipe(
+				props.sources,
+				Array.get(failed),
+				Option.match({
 					onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 					onSome: src => (
 						<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
@@ -125,15 +127,10 @@ function FirstImage(props: {sources: string[]}) {
 function ServerIcon(props: {server: ConnectionItem}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
-		...pipe(
-			props.server.icons,
-			pipelineSubject5051 =>
-				Array.sort(
-					pipelineSubject5051,
-					Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => entry.theme !== 'dark')
-				),
-			Array.map(entry => entry.src)
-		),
+		...Array.map(Array.sort(
+				props.server.icons,
+				Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => entry.theme !== 'dark')
+			), entry => entry.src),
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
@@ -198,8 +195,10 @@ function ServerRows(props: {period: Period}) {
 	return (
 		<Loaded atom={serversAtom}>
 			{servers =>
-				pipe(servers, Array.sort(byUrgency), pipelineSubject7531 =>
-					Array.match(pipelineSubject7531, {
+				pipe(
+					servers,
+					Array.sort(byUrgency),
+					Array.match({
 						onEmpty: () => null,
 						onNonEmpty: ordered => (
 							<Suspense
@@ -294,21 +293,20 @@ function KeyRows(props: {period: Period}) {
 				pipe(
 					all,
 					Array.filter(key => Array.contains(PROVIDERS, key.provider)),
-					pipelineSubject9992 =>
-						Array.match(pipelineSubject9992, {
-							onEmpty: () => null,
-							onNonEmpty: keys => (
-								<Suspense
-									fallback={
-										<RowsSkeleton label="AI keys" rows={keys.length}>
-											<RowBones />
-										</RowsSkeleton>
-									}
-								>
-									<KeyUsage keys={keys} period={props.period} />
-								</Suspense>
-							)
-						})
+					Array.match({
+						onEmpty: () => null,
+						onNonEmpty: keys => (
+							<Suspense
+								fallback={
+									<RowsSkeleton label="AI keys" rows={keys.length}>
+										<RowBones />
+									</RowsSkeleton>
+								}
+							>
+								<KeyUsage keys={keys} period={props.period} />
+							</Suspense>
+						)
+					})
 				)
 			}
 		</Loaded>
