@@ -200,7 +200,7 @@ it.layer(NodeServices.layer)(test => {
 		'treats an empty server list as loaded content',
 		Effect.fnUntraced(function* () {
 			const html = yield* render(AsyncResult.success([]))
-			assert.include(html, 'Servers')
+			assert.include(html, 'MCP servers and AI keys')
 			assert.notInclude(html, 'aria-label="MCP servers"')
 		})
 	)
