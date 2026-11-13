@@ -80,7 +80,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				sql`SELECT * FROM ${sql(Sample.table)} WHERE ${sql.or(
 					Array.map(Record.values(SERIES), spacing => {
 						const step = Duration.toMillis(spacing)
-						return sql`(step = ${step} AND since >= ${Math.floor(time / step) * step})`
+						return sql`(step = ${step} AND since >= ${Math.floor(time / step) * step} AND since < ${(Math.floor(time / step) + 1) * step})`
 					})
 				)}`
 		})

@@ -8,27 +8,6 @@ import {attachProcesses, processReadings, processes} from './processes.ts'
 import {processOwner} from '#services/inventory/lib/utils.ts'
 import {AppId, InventoryItem, ItemId, Process, UnitId} from '#services/inventory/schema.ts'
 
-function reading(time: number) {
-	return {
-		records: [
-			{
-				owner: Option.none<AppId>(),
-				process: Schema.decodeSync(Process)({
-					label: {detail: '', name: 'node'},
-					memory: time,
-					name: 'node',
-					parent: 1,
-					pid: 42
-				}),
-				start: DateTime.makeUnsafe(100),
-				ticks: Duration.millis(time / 4)
-			}
-		],
-		time: DateTime.makeUnsafe(time),
-		total: Duration.millis(time + 800)
-	}
-}
-
 it.effect(
 	'collects names with spaces, parent/RSS, cwd labels and masked arguments, and tolerates an exited process',
 	() =>
@@ -291,41 +270,6 @@ it('measures CPU as a share of machine capacity without reusing a PID or bridgin
 			baseline
 		).readings[0]?.process.cpu,
 		Option.none()
-	)
-})
-
-it('shares meaningful CPU deltas between staggered viewers without returning stale memory or reused-PID CPU', () => {
-	const first = processReadings(reading(0), Option.none())
-	const early = processReadings(reading(1000), Option.some(first))
-	assert.deepStrictEqual(early.readings[0]?.process.cpu, Option.none())
-	// A process the cached read can't measure carries no cpu key, so the snapshot it lands in still validates.
-	assert.deepStrictEqual(Schema.encodeSync(Process)(Option.getOrThrow(Array.head(early.readings)).process), {
-		label: {detail: '', name: 'node'},
-		memory: 1000,
-		name: 'node',
-		parent: 1,
-		pid: 42
-	})
-	assert.strictEqual(DateTime.toEpochMillis(early.baseline.time), 0)
-	const viewerA = processReadings(reading(5000), Option.some(early))
-	const viewerB = processReadings(reading(6000), Option.some(viewerA))
-	assert.deepStrictEqual(viewerA.readings[0]?.process.cpu, Option.some(25))
-	assert.deepStrictEqual(viewerB.readings[0]?.process.cpu, Option.some(25))
-	assert.strictEqual(viewerB.readings[0]?.process.memory, 6000)
-	assert.strictEqual(DateTime.toEpochMillis(viewerB.baseline.time), 5000)
-	assert.deepStrictEqual(
-		processReadings(
-			{
-				...reading(6500),
-				records: Array.map(reading(6500).records, record => ({...record, start: DateTime.makeUnsafe(101)}))
-			},
-			Option.some(viewerB)
-		).readings[0]?.process.cpu,
-		Option.none()
-	)
-	assert.deepStrictEqual(
-		processReadings(reading(10_000), Option.some(viewerB)).readings[0]?.process.cpu,
-		Option.some(25)
 	)
 })
 

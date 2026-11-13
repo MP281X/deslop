@@ -180,16 +180,17 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					Schema.encodeSync(Schema.Array(MachineHistory))(cold)
 				})
 				const currentMetrics = yield* fleet.metrics({minutes: Duration.minutes(60)})
-				const immediate = yield* fleet.current({minutes: Duration.minutes(60)})
-				assert.strictEqual(Option.getOrThrow(Array.get(immediate, 1)).worker, 'desktop')
+				assert.strictEqual(
+					Option.getOrThrow(Array.get(yield* fleet.current({minutes: Duration.minutes(60)}), 1)).worker,
+					'desktop'
+				)
 				assert.strictEqual(currentMetrics[1]?.worker, 'desktop')
 				assert.strictEqual(upgrades.count, 1)
 				yield* Ref.set(hanging, true)
 				const pending = yield* Effect.forkScoped(fleet.metrics({minutes: Duration.minutes(60)}))
 				yield* Deferred.await(entered)
 				yield* TestClock.adjust('2 seconds')
-				const timedOut = yield* Fiber.join(pending)
-				assert.isTrue(Option.getOrThrow(Array.get(timedOut, 1)).stale)
+				assert.isTrue(Option.getOrThrow(Array.get(yield* Fiber.join(pending), 1)).stale)
 				yield* Ref.set(hanging, false)
 				yield* Ref.set(unavailable, true)
 				// A worker that failed before its first sample still encodes.

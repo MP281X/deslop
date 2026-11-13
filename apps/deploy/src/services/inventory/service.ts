@@ -16,8 +16,10 @@ import {
 	Record,
 	Ref,
 	Result,
+	Schedule,
 	Schema,
 	String,
+	SubscriptionRef,
 	Tracer,
 	pipe
 } from 'effect'
@@ -457,7 +459,7 @@ export class Inventory extends Context.Service<
 					]
 				}
 			})
-			return Inventory.of({
+			const service = Inventory.of({
 				// Only a service a timer starts, so the page can't start arbitrary units; system ones go through the workers' passwordless sudo. A Mac's launch agents are apps, never timer jobs.
 				run: Effect.fn('Inventory.run')(
 					function* (input) {
@@ -590,6 +592,14 @@ export class Inventory extends Context.Service<
 					{attributes: {worker}}
 				)
 			})
+			const snapshot = yield* SubscriptionRef.make(yield* service.snapshot)
+			yield* pipe(
+				service.snapshot,
+				Effect.flatMap(value => SubscriptionRef.set(snapshot, value)),
+				Effect.schedule(Schedule.spaced(Duration.seconds(5))),
+				Effect.forkScoped
+			)
+			return {...service, snapshot: SubscriptionRef.get(snapshot)}
 		})
 	)
 }
