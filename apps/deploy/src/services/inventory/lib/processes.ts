@@ -111,8 +111,8 @@ function processUsage(current: Effect.Success<typeof processes>, previous?: Effe
 		const elapsed = current.total - (previous?.total ?? current.total)
 		const process: Process = {
 			...record.process,
-			...Option.match(
-				pipe(
+			...Record.getSomes({
+				cpu: pipe(
 					Option.fromUndefinedOr(old),
 					Option.filter(
 						value =>
@@ -123,9 +123,8 @@ function processUsage(current: Effect.Success<typeof processes>, previous?: Effe
 							current.time - (previous?.time ?? 0) <= 90_000
 					),
 					Option.map(value => Number.clamp(((record.ticks - value.ticks) / elapsed) * 100, {maximum: 100, minimum: 0}))
-				),
-				{onNone: () => ({}), onSome: cpu => ({cpu})}
-			)
+				)
+			})
 		}
 		return {...record, process}
 	})
@@ -146,14 +145,13 @@ export function processReadings(
 			readings: Array.map(current.records, record => {
 				const process: Process = {
 					...record.process,
-					...Option.match(
-						pipe(
+					...Record.getSomes({
+						cpu: pipe(
 							Option.fromUndefinedOr(known[record.process.pid]),
 							Option.filter(value => value.start === record.start),
 							Option.flatMap(value => Option.fromUndefinedOr(value.process.cpu))
-						),
-						{onNone: () => ({}), onSome: cpu => ({cpu})}
-					)
+						)
+					})
 				}
 				return {...record, process}
 			})

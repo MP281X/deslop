@@ -236,10 +236,7 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 			onNonEmpty: () =>
 				Option.some(
 					Array.map(Array.dedupe(Array.flatMap(appsById, Record.keys)), id => ({
-						...Option.match(
-							appMean(id, app => Option.fromUndefinedOr(app.cpu)),
-							{onNone: () => ({}), onSome: cpu => ({cpu})}
-						),
+						...Record.getSomes({cpu: appMean(id, app => Option.fromUndefinedOr(app.cpu))}),
 						id,
 						memory: pipe(
 							appMean(id, app => Option.some(app.memory)),
@@ -414,11 +411,7 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 			Array.map(
 				app =>
 					({
-						...pipe(
-							Option.fromUndefinedOr(app.cpu),
-							Option.map(value => Number.round(value, 1)),
-							Option.match({onNone: () => ({}), onSome: cpu => ({cpu})})
-						),
+						...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(app.cpu), value => Number.round(value, 1))}),
 						mib: Number.round(app.memory / 1024 ** 2, 0),
 						name: bandName(app.id, labels)
 					}) satisfies AppUsage
@@ -467,11 +460,7 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 						diskGiB: Option.map(point.storageUsed, used => Number.round(used / 1024 ** 3, 1)),
 						diskTotalGiB: Option.map(storageTotal, total => Number.round(total / 1024 ** 3, 1))
 					}),
-					...pipe(
-						machine.load,
-						Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
-						Option.match({onNone: () => ({}), onSome: load => ({load})})
-					),
+					...Record.getSomes({load: Option.liftPredicate(machine.load, Array.isReadonlyArrayNonEmpty)}),
 					memoryGiB: Number.round(point.memoryUsed / 1024 ** 3, 1),
 					memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)
 				}

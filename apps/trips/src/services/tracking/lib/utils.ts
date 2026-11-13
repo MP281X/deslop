@@ -158,20 +158,22 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			Option.orElse(() => Option.fromNullishOr(answer.ritardo)),
 			Option.getOrElse(() => 0)
 		),
-		...pipe(
-			from,
-			Option.filter(left),
-			Option.flatMap(stop => Option.fromNullishOr(stop.ritardo)),
-			Option.match({onNone: () => ({}), onSome: departureDelay => ({departureDelay})})
-		),
-		...pipe(
-			Option.all({
-				at: Option.fromNullishOr(answer.oraUltimoRilevamento),
-				station: text(answer.stazioneUltimoRilevamento)
-			}),
-			Option.filter(seen => seen.station !== '--'),
-			Option.match({onNone: () => ({}), onSome: lastSeen => ({lastSeen})})
-		),
+		...Record.getSomes({
+			departureDelay: pipe(
+				from,
+				Option.filter(left),
+				Option.flatMap(stop => Option.fromNullishOr(stop.ritardo))
+			)
+		}),
+		...Record.getSomes({
+			lastSeen: Option.filter(
+				Option.all({
+					at: Option.fromNullishOr(answer.oraUltimoRilevamento),
+					station: text(answer.stazioneUltimoRilevamento)
+				}),
+				seen => seen.station !== '--'
+			)
+		}),
 		state: trainState(from, to)
 	}
 	return Option.some(tracking)

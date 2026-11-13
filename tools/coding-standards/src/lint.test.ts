@@ -200,6 +200,9 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					['--fix']
 				)
 				assert.include(fixed.sources[0] ?? '', 'Array.take(values, 2)')
+				assert.include(fixed.sources[0] ?? '', 'export const singleForward = Array.take(values, 2)')
+				assert.include(fixed.sources[0] ?? '', 'export const appliedArrow = Array.take(values, 2)')
+				assert.notInclude(fixed.sources[0] ?? '', 'value => Option.filter(value,')
 				assert.include(fixed.sources[0] ?? '', 'Array.map(value => `${value}`)')
 				assert.include(fixed.sources[0] ?? '', 'Array.take(Array.drop(values, read()), read())')
 				assert.include(fixed.sources[0] ?? '', "Context.Service<Service, {}>()('Service')")

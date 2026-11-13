@@ -448,7 +448,7 @@ export function processTree(rows: readonly Process[]) {
 		const self: ProcessNode = {
 			children: [],
 			...Option.match(Option.fromUndefinedOr(row.command), {onNone: () => ({}), onSome: command => ({command})}),
-			...Option.match(Option.fromUndefinedOr(row.cpu), {onNone: () => ({}), onSome: cpu => ({cpu})}),
+			...Record.getSomes({cpu: Option.fromUndefinedOr(row.cpu)}),
 			label: row.label,
 			memory: row.memory,
 			pid: row.pid,
@@ -526,15 +526,11 @@ function summaryOf(node: ProcessNode): ProcessSummary {
 			onFalse: () => ({}),
 			onTrue: () => ({children: Array.map(node.children, summaryOf)})
 		}),
-		...pipe(
-			Option.fromUndefinedOr(node.cpu),
-			Option.map(cpu => Number.round(cpu, 1)),
-			Option.match({onNone: () => ({}), onSome: cpuValue => ({cpu: cpuValue})})
-		),
+		...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(node.cpu), cpu => Number.round(cpu, 1))}),
 		...pipe(
 			Option.fromUndefinedOr(node.label.detail),
 			Option.filter(String.isNonEmpty),
-			Option.match({onNone: () => ({}), onSome: detailValue => ({detail: detailValue})})
+			Option.match({onNone: () => ({}), onSome: detail => ({detail})})
 		),
 		mib: Number.round(node.memory / 1024 ** 2, 0),
 		name: node.label.name
@@ -557,7 +553,7 @@ function appOf(row: Row, withProcesses: boolean) {
 			onTrue: () => ({processes: Array.map(processTree(row.item.processes ?? []), summaryOf)})
 		}),
 		state: row.item.state,
-		...Option.match(url, {onNone: () => ({}), onSome: urlValue => ({url: urlValue})})
+		...Record.getSomes({url})
 	} satisfies App
 }
 
@@ -566,11 +562,7 @@ function jobOf(row: Row) {
 		...failureOf(row.item),
 		id: row.item.id,
 		name: workloadName(row.item),
-		...pipe(
-			Option.fromUndefinedOr(row.item.next),
-			Option.map(iso),
-			Option.match({onNone: () => ({}), onSome: nextValue => ({next: nextValue})})
-		)
+		...Record.getSomes({next: Option.map(Option.fromUndefinedOr(row.item.next), iso)})
 	} satisfies Job
 }
 
@@ -582,7 +574,7 @@ function exposureOf(item: InventoryItem) {
 		}),
 		id: item.id,
 		name: item.name,
-		port: item.port,
+		...Record.getSomes({port: Option.fromUndefinedOr(item.port)}),
 		url: item.url
 	} satisfies HttpsExposure
 }

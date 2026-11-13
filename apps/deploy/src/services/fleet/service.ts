@@ -75,7 +75,7 @@ function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 // A worker's last saved history, windowed to the range the page asked for.
 function cachedHistory(query: HistoryQuery, time: number, saved?: MachineHistory) {
 	return {
-		cpuModel: saved?.cpuModel,
+		...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
 		disks: saved?.disks ?? [],
 		load: saved?.load ?? [],
 		samples: history(saved?.samples ?? [], query.minutes, time),

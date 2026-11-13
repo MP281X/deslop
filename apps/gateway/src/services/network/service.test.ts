@@ -1,7 +1,7 @@
 import {NodeHttpClient} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Context, Effect, Layer, MutableList, Option, Result, Schema} from 'effect'
+import {Context, Effect, Layer, MutableList, Result, Schema} from 'effect'
 
 import {FetchHttpClient, HttpClient} from 'effect/http'
 
@@ -54,10 +54,7 @@ it.effect(
 			Layer.provide(
 				layerUpstream,
 				Layer.succeed(FetchHttpClient.Fetch, (_input, init) => {
-					MutableList.append(
-						requests,
-						Option.match(Option.fromUndefinedOr(init), {onNone: () => ({}), onSome: initValue => ({init: initValue})})
-					)
+					MutableList.append(requests, {init})
 					// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
 					return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
 				})

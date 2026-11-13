@@ -1,4 +1,4 @@
-import {Option, Record} from 'effect'
+import {Option} from 'effect'
 
 import {Button, Image, VStack} from '@expo/ui/swift-ui'
 import type {ImageProps} from '@expo/ui/swift-ui'
@@ -38,7 +38,7 @@ export function Empty(props: {
 		>
 			{props.systemImage !== undefined && (
 				<Image
-					{...Record.getSomes({systemName: Option.fromUndefinedOr(props.systemImage)})}
+					systemName={props.systemImage}
 					modifiers={[
 						font({textStyle: 'largeTitle'}),
 						imageScale('large'),
