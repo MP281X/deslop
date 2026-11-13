@@ -218,7 +218,7 @@ function FullBody(props: {note: NoteItem}) {
 			{AsyncResult.isFailure(full) && (
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
 					<Problem
-						label="Out of date"
+						label="Note body unavailable"
 						saved={Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))}
 						onRetry={reload}
 					/>

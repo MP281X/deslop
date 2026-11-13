@@ -12,7 +12,7 @@ APP_VARIANT=development vp -C apps/stash exec expo export:embed --platform ios -
 vp -C apps/stash exec expo prebuild --platform ios --no-install --clean && rm -rf apps/stash/ios   # config check before a native change
 ```
 
-opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a Simulator build in, tap Sign in with GitHub, then Continue.
+opm and trips build the same way, with bundle `xyz.mp281x.<app>.dev`. To sign a Simulator build in, tap Sign In, then Continue.
 
 ## Deploy
 
