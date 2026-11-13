@@ -47,7 +47,7 @@ function QrCode(props: {className?: string; text: string}) {
 function Countdown(props: {expiresAt: DateTime.Utc}) {
 	const now = useAtomSuspense(secondAtom).value
 	return (
-		<span role="timer" className="text-muted-foreground flex items-center gap-1.5 text-xs">
+		<span role="timer" className="text-muted-foreground flex h-5 shrink-0 items-center gap-1.5 text-xs">
 			{DateTime.isLessThan(props.expiresAt, DateTime.addDuration(now, Duration.minutes(1))) && (
 				<StatusDot status="warning" />
 			)}
@@ -67,11 +67,12 @@ function Request(props: {request: PendingAuthorization}) {
 			aria-label="Sign-in request"
 		>
 			<h1 className="sr-only">Approve a sign-in</h1>
-			<div className="flex items-center gap-2 text-sm">
-				<span className="flex size-4 shrink-0 items-center justify-center [&_svg]:size-4">
+			{/* The identity is what gets approved, so it wraps whole; the mark and the time keep to its first line. */}
+			<div className="flex items-start gap-2 text-sm">
+				<span className="flex h-5 w-4 shrink-0 items-center justify-center [&_svg]:size-4">
 					<RequestMark request={props.request} />
 				</span>
-				<p className="min-w-0 flex-1 truncate">{signInLabel(props.request.clientName, props.request.device)}</p>
+				<p className="min-w-0 flex-1 wrap-break-word">{signInLabel(props.request.clientName, props.request.device)}</p>
 				<Countdown expiresAt={props.request.expiresAt} />
 			</div>
 			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}

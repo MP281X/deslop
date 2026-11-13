@@ -12,20 +12,23 @@ import {cn} from '#lib/classes.ts'
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {cause: Schema.Defect()}) {}
 
-// True once the clipboard took the value, false again after the check's moment; a press inside that moment starts over.
+// Each press first clears an earlier check, is true once the clipboard took the value, and false again after the check's moment.
 const copyAtom = Atom.family((value: string) =>
 	Atom.fn(() =>
 		Stream.concat(
-			Stream.fromEffect(
-				Effect.as(
-					Effect.tryPromise({
-						catch: cause => ClipboardError.make({cause}),
-						try: () => navigator.clipboard.writeText(value)
-					}),
-					true
-				)
-			),
-			Stream.fromEffect(Effect.as(Effect.sleep('1500 millis'), false))
+			Stream.succeed(false),
+			Stream.concat(
+				Stream.fromEffect(
+					Effect.as(
+						Effect.tryPromise({
+							catch: cause => ClipboardError.make({cause}),
+							try: () => navigator.clipboard.writeText(value)
+						}),
+						true
+					)
+				),
+				Stream.fromEffect(Effect.as(Effect.sleep('1500 millis'), false))
+			)
 		)
 	)
 )
