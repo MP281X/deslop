@@ -32,22 +32,26 @@ private enum Outcome {
   case queued
 }
 
-// Stash's colors as packages/components-mobile/src/theme.ts has them, in system fonts.
+// Stash's colors as the app's Info.plist carries them from packages/components-mobile/src/palette.ts, in system fonts.
 private enum Theme {
   static let app = Bundle(url: Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent())
-  static let background = color(dark: 0x0a0a0a, light: 0xffffff)
-  static let foreground = color(dark: 0xededed, light: 0x0a0a0a)
-  static let muted = color(dark: 0x9a9a9a, light: 0x666666)
-  static let primary = color(dark: 0xd0a215, light: 0xad8301)
-  static let destructive = color(dark: 0xd14d41, light: 0xaf3029)
+  static let background = color("background")
+  static let foreground = color("foreground")
+  static let muted = color("muted")
+  static let primary = color("primary")
+  static let destructive = color("destructive")
   static let logo = app?.url(forResource: "assets/src/routes/icon", withExtension: "png").flatMap {
     UIImage(contentsOfFile: $0.path)
   }
 
-  private static func color(dark: Int, light: Int) -> Color {
-    Color(
+  private static func color(_ name: String) -> Color {
+    guard let palette = app?.object(forInfoDictionaryKey: "DeslopTheme") as? [String: [String: String]] else {
+      fatalError("The app's Info.plist has no DeslopTheme")
+    }
+    return Color(
       uiColor: UIColor { traits in
-        let value = traits.userInterfaceStyle == .dark ? dark : light
+        let hex = palette[name]?[traits.userInterfaceStyle == .dark ? "dark" : "light"]
+        guard let hex, let value = Int(hex.dropFirst(), radix: 16) else { fatalError("DeslopTheme has no \(name)") }
         return UIColor(
           red: CGFloat((value >> 16) & 0xff) / 255, green: CGFloat((value >> 8) & 0xff) / 255,
           blue: CGFloat(value & 0xff) / 255, alpha: 1)
