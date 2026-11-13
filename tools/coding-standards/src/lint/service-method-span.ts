@@ -43,8 +43,9 @@ function returnsEffect(context: Context, value: ESTree.Node) {
 		node.type !== 'CallExpression' ||
 		node.callee.type !== 'Identifier' ||
 		!isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
-	)
+	) {
 		return false
+	}
 	const last = Array.last(node.arguments)
 	if (
 		Option.exists(
@@ -60,13 +61,15 @@ function returnsEffect(context: Context, value: ESTree.Node) {
 function untraced(context: Context, value: ESTree.Node) {
 	const node = resolveBinding(context, value)
 	if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression') {
-		if (importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fnUntraced'}))
+		if (importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fnUntraced'})) {
 			return Option.some(node.callee)
+		}
 		if (
 			importedMember({context, importedName: 'Effect', node: node.callee, propertyName: 'fn'}) &&
 			Option.exists(Array.head(node.arguments), isFunction)
-		)
+		) {
 			return Option.some(node.callee)
+		}
 	}
 	return Option.none<ESTree.MemberExpression>()
 }
