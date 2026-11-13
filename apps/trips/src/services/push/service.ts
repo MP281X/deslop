@@ -27,7 +27,6 @@ import type {ActivityProps, Booking, BookingList, Flight, Leg, Train} from '#ser
 import {BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {
-	alertKey,
 	alertsOf,
 	announced,
 	expiredActivities,
@@ -123,7 +122,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			Request: Schema.NonEmptyArray(SentAlert.insert),
 			execute: rows => sql`
 				INSERT INTO ${sql(SentAlert.table)} ${sql.insert(rows)}
-				ON CONFLICT (bookingId, key) DO UPDATE SET sentAt = excluded.sentAt
+				ON CONFLICT DO UPDATE SET sentAt = excluded.sentAt
 			`
 		})
 		const forgetSentExcept = SqlSchema.void({
@@ -275,7 +274,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		})
 
 		const announce = Effect.fnUntraced(function* (booking: Booking, now: DateTime.Utc) {
-			const sent = Array.map(yield* asPushReadError(listSent(booking.id)), row => row.key)
+			const sent = yield* asPushReadError(listSent(booking.id))
 			const fresh = Array.filter(alertsOf(booking, now), alert => !announced(sent, alert))
 			if (Array.isReadonlyArrayEmpty(fresh)) return
 			const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
@@ -297,7 +296,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				onEmpty: () => Effect.void,
 				onNonEmpty: alerts =>
 					pipe(
-						recordSent(Array.map(alerts, alert => ({bookingId: booking.id, key: alertKey(alert), sentAt: now}))),
+						recordSent(Array.map(alerts, alert => ({bookingId: booking.id, category: alert.category, value: Option.fromUndefinedOr(alert.value), sentAt: now}))),
 						Reactivity.mutation(['push']),
 						asPushSaveError
 					)
@@ -399,6 +398,15 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 							PRIMARY KEY (bookingId, key)
 						) STRICT, WITHOUT ROWID
 					`
+				}),
+				'0002_alert_records': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`ALTER TABLE sent_alerts RENAME TO packed_alerts`
+					yield* sql`CREATE TABLE sent_alerts (bookingId TEXT NOT NULL, category TEXT NOT NULL, value TEXT, sentAt INTEGER NOT NULL) STRICT`
+					yield* sql`INSERT INTO sent_alerts (bookingId, category, value, sentAt) SELECT bookingId, CASE WHEN instr(key, ':') = 0 THEN key ELSE substr(key, 1, instr(key, ':') - 1) END, CASE WHEN instr(key, ':') = 0 THEN NULL ELSE substr(key, instr(key, ':') + 1) END, sentAt FROM packed_alerts`
+					yield* sql`DROP TABLE packed_alerts`
+					yield* sql`CREATE UNIQUE INDEX alert_value ON sent_alerts (bookingId, category, value) WHERE value IS NOT NULL`
+					yield* sql`CREATE UNIQUE INDEX alert_once ON sent_alerts (bookingId, category) WHERE value IS NULL`
 				})
 			}),
 			table: 'push_migrations'
