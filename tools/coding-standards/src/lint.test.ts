@@ -2697,6 +2697,18 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'		if (item < 0) continue',
 							'		if (item < 0) continue // reported',
 							'	}',
+							'}',
+							// The examples of the judge question this rule replaced.
+							'export function discount(order: {total: number}) {',
+							'	if (order.total <= 0) return 0',
+							'	const rate = order.total > 100 ? 0.1 : 0.05',
+							'	if (order.total < 0) return 0 // reported',
+							'	return order.total * rate',
+							'}',
+							'export function kept(order: {total: number}) {',
+							'	if (order.total <= 0) return 0',
+							'	const rate = order.total > 100 ? 0.1 : 0.05',
+							'	return order.total * rate',
 							'}'
 						],
 						'\n'
@@ -2713,7 +2725,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const result = yield* lintSource({
 					'searches.ts': Array.join(
 						[
-							"import {Array, HashMap, Option} from 'effect'",
+							"import {Array, HashMap, Option, pipe} from 'effect'",
 							'',
 							'type Span = {id: string; serviceId: string}',
 							'type Service = {id: string; name: string}',
@@ -2738,7 +2750,28 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export const own = Array.map(spans, span => {',
 							'	const local = [span]',
 							'	return Array.some(local, item => item.id === span.serviceId)',
-							'})'
+							'})',
+							// The examples of the judge question this rule replaced.
+							'export function attachNative(spans: Span[], services: Service[]) {',
+							'	return spans.map(span => ({...span, service: services.find(service => service.id === span.serviceId)})) // reported',
+							'}',
+							'export function attachIndexed(spans: Span[], services: Service[]) {',
+							'	const byId = new Map(services.map(service => [service.id, service]))',
+							'	return spans.map(span => ({...span, service: byId.get(span.serviceId)}))',
+							'}',
+							'declare const ids: string[]',
+							'declare const label: string',
+							'export const curried = Array.map(spans, span => pipe(services, Array.findFirst(service => service.id === span.serviceId))) // reported',
+							'export const applied = Array.map(spans, span => Array.findFirst((service: Service) => service.id === span.serviceId)(services)) // reported',
+							'export const primitive = Array.filter(spans, span => Array.some(ids, id => id === span.serviceId)) // reported',
+							'export const contained = Array.filter(spans, span => Array.contains(ids, span.serviceId)) // reported',
+							'export const pipedContained = Array.filter(spans, span => pipe(ids, Array.contains(span.serviceId))) // reported',
+							'export const included = spans.filter(span => ids.includes(span.serviceId)) // reported',
+							'export const inText = spans.filter(span => label.includes(span.serviceId))',
+							"const PROVIDERS = ['web', 'worker'] as const",
+							'export const fixedTable = Array.filter(spans, span => Array.some(PROVIDERS, provider => provider === span.serviceId))',
+							'declare const trees: {children: Span[]; id: string}[]',
+							'export const children = Array.map(trees, tree => Array.findFirst(tree.children, child => child.id === tree.id))'
 						],
 						'\n'
 					)
@@ -2798,6 +2831,54 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'no-hand-written-helper'
 				)
 				assert.deepStrictEqual(sums.reported, sums.marked)
+				// The examples of the judge question these rules replaced, and running totals kept in a MutableRef.
+				const totals = reportedLines(
+					yield* lintSource({
+						'totals.ts': Array.join(
+							[
+								"import {Array, Effect, MutableRef} from 'effect'",
+								'',
+								'type Note = {tags: string[]; words: number}',
+								'export function wordCount(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	for (const note of notes) MutableRef.update(total, count => count + note.words) // reported',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function tagsOf(notes: Note[]) {',
+								'	return Array.flatMap(notes, note => note.tags)',
+								'}',
+								'export function counted(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	Array.forEach(notes, () => {',
+								'		MutableRef.update(total, count => 1 + count) // reported',
+								'	})',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function seeded(notes: Note[]) {',
+								'	const total = MutableRef.make(10)',
+								'	for (const note of notes) MutableRef.update(total, count => count + note.words)',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function logged(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	for (const note of notes) {',
+								'		MutableRef.update(total, count => count + note.words)',
+								'		Effect.runSync(Effect.log(note.words))',
+								'	}',
+								'	return MutableRef.get(total)',
+								'}',
+								'export function compounded(notes: Note[]) {',
+								'	const total = MutableRef.make(0)',
+								'	for (const note of notes) MutableRef.update(total, count => count + count * note.words)',
+								'	return MutableRef.get(total)',
+								'}'
+							],
+							'\n'
+						)
+					}),
+					'no-hand-written-helper'
+				)
+				assert.deepStrictEqual(totals.reported, totals.marked)
 				const fixed = yield* lintSource(
 					{
 						'imported.ts': Array.join(
