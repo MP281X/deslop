@@ -204,12 +204,14 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
 									onTrue: () => 0
 								})
 								const status = Array.getUnsafe(yield* Ref.get(answers), recipient)
-								if (status === 'network')
-									{return yield* new HttpClientError.HttpClientError({
+								if (status === 'network') {
+									return yield* new HttpClientError.HttpClientError({
 										reason: new HttpClientError.TransportError({request})
-									})}
-								if (status === 403)
-									{return HttpClientResponse.fromWeb(request, Response.json({reason: 'InvalidProviderToken'}, {status}))}
+									})
+								}
+								if (status === 403) {
+									return HttpClientResponse.fromWeb(request, Response.json({reason: 'InvalidProviderToken'}, {status}))
+								}
 								return HttpClientResponse.fromWeb(request, new Response(undefined, {status}))
 							}
 							return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
