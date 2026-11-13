@@ -7,11 +7,12 @@ export const noRepeatedTextAction = question(
 		// Two actions render two pressables, or one inside a row rendered per item.
 		gate: unit => unit.pressables >= 2 || unit.nestedPressables >= 1,
 		message:
-			'The whole row opens the item; its other actions sit at its end: one as its icon button, several behind one … menu button.',
+			'The row opens the item; other allowed actions use trailing icons or a menu. Web has no removal control or context menu; native removal uses its long-press menu or swipe.',
 		no: {
 			cases: [
 				'Actions inside a trailing dropdown or menu',
-				'A trailing icon-only button, such as a trash for a removal',
+				'A trailing icon-only button for an allowed action, such as pinning',
+				'Native removal in a long-press menu or swipe, not a web removal affordance',
 				'A decision pair on a card or dialog, such as Approve and Deny, or Save and Cancel',
 				'Alternative ways to do one thing, such as signing in with GitHub or with a passkey',
 				'Buttons in a native form section',
@@ -23,8 +24,8 @@ export const noRepeatedTextAction = question(
 					return (
 						<Item>
 							<ItemTitle>{props.note.title}</ItemTitle>
-							<Button variant="ghost" size="icon-sm" aria-label="Delete" onClick={() => remove(props.note)}>
-								<TrashIcon />
+							<Button variant="ghost" size="icon-sm" aria-label="Pin" onClick={() => pin(props.note)}>
+								<PushPinIcon />
 							</Button>
 							<DropdownMenu>
 								<DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}>

@@ -34,11 +34,11 @@ const cli = pipe(
 	Command.make('coding-standards'),
 	Command.withDescription('Lint tactics, semantic judging and sign-in'),
 	Command.withSubcommands([
-		pipe(
+		Command.withDescription(
 			Command.make('tactics', {}, () => Console.log(TACTICS)),
-			Command.withDescription('Print lint tactics for diagnostics autofix leaves')
+			'Print lint tactics for diagnostics autofix leaves'
 		),
-		pipe(
+		Command.withDescription(
 			Command.make(
 				'judge',
 				{
@@ -51,14 +51,9 @@ const cli = pipe(
 				},
 				input => judge(input, input.ignore)
 			),
-			Command.withDescription(
-				'Ask every function, component and test case the questions no cached answer covers, and report what breaks one'
-			)
+			'Ask every function, component and test case the questions no cached answer covers, and report what breaks one'
 		),
-		pipe(
-			Command.make('sign-in', urls, signIn),
-			Command.withDescription('Sign the judge in to Gateway once per machine')
-		)
+		Command.withDescription(Command.make('sign-in', urls, signIn), 'Sign the judge in to Gateway once per machine')
 	]),
 	Command.run({version: packageJson.version})
 )

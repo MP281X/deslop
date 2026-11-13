@@ -26,7 +26,9 @@ export const noMisleadingName = question(
 				'A get, find, is, has or to function `code` declares that changes domain state, or returns something other than its name says',
 				'An is, has, can or should name holding a value that is not a boolean, such as a list or a count a call returns',
 				'A plural name for one item, or a singular name for a collection',
-				'A name stating a unit, type or source the value does not have, such as seconds holding milliseconds'
+				'A name stating a unit, type or source the value does not have, such as seconds holding milliseconds',
+				'A service list that streams rather than reads once, changes that holds a whole collection rather than diffs, or extra that holds one field: use list for a snapshot, watch for a collection stream, events for diffs and changed for a change notification',
+				'An RPC tag whose prefix names a different service from the one its handler visibly dispatches to; the prefix names the answering service folder'
 			],
 			example: `
 				function isExpired(sessions: Session[], now: number) {

@@ -1,4 +1,4 @@
-import {Option, pipe} from 'effect'
+import {Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {ESTree} from 'vite-plus/lint/plugins'
@@ -12,20 +12,17 @@ const readsOrWrites = matches(/^(?:is[A-Z]|get|set$|update$|modify$|refresh$|mou
 
 // The nearest component or hook around a node, which runs on every render.
 function renderingFunction(node: ESTree.Node): Option.Option<ESTree.Node> {
-	return pipe(
-		Option.fromNullishOr(node.parent),
-		Option.flatMap(parent => {
-			if (
-				(parent.type === 'FunctionDeclaration' ||
-					parent.type === 'FunctionExpression' ||
-					parent.type === 'ArrowFunctionExpression') &&
-				Option.exists(bindingName(parent), componentOrHook)
-			) {
-				return Option.some(parent)
-			}
-			return renderingFunction(parent)
-		})
-	)
+	return Option.flatMap(Option.fromNullishOr(node.parent), parent => {
+		if (
+			(parent.type === 'FunctionDeclaration' ||
+				parent.type === 'FunctionExpression' ||
+				parent.type === 'ArrowFunctionExpression') &&
+			Option.exists(bindingName(parent), componentOrHook)
+		) {
+			return Option.some(parent)
+		}
+		return renderingFunction(parent)
+	})
 }
 
 export const noComponentAtomAllocation = defineRule({

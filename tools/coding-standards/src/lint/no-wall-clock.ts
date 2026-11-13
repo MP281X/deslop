@@ -3,7 +3,7 @@ import {Array, Option, String} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isFunction, isTestFile, memberName, onRealClock, variableFor} from '#lib/ast.ts'
+import {importedMember, isFunction, isTestFile, memberName, onRealClock, variableOf} from '#lib/ast.ts'
 
 const MESSAGE =
 	'This test reads the real time, so its result depends on when and how fast it runs: use a fixed instant with TestClock.setTime, and Clock or DateTime under it.effect.'
@@ -17,7 +17,7 @@ function globalPath(context: Context, node: ESTree.Expression | ESTree.Super): O
 	if (node.type === 'Identifier') {
 		return Option.liftPredicate(
 			node.name,
-			() => !Option.exists(variableFor(context, node), variable => Array.isArrayNonEmpty(variable.defs))
+			() => !Option.exists(variableOf(context, node), variable => Array.isArrayNonEmpty(variable.defs))
 		)
 	}
 	if (node.type !== 'MemberExpression') return Option.none()

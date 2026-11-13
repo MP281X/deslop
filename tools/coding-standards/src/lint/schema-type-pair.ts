@@ -96,9 +96,9 @@ function reportSchemaVariable(input: {
 	)
 	if (Array.contains(input.cycleNames, name)) {
 		if (
-			!pipe(
+			!Option.exists(
 				namedTypeAlias({name, typeStatement}),
-				Option.exists(declaration => !isInferredType({name, node: declaration.typeAnnotation}))
+				declaration => !isInferredType({name, node: declaration.typeAnnotation})
 			)
 		) {
 			input.context.report({
@@ -115,9 +115,8 @@ function reportSchemaVariable(input: {
 		return
 	}
 	if (
-		!pipe(
-			namedTypeAlias({name, typeStatement}),
-			Option.exists(declaration => isInferredType({name, node: declaration.typeAnnotation}))
+		!Option.exists(namedTypeAlias({name, typeStatement}), declaration =>
+			isInferredType({name, node: declaration.typeAnnotation})
 		)
 	) {
 		input.context.report({

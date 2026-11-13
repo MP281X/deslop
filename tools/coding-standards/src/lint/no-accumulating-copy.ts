@@ -87,9 +87,9 @@ export const noAccumulatingCopy = defineRule({
 				if (callback?.type !== 'ArrowFunctionExpression' && callback?.type !== 'FunctionExpression') return
 				const parameter = callback.params[0]
 				if (parameter?.type !== 'Identifier') return
-				pipe(
+				Option.map(
 					variableFromScope({name: parameter.name, scope: context.sourceCode.getScope(callback)}),
-					Option.map(variable => {
+					variable => {
 						for (const reference of variable.references) {
 							pipe(
 								copySite(context, reference.identifier),
@@ -104,7 +104,7 @@ export const noAccumulatingCopy = defineRule({
 								})
 							)
 						}
-					})
+					}
 				)
 			}
 		}

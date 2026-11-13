@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array, Option, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -33,18 +33,26 @@ function exits(node: ESTree.Statement) {
 
 function earlyExit(input: Guard & {node: ESTree.Node}) {
 	if (input.node.parent?.type !== 'BlockStatement' && input.node.parent?.type !== 'Program') return false
-	return Array.some(
-		Array.take(
-			input.node.parent.body,
-			Option.getOrElse(
-				Array.findFirstIndex(input.node.parent.body, statement => statement === input.node),
-				() => 0
+	const statements = input.node.parent.body
+	return pipe(
+		statements,
+		pipelineSubject1279 =>
+			Array.take(
+				pipelineSubject1279,
+				pipe(
+					statements,
+					subject1406 => Array.findFirstIndex(subject1406, statement => statement === input.node),
+					subject1472 => Option.getOrElse(subject1472, () => 0)
+				)
+			),
+		subject1512 =>
+			Array.some(
+				subject1512,
+				statement =>
+					statement.type === 'IfStatement' &&
+					exits(statement.consequent) &&
+					checks({...input, name: 'isNone', operator: '||', test: statement.test})
 			)
-		),
-		statement =>
-			statement.type === 'IfStatement' &&
-			exits(statement.consequent) &&
-			checks({...input, name: 'isNone', operator: '||', test: statement.test})
 	)
 }
 

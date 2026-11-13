@@ -5,6 +5,7 @@ import type {OxlintConfig} from 'vite-plus/lint'
 import {definePlugin} from 'vite-plus/lint/plugins'
 import type {Plugin} from 'vite-plus/lint/plugins'
 
+import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
 import {iconWeight} from '#lint/icon-weight.ts'
 import {moduleConstant} from '#lint/module-constant.ts'
@@ -105,6 +106,7 @@ const SET_MESSAGE =
 const DESLOP_RULES = {'icon-weight': iconWeight}
 
 const RULES = {
+	'effect-call-form': effectCallForm,
 	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'module-constant': moduleConstant,
 	'no-accumulating-copy': noAccumulatingCopy,
@@ -251,6 +253,37 @@ export const lint: OxlintConfig = {
 
 		'eslint-js/no-restricted-syntax': [
 			'error',
+			{
+				message: 'Name an error class <Domain>Error.',
+				selector:
+					'ClassDeclaration[superClass.callee.callee.object.name="Schema"][superClass.callee.callee.property.name="TaggedError"]:not([id.name=/Error$/])'
+			},
+			{message: 'Name a derived value <noun>Of.', selector: 'FunctionDeclaration[id.name=/For$|^(get|to|from)[A-Z]/]'},
+			{
+				message: 'Name a span Service.method.',
+				selector:
+					'CallExpression[callee.object.name="Effect"][callee.property.name=/^(withSpan|fn)$/] > Literal.arguments[value]:not([value=/^[A-Z][A-Za-z]*\\.[a-z][A-Za-z]*$/])'
+			},
+			{
+				message: 'Name an atom with the Atom suffix.',
+				selector:
+					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init[callee.object.name="Atom"][callee.property.name=/^(make|fn|fnSync|runtime|writable)$/]'
+			},
+			{
+				message: 'Write a literal duration as a duration string.',
+				selector:
+					'CallExpression[callee.object.name="Duration"][callee.property.name=/^(nanos|micros|millis|seconds|minutes|hours|days|weeks)$/] > Literal.arguments'
+			},
+			{
+				message: 'Name a schema in PascalCase.',
+				selector:
+					'VariableDeclarator[id.name=/^[a-z]/] > :matches(CallExpression, MemberExpression).init[callee.object.name="Schema"][callee.property.name=/^[A-Z]/], VariableDeclarator[id.name=/^[a-z]/] > MemberExpression.init[object.name="Schema"][property.name=/^[A-Z]/]'
+			},
+			{
+				message: 'Name an error mapping combinator as<Domain>Error.',
+				selector:
+					'VariableDeclarator:not([id.name=/^as[A-Z]\\w*Error$/]) > CallExpression[callee.object.name="Effect"][callee.property.name="mapError"][arguments.length=1]'
+			},
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
 			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'},
@@ -267,7 +300,7 @@ export const lint: OxlintConfig = {
 			{
 				message: "Name an RPC '<service folder>.<verb>', as in 'metrics.history'.",
 				selector:
-					'CallExpression[callee.object.name="Rpc"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z]+\\.[a-z][A-Za-z]*$/])'
+					'CallExpression[callee.object.name="Rpc"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z]+(?:-[a-z]+)*\\.[a-z][A-Za-z]*$/])'
 			}
 		],
 
@@ -387,7 +420,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/unnecessary-effect-gen': 'error',
 		'effecttsgo/unnecessary-fail-yieldable-error': 'error',
 		'effecttsgo/unnecessary-pipe': 'error',
-		'effecttsgo/unnecessary-pipe-chain': 'error',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
 		'eslint/accessor-pairs': ['error', {enforceForClassMembers: true, enforceForTSTypes: true}],
@@ -452,7 +484,10 @@ export const lint: OxlintConfig = {
 		'eslint/no-plusplus': 'error',
 		'eslint/no-proto': 'error',
 		'eslint/no-regex-spaces': 'error',
-		'eslint/no-restricted-exports': ['error', {restrictedNamedExportsPattern: 'Live$'}],
+		'eslint/no-restricted-exports': [
+			'error',
+			{restrictedNamedExportsPattern: '^(?:config|get|layer|list|live|make|run|Error|Failure)$|Live$'}
+		],
 		'eslint/no-restricted-globals': [
 			'error',
 			{
@@ -618,7 +653,7 @@ export const lint: OxlintConfig = {
 		'import/no-named-as-default': 'error',
 		'import/no-named-as-default-member': 'error',
 		'import/no-named-default': 'error',
-		'import/no-namespace': ['error', {ignore: ['[!#./]*', '[!#./]*/**']}],
+		'import/no-namespace': 'error',
 		'import/no-relative-parent-imports': 'error',
 		'import/no-self-import': 'error',
 		'import/no-unassigned-import': ['error', {allow: ['**/*.css']}],
@@ -826,7 +861,7 @@ export const lint: OxlintConfig = {
 		'typescript/no-explicit-any': 'error',
 		'typescript/no-extraneous-class': 'error',
 		'typescript/no-import-type-side-effects': 'error',
-		'typescript/no-inferrable-types': ['error', {ignoreParameters: true}],
+		'typescript/no-inferrable-types': 'error',
 		'typescript/no-misused-new': 'error',
 		'typescript/no-namespace': ['error', {allowDeclarations: false, allowDefinitionFiles: false}],
 		'typescript/no-non-null-assertion': 'error',
@@ -870,7 +905,7 @@ export const lint: OxlintConfig = {
 		'typescript/no-floating-promises': ['error', {allowForKnownSafeCalls: [{from: 'file', name: 'navigate'}]}],
 		'typescript/no-for-in-array': 'error',
 		'typescript/no-generated-empty-object-type': 'error',
-		'typescript/no-misused-promises': ['error', {checksVoidReturn: {attributes: false}}],
+		'typescript/no-misused-promises': 'error',
 		'typescript/no-misused-spread': 'error',
 		'typescript/no-redundant-type-constituents': 'error',
 		'typescript/no-unnecessary-boolean-literal-compare': 'error',
@@ -892,7 +927,17 @@ export const lint: OxlintConfig = {
 		'typescript/prefer-optional-chain': 'error',
 		'typescript/prefer-readonly': ['error', {}],
 		'typescript/related-getter-setter-pairs': 'error',
-		'typescript/restrict-plus-operands': 'error',
+		'typescript/restrict-plus-operands': [
+			'error',
+			{
+				allowAny: false,
+				allowBoolean: false,
+				allowNullish: false,
+				allowNumberAndString: false,
+				allowRegExp: false,
+				skipCompoundAssignments: false
+			}
+		],
 		'typescript/restrict-template-expressions': 'error',
 		'typescript/strict-boolean-expressions': [
 			'error',

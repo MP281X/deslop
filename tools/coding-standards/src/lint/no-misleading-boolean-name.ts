@@ -1,4 +1,4 @@
-import {Array, Option, Predicate} from 'effect'
+import {Array, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -74,9 +74,10 @@ function returnedValues(context: Context, node: ESTree.Node): ESTree.Node[] {
 function returnsNonBoolean(context: Context, node: ESTree.Function | ESTree.ArrowFunctionExpression) {
 	if (node.generator || node.body === null) return false
 	if (node.body.type !== 'BlockStatement') return nonBoolean(context, node.body)
-	return Array.some(
-		Array.flatMap(node.body.body, statement => returnedValues(context, statement)),
-		value => nonBoolean(context, value)
+	return pipe(
+		node.body.body,
+		Array.flatMap(statement => returnedValues(context, statement)),
+		Array.some(value => nonBoolean(context, value))
 	)
 }
 

@@ -1,4 +1,4 @@
-import {Option, pipe} from 'effect'
+import {Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {ESTree} from 'vite-plus/lint/plugins'
@@ -7,7 +7,7 @@ import {typeWrapped} from '#lib/ast.ts'
 
 function element(node: ESTree.Node): boolean {
 	if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
-	return pipe(typeWrapped(node), Option.exists(element))
+	return Option.exists(typeWrapped(node), element)
 }
 
 export const noStoredJsx = defineRule({

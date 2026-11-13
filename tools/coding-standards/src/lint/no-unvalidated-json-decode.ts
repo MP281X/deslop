@@ -28,7 +28,7 @@ function schemaDecoder(context: Context, callee: ESTree.Node) {
 	return (
 		callee.type === 'MemberExpression' &&
 		importedMember({context, importedName: 'Schema', node: callee}) &&
-		pipe(memberName(callee), Option.exists(String.startsWith('decode')))
+		Option.exists(memberName(callee), String.startsWith('decode'))
 	)
 }
 
@@ -95,7 +95,7 @@ function httpDecoder(context: Context, callee: ESTree.Node) {
 export const noUnvalidatedJsonDecode = defineRule({
 	create: context => {
 		// Every reported schema is Schema.Unknown, written in this file.
-		if (!pipe(context.sourceCode.text, String.includes('Unknown'))) return {}
+		if (!String.includes('Unknown')(context.sourceCode.text)) return {}
 		return {
 			CallExpression: node => {
 				const schema = node.arguments[0]

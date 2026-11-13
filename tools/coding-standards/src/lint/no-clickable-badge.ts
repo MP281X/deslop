@@ -10,8 +10,8 @@ export const noClickableBadge = defineRule({
 			JSXOpeningElement: node => {
 				if (node.name.type !== 'JSXIdentifier' || !Array.contains(file.badges, node.name.name)) return
 				pipe(
+					node.attributes,
 					Array.findFirst(
-						node.attributes,
 						attribute =>
 							attribute.type === 'JSXAttribute' &&
 							attribute.name.type === 'JSXIdentifier' &&

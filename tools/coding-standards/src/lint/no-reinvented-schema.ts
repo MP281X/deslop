@@ -72,10 +72,7 @@ function reinventedSchema(input: {context: Context; node: ESTree.CallExpression}
 	const [filter] = input.node.arguments
 	if (Option.isSome(schemaMember({context: input.context, node: callee}))) {
 		if (input.node.arguments.length !== 1 || filter === undefined) return Option.none()
-		return pipe(
-			pipedBase(input.node),
-			Option.flatMap(base => shippedSchema({base, context: input.context, filter}))
-		)
+		return Option.flatMap(pipedBase(input.node), base => shippedSchema({base, context: input.context, filter}))
 	}
 	return Array.findFirst(input.node.arguments, argument =>
 		shippedSchema({base: callee.object, context: input.context, filter: argument})

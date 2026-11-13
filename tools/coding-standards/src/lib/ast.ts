@@ -23,9 +23,8 @@ export function inert(token: Token) {
 export function variableFromScope(input: {name: string; scope: Scope | null}): Option.Option<Variable> {
 	if (input.scope === null) return Option.none()
 	const scope = input.scope
-	return pipe(
-		Option.fromNullishOr(scope.set.get(input.name)),
-		Option.orElse(() => variableFromScope({name: input.name, scope: scope.upper}))
+	return Option.orElse(Option.fromNullishOr(scope.set.get(input.name)), () =>
+		variableFromScope({name: input.name, scope: scope.upper})
 	)
 }
 
@@ -38,13 +37,22 @@ export function boundVariable(input: {name: string; scope: Scope | null}) {
 }
 
 export function readsOf(input: {context: Context; name: string; node: ESTree.Node}) {
-	return pipe(
+	return Option.map(
 		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.map(variable => Array.filter(variable.references, reference => reference.isRead()))
+		variable => Array.filter(variable.references, reference => reference.isRead())
 	)
 }
 
-export function variableFor(context: Context, node: ESTree.IdentifierReference) {
+export function singleRead(input: {context: Context; name: string; node: ESTree.Node}) {
+	return pipe(
+		readsOf(input),
+		Option.filter(reads => reads.length === 1),
+		Option.flatMap(Array.head),
+		Option.map(reference => reference.identifier)
+	)
+}
+
+export function variableOf(context: Context, node: ESTree.IdentifierReference) {
 	return variableFromScope({name: node.name, scope: context.sourceCode.getScope(node)})
 }
 
@@ -70,8 +78,20 @@ function readImportedNames(program: ESTree.Program) {
 	return names
 }
 
-function bindsImport(context: Context, name: string) {
-	return Array.contains(importedNames.get(context.sourceCode.ast) ?? readImportedNames(context.sourceCode.ast), name)
+function importsOf(context: Context, node: ESTree.IdentifierReference) {
+	if (
+		!Array.contains(importedNames.get(context.sourceCode.ast) ?? readImportedNames(context.sourceCode.ast), node.name)
+	) {
+		return []
+	}
+	return Option.match(variableOf(context, node), {
+		onNone: () => [],
+		onSome: variable =>
+			Array.flatMap(variable.defs, definition => {
+				if (definition.type !== 'ImportBinding' || definition.parent?.type !== 'ImportDeclaration') return []
+				return [{source: definition.parent.source.value, specifier: definition.node}]
+			})
+	})
 }
 
 export function isImportBinding(input: {
@@ -80,23 +100,16 @@ export function isImportBinding(input: {
 	node: ESTree.IdentifierReference
 	source: string | RegExp
 }) {
-	if (!bindsImport(input.context, input.node.name)) return false
-	return pipe(
-		variableFor(input.context, input.node),
-		Option.exists(variable =>
-			Array.some(variable.defs, definition => {
-				if (definition.type !== 'ImportBinding' || definition.parent?.type !== 'ImportDeclaration') return false
-				if (Predicate.isString(input.source) && definition.parent.source.value !== input.source) return false
-				if (Predicate.isRegExp(input.source) && !input.source.test(definition.parent.source.value)) return false
-				return (
-					input.importedName === undefined ||
-					(definition.node.type === 'ImportSpecifier' &&
-						definition.node.imported.type === 'Identifier' &&
-						definition.node.imported.name === input.importedName)
-				)
-			})
+	return Array.some(importsOf(input.context, input.node), binding => {
+		if (Predicate.isString(input.source) && binding.source !== input.source) return false
+		if (Predicate.isRegExp(input.source) && !input.source.test(binding.source)) return false
+		return (
+			input.importedName === undefined ||
+			(binding.specifier.type === 'ImportSpecifier' &&
+				binding.specifier.imported.type === 'Identifier' &&
+				binding.specifier.imported.name === input.importedName)
 		)
-	)
+	})
 }
 
 function importedName(specifier: ESTree.ImportDeclarationSpecifier) {
@@ -106,7 +119,7 @@ function importedName(specifier: ESTree.ImportDeclarationSpecifier) {
 
 // A fix that calls an Effect module such as Predicate uses the file's import of it, or adds it in its sorted place to the file's named import from 'effect', or a new import before the first statement, which makes the fix span from the import to the call, so the file's other fixes needing it follow on the next fix run; a name bound to something else has no fix.
 export function effectImport(input: {context: Context; fixer: Fixer; name: string; node: ESTree.Node}) {
-	return pipe(
+	const imports: Option.Option<Fix[]> = pipe(
 		variableFromScope({name: input.name, scope: input.context.sourceCode.getScope(input.node)}),
 		// A built-in global such as Array is the one the preset replaces with Effect's.
 		Option.filter(variable => Array.isArrayNonEmpty(variable.defs)),
@@ -134,12 +147,12 @@ export function effectImport(input: {context: Context; fixer: Fixer; name: strin
 						)
 					}),
 					Option.orElse(() =>
-						Option.map(
+						pipe(
+							input.context.sourceCode.ast.body,
 							Array.findFirst(
-								input.context.sourceCode.ast.body,
 								statement => statement.type !== 'ExpressionStatement' || Predicate.isNullish(statement.directive)
 							),
-							statement => input.fixer.insertTextBefore(statement, `import {${input.name}} from 'effect'\n`)
+							Option.map(statement => input.fixer.insertTextBefore(statement, `import {${input.name}} from 'effect'\n`))
 						)
 					),
 					Option.map(Array.of)
@@ -161,22 +174,13 @@ export function effectImport(input: {context: Context; fixer: Fixer; name: strin
 				)
 		})
 	)
+	return imports
 }
 
 export function isNamespaceImport(input: {context: Context; node: ESTree.IdentifierReference; source: string}) {
-	if (!bindsImport(input.context, input.node.name)) return false
-	return pipe(
-		variableFor(input.context, input.node),
-		Option.exists(variable =>
-			Array.some(
-				variable.defs,
-				definition =>
-					definition.type === 'ImportBinding' &&
-					definition.node.type === 'ImportNamespaceSpecifier' &&
-					definition.parent?.type === 'ImportDeclaration' &&
-					definition.parent.source.value === input.source
-			)
-		)
+	return Array.some(
+		importsOf(input.context, input.node),
+		binding => binding.specifier.type === 'ImportNamespaceSpecifier' && binding.source === input.source
 	)
 }
 
@@ -210,10 +214,7 @@ export function returnedExpression(node: ESTree.Function | ESTree.ArrowFunctionE
 
 // Follow local immutable aliases only; imports, parameters, mutable bindings and cycles remain unknown.
 export function resolveBinding(context: Context, node: ESTree.Node, seen: Variable[] = []): ESTree.Node {
-	const expression = pipe(
-		typeWrapped(node),
-		Option.getOrElse(() => node)
-	)
+	const expression = Option.getOrElse(typeWrapped(node), () => node)
 	if (expression !== node) return resolveBinding(context, expression, seen)
 	if (node.type !== 'Identifier') return node
 	return pipe(
@@ -286,7 +287,7 @@ function isTestApi(context: Context, node: ESTree.IdentifierReference): boolean 
 	) {
 		return true
 	}
-	return Option.exists(variableFor(context, node), variable =>
+	return Option.exists(variableOf(context, node), variable =>
 		Array.some(
 			variable.defs,
 			definition =>
@@ -470,7 +471,7 @@ export function lengthTest(node: ESTree.BinaryExpression | ESTree.PrivateInExpre
 }
 
 export function matches(regExp: RegExp) {
-	return (text: string) => Option.isSome(pipe(text, String.match(regExp)))
+	return (text: string) => Option.isSome(String.match(regExp)(text))
 }
 
 export const isSchemaOperationName = matches(
@@ -484,7 +485,7 @@ export function isSchemaOperationCall(input: {context: Context; node: ESTree.Cal
 	) {
 		return false
 	}
-	return pipe(memberName(input.node.callee), Option.exists(isSchemaOperationName))
+	return Option.exists(memberName(input.node.callee), isSchemaOperationName)
 }
 
 function expressionRoot(node: ESTree.Expression): ESTree.Expression {
@@ -540,16 +541,13 @@ export function isSchemaDefinition(input: {context: Context; node: ESTree.Expres
 		return false
 	}
 	if (!expressionUsesSchema(input.context, input.node)) return false
-	return pipe(
-		schemaDefinitionMember(input.node),
-		Option.exists(member => {
-			if (!importedMember({context: input.context, importedName: 'Schema', node: member})) return false
-			return pipe(
-				memberName(member),
-				Option.exists(name => !isSchemaOperationName(name) && !isDerivedSchemaName(name) && !isFilterSchemaName(name))
-			)
-		})
-	)
+	return Option.exists(schemaDefinitionMember(input.node), member => {
+		if (!importedMember({context: input.context, importedName: 'Schema', node: member})) return false
+		return Option.exists(
+			memberName(member),
+			name => !isSchemaOperationName(name) && !isDerivedSchemaName(name) && !isFilterSchemaName(name)
+		)
+	})
 }
 
 export function isReactUseState(input: {context: Context; node: ESTree.CallExpression}) {
@@ -609,7 +607,8 @@ function isSchemaCodecType(input: {context: Context; node: ESTree.TSType}) {
 function typeArgumentName(node: ESTree.TSType) {
 	if (node.type !== 'TSTypeReference' || node.typeArguments === null) return Option.none<string>()
 	return pipe(
-		Array.get(node.typeArguments.params, 0),
+		node.typeArguments.params,
+		Array.get(0),
 		Option.flatMap(parameter => {
 			if (parameter.type !== 'TSTypeReference' || parameter.typeName.type !== 'Identifier') return Option.none<string>()
 			return Option.some(parameter.typeName.name)
@@ -649,7 +648,7 @@ function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): strin
 	if (node.type === 'TSTypeReference') {
 		const argumentNames = pipe(
 			Option.fromNullishOr(node.typeArguments),
-			Option.map(typeArguments => pipe(typeArguments.params, Array.flatMap(referencedTypeNames))),
+			Option.map(typeArguments => Array.flatMap(typeArguments.params, referencedTypeNames)),
 			Option.getOrElse(() => Array.empty<string>())
 		)
 		if (node.typeName.type !== 'Identifier') return argumentNames
@@ -657,9 +656,9 @@ function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): strin
 	}
 	if (node.type === 'TSArrayType') return referencedTypeNames(node.elementType)
 	if (node.type === 'TSUnionType' || node.type === 'TSIntersectionType') {
-		return pipe(node.types, Array.flatMap(referencedTypeNames))
+		return Array.flatMap(node.types, referencedTypeNames)
 	}
-	if (node.type === 'TSTemplateLiteralType') return pipe(node.types, Array.flatMap(referencedTypeNames))
+	if (node.type === 'TSTemplateLiteralType') return Array.flatMap(node.types, referencedTypeNames)
 	if (
 		node.type === 'TSTypeOperator' ||
 		node.type === 'TSParenthesizedType' ||
@@ -669,12 +668,12 @@ function referencedTypeNames(node: ESTree.TSType | ESTree.TSTupleElement): strin
 		return referencedTypeNames(node.typeAnnotation)
 	}
 	if (node.type === 'TSNamedTupleMember') return referencedTypeNames(node.elementType)
-	if (node.type === 'TSTupleType') return pipe(node.elementTypes, Array.flatMap(referencedTypeNames))
+	if (node.type === 'TSTupleType') return Array.flatMap(node.elementTypes, referencedTypeNames)
 	if (node.type === 'TSIndexedAccessType') {
 		return Array.appendAll(referencedTypeNames(node.objectType), referencedTypeNames(node.indexType))
 	}
 	if (node.type === 'TSConditionalType') {
-		return pipe([node.checkType, node.extendsType, node.trueType, node.falseType], Array.flatMap(referencedTypeNames))
+		return Array.flatMap([node.checkType, node.extendsType, node.trueType, node.falseType], referencedTypeNames)
 	}
 	if (node.type === 'TSFunctionType' || node.type === 'TSConstructorType') {
 		return referencedTypeNames(node.returnType.typeAnnotation)
@@ -731,7 +730,7 @@ export function isTimerCall(context: Context, node: ESTree.Node) {
 		node.type === 'CallExpression' &&
 		node.callee.type === 'Identifier' &&
 		Array.contains(['setImmediate', 'setInterval', 'setTimeout'], node.callee.name) &&
-		!Option.exists(variableFor(context, node.callee), variable => Array.isArrayNonEmpty(variable.defs))
+		!Option.exists(variableOf(context, node.callee), variable => Array.isArrayNonEmpty(variable.defs))
 	)
 }
 
@@ -796,10 +795,7 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 	) {
 		return Array.empty<string>()
 	}
-	const edges = pipe(
-		input.program.body,
-		Array.flatMap(statement => schemaEdges(input.context, statement))
-	)
+	const edges = Array.flatMap(input.program.body, statement => schemaEdges(input.context, statement))
 	const names = pipe(
 		edges,
 		Array.map(edge => edge.name),
@@ -809,8 +805,13 @@ export function schemaCycleNames(input: {context: Context; program: ESTree.Progr
 		const indices = Record.fromEntries(Array.map(names, name => [name, Graph.addNode(mutable, name)] as const))
 		for (const edge of edges) {
 			for (const target of edge.targets) {
-				Option.zipWith(Record.get(indices, edge.name), Record.get(indices, target), (source, sink) =>
-					Graph.addEdge(mutable, source, sink, 'reads')
+				pipe(
+					indices,
+					pipelineSubject31946 => Record.get(pipelineSubject31946, edge.name),
+					pipelineSubject31931 =>
+						Option.zipWith(pipelineSubject31931, Record.get(indices, target), (source, sink) =>
+							Graph.addEdge(mutable, source, sink, 'reads')
+						)
 				)
 			}
 		}
@@ -865,7 +866,7 @@ function surface(node: ESTree.Node): boolean {
 
 // A value spanning several lines reads well inlined only as a whole slot near the surface of its statement (an argument, a JSX child, a returned value), and never when it waits on a step of its own.
 export function readable(input: {context: Context; init: ESTree.Node; read: ESTree.Node}) {
-	if (!pipe(input.context.sourceCode.getText(input.init), String.includes('\n'))) return true
+	if (!String.includes('\n')(input.context.sourceCode.getText(input.init))) return true
 	const slot = outermost(input.read)
 	if (Predicate.isNullish(slot.parent) || suspends(input.context, input.init)) return false
 	if (slot.parent.type === 'JSXExpressionContainer' || slot.parent.type === 'ReturnStatement') return true
@@ -896,10 +897,7 @@ export function bindingName(node: ESTree.Function | ESTree.ArrowFunctionExpressi
 }
 
 export function boundReads(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
-	return pipe(
-		bindingName(input.node),
-		Option.flatMap(name => readsOf({context: input.context, name, node: input.node}))
-	)
+	return Option.flatMap(bindingName(input.node), name => readsOf({context: input.context, name, node: input.node}))
 }
 
 export function singleUseThunk(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
@@ -970,14 +968,18 @@ export function composedSteps(context: Context, node: ESTree.CallExpression) {
 			return pipeStep(context, argument)
 		})
 		return Array.getSomes(
-			Array.map(Array.zip(steps, Array.drop(steps, 1)), pair =>
-				Option.map(Option.all({inner: pair[0], outer: pair[1]}), adjacent => ({
-					...adjacent,
-					end: adjacent.outer.node.range[1],
-					nested: false,
-					report: adjacent.outer.node,
-					start: adjacent.inner.node.range[0]
-				}))
+			pipe(
+				steps,
+				pipelineSubject38050 => Array.zip(pipelineSubject38050, Array.drop(steps, 1)),
+				Array.map(pair =>
+					Option.map(Option.all({inner: pair[0], outer: pair[1]}), adjacent => ({
+						...adjacent,
+						end: adjacent.outer.node.range[1],
+						nested: false,
+						report: adjacent.outer.node,
+						start: adjacent.inner.node.range[0]
+					}))
+				)
 			)
 		)
 	}
@@ -999,8 +1001,9 @@ export function composedSteps(context: Context, node: ESTree.CallExpression) {
 
 // The source text of a call's arguments, for a rewrite that keeps them.
 export function argumentsText(context: Context, node: ESTree.CallExpression) {
-	return Array.join(
-		Array.map(node.arguments, argument => context.sourceCode.getText(argument)),
-		', '
+	return pipe(
+		node.arguments,
+		Array.map(argument => context.sourceCode.getText(argument)),
+		Array.join(', ')
 	)
 }

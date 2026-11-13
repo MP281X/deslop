@@ -1,5 +1,6 @@
 {
 	"compilerOptions": {
+		"plugins": [{"name": "@effect/language-service", "diagnostics": false, "effectFn": ["span", "untraced"]}],
 		"jsx": "react-jsx",
 		"lib": ["DOM", "ESNext"],
 		"types": ["node", "vite-plus/client", "@deslop/coding-standards/css-properties"],
@@ -10,6 +11,7 @@
 		"noImplicitOverride": true,
 		"allowUnreachableCode": false,
 		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
 		"noPropertyAccessFromIndexSignature": true,
 		"target": "ESNext",
 		"module": "ESNext",

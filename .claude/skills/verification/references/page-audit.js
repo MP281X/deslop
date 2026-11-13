@@ -8,6 +8,7 @@
 		// Screen-reader-only text measures 1 px.
 		return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.opacity !== '0'
 	}
+	/** @returns {string} */
 	function textOf(element) {
 		return (element.innerText || '').trim().replaceAll(/\s+/gu, ' ')
 	}
@@ -20,6 +21,7 @@
 			.join(' ')
 	}
 	function counted(values) {
+		/** @type {Map<string, number>} */
 		const counts = new Map()
 		for (const value of values) counts.set(value, (counts.get(value) || 0) + 1)
 		return [...counts.entries()].sort((left, right) => right[1] - left[1])
@@ -112,6 +114,7 @@
 		return `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor} ${style.boxShadow} ${style.borderColor}`
 	}
 	// Children of one row that sit 1–4 px off each other's centre, or of one column off each other's left edge.
+	/** @param {Element} container */
 	function offBy(container) {
 		const style = getComputedStyle(container)
 		const children = [...container.children].filter(
@@ -347,6 +350,7 @@
 	}
 	// Each off-theme color with how often it appears and one element that uses it.
 	function offColors(elements) {
+		/** @type {Map<string, {count: number, example: string}>} */
 		const found = new Map()
 		for (const element of elements) {
 			const style = getComputedStyle(element)

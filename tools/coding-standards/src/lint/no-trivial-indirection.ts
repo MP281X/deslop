@@ -13,8 +13,9 @@ import {
 	readsOf,
 	returnedExpression,
 	rootName,
+	singleRead,
 	singleUseThunk,
-	variableFor,
+	variableOf,
 	variableFromScope
 } from '#lib/ast.ts'
 
@@ -66,10 +67,15 @@ function parameterName(parameter: ESTree.ParamPattern) {
 	return Option.none()
 }
 
+function parametersOf(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	return pipe(node.params, Array.map(parameterName), Array.getSomes)
+}
+
 function forwarded(input: {args: ESTree.CallExpression['arguments']; names: string[]}) {
+	const args = Array.filter(input.args, argument => argument.type !== 'Literal')
 	return (
-		input.args.length === input.names.length &&
-		Array.every(input.args, (argument, index) => {
+		args.length === input.names.length &&
+		Array.every(args, (argument, index) => {
 			const name = input.names[index]
 			if (argument.type === 'SpreadElement') {
 				return argument.argument.type === 'Identifier' && argument.argument.name === name
@@ -123,7 +129,7 @@ function forwardedChain(input: {context: Context; names: string[]; returned: EST
 }
 
 function exactForwardingFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
-	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
+	const names = parametersOf(input.node)
 	const returned = returnedExpression(input.node)
 	// An async function also turns a throw into a rejected Promise, and a generator returns an iterator.
 	if (
@@ -204,7 +210,7 @@ function copiesSafely(input: {
 
 // A function read once, as a call or an argument, reads better as its body there: one line anywhere, a longer call only where readable allows it.
 function singleUseFunction(input: {context: Context; node: ESTree.Function | ESTree.ArrowFunctionExpression}) {
-	const names = pipe(input.node.params, Array.map(parameterName), Array.getSomes)
+	const names = parametersOf(input.node)
 	const returned = returnedExpression(input.node)
 	if (
 		input.node.async ||
@@ -217,13 +223,10 @@ function singleUseFunction(input: {context: Context; node: ESTree.Function | EST
 	) {
 		return false
 	}
-	const oneLine = !pipe(input.context.sourceCode.getText(returned), String.includes('\n'))
+	const oneLine = !String.includes('\n')(input.context.sourceCode.getText(returned))
 	return pipe(
 		unexportedBindingName(input.node),
-		Option.flatMap(name => readsOf({context: input.context, name, node: input.node})),
-		Option.filter(reads => reads.length === 1),
-		Option.flatMap(Array.head),
-		Option.map(reference => reference.identifier),
+		Option.flatMap(name => singleRead({context: input.context, name, node: input.node})),
 		Option.filter(read => read.range[0] < input.node.range[0] || read.range[0] > input.node.range[1]),
 		Option.exists(read => {
 			if (read.parent.type !== 'CallExpression') return false
@@ -246,26 +249,23 @@ export function redundantConstAlias(input: {context: Context; node: ESTree.Varia
 		input.node.id.type !== 'Identifier' ||
 		input.node.id.typeAnnotation !== null ||
 		input.node.init?.type !== 'Identifier' ||
-		!pipe(
-			variableFor(input.context, input.node.init),
-			Option.exists(variable => {
-				if (Array.some(variable.references, reference => reference.isWrite() && !reference.init)) return false
-				return Array.some(variable.defs, definition => {
-					if (definition.type === 'ImportBinding' || definition.type === 'Parameter') return true
-					return (
-						definition.node.type === 'VariableDeclarator' &&
-						definition.node.parent.type === 'VariableDeclaration' &&
-						definition.node.parent.kind === 'const'
-					)
-				})
+		!Option.exists(variableOf(input.context, input.node.init), variable => {
+			if (Array.some(variable.references, reference => reference.isWrite() && !reference.init)) return false
+			return Array.some(variable.defs, definition => {
+				if (definition.type === 'ImportBinding' || definition.type === 'Parameter') return true
+				return (
+					definition.node.type === 'VariableDeclarator' &&
+					definition.node.parent.type === 'VariableDeclaration' &&
+					definition.node.parent.kind === 'const'
+				)
 			})
-		)
+		})
 	) {
 		return false
 	}
-	return pipe(
+	return Option.exists(
 		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
-		Option.exists(reads => reads.length === 1)
+		reads => reads.length === 1
 	)
 }
 
@@ -276,19 +276,16 @@ function exportedAlias(input: {context: Context; node: ESTree.VariableDeclarator
 		input.node.parent.parent.type === 'ExportNamedDeclaration' &&
 		input.node.id.type === 'Identifier' &&
 		input.node.init?.type === 'Identifier' &&
-		pipe(
-			variableFor(input.context, input.node.init),
-			Option.exists(variable =>
-				Array.some(
-					variable.defs,
-					definition =>
-						definition.type === 'ImportBinding' ||
-						definition.type === 'FunctionName' ||
-						definition.type === 'ClassName' ||
-						(definition.node.type === 'VariableDeclarator' &&
-							definition.node.parent.type === 'VariableDeclaration' &&
-							definition.node.parent.kind === 'const')
-				)
+		Option.exists(variableOf(input.context, input.node.init), variable =>
+			Array.some(
+				variable.defs,
+				definition =>
+					definition.type === 'ImportBinding' ||
+					definition.type === 'FunctionName' ||
+					definition.type === 'ClassName' ||
+					(definition.node.type === 'VariableDeclarator' &&
+						definition.node.parent.type === 'VariableDeclaration' &&
+						definition.node.parent.kind === 'const')
 			)
 		)
 	)
@@ -310,9 +307,9 @@ function singleUseLiteral(input: {context: Context; node: ESTree.VariableDeclara
 	) {
 		return false
 	}
-	return pipe(
+	return Option.exists(
 		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
-		Option.exists(reads => reads.length === 1 && reads[0]?.identifier.parent.type !== 'ExportSpecifier')
+		reads => reads.length === 1 && reads[0]?.identifier.parent.type !== 'ExportSpecifier'
 	)
 }
 
@@ -334,28 +331,20 @@ function singleUseLayerPart(input: {context: Context; node: ESTree.VariableDecla
 	) {
 		return false
 	}
-	return pipe(
-		readsOf({context: input.context, name: input.node.id.name, node: input.node}),
-		Option.exists(reads => {
-			const consumer = reads[0]?.identifier.parent
-			if (reads.length !== 1 || consumer?.type !== 'CallExpression') return false
-			if (init.type === 'MemberExpression') {
-				return (
-					importedMember({context: input.context, importedName: 'Layer', node: consumer.callee}) ||
-					importedMember({
-						context: input.context,
-						importedName: 'Effect',
-						node: consumer.callee,
-						propertyName: 'provide'
-					})
-				)
-			}
+	return Option.exists(readsOf({context: input.context, name: input.node.id.name, node: input.node}), reads => {
+		const consumer = reads[0]?.identifier.parent
+		if (reads.length !== 1 || consumer?.type !== 'CallExpression') return false
+		if (init.type === 'MemberExpression') {
 			return (
-				consumer.arguments[1] === reads[0]?.identifier &&
-				importedMember({context: input.context, importedName: 'Layer', node: consumer.callee, propertyName: 'effect'})
+				importedMember({context: input.context, importedName: 'Layer', node: consumer.callee}) ||
+				importedMember({context: input.context, importedName: 'Effect', node: consumer.callee, propertyName: 'provide'})
 			)
-		})
-	)
+		}
+		return (
+			consumer.arguments[1] === reads[0]?.identifier &&
+			importedMember({context: input.context, importedName: 'Layer', node: consumer.callee, propertyName: 'effect'})
+		)
+	})
 }
 
 // A capitalized function is a React component: its name is the hook boundary and the DevTools label.
@@ -436,82 +425,158 @@ function booleanBranch(input: {context: Context; node: ESTree.CallExpression}) {
 	)
 }
 
+function componentIndirection(context: Context, node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	const returned = returnedExpression(node)
+	if (
+		isComponent(node) &&
+		returned?.type === 'JSXElement' &&
+		returned.openingElement.name.type === 'JSXIdentifier' &&
+		matches(/^[A-Z]/u)(returned.openingElement.name.name) &&
+		!matches(/components-mobile[/\\]src[/\\]ui[/\\]/u)(context.filename)
+	) {
+		const parameter = node.params[0]
+		function forwardedProp(value: ESTree.Node) {
+			return (
+				value.type === 'Literal' ||
+				(value.type === 'MemberExpression' &&
+					value.object.type === 'Identifier' &&
+					parameter?.type === 'Identifier' &&
+					value.object.name === parameter.name)
+			)
+		}
+		if (
+			Array.every(
+				returned.openingElement.attributes,
+				attribute =>
+					attribute.type === 'JSXAttribute' &&
+					(attribute.value === null ||
+						attribute.value.type === 'Literal' ||
+						(attribute.value.type === 'JSXExpressionContainer' && forwardedProp(attribute.value.expression)))
+			) &&
+			Array.every(
+				returned.children,
+				child =>
+					(child.type === 'JSXText' && String.trim(child.value) === '') ||
+					(child.type === 'JSXExpressionContainer' && forwardedProp(child.expression))
+			)
+		) {
+			context.report({message: 'Render the underlying component directly; this component only forwards props.', node})
+		}
+	}
+}
+
 export const noTrivialIndirection = defineRule({
-	create: context => ({
-		ArrowFunctionExpression: node => {
-			if (identityCallback(node) && node.parent.type === 'CallExpression') {
-				const call = node.parent
-				if (
-					Array.some(['Array', 'Effect', 'Option'], importedName =>
-						importedMember({context, importedName, node: call.callee, propertyName: 'map'})
-					)
-				) {
-					context.report({message: 'Remove this identity map; use Array.copy if a separate array is required.', node})
-					return
-				}
-				context.report({message: 'Pass Function.identity from effect instead of this callback.', node})
-				return
-			}
+	create: context => {
+		function checkFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+			componentIndirection(context, node)
 			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
-			}
-		},
-		CallExpression: node => {
-			for (const composition of composedSteps(context, node)) {
-				if (
-					composition.inner.module === 'Option' &&
-					composition.outer.module === 'Option' &&
-					Array.contains(OPTION_WRAPS, composition.inner.name) &&
-					Array.contains(OPTION_UNWRAPS, composition.outer.name)
-				) {
-					context.report({
-						message: `Use the value itself, with ?? for a fallback; Option.${composition.outer.name} undoes Option.${composition.inner.name}.`,
-						node: composition.report
-					})
-				}
-			}
-		},
-		FunctionDeclaration: node => {
-			if (reportsIndirection({context, node})) {
-				context.report({message: indirectionMessage({context, node}), node})
-			}
-		},
-		FunctionExpression: node => {
-			if (reportsIndirection({context, node})) {
-				context.report({message: indirectionMessage({context, node}), node})
-			}
-		},
-		ReturnStatement: node => {
-			if (node.parent.type !== 'BlockStatement' || node.argument?.type !== 'CallExpression') return
-			if (
-				(node.parent.parent.type !== 'FunctionDeclaration' &&
-					node.parent.parent.type !== 'FunctionExpression' &&
-					node.parent.parent.type !== 'ArrowFunctionExpression') ||
-				node.parent.parent.body !== node.parent ||
-				reportsIndirection({context, node: node.parent.parent}) ||
-				!booleanBranch({context, node: node.argument})
-			) {
-				return
-			}
-			context.report({
-				message: 'Return early: if (condition) return the onTrue value, then return the onFalse value.',
-				node
-			})
-		},
-		VariableDeclarator: node => {
-			if (exportedAlias({context, node})) {
-				context.report({message: 'Export the value under one name; this second name is an alias.', node})
-			}
-			if (redundantConstAlias({context, node})) {
-				context.report({message: `Use ${context.sourceCode.getText(node.init)} directly; this name is an alias.`, node})
-			}
-			if (singleUseLiteral({context, node})) {
-				context.report({message: 'Inline this literal at its only use site.', node})
-			}
-			if (singleUseLayerPart({context, node})) {
-				context.report({message: 'Write this layer part where its only layer uses it.', node})
 			}
 		}
-	}),
+		return {
+			ArrowFunctionExpression: node => {
+				if (identityCallback(node) && node.parent.type === 'CallExpression') {
+					const call = node.parent
+					if (
+						Array.some(['Array', 'Effect', 'Option'], importedName =>
+							importedMember({context, importedName, node: call.callee, propertyName: 'map'})
+						)
+					) {
+						context.report({message: 'Remove this identity map; use Array.copy if a separate array is required.', node})
+						return
+					}
+					context.report({message: 'Pass Function.identity from effect instead of this callback.', node})
+					return
+				}
+				checkFunction(node)
+			},
+			CallExpression: node => {
+				for (const composition of composedSteps(context, node)) {
+					if (
+						composition.inner.module === 'Option' &&
+						composition.outer.module === 'Option' &&
+						Array.contains(OPTION_WRAPS, composition.inner.name) &&
+						Array.contains(OPTION_UNWRAPS, composition.outer.name)
+					) {
+						context.report({
+							message: `Use the value itself, with ?? for a fallback; Option.${composition.outer.name} undoes Option.${composition.inner.name}.`,
+							node: composition.report
+						})
+					}
+				}
+			},
+			FunctionDeclaration: checkFunction,
+			FunctionExpression: checkFunction,
+			ReturnStatement: node => {
+				if (node.parent.type !== 'BlockStatement' || node.argument?.type !== 'CallExpression') return
+				if (
+					(node.parent.parent.type !== 'FunctionDeclaration' &&
+						node.parent.parent.type !== 'FunctionExpression' &&
+						node.parent.parent.type !== 'ArrowFunctionExpression') ||
+					node.parent.parent.body !== node.parent ||
+					reportsIndirection({context, node: node.parent.parent}) ||
+					!booleanBranch({context, node: node.argument})
+				) {
+					return
+				}
+				context.report({
+					message: 'Return early: if (condition) return the onTrue value, then return the onFalse value.',
+					node
+				})
+			},
+			TSTypeAliasDeclaration: node => {
+				if (
+					node.typeAnnotation.type === 'TSTypeReference' &&
+					node.typeAnnotation.typeName.type === 'Identifier' &&
+					Predicate.isNullish(node.typeAnnotation.typeArguments) &&
+					Predicate.isNullish(node.typeParameters)
+				) {
+					context.report({message: 'Use the referenced type directly; this second name is an alias.', node})
+				}
+			},
+			VariableDeclarator: node => {
+				if (
+					node.id.type === 'Identifier' &&
+					node.init?.type === 'CallExpression' &&
+					!isExport(node.parent.parent) &&
+					(importedMember({context, importedName: 'Effect', node: node.init.callee, propertyName: 'fnUntraced'}) ||
+						(node.init.callee.type === 'CallExpression' &&
+							importedMember({context, importedName: 'Effect', node: node.init.callee.callee, propertyName: 'fn'})))
+				) {
+					const callback = node.init.arguments[0]
+					if (
+						callback?.type === 'FunctionExpression' &&
+						callback.generator &&
+						callback.returnType === null &&
+						returnedExpression(callback)?.type === 'YieldExpression' &&
+						Option.exists(
+							readsOf({context, name: node.id.name, node}),
+							reads => reads.length === 1 && reads[0]?.identifier.parent.type !== 'ExportSpecifier'
+						)
+					) {
+						context.report({
+							message: 'Write this single-step effect at its only use; the helper adds no capability.',
+							node
+						})
+					}
+				}
+				if (exportedAlias({context, node})) {
+					context.report({message: 'Export the value under one name; this second name is an alias.', node})
+				}
+				if (redundantConstAlias({context, node})) {
+					context.report({
+						message: `Use ${context.sourceCode.getText(node.init)} directly; this name is an alias.`,
+						node
+					})
+				}
+				if (singleUseLiteral({context, node})) {
+					context.report({message: 'Inline this literal at its only use site.', node})
+				}
+				if (singleUseLayerPart({context, node})) {
+					context.report({message: 'Write this layer part where its only layer uses it.', node})
+				}
+			}
+		}
+	},
 	meta: {type: 'problem'}
 })

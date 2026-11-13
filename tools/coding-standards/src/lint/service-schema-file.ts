@@ -1,9 +1,9 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Option, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
-import {importedMember, isSchemaDefinition, isTestFile, memberName, statementDeclaration} from '#lib/ast.ts'
+import {importedMember, isSchemaDefinition, isTestFile, matches, memberName, statementDeclaration} from '#lib/ast.ts'
 
 const SERVICE_PATH = /[/\\]src[/\\]services[/\\][^/\\]+[/\\]/u
 const SCHEMA_FILE = /[/\\]schema\.ts$/u
@@ -21,10 +21,7 @@ function schemaClass(input: {context: Context; node: ESTree.Expression}): boolea
 		input.node.object.type === 'Identifier' &&
 		importedMember({context: input.context, importedName: 'Schema', node: input.node})
 	) {
-		return pipe(
-			memberName(input.node),
-			Option.exists(name => Array.contains(SCHEMA_CLASSES, name))
-		)
+		return Option.exists(memberName(input.node), name => Array.contains(SCHEMA_CLASSES, name))
 	}
 	return false
 }
@@ -61,6 +58,28 @@ function definitions(context: Context, declaration: ReturnType<typeof exported>)
 
 export const serviceSchemaFile = defineRule({
 	create: context => ({
+		ClassDeclaration: node => {
+			if (!matches(/[/\\]src[/\\]services[/\\][^/\\]+[/\\]service\.ts$/u)(context.filename) || node.id === null) return
+			function serviceBase(base: ESTree.Expression): boolean {
+				if (base.type === 'CallExpression') return base.callee.type !== 'Super' && serviceBase(base.callee)
+				return importedMember({context, importedName: 'Context', node: base, propertyName: 'Service'})
+			}
+			if (node.superClass === null || !serviceBase(node.superClass)) return
+			const expected = pipe(
+				String.split(context.filename, /[/\\]/u),
+				Array.reverse,
+				Array.getUnsafe(1),
+				String.split('-'),
+				Array.map(String.capitalize),
+				Array.join('')
+			)
+			if (String.toLowerCase(node.id.name) !== String.toLowerCase(expected)) {
+				context.report({
+					message: `Name this service ${expected}, or give its folder the service's name.`,
+					node: node.id
+				})
+			}
+		},
 		Program: program => {
 			if (!SERVICE_PATH.test(context.filename) || SCHEMA_FILE.test(context.filename) || isTestFile(context)) return
 			for (const node of Array.flatMap(program.body, statement => definitions(context, exported(statement)))) {

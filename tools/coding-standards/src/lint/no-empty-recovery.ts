@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, String, pipe} from 'effect'
+import {Array, Option, Predicate, String} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -62,11 +62,8 @@ function recoversEmpty(context: Context, name: string, node?: ESTree.Expression 
 export const noEmptyRecovery = defineRule({
 	create: context => ({
 		CallExpression: node => {
-			const name = pipe(
-				effectMethod({context, node}),
-				Option.getOrElse(() => '')
-			)
-			if (!pipe(name, String.startsWith('catch')) && !pipe(name, String.startsWith('orElse'))) return
+			const name = Option.getOrElse(effectMethod({context, node}), () => '')
+			if (!String.startsWith('catch')(name) && !String.startsWith('orElse')(name)) return
 			for (const argument of node.arguments) {
 				const callback = resolveBinding(context, argument)
 				if (

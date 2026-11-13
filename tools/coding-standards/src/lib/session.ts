@@ -31,7 +31,10 @@ const DeviceCode = Schema.Struct({
 type Refusal = typeof Refusal.Type
 const Refusal = Schema.Struct({error: Schema.String})
 
-class Pending extends Schema.TaggedError<Pending>()('Pending', {}) {}
+class AuthorizationPendingError extends Schema.TaggedError<AuthorizationPendingError>()(
+	'AuthorizationPendingError',
+	{}
+) {}
 
 const sessionOf = Effect.fnUntraced(function* (tokens: Tokens, clientId: string) {
 	return {
@@ -73,9 +76,8 @@ const withSessionLock = Effect.fnUntraced(function* <A, E, R>(effect: Effect.Eff
 		yield* fs.makeDirectory(paths.lock)
 	})
 	return yield* Effect.acquireUseRelease(
-		pipe(
-			Effect.retry(acquire, {schedule: Schedule.spaced('100 millis'), times: 150}),
-			failed('Another judge holds the sign-in; retry')
+		failed('Another judge holds the sign-in; retry')(
+			Effect.retry(acquire, {schedule: Schedule.spaced('100 millis'), times: 150})
 		),
 		() => effect,
 		() =>
@@ -159,12 +161,15 @@ export const signIn = Effect.fnUntraced(function* (urls: Urls) {
 			Effect.fnUntraced(function* (response: HttpClientResponse.HttpClientResponse) {
 				if (response.status === 200) return yield* HttpClientResponse.schemaBodyJson(Tokens)(response)
 				if ((yield* HttpClientResponse.schemaBodyJson(Refusal)(response)).error === 'authorization_pending') {
-					return yield* Pending.make({})
+					return yield* AuthorizationPendingError.make({})
 				}
 				return yield* JudgeError.make({message: 'The sign-in was denied or expired'})
 			})
 		),
-		Effect.retry({schedule: Schedule.spaced(`${device.interval} seconds`), while: Schema.is(Pending)}),
+		Effect.retry({
+			schedule: Schedule.spaced(`${device.interval} seconds`),
+			while: Schema.is(AuthorizationPendingError)
+		}),
 		Effect.timeout(`${device.expires_in} seconds`),
 		failed('The sign-in was denied or not approved in time; run `coding-standards sign-in` again')
 	)

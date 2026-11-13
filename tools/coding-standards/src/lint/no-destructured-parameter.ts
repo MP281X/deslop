@@ -1,4 +1,4 @@
-import {Array, Equivalence, Option, pipe} from 'effect'
+import {Array, Equivalence, Option} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -20,9 +20,9 @@ function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.
 		return namedTuple({...input, node: input.node.typeAnnotation, seen: Array.append(input.seen, input.node)})
 	}
 	if (input.node.type !== 'TSTypeReference' || input.node.typeName.type !== 'Identifier') return false
-	return pipe(
+	return Option.exists(
 		variableFromScope({name: input.node.typeName.name, scope: input.context.sourceCode.getScope(input.node)}),
-		Option.exists(variable =>
+		variable =>
 			Array.some(
 				variable.defs,
 				definition =>
@@ -33,7 +33,6 @@ function namedTuple(input: {context: Context; node: ESTree.TSType; seen: ESTree.
 						seen: Array.append(input.seen, input.node)
 					})
 			)
-		)
 	)
 }
 

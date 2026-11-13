@@ -11,7 +11,9 @@ export const noVagueName = question(
 				'Generic utilities whose values really are generic',
 				'Conventional names: props, ref, error, cause, request, response, event, key, index',
 				'Names a library or framework requires',
-				'A factory named for the domain object it returns, such as a process handle'
+				'A factory named for the domain object it returns, such as a process handle',
+				'Domain nouns naming the returned value, such as history(samples)',
+				'A service public lib/utils.ts: the filename describes its public boundary'
 			],
 			example: `
 				function paidTotals(invoices: Invoice[]) {
@@ -23,7 +25,9 @@ export const noVagueName = question(
 		yes: {
 			cases: [
 				'A variable named data, result, res, info, value or temp holding what `code` shows to be notes, prices or sessions',
-				'A function named handle, process, doWork or helper whose body shows one specific job'
+				'A function named handle, process, doWork or helper whose body shows one specific job',
+				'An exported function, constant, component or module named only a verb, adjective or generic noun, such as live, layer, make, run, config, guard, status, compact, summary, describe or utils, where importers see the bare name',
+				'A file named utils outside a service public boundary whose contents have a specific domain'
 			],
 			example: `
 				function process(data: Invoice[]) {
