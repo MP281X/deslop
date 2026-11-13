@@ -110,7 +110,7 @@ export function runTrace(event: WorkflowRun) {
 			kind: Option.some(1),
 			links: Option.none(),
 			name: Option.some(Option.getOrElse(event.workflow_run.name, () => event.workflow_run.display_title)),
-			parentSpanId: Option.some(Option.none()),
+			parentSpanId: Option.none(),
 			startTimeUnixNano: nanos(event.workflow_run.run_started_at),
 			status: statusOf(event.workflow_run.conclusion, `${event.workflow_run.display_title} failed`),
 			...runIds(event)
@@ -161,7 +161,7 @@ export function jobTrace(event: WorkflowJob) {
 			kind: Option.some(1),
 			links: Option.none(),
 			name: Option.some(job.name),
-			parentSpanId: Option.some(Option.some(runSpanId(job.run_id))),
+			parentSpanId: Option.some(runSpanId(job.run_id)),
 			spanId: jobSpanId(job.id),
 			startTimeUnixNano: nanos(job.started_at),
 			status: statusOf(
@@ -183,7 +183,7 @@ export function jobTrace(event: WorkflowJob) {
 			kind: Option.some(1),
 			links: Option.none(),
 			name: Option.some(step.name),
-			parentSpanId: Option.some(Option.some(jobSpanId(job.id))),
+			parentSpanId: Option.some(jobSpanId(job.id)),
 			spanId: stepSpanId(job.id, step.number),
 			startTimeUnixNano: nanos(step.started),
 			status: statusOf(step.conclusion, `${step.name} failed`),
@@ -251,16 +251,14 @@ export function jobLogs(event: WorkflowJob, log: string) {
 					severityNumber: Option.some(severityOf(line.command)),
 					severityText: Option.none(),
 					spanId: Option.some(
-						Option.some(
-							pipe(
-								Option.fromUndefinedOr(steps[next]),
-								Option.filter(step => DateTime.isGreaterThanOrEqualTo(line.time, step.start)),
-								Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
-							)
+						pipe(
+							Option.fromUndefinedOr(steps[next]),
+							Option.filter(step => DateTime.isGreaterThanOrEqualTo(line.time, step.start)),
+							Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
 						)
 					),
 					timeUnixNano: nanos(line.time),
-					traceId: Option.some(Option.some(traceId))
+					traceId: Option.some(traceId)
 				}))
 			] as const
 		})

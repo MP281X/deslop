@@ -2037,6 +2037,12 @@ it.layer(platform)(test => {
 				},
 				{app: 'deploy', entries: 1, lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW + 20)), side: 'web'}
 			])
+			for (const app of ['stash', 'deploy']) {
+				assert.notProperty(
+					Option.getOrThrow(Array.findFirst(answer.services, service => service.app === app)),
+					'runStarted'
+				)
+			}
 			assert.containsSubset(answer.rejections, [
 				{
 					count: 2,

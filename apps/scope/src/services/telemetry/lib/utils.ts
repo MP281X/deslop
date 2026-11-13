@@ -313,9 +313,7 @@ export function spansOf(payload: TracesRequest) {
 										Option.filter(String.isNonEmpty)
 									),
 									name: spanName(span, attributes),
-									parentSpanId: Option.map(Option.flatten(span.parentSpanId), id =>
-										SpanId.make(String.toLowerCase(id))
-									),
+									parentSpanId: Option.map(span.parentSpanId, id => SpanId.make(String.toLowerCase(id))),
 									spanId,
 									start: instantOf(span.startTimeUnixNano),
 									status: Boolean.match(failed, {
@@ -358,9 +356,9 @@ export function logOf(sender: ReturnType<typeof senderOf>, log: ExportedLog, id:
 		message: Option.match(log.body, {onNone: () => '', onSome: body => Array.join(leaves(body), ' ')}),
 		receivedAt: Model.Override(receivedAt),
 		severity: severityOf(log.severityNumber, log.severityText),
-		spanId: Option.map(Option.flatten(log.spanId), value => SpanId.make(String.toLowerCase(value))),
+		spanId: Option.map(log.spanId, value => SpanId.make(String.toLowerCase(value))),
 		time: instantOf(log.timeUnixNano),
-		traceId: Option.map(Option.flatten(log.traceId), value => TraceId.make(String.toLowerCase(value)))
+		traceId: Option.map(log.traceId, value => TraceId.make(String.toLowerCase(value)))
 	} satisfies typeof Log.insert.Type
 }
 

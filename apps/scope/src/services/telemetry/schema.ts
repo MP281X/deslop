@@ -1,4 +1,4 @@
-import {DateTime, Duration, Effect, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
+import {DateTime, Duration, Effect, Function, Option, Schema, SchemaGetter, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
@@ -56,25 +56,19 @@ export const Nano = pipe(
 
 type SpanIdFromEmpty = typeof SpanIdFromEmpty.Type
 const SpanIdFromEmpty = pipe(
-	Schema.Union([SpanId, Schema.Literal('')]),
+	Schema.OptionFromOptionalKey(Schema.Union([SpanId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(SpanId)), {
-		decode: SchemaGetter.transform(value => {
-			if (value === '') return Option.none<SpanId>()
-			return Option.some(SpanId.make(value))
-		}),
-		encode: SchemaGetter.transform(value => Option.getOrElse(value, () => '' as const))
+		decode: SchemaGetter.transform(value => Option.filter(value, (id): id is SpanId => id !== '')),
+		encode: SchemaGetter.transform(Function.identity)
 	})
 )
 
 type TraceIdFromEmpty = typeof TraceIdFromEmpty.Type
 const TraceIdFromEmpty = pipe(
-	Schema.Union([TraceId, Schema.Literal('')]),
+	Schema.OptionFromOptionalKey(Schema.Union([TraceId, Schema.Literal('')])),
 	Schema.decodeTo(Schema.Option(Schema.toType(TraceId)), {
-		decode: SchemaGetter.transform(value => {
-			if (value === '') return Option.none<TraceId>()
-			return Option.some(TraceId.make(value))
-		}),
-		encode: SchemaGetter.transform(value => Option.getOrElse(value, () => '' as const))
+		decode: SchemaGetter.transform(value => Option.filter(value, (id): id is TraceId => id !== '')),
+		encode: SchemaGetter.transform(Function.identity)
 	})
 )
 
@@ -116,7 +110,7 @@ export const ExportedSpan = Schema.Struct({
 	endTimeUnixNano: Schema.OptionFromOptionalKey(Nano),
 	kind: Schema.OptionFromOptionalKey(Schema.Json),
 	name: Schema.OptionFromOptionalKey(Schema.String),
-	parentSpanId: Schema.OptionFromOptionalKey(SpanIdFromEmpty),
+	parentSpanId: SpanIdFromEmpty,
 	spanId: SpanId,
 	startTimeUnixNano: Nano,
 	status: Schema.OptionFromOptionalKey(
@@ -135,9 +129,9 @@ export const ExportedLog = Schema.Struct({
 	observedTimeUnixNano: Schema.OptionFromOptionalKey(Nano),
 	severityNumber: Schema.OptionFromOptionalKey(Schema.Int),
 	severityText: Schema.OptionFromOptionalKey(Schema.String),
-	spanId: Schema.OptionFromOptionalKey(SpanIdFromEmpty),
+	spanId: SpanIdFromEmpty,
 	timeUnixNano: Nano,
-	traceId: Schema.OptionFromOptionalKey(TraceIdFromEmpty)
+	traceId: TraceIdFromEmpty
 }).annotate({parseOptions: {onExcessProperty: 'preserve'}})
 
 export type TracesRequest = typeof TracesRequest.Type
