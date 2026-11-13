@@ -203,13 +203,8 @@ function AppRow(props: {
 		<>
 			<Item size="row" role="listitem" data-selected={props.selected}>
 				{/* The whole row is the hit area; the row itself draws hover, selection and the focus ring, and the controls it holds sit above it. */}
-				<div className="absolute inset-0 z-0 flex">
-					<Button
-						aria-label={`Open ${fullName}`}
-						variant="bare"
-						className="w-full max-sm:h-11"
-						onClick={props.onSelect}
-					/>
+				<div className="absolute inset-0 z-0 flex flex-col">
+					<Button aria-label={`Open ${fullName}`} variant="bare" className="flex-1" onClick={props.onSelect} />
 				</div>
 				<ItemMedia>
 					<ApplicationIcon

@@ -92,7 +92,7 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className="w-16 max-sm:h-11"
+				className="w-16"
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false
@@ -122,7 +122,6 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 							ref={retry}
 							variant="ghost"
 							size="icon"
-							className="max-sm:size-11"
 							aria-label="Try again"
 							title="Try again"
 							onClick={props.reset}

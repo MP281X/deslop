@@ -175,7 +175,6 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 						onTrue: () => (
 							<Button
 								size="xs"
-								className="max-sm:h-11"
 								disabled={AsyncResult.isWaiting(connecting)}
 								aria-label={`${action} ${props.server.name}`}
 								onClick={() => connect()}
@@ -393,12 +392,11 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 			}}
 		>
 			<Field data-invalid={Option.isSome(error)}>
-				<InputGroup className="max-sm:h-11">
+				<InputGroup>
 					<InputGroupAddon>
 						<LinkIcon />
 					</InputGroupAddon>
 					<InputGroupInput
-						className="max-sm:h-11"
 						aria-label="MCP server URL or provider key"
 						aria-invalid={Option.isSome(error)}
 						aria-describedby="gateway-add-error"
@@ -465,7 +463,7 @@ function HomeRoute() {
 							label="Copy MCP URL"
 							value={`${window.location.origin}/mcp`}
 							size="icon-sm"
-							className="ms-2.5 max-sm:size-11"
+							className="ms-2.5"
 						/>
 					</>
 				}

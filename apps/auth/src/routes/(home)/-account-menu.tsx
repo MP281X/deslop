@@ -34,7 +34,7 @@ const route = getRouteApi('/(home)')
 // A failed menu action says so directly under it, as the menu already reports an unreadable passkey list.
 function MenuFailure(props: {message: string}) {
 	return (
-		<DropdownMenuItem disabled variant="destructive" className="max-sm:h-11">
+		<DropdownMenuItem disabled variant="destructive">
 			{props.message}
 		</DropdownMenuItem>
 	)
@@ -63,7 +63,6 @@ function PasskeyItems(props: {via: SessionVia}) {
 			))}
 			{/* A code may have been approved for someone else's browser, so a code session passes through GitHub before it adds a year-long passkey. */}
 			<DropdownMenuItem
-				className="max-sm:h-11"
 				closeOnClick={false}
 				disabled={AsyncResult.isWaiting(adding) || AsyncResult.isWaiting(confirming)}
 				onClick={() => Boolean.match(props.via === 'Code', {onFalse: () => add(), onTrue: () => confirm()})}
@@ -86,10 +85,7 @@ export function AccountMenu(props: {account: SignedAccount}) {
 	useAtomMount(resumePasskeyAtom(props.account.via))
 	return (
 		<DropdownMenu open={open} onOpenChange={setOpen}>
-			<DropdownMenuTrigger
-				aria-label="Account"
-				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
-			>
+			<DropdownMenuTrigger aria-label="Account" render={<Button variant="ghost" size="icon-sm" />}>
 				<AccountAvatar account={props.account} />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-auto min-w-48">
@@ -103,7 +99,6 @@ export function AccountMenu(props: {account: SignedAccount}) {
 				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					variant="destructive"
-					className="max-sm:h-11"
 					closeOnClick={false}
 					disabled={AsyncResult.isWaiting(signOut)}
 					onClick={() => endSession(next)}

@@ -65,7 +65,6 @@ function AccountMenu() {
 			<Button
 				variant="ghost"
 				size="icon-sm"
-				className="max-sm:size-11"
 				aria-label="Account"
 				aria-haspopup="menu"
 				aria-expanded={open ?? false}
@@ -81,10 +80,7 @@ function AccountMenu() {
 	}
 	return (
 		<loaded.value.DropdownMenu open={open} onOpenChange={setOpen}>
-			<loaded.value.DropdownMenuTrigger
-				aria-label="Account"
-				render={<Button variant="ghost" size="icon-sm" className="max-sm:size-11" />}
-			>
+			<loaded.value.DropdownMenuTrigger aria-label="Account" render={<Button variant="ghost" size="icon-sm" />}>
 				<AccountAvatar account={account.value} />
 			</loaded.value.DropdownMenuTrigger>
 			<loaded.value.DropdownMenuContent align="end" className="w-auto min-w-48">
@@ -94,7 +90,6 @@ function AccountMenu() {
 				<loaded.value.DropdownMenuSeparator />
 				<loaded.value.DropdownMenuItem
 					variant="destructive"
-					className="max-sm:h-11"
 					disabled={!account.value.signOut}
 					render={<a aria-label="Sign out" href={`/auth/sign-out?${new URLSearchParams({next: location.href})}`} />}
 				>
@@ -194,19 +189,19 @@ export function AppBar(props: {
 						variant="bare"
 						nativeButton={false}
 						render={<a href="/" aria-label={props.name} />}
-						className="-mx-2.75 shrink-0 max-sm:h-11"
+						className="-mx-2.75 shrink-0"
 					>
 						<img src={props.icon} alt="" className="pixelated size-6" />
 						<span className="font-heading ml-1 text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
 					</Button>
 				),
-				// The back caret sits on the rows' 16px mark column and the title on their name column, at 44px.
+				// The back caret sits by the rows' 16px mark column and the title by their name column.
 				onSome: heading => (
 					<div className="flex min-w-0 shrink items-center gap-1">
 						<Button
 							variant="ghost"
 							size="icon-sm"
-							className="-ml-2 max-sm:-mr-1.5 max-sm:-ml-3.5 max-sm:size-11"
+							className="-ml-2"
 							aria-label={heading.back.label}
 							onClick={heading.back.onClick}
 						>

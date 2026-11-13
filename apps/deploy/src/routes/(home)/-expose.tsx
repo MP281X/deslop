@@ -75,11 +75,11 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					if (value === 'public' || value === 'tailnet') setKind(value)
 				}}
 			>
-				<TabsList className="w-full max-sm:group-data-horizontal/tabs:h-auto">
-					<TabsTrigger value="tailnet" disabled={pending} className="max-sm:h-11">
+				<TabsList className="w-full">
+					<TabsTrigger value="tailnet" disabled={pending}>
 						Tailnet
 					</TabsTrigger>
-					<TabsTrigger value="public" disabled={pending} className="max-sm:h-11">
+					<TabsTrigger value="public" disabled={pending}>
 						Public
 					</TabsTrigger>
 				</TabsList>
@@ -88,7 +88,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-tailnet">Address</FieldLabel>
 						<Input
 							id="expose-tailnet"
-							className="max-sm:h-11"
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${Option.getOrUndefined(props.port.port)}`,
@@ -102,7 +101,6 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 						<FieldLabel htmlFor="expose-public">Hostname</FieldLabel>
 						<Input
 							id="expose-public"
-							className="max-sm:h-11"
 							required={kind === 'public'}
 							placeholder="app.example.com"
 							autoCapitalize="none"
@@ -116,12 +114,9 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			</Tabs>
 			<ResultError result={result} />
 			<DialogFooter>
-				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} className="max-sm:h-11" />}>
-					Cancel
-				</DialogClose>
+				<DialogClose render={<Button variant="ghost" type="button" disabled={pending} />}>Cancel</DialogClose>
 				<Button
 					type="submit"
-					className="max-sm:h-11"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
 					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}

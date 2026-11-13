@@ -44,19 +44,14 @@ export function Providers(props: {verb: SignInVerb}) {
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
 	return (
 		<>
-			<Button
-				size="lg"
-				className="w-full max-sm:h-11"
-				disabled={AsyncResult.isWaiting(signIn)}
-				onClick={() => startSignIn()}
-			>
+			<Button size="lg" className="w-full" disabled={AsyncResult.isWaiting(signIn)} onClick={() => startSignIn()}>
 				<GitHubIcon />
 				{props.verb} with GitHub
 			</Button>
 			<Button
 				size="lg"
 				variant="outline"
-				className="w-full max-sm:h-11"
+				className="w-full"
 				disabled={AsyncResult.isWaiting(passkey)}
 				onClick={() => startPasskey(next)}
 			>
@@ -81,7 +76,7 @@ export function SignIn() {
 				<Button
 					size="lg"
 					variant="ghost"
-					className="w-full max-sm:h-11"
+					className="w-full"
 					disabled={AsyncResult.isWaiting(codeSignIn)}
 					onClick={() => startCodeSignIn(next)}
 				>

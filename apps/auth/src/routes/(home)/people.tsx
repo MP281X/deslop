@@ -50,7 +50,6 @@ function AskingRow(props: {person: Person}) {
 			<ItemActions>
 				<Button
 					variant="outline"
-					size="xs"
 					disabled={AsyncResult.isWaiting(admit)}
 					aria-label={`Deny @${props.person.name}`}
 					onClick={() => answer(false)}
@@ -58,7 +57,6 @@ function AskingRow(props: {person: Person}) {
 					Deny
 				</Button>
 				<Button
-					size="xs"
 					disabled={AsyncResult.isWaiting(admit)}
 					aria-label={`Approve @${props.person.name}`}
 					onClick={() => answer(true)}

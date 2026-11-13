@@ -218,7 +218,6 @@ function PendingRow(props: {request: PendingAuthorization}) {
 				<ItemActions>
 					<Button
 						variant="outline"
-						size="xs"
 						disabled={waiting}
 						aria-label={`Deny ${props.request.device}`}
 						onClick={() => respond({accept: false, request: props.request})}
@@ -226,7 +225,6 @@ function PendingRow(props: {request: PendingAuthorization}) {
 						Deny
 					</Button>
 					<Button
-						size="xs"
 						disabled={waiting}
 						aria-label={`Approve ${props.request.device}`}
 						onClick={() => respond({accept: true, request: props.request})}

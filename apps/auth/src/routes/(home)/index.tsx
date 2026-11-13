@@ -47,14 +47,13 @@ function Enter(props: {
 	return (
 		<section className="flex w-full flex-col gap-2">
 			<Field data-invalid={invalid}>
-				<InputGroup className="max-sm:h-11">
+				<InputGroup>
 					<InputGroupAddon>
 						<KeyIcon />
 					</InputGroupAddon>
 					<InputGroupInput
 						id="code"
 						ref={blurWhenHidden}
-						className="max-sm:h-11"
 						aria-label="Code of a sign-in to approve"
 						placeholder="Code"
 						maxLength={CODE_LENGTH}
