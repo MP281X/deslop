@@ -174,9 +174,10 @@ function Departs(props: {journey: Flight | Train}) {
 		<Essential
 			label="Departs"
 			tone={toneIf(
-				Duration.isGreaterThanOrEqualTo(
-					DateTime.distance(props.journey.departs, departureOf(props.journey)),
-					Duration.minutes(5)
+				pipe(
+					props.journey.departs,
+					DateTime.distance(departureOf(props.journey)),
+					Duration.isGreaterThanOrEqualTo(Duration.minutes(5))
 				),
 				'warn'
 			)}

@@ -40,12 +40,16 @@ function AppRoutes() {
 	useAtomMount(calendarAtom)
 	const opened = useAtomValue(openedAtom)
 	const [path, setPath] = useState(() =>
-		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<string>(), onSome: id => [id]})
+		Option.match(AsyncResult.value(opened), {onNone: () => Array.empty<BookingId>(), onSome: id => [id]})
 	)
 	useAtomSubscribe(openedAtom, tapped => Option.map(AsyncResult.value(tapped), id => setPath([id])))
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack path={path} onPathChange={setPath} modifiers={[tint(colors.foreground)]}>
+			<NavigationStack
+				path={path}
+				onPathChange={values => setPath(Array.map(values, value => BookingId.make(value)))}
+				modifiers={[tint(colors.foreground)]}
+			>
 				<HomeRoute onOpen={id => setPath([id])} />
 				{Array.map(path, value => (
 					<NavigationDestination key={value} value={value}>

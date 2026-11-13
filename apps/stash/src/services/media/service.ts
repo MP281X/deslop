@@ -41,10 +41,10 @@ import {
 	mediaMarkdown
 } from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
-import {CreatorCaptions, MediaError, Metadata, Probe} from '#services/media/schema.ts'
+import {CreatorCaptions, MediaError, Metadata, Probe, Transcript} from '#services/media/schema.ts'
 import {isYouTube} from '#services/notes/lib/utils.ts'
 
-const MAX_WHISPER_SECONDS = 2 * 60 * 60
+const MAX_WHISPER_DURATION = Duration.hours(2)
 
 // When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
 export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
@@ -184,7 +184,7 @@ export class Media extends Context.Service<
 						seconds,
 						value =>
 							Duration.isGreaterThanOrEqualTo(value, Duration.seconds(1)) &&
-							Duration.isLessThanOrEqualTo(value, Duration.seconds(MAX_WHISPER_SECONDS))
+							Duration.isLessThanOrEqualTo(value, MAX_WHISPER_DURATION)
 					)
 				) {
 					return Option.none()
@@ -256,16 +256,21 @@ export class Media extends Context.Service<
 													timestamp_granularities: ['segment']
 												}
 											}),
+											Effect.flatMap(Schema.decodeEffect(Transcript)),
 											Effect.timeout('1 minute'),
 											Effect.mapError(cause =>
 												MediaError.make({cause: Redacted.make(cause), message: 'Whisper Turbo transcription failed.'})
 											),
 											Effect.withSpan('Media.transcribeAudio')
 										)
-										if (response.segments !== undefined && Array.isReadonlyArrayNonEmpty(response.segments)) {
-											return {duration, segments: response.segments}
+										return {
+											duration,
+											segments: pipe(
+												response.segments,
+												Option.filter(Array.isReadonlyArrayNonEmpty),
+												Option.getOrElse(() => [{start: Duration.zero, text: response.text}])
+											)
 										}
-										return {duration, segments: [{start: 0, text: response.text}]}
 									}),
 									{concurrency: 1}
 								),
@@ -274,8 +279,7 @@ export class Media extends Context.Service<
 									Duration.sum(offset, chunk.duration),
 									Array.map(
 										chunk.segments,
-										segment =>
-											`[${clock(Duration.sum(offset, Duration.seconds(segment.start)))}] ${String.trim(segment.text)}\n`
+										segment => `[${clock(Duration.sum(offset, segment.start))}] ${String.trim(segment.text)}\n`
 									)
 								]),
 								result => Array.flatten(result[1]),
@@ -351,11 +355,7 @@ export class Media extends Context.Service<
 					if (Option.isSome(captioned.transcript)) return captioned.transcript
 					if (captioned.blocked) break
 				}
-				if (
-					Option.exists(media.duration, seconds =>
-						Duration.isGreaterThan(seconds, Duration.seconds(MAX_WHISPER_SECONDS))
-					)
-				) {
+				if (Option.exists(media.duration, seconds => Duration.isGreaterThan(seconds, MAX_WHISPER_DURATION))) {
 					yield* Effect.logInfo('No captions, and the audio is too long for Whisper')
 					return Option.none()
 				}
@@ -391,9 +391,7 @@ export class Media extends Context.Service<
 					)
 				)
 				const seconds = yield* Option.match(media.duration, {onNone: () => lengthOf(audio), onSome: Effect.succeedSome})
-				if (
-					!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, Duration.seconds(MAX_WHISPER_SECONDS)))
-				) {
+				if (!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, MAX_WHISPER_DURATION))) {
 					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper')
 					return Option.none()
 				}

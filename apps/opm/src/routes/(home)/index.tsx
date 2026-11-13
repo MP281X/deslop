@@ -59,7 +59,6 @@ import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem, ChapterNumber} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
 
-// "21 Oct" this year, "21 Oct 2025" before it; a chapter without a posted time shows none.
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
 function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {
 	const read = useAtomSet(readAtom)

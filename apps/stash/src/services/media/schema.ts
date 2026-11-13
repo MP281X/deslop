@@ -53,3 +53,11 @@ export type CreatorCaptions = typeof CreatorCaptions.Type
 export const CreatorCaptions = Schema.Struct({
 	utterances: Schema.Array(Schema.Struct({start_time: Schema.DurationFromMillis, text: Schema.String}))
 })
+
+export type Transcript = typeof Transcript.Type
+export const Transcript = Schema.Struct({
+	segments: Schema.OptionFromOptionalKey(
+		Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
+	),
+	text: Schema.String
+})

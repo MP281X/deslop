@@ -14,7 +14,7 @@ import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
 import {keyOf} from '#services/chapters/lib/utils.ts'
-import {ChapterPath} from '#services/chapters/schema.ts'
+import {ChapterKey, ChapterPath} from '#services/chapters/schema.ts'
 import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
 
 function Destination(props: {number: ChapterNumber; series: Series; start?: number}) {
@@ -34,7 +34,7 @@ function AppRoutes() {
 	)
 	const [resumePage, setResumePage] = useState<number>()
 	const [path, setPath] = useState(() =>
-		Option.match(opened, {onNone: () => Array.empty<string>(), onSome: chapter => [keyOf(chapter)]})
+		Option.match(opened, {onNone: () => Array.empty<ChapterKey>(), onSome: chapter => [keyOf(chapter)]})
 	)
 	useAtomSubscribe(openedAtom, tapped =>
 		Option.match(tapped, {
@@ -52,7 +52,11 @@ function AppRoutes() {
 	}
 	return (
 		<Host style={{flex: 1}}>
-			<NavigationStack path={path} onPathChange={setPath} modifiers={[tint(colors.foreground)]}>
+			<NavigationStack
+				path={path}
+				onPathChange={values => setPath(Array.map(values, value => ChapterKey.make(value)))}
+				modifiers={[tint(colors.foreground)]}
+			>
 				<ChaptersRoute key={series} onOpen={open} series={series} onSeries={setSeries} />
 				{Array.map(path, value =>
 					Option.match(Schema.decodeUnknownOption(ChapterPath)(value), {

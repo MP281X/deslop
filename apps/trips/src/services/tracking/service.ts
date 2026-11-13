@@ -149,7 +149,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 				yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking),
 				found =>
 					DateTime.isLessThanOrEqualTo(found.millisDataPartenza, booking.departs) &&
-					Duration.isLessThan(DateTime.distance(found.millisDataPartenza, booking.departs), Duration.hours(30))
+					pipe(found.millisDataPartenza, DateTime.distance(booking.departs), Duration.isLessThan(Duration.hours(30)))
 			)
 			return yield* Option.match(run, {
 				onNone: () => Effect.succeedNone,
@@ -241,7 +241,7 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 						Option.isSome(checkEvery(booking, now)) &&
 						Option.match(attempted, {
 							onNone: () => true,
-							onSome: at => Duration.isGreaterThanOrEqualTo(DateTime.distance(at, now), Duration.minutes(1))
+							onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(Duration.minutes(1)))
 						})
 				)
 			})

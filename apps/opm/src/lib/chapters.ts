@@ -35,6 +35,7 @@ import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
 
 export const primary = hues.ivory
 
+type EasProjectId = typeof EasProjectId.Type
 const EasProjectId = pipe(Schema.String, Schema.brand('EasProjectId'))
 
 export const session = makeSession('https://opm.mp281x.xyz', keychain)

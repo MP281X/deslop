@@ -263,9 +263,10 @@ export function isStale(booking: Booking, now: DateTime.Utc) {
 		live =>
 			live.state !== 'arrived' &&
 			Option.exists(checkEvery(booking, live.checkedAt), every =>
-				Duration.isGreaterThan(
-					DateTime.distance(live.checkedAt, now),
-					pipe(every, Duration.times(2), Duration.sum(Duration.minutes(2)))
+				pipe(
+					live.checkedAt,
+					DateTime.distance(now),
+					Duration.isGreaterThan(pipe(every, Duration.times(2), Duration.sum(Duration.minutes(2))))
 				)
 			)
 	)

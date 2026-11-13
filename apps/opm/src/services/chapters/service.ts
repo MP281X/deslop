@@ -212,7 +212,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const answer = yield* series(target.api)
 			return Chapter.make({
 				// A chapter found a day after its post arrives announced, so a first sync never floods the iPhone.
-				notified: pipe(DateTime.distance(post.postedAt, now), Duration.isGreaterThan(Duration.days(1))),
+				notified: pipe(post.postedAt, DateTime.distance(now), Duration.isGreaterThan(Duration.days(1))),
 				number: post.number,
 				pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
 				postedAt: Option.some(post.postedAt),

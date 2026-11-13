@@ -25,7 +25,6 @@ const TRAIN_BRANDS: Record.ReadonlyRecord<string, string> = {
 
 export const MINUTE = Duration.minutes(1)
 export const HOUR = Duration.hours(1)
-export const DAY = Duration.days(1)
 
 export const AIRPORT_LEAD = Duration.hours(2)
 const STATION_LEAD = Duration.minutes(15)
