@@ -461,7 +461,7 @@ export class Connections extends Context.Service<
 					onFalse: () => Effect.succeed(Option.none<string>()),
 					onTrue: () => Effect.asSome(auth.token(headers))
 				})
-				const found = yield* upstreams.use(initial.url, access, client =>
+				const found = yield* upstreams.use(initial.url, Effect.succeed(access), client =>
 					Effect.map(client.listTools(), tools => ({info: client.serverInfo, instructions: client.instructions, tools}))
 				)
 				return {

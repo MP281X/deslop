@@ -152,13 +152,18 @@ export class Gateway extends Context.Service<
 				run: Parameters<typeof upstreams.use<A, E>>[2]
 			) {
 				const upstream = yield* resolveUpstream(server, headers)
+				const authorize = Effect.map(resolveUpstream(server, headers), current => {
+					upstream.token = current.token
+					return current.token
+				})
 				return yield* pipe(
-					upstreams.use(upstream.url, upstream.token, run),
+					upstreams.use(upstream.url, authorize, run),
 					Effect.catchIf(
 						error => server.mode === 'oauth' && upstreamStatus(error) === 401,
 						() =>
-							Effect.flatMap(connections.token(server.id, server.generation, upstream.token), token =>
-								upstreams.use(upstream.url, Option.some(token), run)
+							Effect.andThen(
+								connections.token(server.id, server.generation, upstream.token),
+								upstreams.use(upstream.url, authorize, run)
 							)
 					),
 					Effect.mapError(connectionFailure(server.name))

@@ -155,12 +155,14 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 			forget: (url: string) => Effect.withSpan(RcMap.invalidate(sessions, url), 'Upstreams.forget'),
 			use: Effect.fn('Upstreams.use')(function* <A, E>(
 				url: string,
-				token: Option.Option<string>,
+				authorize: Effect.Effect<Option.Option<string>, AuthError>,
 				run: (upstream: Upstream) => Effect.Effect<A, E>
 			) {
 				const lock = yield* RcMap.get(locks, url)
 				const execute = Effect.gen(function* () {
-					const session = yield* RcMap.get(sessions, url)
+					// Removal, replacement and expiry are checked again before a rejected session is reopened.
+					const token = yield* authorize
+					const session = yield* Effect.provideService(RcMap.get(sessions, url), accessToken, token)
 					yield* Ref.set(session.token, token)
 					return yield* run(session.upstream)
 				})
@@ -171,7 +173,6 @@ export class Upstreams extends Context.Service<Upstreams>()('@deslop/gateway/ser
 						() => Effect.andThen(RcMap.invalidate(sessions, url), execute)
 					),
 					Effect.tapError(() => RcMap.invalidate(sessions, url)),
-					Effect.provideService(accessToken, token),
 					Semaphore.withPermit(lock)
 				)
 			}, Effect.scoped)
