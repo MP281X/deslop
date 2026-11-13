@@ -37,7 +37,7 @@ import opmFolk from './fixtures/opm-folk.xml?raw'
 
 import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import type {Series} from '#services/chapters/schema.ts'
-import {Chapter, ChaptersEvent, Device} from '#services/chapters/schema.ts'
+import {Chapter, ChapterNumber, ChaptersEvent, Device, PostedAt, PushToken} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
 const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)
@@ -47,9 +47,9 @@ type Database = Layer.Success<typeof memory>
 function chapterAt(series: Series, number: number, notified = true) {
 	return Chapter.make({
 		notified,
-		number,
+		number: ChapterNumber.make(number),
 		pages: [`https://example.test/${series}-${number}.png`],
-		postedAt: 0,
+		postedAt: Option.none(),
 		reading: Option.none(),
 		revisedAt: Option.none(),
 		series,
@@ -78,7 +78,7 @@ const seeded = Effect.fnUntraced(function* (chapters: readonly Chapter[], tokens
 		tokens,
 		token =>
 			Effect.flatMap(
-				Schema.encodeEffect(Device.insert)({token: Redacted.make(token)}),
+				Schema.encodeEffect(Device.insert)({token: Redacted.make(PushToken.make(token))}),
 				row => sql`INSERT INTO devices ${sql.insert(row)}`
 			),
 		{concurrency: 1, discard: true}
@@ -220,9 +220,9 @@ it.layer(NodeServices.layer)(test => {
 				),
 				warningLayer(announced, 'Announced chapter manga:1')
 			)
-			yield* chapters.register({token: Redacted.make(kept)})
-			yield* chapters.register({token: Redacted.make('ExpoPushToken[device00000002]')})
-			yield* chapters.register({token: Redacted.make(kept)})
+			yield* chapters.register({token: Redacted.make(PushToken.make(kept))})
+			yield* chapters.register({token: Redacted.make(PushToken.make('ExpoPushToken[device00000002]'))})
+			yield* chapters.register({token: Redacted.make(PushToken.make(kept))})
 			// A chapter found once both iPhones are registered, so whichever round sees it tells both.
 			yield* insertChapters(database, [chapterAt('manga', 1, false)])
 			yield* TestClock.adjust('1 hour')
@@ -268,7 +268,7 @@ it.layer(NodeServices.layer)(test => {
 					yield* Queue.offer(indexed, undefined)
 					// The server's bookkeeping, such as the source link and the announced mark, stays on the server.
 					assert.deepStrictEqual(yield* Queue.take(events), {reset: false, upserted: [chapter]})
-					yield* chapters.read({done: false, number: 1, page: 3, series: 'manga'})
+					yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 3, series: 'manga'})
 					assert.deepStrictEqual(yield* Queue.take(events), {
 						reset: false,
 						upserted: [{...chapter, reading: {done: false, page: 3}}]
@@ -281,12 +281,12 @@ it.layer(NodeServices.layer)(test => {
 				reset: true,
 				upserted: [{...chapter, reading: {done: false, page: 3}}]
 			})
-			yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
+			yield* chapters.read({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
 			assert.deepStrictEqual(yield* Queue.take(events), {
 				reset: false,
 				upserted: [{...chapter, reading: {done: true, page: 0}}]
 			})
-			yield* chapters.read({done: false, number: 1, page: 0, series: 'manga'})
+			yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 0, series: 'manga'})
 			assert.deepStrictEqual(yield* Queue.take(events), {
 				reset: false,
 				upserted: [{...chapter, reading: {done: false, page: 0}}]
@@ -308,13 +308,13 @@ it.layer(NodeServices.layer)(test => {
 					const chapters = yield* open(database, client)
 					yield* Effect.all(
 						[
-							chapters.register({token: Redacted.make(first)}),
-							chapters.register({token: Redacted.make(second)}),
-							chapters.register({token: Redacted.make(first)})
+							chapters.register({token: Redacted.make(PushToken.make(first))}),
+							chapters.register({token: Redacted.make(PushToken.make(second))}),
+							chapters.register({token: Redacted.make(PushToken.make(first))})
 						],
 						{concurrency: 'unbounded', discard: true}
 					)
-					yield* chapters.read({done: true, number: 2, page: 0, series: 'manga'})
+					yield* chapters.read({done: true, number: ChapterNumber.make(2), page: 0, series: 'manga'})
 					assert.deepStrictEqual(
 						pipe(
 							(yield* Effect.fromOption(yield* Stream.runHead(chapters.events))).upserted,
@@ -323,9 +323,9 @@ it.layer(NodeServices.layer)(test => {
 						),
 						Option.some(Option.some({done: true, page: 0}))
 					)
-					yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
-					yield* chapters.read({done: false, number: 2, page: 0, series: 'manga'})
-					yield* chapters.read({done: false, number: 1, page: 0, series: 'webcomic'})
+					yield* chapters.read({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
+					yield* chapters.read({done: false, number: ChapterNumber.make(2), page: 0, series: 'manga'})
+					yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 0, series: 'webcomic'})
 				})
 			)
 			// Read again after a restart: a reading holds only its page and whether it is done.
@@ -457,7 +457,7 @@ it.layer(NodeServices.layer)(test => {
 				Option.some('https://cubari.moe/read/imgchest/folk/1')
 			)
 			assert.deepStrictEqual(
-				Option.map(Array.last(first), chapter => chapter.postedAt),
+				Option.map(Array.last(first), chapter => Schema.encodeSync(PostedAt)(chapter.postedAt)),
 				Option.some(0)
 			)
 			// The next round's hourly wait starts only once this round has announced its new chapters.
@@ -466,8 +466,8 @@ it.layer(NodeServices.layer)(test => {
 				Stream.filter(Array.every(chapter => chapter.notified)),
 				Stream.runHead
 			)
-			yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
-			yield* chapters.read({done: false, number: 1, page: 0, series: 'webcomic'})
+			yield* chapters.read({done: true, number: ChapterNumber.make(1), page: 0, series: 'manga'})
+			yield* chapters.read({done: false, number: ChapterNumber.make(1), page: 0, series: 'webcomic'})
 			yield* Ref.set(revised, true)
 			yield* TestClock.adjust('1 hour')
 			yield* pipe(
@@ -546,7 +546,7 @@ it.layer(NodeServices.layer)(test => {
 					after,
 					Array.filter(item => item.series === 'manga' && item.number >= 229 && item.number <= 230),
 					Array.sort(byNumber),
-					Array.map(item => [item.number, item.pages])
+					Array.map(item => [Schema.encodeSync(ChapterNumber)(item.number), item.pages])
 				),
 				[
 					[229, ['https://example.test/229.png']],

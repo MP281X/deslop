@@ -15,9 +15,9 @@ import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
 import {keyOf} from '#services/chapters/lib/utils.ts'
 import {ChapterPath} from '#services/chapters/schema.ts'
-import type {Series} from '#services/chapters/schema.ts'
+import type {ChapterNumber, Series} from '#services/chapters/schema.ts'
 
-function Destination(props: {number: number; series: Series; start?: number}) {
+function Destination(props: {number: ChapterNumber; series: Series; start?: number}) {
 	return (
 		<Loaded atom={chaptersAtom} name="Chapters">
 			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} start={props.start} />}
@@ -46,7 +46,7 @@ function AppRoutes() {
 			}
 		})
 	)
-	function open(number: number, page?: number) {
+	function open(number: ChapterNumber, page?: number) {
 		setResumePage(page)
 		setPath([keyOf({number, series})])
 	}

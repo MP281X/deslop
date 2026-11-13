@@ -3,10 +3,10 @@ import {NodeHttpClient} from '@effect/platform-node'
 import {
 	Array,
 	Boolean,
-	Clock,
 	Config,
 	Context,
 	DateTime,
+	Duration,
 	Effect,
 	Equal,
 	HashMap,
@@ -49,6 +49,7 @@ import {
 import type {ChaptersEvent, ReadingUpdate} from '#services/chapters/schema.ts'
 import {
 	Chapter,
+	ChapterNumber,
 	ChaptersError,
 	CubariSeries,
 	DeadLink,
@@ -79,8 +80,8 @@ const ARCHIVE_POSTS = Array.map(
 	release =>
 		Post.make({
 			links: [`https://cubari.moe/read/imgchest/${release.slug}/1/1/`],
-			number: release.number,
-			postedAt: DateTime.toEpochMillis(DateTime.makeUnsafe(release.postedAt)),
+			number: ChapterNumber.make(release.number),
+			postedAt: DateTime.makeUnsafe(release.postedAt),
 			revised: false,
 			series: release.series
 		})
@@ -206,20 +207,27 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 		}
 
-		const resolve = Effect.fnUntraced(function* (post: Post, link: string, now: number) {
+		const resolve = Effect.fnUntraced(function* (post: Post, link: string, now: DateTime.Utc) {
 			const target = yield* Effect.fromOption(seriesOf(link))
 			const answer = yield* series(target.api)
 			return Chapter.make({
 				// A chapter found a day after its post arrives announced, so a first sync never floods the iPhone.
-				notified: now - post.postedAt > 86_400_000,
+				notified: pipe(DateTime.distance(post.postedAt, now), Duration.isGreaterThan(Duration.days(1))),
 				number: post.number,
 				pages: yield* Effect.fromOption(pagesOf(answer, target.chapter)),
-				postedAt: post.postedAt,
+				postedAt: Option.some(post.postedAt),
 				reading: Option.none(),
 				revisedAt: Option.none(),
 				series: post.series,
 				source: link,
-				title: nameOf(answer.chapters[target.chapter]?.title ?? '')
+				title: nameOf(
+					pipe(
+						Record.get(answer.chapters, target.chapter),
+						Option.flatMap(chapter => chapter.title),
+						Option.flatten,
+						Option.getOrElse(() => '')
+					)
+				)
 			})
 		})
 
@@ -288,7 +296,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				{concurrency: 'unbounded'}
 			)
 			if (Array.every(feeds, Option.isNone)) return yield* ChaptersError.make({message: 'Reddit did not answer.'})
-			const now = yield* Clock.currentTimeMillis
+			const now = yield* DateTime.now
 			const current = yield* chapters
 			const candidates = revisionCandidates(
 				[...ARCHIVE_POSTS, ...Array.flatten(Array.getSomes(feeds))],
@@ -344,7 +352,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 								revise({
 									number: chapter.number,
 									pages: chapter.pages,
-									revisedAt: Option.some(chapter.postedAt),
+									revisedAt: chapter.postedAt,
 									series: chapter.series,
 									source: chapter.source
 								}),
@@ -407,19 +415,37 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const tickets = Array.zip(devices, answer.data)
 			yield* pipe(
 				tickets,
-				Array.filter(pair => pair[1].details?.error === 'DeviceNotRegistered'),
+				Array.filter(pair =>
+					pipe(
+						pair[1].details,
+						Option.flatMap(details => details.error),
+						Option.contains('DeviceNotRegistered')
+					)
+				),
 				Effect.forEach(pair => asChaptersError(removeDevice(pair[0])), {concurrency: 1, discard: true})
 			)
 			// Any other refused message keeps the chapter in the outbox for the next round.
 			const refused = Array.filter(
 				tickets,
-				pair => pair[1].status === 'error' && pair[1].details?.error !== 'DeviceNotRegistered'
+				pair =>
+					pair[1].status === 'error' &&
+					!pipe(
+						pair[1].details,
+						Option.flatMap(details => details.error),
+						Option.contains('DeviceNotRegistered')
+					)
 			)
 			if (Array.isReadonlyArrayNonEmpty(refused)) {
 				return yield* ChaptersError.make({
 					message: `Expo refused ${refused.length} messages: ${pipe(
 						refused,
-						Array.map(pair => pair[1].details?.error ?? 'unknown'),
+						Array.map(pair =>
+							pipe(
+								pair[1].details,
+								Option.flatMap(details => details.error),
+								Option.getOrElse(() => 'unknown')
+							)
+						),
 						Array.join(', ')
 					)}`
 				})

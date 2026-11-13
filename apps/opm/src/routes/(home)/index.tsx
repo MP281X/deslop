@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Number, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Number, Option, Order, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -56,17 +56,12 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
-import type {ChapterItem} from '#services/chapters/schema.ts'
+import type {ChapterItem, ChapterNumber} from '#services/chapters/schema.ts'
 import {Series} from '#services/chapters/schema.ts'
 
 // "21 Oct" this year, "21 Oct 2025" before it; a chapter without a posted time shows none.
-function postedOn(postedAt: number) {
-	if (postedAt <= 0) return ''
-	return shortDate(postedAt)
-}
-
 // Every prop keeps its identity while the chapter is unchanged, so a page turn in the reader re-renders one row.
-function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => void}) {
+function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber) => void}) {
 	const read = useAtomSet(readAtom)
 	const done = Option.exists(props.chapter.reading, reading => reading.done)
 	return (
@@ -93,7 +88,13 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
 						{pipe(
-							[props.chapter.title, postedOn(props.chapter.postedAt)],
+							[
+								props.chapter.title,
+								Option.match(props.chapter.postedAt, {
+									onNone: () => '',
+									onSome: at => shortDate(DateTime.toEpochMillis(at))
+								})
+							],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
 						)}
@@ -143,7 +144,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 	)
 }
 
-function Chapters(props: {onOpen: (number: number, page?: number) => void; searched: string; series: Series}) {
+function Chapters(props: {onOpen: (number: ChapterNumber, page?: number) => void; searched: string; series: Series}) {
 	return (
 		<Loaded atom={chaptersAtom} name="Chapters">
 			{all => {
@@ -180,7 +181,7 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 }
 
 export function ChaptersRoute(props: {
-	onOpen: (number: number, page?: number) => void
+	onOpen: (number: ChapterNumber, page?: number) => void
 	onSeries: (series: Series) => void
 	series: Series
 }) {

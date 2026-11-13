@@ -23,10 +23,19 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {OpmNative} from '#modules/native/index.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {byNumber, keyOf, notificationOf} from '#services/chapters/lib/utils.ts'
-import type {ChapterItem, ChaptersEvent, ChapterList, ReadingUpdate} from '#services/chapters/schema.ts'
-import {Chapter, ChaptersError} from '#services/chapters/schema.ts'
+import type {
+	ChapterItem,
+	ChapterKey,
+	ChapterNumber,
+	ChaptersEvent,
+	ChapterList,
+	ReadingUpdate
+} from '#services/chapters/schema.ts'
+import {Chapter, ChaptersError, PushToken} from '#services/chapters/schema.ts'
 
 export const primary = hues.ivory
+
+const EasProjectId = pipe(Schema.String, Schema.brand('EasProjectId'))
 
 export const session = makeSession('https://opm.mp281x.xyz', keychain)
 
@@ -62,7 +71,7 @@ export const chaptersAtom = Atom.keepAlive(
 )
 
 // A chapter the list still lacks ten seconds after the reader opened it is out of reach, such as offline.
-export const unreachableAtom = Atom.family((_key: string) => Atom.make(Effect.as(Effect.sleep('10 seconds'), true)))
+export const unreachableAtom = Atom.family((_key: ChapterKey) => Atom.make(Effect.as(Effect.sleep('10 seconds'), true)))
 
 // Concurrent, so finishing one chapter while opening the next never cancels either write; the client is read once so a reconnect replays none.
 export const readAtom = Atom.keepAlive(
@@ -81,12 +90,12 @@ export const readAtom = Atom.keepAlive(
 )
 
 // One page turn in a reader opened on a chapter: the chapters from it on, in order, and the strip's page index.
-type PageTurn = {following: ChapterList; index: number; opened: number}
+type PageTurn = {following: ChapterList; index: number; opened: ChapterNumber}
 
 // What one opened reader has passed: how many chapters its strip shows, the chapter in view and those it finished, so a page turn before the server's copy of the list arrives cannot unfinish one.
-type ReaderState = {finished: HashSet.HashSet<number>; inView: Option.Option<number>; shown: number}
+type ReaderState = {finished: HashSet.HashSet<ChapterNumber>; inView: Option.Option<ChapterNumber>; shown: number}
 
-const readerStateAtom = Atom.family((_reader: string) =>
+const readerStateAtom = Atom.family((_reader: ChapterKey) =>
 	Atom.make<ReaderState>({finished: HashSet.empty(), inView: Option.none(), shown: 2})
 )
 
@@ -139,7 +148,7 @@ function turnPage(state: ReaderState, turn: PageTurn) {
 }
 
 // Each page turn saves the reading position and moves the reader on.
-export const readerAtom = Atom.family((reader: string) =>
+export const readerAtom = Atom.family((reader: ChapterKey) =>
 	Atom.writable(
 		get => get(readerStateAtom(reader)),
 		(context, turn: PageTurn) =>
@@ -172,14 +181,16 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 			) {
 				return
 			}
-			const extra = yield* Schema.decodeUnknownEffect(Schema.Struct({eas: Schema.Struct({projectId: Schema.String})}))(
+			const extra = yield* Schema.decodeUnknownEffect(Schema.Struct({eas: Schema.Struct({projectId: EasProjectId})}))(
 				Constants.expoConfig?.extra
 			)
 			const token = yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The push token could not be read.'}),
 				try: () => getExpoPushTokenAsync({projectId: extra.eas.projectId})
 			})
-			yield* Effect.flatMap(RpcClient, client => client('chapters.register', {token: Redacted.make(token.data)}))
+			yield* Effect.flatMap(RpcClient, client =>
+				client('chapters.register', {token: Redacted.make(PushToken.make(token.data))})
+			)
 		}),
 		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}
 	)
@@ -192,11 +203,15 @@ const fatalHandler = ErrorUtils.getGlobalHandler()
 ErrorUtils.setGlobalHandler((error, fatal) => {
 	if (fatal === true) {
 		Option.map(
-			Schema.decodeUnknownOption(Schema.Struct({message: Schema.String, stack: Schema.optionalKey(Schema.String)}))(
-				error
-			),
+			Schema.decodeUnknownOption(
+				Schema.Struct({message: Schema.String, stack: Schema.OptionFromOptionalKey(Schema.String)})
+			)(error),
 			// A disk that cannot take the stack must not hide the error itself.
-			thrown => Option.liftThrowable(writeAtomically)(crashFile, thrown.stack ?? thrown.message)
+			thrown =>
+				Option.liftThrowable(writeAtomically)(
+					crashFile,
+					Option.getOrElse(thrown.stack, () => thrown.message)
+				)
 		)
 	}
 	fatalHandler(error, fatal)

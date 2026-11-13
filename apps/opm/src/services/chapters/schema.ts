@@ -1,6 +1,30 @@
-import {Schema} from 'effect'
+import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
+
+import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+
+export type ChapterNumber = typeof ChapterNumber.Type
+export const ChapterNumber = pipe(Schema.Finite, Schema.brand('ChapterNumber'))
+
+export type ChapterKey = typeof ChapterKey.Type
+export const ChapterKey = pipe(Schema.String, Schema.brand('ChapterKey'))
+
+export type PostedAt = typeof PostedAt.Type
+// The index sends zero for an unknown publication time; it is absence only at this boundary.
+export const PostedAt = pipe(
+	Schema.Finite,
+	Schema.decodeTo(Schema.Option(Schema.DateTimeUtc), {
+		decode: SchemaGetter.transform(millis =>
+			pipe(
+				DateTime.makeUnsafe(0),
+				DateTime.mapEpochMillis(() => millis),
+				Option.liftPredicate(() => millis !== 0)
+			)
+		),
+		encode: SchemaGetter.transform(Option.match({onNone: () => 0, onSome: DateTime.toEpochMillis}))
+	})
+)
 
 export class ChaptersError extends Schema.TaggedError<ChaptersError>()('ChaptersError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -15,7 +39,11 @@ export type Series = typeof Series.Type
 export const Series = Schema.Literals(['manga', 'webcomic'])
 
 export type ChapterPath = typeof ChapterPath.Type
-export const ChapterPath = Schema.TemplateLiteralParser([Series, ':', Schema.FiniteFromString])
+export const ChapterPath = Schema.TemplateLiteralParser([
+	Series,
+	':',
+	pipe(Schema.FiniteFromString, Schema.decodeTo(ChapterNumber))
+])
 
 // The server's own bookkeeping, which never reaches the iPhone.
 const serverOnly = Model.FieldOnly(['select', 'insert', 'update'])
@@ -25,12 +53,12 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 	// Set once every registered iPhone has been told, or when the chapter arrived before anyone could be.
 	notified: serverOnly(Schema.BooleanFromBit),
 	// Extras between two chapters carry a half number, such as 8.5.
-	number: Schema.Finite,
+	number: ChapterNumber,
 	pages: Model.JsonFromString(Schema.Array(Schema.String)),
-	postedAt: Schema.Finite,
+	postedAt: PostedAt,
 	reading: Model.FieldOption(Model.JsonFromString(Reading)),
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
-	revisedAt: Model.FieldOption(serverOnly(Schema.Finite)),
+	revisedAt: Model.FieldOption(serverOnly(DateTimeUtcFromFiniteMillis)),
 	series: Series,
 	// The reader link the pages came from, so a revision that links it again is not read.
 	source: serverOnly(Schema.String),
@@ -51,7 +79,7 @@ export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: Sch
 export type ReadingUpdate = typeof ReadingUpdate.Type
 export const ReadingUpdate = Schema.Struct({
 	done: Schema.Boolean,
-	number: Schema.Finite,
+	number: ChapterNumber,
 	page: Schema.Finite,
 	series: Series
 })
@@ -60,7 +88,10 @@ export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
 export type PushToken = typeof PushToken.Type
-export const PushToken = Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u))
+export const PushToken = pipe(
+	Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u)),
+	Schema.brand('PushToken')
+)
 
 // One row of `devices`, and what the iPhone registers: the Expo token new chapters are announced to.
 export class Device extends Model.Class<Device>('Device')({
@@ -80,9 +111,22 @@ export const CubariSeries = Schema.Struct({
 				Schema.String,
 				Schema.Array(Schema.Union([Schema.String, Schema.Struct({src: Schema.String})]))
 			),
-			release_date: Schema.optionalKey(Schema.Record(Schema.String, Schema.Finite)),
+			release_date: Schema.OptionFromOptionalKey(
+				Schema.Record(
+					Schema.String,
+					pipe(
+						Schema.Finite,
+						Schema.decodeTo(Schema.DateTimeUtc, {
+							decode: SchemaGetter.transform(seconds =>
+								DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
+							),
+							encode: SchemaGetter.transform(at => DateTime.toEpochMillis(at) / 1000)
+						})
+					)
+				)
+			),
 			// imgchest albums without a name answer null.
-			title: Schema.optionalKey(Schema.NullOr(Schema.String))
+			title: Schema.OptionFromOptionalKey(Schema.OptionFromNullOr(Schema.String))
 		})
 	)
 })
@@ -90,22 +134,22 @@ export const CubariSeries = Schema.Struct({
 export type Post = typeof Post.Type
 export const Post = Schema.Struct({
 	links: Schema.NonEmptyArray(Schema.String),
-	number: Schema.Finite,
-	postedAt: Schema.Finite,
+	number: ChapterNumber,
+	postedAt: DateTimeUtcFromFiniteMillis,
 	revised: Schema.Boolean,
 	series: Series
 })
 
 // A reader link that answered 404 for its chapter; the sync skips it until the chapter gains another link, and asks again after a restart.
 export type DeadLink = typeof DeadLink.Type
-export const DeadLink = Schema.Struct({key: Schema.String, link: Schema.String})
+export const DeadLink = Schema.Struct({key: ChapterKey, link: Schema.String})
 
 // Expo's answer to a push batch, one ticket per message in order.
 export type PushTickets = typeof PushTickets.Type
 export const PushTickets = Schema.Struct({
 	data: Schema.Array(
 		Schema.Struct({
-			details: Schema.optionalKey(Schema.Struct({error: Schema.optionalKey(Schema.String)})),
+			details: Schema.OptionFromOptionalKey(Schema.Struct({error: Schema.OptionFromOptionalKey(Schema.String)})),
 			status: Schema.Literals(['ok', 'error'])
 		})
 	)

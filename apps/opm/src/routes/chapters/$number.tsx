@@ -19,8 +19,8 @@ import {Skeleton} from '@deslop/components-mobile/ui/skeleton'
 
 import {readerAtom, unreachableAtom} from '#lib/chapters.ts'
 import {PageStrip} from '#modules/native/index.ts'
-import {byNumber} from '#services/chapters/lib/utils.ts'
-import type {ChapterList, Series} from '#services/chapters/schema.ts'
+import {byNumber, keyOf} from '#services/chapters/lib/utils.ts'
+import type {ChapterList, ChapterNumber, Series} from '#services/chapters/schema.ts'
 
 // The reader's content skeleton; the full-page fallback adds the chapter title.
 function ReaderLoading(props: {modifiers?: ViewModifier[]}) {
@@ -37,14 +37,14 @@ function ReaderLoading(props: {modifiers?: ViewModifier[]}) {
 }
 
 // The reader's full-page skeleton, also used while the chapter list itself loads behind a notification.
-export function ReaderSkeleton(props: {number: number}) {
+export function ReaderSkeleton(props: {number: ChapterNumber}) {
 	return (
 		<ReaderLoading modifiers={[navigationTitle(`Chapter ${props.number}`), navigationBarTitleDisplayMode('inline')]} />
 	)
 }
 
-export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
-	const reader = `${props.series}:${props.number}`
+export function ReaderRoute(props: {chapters: ChapterList; number: ChapterNumber; series: Series; start?: number}) {
+	const reader = keyOf(props)
 	const following = pipe(
 		props.chapters,
 		Array.sort(byNumber),

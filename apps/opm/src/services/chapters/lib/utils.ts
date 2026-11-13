@@ -18,7 +18,7 @@ import {
 import {Base64Url} from 'effect/encoding'
 
 import type {ChapterItem, CubariSeries, DeadLink, Post, Series} from '#services/chapters/schema.ts'
-import {Chapter, ChapterNotification} from '#services/chapters/schema.ts'
+import {Chapter, ChapterKey, ChapterNumber, ChapterNotification} from '#services/chapters/schema.ts'
 
 // "Chapter 242 [English]", "[Revised] Chapter 211 [English]" and r/OPMFolk's "Chapter 242/287 [Translations]"; a post of several chapters names each in its own post too.
 const TITLE =
@@ -38,7 +38,7 @@ export const byNumber = Order.mapInput(Order.Number, (chapter: Pick<ChapterItem,
 export const INDEXES = {manga: 'OPM', webcomic: 'JYHJU'}
 
 export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
-	return `${chapter.series}:${chapter.number}`
+	return ChapterKey.make(`${chapter.series}:${chapter.number}`)
 }
 
 export function revisionCandidates(posts: Post[], current: readonly Chapter[], deadLinks: readonly DeadLink[]) {
@@ -46,7 +46,7 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 	const dead = HashSet.fromIterable(Array.map(deadLinks, item => `${item.key}\u0000${item.link}`))
 	return pipe(
 		posts,
-		Array.sort(Order.mapInput(Order.Number, (post: Post) => post.postedAt)),
+		Array.sort(Order.mapInput(DateTime.Order, (post: Post) => post.postedAt)),
 		Array.filterMap(post =>
 			pipe(
 				post.links,
@@ -60,7 +60,11 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 								onNone: () => true,
 								onSome: item =>
 									post.revised &&
-									post.postedAt > Option.getOrElse(item.revisedAt, () => item.postedAt) &&
+									pipe(
+										item.revisedAt,
+										Option.orElse(() => item.postedAt),
+										Option.match({onNone: () => true, onSome: at => DateTime.isGreaterThan(post.postedAt, at)})
+									) &&
 									link !== item.source
 							})
 						)
@@ -83,11 +87,12 @@ function numbersOf(chapters: readonly Chapter[], kind: Series) {
 // The whole numbers between a series' lowest and highest known chapter that no chapter fills, such as 231 and 232 before a source exists.
 export function missingNumbers(chapters: readonly Chapter[], kind: Series) {
 	const numbers = numbersOf(chapters, kind)
-	if (!Array.isReadonlyArrayNonEmpty(numbers)) return Array.empty<number>()
+	if (!Array.isReadonlyArrayNonEmpty(numbers)) return Array.empty<ChapterNumber>()
 	const known = HashSet.fromIterable(numbers)
-	return Array.filter(
+	return pipe(
 		Array.range(Math.ceil(Array.min(numbers, Order.Number)), Math.floor(Array.max(numbers, Order.Number))),
-		number => !HashSet.has(known, number)
+		Array.map(number => ChapterNumber.make(number)),
+		Array.filter(number => !HashSet.has(known, number))
 	)
 }
 
@@ -126,8 +131,8 @@ export function postFrom(entry: {content: string; published: string; title: stri
 				Array.dedupe(Array.map(Array.fromIterable(String.matchAll(CUBARI_LINKS)(entry.content)), match => match[0])),
 				Array.isArrayNonEmpty<string>
 			),
-			number: Number.parse(groups['number'] ?? ''),
-			postedAt: Option.map(DateTime.make(entry.published), DateTime.toEpochMillis),
+			number: Option.map(Number.parse(groups['number'] ?? ''), number => ChapterNumber.make(number)),
+			postedAt: DateTime.make(entry.published),
 			revised: Option.some(String.includes('revised')(String.toLowerCase(groups['tags'] ?? ''))),
 			series: Option.some(seriesFromTags(groups['tags'] ?? ''))
 		})
@@ -180,24 +185,22 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 	return Array.filterMap(Record.toEntries(index.chapters), entry =>
 		pipe(
 			Option.all({
-				number: Number.parse(entry[0]),
-				pages: pagesOf(index, entry[0]),
-				postedAt: Option.some(
-					Boolean.match(kind === 'webcomic', {
-						onFalse: () => Option.getOrElse(Array.head(Record.values(entry[1].release_date ?? {})), () => 0) * 1000,
-						onTrue: () => 0
-					})
-				)
+				number: Option.map(Number.parse(entry[0]), number => ChapterNumber.make(number)),
+				pages: pagesOf(index, entry[0])
 			}),
 			Option.map(found =>
 				Chapter.make({
 					...found,
 					notified: true,
+					postedAt: Boolean.match(kind === 'webcomic', {
+						onFalse: () => pipe(entry[1].release_date, Option.map(Record.values), Option.flatMap(Array.head)),
+						onTrue: () => Option.none()
+					}),
 					reading: Option.none(),
 					revisedAt: Option.none(),
 					series: kind,
 					source: `https://cubari.moe/read/gist/${INDEXES[kind]}/${entry[0]}/1/`,
-					title: nameOf(entry[1].title ?? '')
+					title: nameOf(Option.getOrElse(Option.flatten(entry[1].title), () => ''))
 				})
 			),
 			Result.fromOption(() => undefined)
