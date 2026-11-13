@@ -7,6 +7,9 @@ import {defineConfig} from 'vite-plus'
 
 import {deslopRules, lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
 
+// The registry keeps every primitive as a file; these break AGENTS.md's Design rules (motion, spinners, toasts, context menus, a command palette, a destruction confirmation), so no app imports them.
+const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
+
 export default defineConfig({
 	create: {
 		templates: [
@@ -112,7 +115,18 @@ export default defineConfig({
 			'eslint/no-restricted-imports': [
 				'error',
 				{
-					...restrictedImports,
+					paths: [
+						...restrictedImports.paths,
+						...Array.map(BANNED_PRIMITIVES, name => ({
+							message: 'AGENTS.md Design bans this primitive; the file stays only for the registry.',
+							name: `@deslop/components-web/ui/${name}`
+						})),
+						{
+							importNames: ['CircleNotchIcon', 'SpinnerBallIcon', 'SpinnerGapIcon', 'SpinnerIcon'],
+							message: 'AGENTS.md Design: pending actions have no spinners.',
+							name: '@phosphor-icons/react'
+						}
+					],
 					patterns: [
 						{
 							// All restrictions share one ordered group: Oxlint applies a group's negations to other patterns too.
