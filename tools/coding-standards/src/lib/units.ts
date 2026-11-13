@@ -10,8 +10,16 @@ import type {Kind} from '#lib/question.ts'
 const MAX_LINES = 150
 const FUNCTIONS = ['ArrowFunctionExpression', 'FunctionDeclaration', 'FunctionExpression']
 
-// A unit with only the imports it uses, so an import added for another unit asks nothing again; `ignores` names the questions its `judge-ignore` comments opt out of.
-export type Unit = {ignores: HashSet.HashSet<string>; imports: string; kind: Kind; line: number; text: string}
+// A unit with only the imports it uses, so an import added for another unit asks nothing again; its text opens with the comments right above it, and `ignores` names the questions its `judge-ignore` comments opt out of.
+export type Unit = {
+	end: number
+	ignores: HashSet.HashSet<string>
+	imports: string
+	kind: Kind
+	line: number
+	start: number
+	text: string
+}
 
 type Node = {type: string; start: number; end: number}
 
@@ -116,16 +124,31 @@ export function units(filename: string, source: string) {
 		)
 	}
 	function unit(kind: Kind, node: Node, line: number) {
-		const text = textOf(source, node)
-		// The opt-outs sit in the comment lines right above the unit, beside any comment explaining it.
-		const ignores = pipe(
+		// The opt-outs sit in the comment lines right above the unit, beside any comment explaining it, which Jev reads with the code.
+		const above = pipe(
 			Array.take(lines, line - 1),
 			Array.reverse,
 			Array.takeWhile(matches(/^\s*\/\//u)),
+			Array.reverse,
+			Array.map(String.trimStart)
+		)
+		const ignores = pipe(
+			above,
 			Array.flatMap(comment => Option.toArray(String.match(/judge-ignore (\S+) -- \S/u)(comment))),
 			Array.flatMap(found => Option.toArray(Array.get(found, 1)))
 		)
-		return {ignores: HashSet.fromIterable(ignores), imports: importsUsed(source, declarations, node), kind, line, text}
+		return {
+			end: lineOf(node.end),
+			ignores: HashSet.fromIterable(ignores),
+			imports: importsUsed(source, declarations, node),
+			kind,
+			line,
+			start: line - above.length,
+			text: Array.join(
+				[...Array.filter(above, comment => !String.includes('judge-ignore ')(comment)), textOf(source, node)],
+				'\n'
+			)
+		}
 	}
 	const tests = matches(/\.test\.[cm]?[jt]sx?$/u)(filename)
 	const tsx = String.endsWith('.tsx')(filename)

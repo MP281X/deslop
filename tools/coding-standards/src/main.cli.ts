@@ -43,15 +43,27 @@ const cli = pipe(
 				'judge',
 				{
 					...urls,
+					base: pipe(
+						Flag.String('base'),
+						Flag.withDescription(
+							"The branch the change goes into; by default the pull request's base, else origin's default branch"
+						),
+						Flag.optional
+					),
+					dryRun: pipe(
+						Flag.Boolean('dry-run'),
+						Flag.withDescription('Print what would be asked, with its estimated tokens, and send nothing'),
+						Flag.withDefault(false)
+					),
 					ignore: pipe(
 						Flag.String('ignore'),
 						Flag.withDescription('A glob of files to leave unjudged, as lint ignores them'),
 						Flag.atLeast(0)
 					)
 				},
-				input => judge(input, input.ignore)
+				input => judge(input, input)
 			),
-			'Ask every function, component and test case the questions no cached answer covers, and report what breaks one'
+			'Ask the change, and the functions, components and test cases it touches, the questions no remembered answer covers, and report what breaks one'
 		),
 		Command.withDescription(Command.make('sign-in', urls, signIn), 'Sign the judge in to Gateway once per machine')
 	]),
