@@ -2,6 +2,7 @@ import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
+import {ApnsToken} from '@deslop/runtime/shared/apns'
 import {DateTimeUtcFromFiniteMillis, DateTimeUtcFromFiniteSeconds} from '@deslop/runtime/shared/time'
 
 export type ChapterNumber = typeof ChapterNumber.Type
@@ -65,16 +66,14 @@ export class Chapter extends Model.Class<Chapter>('Chapter')({
 export type ChapterNotification = typeof ChapterNotification.Type
 export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
-export type PushToken = typeof PushToken.Type
-export const PushToken = pipe(
-	Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u)),
-	Schema.brand('PushToken')
-)
+export type Bundle = typeof Bundle.Type
+export const Bundle = Schema.Literals(['xyz.mp281x.opm', 'xyz.mp281x.opm.dev'])
 
-// One row of `devices`, and what the iPhone registers: the Expo token new chapters are announced to.
+// The app identifies the APNs environment; release builds use production, Simulator builds sandbox.
 export class Device extends Model.Class<Device>('Device')({
+	bundle: Bundle,
 	// A push token is a secret: it never leaves the server and prints redacted.
-	token: Model.Sensitive(Schema.RedactedFromValue(PushToken))
+	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
 }) {
 	static readonly table = 'devices'
 }
@@ -108,14 +107,3 @@ export const Post = Schema.Struct({
 // A reader link that answered 404 for its chapter; the sync skips it until the chapter gains another link, and asks again after a restart.
 export type DeadLink = typeof DeadLink.Type
 export const DeadLink = Schema.Struct({key: ChapterKey, link: Schema.String})
-
-// Expo's answer to a push batch, one ticket per message in order.
-export type PushTickets = typeof PushTickets.Type
-export const PushTickets = Schema.Struct({
-	data: Schema.Array(
-		Schema.Struct({
-			details: Schema.OptionFromOptionalKey(Schema.Struct({error: Schema.OptionFromOptionalKey(Schema.String)})),
-			status: Schema.Literals(['ok', 'error'])
-		})
-	)
-})

@@ -31,11 +31,14 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
+import {Apns} from '@deslop/runtime/server/apns'
+import {ApnsToken} from '@deslop/runtime/shared/apns'
+
 import {activityProps} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 import {BookedPlace, BookingId, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {Activity, ApnsToken, ChannelId, Device, JwtClaims} from '#services/push/schema.ts'
+import {Activity, ChannelId, Device} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
 const BOOKING = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
@@ -97,6 +100,7 @@ const open = Effect.fnUntraced(function* (
 		yield* Layer.build(
 			pipe(
 				Push.layer,
+				Layer.provide(Apns.layer),
 				Layer.provide(Layer.succeedContext(database)),
 				Layer.provide(
 					Layer.succeed(
@@ -185,10 +189,12 @@ it.layer(NodeCrypto.layer)(test => {
 				yield* Jwk.importSpki(yield* KeyFormat.encode(KeyFormat.spki, fixture.key.publicKey), 'ES256')
 			)
 			const claims = yield* Effect.fromOption(
-				Schema.decodeOption(JwtClaims)(new TextDecoder().decode(verified.payload))
+				Schema.decodeOption(Schema.fromJsonString(Schema.Struct({iat: Schema.Finite, iss: Schema.String})))(
+					new TextDecoder().decode(verified.payload)
+				)
 			)
 			assert.deepStrictEqual(
-				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, DateTime.toEpochSeconds(claims.iat)],
+				[verified.protectedHeader.alg, verified.protectedHeader.kid, claims.iss, claims.iat],
 				['ES256', 'fixture', 'fixture', Math.floor(fixture.now / 1000)]
 			)
 		})

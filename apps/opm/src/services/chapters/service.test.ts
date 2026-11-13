@@ -1,4 +1,4 @@
-import {NodeServices} from '@effect/platform-node'
+import {NodeCrypto, NodeServices} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
@@ -26,18 +26,22 @@ import {
 	pipe
 } from 'effect'
 
-import {Base64Url} from 'effect/encoding'
+import {KeyFormat, Signature} from 'effect/crypto'
+import {Base64, Base64Url} from 'effect/encoding'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
+
+import {Apns} from '@deslop/runtime/server/apns'
+import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import onePunchMan from './fixtures/one-punch-man.xml?raw'
 import opmFolk from './fixtures/opm-folk.xml?raw'
 
 import {INDEXES, byNumber, keyOf} from '#services/chapters/lib/utils.ts'
 import type {Series} from '#services/chapters/schema.ts'
-import {Chapter, ChapterNumber, Device, PostedAt, PushToken} from '#services/chapters/schema.ts'
+import {Chapter, ChapterNumber, Device, PostedAt} from '#services/chapters/schema.ts'
 import {Chapters} from '#services/chapters/service.ts'
 import {ReadingChapter, ChaptersEvent} from '#services/reading/schema.ts'
 import {Reading} from '#services/reading/service.ts'
@@ -84,7 +88,7 @@ const seeded = Effect.fnUntraced(function* (chapters: readonly Chapter[], tokens
 		tokens,
 		token =>
 			Effect.flatMap(
-				Schema.encodeEffect(Device.insert)({token: Redacted.make(PushToken.make(token))}),
+				Schema.encodeEffect(Device.insert)({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(token))}),
 				row => sql`INSERT INTO devices ${sql.insert(row)}`
 			),
 		{concurrency: 1, discard: true}
@@ -112,9 +116,22 @@ const open = Effect.fnUntraced(function* (
 	client: HttpClient.HttpClient,
 	extra: Layer.Layer<never> = Layer.empty
 ) {
+	const key = yield* (yield* Signature.Signature).generateKeyPair(Signature.ecdsaP256)
 	const context = yield* Layer.build(
 		pipe(
 			Layer.merge(Chapters.layer, Reading.layer),
+			Layer.provide(
+				Layer.provide(
+					Apns.layer,
+					ConfigProvider.layer(
+						ConfigProvider.fromUnknown({
+							APNS_KEY: Base64.encode(yield* KeyFormat.encode(KeyFormat.pkcs8, key.privateKey)),
+							APNS_KEY_ID: 'fixture',
+							APNS_TEAM_ID: 'fixture'
+						})
+					)
+				)
+			),
 			Layer.provide(Layer.succeedContext(database)),
 			Layer.provide(Layer.succeed(HttpClient.HttpClient, client)),
 			Layer.provide(extra)
@@ -152,25 +169,19 @@ const watch = Effect.fnUntraced(function* (chapters: typeof Chapters.Service) {
 	return events
 })
 
-it.layer(NodeServices.layer)(test => {
+it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
 	test.effect(
-		'keeps a chapter in the outbox until Expo returns exactly one ticket per device',
+		'keeps a chapter in the outbox until Apple accepts every device',
 		Effect.fnUntraced(function* () {
-			const database = yield* seeded(
-				[chapterAt('manga', 1, false)],
-				['ExpoPushToken[device00000001]', 'ExpoPushToken[device00000002]']
-			)
-			const count = yield* Ref.make(0)
+			const database = yield* seeded([chapterAt('manga', 1, false)], [String.repeat(64)('a'), String.repeat(64)('b')])
+			const status = yield* Ref.make(403)
 			const rounds = yield* Queue.unbounded<void>()
 			yield* open(
 				database,
 				HttpClient.make(request =>
 					Effect.gen(function* () {
-						if (request.url === 'https://exp.host/--/api/v2/push/send') {
-							return HttpClientResponse.fromWeb(
-								request,
-								Response.json({data: Array.makeBy(yield* Ref.get(count), () => ({status: 'ok'}))})
-							)
+						if (String.includes('/3/device/')(request.url)) {
+							return HttpClientResponse.fromWeb(request, new Response(undefined, {status: yield* Ref.get(status)}))
 						}
 						return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 					})
@@ -191,13 +202,13 @@ it.layer(NodeServices.layer)(test => {
 					})
 				])
 			)
-			for (const received of [0, 1, 3, 2]) {
-				yield* Ref.set(count, received)
-				if (received !== 0) yield* TestClock.adjust('1 hour')
+			for (const received of [403, 429, 503, 200]) {
+				yield* Ref.set(status, received)
+				if (received !== 403) yield* TestClock.adjust('1 hour')
 				yield* Queue.take(rounds)
 				assert.deepStrictEqual(
 					Array.map(yield* stored(database).chapters(), chapter => chapter.notified),
-					[received === 2]
+					[received === 200]
 				)
 			}
 		})
@@ -207,28 +218,31 @@ it.layer(NodeServices.layer)(test => {
 		'forgets an iPhone whose app was removed and never sends its token back',
 		Effect.fnUntraced(function* () {
 			const database = yield* seeded([])
-			const kept = 'ExpoPushToken[device00000001]'
+			const kept = String.repeat(64)('a')
 			const announced = yield* Queue.unbounded<void>()
 			const chapters = yield* open(
 				database,
 				HttpClient.make(request =>
 					Effect.sync(() =>
-						Boolean.match(request.url === 'https://exp.host/--/api/v2/push/send', {
+						Boolean.match(String.includes('/3/device/')(request.url), {
 							onFalse: () => HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404})),
 							// The second iPhone's app was removed.
 							onTrue: () =>
 								HttpClientResponse.fromWeb(
 									request,
-									Response.json({data: [{status: 'ok'}, {details: {error: 'DeviceNotRegistered'}, status: 'error'}]})
+									Boolean.match(String.endsWith(kept)(request.url), {
+										onFalse: () => Response.json({reason: 'Unregistered'}, {status: 410}),
+										onTrue: () => new Response()
+									})
 								)
 						})
 					)
 				),
 				warningLayer(announced, 'Announced chapter manga:1')
 			)
-			yield* chapters.register({token: Redacted.make(PushToken.make(kept))})
-			yield* chapters.register({token: Redacted.make(PushToken.make('ExpoPushToken[device00000002]'))})
-			yield* chapters.register({token: Redacted.make(PushToken.make(kept))})
+			yield* chapters.register({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(kept))})
+			yield* chapters.register({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(String.repeat(64)('b')))})
+			yield* chapters.register({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(kept))})
 			// A chapter found once both iPhones are registered, so whichever round sees it tells both.
 			yield* insertChapters(database, [chapterAt('manga', 1, false)])
 			yield* TestClock.adjust('1 hour')
@@ -240,7 +254,7 @@ it.layer(NodeServices.layer)(test => {
 			)
 			// The token is stored for the server's own use: it prints redacted and has no JSON form to leak through.
 			assert.isTrue(Array.every(devices, device => Redacted.isRedacted(device.token)))
-			assert.deepStrictEqual(Record.keys(Device.json.fields), [])
+			assert.deepStrictEqual(Record.keys(Device.json.fields), ['bundle'])
 		})
 	)
 
@@ -303,8 +317,8 @@ it.layer(NodeServices.layer)(test => {
 	test.effect(
 		'persists shared reading and concurrent device changes without treating list marks as visits',
 		Effect.fnUntraced(function* () {
-			const first = 'ExpoPushToken[device00000001]'
-			const second = 'ExpoPushToken[device00000002]'
+			const first = String.repeat(64)('a')
+			const second = String.repeat(64)('b')
 			const database = yield* seeded(
 				Array.flatMap(['manga', 'webcomic'] as const, series => [chapterAt(series, 1), chapterAt(series, 2)])
 			)
@@ -314,9 +328,9 @@ it.layer(NodeServices.layer)(test => {
 					const chapters = yield* open(database, client)
 					yield* Effect.all(
 						[
-							chapters.register({token: Redacted.make(PushToken.make(first))}),
-							chapters.register({token: Redacted.make(PushToken.make(second))}),
-							chapters.register({token: Redacted.make(PushToken.make(first))})
+							chapters.register({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(first))}),
+							chapters.register({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(second))}),
+							chapters.register({bundle: 'xyz.mp281x.opm', token: Redacted.make(ApnsToken.make(first))})
 						],
 						{concurrency: 'unbounded', discard: true}
 					)

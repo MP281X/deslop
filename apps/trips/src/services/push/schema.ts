@@ -2,17 +2,13 @@ import {Schema, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {DateTimeUtcFromSeconds} from '@deslop/runtime/shared/time'
+import {ApnsToken} from '@deslop/runtime/shared/apns'
 
 import {ActivityProps, BookingId, Leg} from '#services/bookings/schema.ts'
 
 // The content-state's props, which expo-widgets reads as a JSON string.
 export type ActivityPropsJson = typeof ActivityPropsJson.Type
 export const ActivityPropsJson = Schema.fromJsonString(ActivityProps)
-
-// The provider token's claims as JSON; APNs takes at most an hour.
-export type JwtClaims = typeof JwtClaims.Type
-export const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
 
 export class PushError extends Schema.TaggedError<PushError>()('PushError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -22,9 +18,6 @@ export class PushError extends Schema.TaggedError<PushError>()('PushError', {
 // The release app, on Apple's production push service, and the Simulator build, on its sandbox; the server pushes to no other app.
 export type Bundle = typeof Bundle.Type
 export const Bundle = Schema.Literals(['xyz.mp281x.trips', 'xyz.mp281x.trips.dev'])
-
-export type ApnsToken = typeof ApnsToken.Type
-export const ApnsToken = pipe(Schema.String.check(Schema.isPattern(/^[0-9a-f]{32,512}$/iu)), Schema.brand('ApnsToken'))
 
 export type ChannelId = typeof ChannelId.Type
 export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
@@ -62,6 +55,3 @@ export class SentAlert extends Model.Class<SentAlert>('SentAlert')({
 }) {
 	static readonly table = 'sent_alerts'
 }
-
-export type ApnsReason = typeof ApnsReason.Type
-export const ApnsReason = Schema.Struct({reason: Schema.String})

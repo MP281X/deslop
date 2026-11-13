@@ -9,9 +9,11 @@ import {
 } from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
+import {ApnsToken} from '@deslop/runtime/shared/apns'
+
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
-import {ApnsToken, Bundle} from '#services/push/schema.ts'
+import {Bundle} from '#services/push/schema.ts'
 
 const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
 

@@ -16,3 +16,7 @@ Services use systemd user units on Linux and launchd agents on macOS. On macOS, 
 Both platforms set `NODE_ENV=production`, restrict newly created files to the user and read optional settings from `~/.deslop/<app>.env`. On macOS, Node loads that file with `--env-file-if-exists`; the service PATH is `~/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
 
 The separate `deslop-<app>-update` agent checks npm every 900 seconds on macOS (sleeping or already-running intervals are skipped). Updates install alongside the running release, atomically promote `~/.deslop/<app>/current`, restart only the app and retain the previous release. Uninstall removes the app and update agents but preserves application data.
+
+## APNs
+
+`server/apns` owns Apple's HTTP/2 transport, ES256 provider signing, 40-minute bearer caching and throttling backoff. `Apns.layer` reads `APNS_KEY` (redacted PKCS#8 PEM or base64 DER), `APNS_KEY_ID` and `APNS_TEAM_ID`. Provide `layerApnsClient` to it at the server entry; app services keep their own HTTP client and notification policy. `sendToDevice` takes the bundle, native token and production/sandbox choice; `send` also serves Live Activity broadcast/channel requests. Missing signing settings disable pushes with a warning. `shared/apns` exports only the native token schema and has no native module dependency.
