@@ -8,7 +8,6 @@ import {
 	Effect,
 	Layer,
 	Option,
-	Redacted,
 	Result,
 	Schedule,
 	Schema,
@@ -18,7 +17,6 @@ import {
 	pipe
 } from 'effect'
 
-import {HttpClientRequest} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
@@ -38,24 +36,10 @@ import {
 	startAlert
 } from '#services/push/lib/utils.ts'
 import type {Alert} from '#services/push/lib/utils.ts'
-import type {Bundle} from '#services/push/schema.ts'
 import {Activity, ActivityPropsJson, ChannelId, Device, PushError, SentAlert} from '#services/push/schema.ts'
 
-// The store build pushes through production and the Simulator build through the sandbox; a TestFlight app cannot report it.
-const BUNDLES = {
-	'xyz.mp281x.trips': {
-		channels: 'https://api-manage-broadcast.push.apple.com:2196',
-		host: 'https://api.push.apple.com',
-		scheme: 'trips'
-	},
-	'xyz.mp281x.trips.dev': {
-		channels: 'https://api-manage-broadcast.sandbox.push.apple.com:2195',
-		host: 'https://api.sandbox.push.apple.com',
-		scheme: 'trips-dev'
-	}
-}
+const SCHEMES = {'xyz.mp281x.trips': 'trips', 'xyz.mp281x.trips.dev': 'trips-dev'}
 
-type Target = {bundle: Bundle}
 type Span = {end: DateTime.Utc; start: DateTime.Utc}
 type Showing = {journey: Flight | Train; leg: Leg; now: DateTime.Utc; props: ActivityProps; window: Span}
 
@@ -88,7 +72,6 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const sql = yield* SqlClient.SqlClient
 		const bookings = yield* Bookings
 		const apns = yield* Apns
-		const send = apns.send
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
@@ -151,104 +134,31 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const asPushReadError = asPushError('The push state could not be read.')
 		const asPushSaveError = asPushError('The push state could not be saved.')
 
-		function sendToDevice(
-			target: Device,
-			type: 'alert' | 'liveactivity',
-			body: unknown,
-			priority: 5 | 10,
-			notification?: string
-		) {
-			return apns.sendToDevice(
-				{bundle: target.bundle, production: target.bundle === 'xyz.mp281x.trips', token: target.token},
-				type,
-				body,
-				priority,
-				notification
-			)
-		}
-
-		// Most recent message stored, so a phone offline in flight gets the latest state when it reconnects.
-		const createChannel = Effect.fnUntraced(function* (target: Target) {
-			const answer = yield* send(
-				yield* asPushError('The channel request could not be written.')(
-					HttpClientRequest.bodyJson(
-						HttpClientRequest.post(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`),
-						{'message-storage-policy': 1, 'push-type': 'LiveActivity'}
-					)
-				)
-			)
-			return yield* pipe(
-				answer.channel,
-				Effect.fromOption,
-				Effect.mapBoth({
-					onFailure: cause => PushError.make({cause, message: `APNs created no channel: ${answer.status}`}),
-					onSuccess: id => ChannelId.make(id)
-				})
-			)
-		})
-
-		function deleteChannel(target: Target & {channel: ChannelId}) {
-			return Effect.ignore(
-				send(
-					HttpClientRequest.delete(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`, {
-						headers: {'apns-channel-id': target.channel}
-					})
-				),
-				{log: 'Warn', message: 'A finished activity channel was not deleted'}
-			)
-		}
-
-		// The channel stores the latest message for a phone offline in flight, as long as an activity lives.
-		function broadcast(activity: Activity, aps: Record<string, unknown>, priority: 5 | 10, now: DateTime.Utc) {
-			return pipe(
-				HttpClientRequest.post(`${BUNDLES[activity.bundle].host}/4/broadcasts/apps/${activity.bundle}`, {
-					headers: {
-						'apns-channel-id': activity.channel,
-						'apns-expiration': `${seconds(DateTime.addDuration(now, Duration.hours(8)))}`,
-						'apns-priority': `${priority}`,
-						'apns-push-type': 'liveactivity'
+		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
+			const answer = yield* apns.sendToDevice(
+				target,
+				'liveactivity',
+				{
+					aps: {
+						alert: startAlert(showing.journey),
+						attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
+						'attributes-type': 'LiveActivityAttributes',
+						'content-state': yield* contentState(showing.props),
+						event: 'start',
+						'relevance-score': 100,
+						timestamp: seconds(showing.now)
 					}
-				}),
-				HttpClientRequest.bodyJson({aps}),
-				Effect.flatMap(send)
+				},
+				10
 			)
-		}
-
-		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing, notification: string) {
-			const channel = yield* createChannel(target)
-			const answer = yield* Effect.onError(
-				sendToDevice(
-					target,
-					'liveactivity',
-					{
-						aps: {
-							alert: startAlert(showing.journey),
-							attributes: {url: `${BUNDLES[target.bundle].scheme}://booking/${showing.journey.id}`},
-							'attributes-type': 'LiveActivityAttributes',
-							'content-state': yield* contentState(showing.props),
-							event: 'start',
-							'input-push-channel': channel,
-							'relevance-score': 100,
-							timestamp: seconds(showing.now)
-						}
-					},
-					10,
-					notification
-				),
-				() => deleteChannel({bundle: target.bundle, channel})
-			)
-			if (apnsAccepted(answer)) return Result.succeed(channel)
-			yield* deleteChannel({bundle: target.bundle, channel})
+			if (apnsAccepted(answer)) return Result.succeed(ChannelId.make(Option.getOrThrow(answer.channel)))
 			if (!apnsRetryable(answer)) yield* pipe(forgetDevice(target), Reactivity.mutation(['push']), asPushSaveError)
 			return Result.fail(answer)
 		})
 
 		// A refused start leaves the leg unstarted, so the next round tries again.
 		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			// Every trip uses the same push-to-start token, but a refusal belongs to this leg's notification only.
-			const notification = `start ${target.bundle} ${Redacted.value(target.token)} ${showing.journey.id} ${showing.leg}`
-			if (yield* apns.isDeferred(notification, showing.now)) return
-			const started = yield* pushStart(target, showing, notification)
+			const started = yield* pushStart(target, showing)
 			if (Result.isFailure(started)) return
 			yield* pipe(
 				startActivity({
@@ -267,8 +177,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		const finish = Effect.fnUntraced(function* (activity: Activity, now: DateTime.Utc) {
 			const answer = yield* Effect.result(
-				broadcast(
-					activity,
+				apns.broadcast(
+					activity.bundle,
+					activity.channel,
 					{
 						'content-state': yield* contentState(activity.props),
 						'dismissal-date': seconds(DateTime.addDuration(now, Duration.minutes(10))),
@@ -284,7 +195,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				return
 			}
 			if (apnsRetryable(answer.success)) return
-			yield* deleteChannel(activity)
+			yield* apns.deleteChannel(activity.bundle, activity.channel)
 			yield* pipe(
 				activities.updateVoid({...editable(activity), endedAt: Option.some(now)}),
 				Reactivity.mutation(['push']),
@@ -297,8 +208,9 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const shown = yield* contentState(activity.props)
 			const next = yield* contentState(props)
 			if (next.props === shown.props) return
-			const answer = yield* broadcast(
-				activity,
+			const answer = yield* apns.broadcast(
+				activity.bundle,
+				activity.channel,
 				{'content-state': next, event: 'update', timestamp: seconds(now)},
 				Boolean.match(urgencyOf(activity.props) === urgencyOf(props), {
 					onFalse: () => 10 as const,
@@ -351,7 +263,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		// A device whose token died leaves the list with its first failed alert.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
-			const answer = yield* sendToDevice(
+			const answer = yield* apns.sendToDevice(
 				device,
 				'alert',
 				{

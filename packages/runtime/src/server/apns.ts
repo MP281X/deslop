@@ -16,6 +16,7 @@ import {
 	Ref,
 	Schema,
 	String,
+	Struct,
 	pipe
 } from 'effect'
 
@@ -24,6 +25,7 @@ import {Base64} from 'effect/encoding'
 import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {Jwk, Jws} from 'effect/jose'
 
+import {DEVELOPMENT_BUNDLE_SUFFIX} from '#config/expo.ts'
 import type {ApnsToken} from '#shared/apns.ts'
 import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 
@@ -36,7 +38,18 @@ class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {
 }) {}
 
 export type ApnsAnswer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
-type Target = {bundle: string; production: boolean; token: Redacted.Redacted<ApnsToken>}
+type Target = {bundle: string; token: Redacted.Redacted<ApnsToken>}
+type Payload = {aps: Record<string, unknown>; [key: string]: unknown}
+
+function hostsOf(bundle: string) {
+	if (String.endsWith(DEVELOPMENT_BUNDLE_SUFFIX)(bundle)) {
+		return {
+			channels: 'https://api-manage-broadcast.sandbox.push.apple.com:2195',
+			devices: 'https://api.sandbox.push.apple.com'
+		}
+	}
+	return {channels: 'https://api-manage-broadcast.push.apple.com:2196', devices: 'https://api.push.apple.com'}
+}
 
 export const layerApnsClient = Layer.effect(
 	HttpClient.HttpClient,
@@ -91,6 +104,15 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			})
 		)
 		const retrying = yield* Ref.make(HashMap.empty<string, {answer: ApnsAnswer; until: DateTime.Utc}>())
+		const deferred = Effect.fnUntraced(function* (key: string) {
+			const now = yield* DateTime.now
+			return pipe(
+				yield* Ref.get(retrying),
+				HashMap.get(key),
+				Option.filter(pending => DateTime.isGreaterThan(pending.until, now)),
+				Option.map(pending => pending.answer)
+			)
+		})
 		// Apple accepts a provider token for an hour and refuses one renewed more than every twenty minutes.
 		const providerToken = yield* pipe(
 			Effect.gen(function* () {
@@ -105,20 +127,10 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 			asApnsError('The APNs key could not sign a token.'),
 			Effect.cachedWithTTL(exit => Exit.match(exit, {onFailure: () => 0, onSuccess: () => '40 minutes'}))
 		)
-		const send = Effect.fn('Apns.send')(function* (
-			request: HttpClientRequest.HttpClientRequest,
-			notification?: string
-		) {
-			const now = yield* DateTime.now
+		const send = Effect.fnUntraced(function* (request: HttpClientRequest.HttpClientRequest, notification?: string) {
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
-			const deferred = Option.getOrUndefined(
-				pipe(
-					yield* Ref.get(retrying),
-					HashMap.get(key),
-					Option.filter(pending => DateTime.isGreaterThan(pending.until, now))
-				)
-			)
-			if (deferred !== undefined) return deferred.answer
+			const pending = Option.getOrUndefined(yield* deferred(key))
+			if (pending !== undefined) return pending
 			const response = yield* pipe(
 				client.execute(
 					HttpClientRequest.setHeader(request, 'authorization', `bearer ${Redacted.value(yield* providerToken)}`)
@@ -140,8 +152,8 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				status: response.status
 			}
 			const receivedAt = yield* DateTime.now
-			yield* Ref.update(retrying, pending => {
-				const current = HashMap.filter(pending, entry => DateTime.isGreaterThan(entry.until, receivedAt))
+			yield* Ref.update(retrying, cached => {
+				const current = HashMap.filter(cached, entry => DateTime.isGreaterThan(entry.until, receivedAt))
 				if (!apnsRetryable(answer)) return HashMap.remove(current, key)
 				return HashMap.set(current, key, {
 					answer,
@@ -155,43 +167,105 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				})
 			})
 			return answer
+		})
+		const createChannel = Effect.fn('Apns.createChannel')(function* (bundle: string) {
+			const answer = yield* pipe(
+				HttpClientRequest.post(`${hostsOf(bundle).channels}/1/apps/${bundle}/channels`),
+				HttpClientRequest.bodyJson({'message-storage-policy': 1, 'push-type': 'LiveActivity'}),
+				Effect.flatMap(request => send(request))
+			)
+			return yield* pipe(answer.channel, Effect.fromOption, asApnsError(`APNs created no channel: ${answer.status}`))
+		}, withSignature)
+		const deleteChannel = Effect.fn('Apns.deleteChannel')(
+			(bundle: string, channel: string) =>
+				Effect.ignore(
+					send(
+						HttpClientRequest.delete(`${hostsOf(bundle).channels}/1/apps/${bundle}/channels`, {
+							headers: {'apns-channel-id': channel}
+						})
+					),
+					{log: 'Warn', message: 'A finished activity channel was not deleted'}
+				),
+			withSignature
+		)
+		const sendToDevice = Effect.fn('Apns.sendToDevice')(function* (
+			target: Target,
+			type: 'alert' | 'liveactivity',
+			body: Payload,
+			priority: 5 | 10
+		) {
+			const url = `${hostsOf(target.bundle).devices}/3/device/${Redacted.value(target.token)}`
+			const starting = type === 'liveactivity' && body.aps['event'] === 'start'
+			// ActivityKit attributes identify a start; rotating content and timestamps must not bypass its backoff.
+			const key = yield* Boolean.match(starting, {
+				onFalse: () => Effect.succeed(`POST ${url} `),
+				onTrue: () =>
+					Effect.map(
+						Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body.aps['attributes']),
+						attributes => `start ${url} ${attributes}`
+					)
+			})
+			const pending = Option.getOrUndefined(yield* deferred(key))
+			if (pending !== undefined) return pending
+			const channel = yield* Boolean.match(starting, {
+				onFalse: () => Effect.succeed(Option.none<string>()),
+				onTrue: () => Effect.asSome(createChannel(target.bundle))
+			})
+			const payload = Option.match(channel, {
+				onNone: () => body,
+				onSome: id => ({
+					...body,
+					aps: {
+						...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
+						'input-push-channel': id,
+						'relevance-score': body.aps['relevance-score'],
+						timestamp: body.aps['timestamp']
+					}
+				})
+			})
+			const request = yield* HttpClientRequest.bodyJson(
+				HttpClientRequest.post(url, {
+					headers: {
+						'apns-priority': `${priority}`,
+						'apns-push-type': type,
+						'apns-topic': Boolean.match(type === 'liveactivity', {
+							onFalse: () => target.bundle,
+							onTrue: () => `${target.bundle}.push-type.liveactivity`
+						})
+					}
+				}),
+				payload
+			)
+			const cleanup = Option.match(channel, {onNone: () => Effect.void, onSome: id => deleteChannel(target.bundle, id)})
+			const answer = yield* Effect.onError(send(request, key), () => cleanup)
+			if (!apnsAccepted(answer)) yield* cleanup
+			return {...answer, channel: Option.orElse(channel, () => answer.channel)}
 		}, withSignature)
 		return {
-			enabled: Option.isSome(signer),
-			isDeferred: Effect.fn('Apns.isDeferred')(function* (notification: string, now: DateTime.Utc) {
-				return pipe(
-					yield* Ref.get(retrying),
-					HashMap.get(notification),
-					Option.exists(pending => DateTime.isGreaterThan(pending.until, now))
-				)
-			}),
-			send,
-			sendToDevice(
-				target: Target,
-				type: 'alert' | 'liveactivity',
-				body: unknown,
+			broadcast: Effect.fn('Apns.broadcast')(function* (
+				bundle: string,
+				channel: string,
+				aps: Record<string, unknown>,
 				priority: 5 | 10,
-				notification?: string
+				now: DateTime.Utc
 			) {
-				const host = Boolean.match(target.production, {
-					onFalse: () => 'https://api.sandbox.push.apple.com',
-					onTrue: () => 'https://api.push.apple.com'
-				})
-				return pipe(
-					HttpClientRequest.post(`${host}/3/device/${Redacted.value(target.token)}`, {
+				return yield* pipe(
+					HttpClientRequest.post(`${hostsOf(bundle).devices}/4/broadcasts/apps/${bundle}`, {
 						headers: {
+							'apns-channel-id': channel,
+							'apns-expiration': `${DateTime.toEpochSeconds(DateTime.addDuration(now, Duration.hours(8)))}`,
 							'apns-priority': `${priority}`,
-							'apns-push-type': type,
-							'apns-topic': Boolean.match(type === 'liveactivity', {
-								onFalse: () => target.bundle,
-								onTrue: () => `${target.bundle}.push-type.liveactivity`
-							})
+							'apns-push-type': 'liveactivity'
 						}
 					}),
-					HttpClientRequest.bodyJson(body),
-					Effect.flatMap(request => send(request, notification))
+					HttpClientRequest.bodyJson({aps}),
+					Effect.flatMap(request => send(request))
 				)
-			}
+			}, withSignature),
+			createChannel,
+			deleteChannel,
+			enabled: Option.isSome(signer),
+			sendToDevice
 		}
 	})
 }) {

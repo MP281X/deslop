@@ -31,7 +31,7 @@ import {HttpClient, HttpClientError, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {Apns, apnsAccepted, apnsDeadToken} from '@deslop/runtime/server/apns'
+import {Apns, apnsDeadToken, apnsRetryable} from '@deslop/runtime/server/apns'
 
 import {
 	byNumber,
@@ -382,7 +382,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 
 		const send = Effect.fnUntraced(function* (chapter: Chapter, device: Device) {
 			const answer = yield* apns.sendToDevice(
-				{bundle: device.bundle, production: device.bundle === 'xyz.mp281x.opm', token: device.token},
+				device,
 				'alert',
 				{
 					aps: {
@@ -403,16 +403,13 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 			if (apnsDeadToken(answer)) {
 				yield* asChaptersError(removeDevice(device))
-				return
+				return 'done' as const
 			}
-			if (!apnsAccepted(answer)) {
-				return yield* ChaptersError.make({
-					message: `APNs refused a chapter: ${answer.status} ${Option.getOrElse(answer.reason, () => '')}`
-				})
-			}
+			if (apnsRetryable(answer)) return 'retry' as const
+			return 'done' as const
 		})
 
-		// The outbox: a chapter stays unannounced until Apple accepts its messages, so a failed send retries next round.
+		// Only a round in which every device is retryable remains in the outbox; accepted devices never get repeats.
 		const notify = Effect.gen(function* () {
 			if (!apns.enabled) return
 			const pending = Array.filter(yield* chapters, chapter => !chapter.notified)
@@ -427,11 +424,24 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 								// Re-read after each chapter, so a dead token is never sent the next one.
 								const devices = yield* asChaptersError(listDevices())
 								// A refused device must not prevent the others from receiving this chapter.
-								yield* pipe(
+								const answers = yield* Effect.forEach(
 									devices,
-									Effect.forEach(device => Effect.result(send(chapter, device)), {concurrency: 1}),
-									Effect.flatMap(answers => pipe(answers, Result.all, Effect.fromResult))
+									device =>
+										pipe(
+											send(chapter, device),
+											Effect.tapError(cause => Effect.logWarning('A chapter push failed', cause)),
+											Effect.result
+										),
+									{concurrency: 1}
 								)
+								if (
+									Array.isReadonlyArrayNonEmpty(answers) &&
+									Array.every(answers, answer =>
+										Result.match(answer, {onFailure: () => true, onSuccess: outcome => outcome === 'retry'})
+									)
+								) {
+									return yield* ChaptersError.make({message: 'Every device is retryable.'})
+								}
 								yield* pipe(
 									announce({notified: true, number: chapter.number, series: chapter.series}),
 									Reactivity.mutation(['chapters']),

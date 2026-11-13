@@ -170,49 +170,79 @@ const watch = Effect.fnUntraced(function* (chapters: typeof Chapters.Service) {
 })
 
 it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
-	test.effect(
-		'keeps a chapter in the outbox until Apple accepts every device',
-		Effect.fnUntraced(function* () {
-			const database = yield* seeded([chapterAt('manga', 1, false)], [String.repeat(64)('a'), String.repeat(64)('b')])
-			const status = yield* Ref.make(403)
-			const rounds = yield* Queue.unbounded<void>()
-			yield* open(
-				database,
-				HttpClient.make(request =>
-					Effect.gen(function* () {
-						if (String.includes('/3/device/')(request.url)) {
-							return HttpClientResponse.fromWeb(request, new Response(undefined, {status: yield* Ref.get(status)}))
-						}
-						return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
-					})
-				),
-				Logger.layer([
-					Logger.make(options => {
-						for (const message of Option.getOrElse(
-							Schema.decodeUnknownOption(Schema.Array(Schema.Unknown))(options.message),
-							() => []
-						)) {
-							if (
-								message === 'Chapter manga:1 was not announced yet' ||
-								message === 'Announced chapter manga:1 to 2 iPhones'
-							) {
-								Queue.offerUnsafe(rounds, undefined)
+	for (const statuses of [[429, 429], [503, 503], [200, 429], [429, 200], [403, 429], [403, 403], []]) {
+		test.effect(
+			`retries a chapter only when every device is retryable: ${pipe(
+				statuses,
+				Array.map(status => `${status}`),
+				Array.join(', ')
+			)}`,
+			Effect.fnUntraced(function* () {
+				const database = yield* seeded(
+					[chapterAt('manga', 1, false)],
+					Array.take([String.repeat(64)('a'), String.repeat(64)('b')], statuses.length)
+				)
+				const answers = yield* Ref.make(statuses)
+				const attempts = yield* Ref.make(0)
+				const rounds = yield* Queue.unbounded<void>()
+				yield* open(
+					database,
+					HttpClient.make(request =>
+						Effect.gen(function* () {
+							if (String.includes('/3/device/')(request.url)) {
+								yield* Ref.update(attempts, count => count + 1)
+								const recipient = Boolean.match(String.endsWith(String.repeat(64)('a'))(request.url), {
+									onFalse: () => 1,
+									onTrue: () => 0
+								})
+								return HttpClientResponse.fromWeb(
+									request,
+									new Response(undefined, {status: Array.getUnsafe(yield* Ref.get(answers), recipient)})
+								)
 							}
-						}
-					})
-				])
-			)
-			for (const received of [403, 429, 503, 200]) {
-				yield* Ref.set(status, received)
-				if (received !== 403) yield* TestClock.adjust('1 hour')
+							return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
+						})
+					),
+					Logger.layer([
+						Logger.make(options => {
+							for (const message of Option.getOrElse(
+								Schema.decodeUnknownOption(Schema.Array(Schema.Unknown))(options.message),
+								() => []
+							)) {
+								if (
+									message === 'Chapter manga:1 was not announced yet' ||
+									message === `Announced chapter manga:1 to ${statuses.length} iPhones`
+								) {
+									Queue.offerUnsafe(rounds, undefined)
+								}
+							}
+						})
+					])
+				)
 				yield* Queue.take(rounds)
+				const retry =
+					Array.isReadonlyArrayNonEmpty(statuses) && Array.every(statuses, status => status === 429 || status >= 500)
 				assert.deepStrictEqual(
 					Array.map(yield* stored(database).chapters(), chapter => chapter.notified),
-					[received === 200]
+					[!retry]
 				)
-			}
-		})
-	)
+				yield* Ref.set(
+					answers,
+					Array.map(statuses, () => 200)
+				)
+				yield* TestClock.adjust('1 hour')
+				if (retry) yield* Queue.take(rounds)
+				assert.deepStrictEqual(
+					Array.map(yield* stored(database).chapters(), chapter => chapter.notified),
+					[true]
+				)
+				assert.strictEqual(
+					yield* Ref.get(attempts),
+					statuses.length * Boolean.match(retry, {onFalse: () => 1, onTrue: () => 2})
+				)
+			})
+		)
+	}
 
 	test.effect(
 		'forgets an iPhone whose app was removed and never sends its token back',
