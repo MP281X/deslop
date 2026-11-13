@@ -4,19 +4,28 @@ import {Array} from 'effect'
 
 import {normalizeTags, reconcileOrganization} from './tags.ts'
 
+import {TagName} from '#services/notes/schema.ts'
+
 it('makes each tag one lowercase token', () => {
-	assert.deepStrictEqual(normalizeTags(['#Web Design', 'web design', '  digital   marketing ', 'AI']), [
-		'web-design',
-		'digital-marketing',
-		'ai'
-	])
+	assert.deepStrictEqual(
+		normalizeTags(Array.map(['#Web Design', 'web design', '  digital   marketing ', 'AI'], tag => TagName.make(tag))),
+		['web-design', 'digital-marketing', 'ai']
+	)
 })
 
 function organizedTags(tags: string[], inUse: string[]) {
 	return Array.map(
 		reconcileOrganization(
-			{body: '', definitions: [], screenText: '', summary: '', tags, title: 'Note', topics: ''},
-			inUse
+			{
+				body: '',
+				definitions: [],
+				screenText: '',
+				summary: '',
+				tags: Array.map(tags, tag => TagName.make(tag)),
+				title: 'Note',
+				topics: ''
+			},
+			Array.map(inUse, tag => TagName.make(tag))
 		).tags,
 		tag => tag.name
 	)

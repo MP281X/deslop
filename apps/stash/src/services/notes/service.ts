@@ -356,15 +356,19 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				}),
 				Effect.ignore({log: 'Warn', message: 'The preview image was not kept'})
 			)
-			const slides = yield* Effect.forEach(
-				page.slides ?? [],
-				(image, index) =>
-					pipe(
-						sources.image(image),
-						Effect.map(found => Option.some({...found, label: `Image ${index + 2}`})),
-						optional('A slide was not read', Option.none<Picture>)
-					),
-				{concurrency: 4}
+			const slides = yield* pipe(
+				page.slides,
+				Option.toArray,
+				Array.flatten,
+				Effect.forEach(
+					(image, index) =>
+						pipe(
+							sources.image(image),
+							Effect.map(found => Option.some({...found, label: `Image ${index + 2}`})),
+							optional('A slide was not read', Option.none<Picture>)
+						),
+					{concurrency: 4}
+				)
 			)
 			return Array.getSomes(slides)
 		})
@@ -445,7 +449,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				Result.match({
 					onFailure: () => Option.liftPredicate(link, hasVideo),
 					onSuccess: page =>
-						Option.orElse(Option.fromUndefinedOr(page.video), () =>
+						Option.orElse(page.video, () =>
 							Option.liftPredicate(page.url, address => hasVideo(address) && sourceOf(address) !== 'X')
 						)
 				}),

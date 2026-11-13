@@ -1,17 +1,20 @@
 import {assert, describe, it} from '@effect/vitest'
 
-import {Option} from 'effect'
+import {Duration, Option, Schema} from 'effect'
 
 import {captionTracks, captionTranscript, clock, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
+import {Metadata} from '#services/media/schema.ts'
 
 describe('captionTracks', () => {
 	it('keeps authored alternatives but not automatic translations when the original language is known', () => {
 		assert.deepStrictEqual(
-			captionTracks({
-				automatic_captions: {af: [{}], en: [{}], 'en-orig': [{}], it: [{}]},
-				subtitles: {it: [{}]},
-				title: 'A talk'
-			}),
+			captionTracks(
+				Schema.decodeSync(Metadata)({
+					automatic_captions: {af: [{}], en: [{}], 'en-orig': [{}], it: [{}]},
+					subtitles: {it: [{}]},
+					title: 'A talk'
+				})
+			),
 			[
 				{authored: false, language: 'en'},
 				{authored: false, language: 'en-orig'},
@@ -97,8 +100,8 @@ describe('isBlocked', () => {
 
 describe('clock', () => {
 	it('counts minutes past an hour and a day', () => {
-		assert.strictEqual(clock(3725), '62:05')
-		assert.strictEqual(clock(90_061), '1501:01')
+		assert.strictEqual(clock(Duration.seconds(3725)), '62:05')
+		assert.strictEqual(clock(Duration.seconds(90_061)), '1501:01')
 	})
 })
 

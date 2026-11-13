@@ -154,6 +154,7 @@ export function pageText(html: string, url: URL) {
 			Option.flatMap(Option.liftThrowable(image => new URL(image, url).href)),
 			Option.orElseSome(() => `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=128`)
 		),
+		slides: Option.none(),
 		text: pipe(
 			[
 				pipe(
@@ -181,6 +182,7 @@ export function pageText(html: string, url: URL) {
 			Array.join('\n\n')
 		),
 		title: plainText($('meta[property="og:title"]').attr('content') ?? $('title').first().text()),
-		url: canonical(url)
+		url: canonical(url),
+		video: Option.none()
 	})
 }

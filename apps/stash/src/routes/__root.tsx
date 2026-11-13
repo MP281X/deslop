@@ -15,12 +15,13 @@ import {HomeRoute} from '#routes/(home)/index.tsx'
 import {ComposeRoute} from '#routes/compose.tsx'
 import logo from '#routes/icon.png'
 import {NoteRoute, NoteSkeleton} from '#routes/notes/$id.tsx'
-import type {Kind} from '#services/notes/schema.ts'
+import type {Kind, TagName} from '#services/notes/schema.ts'
+import {NoteId} from '#services/notes/schema.ts'
 
 function AppRoutes() {
 	const [path, setPath] = useState<string[]>([])
 	const setQuery = useAtomSet(queryAtom)
-	const [tag, setTag] = useState<string>()
+	const [tag, setTag] = useState<TagName>()
 	const [kind, setKind] = useState<Kind>()
 	const query = useNativeState('')
 
@@ -45,7 +46,7 @@ function AppRoutes() {
 								Match.when('compose', () => <ComposeRoute onDone={() => setPath([])} />),
 								Match.orElse(() => (
 									<NoteRoute
-										id={id}
+										id={NoteId.make(id)}
 										onClose={() => setPath([])}
 										onTag={name => {
 											setTag(name)

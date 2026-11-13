@@ -16,7 +16,7 @@ import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 // oxlint-disable-next-line no-restricted-imports -- As above: the AI organizer is Notes' own internal.
 import {Organizer} from '#services/notes/lib/organization.ts'
-import {NoteId} from '#services/notes/schema.ts'
+import {NoteId, TagName} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 const USER = {id: UserId.make('github:1'), name: 'tester'}
@@ -29,7 +29,7 @@ const organizer = Organizer.of({
 			definitions: [],
 			screenText: '',
 			summary: '',
-			tags: ['reading'],
+			tags: [TagName.make('reading')],
 			title: 'Saved',
 			topics: ''
 		})

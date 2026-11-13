@@ -7,6 +7,7 @@ import {
 	Boolean,
 	Config,
 	Context,
+	Duration,
 	Effect,
 	FileSystem,
 	Layer,
@@ -151,12 +152,12 @@ export class Media extends Context.Service<
 			})
 
 			const lengthOf = Effect.fnUntraced(function* (file: string) {
-				return Option.flatMap(Option.fromUndefinedOr((yield* probe(file)).format?.duration), Number.parse)
+				return Option.flatMap((yield* probe(file)).format, format => format.duration)
 			})
 
 			const listen = Effect.fnUntraced(function* (
 				userId: UserId,
-				input: {file: string; seconds: Option.Option<number>}
+				input: {file: string; seconds: Option.Option<Duration.Duration>}
 			) {
 				const media = yield* probe(input.file)
 				for (const track of Array.filter(media.streams, stream => stream.codec_type === 'subtitle')) {
@@ -177,10 +178,17 @@ export class Media extends Context.Service<
 					}
 				}
 				if (!Array.some(media.streams, stream => stream.codec_type === 'audio')) return Option.none()
-				const seconds = Option.orElse(input.seconds, () =>
-					Option.flatMap(Option.fromUndefinedOr(media.format?.duration), Number.parse)
-				)
-				if (!Option.exists(seconds, value => value >= 1 && value <= MAX_WHISPER_SECONDS)) return Option.none()
+				const seconds = Option.orElse(input.seconds, () => Option.flatMap(media.format, format => format.duration))
+				if (
+					!Option.exists(
+						seconds,
+						value =>
+							Duration.isGreaterThanOrEqualTo(value, Duration.seconds(1)) &&
+							Duration.isLessThanOrEqualTo(value, Duration.seconds(MAX_WHISPER_SECONDS))
+					)
+				) {
+					return Option.none()
+				}
 				const speech = yield* Effect.mapError(
 					Effect.gen(function* () {
 						return yield* Effect.provideService(
@@ -203,7 +211,7 @@ export class Media extends Context.Service<
 					input.file,
 					// A TikTok audio track may be the whole song behind a short clip.
 					'-t',
-					`${Option.getOrThrow(seconds) + 1}`,
+					`${Duration.toSeconds(Duration.sum(Option.getOrThrow(seconds), Duration.seconds(1)))}`,
 					'-vn',
 					'-map',
 					'0:a:0',
@@ -262,11 +270,12 @@ export class Media extends Context.Service<
 									{concurrency: 1}
 								),
 								// Codec frame boundaries need not be exactly 300 seconds apart.
-								Array.mapAccum(0, (offset, chunk) => [
-									offset + chunk.duration,
+								Array.mapAccum(Duration.zero, (offset, chunk) => [
+									Duration.sum(offset, chunk.duration),
 									Array.map(
 										chunk.segments,
-										segment => `[${clock(offset + segment.start)}] ${String.trim(segment.text)}\n`
+										segment =>
+											`[${clock(Duration.sum(offset, Duration.seconds(segment.start)))}] ${String.trim(segment.text)}\n`
 									)
 								]),
 								result => Array.flatten(result[1]),
@@ -313,7 +322,7 @@ export class Media extends Context.Service<
 							captions.utterances,
 							Array.map(cue => {
 								if (String.isNonEmpty(String.trim(cue.text))) {
-									return `[${clock(cue.start_time / 1000)}] ${String.trim(cue.text)}\n`
+									return `[${clock(cue.start_time)}] ${String.trim(cue.text)}\n`
 								}
 								return ''
 							}),
@@ -342,7 +351,11 @@ export class Media extends Context.Service<
 					if (Option.isSome(captioned.transcript)) return captioned.transcript
 					if (captioned.blocked) break
 				}
-				if (Option.exists(Option.fromNullishOr(media.duration), seconds => seconds > MAX_WHISPER_SECONDS)) {
+				if (
+					Option.exists(media.duration, seconds =>
+						Duration.isGreaterThan(seconds, Duration.seconds(MAX_WHISPER_SECONDS))
+					)
+				) {
 					yield* Effect.logInfo('No captions, and the audio is too long for Whisper')
 					return Option.none()
 				}
@@ -377,11 +390,10 @@ export class Media extends Context.Service<
 						Effect.mapError(cause => MediaError.make({cause, message: 'yt-dlp downloaded no audio'}))
 					)
 				)
-				const seconds = yield* Option.match(Option.fromNullishOr(media.duration), {
-					onNone: () => lengthOf(audio),
-					onSome: Effect.succeedSome
-				})
-				if (!Option.exists(seconds, length => length <= MAX_WHISPER_SECONDS)) {
+				const seconds = yield* Option.match(media.duration, {onNone: () => lengthOf(audio), onSome: Effect.succeedSome})
+				if (
+					!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, Duration.seconds(MAX_WHISPER_SECONDS)))
+				) {
 					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper')
 					return Option.none()
 				}
@@ -389,7 +401,8 @@ export class Media extends Context.Service<
 			})
 
 			const sample = Effect.fnUntraced(function* (video: string, work: string) {
-				const seconds = Option.getOrElse(yield* lengthOf(video), () => 6)
+				const length = Option.getOrElse(yield* lengthOf(video), () => Duration.seconds(6))
+				const seconds = Duration.toSeconds(length)
 				// A still every 15 seconds, 12 to 48 of them, so a short clip shows its captions and a long talk its slides.
 				const count = Number.max(12, Number.min(48, Math.ceil(seconds / 15)))
 				const sampled = yield* run('ffmpeg', [
@@ -414,7 +427,10 @@ export class Media extends Context.Service<
 					Array.sort(Order.String),
 					Effect.forEach(
 						(file, index) =>
-							Effect.map(fs.readFile(path.join(work, file)), bytes => ({bytes, seconds: (index * seconds) / count})),
+							Effect.map(fs.readFile(path.join(work, file)), bytes => ({
+								bytes,
+								seconds: Duration.times(length, index / count)
+							})),
 						{concurrency: 'unbounded'}
 					)
 				)
@@ -496,7 +512,7 @@ export class Media extends Context.Service<
 							const media = yield* Schema.decodeEffect(Schema.fromJsonString(Metadata))(
 								new TextDecoder().decode(dump.stdout)
 							)
-							if (media._type === 'playlist') {
+							if (Option.contains(media._type, 'playlist')) {
 								return yield* MediaError.make({message: 'The link holds several videos.'})
 							}
 							return {media, url}

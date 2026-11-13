@@ -16,13 +16,13 @@ type SavedNote = typeof SavedNote.Type
 const SavedNote = Schema.Struct({
 	...NoteSummary.fields,
 	...Struct.pick(NoteItem.json.fields, ['author', 'issue']),
-	body: Schema.optionalKey(Schema.String),
-	content: Schema.optionalKey(Schema.String),
-	nextOffset: Schema.optionalKey(Schema.Natural),
-	screenText: Schema.optionalKey(Schema.String),
-	text: Schema.optionalKey(Schema.String),
-	topics: Schema.optionalKey(Schema.String),
-	transcript: Schema.optionalKey(Schema.String)
+	body: Schema.OptionFromOptionalKey(Schema.String),
+	content: Schema.OptionFromOptionalKey(Schema.String),
+	nextOffset: Schema.OptionFromOptionalKey(Schema.Natural),
+	screenText: Schema.OptionFromOptionalKey(Schema.String),
+	text: Schema.OptionFromOptionalKey(Schema.String),
+	topics: Schema.OptionFromOptionalKey(Schema.String),
+	transcript: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 export const ToolContracts = Toolkit.make(
@@ -31,19 +31,19 @@ export const ToolContracts = Toolkit.make(
 			'Find saved reading by words or #tag, newest first; omit query for recent notes. Pass nextCursor unchanged to continue, or read_note(id) for the selected note.',
 		failure: NotesError,
 		parameters: Schema.Struct({
-			cursor: Schema.optionalKey(NotesCursor),
+			cursor: Schema.OptionFromOptionalKey(NotesCursor),
 			limit: pipe(
 				Schema.Int,
 				Schema.check(Schema.isBetween({maximum: 50, minimum: 1})),
 				Schema.withDecodingDefaultTypeKey(Effect.succeed(20)),
 				Schema.annotate({description: 'How many notes to return, newest first.'})
 			),
-			query: Schema.optionalKey(
+			query: Schema.OptionFromOptionalKey(
 				Schema.String.annotate({description: 'Words every result must contain; a #word matches a tag.'})
 			)
 		}),
 		success: Schema.Struct({
-			nextCursor: Schema.optionalKey(NotesCursor),
+			nextCursor: Schema.OptionFromOptionalKey(NotesCursor),
 			notes: Schema.Array(NoteSummary),
 			total: Schema.Int
 		})
