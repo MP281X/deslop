@@ -237,7 +237,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					{
 						'calls.ts': Array.join(
 							[
-							"import {Array, Effect, Layer, Schema, Stream, String, pipe} from 'effect'",
+								"import {Array, Effect, Layer, Schema, Stream, String, pipe} from 'effect'",
 								'declare const values: number[]',
 								'declare const offset: number',
 								'declare const span: Parameters<typeof Effect.withParentSpan>[1]',
@@ -245,7 +245,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 								'export const lazy = Effect.andThen(Effect.as(Effect.void, 1), Effect.sync(() => 2))',
 								'export const sleeping = Effect.andThen(Effect.as(Effect.void, 1), Effect.sleep("1 second"))',
 								'export const promised = Effect.andThen(Effect.as(Effect.void, 1), Effect.promise(async () => 2))',
-							'export const strings = Array.map(Array.filter(["a"], String.includes("a")), String.slice(0, 1))',
+								'export const strings = Array.map(Array.filter(["a"], String.includes("a")), String.slice(0, 1))',
 								'export const caught = pipe(Effect.fail({_tag: "Missing"}), Effect.catchTag("Missing", error => Effect.succeed(error._tag)), Effect.as(1))',
 								'export const traversed = pipe(values, Effect.forEach(value => Effect.succeed(value), {concurrency: "unbounded"}), Effect.as(1))',
 								'export const zipped = pipe(Effect.succeed(1), Effect.zip(Effect.succeed(2), {concurrent: true}), Effect.as(1))',

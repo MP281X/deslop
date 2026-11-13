@@ -1,6 +1,7 @@
 import {
 	Array,
 	Boolean,
+	Cache,
 	Cause,
 	Chunk,
 	Config,
@@ -16,6 +17,7 @@ import {
 	HashSet,
 	Layer,
 	Match,
+	MutableHashMap,
 	MutableList,
 	MutableRef,
 	Number,
@@ -33,11 +35,12 @@ import {
 	String,
 	Struct,
 	SubscriptionRef,
+	SynchronizedRef,
 	pipe
 } from 'effect'
 
 import {Command} from 'effect/cli'
-import {HttpClient, HttpClientRequest, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
+import {Headers, HttpClient, HttpClientRequest, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Atom, AtomRegistry, AsyncResult, Reactivity} from 'effect/reactivity'
 import {defineRule} from 'vite-plus/lint/plugins'
 // oxlint-disable-next-line @deslop/coding-standards/no-renamed-import -- Effect's Context module and the linter's Context type are distinct contracts.
@@ -51,6 +54,7 @@ const MODULES: Record.ReadonlyRecord<string, Record.ReadonlyRecord<string, unkno
 	Atom,
 	AtomRegistry,
 	Boolean,
+	Cache,
 	Cause,
 	Chunk,
 	Command,
@@ -65,6 +69,7 @@ const MODULES: Record.ReadonlyRecord<string, Record.ReadonlyRecord<string, unkno
 	Function,
 	HashMap,
 	HashSet,
+	Headers,
 	HttpClient,
 	HttpClientRequest,
 	HttpClientResponse,
@@ -72,6 +77,7 @@ const MODULES: Record.ReadonlyRecord<string, Record.ReadonlyRecord<string, unkno
 	HttpServerResponse,
 	Layer,
 	Match,
+	MutableHashMap,
 	MutableList,
 	MutableRef,
 	Number,
@@ -89,14 +95,15 @@ const MODULES: Record.ReadonlyRecord<string, Record.ReadonlyRecord<string, unkno
 	Stream,
 	String,
 	Struct,
-	SubscriptionRef
+	SubscriptionRef,
+	SynchronizedRef
 }
 
 function moduleSource(name: string) {
 	if (name === 'Command') return 'effect/cli'
 	if (Array.contains(['Atom', 'AtomRegistry', 'AsyncResult', 'Reactivity'], name)) return 'effect/reactivity'
 	if (
-		Array.contains(['HttpClient', 'HttpClientRequest', 'HttpClientResponse', 'HttpRouter', 'HttpServerResponse'], name)
+		Array.contains(['Headers', 'HttpClient', 'HttpClientRequest', 'HttpClientResponse', 'HttpRouter', 'HttpServerResponse'], name)
 	) {
 		return 'effect/http'
 	}
@@ -463,7 +470,7 @@ function pipelineText(subject: string, steps: string[]) {
 }
 
 function unparenthesized(node: ESTree.Node) {
-	if (node.type === 'ParenthesizedExpression') return node.expression
+	if (node.type === 'ParenthesizedExpression') return unparenthesized(node.expression)
 	return node
 }
 
