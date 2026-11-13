@@ -275,7 +275,7 @@ export default defineConfig({
 				cache: false,
 				command: [
 					// The tactics print first, so a step that fails below leaves them above its diagnostics, for the agent fixing it.
-					'coding-standards',
+					'coding-standards tactics',
 					'vp fmt',
 					'TSRS_FAST=1 effect-tsgo --tsrs-lint vp lint --fix --type-aware --type-check --ignore-pattern "tools/*/template/**"',
 					'vp lint tools/create-app/template tools/create-package/template --fix --report-unused-disable-directives-severity=off',
@@ -286,7 +286,7 @@ export default defineConfig({
 			judge: {
 				cache: false,
 				command:
-					"coding-standards --judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
+					"coding-standards judge --ignore '**/*.gen.ts' --ignore 'packages/components-web/src/ui/**' --ignore 'tools/*/template/**'"
 			},
 			test: 'vp run -r --parallel test'
 		}

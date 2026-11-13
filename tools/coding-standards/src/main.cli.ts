@@ -2,7 +2,7 @@
 
 import {NodeCrypto, NodeHttpClient, NodeRuntime, NodeServices} from '@effect/platform-node'
 
-import {Boolean, Console, Effect, Layer, pipe} from 'effect'
+import {Console, Effect, Layer, pipe} from 'effect'
 
 import {Command, Flag} from 'effect/cli'
 
@@ -31,27 +31,30 @@ const urls = {
 }
 
 const cli = pipe(
-	Command.make(
-		'coding-standards',
-		{
-			...urls,
-			ignore: pipe(
-				Flag.String('ignore'),
-				Flag.withDescription('With --judge, a glob of files to leave unjudged, as lint ignores them'),
-				Flag.atLeast(0)
-			),
-			judge: pipe(
-				Flag.Boolean('judge'),
-				Flag.withDescription(
-					'Ask every function, component and test case the questions no cached answer covers, and report what breaks one'
-				),
-				Flag.withDefault(false)
-			)
-		},
-		input => Boolean.match(input.judge, {onFalse: () => Console.log(TACTICS), onTrue: () => judge(input, input.ignore)})
-	),
-	Command.withDescription('Lint tactics for a diagnostic lint leaves; `--judge` asks Jev what lint cannot see.'),
+	Command.make('coding-standards'),
+	Command.withDescription('Lint tactics, semantic judging and sign-in'),
 	Command.withSubcommands([
+		pipe(
+			Command.make('tactics', {}, () => Console.log(TACTICS)),
+			Command.withDescription('Print lint tactics for diagnostics autofix leaves')
+		),
+		pipe(
+			Command.make(
+				'judge',
+				{
+					...urls,
+					ignore: pipe(
+						Flag.String('ignore'),
+						Flag.withDescription('A glob of files to leave unjudged, as lint ignores them'),
+						Flag.atLeast(0)
+					)
+				},
+				input => judge(input, input.ignore)
+			),
+			Command.withDescription(
+				'Ask every function, component and test case the questions no cached answer covers, and report what breaks one'
+			)
+		),
 		pipe(
 			Command.make('sign-in', urls, signIn),
 			Command.withDescription('Sign the judge in to Gateway once per machine')
