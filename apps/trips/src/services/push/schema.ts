@@ -26,7 +26,7 @@ export const ChannelId = pipe(Schema.String, Schema.brand('ChannelId'))
 export class Device extends Model.Class<Device>('Device')({
 	bundle: Bundle,
 	kind: Schema.Literals(['alert', 'start']),
-	// A push token is a secret: it never leaves the server and prints redacted.
+	// A push token is excluded from public JSON and prints redacted.
 	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
 }) {
 	static readonly table = 'devices'

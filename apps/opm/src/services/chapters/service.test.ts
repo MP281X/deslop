@@ -28,7 +28,7 @@ import {
 
 import {KeyFormat, Signature} from 'effect/crypto'
 import {Base64, Base64Url} from 'effect/encoding'
-import {HttpClient, HttpClientResponse} from 'effect/http'
+import {HttpClient, HttpClientError, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
@@ -170,19 +170,27 @@ const watch = Effect.fnUntraced(function* (chapters: typeof Chapters.Service) {
 })
 
 it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
-	for (const statuses of [[429, 429], [503, 503], [200, 429], [429, 200], [403, 429], [403, 403], []]) {
+	for (const scenario of [
+		{answers: [429, 429], attempts: 4, name: 'all throttled', notified: false},
+		{answers: [503, 503], attempts: 4, name: 'all unavailable', notified: false},
+		{answers: [200, 429], attempts: 2, name: 'accepted beside throttled', notified: true},
+		{answers: [429, 200], attempts: 2, name: 'throttled beside accepted', notified: true},
+		{answers: [403, 429], attempts: 4, name: 'provider rejected beside throttled', notified: false},
+		{answers: [403, 403], attempts: 4, name: 'invalid provider token', notified: false},
+		{answers: [410, 503], attempts: 3, name: 'dead beside unavailable', notified: false},
+		{answers: [410, 410], attempts: 2, name: 'all dead', notified: true},
+		{answers: ['network'], attempts: 2, name: 'network failure', notified: false},
+		{answers: [200, 'network'], attempts: 2, name: 'accepted beside network failure', notified: true},
+		{answers: [], attempts: 0, name: 'no devices', notified: true}
+	] as const) {
 		test.effect(
-			`retries a chapter only when every device is retryable: ${pipe(
-				statuses,
-				Array.map(status => `${status}`),
-				Array.join(', ')
-			)}`,
+			`chapter announcement: ${scenario.name}`,
 			Effect.fnUntraced(function* () {
 				const database = yield* seeded(
 					[chapterAt('manga', 1, false)],
-					Array.take([String.repeat(64)('a'), String.repeat(64)('b')], statuses.length)
+					Array.take([String.repeat(64)('a'), String.repeat(64)('b')], scenario.answers.length)
 				)
-				const answers = yield* Ref.make(statuses)
+				const answers = yield* Ref.make<readonly (number | 'network')[]>(scenario.answers)
 				const attempts = yield* Ref.make(0)
 				const rounds = yield* Queue.unbounded<void>()
 				yield* open(
@@ -195,10 +203,14 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
 									onFalse: () => 1,
 									onTrue: () => 0
 								})
-								return HttpClientResponse.fromWeb(
-									request,
-									new Response(undefined, {status: Array.getUnsafe(yield* Ref.get(answers), recipient)})
-								)
+								const status = Array.getUnsafe(yield* Ref.get(answers), recipient)
+								if (status === 'network')
+									{return yield* new HttpClientError.HttpClientError({
+										reason: new HttpClientError.TransportError({request})
+									})}
+								if (status === 403)
+									{return HttpClientResponse.fromWeb(request, Response.json({reason: 'InvalidProviderToken'}, {status}))}
+								return HttpClientResponse.fromWeb(request, new Response(undefined, {status}))
 							}
 							return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 						})
@@ -211,7 +223,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
 							)) {
 								if (
 									message === 'Chapter manga:1 was not announced yet' ||
-									message === `Announced chapter manga:1 to ${statuses.length} iPhones`
+									(Predicate.isString(message) && String.startsWith('Announced chapter manga:1 to ')(message))
 								) {
 									Queue.offerUnsafe(rounds, undefined)
 								}
@@ -220,26 +232,21 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))(test => {
 					])
 				)
 				yield* Queue.take(rounds)
-				const retry =
-					Array.isReadonlyArrayNonEmpty(statuses) && Array.every(statuses, status => status === 429 || status >= 500)
 				assert.deepStrictEqual(
 					Array.map(yield* stored(database).chapters(), chapter => chapter.notified),
-					[!retry]
+					[scenario.notified]
 				)
 				yield* Ref.set(
 					answers,
-					Array.map(statuses, () => 200)
+					Array.map(scenario.answers, () => 200)
 				)
 				yield* TestClock.adjust('1 hour')
-				if (retry) yield* Queue.take(rounds)
+				if (!scenario.notified) yield* Queue.take(rounds)
 				assert.deepStrictEqual(
 					Array.map(yield* stored(database).chapters(), chapter => chapter.notified),
 					[true]
 				)
-				assert.strictEqual(
-					yield* Ref.get(attempts),
-					statuses.length * Boolean.match(retry, {onFalse: () => 1, onTrue: () => 2})
-				)
+				assert.strictEqual(yield* Ref.get(attempts), scenario.attempts)
 			})
 		)
 	}

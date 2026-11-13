@@ -72,7 +72,7 @@ export const Bundle = Schema.Literals(['xyz.mp281x.opm', 'xyz.mp281x.opm.dev'])
 // The app identifies the APNs environment; release builds use production, Simulator builds sandbox.
 export class Device extends Model.Class<Device>('Device')({
 	bundle: Bundle,
-	// A push token is a secret: it never leaves the server and prints redacted.
+	// A push token is excluded from public JSON and prints redacted.
 	token: Model.Sensitive(Schema.RedactedFromValue(ApnsToken))
 }) {
 	static readonly table = 'devices'

@@ -135,22 +135,17 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const asPushSaveError = asPushError('The push state could not be saved.')
 
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing) {
-			const answer = yield* apns.sendToDevice(
-				target,
-				'liveactivity',
-				{
-					aps: {
-						alert: startAlert(showing.journey),
-						attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
-						'attributes-type': 'LiveActivityAttributes',
-						'content-state': yield* contentState(showing.props),
-						event: 'start',
-						'relevance-score': 100,
-						timestamp: seconds(showing.now)
-					}
-				},
-				10
-			)
+			const answer = yield* apns.startActivity(target, showing.leg, {
+				aps: {
+					alert: startAlert(showing.journey),
+					attributes: {url: `${SCHEMES[target.bundle]}://booking/${showing.journey.id}`},
+					'attributes-type': 'LiveActivityAttributes',
+					'content-state': yield* contentState(showing.props),
+					event: 'start',
+					'relevance-score': 100,
+					timestamp: seconds(showing.now)
+				}
+			})
 			if (apnsAccepted(answer)) return Result.succeed(ChannelId.make(Option.getOrThrow(answer.channel)))
 			if (!apnsRetryable(answer)) yield* pipe(forgetDevice(target), Reactivity.mutation(['push']), asPushSaveError)
 			return Result.fail(answer)

@@ -403,9 +403,9 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 			if (apnsDeadToken(answer)) {
 				yield* asChaptersError(removeDevice(device))
-				return 'done' as const
+				return 'dead' as const
 			}
-			if (apnsRetryable(answer)) return 'retry' as const
+			if (answer.status === 403 || apnsRetryable(answer)) return 'retry' as const
 			return 'done' as const
 		})
 
@@ -434,11 +434,14 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 										),
 									{concurrency: 1}
 								)
+								const remaining = pipe(
+									answers,
+									Array.map(Result.getOrElse(() => 'retry' as const)),
+									Array.filter(outcome => outcome !== 'dead')
+								)
 								if (
-									Array.isReadonlyArrayNonEmpty(answers) &&
-									Array.every(answers, answer =>
-										Result.match(answer, {onFailure: () => true, onSuccess: outcome => outcome === 'retry'})
-									)
+									Array.isReadonlyArrayNonEmpty(remaining) &&
+									Array.every(remaining, outcome => outcome === 'retry')
 								) {
 									return yield* ChaptersError.make({message: 'Every device is retryable.'})
 								}

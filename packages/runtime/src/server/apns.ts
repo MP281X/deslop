@@ -32,10 +32,7 @@ import {DateTimeUtcFromSeconds} from '#shared/time.ts'
 type JwtClaims = typeof JwtClaims.Type
 const JwtClaims = Schema.fromJsonString(Schema.Struct({iat: DateTimeUtcFromSeconds, iss: Schema.String}))
 
-class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {
-	cause: Schema.optional(Schema.Defect()),
-	message: Schema.String
-}) {}
+class ApnsError extends Schema.TaggedError<ApnsError>()('ApnsError', {message: Schema.String}) {}
 
 export type ApnsAnswer = {channel: Option.Option<string>; reason: Option.Option<string>; status: number}
 type Target = {bundle: string; token: Redacted.Redacted<ApnsToken>}
@@ -79,7 +76,8 @@ export function apnsRetryable(answer: ApnsAnswer) {
 }
 
 function asApnsError(message: string) {
-	return Effect.mapError((cause: unknown) => ApnsError.make({cause, message}))
+	// Signing and HTTP failures can embed the private key, bearer or device token.
+	return Effect.mapError(() => ApnsError.make({message}))
 }
 
 // Only the server owns signing and transport; the shared token schema has no native dependencies.
@@ -135,6 +133,7 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				client.execute(
 					HttpClientRequest.setHeader(request, 'authorization', `bearer ${Redacted.value(yield* providerToken)}`)
 				),
+				Effect.provideService(HttpClient.TracerDisabledWhen, outgoing => String.includes('/3/device/')(outgoing.url)),
 				Effect.timeout('20 seconds'),
 				asApnsError('APNs did not answer.')
 			)
@@ -188,59 +187,29 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 				),
 			withSignature
 		)
-		const sendToDevice = Effect.fn('Apns.sendToDevice')(function* (
-			target: Target,
-			type: 'alert' | 'liveactivity',
-			body: Payload,
-			priority: 5 | 10
-		) {
-			const url = `${hostsOf(target.bundle).devices}/3/device/${Redacted.value(target.token)}`
-			const starting = type === 'liveactivity' && body.aps['event'] === 'start'
-			// ActivityKit attributes identify a start; rotating content and timestamps must not bypass its backoff.
-			const key = yield* Boolean.match(starting, {
-				onFalse: () => Effect.succeed(`POST ${url} `),
-				onTrue: () =>
-					Effect.map(
-						Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body.aps['attributes']),
-						attributes => `start ${url} ${attributes}`
-					)
-			})
-			const pending = Option.getOrUndefined(yield* deferred(key))
-			if (pending !== undefined) return pending
-			const channel = yield* Boolean.match(starting, {
-				onFalse: () => Effect.succeed(Option.none<string>()),
-				onTrue: () => Effect.asSome(createChannel(target.bundle))
-			})
-			const payload = Option.match(channel, {
-				onNone: () => body,
-				onSome: id => ({
-					...body,
-					aps: {
-						...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
-						'input-push-channel': id,
-						'relevance-score': body.aps['relevance-score'],
-						timestamp: body.aps['timestamp']
-					}
-				})
-			})
-			const request = yield* HttpClientRequest.bodyJson(
-				HttpClientRequest.post(url, {
-					headers: {
-						'apns-priority': `${priority}`,
-						'apns-push-type': type,
-						'apns-topic': Boolean.match(type === 'liveactivity', {
-							onFalse: () => target.bundle,
-							onTrue: () => `${target.bundle}.push-type.liveactivity`
-						})
-					}
-				}),
-				payload
+		function deviceRequest(target: Target, type: 'alert' | 'liveactivity', body: Payload, priority: 5 | 10) {
+			return pipe(
+				HttpClientRequest.bodyJson(
+					HttpClientRequest.post(`${hostsOf(target.bundle).devices}/3/device/${Redacted.value(target.token)}`, {
+						headers: {
+							'apns-priority': `${priority}`,
+							'apns-push-type': type,
+							'apns-topic': Boolean.match(type === 'liveactivity', {
+								onFalse: () => target.bundle,
+								onTrue: () => `${target.bundle}.push-type.liveactivity`
+							})
+						}
+					}),
+					body
+				),
+				asApnsError('The device push request could not be written.')
 			)
-			const cleanup = Option.match(channel, {onNone: () => Effect.void, onSome: id => deleteChannel(target.bundle, id)})
-			const answer = yield* Effect.onError(send(request, key), () => cleanup)
-			if (!apnsAccepted(answer)) yield* cleanup
-			return {...answer, channel: Option.orElse(channel, () => answer.channel)}
-		}, withSignature)
+		}
+		const sendToDevice = Effect.fn('Apns.sendToDevice')(
+			(target: Target, type: 'alert' | 'liveactivity', body: Payload, priority: 5 | 10) =>
+				Effect.flatMap(deviceRequest(target, type, body, priority), request => send(request)),
+			withSignature
+		)
 		return {
 			broadcast: Effect.fn('Apns.broadcast')(function* (
 				bundle: string,
@@ -262,10 +231,36 @@ export class Apns extends Context.Service<Apns>()('@deslop/runtime/server/apns',
 					Effect.flatMap(request => send(request))
 				)
 			}, withSignature),
-			createChannel,
 			deleteChannel,
 			enabled: Option.isSome(signer),
-			sendToDevice
+			sendToDevice,
+			startActivity: Effect.fn('Apns.startActivity')(function* (target: Target, leg: string, body: Payload) {
+				// Attributes identify the booking, while the leg distinguishes its departure and arrival activities.
+				const attributes = yield* pipe(
+					Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(body.aps['attributes']),
+					asApnsError('The activity attributes could not be written.')
+				)
+				const key = `start ${target.bundle} ${Redacted.value(target.token)} ${attributes} ${leg}`
+				const pending = Option.getOrUndefined(yield* deferred(key))
+				if (pending !== undefined) return pending
+				const channel = yield* createChannel(target.bundle)
+				const payload = {
+					...body,
+					aps: {
+						...Struct.omit(body.aps, ['relevance-score', 'timestamp']),
+						'input-push-channel': channel,
+						'relevance-score': body.aps['relevance-score'],
+						timestamp: body.aps['timestamp']
+					}
+				}
+				const answer = yield* pipe(
+					deviceRequest(target, 'liveactivity', payload, 10),
+					Effect.flatMap(request => send(request, key)),
+					Effect.onError(() => deleteChannel(target.bundle, channel))
+				)
+				if (!apnsAccepted(answer)) yield* deleteChannel(target.bundle, channel)
+				return {...answer, channel: Option.some(channel)}
+			}, withSignature)
 		}
 	})
 }) {
