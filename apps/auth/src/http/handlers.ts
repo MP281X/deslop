@@ -295,13 +295,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 								Effect.succeed(
 									HttpServerResponse.redirect(
 										callbackUrl(
-											{
-												redirectUri: client.redirectUri,
-												...Option.match(Option.fromUndefinedOr(asked.state), {
-													onNone: () => ({}),
-													onSome: state => ({state})
-												})
-											},
+											{redirectUri: client.redirectUri, state: asked.state},
 											{error: failure.error ?? 'invalid_request', error_description: failure.message},
 											tokens.issuer
 										)

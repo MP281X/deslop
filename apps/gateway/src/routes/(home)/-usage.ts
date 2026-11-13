@@ -44,7 +44,12 @@ export function providerSeries(report: AiUsageReport, provider: AiProvider, rang
 	)
 }
 export function providerCost(report: AiUsageReport, provider: AiProvider) {
-	return pipe(report.byProvider, Array.findFirst(sum => sum.name === provider), Option.map(costOf), Option.getOrElse(() => '—'))
+	return pipe(
+		report.byProvider,
+		Array.findFirst(sum => sum.name === provider),
+		Option.map(costOf),
+		Option.getOrElse(() => '—')
+	)
 }
 export function serverSeries(report: readonly McpUsageServer[], id: string, range: UsageRange) {
 	return seriesOf(range, at =>

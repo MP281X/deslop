@@ -428,10 +428,7 @@ export class Connections extends Context.Service<
 								...init,
 								signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
 							}),
-						...Option.match(Option.fromUndefinedOr(challenge.resourceMetadataUrl), {
-							onNone: () => ({}),
-							onSome: resourceMetadataUrl => ({resourceMetadataUrl})
-						})
+						resourceMetadataUrl: challenge.resourceMetadataUrl
 					})
 			})
 			if (discovery.resourceMetadata !== undefined && discovery.resourceMetadata.resource !== initial.url) {
@@ -477,7 +474,7 @@ export class Connections extends Context.Service<
 					tools: Array.length(tools.tools)
 				} satisfies typeof Connection.insert.Type
 			}
-			const metadata = yield* Schema.decodeUnknownEffect(Metadata)(discovery.authorizationServerMetadata)
+			const metadata = yield* Schema.decodeEffect(Metadata)(discovery.authorizationServerMetadata)
 			yield* connectable(metadata)
 			return {
 				...initial,

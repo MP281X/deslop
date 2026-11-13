@@ -12,7 +12,8 @@ import {
 	setNotificationHandler
 } from 'expo-notifications'
 
-import {cachedList, foregroundNotifications, writeAtomically} from '@deslop/components-mobile/device'
+import {cachedList, writeAtomically} from '@deslop/components-mobile/files'
+import {foregroundNotifications} from '@deslop/components-mobile/notifications'
 import {hues} from '@deslop/components-mobile/theme'
 import {liveStream} from '@deslop/runtime/client/live-stream'
 import {keychain} from '@deslop/runtime/mobile/keychain'

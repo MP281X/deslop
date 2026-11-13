@@ -113,18 +113,22 @@ export function vmStatMemory(text: string, total: number) {
 }
 
 // A Mac's startup volume from `df -k /`: APFS reports the system volume's own use, so its container's use is size less available.
-export function rootVolume(text: string) {
+function diskRows(output: string) {
 	return pipe(
-		String.trim(text),
+		output,
+		String.trim,
 		String.split('\n'),
 		Array.drop(1),
 		Array.filter(String.isNonEmpty),
-		Array.map(line => {
-			const fields = String.split(String.trim(line), /\s+/u)
-			const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
-			return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
-		})
+		Array.map(line => String.split(String.trim(line), /\s+/u))
 	)
+}
+
+export function rootVolume(text: string) {
+	return Array.map(diskRows(text), fields => {
+		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
+		return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
+	})
 }
 
 // A measurement from the machine's readings: memory in bytes, the disks it measures and up to three load averages.
@@ -169,21 +173,11 @@ export function sample(current: Counters, memory: string, disk: string, previous
 	return reading(
 		current,
 		{total: values['MemTotal:'] ?? 0, used: (values['MemTotal:'] ?? 0) - (values['MemAvailable:'] ?? 0)},
-		pipe(
-			disk,
-			String.trim,
-			String.split('\n'),
-			Array.drop(1),
-			Array.filter(String.isNonEmpty),
-			Array.map(line => {
-				const fields = String.split(String.trim(line), /\s+/u)
-				return {
-					mount: fields[0],
-					total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
-					used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
-				}
-			})
-		),
+		Array.map(diskRows(disk), fields => ({
+			mount: fields[0],
+			total: Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? ''),
+			used: Schema.decodeSync(Schema.FiniteFromString)(fields[2] ?? '')
+		})),
 		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
 			pipe(String.trim(load ?? ''), String.split(/\s+/u), Array.filter(String.isNonEmpty), Array.take(3))
 		),

@@ -9,7 +9,12 @@
 	"exports": {
 		"./*": "./src/*.tsx",
 		"./theme": "./src/theme.ts",
-		"./device": "./src/lib/device.ts",
+		"./alerts": "./src/lib/alerts.ts",
+		"./dates": "./src/lib/dates.ts",
+		"./files": "./src/lib/files.ts",
+		"./images": "./src/lib/images.ts",
+		"./notifications": "./src/lib/notifications.ts",
+		"./toolbar": "./src/lib/toolbar.ts",
 		"./clipboard": "./src/lib/clipboard.ts",
 		"./removal": "./src/lib/removal.ts"
 	},

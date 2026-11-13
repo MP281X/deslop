@@ -186,11 +186,11 @@ function log(
 	options: {attributes?: readonly AttributeInput[]; severityNumber?: number; spanId?: string; traceId?: string} = {}
 ) {
 	return {
-		body: {stringValue: body},
 		...Option.match(Option.fromUndefinedOr(options.attributes), {
 			onNone: () => ({}),
 			onSome: attributes => ({attributes})
 		}),
+		body: {stringValue: body},
 		...Option.match(Option.fromUndefinedOr(options.severityNumber), {
 			onNone: () => ({}),
 			onSome: severityNumber => ({severityNumber})
@@ -1548,7 +1548,7 @@ it.layer(platform)(test => {
 			})
 			// A cursor continues where its page ended, in either order.
 			const slower = yield* telemetry.findTraces({
-				...Option.match(Option.fromUndefinedOr(slowest.nextCursor), {onNone: () => ({}), onSome: cursor => ({cursor})}),
+				cursor: slowest.nextCursor,
 				errors: false,
 				limit: 1,
 				since: '3d',
@@ -1559,12 +1559,7 @@ it.layer(platform)(test => {
 				[searched]
 			)
 			const rest = yield* telemetry.findTraces({
-				...Option.match(
-					Option.fromUndefinedOr(
-						(yield* telemetry.findTraces({errors: false, limit: 2, since: '3d', sort: 'recent'})).nextCursor
-					),
-					{onNone: () => ({}), onSome: cursor => ({cursor})}
-				),
+				cursor: (yield* telemetry.findTraces({errors: false, limit: 2, since: '3d', sort: 'recent'})).nextCursor,
 				errors: false,
 				limit: 2,
 				since: '3d',
@@ -1845,11 +1840,7 @@ it.layer(platform)(test => {
 				message: 'slow request',
 				side: 'server'
 			})
-			const rest = yield* telemetry.searchLogs({
-				...Option.match(Option.fromUndefinedOr(limited.nextCursor), {onNone: () => ({}), onSome: cursor => ({cursor})}),
-				limit: 2,
-				since: '3d'
-			})
+			const rest = yield* telemetry.searchLogs({cursor: limited.nextCursor, limit: 2, since: '3d'})
 			assert.deepStrictEqual(
 				Array.map(rest.logs, row => row.message),
 				['started', 'trace level']

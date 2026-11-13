@@ -178,7 +178,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 	)
 	const signedIn = AtomMachine.matches(machine, 'SignedIn')
 
-	const account = sessionRuntime.atom(get => {
+	const accountAtom = sessionRuntime.atom(get => {
 		get(signedIn)
 		get(activationsAtom)
 		return pipe(
@@ -192,7 +192,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 	})
 
 	return {
-		account,
+		account: accountAtom,
 		bearer,
 		machine,
 		protocol: pipe(
@@ -226,10 +226,10 @@ export function makeSession(server: string, storage: SessionStorage) {
 // An action reads its client once, so a reconnect never runs its last write again.
 export function provideRuntimeOnce<A, E, R, ER>(
 	get: {result: <B, X>(atom: Atom.Atom<AsyncResult.AsyncResult<B, X>>) => Effect.Effect<B, X>},
-	sessionRuntime: Atom.AtomRuntime<R, ER>,
+	runtime: Atom.AtomRuntime<R, ER>,
 	effect: Effect.Effect<A, E, R>
 ) {
-	return Effect.flatMap(get.result(sessionRuntime), context => Effect.provideContext(effect, context))
+	return Effect.flatMap(get.result(runtime), context => Effect.provideContext(effect, context))
 }
 
 export type Session = ReturnType<typeof makeSession>

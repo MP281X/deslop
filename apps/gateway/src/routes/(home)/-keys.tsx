@@ -74,6 +74,7 @@ export function AddKeyDialog(props: {
 	secret: string
 }) {
 	const [result, save] = useAtom(setKeyAtom)
+	// oxlint-disable-next-line react-doctor/no-derived-useState -- Each opening remounts the dialog with the pasted key as its start.
 	const [secret, setSecret] = useState(props.secret)
 	const waiting = AsyncResult.isWaiting(result)
 	return (

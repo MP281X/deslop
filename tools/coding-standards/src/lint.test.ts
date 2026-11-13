@@ -1910,6 +1910,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function Check(props: {value: unknown}) { return <span>{String(Atom.isAtom(props.value))}</span> }',
 							'export function Frozen() { "use no memo"; return <div /> }',
 							'export const faded = "bg-linear-to-b from-muted to-background"',
+							// oxlint-disable-next-line @deslop/coding-standards/no-gradient -- Invalid source exercises the custom gradient rule.
 							'export const painted = "bg-[radial-gradient(circle,var(--muted),transparent)]"'
 						],
 						'\n'
@@ -2947,7 +2948,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			// judge-ignore no-repeated-search -- This lint fixture has five fixed input paths; suffix matching resolves Oxlint's absolute filenames.
 			Effect.fnUntraced(function* () {
 				const inputs = {
-					'src/elsewhere/utils.ts': Array.join(
+					'src/elsewhere/values.ts': Array.join(
 						["import {Schema} from 'effect'", '', 'export const Shared = Schema.Struct({name: Schema.String})'],
 						'\n'
 					),

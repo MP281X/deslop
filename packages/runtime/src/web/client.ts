@@ -4,9 +4,10 @@ import {FetchHttpClient, HttpClient, HttpClientResponse} from 'effect/http'
 import {OtlpExporter} from 'effect/observability'
 import {Atom} from 'effect/reactivity'
 
+import {layerWebTelemetry} from './telemetry.ts'
+
 import {layerSocketProtocol} from '#client/protocol.ts'
 import {Account, RPC_PATH} from '#shared/schema.ts'
-import {layerWebTelemetry} from '#shared/telemetry.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
 

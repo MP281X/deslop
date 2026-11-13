@@ -24,7 +24,7 @@ import {
 import {FetchHttpClient, HttpClient, HttpTraceContext} from 'effect/http'
 import {ChildProcessSpawner} from 'effect/process'
 
-import {execute} from '@deslop/runtime/server/process'
+import {executeProcess} from '@deslop/runtime/server/process'
 
 import {exitFailure, unitFailures} from './lib/failures.ts'
 import {launchAgents} from './lib/launchd.ts'
@@ -158,7 +158,7 @@ export class Inventory extends Context.Service<
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
 			function command(name: string, args: string[]) {
 				return pipe(
-					execute(name, args),
+					executeProcess(name, args),
 					Effect.mapError(cause => DeployError.make({cause, message: cause.message})),
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)
 				)
@@ -347,7 +347,7 @@ export class Inventory extends Context.Service<
 						record => record.process.pid === pid || record.unit !== agents[`${pid}`]
 					)
 				})
-				const owned = Result.getOrElse(records, () => [])
+				const owned = Result.getOrElse(records, Array.empty<Result.Result.Success<typeof records>[number]>)
 				return {
 					processes: Effect.map(Effect.fromResult(records), found => ({records: found, time, total})),
 					sources: [

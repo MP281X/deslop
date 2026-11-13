@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, Record, pipe} from 'effect'
+import {Array, Option, Predicate, Record} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'

@@ -78,8 +78,8 @@ function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 			})
 		),
 		remove: () => Effect.void,
-		replace: (before, after) =>
-			pipe(
+		replace: Effect.fnUntraced(function* (before, after) {
+			return yield* pipe(
 				state,
 				Ref.update(
 					Array.map(booking =>
@@ -87,7 +87,8 @@ function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 					)
 				),
 				Effect.andThen(Effect.undefined)
-			),
+			)
+		}),
 		save: () => Effect.undefined,
 		watch: Stream.never
 	})

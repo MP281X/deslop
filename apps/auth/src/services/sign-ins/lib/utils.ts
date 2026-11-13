@@ -5,7 +5,7 @@ const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'
 
 export const CODE_LENGTH = 8
 
-export const SIGN_IN_LIFETIME = Duration.fromInputUnsafe('10 minutes')
+export const SIGN_IN_LIFETIME = Duration.minutes(10)
 
 export function typedCode(text: string) {
 	return String.toUpperCase(String.replaceAll(/[^a-z]/giu, '')(text))

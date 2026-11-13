@@ -102,12 +102,11 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 	const replies = conversation.replies ?? []
 	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
 	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
+
 	const followUps = pipe(
-		pipe(
-			replies,
-			Array.filter(post => post.author.id === status.author.id),
-			Array.sort(byTime)
-		),
+		replies,
+		Array.filter(post => post.author.id === status.author.id),
+		Array.sort(byTime),
 		Array.mapAccum(HashSet.make(status.id), (chain, post) => {
 			if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
 			return [HashSet.add(chain, post.id), Option.some(post)] as const

@@ -226,7 +226,7 @@ const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.
 	return yield* resolve(new URL(answer.location, url), hops + 1)
 })
 
-const oEmbedOf = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
+const fetchOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
 	const embed = yield* decode(OEmbed, new URL(`${endpoint}${encodeURIComponent(url.href)}`))
 	return Extraction.make({
 		author: Option.fromUndefinedOr(embed.author_name),
@@ -453,7 +453,7 @@ export class Sources extends Context.Service<
 							})
 						}
 						if (source === 'TikTok') {
-							return yield* oEmbedOf(
+							return yield* fetchOEmbed(
 								'https://www.tiktok.com/oembed?url=',
 								url,
 								embed => `${embed.author_name ?? 'A video'} on TikTok`
@@ -462,7 +462,7 @@ export class Sources extends Context.Service<
 						if (source === 'X') return yield* Effect.catch(xThread(url), () => xOEmbed(url))
 						// YouTube answers a datacenter address with a bot check, but its oEmbed still answers.
 						if (isYouTube(url.href)) {
-							return yield* oEmbedOf('https://www.youtube.com/oembed?format=json&url=', url, embed =>
+							return yield* fetchOEmbed('https://www.youtube.com/oembed?format=json&url=', url, embed =>
 								plainText(embed.title ?? 'A YouTube video')
 							)
 						}

@@ -266,7 +266,7 @@ export const lint: OxlintConfig = {
 			{
 				message: 'Name an atom with the Atom suffix.',
 				selector:
-					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|fn|fnSync|runtime|writable|family|keepAlive|map|mapResult|transform|withReactivity|withLabel|withFallback|withRefresh|withServerValue|serializable|pull|subscriptionRef|searchParam|kvStore|optimistic|optimisticFn)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/])'
+					'VariableDeclarator:not([id.name=/(Atom|Runtime|Atoms)$/]) > CallExpression.init:matches([callee.object.name="Atom"][callee.property.name=/^(make|readable|fn|fnSync|runtime|writable|family|keepAlive|withLabel)$/], [callee.property.name=/^(atom|fn|pull)$/][callee.object.property.name="runtime"], [callee.property.name=/^(atom|fn|pull)$/][callee.object.name=/Runtime$/])'
 			},
 			{
 				message: 'Name a schema in PascalCase.',
@@ -897,7 +897,15 @@ export const lint: OxlintConfig = {
 		'typescript/no-deprecated': 'error',
 		'typescript/no-duplicate-type-constituents': 'error',
 		// `navigate` is TanStack Router's: a navigation settles its own failures in the route's error boundary, and its promise only says the loaders finished. tsgolint matches it by name only.
-		'typescript/no-floating-promises': ['error', {allowForKnownSafeCalls: [{from: 'file', name: 'navigate'}]}],
+		'typescript/no-floating-promises': [
+			'error',
+			{
+				allowForKnownSafeCalls: [
+					{from: 'file', name: 'navigate'},
+					{from: 'package', name: 'openURL', package: 'react-native'}
+				]
+			}
+		],
 		'typescript/no-for-in-array': 'error',
 		'typescript/no-generated-empty-object-type': 'error',
 		'typescript/no-misused-promises': 'error',

@@ -4,7 +4,7 @@ import {applicationId} from 'expo-application'
 import {getDevicePushTokenAsync, requestPermissionsAsync, setNotificationHandler} from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
 
-import {foregroundNotifications} from '@deslop/components-mobile/device'
+import {foregroundNotifications} from '@deslop/components-mobile/notifications'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'

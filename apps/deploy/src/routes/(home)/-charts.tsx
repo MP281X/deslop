@@ -379,7 +379,7 @@ export function ChartBlock(props: {
 		{
 			cover: false,
 			figure: Boolean.match(latest === undefined, {onFalse: () => bytes(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
-			...Option.match(Option.fromUndefinedOr(focus), {onNone: () => ({}), onSome: focusValue => ({focus: focusValue})}),
+			focus,
 			format: bytes,
 			label: 'Memory',
 			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
@@ -388,7 +388,7 @@ export function ChartBlock(props: {
 		{
 			cover: false,
 			figure: Option.match(cpu, {onNone: () => '—', onSome: rate}),
-			...Option.match(Option.fromUndefinedOr(focus), {onNone: () => ({}), onSome: focusValue => ({focus: focusValue})}),
+			focus,
 			format: rate,
 			label: 'CPU',
 			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
@@ -433,10 +433,7 @@ export function ChartBlock(props: {
 						<UsageChart
 							className="h-16 sm:h-32"
 							cover={chart.cover}
-							{...Option.match(Option.fromUndefinedOr(chart.focus), {
-								onNone: () => ({}),
-								onSome: focusValue => ({focus: focusValue})
-							})}
+							focus={chart.focus}
 							format={chart.format}
 							history={props.history}
 							label={chart.label}

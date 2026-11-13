@@ -80,7 +80,13 @@ function lowImpactApp(app: {cpu: readonly number[]; memory: readonly number[]}) 
 
 // The apps the chart folds into its low-impact band, which the list's divider uses too.
 export function lowImpactIds(history: MachineHistory) {
-	return HashSet.fromIterable(pipe(appSeries(history), Array.filter(lowImpactApp), Array.map(app => app.id)))
+	return HashSet.fromIterable(
+		pipe(
+			appSeries(history),
+			Array.filter(lowImpactApp),
+			Array.map(app => app.id)
+		)
+	)
 }
 
 export function bands(history: MachineHistory) {

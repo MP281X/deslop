@@ -3,14 +3,20 @@ import {Boolean, Context, Effect, Layer, Option, Schema, pipe} from 'effect'
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
+import {requireNativeModule} from 'expo'
 import {File, Paths} from 'expo-file-system'
 
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 
-import {alertFailure, clipboardChangeCount, writeAtomically} from '#lib/device.ts'
+import {alertFailure} from '#lib/alerts.ts'
+import {writeAtomically} from '#lib/files.ts'
 
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
+
+function clipboardChangeCount() {
+	return requireNativeModule<{clipboardChangeCount: () => number}>('DeslopComponents').clipboardChangeCount()
+}
 
 export type ClipboardCopy = {readonly count: string; readonly kind: ClipboardKind}
 type Answer = ClipboardCopy & {readonly save: boolean}

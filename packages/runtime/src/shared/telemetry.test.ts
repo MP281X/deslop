@@ -7,7 +7,8 @@ import type {HttpClientError} from 'effect/http/HttpClientError'
 import {OtlpExporter} from 'effect/observability'
 import {TestClock} from 'effect/testing'
 
-import {layerOtlp, layerWebTelemetry} from '#shared/telemetry.ts'
+import {layerOtlp} from '#shared/telemetry.ts'
+import {layerWebTelemetry} from '#web/telemetry.ts'
 
 it.effect(
 	'keeps app data available when telemetry settings cannot be read',

@@ -47,13 +47,14 @@ import {
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
+import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {bottomBarSearch, openLinkAtom} from '@deslop/components-mobile/device'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
+import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -183,7 +184,6 @@ function NoteRow(props: {
 	onRegenerate: (id: Note['id']) => void
 }) {
 	const machine = removal.machine(props.note.id)
-	const openLink = useAtomSet(openLinkAtom)
 	const remove = useAtomSet(removal.removeAtom)
 	const send = useAtomSet(machine.send)
 	return (
@@ -207,7 +207,11 @@ function NoteRow(props: {
 								{Option.match(props.note.url, {
 									onNone: () => undefined,
 									onSome: url => (
-										<Button onPress={() => openLink(url)}>
+										<Button
+											onPress={() => {
+												Linking.openURL(url)
+											}}
+										>
 											<Label
 												title={Option.match(appOf(props.note), {
 													onNone: () => 'Open Link',
@@ -291,10 +295,7 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 			<Divider />
 			<Picker<Kind>
 				label="Show"
-				{...Option.match(Option.fromUndefinedOr(props.kind), {
-					onNone: () => ({}),
-					onSome: selectionValue => ({selection: selectionValue})
-				})}
+				selection={props.kind}
 				onSelectionChange={props.onKind}
 				modifiers={[pickerStyle('inline')]}
 			>
@@ -445,18 +446,7 @@ export function HomeRoute(props: {
 						/>
 					}
 				>
-					<Notes
-						{...Option.match(Option.fromUndefinedOr(props.kind), {
-							onNone: () => ({}),
-							onSome: kindValue => ({kind: kindValue})
-						})}
-						onOpen={props.onOpen}
-						onTag={props.onTag}
-						{...Option.match(Option.fromUndefinedOr(props.tag), {
-							onNone: () => ({}),
-							onSome: tagValue => ({tag: tagValue})
-						})}
-					/>
+					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
 				</Suspense>
 			</PasteSheet>
 			<Toolbar.Content>
@@ -486,13 +476,7 @@ export function HomeRoute(props: {
 					/>
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
-					<FilterMenu
-						{...Option.match(Option.fromUndefinedOr(props.kind), {
-							onNone: () => ({}),
-							onSome: kindValue => ({kind: kindValue})
-						})}
-						onKind={props.onKind}
-					/>
+					<FilterMenu kind={props.kind} onKind={props.onKind} />
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>

@@ -1,7 +1,7 @@
 import {Array, Boolean, HashSet, Number, Option, Order, String, pipe} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
-import {appUsage, dot, itemOwner, type Row, sourceBelongsToWorker, status} from '#services/inventory/lib/utils.ts'
+import {dot, itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker, status} from '#services/inventory/lib/utils.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
@@ -41,7 +41,12 @@ function rank(row: Row) {
 	return 2
 }
 
-export const order = pipe(Order.Number, Order.mapInput(rank), Order.combine(Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)), Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)))
+export const rowOrder = pipe(
+	Order.Number,
+	Order.mapInput(rank),
+	Order.combine(rowUsageOrder),
+	Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0))
+)
 
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
 export function impactGroups(rows: readonly Row[], history?: MachineHistory) {

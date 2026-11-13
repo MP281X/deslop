@@ -359,7 +359,7 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 					// A file deleted in the working tree stays tracked until the deletion is staged.
 					return yield* pipe(
 						yield* Effect.option(fs.readFileString(file)),
-						Option.match({onNone: () => [], onSome: source => units(file, source)}),
+						Option.match({onNone: Array.empty<Unit>, onSome: source => units(file, source)}),
 						Effect.forEach(
 							unit => {
 								const read = features(unit.text, unit.imports)

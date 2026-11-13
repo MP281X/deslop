@@ -327,11 +327,9 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const known = HashSet.fromIterable(Array.map(current, keyOf))
 			const loaded = Array.getSomes(found)
 			yield* pipe(
-				pipe(
-					loaded,
-					Array.filter(chapter => !HashSet.has(known, keyOf(chapter))),
-					Effect.forEach(insertChapter, {concurrency: 1, discard: true})
-				),
+				loaded,
+				Array.filter(chapter => !HashSet.has(known, keyOf(chapter))),
+				Effect.forEach(insertChapter, {concurrency: 1, discard: true}),
 				Effect.andThen(
 					pipe(
 						loaded,
@@ -434,11 +432,9 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				Effect.forEach(
 					chapter =>
 						pipe(
-							pipe(
-								devices,
-								Array.chunksOf(100),
-								Effect.forEach(batch => send(chapter, batch), {concurrency: 1, discard: true})
-							),
+							devices,
+							Array.chunksOf(100),
+							Effect.forEach(batch => send(chapter, batch), {concurrency: 1, discard: true}),
 							Effect.andThen(
 								pipe(
 									announce({notified: true, number: chapter.number, series: chapter.series}),

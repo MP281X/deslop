@@ -14,7 +14,7 @@ export class AppError extends Schema.TaggedError<AppError>()('AppError', {
 	message: Schema.String
 }) {}
 
-export const execute = Effect.fnUntraced(function* (command: string, args: string[]) {
+export const executeProcess = Effect.fnUntraced(function* (command: string, args: string[]) {
 	const process = yield* ChildProcess.make(command, args, {stderr: 'pipe', stdout: 'pipe'})
 	const result = yield* Effect.all(
 		{

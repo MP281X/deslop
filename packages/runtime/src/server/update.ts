@@ -4,7 +4,7 @@ import {Array, Config, Effect, FileSystem, Option, Path, Schema, pipe} from 'eff
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
-import {AppError, execute} from '#server/process.ts'
+import {AppError, executeProcess} from '#server/process.ts'
 import {restartService} from '#server/services.ts'
 import {AppVersion} from '#shared/schema.ts'
 
@@ -43,7 +43,7 @@ export const updateRelease = Effect.fnUntraced(function* (name: string) {
 	}
 	const directory = path.join(root, 'releases', latest)
 	yield* Effect.timeout(
-		execute(execPath, [
+		executeProcess(execPath, [
 			npm,
 			'install',
 			'--prefix',

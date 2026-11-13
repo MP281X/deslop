@@ -158,7 +158,12 @@ export function trainTracking(answer: VtStatus, train: Train, checkedAt: number)
 			Option.orElse(() => Option.fromNullishOr(answer.ritardo)),
 			Option.getOrElse(() => 0)
 		),
-		...pipe(from, Option.filter(left), Option.flatMap(stop => Option.fromNullishOr(stop.ritardo)), Option.match({onNone: () => ({}), onSome: departureDelay => ({departureDelay})})),
+		...pipe(
+			from,
+			Option.filter(left),
+			Option.flatMap(stop => Option.fromNullishOr(stop.ritardo)),
+			Option.match({onNone: () => ({}), onSome: departureDelay => ({departureDelay})})
+		),
 		...pipe(
 			Option.all({
 				at: Option.fromNullishOr(answer.oraUltimoRilevamento),
@@ -225,7 +230,7 @@ export function isStale(booking: Booking, now: number) {
 	if (booking._tag === 'stay') return false
 	return pipe(
 		booking.live,
-		Option.filter(live => live.state !== 'arrived'),
+		Option.filter((live: FlightTracking | TrainTracking) => live.state !== 'arrived'),
 		Option.exists(live =>
 			Option.exists(checkEvery(booking, live.checkedAt), every => now - live.checkedAt > 2 * every + 2 * MINUTE)
 		)

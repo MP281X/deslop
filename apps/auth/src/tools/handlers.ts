@@ -5,11 +5,13 @@ import {McpSchema, McpServer} from 'effect/ai'
 import {localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
+import type {Passkey} from '#services/passkeys/schema.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
+import type {SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
@@ -43,7 +45,8 @@ export const layerMcpOwner = Layer.unwrap(
 					onFalse: () => Effect.flatMap(tokens.verify(request.headers), people.allowed),
 					onTrue: () => Effect.succeed({incarnation: 'local', user: DEVELOPER})
 				}),
-				Effect.mapError(error =>
+				// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- MCP's wire error exposes no internal authorization cause.
+				Effect.mapError((error: AuthError) =>
 					McpSchema.McpErrorBase.make({
 						code: Boolean.match(error.error === 'temporarily_unavailable', {
 							onFalse: () => -32_001,
@@ -107,7 +110,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 				const owner = yield* CurrentOwner
 				yield* pipe(
 					yield* Stream.runHead(passkeys.watch(owner)),
-					Option.getOrElse(() => []),
+					Option.getOrElse(Array.empty<Passkey>),
 					Array.findFirst(found => found.id === input.id),
 					Effect.fromOption,
 					Effect.mapError(cause =>
@@ -140,7 +143,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 				if (
 					!pipe(
 						yield* Stream.runHead(tokens.watchApps(owner)),
-						Option.getOrElse(() => []),
+						Option.getOrElse(Array.empty<SignedInApp>),
 						Array.some(session => session.family === input.id)
 					)
 				) {

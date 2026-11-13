@@ -5,7 +5,7 @@ import {Array, Config, Effect, FileSystem, Option, Path, Stream, String, pipe} f
 
 import {ChildProcess} from 'effect/process'
 
-import {AppError, execute} from '#server/process.ts'
+import {AppError, executeProcess} from '#server/process.ts'
 
 function xml(value: string) {
 	return pipe(
@@ -24,7 +24,7 @@ function domain() {
 
 // Only the plist form waits for the job to exit; bootstrapping a stopping job fails with error 5.
 function bootout(file: string) {
-	return execute('launchctl', ['bootout', domain(), file])
+	return executeProcess('launchctl', ['bootout', domain(), file])
 }
 
 const loaded = Effect.fnUntraced(function* (target: string) {
@@ -73,7 +73,7 @@ export const installAgent = Effect.fnUntraced(function* (name: string, command: 
 		'<key>RunAtLoad</key><true/>\n<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n<key>ThrottleInterval</key><integer>3</integer>'
 	)
 	if (yield* loaded(target)) yield* bootout(file)
-	yield* execute('launchctl', ['bootstrap', domain(), file])
+	yield* executeProcess('launchctl', ['bootstrap', domain(), file])
 	return `${label}.plist installed\n`
 })
 
@@ -83,7 +83,7 @@ export const installUpdateAgent = Effect.fnUntraced(function* (name: string, com
 	const target = `${domain()}/${label}`
 	const file = yield* writeAgent(label, name, command, '<key>StartInterval</key><integer>900</integer>')
 	if (yield* loaded(target)) yield* bootout(file)
-	yield* execute('launchctl', ['bootstrap', domain(), file])
+	yield* executeProcess('launchctl', ['bootstrap', domain(), file])
 })
 
 export const uninstallAgents = Effect.fnUntraced(function* (name: string) {
@@ -104,7 +104,7 @@ export const uninstallAgents = Effect.fnUntraced(function* (name: string) {
 
 export function agentStatus(name: string) {
 	return Effect.map(
-		execute('launchctl', ['print', `${domain()}/deslop-${name}`]),
+		executeProcess('launchctl', ['print', `${domain()}/deslop-${name}`]),
 		output =>
 			`${pipe(
 				output,
@@ -119,5 +119,5 @@ export function agentStatus(name: string) {
 }
 
 export function restartAgent(name: string) {
-	return Effect.timeout(execute('launchctl', ['kickstart', '-k', `${domain()}/deslop-${name}`]), '30 seconds')
+	return Effect.timeout(executeProcess('launchctl', ['kickstart', '-k', `${domain()}/deslop-${name}`]), '30 seconds')
 }

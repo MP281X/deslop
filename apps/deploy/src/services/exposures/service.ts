@@ -21,7 +21,7 @@ import {
 import {ChildProcessSpawner} from 'effect/process'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {ToolPath, execute} from '@deslop/runtime/server/process'
+import {ToolPath, executeProcess} from '@deslop/runtime/server/process'
 import {installService} from '@deslop/runtime/server/services'
 
 import {Exposure} from '#services/exposures/schema.ts'
@@ -98,7 +98,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 		const configFile = path.join(directory, 'Caddyfile')
 		function run(program: string, args: string[]) {
 			return pipe(
-				execute(program, args),
+				executeProcess(program, args),
 				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 				Effect.timeout('30 seconds')
 			)

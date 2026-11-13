@@ -125,10 +125,7 @@ export const calendarAtom = Atom.make(get =>
 									entityType: EntityTypes.EVENT,
 									name: CALENDAR,
 									source,
-									...Option.match(Option.fromUndefinedOr(source.id), {
-										onNone: () => ({}),
-										onSome: sourceId => ({sourceId})
-									}),
+									sourceId: source.id,
 									title: CALENDAR
 								})
 							}

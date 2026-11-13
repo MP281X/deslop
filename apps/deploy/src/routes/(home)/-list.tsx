@@ -200,19 +200,14 @@ function AppRow(props: {
 				<ItemMedia className="pointer-events-none relative z-10">
 					<ApplicationIcon
 						name={fullName}
-						{...Option.match(
-							Option.fromUndefinedOr(
-								Array.match(props.row.item.processes ?? [], {
-									onEmpty: () => undefined,
-									onNonEmpty: entries =>
-										Array.max(
-											entries,
-											Order.mapInput(Number.Order, (entry: Process) => entry.memory)
-										).name
-								})
-							),
-							{onNone: () => ({}), onSome: process => ({process})}
-						)}
+						process={Array.match(props.row.item.processes ?? [], {
+							onEmpty: () => undefined,
+							onNonEmpty: entries =>
+								Array.max(
+									entries,
+									Order.mapInput(Number.Order, (entry: Process) => entry.memory)
+								).name
+						})}
 						container={props.row.item.kind === 'container'}
 					/>
 				</ItemMedia>
@@ -341,10 +336,7 @@ export function ListPane(props: {
 										now={props.now}
 										onSelect={props.onSelect}
 										rows={groups.high}
-										{...Option.match(Option.fromUndefinedOr(props.selectedId), {
-											onNone: () => ({}),
-											onSome: selectedId => ({selectedId})
-										})}
+										selectedId={props.selectedId}
 									/>
 								)}
 								{Array.isReadonlyArrayNonEmpty(groups.high) && Array.isReadonlyArrayNonEmpty(groups.low) && (
@@ -357,10 +349,7 @@ export function ListPane(props: {
 										now={props.now}
 										onSelect={props.onSelect}
 										rows={groups.low}
-										{...Option.match(Option.fromUndefinedOr(props.selectedId), {
-											onNone: () => ({}),
-											onSome: selectedId => ({selectedId})
-										})}
+										selectedId={props.selectedId}
 									/>
 								)}
 								{Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {
@@ -374,10 +363,7 @@ export function ListPane(props: {
 												now={props.now}
 												onSelect={props.onSelect}
 												rows={jobs}
-												{...Option.match(Option.fromUndefinedOr(props.selectedId), {
-													onNone: () => ({}),
-													onSome: selectedId => ({selectedId})
-												})}
+												selectedId={props.selectedId}
 											/>
 										</>
 									)

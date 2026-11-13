@@ -49,15 +49,13 @@ function toneIf(changed: boolean, tone: Tone) {
 	return 'plain'
 }
 
-function Field(props: {label: string; tone?: Tone; value: Option.Option<string>}) {
-	return Option.match(props.value, {
-		onNone: () => undefined,
-		onSome: value => (
-			<LabeledContent label={props.label}>
-				<Text modifiers={[text.data, foregroundStyle(colorOf(props.tone)), textSelection(true)]}>{value}</Text>
-			</LabeledContent>
-		)
-	})
+function Field(props: {label: string; tone?: Tone; value?: string}) {
+	if (props.value === undefined) return undefined
+	return (
+		<LabeledContent label={props.label}>
+			<Text modifiers={[text.data, foregroundStyle(colorOf(props.tone)), textSelection(true)]}>{props.value}</Text>
+		</LabeledContent>
+	)
 }
 
 function moved(scheduled: number, current: number, timeZone: string) {
@@ -76,27 +74,26 @@ function FlightFields(props: {flight: Flight}) {
 	return (
 		<>
 			<Section title={`Departure · ${props.flight.from.name}`}>
-				<Field label="Date" value={Option.fromUndefinedOr(dayAt(props.flight.departs, props.flight.from.timeZone))} />
-				<Field label="Terminal" value={Option.fromUndefinedOr(live?.departureTerminal)} />
+				<Field label="Date" value={dayAt(props.flight.departs, props.flight.from.timeZone)} />
+				<Field label="Terminal" value={live?.departureTerminal} />
 				<Field
 					label="Boarding"
-					value={Option.map(props.flight.boardingAt, at => clockAt(at, props.flight.from.timeZone))}
+					value={Option.getOrUndefined(
+						Option.map(props.flight.boardingAt, at => clockAt(at, props.flight.from.timeZone))
+					)}
 				/>
 			</Section>
 			<Section title={`Arrival · ${props.flight.to.name}`}>
-				<Field
-					label="Arrives"
-					value={Option.fromUndefinedOr(moved(props.flight.arrives, arrivalOf(props.flight), props.flight.to.timeZone))}
-				/>
-				<Field label="Terminal" value={Option.fromUndefinedOr(live?.arrivalTerminal)} />
-				<Field label="Gate" value={Option.fromUndefinedOr(live?.arrivalGate)} />
-				<Field label="Baggage belt" tone="good" value={Option.fromUndefinedOr(live?.belt)} />
+				<Field label="Arrives" value={moved(props.flight.arrives, arrivalOf(props.flight), props.flight.to.timeZone)} />
+				<Field label="Terminal" value={live?.arrivalTerminal} />
+				<Field label="Gate" value={live?.arrivalGate} />
+				<Field label="Baggage belt" tone="good" value={live?.belt} />
 			</Section>
 			<Section title="Booking">
-				<Field label="Airline" value={Option.fromUndefinedOr(props.flight.airline)} />
-				<Field label="Group" value={props.flight.boardingGroup} />
-				<Field label="Aircraft" value={Option.fromUndefinedOr(live?.aircraft)} />
-				<Field label="Confirmation" value={props.flight.confirmation} />
+				<Field label="Airline" value={props.flight.airline} />
+				<Field label="Group" value={Option.getOrUndefined(props.flight.boardingGroup)} />
+				<Field label="Aircraft" value={live?.aircraft} />
+				<Field label="Confirmation" value={Option.getOrUndefined(props.flight.confirmation)} />
 			</Section>
 		</>
 	)
@@ -107,25 +104,24 @@ function TrainFields(props: {train: Train}) {
 	return (
 		<>
 			<Section title={`Departure · ${props.train.from.name}`}>
-				<Field label="Date" value={Option.fromUndefinedOr(dayAt(props.train.departs, props.train.from.timeZone))} />
+				<Field label="Date" value={dayAt(props.train.departs, props.train.from.timeZone)} />
 				<Field
 					label="Last seen"
-					value={Option.map(
-						Option.fromUndefinedOr(live?.lastSeen),
-						seen => `${seen.station} at ${clockAt(seen.at, props.train.from.timeZone)}`
+					value={Option.getOrUndefined(
+						Option.map(
+							Option.fromUndefinedOr(live?.lastSeen),
+							seen => `${seen.station} at ${clockAt(seen.at, props.train.from.timeZone)}`
+						)
 					)}
 				/>
 			</Section>
 			<Section title={`Arrival · ${props.train.to.name}`}>
-				<Field
-					label="Arrives"
-					value={Option.fromUndefinedOr(moved(props.train.arrives, arrivalOf(props.train), props.train.to.timeZone))}
-				/>
-				<Field label="Platform" value={Option.fromUndefinedOr(live?.arrivalPlatform)} />
+				<Field label="Arrives" value={moved(props.train.arrives, arrivalOf(props.train), props.train.to.timeZone)} />
+				<Field label="Platform" value={live?.arrivalPlatform} />
 			</Section>
 			<Section title="Booking">
-				<Field label="Train" value={Option.fromUndefinedOr(props.train.operatorName)} />
-				<Field label="Confirmation" value={props.train.confirmation} />
+				<Field label="Train" value={props.train.operatorName} />
+				<Field label="Confirmation" value={Option.getOrUndefined(props.train.confirmation)} />
 			</Section>
 		</>
 	)
@@ -134,42 +130,37 @@ function TrainFields(props: {train: Train}) {
 function StayFields(props: {stay: Stay}) {
 	return (
 		<Section title="Stay">
-			<Field label="Address" value={Option.fromUndefinedOr(props.stay.place.address)} />
-			<Field label="Confirmation" value={props.stay.confirmation} />
+			<Field label="Address" value={props.stay.place.address} />
+			<Field label="Confirmation" value={Option.getOrUndefined(props.stay.confirmation)} />
 		</Section>
 	)
 }
 
-function Essential(props: {label: string; tone?: Tone; value: Option.Option<string>}) {
-	return Option.match(props.value, {
-		onNone: () => undefined,
-		onSome: value => (
-			<VStack alignment="leading" spacing={space[1]} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
-				<Text modifiers={[text.label, textCase('uppercase'), foregroundStyle(colors.mutedForeground)]}>
-					{props.label}
-				</Text>
-				<Text
-					modifiers={[
-						font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'}),
-						foregroundStyle(colorOf(props.tone))
-					]}
-				>
-					{value}
-				</Text>
-			</VStack>
-		)
-	})
+function Essential(props: {label: string; tone?: Tone; value?: string}) {
+	if (props.value === undefined) return undefined
+	return (
+		<VStack alignment="leading" spacing={space[1]} modifiers={[frame({alignment: 'leading', maxWidth: Infinity})]}>
+			<Text modifiers={[text.label, textCase('uppercase'), foregroundStyle(colors.mutedForeground)]}>
+				{props.label}
+			</Text>
+			<Text
+				modifiers={[
+					font({design: 'monospaced', textStyle: 'headline', weight: 'semibold'}),
+					foregroundStyle(colorOf(props.tone))
+				]}
+			>
+				{props.value}
+			</Text>
+		</VStack>
+	)
 }
 
 function Departs(props: {journey: Flight | Train}) {
 	return (
 		<Essential
 			label="Departs"
-			{...Option.match(
-				Option.fromUndefinedOr(toneIf(departureOf(props.journey) - props.journey.departs >= 5 * MINUTE, 'warn')),
-				{onNone: () => ({}), onSome: tone => ({tone})}
-			)}
-			value={Option.fromUndefinedOr(clockAt(departureOf(props.journey), props.journey.from.timeZone))}
+			tone={toneIf(departureOf(props.journey) - props.journey.departs >= 5 * MINUTE, 'warn')}
+			value={clockAt(departureOf(props.journey), props.journey.from.timeZone)}
 		/>
 	)
 }
@@ -179,15 +170,8 @@ function FlightEssentials(props: {flight: Flight}) {
 	return (
 		<HStack alignment="top" spacing={space[3]}>
 			<Departs journey={props.flight} />
-			<Essential
-				label="Gate"
-				{...Option.match(Option.fromUndefinedOr(toneIf(live?.previousGate !== undefined, 'warn')), {
-					onNone: () => ({}),
-					onSome: tone => ({tone})
-				})}
-				value={Option.fromUndefinedOr(gateOf(live))}
-			/>
-			<Essential label="Seat" value={props.flight.seat} />
+			<Essential label="Gate" tone={toneIf(live?.previousGate !== undefined, 'warn')} value={gateOf(live)} />
+			<Essential label="Seat" value={Option.getOrUndefined(props.flight.seat)} />
 		</HStack>
 	)
 }
@@ -199,21 +183,18 @@ function TrainEssentials(props: {train: Train}) {
 			<Departs journey={props.train} />
 			<Essential
 				label="Platform"
-				{...Option.match(
-					Option.fromUndefinedOr(
-						toneIf(
-							live?.departurePlatformPlanned !== undefined && live.departurePlatform !== live.departurePlatformPlanned,
-							'warn'
-						)
-					),
-					{onNone: () => ({}), onSome: tone => ({tone})}
+				tone={toneIf(
+					live?.departurePlatformPlanned !== undefined && live.departurePlatform !== live.departurePlatformPlanned,
+					'warn'
 				)}
-				value={Option.fromUndefinedOr(live?.departurePlatform)}
+				value={live?.departurePlatform}
 			/>
 			<Essential
 				label="Seat"
-				value={Option.map(props.train.seat, seat =>
-					Option.match(props.train.coach, {onNone: () => seat, onSome: coach => `${coach} · ${seat}`})
+				value={Option.getOrUndefined(
+					Option.map(props.train.seat, seat =>
+						Option.match(props.train.coach, {onNone: () => seat, onSome: coach => `${coach} · ${seat}`})
+					)
 				)}
 			/>
 		</HStack>
@@ -225,15 +206,11 @@ function StayEssentials(props: {stay: Stay}) {
 		<HStack alignment="top" spacing={space[3]}>
 			<Essential
 				label="Check-in"
-				value={Option.fromUndefinedOr(
-					`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${clockAt(props.stay.checkIn, props.stay.place.timeZone)}`
-				)}
+				value={`${dayAt(props.stay.checkIn, props.stay.place.timeZone)} · ${clockAt(props.stay.checkIn, props.stay.place.timeZone)}`}
 			/>
 			<Essential
 				label="Check-out"
-				value={Option.fromUndefinedOr(
-					`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${clockAt(props.stay.checkOut, props.stay.place.timeZone)}`
-				)}
+				value={`${dayAt(props.stay.checkOut, props.stay.place.timeZone)} · ${clockAt(props.stay.checkOut, props.stay.place.timeZone)}`}
 			/>
 		</HStack>
 	)

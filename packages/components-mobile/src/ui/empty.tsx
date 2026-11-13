@@ -65,10 +65,7 @@ export function EmptyAction(props: {
 	return (
 		<Button
 			label={props.label}
-			{...Option.match(Option.fromUndefinedOr(props.systemImage), {
-				onNone: () => ({}),
-				onSome: systemImage => ({systemImage})
-			})}
+			systemImage={props.systemImage}
 			onPress={props.onPress}
 			modifiers={[buttonStyle('glassProminent'), buttonBorderShape('capsule'), controlSize('large'), tint(props.tint)]}
 		/>

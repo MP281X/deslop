@@ -11,7 +11,7 @@ import {ToolHandlers} from '#tools/handlers.ts'
 
 const NOW = Date.UTC(2026, 10, 10, 12)
 
-function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
+function makeFleet(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 	const snapshot = Snapshot.make({items: [], sources: [], time: 0})
 	const machine = MachineHistory.make({
 		disks: [],
@@ -35,7 +35,7 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 	})
 }
 
-function toolkitOf(fleet: Parameters<typeof Fleet.of>[0]) {
+function makeToolkit(fleet: Parameters<typeof Fleet.of>[0]) {
 	return Effect.flatMap(Layer.build(Layer.provide(ToolHandlers, Layer.succeed(Fleet, fleet))), context =>
 		Effect.provideContext(ToolContracts, context)
 	)
@@ -54,7 +54,7 @@ it.effect('attributes a bare remote source to its own worker, never the local on
 				time: NOW,
 				workers: ['dev', 'desktop']
 			})
-			const toolkit = yield* toolkitOf(fleetOf({snapshot: Effect.succeed(snapshot)}))
+			const toolkit = yield* makeToolkit(makeFleet({snapshot: Effect.succeed(snapshot)}))
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
@@ -85,8 +85,8 @@ it.effect('names an exposure list_apps returns and hides it by that name', () =>
 				worker: 'dev'
 			} satisfies InventoryItem
 			const snapshot = Snapshot.make({items: [exposure], sources: [], time: NOW, workers: ['dev']})
-			const toolkit = yield* toolkitOf(
-				fleetOf({hide: input => Ref.set(hidden, Option.some(input)), snapshot: Effect.succeed(snapshot)})
+			const toolkit = yield* makeToolkit(
+				makeFleet({hide: input => Ref.set(hidden, Option.some(input)), snapshot: Effect.succeed(snapshot)})
 			)
 			const listed = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))

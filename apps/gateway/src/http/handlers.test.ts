@@ -154,7 +154,7 @@ function discoveryResponse(url: string, challengeMethods?: string[]) {
 	})
 }
 
-function upstreamOf(url: string) {
+function makeUpstreamResponse(url: string) {
 	if (url === 'https://challenge.example.com/mcp') {
 		return new Response(undefined, {
 			headers: {
@@ -170,7 +170,7 @@ function upstreamHttpResponse(request: Request, challengeMethods?: string[]) {
 	const metadata = discoveryResponse(request.url, challengeMethods)
 	if (metadata !== undefined) return metadata
 	if (request.method === 'GET') return new Response(undefined, {status: 405})
-	if (request.url === 'https://challenge.example.com/mcp') return upstreamOf(request.url)
+	if (request.url === 'https://challenge.example.com/mcp') return makeUpstreamResponse(request.url)
 	return undefined
 }
 

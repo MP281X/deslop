@@ -331,12 +331,11 @@ export function levelOf(severity: number) {
 // The diagnostic a failed span is remembered by: its exception's message or its status line, first line only, no stack trace.
 export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
 	return pipe(
-		pipe(
-			span.exception,
-			Option.orElse(() => span.error),
-			Option.getOrElse(() => '')
-		),
-		value => Array.head(String.split(value, '\n')),
+		span.exception,
+		Option.orElse(() => span.error),
+		Option.getOrElse(() => ''),
+		String.split('\n'),
+		Array.head,
 		Option.getOrElse(() => ''),
 		String.trim,
 		String.slice(0, 300)
@@ -425,7 +424,7 @@ function traceRoot<A extends SpanFacts>(spans: Array.NonEmptyReadonlyArray<A>) {
 		spans,
 		Array.filter(span => !Option.exists(span.parentSpanId, parent => HashSet.has(ids, parent))),
 		Array.match({onEmpty: () => spans, onNonEmpty: Function.identity}),
-		Array.min(byStart)
+		Array.min<A>(byStart)
 	)
 }
 

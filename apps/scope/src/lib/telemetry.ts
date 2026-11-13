@@ -87,14 +87,8 @@ export function navigationOf(search: Search) {
 				runtime =>
 					({
 						operation: {app: search.source ?? '', name: search.operation ?? '', runtime},
-						...Option.match(Option.fromUndefinedOr(search.trace), {
-							onNone: () => ({}),
-							onSome: traceIdValue => ({traceId: traceIdValue})
-						}),
-						...Option.match(Option.fromUndefinedOr(search.span), {
-							onNone: () => ({}),
-							onSome: spanIdValue => ({spanId: spanIdValue})
-						})
+						...Option.match(Option.fromUndefinedOr(search.span), {onNone: () => ({}), onSome: spanId => ({spanId})}),
+						...Option.match(Option.fromUndefinedOr(search.trace), {onNone: () => ({}), onSome: traceId => ({traceId})})
 					}) satisfies Selection
 			)
 		)
@@ -105,18 +99,12 @@ export function navigationOf(search: Search) {
 function select(selection: Selection, frame?: Range, pane?: Pane) {
 	return {
 		operation: selection.operation.name,
-		...Option.match(Option.fromUndefinedOr(frame), {onNone: () => ({}), onSome: rangeValue => ({range: rangeValue})}),
+		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
+		...Option.match(Option.fromUndefinedOr(frame), {onNone: () => ({}), onSome: range => ({range})}),
 		side: selection.operation.runtime,
 		source: selection.operation.app,
-		...Option.match(Option.fromUndefinedOr(pane), {onNone: () => ({}), onSome: current => ({pane: current})}),
-		...Option.match(Option.fromUndefinedOr(selection.traceId), {
-			onNone: () => ({}),
-			onSome: traceValue => ({trace: traceValue})
-		}),
-		...Option.match(Option.fromUndefinedOr(selection.spanId), {
-			onNone: () => ({}),
-			onSome: spanValue => ({span: spanValue})
-		})
+		...Option.match(Option.fromUndefinedOr(selection.spanId), {onNone: () => ({}), onSome: span => ({span})}),
+		...Option.match(Option.fromUndefinedOr(selection.traceId), {onNone: () => ({}), onSome: trace => ({trace})})
 	} satisfies Search
 }
 
@@ -126,7 +114,7 @@ function sourceSearch(search: Search, app: string) {
 	return {...Struct.omit(search, ['operation', 'pane', 'side', 'span', 'trace']), source: app}
 }
 
-export function nextSearch(search: Search, event: NavigationEvent): Search {
+export function nextSearch(search: Search, event: NavigationEvent) {
 	if (event._tag === 'Source') return sourceSearch(search, event.app)
 	if (event._tag === 'Operation') return select({operation: event.operation}, search.range, 'Traces')
 	if (event._tag === 'Trace') return select(event.selection, search.range, 'Trace')
@@ -141,7 +129,10 @@ export function nextSearch(search: Search, event: NavigationEvent): Search {
 	return pipe(
 		Option.fromUndefinedOr(search.pane),
 		Option.flatMap(current => Record.get(UP, current)),
-		Option.match({onNone: () => Struct.omit(search, ['pane']), onSome: up => ({...search, pane: up})})
+		Option.match({
+			onNone: () => ({...Struct.omit(search, ['pane']), pane: undefined}),
+			onSome: up => ({...search, pane: up})
+		})
 	) satisfies Search
 }
 
@@ -335,19 +326,7 @@ export function selectionOf(overview: Option.Option<Overview>, search: Search, m
 			Option.flatMap(selected => Option.fromUndefinedOr(selected.spanId))
 		)
 	)
-	return {
-		activeKey,
-		activeOperation,
-		activeTrace,
-		...Option.match(Option.fromUndefinedOr(pickedSpan), {
-			onNone: () => ({}),
-			onSome: pickedSpanValue => ({pickedSpan: pickedSpanValue})
-		}),
-		...Option.match(Option.fromUndefinedOr(source), {
-			onNone: () => ({}),
-			onSome: sourceValue => ({source: sourceValue})
-		})
-	}
+	return {activeKey, activeOperation, activeTrace, pickedSpan, source}
 }
 
 // The URL as the page shows it: the chosen app and, once a frame's operations arrive, no operation or trace that frame no longer holds.

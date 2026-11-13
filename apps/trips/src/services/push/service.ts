@@ -275,7 +275,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			return answer
 		})
 
-		function deviceOf(
+		function sendToDevice(
 			target: Device,
 			type: 'alert' | 'liveactivity',
 			body: unknown,
@@ -343,7 +343,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing, notification: string) {
 			const channel = yield* createChannel(target)
 			const answer = yield* Effect.onError(
-				deviceOf(
+				sendToDevice(
 					target,
 					'liveactivity',
 					{
@@ -485,7 +485,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		// A device whose token died leaves the list with its first failed alert.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
-			const answer = yield* deviceOf(
+			const answer = yield* sendToDevice(
 				device,
 				'alert',
 				{

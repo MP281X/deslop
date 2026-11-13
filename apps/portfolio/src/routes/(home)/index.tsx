@@ -67,7 +67,7 @@ function pickNextCursorColor(currentColor: PortfolioColor) {
 	return nextPalette[randomIndex(Array.length(nextPalette))] ?? PortfolioColor.literals[0]
 }
 
-function identityOf() {
+function restoreIdentity() {
 	const existingId = sessionStorage.getItem('portfolio.id')
 	const existingName = sessionStorage.getItem('portfolio.name')
 	const color =
@@ -87,7 +87,7 @@ function identityOf() {
 	return next
 }
 
-const identity = identityOf()
+const identity = restoreIdentity()
 
 const portfolioAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(

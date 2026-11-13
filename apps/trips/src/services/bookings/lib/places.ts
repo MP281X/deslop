@@ -68,7 +68,6 @@ function stationMatch(name: string, matches: StopMatches) {
 		Option.map(
 			match =>
 				({
-					...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
 					code: match.id,
 					latitude: match.lat,
 					longitude: match.lon,
@@ -77,7 +76,8 @@ function stationMatch(name: string, matches: StopMatches) {
 						String.split(' '),
 						Array.map(word => String.capitalize(word)),
 						Array.join(' ')
-					)
+					),
+					...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})})
 				}) satisfies Place
 		)
 	)
@@ -106,7 +106,7 @@ export class Places extends Context.Service<
 					Effect.retry({schedule: Schedule.exponential('2 seconds'), times: 2}),
 					Effect.map(airportIndex)
 				),
-				exit => Exit.match(exit, {onFailure: () => Duration.zero, onSuccess: () => Duration.fromInputUnsafe('30 days')})
+				exit => Exit.match(exit, {onFailure: () => Duration.zero, onSuccess: () => Duration.days(30)})
 			)
 
 			const stations = yield* Cache.makeWith(

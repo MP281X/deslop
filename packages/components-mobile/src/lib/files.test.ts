@@ -11,7 +11,7 @@ import {vi} from 'vite-plus/test'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {readClipboard} from '#lib/clipboard.ts'
-import {cachedList} from '#lib/device.ts'
+import {cachedList} from '#lib/files.ts'
 
 const clipboard = vi.hoisted(() => ({count: 1}))
 const disk = vi.hoisted(() => {

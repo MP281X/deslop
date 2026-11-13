@@ -1,9 +1,7 @@
-import {Cause, Clock, Effect, Layer, Option, pipe} from 'effect'
+import {Cause, Clock, Effect, Layer, Option} from 'effect'
 
-import {FetchHttpClient, HttpClient, HttpClientResponse, UrlParams} from 'effect/http'
+import {FetchHttpClient, UrlParams} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
-
-import {RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 
 // Scope's receiver is public, so exporters send no credentials; a release names its version, so Scope can drop what older ones sent.
 export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mobile' | 'server', version: string) {
@@ -45,27 +43,5 @@ export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mo
 			if (Cause.hasInterrupts(cause)) return Layer.effectDiscard(Effect.interrupt)
 			return Layer.effectDiscard(Effect.logWarning('Telemetry is unavailable'))
 		}
-	)
-}
-
-export function layerWebTelemetry(applicationName: string) {
-	return Layer.unwrap(
-		Effect.gen(function* () {
-			const config = yield* pipe(
-				(yield* HttpClient.HttpClient).get(RUNTIME_PATH),
-				Effect.flatMap(HttpClientResponse.filterStatusOk),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
-				Effect.timeout('3 seconds'),
-				Effect.tapError(error => Effect.logWarning('Telemetry is off: the runtime config did not load', error)),
-				Effect.option
-			)
-			return Option.match(config, {
-				onNone: () => Layer.empty,
-				onSome: settings => {
-					if (settings.traces === '') return Layer.empty
-					return layerOtlp(`${applicationName}-client`, settings.traces, 'web', settings.version)
-				}
-			})
-		})
 	)
 }

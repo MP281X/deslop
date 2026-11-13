@@ -440,14 +440,15 @@ export function processTree(rows: readonly Process[]) {
 	const visited = MutableHashSet.empty<number>()
 	function build(row: Process): ProcessNode {
 		MutableHashSet.add(visited, row.pid)
-		const below = pipe(children[`${row.pid}`] ?? [], Array.filter(child => !MutableHashSet.has(visited, child.pid)), Array.map(build))
+		const below = pipe(
+			children[`${row.pid}`] ?? Array.empty<Process>(),
+			Array.filter(child => !MutableHashSet.has(visited, child.pid)),
+			Array.map(build)
+		)
 		const self: ProcessNode = {
 			children: [],
-			...Option.match(Option.fromUndefinedOr(row.command), {
-				onNone: () => ({}),
-				onSome: commandValue => ({command: commandValue})
-			}),
-			...Option.match(Option.fromUndefinedOr(row.cpu), {onNone: () => ({}), onSome: cpuValue => ({cpu: cpuValue})}),
+			...Option.match(Option.fromUndefinedOr(row.command), {onNone: () => ({}), onSome: command => ({command})}),
+			...Option.match(Option.fromUndefinedOr(row.cpu), {onNone: () => ({}), onSome: cpu => ({cpu})}),
 			label: row.label,
 			memory: row.memory,
 			pid: row.pid,
@@ -466,16 +467,6 @@ export function processTree(rows: readonly Process[]) {
 		return {...node, children: settle(Array.map(node.children, place), appMemory)}
 	}
 	return settle(Array.map(roots, place), appMemory)
-}
-
-export function appUsage(rows: readonly Process[]) {
-	return {
-		cpu: Array.match(Array.getSomes(Array.map(rows, row => Option.fromUndefinedOr(row.cpu))), {
-			onEmpty: () => undefined,
-			onNonEmpty: values => Number.round(Number.sumAll(values), 2)
-		}),
-		memory: Number.sumAll(Array.map(rows, row => row.memory))
-	}
 }
 
 function workerNames(snapshot: Snapshot) {
@@ -575,10 +566,11 @@ function jobOf(row: Row) {
 		...failureOf(row.item),
 		id: row.item.id,
 		name: workloadName(row.item),
-		...pipe(Option.fromUndefinedOr(row.item.next), Option.map(iso), Option.match({
-			onNone: () => ({}),
-			onSome: nextValue => ({next: nextValue})
-		}))
+		...pipe(
+			Option.fromUndefinedOr(row.item.next),
+			Option.map(iso),
+			Option.match({onNone: () => ({}), onSome: nextValue => ({next: nextValue})})
+		)
 	} satisfies Job
 }
 
@@ -590,7 +582,7 @@ function exposureOf(item: InventoryItem) {
 		}),
 		id: item.id,
 		name: item.name,
-		...Option.match(Option.fromUndefinedOr(item.port), {onNone: () => ({}), onSome: portValue => ({port: portValue})}),
+		port: item.port,
 		url: item.url
 	} satisfies HttpsExposure
 }
@@ -609,9 +601,21 @@ function rank(row: Row) {
 	return 2
 }
 
-const appOrder = pipe(Order.Number, Order.mapInput(rank), Order.combine(Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)))
+export const rowUsageOrder = Order.mapInput(Order.flip(Order.Number), (row: Row) =>
+	pipe(
+		row.item.processes ?? [],
+		Array.map(process => process.memory),
+		Number.sumAll
+	)
+)
 
-const jobOrder = pipe(Order.Number, Order.mapInput(rank), Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)))
+const appOrder = pipe(Order.Number, Order.mapInput(rank), Order.combine(rowUsageOrder))
+
+const jobOrder = pipe(
+	Order.Number,
+	Order.mapInput(rank),
+	Order.combine(Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0))
+)
 
 // The page's list per worker as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
 export function listApps(snapshot: Snapshot, input: InventoryQuery) {
@@ -670,7 +674,7 @@ export function ownerNames(snapshot: Snapshot) {
 					worker,
 					Record.fromEntries(
 						pipe(
-							byWorker[worker] ?? [],
+							byWorker[worker] ?? Array.empty<InventoryItem>(),
 							Array.filter(item => item.kind === 'service' || item.kind === 'container'),
 							Array.flatMap((item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const])
 						)

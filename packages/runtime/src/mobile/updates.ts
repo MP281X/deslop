@@ -65,10 +65,7 @@ const updates = AtomMachine.make(
 			},
 			Downloaded: {
 				on: {
-					Returned: {
-						guard: transition => transition.event.away >= Duration.toMillis(Duration.fromInputUnsafe('10 minutes')),
-						target: 'Reloading'
-					}
+					Returned: {guard: transition => transition.event.away >= Duration.toMillis('10 minutes'), target: 'Reloading'}
 				}
 			},
 			Idle: {on: {Returned: {target: 'Checking'}}},

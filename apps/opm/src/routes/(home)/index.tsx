@@ -34,10 +34,11 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {bottomBarSearch, shortDate} from '@deslop/components-mobile/device'
+import {shortDate} from '@deslop/components-mobile/dates'
 import {Problem} from '@deslop/components-mobile/problem'
 import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
+import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
 import {Empty} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,

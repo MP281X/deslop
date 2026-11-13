@@ -274,7 +274,7 @@ export class Media extends Context.Service<
 				)
 			})
 
-			const captionsOf = Effect.fnUntraced(function* (link: string, track: {authored: boolean; language: string}) {
+			const fetchCaptions = Effect.fnUntraced(function* (link: string, track: {authored: boolean; language: string}) {
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-captions-'})
 				const result = yield* fetch([
 					...ytDlpArgs,
@@ -332,7 +332,7 @@ export class Media extends Context.Service<
 				for (const track of captionTracks(media)) {
 					// A broken authored track must not hide a working automatic or alternate-language track.
 					const captioned = yield* pipe(
-						captionsOf(link, track),
+						fetchCaptions(link, track),
 						Effect.scoped,
 						Effect.orElseSucceed(() => ({blocked: false, transcript: Option.none<string>()}))
 					)

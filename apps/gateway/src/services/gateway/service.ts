@@ -124,7 +124,7 @@ export class Gateway extends Context.Service<
 					})
 				).layer
 			)
-			const upstreamOf = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
+			const resolveUpstream = Effect.fnUntraced(function* (server: Server, headers: Headers.Headers) {
 				const current = yield* connections.get(server.id)
 				if (current.generation !== server.generation || current.status !== 'Connected') {
 					return yield* AuthError.make({message: `${server.name} is not connected; connect it on ${url}`})
@@ -146,7 +146,7 @@ export class Gateway extends Context.Service<
 			) {
 				return pipe(
 					Effect.gen(function* () {
-						const upstream = yield* upstreamOf(server, headers)
+						const upstream = yield* resolveUpstream(server, headers)
 						const context = yield* Effect.context()
 						const transport = new StreamableHTTPClientTransport(new URL(upstream.url), {
 							authProvider: {

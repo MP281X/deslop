@@ -62,7 +62,7 @@ function layerSignIn(issuer: string) {
 				})
 			}
 			// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
-			function nextOf<E, R>(
+			function withRedirect<E, R>(
 				handle: (
 					request: HttpServerRequest.HttpServerRequest,
 					next: URL
@@ -84,7 +84,7 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'GET',
 				'/auth/sign-in',
-				nextOf(
+				withRedirect(
 					Effect.fnUntraced(function* (_, next) {
 						const verifier = Base64Url.encode(yield* random.randomBytes(32))
 						const state = Base64Url.encode(yield* random.randomBytes(16))
@@ -173,7 +173,7 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'GET',
 				'/auth/sign-out',
-				nextOf((request, next) =>
+				withRedirect((request, next) =>
 					Effect.as(
 						ended(request.headers),
 						HttpServerResponse.expireCookieUnsafe(

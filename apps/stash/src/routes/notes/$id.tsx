@@ -37,8 +37,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
+import {Linking} from 'react-native'
 
-import {openLinkAtom} from '@deslop/components-mobile/device'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
@@ -91,16 +91,16 @@ function Body(props: {text: string}) {
 				String.split('\n'),
 				Array.map(String.trim),
 				Array.filter(String.isNonEmpty),
-				Array.map((line, index) =>
-					pipe(
+				Array.map((line, index) => {
+					const lineKey = `${index}:${line}`
+					return pipe(
 						Match.value(line),
 						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
 						Match.when(
 							candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
 							() => (
 								<Text
-									// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
-									key={index}
+									key={lineKey}
 									modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}
 								>
 									{String.replace(/^#+\s*/u, '')(line)}
@@ -110,8 +110,7 @@ function Body(props: {text: string}) {
 						Match.when(
 							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
 							() => (
-								// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
-								<HStack key={index} alignment="firstTextBaseline" spacing={space[2]}>
+								<HStack key={lineKey} alignment="firstTextBaseline" spacing={space[2]}>
 									<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
 										{Boolean.match(String.startsWith('- ')(line), {
 											onFalse: () => String.replace(/\s.*$/u, '')(line),
@@ -126,8 +125,7 @@ function Body(props: {text: string}) {
 						),
 						Match.when(String.startsWith('> '), () => (
 							<Text
-								// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
-								key={index}
+								key={lineKey}
 								markdownEnabled
 								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
 							>
@@ -135,13 +133,12 @@ function Body(props: {text: string}) {
 							</Text>
 						)),
 						Match.orElse(() => (
-							// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
-							<Text key={index} markdownEnabled modifiers={prose}>
+							<Text key={lineKey} markdownEnabled modifiers={prose}>
 								{line}
 							</Text>
 						))
 					)
-				)
+				})
 			)}
 		</VStack>
 	)
@@ -334,7 +331,6 @@ function NoteScreen(props: {
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	const openLink = useAtomSet(openLinkAtom)
 	return pipe(
 		props.notes,
 		Array.findFirst(item => item.id === props.id),
@@ -353,13 +349,17 @@ function NoteScreen(props: {
 											<Button
 												label="Open Link"
 												systemImage="arrow.up.right"
-												onPress={() => openLink(url)}
+												onPress={() => {
+													Linking.openURL(url)
+												}}
 												modifiers={[labelStyle('iconOnly')]}
 											/>
 										),
 										onSome: brand => (
 											<Button
-												onPress={() => openLink(url)}
+												onPress={() => {
+													Linking.openURL(url)
+												}}
 												modifiers={[
 													accessibilityLabel(
 														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})

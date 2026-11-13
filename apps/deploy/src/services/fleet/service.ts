@@ -75,7 +75,7 @@ function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 // A worker's last saved history, windowed to the range the page asked for.
 function cachedHistory(query: HistoryQuery, time: number, saved?: MachineHistory) {
 	return {
-		...Option.match(Option.fromUndefinedOr(saved?.cpuModel), {onNone: () => ({}), onSome: cpuModel => ({cpuModel})}),
+		cpuModel: saved?.cpuModel,
 		disks: saved?.disks ?? [],
 		load: saved?.load ?? [],
 		samples: history(saved?.samples ?? [], query.minutes, time),
@@ -139,6 +139,7 @@ export class Fleet extends Context.Service<
 					const url = new URL(RPC_PATH, worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
+					// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote invocation owns its socket and client lifetime.
 					return yield* Effect.provide(
 						Effect.flatMap(makeRemoteClient, client => use(client, peerHeaders)),
 						pipe(

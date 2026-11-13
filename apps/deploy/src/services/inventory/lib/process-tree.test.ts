@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Order} from 'effect'
 
-import {appUsage, type ProcessNode, processTree} from '#services/inventory/lib/utils.ts'
+import {type ProcessNode, processTree} from '#services/inventory/lib/utils.ts'
 import type {Process} from '#services/inventory/schema.ts'
 
 function label(name: string, detail = '') {
@@ -80,5 +80,5 @@ it('keeps unknown CPU unknown and terminates cyclic source relationships', () =>
 	const tree = processTree(rows)
 	assert.lengthOf(tree, 1)
 	assert.strictEqual(tree[0]?.cpu, undefined)
-	assert.deepStrictEqual(appUsage(rows), {cpu: undefined, memory: 3})
+	assert.strictEqual(tree[0]?.memory, 3)
 })

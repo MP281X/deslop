@@ -5,7 +5,7 @@ import {Boolean} from 'effect'
 import {AsyncResult} from 'effect/reactivity'
 import {useColorScheme} from 'react-native'
 
-import {assetAtom} from '@deslop/components-mobile/device'
+import {assetAtom} from '@deslop/components-mobile/images'
 
 import tiktokDark from './svgs/tiktok-icon-dark.svg'
 import tiktokLight from './svgs/tiktok-icon-light.svg'

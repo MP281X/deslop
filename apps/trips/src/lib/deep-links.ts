@@ -1,4 +1,4 @@
-import {Effect, Option, Queue, Schema, String, Stream, pipe} from 'effect'
+import {Effect, Option, Queue, Schema, String, Stream} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {addNotificationResponseReceivedListener, getLastNotificationResponse} from 'expo-notifications'

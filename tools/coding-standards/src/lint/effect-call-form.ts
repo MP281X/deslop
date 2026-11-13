@@ -188,6 +188,9 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 				'Effect.gen',
 				'Effect.fn',
 				'Effect.fnUntraced',
+				'Effect.andThen',
+				'Effect.forEach',
+				'Effect.ignore',
 				'Order.mapInput',
 				'Order.flip',
 				'Order.combine',
@@ -347,11 +350,11 @@ function chain(context: LintContext, node: ESTree.Node): Option.Option<{subject:
 }
 
 // Only a sole read in the first argument is forwarding; a closure that also uses its subject is real work.
-function forwarding(context: LintContext, node: ESTree.Node) {
+function forwardedBody(context: LintContext, node: ESTree.Node) {
 	if (node.type !== 'ArrowFunctionExpression' || node.async || node.params.length !== 1) return Option.none()
 	const parameter = node.params[0]
 	const body = node.body
-	if (parameter?.type !== 'Identifier' || body.type !== 'CallExpression' || !dataFirst(context, body)) {
+	if (parameter?.type !== 'Identifier' || body.type !== 'CallExpression') {
 		return Option.none()
 	}
 	const first = body.arguments[0]
@@ -361,6 +364,10 @@ function forwarding(context: LintContext, node: ESTree.Node) {
 		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),
 		Option.map(() => body)
 	)
+}
+
+function forwarding(context: LintContext, node: ESTree.Node) {
+	return Option.filter(forwardedBody(context, node), body => dataFirst(context, body))
 }
 
 function forwardCall(context: LintContext, call: ESTree.CallExpression, subject: string) {
@@ -445,46 +452,29 @@ function normalizeSchema(context: LintContext, node: ESTree.CallExpression) {
 	}
 }
 
-function innerPipeline(context: LintContext, node: ESTree.Node) {
-	if (
-		node.type !== 'ArrowFunctionExpression' ||
-		node.params[0]?.type !== 'Identifier' ||
-		node.body.type !== 'CallExpression'
-	) {
-		return Option.none()
-	}
-	if (
-		node.body.callee.type !== 'Identifier' ||
-		!isImportBinding({context, importedName: 'pipe', node: node.body.callee, source: 'effect'}) ||
-		node.body.arguments[0]?.type !== 'Identifier' ||
-		node.body.arguments[0].name !== node.params[0].name
-	) {
-		return Option.none()
-	}
-	return pipe(
-		variableFromScope({name: node.params[0].name, scope: context.sourceCode.getScope(node.body)}),
-		Option.filter(variable => Array.countBy(variable.references, reference => reference.isRead()) === 1),
-		Option.map(() => node.body)
-	)
-}
-
-function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
-	if (
-		node.callee.type !== 'Identifier' ||
-		!isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
-	) {
-		return
-	}
-	const first = node.arguments[0]
+function normalizeBoundary(context: LintContext, node: ESTree.CallExpression) {
 	const boundary = Option.getOrUndefined(
-		pipe(node.arguments, Array.drop(1), Array.findFirst((step, index) =>
-			Option.map(innerPipeline(context, step), body => ({body, index}))))
+		pipe(
+			node.arguments,
+			Array.drop(1),
+			Array.findFirst((step, index) =>
+				pipe(
+					forwardedBody(context, step),
+					Option.filter(
+						body =>
+							body.callee.type === 'Identifier' &&
+							isImportBinding({context, importedName: 'pipe', node: body.callee, source: 'effect'})
+					),
+					Option.map(body => ({body, index}))
+				)
+			)
+		)
 	)
 	if (boundary !== undefined) {
 		const before = Array.take(node.arguments, boundary.index + 1)
 		const inner = Array.drop(boundary.body.arguments, 1)
 		const after = Array.drop(node.arguments, boundary.index + 2)
-		if (!Array.every(after, argument => stable(context, argument))) return
+		if (!Array.every(after, argument => stable(context, argument))) return false
 		context.report({
 			fix: fixer => {
 				if (Array.every(inner, argument => stable(context, argument))) {
@@ -498,8 +488,24 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 			message: 'Keep pipeline steps as operations, not an arrow that applies another pipeline.',
 			node
 		})
+		return true
+	}
+	return false
+}
+
+function preservesOrder(context: LintContext, subject: ESTree.Node, args: ESTree.Node[]) {
+	return stable(context, subject) || Array.every(args, argument => stable(context, argument))
+}
+
+function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
+	if (
+		node.callee.type !== 'Identifier' ||
+		!isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
+	) {
 		return
 	}
+	if (normalizeBoundary(context, node)) return
+	const first = node.arguments[0]
 	if (
 		first?.type === 'CallExpression' &&
 		first.callee.type === 'Identifier' &&
@@ -587,11 +593,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 				}
 				if (step.type === 'CallExpression' && Option.isSome(dual(context, step.callee))) {
 					if (Array.some(step.arguments, arg => arg.type === 'SpreadElement')) return []
-					if (
-						tagFirst(step.callee) &&
-						!stable(context, subject) &&
-						!Array.every(step.arguments, arg => stable(context, arg))
-					) {
+					if (tagFirst(step.callee) && !preservesOrder(context, subject, step.arguments)) {
 						return []
 					}
 					return fixer.replaceText(
@@ -602,11 +604,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 				if (step.type !== 'Identifier' && step.type !== 'CallExpression' && !stable(context, step)) {
 					return []
 				}
-				if (
-					step.type === 'CallExpression' &&
-					!stable(context, subject) &&
-					!Array.every(step.arguments, arg => stable(context, arg))
-				) {
+				if (step.type === 'CallExpression' && !preservesOrder(context, subject, step.arguments)) {
 					return []
 				}
 				return fixer.replaceText(node, `${text(context, step)}(${text(context, subject)})`)

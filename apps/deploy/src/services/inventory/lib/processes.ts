@@ -83,7 +83,7 @@ export const processes = Effect.gen(function* () {
 								// The label reads the masked arguments; a kernel thread or a zombie has none, so its name stands alone.
 								label: pipe(
 									command,
-									Option.filter(Array.isReadonlyArrayNonEmpty),
+									Option.filter(Array.isReadonlyArrayNonEmpty<string>),
 									Option.match({
 										onNone: () => ({detail: '', name: parsed.name}),
 										onSome: args => commandLabel(args, cwd)

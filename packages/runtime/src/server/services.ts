@@ -3,7 +3,7 @@ import {platform} from 'node:process'
 import {Array, Boolean, Config, Effect, FileSystem, Path, String, pipe} from 'effect'
 
 import {agentStatus, installAgent, installUpdateAgent, restartAgent, uninstallAgents} from '#server/launchd.ts'
-import {execute} from '#server/process.ts'
+import {executeProcess} from '#server/process.ts'
 
 // systemd expands percent specifiers even inside a quoted argument.
 function systemdArgument(value: string) {
@@ -11,7 +11,7 @@ function systemdArgument(value: string) {
 }
 
 function systemctl(...args: string[]) {
-	return execute('systemctl', ['--user', ...args])
+	return executeProcess('systemctl', ['--user', ...args])
 }
 
 const unitDirectory = Effect.gen(function* () {

@@ -682,9 +682,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		// Three days of telemetry: a development debugger needs recent runs, and older ones would slow every query.
 		const prune = pipe(
 			Clock.currentTimeMillis,
-			Effect.flatMap(now =>
-				deleteExpired(DateTime.makeUnsafe(now - Duration.toMillis(Duration.fromInputUnsafe('3 days'))))
-			),
+			Effect.flatMap(now => deleteExpired(DateTime.makeUnsafe(now - Duration.toMillis('3 days')))),
 			Reactivity.mutation(['telemetry']),
 			sql.withTransaction,
 			asTelemetryError,

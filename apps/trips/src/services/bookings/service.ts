@@ -89,7 +89,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		const watch = Stream.mapError(sql.reactive(['bookings'], listAll), asStorageBookingsError)
 
 		// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
-		const stationOf = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
+		const resolveStation = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
 			const found = yield* Effect.option(places.station(name))
 			const timeZone = yield* pipe(
 				found,
@@ -131,8 +131,8 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				})
 			}
 			if (item.kind === 'train') {
-				const from = yield* stationOf(item.from, item.operator)
-				const to = yield* stationOf(item.to, item.operator)
+				const from = yield* resolveStation(item.from, item.operator)
+				const to = yield* resolveStation(item.to, item.operator)
 				return Train.make({
 					...base,
 					arrives: yield* at(item.arrival, to.timeZone),

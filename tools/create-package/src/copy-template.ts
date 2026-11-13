@@ -1,4 +1,4 @@
-import {Array, Console, Effect, FileSystem, Path, String, pipe} from 'effect'
+import {Array, Console, Effect, FileSystem, Path, String} from 'effect'
 
 import {CliError} from 'effect/cli'
 

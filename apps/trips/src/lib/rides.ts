@@ -4,7 +4,7 @@ import {Atom} from 'effect/reactivity'
 import {geocodeAsync} from 'expo-location'
 import {Linking} from 'react-native'
 
-import {alertFailure} from '@deslop/components-mobile/device'
+import {alertFailure} from '@deslop/components-mobile/alerts'
 
 import {departureOf, MINUTE, stayAfter} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'

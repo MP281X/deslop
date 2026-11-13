@@ -62,6 +62,7 @@ it.effect(
 		const error = yield* Effect.flip(
 			(yield* open(gateway, client)).organize('github:1', {images: [], note: NOTE, tags: []})
 		)
+		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The gateway's instruction must reach the note unchanged.
 		assert.strictEqual(error.message, 'Add an Anthropic key in Gateway')
 	})
 )
@@ -79,6 +80,7 @@ it.effect(
 				HttpClient.make(() => Effect.die('No gateway, no request'))
 			)).organize('github:1', {images: [], note: NOTE, tags: []})
 		)
+		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The runtime's instruction must reach the note unchanged.
 		assert.strictEqual(error.message, 'Start the app with --gateway')
 	})
 )

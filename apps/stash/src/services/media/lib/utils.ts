@@ -111,7 +111,7 @@ export function mediaMarkdown(media: Metadata, link: string) {
 				Option.filter(comments => Array.isReadonlyArrayNonEmpty(comments)),
 				Option.map(
 					comments =>
-						`## Top comments\n\n${pipe(pipe(comments, Array.sort(byStanding), Array.take(40)), Array.map(commentLine), Array.join('\n\n'))}`
+						`## Top comments\n\n${pipe(comments, Array.sort(byStanding), Array.take(40), Array.map(commentLine), Array.join('\n\n'))}`
 				)
 			)
 		]),

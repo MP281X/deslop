@@ -31,12 +31,12 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {bottomBarSearch} from '@deslop/components-mobile/device'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent} from '@deslop/components-mobile/screens'
 import {StatusDot} from '@deslop/components-mobile/status-dot'
 import {colors, space, text} from '@deslop/components-mobile/theme'
+import {bottomBarSearch} from '@deslop/components-mobile/toolbar'
 import {Empty, EmptyAction} from '@deslop/components-mobile/ui/empty'
 import {
 	Item,
@@ -218,7 +218,8 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
 	const adding = pipe(
 		useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')),
-		AsyncResult.getOrElse(Option.none),
+		AsyncResult.value,
+		Option.flatten,
 		Option.exists(current => current.save)
 	)
 	const blocking = Option.getOrUndefined(blockingFailure(loaded))

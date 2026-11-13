@@ -8,7 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 import type {ReactElement, ReactNode} from 'react'
 
-import {AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
+import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
 import {appMarks} from '@deslop/components-web/apps'
 import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
@@ -19,7 +19,6 @@ import {Item, ItemActions, ItemContent, ItemMedia, ItemTitle} from '@deslop/comp
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {
@@ -138,8 +137,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 	return (
 		<AppBarTabs value={props.source ?? ''}>
 			{Array.map(props.apps, app => (
-				<TabsTrigger
-					nativeButton={false}
+				<AppBarTab
 					key={app.name}
 					value={app.name}
 					render={
@@ -154,7 +152,7 @@ function SourceTabs(props: {apps: Overview['apps']; source?: string}) {
 					}
 				>
 					<AppMark app={app} />
-				</TabsTrigger>
+				</AppBarTab>
 			))}
 		</AppBarTabs>
 	)
@@ -448,10 +446,7 @@ function SpansList(props: {
 		<ScrollArea className="min-h-0 flex-1">
 			<TimeAxis totalMs={props.trace.durationMs} />
 			<Flame
-				{...Option.match(Option.fromUndefinedOr(Option.getOrUndefined(Option.map(props.focus, span => span.spanId))), {
-					onNone: () => ({}),
-					onSome: focus => ({focus})
-				})}
+				focus={Option.getOrUndefined(Option.map(props.focus, span => span.spanId))}
 				onPick={props.onPick}
 				trace={props.trace}
 			/>
@@ -554,20 +549,11 @@ function TracePane(props: {
 								>
 									<Spans
 										key={current.id}
-										{...Option.match(Option.fromUndefinedOr(props.detailOnly), {
-											onNone: () => ({}),
-											onSome: detailOnly => ({detailOnly})
-										})}
+										detailOnly={props.detailOnly}
 										id={current.id}
-										{...Option.match(Option.fromUndefinedOr(props.inlineDetails), {
-											onNone: () => ({}),
-											onSome: inlineDetails => ({inlineDetails})
-										})}
+										inlineDetails={props.inlineDetails}
 										onPick={props.onPickSpan}
-										{...Option.match(Option.fromUndefinedOr(props.pickedSpan), {
-											onNone: () => ({}),
-											onSome: pickedSpan => ({pickedSpan})
-										})}
+										pickedSpan={props.pickedSpan}
 										range={props.range}
 									/>
 								</Suspense>
@@ -586,38 +572,29 @@ function NarrowWorkspace(props: WorkspaceProps) {
 		<div className="grid-cols-scope grid min-h-0 flex-1">
 			<div className="grid min-h-0 grid-rows-2 border-r">
 				<OperationsPane
-					{...Option.match(Option.fromUndefinedOr(props.activeKey), {
-						onNone: () => ({}),
-						onSome: activeKey => ({activeKey})
-					})}
+					activeKey={props.activeKey}
 					className="border-b"
 					onSelect={props.onSelectOperation}
 					range={props.range}
-					{...Option.match(Option.fromUndefinedOr(props.source), {onNone: () => ({}), onSome: source => ({source})})}
+					source={props.source}
 				/>
 				<TracesPane
-					{...Option.match(Option.fromUndefinedOr(props.active), {onNone: () => ({}), onSome: active => ({active})})}
-					// fallow-ignore-next-line code-duplication -- Trace-list props repeat across distinct responsive layouts; they are a render shape, not shared logic.
+					active={props.active}
+
 					now={props.now}
 					onSelect={props.onSelectTrace}
 					range={props.range}
-					{...Option.match(Option.fromUndefinedOr(props.activeTrace), {
-						onNone: () => ({}),
-						onSome: selectedTrace => ({selectedTrace})
-					})}
+					selectedTrace={props.activeTrace}
 				/>
 			</div>
 			<TracePane
 				inlineDetails
-				// fallow-ignore-next-line code-duplication -- Trace-pane props repeat across distinct responsive layouts; they are a render shape, not shared logic.
+
 				now={props.now}
 				onPickSpan={props.onPickSpan}
-				{...Option.match(Option.fromUndefinedOr(props.pickedSpan), {
-					onNone: () => ({}),
-					onSome: pickedSpan => ({pickedSpan})
-				})}
+				pickedSpan={props.pickedSpan}
 				range={props.range}
-				{...Option.match(Option.fromUndefinedOr(props.activeTrace), {onNone: () => ({}), onSome: trace => ({trace})})}
+				trace={props.activeTrace}
 			/>
 		</div>
 	)
@@ -629,42 +606,33 @@ function WideWorkspace(props: WorkspaceProps) {
 		<ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
 			<ResizablePanel defaultSize={440} minSize={320} maxSize={560}>
 				<OperationsPane
-					{...Option.match(Option.fromUndefinedOr(props.activeKey), {
-						onNone: () => ({}),
-						onSome: activeKey => ({activeKey})
-					})}
+					activeKey={props.activeKey}
 					onSelect={props.onSelectOperation}
 					range={props.range}
-					{...Option.match(Option.fromUndefinedOr(props.source), {onNone: () => ({}), onSome: source => ({source})})}
+					source={props.source}
 				/>
 			</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel defaultSize={320} minSize={240} maxSize={480}>
 				<TracesPane
-					{...Option.match(Option.fromUndefinedOr(props.active), {onNone: () => ({}), onSome: active => ({active})})}
-					// fallow-ignore-next-line code-duplication -- Trace-list props repeat across distinct responsive layouts; they are a render shape, not shared logic.
+					active={props.active}
+
 					now={props.now}
 					onSelect={props.onSelectTrace}
 					range={props.range}
-					{...Option.match(Option.fromUndefinedOr(props.activeTrace), {
-						onNone: () => ({}),
-						onSome: selectedTrace => ({selectedTrace})
-					})}
+					selectedTrace={props.activeTrace}
 				/>
 			</ResizablePanel>
 			<ResizableHandle />
 			<ResizablePanel minSize={320}>
 				<TracePane
 					inlineDetails
-					// fallow-ignore-next-line code-duplication -- Trace-pane props repeat across distinct responsive layouts; they are a render shape, not shared logic.
+
 					now={props.now}
 					onPickSpan={props.onPickSpan}
-					{...Option.match(Option.fromUndefinedOr(props.pickedSpan), {
-						onNone: () => ({}),
-						onSome: pickedSpan => ({pickedSpan})
-					})}
+					pickedSpan={props.pickedSpan}
 					range={props.range}
-					{...Option.match(Option.fromUndefinedOr(props.activeTrace), {onNone: () => ({}), onSome: trace => ({trace})})}
+					trace={props.activeTrace}
 				/>
 			</ResizablePanel>
 		</ResizablePanelGroup>
@@ -678,47 +646,32 @@ function MobileWorkspace(props: WorkspaceProps & {pane: ReturnType<typeof naviga
 				Match.value(props.pane),
 				Match.when('Operations', () => (
 					<OperationsPane
-						{...Option.match(Option.fromUndefinedOr(props.activeKey), {
-							onNone: () => ({}),
-							onSome: activeKey => ({activeKey})
-						})}
+						activeKey={props.activeKey}
 						className="min-h-0 flex-1"
 						onSelect={props.onSelectOperation}
 						range={props.range}
-						{...Option.match(Option.fromUndefinedOr(props.source), {onNone: () => ({}), onSome: source => ({source})})}
+						source={props.source}
 					/>
 				)),
 				Match.when('Traces', () => (
 					<TracesPane
-						{...Option.match(Option.fromUndefinedOr(props.active), {onNone: () => ({}), onSome: active => ({active})})}
+						active={props.active}
 						className="min-h-0 flex-1"
 						now={props.now}
 						onSelect={props.onSelectTrace}
 						range={props.range}
-						{...Option.match(Option.fromUndefinedOr(props.activeTrace), {
-							onNone: () => ({}),
-							onSome: selectedTrace => ({selectedTrace})
-						})}
+						selectedTrace={props.activeTrace}
 					/>
 				)),
 				Match.orElse(() => (
 					<TracePane
 						className="min-h-0 flex-1"
-						{...Option.match(Option.fromUndefinedOr(props.pane === 'Span'), {
-							onNone: () => ({}),
-							onSome: detailOnly => ({detailOnly})
-						})}
+						detailOnly={props.pane === 'Span'}
 						now={props.now}
 						onPickSpan={props.onPickSpan}
-						{...Option.match(Option.fromUndefinedOr(props.pickedSpan), {
-							onNone: () => ({}),
-							onSome: pickedSpan => ({pickedSpan})
-						})}
+						pickedSpan={props.pickedSpan}
 						range={props.range}
-						{...Option.match(Option.fromUndefinedOr(props.activeTrace), {
-							onNone: () => ({}),
-							onSome: trace => ({trace})
-						})}
+						trace={props.activeTrace}
 					/>
 				))
 			)}
@@ -789,12 +742,9 @@ function HomeRoute() {
 		onPickSpan: selectSpan,
 		onSelectOperation: selectOperation,
 		onSelectTrace: selectTrace,
-		...Option.match(Option.fromUndefinedOr(selection.pickedSpan), {
-			onNone: () => ({}),
-			onSome: pickedSpan => ({pickedSpan})
-		}),
+		pickedSpan: selection.pickedSpan,
 		range,
-		...Option.match(Option.fromUndefinedOr(selection.source), {onNone: () => ({}), onSome: source => ({source})})
+		source: selection.source
 	}
 	const workspace = Boolean.match(isMobile, {
 		onFalse: () =>
@@ -808,47 +758,36 @@ function HomeRoute() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				{...Option.match(
-					Option.fromUndefinedOr(
-						Boolean.match(isMobile && pane !== 'Operations', {
-							onFalse: () => undefined,
-							onTrue: () => ({
-								back: {
-									label: pipe(
-										Match.value(pane),
-										Match.when('Span', () => 'Trace'),
-										Match.when('Trace', () => 'Traces'),
-										Match.orElse(() => 'Operations')
-									),
-									onClick: () => send({_tag: 'Back'})
-								},
-								title: pipe(
-									Match.value(pane),
-									Match.when('Traces', () =>
-										Option.match(selection.activeOperation, {
-											onNone: () => 'Traces',
-											onSome: active => active.operation.name
-										})
-									),
-									Match.when('Span', () => 'Span'),
-									Match.orElse(() => 'Trace')
-								)
-							})
-						})
-					),
-					{onNone: () => ({}), onSome: heading => ({heading})}
-				)}
+				heading={Boolean.match(isMobile && pane !== 'Operations', {
+					onFalse: () => undefined,
+					onTrue: () => ({
+						back: {
+							label: pipe(
+								Match.value(pane),
+								Match.when('Span', () => 'Trace'),
+								Match.when('Trace', () => 'Traces'),
+								Match.orElse(() => 'Operations')
+							),
+							onClick: () => send({_tag: 'Back'})
+						},
+						title: pipe(
+							Match.value(pane),
+							Match.when('Traces', () =>
+								Option.match(selection.activeOperation, {
+									onNone: () => 'Traces',
+									onSome: active => active.operation.name
+								})
+							),
+							Match.when('Span', () => 'Span'),
+							Match.orElse(() => 'Trace')
+						)
+					})
+				})}
 				icon={icon}
 				name="scope"
 				controls={
 					<>
-						<StaleMark
-							range={range}
-							{...Option.match(Option.fromUndefinedOr(Option.getOrUndefined(selection.activeTrace)), {
-								onNone: () => ({}),
-								onSome: trace => ({trace})
-							})}
-						/>
+						<StaleMark range={range} trace={Option.getOrUndefined(selection.activeTrace)} />
 						{Boolean.match(isMobile && pane !== 'Operations', {
 							onFalse: () => <RangeTabs range={range} onChange={selectRange} />,
 							onTrue: () => null
@@ -856,15 +795,7 @@ function HomeRoute() {
 					</>
 				}
 				tabs={Boolean.match(isMobile && pane !== 'Operations', {
-					onFalse: () => (
-						<SourceTabs
-							apps={apps}
-							{...Option.match(Option.fromUndefinedOr(selection.source ?? search.source), {
-								onNone: () => ({}),
-								onSome: source => ({source})
-							})}
-						/>
-					),
+					onFalse: () => <SourceTabs apps={apps} source={selection.source ?? search.source} />,
 					onTrue: () => undefined
 				})}
 			/>

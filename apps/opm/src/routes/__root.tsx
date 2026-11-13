@@ -20,14 +20,7 @@ import type {Series} from '#services/chapters/schema.ts'
 function Destination(props: {number: number; series: Series; start?: number}) {
 	return (
 		<Loaded atom={chaptersAtom} name="Chapters">
-			{chapters => (
-				<ReaderRoute
-					chapters={chapters}
-					number={props.number}
-					series={props.series}
-					{...Option.match(Option.fromUndefinedOr(props.start), {onNone: () => ({}), onSome: start => ({start})})}
-				/>
-			)}
+			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} start={props.start} />}
 		</Loaded>
 	)
 }
@@ -67,14 +60,7 @@ function AppRoutes() {
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
 								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
-									<Destination
-										number={target[2]}
-										series={target[0]}
-										{...Option.match(Option.fromUndefinedOr(resumePage), {
-											onNone: () => ({}),
-											onSome: start => ({start})
-										})}
-									/>
+									<Destination number={target[2]} series={target[0]} start={resumePage} />
 								</Suspense>
 							</NavigationDestination>
 						)

@@ -55,7 +55,7 @@ const tailscale = Effect.gen(function* () {
 				Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
 					yield* pipe(
 						command.args,
-						Array.contains('serve'),
+						Array.contains<ChildProcess.StandardCommand['args'][number]>('serve'),
 						Boolean.match({
 							onFalse: () =>
 								Effect.succeed({

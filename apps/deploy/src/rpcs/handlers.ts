@@ -1,4 +1,4 @@
-import {Cache, Duration, Effect, Number, Schedule, Scope, Stream, pipe} from 'effect'
+import {Cache, Duration, Effect, Number, Schedule, Scope, Stream} from 'effect'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {Fleet} from '#services/fleet/service.ts'

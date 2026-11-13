@@ -21,7 +21,7 @@ import {
 
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {execute} from '@deslop/runtime/server/process'
+import {executeProcess} from '@deslop/runtime/server/process'
 
 import {processOwner} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
@@ -188,7 +188,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			Effect.scoped(
 				Boolean.match(platform === 'darwin', {
 					onFalse: () =>
-						execute('df', [
+						executeProcess('df', [
 							'-B1',
 							'--output=target,size,used',
 							'-x',
@@ -202,7 +202,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 							'-x',
 							'efivarfs'
 						]),
-					onTrue: () => execute('df', ['-k', '/'])
+					onTrue: () => executeProcess('df', ['-k', '/'])
 				})
 			),
 			Effect.flatMap(text => Ref.set(storage, text)),
@@ -237,7 +237,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		})
 		// A Mac has no cgroups, so its samples carry no apps.
 		const darwin = Effect.fnUntraced(function* (time: number, disks: string, old?: Counters) {
-			const memory = yield* Effect.scoped(execute('vm_stat', []))
+			const memory = yield* Effect.scoped(executeProcess('vm_stat', []))
 			const uptime = Duration.toSeconds(Duration.nanos(yield* Clock.monotonicTimeNanos))
 			const current = yield* counted(() => cpuCounters(cpus(), uptime, time))
 			const value = yield* sampled(() =>

@@ -244,6 +244,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const gateway = Context.get(context, AiGateway)
 			const missing = yield* Effect.flip(gateway.authorize('github:42'))
 			assert.instanceOf(missing, AiUnavailableError)
+			// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The instruction is the public recovery contract.
 			assert.equal(missing.message, 'Open Stash once so it can use AI for you')
 			const bearer = yield* issuerService.sign({azp: 'Claude Code', sid: 'bearer'})
 			assert.equal((yield* auth.user(Headers.fromInput({authorization: `Bearer ${bearer}`}))).client, 'Claude Code')

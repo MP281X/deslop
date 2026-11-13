@@ -22,7 +22,7 @@ import {
 
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
-import {execute} from '#server/process.ts'
+import {executeProcess} from '#server/process.ts'
 import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 
 it.effect('releases an interrupted command before its caller scope closes', () =>
@@ -52,7 +52,7 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 				)
 			)
 			const pending = yield* pipe(
-				execute('stall', []),
+				executeProcess('stall', []),
 				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 				Effect.forkChild
 			)

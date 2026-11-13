@@ -14,7 +14,7 @@ function follow(events: NavigationEvent[], search: Search = {}) {
 
 function failureTrace(start: number, failed: boolean) {
 	return {
-		duration: Duration.fromInputUnsafe('1 millis'),
+		duration: Duration.millis(1),
 		id: String.repeat(32)('a'),
 		start,
 		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {span: 'run'}})})

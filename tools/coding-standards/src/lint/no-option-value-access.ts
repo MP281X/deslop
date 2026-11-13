@@ -33,12 +33,11 @@ function exits(node: ESTree.Statement) {
 
 function earlyExit(input: Guard & {node: ESTree.Node}) {
 	if (input.node.parent?.type !== 'BlockStatement' && input.node.parent?.type !== 'Program') return false
-	const statements = input.node.parent.body
 	return Array.some(
 		Array.take(
-			statements,
+			input.node.parent.body,
 			pipe(
-				statements,
+				input.node.parent.body,
 				Array.findFirstIndex(statement => statement === input.node),
 				Option.getOrElse(() => 0)
 			)

@@ -4,7 +4,7 @@ import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
 
-import {alertFailure} from '#lib/device.ts'
+import {alertFailure} from '#lib/alerts.ts'
 
 type RemovalError = {_tag: string; message: string}
 
@@ -23,7 +23,7 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 			Layer.succeed(Removal, Removal.of({notRemoved: options.notRemoved, remove: id => options.remove(id, get)}))
 		)
 	)
-	const machine = Atom.family((id: string) =>
+	const machineAtom = Atom.family((id: string) =>
 		bound.make(
 			Machine.make({
 				effects: {
@@ -47,17 +47,17 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 		)
 	)
 	// A removal outlives its row, which a search, a folded section or a closing detail unmounts; the family forgets a machine nothing references, so the hold keeps the machine itself.
-	const held = Atom.family((id: string) => {
-		const removing = machine(id)
+	const heldAtom = Atom.family((id: string) => {
+		const removing = machineAtom(id)
 		return Atom.keepAlive(Atom.readable(get => get(removing.ref)))
 	})
 	return {
-		machine,
+		machine: machineAtom,
 		removeAtom: Atom.writable(
 			() => undefined,
 			(context, id: string) => {
-				context.get(held(id))
-				context.set(machine(id).send, {_tag: 'Removed'})
+				context.get(heldAtom(id))
+				context.set(machineAtom(id).send, {_tag: 'Removed'})
 			}
 		)
 	}
