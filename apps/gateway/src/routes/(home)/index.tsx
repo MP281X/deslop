@@ -460,7 +460,7 @@ function GatewayProblem(props: {period: Period}) {
 }
 
 function HomeRoute() {
-	const search = route.useSearch()
+	const search: Search = route.useSearch()
 	const navigate = route.useNavigate()
 	const period = Option.getOrElse(search.period, () => '7d' as const)
 	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
