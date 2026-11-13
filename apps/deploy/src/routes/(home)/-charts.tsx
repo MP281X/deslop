@@ -7,11 +7,11 @@ import type {PointerEvent} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState} from '@deslop/components-web/fallbacks'
+import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/components-web/format'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
-import {bytes, rate} from '#routes/(home)/-rows.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'
 import type {Band} from '#routes/(home)/-usage.ts'
 import type {AppId} from '#services/inventory/schema.ts'
@@ -20,8 +20,6 @@ import type {HistoryQuery, MachineHistory, Sample} from '#services/metrics/schem
 
 const HEIGHT = 64
 const CHART_LABELS = ['Memory', 'CPU', 'Disk'] as const
-const time = new Intl.DateTimeFormat(undefined, {hour: '2-digit', hourCycle: 'h23', minute: '2-digit'})
-const date = new Intl.DateTimeFormat(undefined, {day: 'numeric', month: 'short'})
 
 // One stacked band: its share at each sample, and the number its tooltip names, in bytes or per cent.
 type ChartLayer = {
@@ -243,11 +241,7 @@ function UsageChart(props: {
 								{pipe(
 									props.history.samples,
 									Array.get(value[0].index),
-									Option.match({
-										onNone: () => time.format(0),
-										onSome: sample =>
-											DateTime.formatLocal(sample.time, {hour: '2-digit', hourCycle: 'h23', minute: '2-digit'})
-									})
+									Option.match({onNone: () => clockOf(DateTime.makeUnsafe(0)), onSome: sample => clockOf(sample.time)})
 								)}
 							</span>
 							<span className="font-mono tabular-nums">{props.format(value[1].readings[value[0].index] ?? 0)}</span>
@@ -288,11 +282,11 @@ function TimeAxis(props: {className?: string; minutes: Duration.Duration; now: D
 							Match.when(1, () =>
 								Boolean.match(tick.at % 60_000 === 0, {
 									onFalse: () => `:${String.padStart(2, '0')(`${(tick.at % 60_000) / 1000}`)}`,
-									onTrue: () => time.format(tick.at)
+									onTrue: () => clockOf(DateTime.makeUnsafe(tick.at))
 								})
 							),
-							Match.when(10_080, () => date.format(tick.at)),
-							Match.orElse(() => time.format(tick.at))
+							Match.when(10_080, () => dayOf(DateTime.makeUnsafe(tick.at))),
+							Match.orElse(() => clockOf(DateTime.makeUnsafe(tick.at)))
 						)}
 					</span>
 				))
@@ -395,18 +389,18 @@ export function ChartBlock(props: {
 	}[] = [
 		{
 			cover: false,
-			figure: Boolean.match(latest === undefined, {onFalse: () => bytes(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
+			figure: Boolean.match(latest === undefined, {onFalse: () => bytesOf(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
 			focus,
-			format: bytes,
+			format: bytesOf,
 			label: 'Memory',
 			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
 			recorded: () => true
 		},
 		{
 			cover: false,
-			figure: Option.match(cpu, {onNone: () => '—', onSome: rate}),
+			figure: Option.match(cpu, {onNone: () => '—', onSome: percentOf}),
 			focus,
-			format: rate,
+			format: percentOf,
 			label: 'CPU',
 			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
 			recorded: sample => Option.isSome(sample.cpu)
@@ -416,9 +410,9 @@ export function ChartBlock(props: {
 			figure: Option.match(storageUsed, {
 				onNone: () => '—',
 				onSome: used =>
-					Boolean.match(total > 0, {onFalse: () => '—', onTrue: () => `${Number.round((used / total) * 100, 0)}%`})
+					Boolean.match(total > 0, {onFalse: () => '—', onTrue: () => percentOf(Number.round((used / total) * 100, 0))})
 			}),
-			format: rate,
+			format: percentOf,
 			label: 'Disk',
 			layers: [{id: 'disk', kind: 'disk', opacity: 1, readings: disk, values: disk}],
 			recorded: sample => Option.isSome(sample.storageUsed)

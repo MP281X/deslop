@@ -12,6 +12,7 @@ import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-we
 import {appMarks} from '@deslop/components-web/apps'
 import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
+import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -23,8 +24,6 @@ import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {
 	Search,
-	ageOf,
-	durationOf,
 	focusOf,
 	navigationOf,
 	nextSearch,
@@ -63,18 +62,9 @@ const KINDS: Record<Runtime, ReactElement> = {
 	web: <GlobeIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />
 }
 
-const clock = new Intl.DateTimeFormat(undefined, {
-	hour: '2-digit',
-	hourCycle: 'h23',
-	minute: '2-digit',
-	second: '2-digit'
-})
-const count = new Intl.NumberFormat(undefined, {maximumFractionDigits: 0})
-const compact = new Intl.NumberFormat(undefined, {maximumFractionDigits: 1, notation: 'compact'})
-
 // One run or many, in the reader's words.
 function runsOf(n: number) {
-	return `${count.format(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
+	return `${countOf(n)}${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
 }
 const route = getRouteApi('/(home)/')
 const RANGES = Array.map(Range.literals, value => ({label: value, value}))
@@ -221,7 +211,7 @@ function OperationRow(props: {
 								...Boolean.match(props.duplicate && side !== '', {onFalse: () => [], onTrue: () => [side]}),
 								...Boolean.match(props.operation.failures > 0, {
 									onFalse: () => [],
-									onTrue: () => [`${count.format(props.operation.failures)} failed`]
+									onTrue: () => [`${countOf(props.operation.failures)} failed`]
 								}),
 								runsOf(props.operation.count),
 								`${durationOf(props.operation.p50Ms)} typical`
@@ -251,17 +241,17 @@ function OperationRow(props: {
 								className="text-destructive text-right tabular-nums"
 								title={Boolean.match(props.operation.failures > 0, {
 									onFalse: () => undefined,
-									onTrue: () => `${count.format(props.operation.failures)} failed`
+									onTrue: () => `${countOf(props.operation.failures)} failed`
 								})}
 							>
 								{Boolean.match(props.operation.failures > 0, {
 									onFalse: () => null,
-									onTrue: () => count.format(props.operation.failures)
+									onTrue: () => countOf(props.operation.failures)
 								})}
 							</span>
 						)}
 						<span className="text-muted-foreground text-right tabular-nums" title={runsOf(props.operation.count)}>
-							{compact.format(props.operation.count)}
+							{compactCountOf(props.operation.count)}
 						</span>
 						<span className="text-right tabular-nums" title="Typical duration">
 							{durationOf(props.operation.p50Ms)}
@@ -355,10 +345,7 @@ function TraceListRow(props: {active: boolean; now: DateTime.Utc; onSelect: () =
 				}
 			>
 				<ItemMedia className="w-8">
-					<span
-						className="text-muted-foreground tabular-nums"
-						title={clock.format(DateTime.toEpochMillis(props.trace.start))}
-					>
+					<span className="text-muted-foreground tabular-nums" title={clockOf(props.trace.start, 'second')}>
 						{ageOf(props.trace.start, props.now)}
 					</span>
 				</ItemMedia>

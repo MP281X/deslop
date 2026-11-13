@@ -34,7 +34,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {shortDate} from '@deslop/components-mobile/dates'
+import {dayOf} from '@deslop/components-mobile/format'
 import {Problem} from '@deslop/components-mobile/problem'
 import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
@@ -88,7 +88,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: ChapterNumber
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
 						{pipe(
-							[props.chapter.title, Option.match(props.chapter.postedAt, {onNone: () => '', onSome: shortDate})],
+							[props.chapter.title, Option.match(props.chapter.postedAt, {onNone: () => '', onSome: dayOf})],
 							Array.filter(String.isNonEmpty),
 							Array.join(' · ')
 						)}

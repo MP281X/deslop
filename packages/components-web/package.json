@@ -10,6 +10,7 @@
 		"./app-bar": "./src/app-bar.tsx",
 		"./apps": "./src/apps.ts",
 		"./fallbacks": "./src/fallbacks.tsx",
+		"./format": "./src/format.ts",
 		"./icons": "./src/icons.tsx",
 		"./item-list": "./src/item-list.tsx",
 		"./page": "./src/page.tsx",

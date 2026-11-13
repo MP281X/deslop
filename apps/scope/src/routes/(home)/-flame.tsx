@@ -5,10 +5,10 @@ import {useLayoutEffect, useRef, useState} from 'react'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 import {cn} from '@deslop/components-web/classes'
+import {durationOf} from '@deslop/components-web/format'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
 import {lanesOf} from '#lib/flame.ts'
-import {durationOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {SpanId, TraceTree} from '#services/telemetry/schema.ts'
 

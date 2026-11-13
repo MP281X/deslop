@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Option, Order, Record, String, Struct, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -8,6 +8,7 @@ import {useState} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
+import {ageOf} from '@deslop/components-web/format'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Avatar, AvatarFallback, AvatarImage} from '@deslop/components-web/ui/avatar'
 import {Button} from '@deslop/components-web/ui/button'
@@ -27,13 +28,6 @@ import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
-
-function ageLabel(minutes: number) {
-	if (minutes < 1) return 'now'
-	if (minutes < 60) return `${minutes}m`
-	if (minutes < 1440) return `${Math.floor(minutes / 60)}h`
-	return `${Math.floor(minutes / 1440)}d`
-}
 
 // A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
 export function AccountAvatar(props: {id: UserId; name: string; small?: boolean}) {
@@ -186,7 +180,7 @@ function ClientIcon(props: {client: Client}) {
 }
 
 function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
-	const active = ageLabel(Math.floor(Duration.toMinutes(DateTime.distance(props.client.lastActive, props.now))))
+	const active = ageOf(props.client.lastActive, props.now)
 	const address = Option.filter(props.client.address, value => value !== props.client.device)
 	return (
 		<div role="listitem">

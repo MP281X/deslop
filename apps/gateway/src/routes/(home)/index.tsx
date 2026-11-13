@@ -12,6 +12,7 @@ import {Suspense, useState} from 'react'
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
 import {Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
+import {countOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -48,8 +49,6 @@ import type {UsageRange} from '#services/usage/schema.ts'
 const PERIODS = Array.map(Period.literals, value => ({label: value, value}))
 
 const route = getRouteApi('/(home)/')
-
-const count = new Intl.NumberFormat('en')
 
 function serverHue(server: ConnectionItem) {
 	const key = String.toLowerCase(server.id)
@@ -183,7 +182,7 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 					})}
 					<Sparkline color={serverHue(props.server)} values={series} />
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">
-						{count.format(Number.sumAll(series))}
+						{countOf(Number.sumAll(series))}
 					</span>
 				</ItemActions>
 			</Item>

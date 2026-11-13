@@ -11,6 +11,7 @@ import type {ReactNode} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
+import {timerOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -22,7 +23,7 @@ import {Skeleton} from '@deslop/components-web/ui/skeleton'
 
 import {inventoryAtom, openExposeAtom, runAtom} from '#lib/fleet.ts'
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
-import {counted, host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
+import {host, impactGroups, middleEllipsis} from '#routes/(home)/-rows.ts'
 import {
 	failureAge,
 	nextRun,
@@ -137,7 +138,7 @@ const elapsedAtom = Atom.family((_job: ItemId) =>
 function Elapsed(props: {job: ItemId}) {
 	return (
 		<span className="text-muted-foreground shrink-0 pr-2 font-mono text-xs whitespace-nowrap tabular-nums">
-			{counted(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
+			{timerOf(AsyncResult.getOrElse(useAtomValue(elapsedAtom(props.job)), () => Duration.zero))}
 		</span>
 	)
 }

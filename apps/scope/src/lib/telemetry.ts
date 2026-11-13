@@ -4,7 +4,6 @@ import {
 	DateTime,
 	Duration,
 	Formatter,
-	Number,
 	Option,
 	Order,
 	Predicate,
@@ -187,25 +186,6 @@ export const nowAtom = Atom.make(Stream.mapEffect(Stream.tick(Duration.seconds(3
 // A trace's name in a row or heading: the source's own number when it has one, else the id's short form.
 export function traceLabel(trace: OperationTrace) {
 	return Option.getOrElse(trace.label, () => String.slice(0, 8)(trace.id))
-}
-
-export function ageOf(start: DateTime.Utc, now: DateTime.Utc) {
-	const seconds = Number.max(0, Duration.toSeconds(DateTime.distance(start, now)))
-	if (seconds < 10) return 'now'
-	if (seconds < 60) return `${Number.round(seconds, 0)}s`
-	if (seconds < 3600) return `${Number.round(seconds / 60, 0)}m`
-	if (seconds < 86_400) return `${Number.round(seconds / 3600, 0)}h`
-	return `${Number.round(seconds / 86_400, 0)}d`
-}
-
-export function durationOf(duration: Duration.Duration) {
-	const ms = Duration.toMillis(duration)
-	// Each bound sits where rounding would reach the next unit, so 59.6 s reads 1 min, not 60 s.
-	if (ms < 999.5) return `${Number.round(ms, 0)} ms`
-	if (ms < 9950) return `${Number.round(ms / 1000, 1)} s`
-	if (ms < 59_500) return `${Number.round(ms / 1000, 0)} s`
-	if (ms < 3_570_000) return `${Number.round(ms / 60_000, 0)} min`
-	return `${Number.round(ms / 3_600_000, 1)} h`
 }
 
 export type ActiveOperation = {app: Overview['apps'][number]; operation: Operation}

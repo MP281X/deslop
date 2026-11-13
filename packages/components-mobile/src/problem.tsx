@@ -1,6 +1,6 @@
 import {useAtomValue} from '@effect/atom-react'
 
-import {Boolean, DateTime, Duration, Effect, Number, Option, Stream} from 'effect'
+import {Boolean, DateTime, Effect, Option, Stream} from 'effect'
 
 import {Button, HStack, Image, Menu, Section, Text} from '@expo/ui/swift-ui'
 import {accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator} from '@expo/ui/swift-ui/modifiers'
@@ -9,6 +9,7 @@ import {useId} from 'react'
 
 import {StatusDot} from '#components/status-dot.tsx'
 import {colors, space, text} from '#components/theme.ts'
+import {ageOf} from '#lib/format.ts'
 
 const ageAtom = Atom.family((_id: string) =>
 	Atom.withLabel(
@@ -16,12 +17,7 @@ const ageAtom = Atom.family((_id: string) =>
 			Stream.unwrap(
 				Effect.gen(function* () {
 					const since = yield* DateTime.now
-					return Stream.mapEffect(Stream.tick('1 minute'), () =>
-						Effect.map(
-							DateTime.now,
-							now => `${Number.max(0, Math.floor(Duration.toMinutes(DateTime.distance(since, now))))}m`
-						)
-					)
+					return Stream.mapEffect(Stream.tick('1 minute'), () => Effect.map(DateTime.now, now => ageOf(since, now)))
 				})
 			)
 		),
@@ -45,7 +41,7 @@ export function Problem(props: {label: string; onRetry: () => void; saved?: bool
 					})}
 					<Text modifiers={[text.data, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(props.saved === true, {
-							onFalse: () => Option.getOrElse(AsyncResult.value(age), () => '0m'),
+							onFalse: () => Option.getOrElse(AsyncResult.value(age), () => 'now'),
 							onTrue: () => 'Saved copy'
 						})}
 					</Text>

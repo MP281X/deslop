@@ -1,25 +1,16 @@
 import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 
+import {usdOf} from '@deslop/components-web/format'
+
 import type {AiUsageBreakdown, AiUsageReport} from '#services/ai-metering/schema.ts'
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-const usd = new Intl.NumberFormat('en', {
-	currency: 'USD',
-	maximumFractionDigits: 2,
-	minimumFractionDigits: 2,
-	style: 'currency'
-})
-
-function cost(value: number) {
-	if (value > 0 && value < 0.01) return '<$0.01'
-	return usd.format(value)
-}
 // A sum whose every call had no known price shows a dash, not a zero.
 function costOf(sum: AiUsageBreakdown) {
 	if (sum.costUsd === 0 && sum.unknownCostCalls > 0) return '—'
-	return cost(sum.costUsd)
+	return usdOf(sum.costUsd)
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.

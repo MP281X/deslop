@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Match, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Match, Option, pipe} from 'effect'
 
 import {ArrowRightIcon, CheckIcon, CopyIcon, HourglassIcon, KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -9,6 +9,7 @@ import {Suspense} from 'react'
 import {toQR} from 'toqr'
 
 import {EmptyState} from '@deslop/components-web/fallbacks'
+import {timerOf} from '@deslop/components-web/format'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {ResultError} from '@deslop/components-web/result-error'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -81,12 +82,6 @@ function Code(props: {id: SignInCode}) {
 	)
 }
 
-// What is left until `until`, as m:ss.
-function leftLabel(until: DateTime.Utc, now: DateTime.Utc) {
-	const seconds = Number.max(0, Math.ceil(Duration.toSeconds(DateTime.distance(now, until))))
-	return `${Math.floor(seconds / 60)}:${String.padStart(2, '0')(`${seconds % 60}`)}`
-}
-
 // Its own component, so only the time re-renders each second; only the last minute carries the warning dot.
 function Countdown(props: {expiresAt: DateTime.Utc}) {
 	const now = useAtomSuspense(secondAtom).value
@@ -96,7 +91,7 @@ function Countdown(props: {expiresAt: DateTime.Utc}) {
 				<StatusDot status="warning" />
 			)}
 			<span>
-				<span className="font-mono tabular-nums">{leftLabel(props.expiresAt, now)}</span> left
+				<span className="font-mono tabular-nums">{timerOf(DateTime.distance(now, props.expiresAt))}</span> left
 			</span>
 		</span>
 	)

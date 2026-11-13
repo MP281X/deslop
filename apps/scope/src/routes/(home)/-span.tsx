@@ -1,14 +1,15 @@
-import {Array, Boolean, DateTime, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Option, Record, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
 import {appMarks} from '@deslop/components-web/apps'
 import {cn} from '@deslop/components-web/classes'
+import {clockOf, durationOf} from '@deslop/components-web/format'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
 
-import {attributesOf, durationOf, errorOf} from '#lib/telemetry.ts'
+import {attributesOf, errorOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'
 import type {TraceTree} from '#services/telemetry/schema.ts'
 
@@ -25,14 +26,6 @@ const STATUS: Record<string, string> = {
 	503: 'Unavailable',
 	504: 'Gateway Timeout'
 }
-
-const preciseClock = new Intl.DateTimeFormat(undefined, {
-	fractionalSecondDigits: 3,
-	hour: '2-digit',
-	hourCycle: 'h23',
-	minute: '2-digit',
-	second: '2-digit'
-})
 
 // Effect's HTTP client error as a status line, method and host; anything else stays as the server wrote it.
 function ErrorText(props: {message: string}) {
@@ -171,9 +164,7 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					role="listitem"
 					className="grid-cols-log col-span-2 grid h-8 items-center gap-2.5 max-sm:h-11"
 				>
-					<span className="text-muted-foreground truncate tabular-nums">
-						{preciseClock.format(DateTime.toEpochMillis(log.time))}
-					</span>
+					<span className="text-muted-foreground truncate tabular-nums">{clockOf(log.time, 'millisecond')}</span>
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',
