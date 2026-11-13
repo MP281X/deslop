@@ -6,12 +6,10 @@ import {AiProvider} from '@deslop/runtime/shared/ai'
 import {User} from '@deslop/runtime/shared/auth'
 
 export {AiProvider}
-export const PROVIDER_NAMES = {
-	anthropic: 'Anthropic',
-	'opencode-go': 'OpenCode Go',
-	'opencode-zen': 'OpenCode Zen',
-	openrouter: 'OpenRouter'
-} satisfies Record<AiProvider, string>
+export const PROVIDER_NAMES = {'opencode-go': 'OpenCode Go', 'opencode-zen': 'OpenCode Zen'} satisfies Record<
+	AiProvider,
+	string
+>
 
 export type AiSetKey = typeof AiSetKey.Type
 export const AiSetKey = Schema.Struct({provider: AiProvider, secret: Schema.RedactedFromValue(Schema.NonEmptyString)})

@@ -269,11 +269,11 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			})
 			assert.deepStrictEqual(connectionsResult, {servers: [{id: added.id, tools: 3}]})
 			const ai = Context.get(services, AiProxy)
-			yield* ai.setKey(DEVELOPER.id, 'openrouter', Redacted.make('disposable-fixture-not-an-api-key'))
+			yield* ai.setKey(DEVELOPER.id, 'opencode-zen', Redacted.make('disposable-fixture-not-an-api-key'))
 			assert.lengthOf(yield* ai.list(DEVELOPER.id), 1)
 			for (const entry of [
 				{arguments: {}, name: 'list_mcp_connections'},
-				{arguments: {provider: 'openrouter'}, name: 'remove_ai_key'},
+				{arguments: {provider: 'opencode-zen'}, name: 'remove_ai_key'},
 				{arguments: {server: added.id}, name: 'remove_mcp_server'}
 			]) {
 				const descriptor = pipe(sdkTools, Record.get(entry.name), Option.getOrThrow)
@@ -286,7 +286,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 					)(result.structuredContent)
 					assert.deepStrictEqual(data.servers, [{id: added.id, tools: 3}])
 				} else if (entry.name === 'remove_ai_key') {
-					assert.deepStrictEqual(result.structuredContent, {provider: 'openrouter'})
+					assert.deepStrictEqual(result.structuredContent, {provider: 'opencode-zen'})
 				} else {
 					assert.deepStrictEqual(result.structuredContent, {server: added.id})
 				}

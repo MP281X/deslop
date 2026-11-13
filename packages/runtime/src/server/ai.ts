@@ -1,6 +1,6 @@
 import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
 
-import {Boolean, Config, Context, Effect, Function, Layer, Option, Schema} from 'effect'
+import {Config, Context, Effect, Function, Layer, Option, Schema} from 'effect'
 
 import {AiError} from 'effect/ai'
 import {HttpClient, HttpClientRequest} from 'effect/http'
@@ -45,7 +45,7 @@ export class AiGateway extends Context.Service<
 		yield* Effect.annotateCurrentSpan({maxTokens: options.maxTokens, userId})
 		const gateway = yield* AiGateway
 		const client = yield* AnthropicClient.make({
-			apiUrl: yield* gateway.apiUrl('anthropic'),
+			apiUrl: `${yield* gateway.apiUrl('opencode-zen')}/anthropic`,
 			transformClient: yield* gateway.authorize(userId)
 		})
 		return yield* Effect.provideService(
@@ -67,10 +67,7 @@ export class AiGateway extends Context.Service<
 				yield* Effect.annotateCurrentSpan('provider', provider)
 				return yield* Option.match(gateway, {
 					onNone: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --gateway'})),
-					onSome: url =>
-						Effect.succeed(
-							`${url}/ai/${provider}${Boolean.match(provider === 'openrouter', {onFalse: () => '', onTrue: () => '/v1'})}`
-						)
+					onSome: url => Effect.succeed(`${url}/ai/${provider}`)
 				})
 			})
 			const authorize = Effect.fn('AiGateway.authorize')(function* (userId: UserId) {

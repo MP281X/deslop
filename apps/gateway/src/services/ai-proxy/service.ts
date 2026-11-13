@@ -1,6 +1,5 @@
 import {
 	Array,
-	Boolean,
 	Context,
 	DateTime,
 	Effect,
@@ -38,11 +37,9 @@ import {AiKey, PROVIDER_NAMES} from './schema.ts'
 import {AiMetering} from '#services/ai-metering/service.ts'
 
 const UPSTREAMS = {
-	anthropic: 'https://api.anthropic.com',
 	'opencode-go': 'https://opencode.ai/inference/go',
-	'opencode-zen': 'https://opencode.ai/inference',
-	openrouter: 'https://openrouter.ai/api'
-}
+	'opencode-zen': 'https://opencode.ai/inference'
+} satisfies Record<AiProvider, string>
 const HOP_BY_HOP = [
 	'connection',
 	'keep-alive',
@@ -140,10 +137,7 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 							Schema.Literals(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
 						)(request.method)
 					)(`${UPSTREAMS[provider]}/${rest}`, {
-						headers: Boolean.match(provider === 'anthropic', {
-							onFalse: () => Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`),
-							onTrue: () => Headers.set(headers, 'x-api-key', Redacted.value(foundKey.secret))
-						})
+						headers: Headers.set(headers, 'authorization', `Bearer ${Redacted.value(foundKey.secret)}`)
 					})
 				}
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -257,6 +251,11 @@ export class AiProxy extends Context.Service<AiProxy>()('@deslop/gateway/service
 							PRIMARY KEY (owner, hour, provider)
 						) STRICT, WITHOUT ROWID
 					`
+				}),
+				'0002_opencode_only': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`DELETE FROM ai_keys WHERE provider IN ('anthropic', 'openrouter')`
+					yield* sql`DELETE FROM ai_usage WHERE provider IN ('anthropic', 'openrouter')`
 				})
 			}),
 			table: 'ai_migrations'

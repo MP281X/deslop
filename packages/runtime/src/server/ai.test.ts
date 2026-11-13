@@ -34,10 +34,11 @@ it.layer(NodeServices.layer)(test => {
 				)
 			)
 			const gateway = Context.get(context, AiGateway)
-			assert.instanceOf(yield* Effect.flip(gateway.apiUrl('anthropic')), AiUnavailableError)
+			assert.instanceOf(yield* Effect.flip(gateway.apiUrl('opencode-zen')), AiUnavailableError)
 			assert.deepEqual(
-				yield* (yield* (yield* gateway.authorize(UserId.make('anyone')))(client).get('http://localhost/ai/anthropic'))
-					.json,
+				yield* (yield* (yield* gateway.authorize(UserId.make('anyone')))(client).get(
+					'http://localhost/ai/opencode-zen'
+				)).json,
 				{authorization: ''}
 			)
 		})

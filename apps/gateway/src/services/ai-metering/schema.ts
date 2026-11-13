@@ -84,6 +84,7 @@ export const Usage = Schema.Struct({
 		})
 	),
 	model: Schema.OptionFromOptionalKey(AiModelId),
+	modelVersion: Schema.OptionFromOptionalKey(AiModelId),
 	usage: Schema.OptionFromOptionalKey(
 		Schema.OptionFromNullOr(
 			Schema.Struct({
@@ -102,5 +103,14 @@ export const Usage = Schema.Struct({
 				)
 			})
 		)
+	),
+	usageMetadata: Schema.OptionFromOptionalKey(
+		Schema.Struct({
+			cachedContentTokenCount: Schema.OptionFromOptionalKey(Schema.Finite),
+			candidatesTokenCount: Schema.OptionFromOptionalKey(Schema.Finite),
+			cost: Schema.OptionFromOptionalKey(Schema.Finite),
+			promptTokenCount: Schema.OptionFromOptionalKey(Schema.Finite),
+			thoughtsTokenCount: Schema.OptionFromOptionalKey(Schema.Finite)
+		})
 	)
 })

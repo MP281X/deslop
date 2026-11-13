@@ -308,9 +308,6 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
-      '@effect/sql-sqlite-node':
-        specifier: latest
-        version: 4.1.4(effect@4.1.4)
       '@modelcontextprotocol/client':
         specifier: latest
         version: 2.4.0
@@ -484,9 +481,6 @@ importers:
       '@deslop/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@effect/ai-openrouter':
-        specifier: latest
-        version: 4.1.4(effect@4.1.4)
       '@effect/atom-react':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(react@19.3.1)(scheduler@0.27.0)
@@ -1235,11 +1229,6 @@ packages:
 
   '@effect/ai-anthropic@4.1.4':
     resolution: {integrity: sha512-VDcsyL3k76HhF7YqH8z0gQ0bUybX4ti5RHv3JadDXZvEgNpvUT3p4YBssvKR2HAGa7NXr9yfmFedRilhQM7tdQ==}
-    peerDependencies:
-      effect: ^4.1.4
-
-  '@effect/ai-openrouter@4.1.4':
-    resolution: {integrity: sha512-xnubaIw9iGhHUcjSDVgwzcelm2bftBmTpn9lxywpJEO7KBbErqXYmLhXyARo6KH8Tz7Egut52360JEsTfWhkfg==}
     peerDependencies:
       effect: ^4.1.4
 
@@ -6772,10 +6761,6 @@ snapshots:
   '@dotenvx/primitives@0.8.0': {}
 
   '@effect/ai-anthropic@4.1.4(effect@4.1.4)':
-    dependencies:
-      effect: 4.1.4
-
-  '@effect/ai-openrouter@4.1.4(effect@4.1.4)':
     dependencies:
       effect: 4.1.4
 

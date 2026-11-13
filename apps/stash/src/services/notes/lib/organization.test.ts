@@ -49,14 +49,14 @@ it.effect(
 	'names the missing provider key that the gateway reports',
 	Effect.fnUntraced(function* () {
 		const gateway = AiGateway.of({
-			apiUrl: () => Effect.succeed('https://gateway.mp281x.xyz/ai/anthropic'),
+			apiUrl: () => Effect.succeed('https://gateway.mp281x.xyz/ai/opencode-zen'),
 			authorize: () => Effect.succeed(Function.identity)
 		})
 		const client = HttpClient.make(request =>
 			Effect.succeed(
 				HttpClientResponse.fromWeb(
 					request,
-					Response.json({error: {message: 'Add an Anthropic key in Gateway'}}, {status: 402})
+					Response.json({error: {message: 'Add your OpenCode Zen key in Gateway'}}, {status: 402})
 				)
 			)
 		)
@@ -64,7 +64,7 @@ it.effect(
 			(yield* open(gateway, client)).organize(NOTE.requester, {images: [], note: NOTE, tags: []})
 		)
 		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The gateway's instruction must reach the note unchanged.
-		assert.strictEqual(error.message, 'Add an Anthropic key in Gateway')
+		assert.strictEqual(error.message, 'Add your OpenCode Zen key in Gateway')
 	})
 )
 

@@ -352,7 +352,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	}
 	const provider = HttpClient.make(request =>
 		Effect.gen(function* () {
-			if (new URL(request.url).origin === 'https://api.anthropic.com') {
+			if (new URL(request.url).origin === 'https://opencode.ai') {
 				return HttpClientResponse.fromWeb(
 					request,
 					Response.json({usage: {cost: 0.123, input_tokens: 10, output_tokens: 5}})
@@ -864,7 +864,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'reports a storage failure as temporarily unavailable',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* gateway.setKey(SESSION, 'anthropic', 'sk-octocat')
+			yield* gateway.setKey(SESSION, 'opencode-zen', 'sk-octocat')
 			yield* gateway.sql`UPDATE ai_keys SET provider = 'retired'`
 			const failure = yield* Effect.flip(gateway.keys(SESSION))
 			assert.isTrue(Schema.is(AuthError)(failure))
@@ -1101,7 +1101,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'streams AI usage only to the person whose calls it counts',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
+			yield* gateway.setKey('session=stranger', 'opencode-zen', 'sk-stranger')
 			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			yield* pipe(
@@ -1116,7 +1116,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.deepStrictEqual((yield* Queue.take(mine)).report.byProvider, [])
 			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [])
-			const called = yield* send(gateway.web, '/ai/anthropic/json', {
+			const called = yield* send(gateway.web, '/ai/opencode-zen/json', {
 				body: '{"model":"test"}',
 				headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
 				method: 'POST'
@@ -1126,7 +1126,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* TestClock.adjust('1 second')
 			yield* TestClock.adjust('1 second')
 			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [
-				{costUsd: 0.123, name: 'anthropic', unknownCostCalls: 0}
+				{costUsd: 0.123, name: 'opencode-zen', unknownCostCalls: 0}
 			])
 			// Another person's call never reaches this reader, not even as a tick.
 			assert.strictEqual(yield* Queue.size(mine), 0)
@@ -1502,19 +1502,19 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'removes only the caller’s own AI key through the MCP tool',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* gateway.setKey(SESSION, 'anthropic', 'sk-octocat')
-			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
+			yield* gateway.setKey(SESSION, 'opencode-zen', 'sk-octocat')
+			yield* gateway.setKey('session=stranger', 'opencode-zen', 'sk-stranger')
 			assert.deepStrictEqual(
 				Array.map(yield* gateway.keys(SESSION), key => key.last4),
 				['ocat']
 			)
-			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_ai_key', {provider: 'anthropic'})).status, 200)
+			assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'remove_ai_key', {provider: 'opencode-zen'})).status, 200)
 			assert.deepStrictEqual(yield* gateway.keys(SESSION), [])
 			assert.deepStrictEqual(
 				Array.map(yield* gateway.keys('session=stranger'), key => key.last4),
 				['nger']
 			)
-			assert.strictEqual((yield* callTool(gateway.web, '', 'remove_ai_key', {provider: 'anthropic'})).status, 401)
+			assert.strictEqual((yield* callTool(gateway.web, '', 'remove_ai_key', {provider: 'opencode-zen'})).status, 401)
 		})
 	)
 	test.effect(
@@ -1544,10 +1544,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
 			const added = yield* gateway.add('https://public.example.com/mcp')
-			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
+			yield* gateway.setKey('session=stranger', 'opencode-zen', 'sk-stranger')
 			const calls = Effect.gen(function* () {
 				yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'hour'}, name: `${added.id}__search`})
-				const response = yield* send(gateway.web, '/ai/anthropic/json', {
+				const response = yield* send(gateway.web, '/ai/opencode-zen/json', {
 					body: '{"model":"test"}',
 					headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
 					method: 'POST'

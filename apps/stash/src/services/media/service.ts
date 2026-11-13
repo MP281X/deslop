@@ -1,7 +1,5 @@
 import {execPath} from 'node:process'
 
-import {OpenRouterClient} from '@effect/ai-openrouter'
-
 import {
 	Array,
 	Boolean,
@@ -25,7 +23,7 @@ import {
 } from 'effect'
 
 import {Base64} from 'effect/encoding'
-import {HttpClient} from 'effect/http'
+import {HttpClient, HttpClientRequest, HttpClientResponse} from 'effect/http'
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {AiGateway} from '@deslop/runtime/server/ai'
@@ -41,10 +39,17 @@ import {
 	mediaMarkdown
 } from '#services/media/lib/utils.ts'
 import type {Still} from '#services/media/schema.ts'
-import {CreatorCaptions, MediaError, Metadata, Probe, Transcript} from '#services/media/schema.ts'
+import {
+	CreatorCaptions,
+	MediaError,
+	Metadata,
+	Probe,
+	Transcript,
+	TranscriptionResponse
+} from '#services/media/schema.ts'
 import {isYouTube} from '#services/notes/lib/utils.ts'
 
-const MAX_WHISPER_DURATION = Duration.hours(2)
+const MAX_TRANSCRIPTION_DURATION = Duration.hours(2)
 
 // When set, every read of a source exits through this proxy, so sites never see the server's address; `{session}` keeps one exit address per request.
 export const sourceProxy = Config.option(Config.String('STASH_PROXY'))
@@ -85,7 +90,7 @@ export class Media extends Context.Service<
 					{concurrency: 'unbounded'}
 				)
 			})
-			const whisper = yield* Semaphore.make(1)
+			const transcription = yield* Semaphore.make(1)
 			const gateway = yield* AiGateway
 			const http = yield* HttpClient.HttpClient
 
@@ -184,26 +189,20 @@ export class Media extends Context.Service<
 						seconds,
 						value =>
 							Duration.isGreaterThanOrEqualTo(value, Duration.seconds(1)) &&
-							Duration.isLessThanOrEqualTo(value, MAX_WHISPER_DURATION)
+							Duration.isLessThanOrEqualTo(value, MAX_TRANSCRIPTION_DURATION)
 					)
 				) {
 					return Option.none()
 				}
 				const speech = yield* Effect.mapError(
-					Effect.gen(function* () {
-						return yield* Effect.provideService(
-							OpenRouterClient.make({
-								apiUrl: yield* gateway.apiUrl('openrouter'),
-								transformClient: yield* gateway.authorize(userId)
-							}),
-							HttpClient.HttpClient,
-							http
-						)
-					}),
+					Effect.all(
+						{authorize: gateway.authorize(userId), url: gateway.apiUrl('opencode-zen')},
+						{concurrency: 'unbounded'}
+					),
 					cause => MediaError.make({cause: Redacted.make(cause), message: cause.message})
 				)
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
-				// Five-minute lossless chunks stay below upload limits and the provider's one-minute processing timeout.
+				// Five-minute lossless chunks bound the inline audio payload and each transcription request.
 				const extracted = yield* run('ffmpeg', [
 					'-v',
 					'error',
@@ -234,7 +233,7 @@ export class Media extends Context.Service<
 				if (extracted.exitCode !== 0) {
 					return yield* MediaError.make({message: `ffmpeg cannot decode the audio: ${extracted.stderr}`})
 				}
-				return yield* whisper.withPermit(
+				return yield* transcription.withPermit(
 					Effect.gen(function* () {
 						const files = pipe(
 							yield* fs.readDirectory(work),
@@ -248,29 +247,48 @@ export class Media extends Context.Service<
 									Effect.fnUntraced(function* (file) {
 										const duration = Option.getOrThrow(yield* lengthOf(path.join(work, file)))
 										const response = yield* pipe(
-											speech.client.createAudioTranscriptions({
-												payload: {
-													input_audio: {data: Base64.encode(yield* fs.readFile(path.join(work, file))), format: 'flac'},
-													model: 'openai/whisper-large-v3-turbo',
-													response_format: 'verbose_json',
-													timestamp_granularities: ['segment']
+											HttpClientRequest.post(`${speech.url}/google/v1beta/models/gemini-3.8-flash:generateContent`),
+											HttpClientRequest.bodyJson({
+												contents: [
+													{
+														parts: [
+															{
+																text: 'Transcribe all spoken words verbatim in their original language as sentence segments with start times in seconds from the beginning of this audio chunk. Do not summarize, translate or invent speech. For silence or music without speech, return no segments.'
+															},
+															{
+																inlineData: {
+																	data: Base64.encode(yield* fs.readFile(path.join(work, file))),
+																	mimeType: 'audio/flac'
+																}
+															}
+														],
+														role: 'user'
+													}
+												],
+												generationConfig: {
+													responseJsonSchema: Schema.toJsonSchemaDocument(Transcript).schema,
+													responseMimeType: 'application/json'
 												}
 											}),
-											Effect.flatMap(Schema.decodeEffect(Transcript)),
+											Effect.flatMap(speech.authorize(HttpClient.filterStatusOk(http)).execute),
+											Effect.flatMap(HttpClientResponse.schemaBodyJson(TranscriptionResponse)),
+											Effect.flatMap(generated =>
+												Schema.decodeEffect(Schema.fromJsonString(Transcript))(
+													pipe(
+														generated.candidates[0].content.parts,
+														Array.filter(part => part.thought !== true),
+														Array.map(part => part.text),
+														Array.join('')
+													)
+												)
+											),
 											Effect.timeout('1 minute'),
 											Effect.mapError(cause =>
-												MediaError.make({cause: Redacted.make(cause), message: 'Whisper Turbo transcription failed.'})
+												MediaError.make({cause: Redacted.make(cause), message: 'OpenCode Zen transcription failed.'})
 											),
 											Effect.withSpan('Media.transcribeAudio')
 										)
-										return {
-											duration,
-											segments: pipe(
-												response.segments,
-												Option.filter(Array.isReadonlyArrayNonEmpty),
-												Option.getOrElse(() => [{start: Duration.zero, text: response.text}])
-											)
-										}
+										return {duration, segments: response.segments}
 									}),
 									{concurrency: 1}
 								),
@@ -355,8 +373,8 @@ export class Media extends Context.Service<
 					if (Option.isSome(captioned.transcript)) return captioned.transcript
 					if (captioned.blocked) break
 				}
-				if (Option.exists(media.duration, seconds => Duration.isGreaterThan(seconds, MAX_WHISPER_DURATION))) {
-					yield* Effect.logInfo('No captions, and the audio is too long for Whisper')
+				if (Option.exists(media.duration, seconds => Duration.isGreaterThan(seconds, MAX_TRANSCRIPTION_DURATION))) {
+					yield* Effect.logInfo('No captions, and the audio is too long to transcribe')
 					return Option.none()
 				}
 
@@ -391,8 +409,8 @@ export class Media extends Context.Service<
 					)
 				)
 				const seconds = yield* Option.match(media.duration, {onNone: () => lengthOf(audio), onSome: Effect.succeedSome})
-				if (!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, MAX_WHISPER_DURATION))) {
-					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length for Whisper')
+				if (!Option.exists(seconds, length => Duration.isLessThanOrEqualTo(length, MAX_TRANSCRIPTION_DURATION))) {
+					yield* Effect.logInfo('No captions, and the audio is too long or of unknown length to transcribe')
 					return Option.none()
 				}
 				return yield* listen(userId, {file: audio, seconds})

@@ -1,6 +1,6 @@
 # Gateway intent
 
-- **AI.** Calls pass through unchanged with the caller's signed access token and provider key. The key figures read that person's hourly ledger.
+- **AI.** OpenCode Go and OpenCode Zen are the only keyed providers. Calls pass through unchanged with the caller's signed access token and provider key. The key figures read that person's hourly ledger.
 - **MCP.** Connection and key removal tools are only for explicit user-requested maintenance or credential revocation, not routine page actions.
 - **Upstreams.** One scoped session per server serves discovery and calls. Effect's client handles its supported protocol revisions; the SDK is retained for OAuth discovery/authorization and servers that negotiate a revision Effect cannot speak. During client selection, HTTP 4xx other than 401/403 can mean an older server rejected the modern revision, so they take the legacy path; authentication and authorization answers keep their meaning. A 404 session rejection or a 401 authorization rejection can re-establish a session; an ambiguous call failure never retries the action.
 - **Callers.** Calls and discovery on one upstream session run concurrently. Each request carries its own caller's bearer; only session acquisition and invalidation share a lock.

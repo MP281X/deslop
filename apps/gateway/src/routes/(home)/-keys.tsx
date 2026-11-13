@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Redacted, String, pipe} from 'effect'
+import {Array, Boolean, Option, Redacted} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -19,35 +19,16 @@ import {
 import {Field, FieldLabel} from '@deslop/components-web/ui/field'
 import {Input} from '@deslop/components-web/ui/input'
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '@deslop/components-web/ui/select'
-import {AnthropicBlack} from '@deslop/components-web/ui/svgs/anthropicBlack'
-import {AnthropicWhite} from '@deslop/components-web/ui/svgs/anthropicWhite'
 import {Opencode} from '@deslop/components-web/ui/svgs/opencode'
 import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
-import {OpenrouterDark} from '@deslop/components-web/ui/svgs/openrouterDark'
-import {OpenrouterLight} from '@deslop/components-web/ui/svgs/openrouterLight'
 
 import {setKeyAtom} from '#lib/gateway.ts'
 import {AiProvider, PROVIDER_NAMES} from '#services/ai-proxy/schema.ts'
 
 export const PROVIDERS = AiProvider.literals
 
-export function ProviderMark(props: {provider: AiProvider}) {
-	return pipe(
-		Match.value(props.provider),
-		Match.when('anthropic', () => <ThemedMark light={AnthropicBlack} dark={AnthropicWhite} className="size-4" />),
-		Match.whenOr('opencode-go', 'opencode-zen', () => (
-			<ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />
-		)),
-		Match.when('openrouter', () => <ThemedMark light={OpenrouterLight} dark={OpenrouterDark} className="size-4" />),
-		Match.exhaustive
-	)
-}
-
-// The key a paste offered: its prefix names the provider when it can, otherwise the flow's first provider.
-export function providerOfKey(key: string) {
-	if (String.startsWith('sk-ant-')(key)) return 'anthropic'
-	if (String.startsWith('sk-or-')(key)) return 'openrouter'
-	return PROVIDERS[0]
+export function ProviderMark() {
+	return <ThemedMark light={Opencode} dark={OpencodeDark} className="size-4" />
 }
 
 // One dialog adds or replaces a key: the provider, then the secret, which never comes back; it closes once saved.

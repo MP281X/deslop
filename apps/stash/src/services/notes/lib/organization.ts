@@ -99,7 +99,7 @@ export class Organizer extends Context.Service<
 			return Organizer.of({
 				organize: Effect.fn('Organizer.organize')(
 					function* (userId, input) {
-						const anthropic = yield* Effect.provideContext(
+						const model = yield* Effect.provideContext(
 							AiGateway.languageModel(userId, {maxTokens: 32_000}),
 							modelContext
 						)
@@ -136,7 +136,7 @@ export class Organizer extends Context.Service<
 							],
 							'\n\n'
 						)
-						const response = yield* anthropic.generateObject({
+						const response = yield* model.generateObject({
 							prompt: [
 								{content: INSTRUCTIONS, role: 'system'},
 								{

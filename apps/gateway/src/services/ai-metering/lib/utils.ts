@@ -13,6 +13,7 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 			Option.flatMap(usage, value => value.cache_read_input_tokens),
 			Option.orElse(() => Option.flatMap(messageUsage, value => value.cache_read_input_tokens)),
 			Option.orElse(() => Option.flatMap(details, value => value.cached_tokens)),
+			Option.orElse(() => Option.flatMap(decoded.usageMetadata, value => value.cachedContentTokenCount)),
 			Option.getOrElse(() => entry.cacheReadTokens)
 		)
 		const cacheWriteTokens = pipe(
@@ -24,6 +25,7 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 		const cost = pipe(
 			usage,
 			Option.flatMap(value => value.cost),
+			Option.orElse(() => Option.flatMap(decoded.usageMetadata, value => value.cost)),
 			Option.orElse(() => decoded.cost)
 		)
 		return {
@@ -43,10 +45,18 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 						Option.map(prompt => Number.max(0, prompt - cacheReadTokens - cacheWriteTokens))
 					)
 				),
+				Option.orElse(() =>
+					pipe(
+						decoded.usageMetadata,
+						Option.flatMap(value => value.promptTokenCount),
+						Option.map(prompt => Number.max(0, prompt - cacheReadTokens))
+					)
+				),
 				Option.getOrElse(() => entry.inputTokens)
 			),
 			model: pipe(
 				decoded.model,
+				Option.orElse(() => decoded.modelVersion),
 				Option.orElse(() => Option.flatMap(decoded.message, value => value.model)),
 				Option.orElse(() => entry.model)
 			),
@@ -54,6 +64,14 @@ export function readUsage(text: string, entry: AiUsageEntry) {
 				Option.flatMap(usage, value => value.output_tokens),
 				Option.orElse(() => Option.flatMap(messageUsage, value => value.output_tokens)),
 				Option.orElse(() => Option.flatMap(usage, value => value.completion_tokens)),
+				Option.orElse(() =>
+					Option.map(
+						decoded.usageMetadata,
+						value =>
+							Option.getOrElse(value.candidatesTokenCount, () => 0) +
+							Option.getOrElse(value.thoughtsTokenCount, () => 0)
+					)
+				),
 				Option.getOrElse(() => entry.outputTokens)
 			)
 		} satisfies AiUsageEntry

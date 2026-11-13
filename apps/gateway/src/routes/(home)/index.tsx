@@ -27,7 +27,7 @@ import {countOf} from '@deslop/runtime/shared/format'
 
 import {addAtom, aiKeysAtom, aiUsageAtom, connectAtom, mcpUsageAtom, serversAtom, setKeyAtom} from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
-import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
+import {AddKeyDialog, PROVIDERS, ProviderMark} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import type {AiUsageReport} from '#services/ai-metering/schema.ts'
@@ -237,7 +237,7 @@ function KeyRow(props: {
 			<Item size="row">
 				<ItemMedia>
 					<span className="flex size-4 items-center justify-center">
-						<ProviderMark provider={props.provider} />
+						<ProviderMark />
 					</span>
 				</ItemMedia>
 				<ItemContent>
@@ -368,7 +368,7 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 		const value = String.trim(typed)
 		if (value === '' || busy) return
 		if (String.startsWith('sk-')(value)) {
-			props.onKey(providerOfKey(value), value)
+			props.onKey(PROVIDERS[0], value)
 			send({_tag: 'Typed', url: ''})
 			return
 		}

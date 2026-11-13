@@ -56,8 +56,17 @@ export const CreatorCaptions = Schema.Struct({
 
 export type Transcript = typeof Transcript.Type
 export const Transcript = Schema.Struct({
-	segments: Schema.OptionFromOptionalKey(
-		Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
-	),
-	text: Schema.String
+	segments: Schema.Array(Schema.Struct({start: DurationFromSeconds, text: Schema.String}))
+})
+
+export type TranscriptionResponse = typeof TranscriptionResponse.Type
+export const TranscriptionResponse = Schema.Struct({
+	candidates: Schema.NonEmptyArray(
+		Schema.Struct({
+			content: Schema.Struct({
+				parts: Schema.Array(Schema.Struct({text: Schema.String, thought: Schema.optional(Schema.Boolean)}))
+			}),
+			finishReason: Schema.Literal('STOP')
+		})
+	)
 })
