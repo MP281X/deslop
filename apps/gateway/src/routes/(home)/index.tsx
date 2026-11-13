@@ -2,7 +2,7 @@ import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import {Array, Boolean, Number, Option, Order, Schema, String, pipe} from 'effect'
 
-import {CheckIcon, CopyIcon, HardDrivesIcon, KeyIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
+import {CheckIcon, CopyIcon, HardDrivesIcon, LinkIcon, WrenchIcon} from '@phosphor-icons/react'
 import {CatchBoundary, createFileRoute, getRouteApi} from '@tanstack/react-router'
 import {useMachineResult} from '@typeonce/effect-machine-react'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -12,7 +12,7 @@ import {Suspense, useState} from 'react'
 import {AppBar, AppBarChoice} from '@deslop/components-web/app-bar'
 import {APP_HUES, appMarks} from '@deslop/components-web/apps'
 import {Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {ItemListHeading, RowsSkeleton} from '@deslop/components-web/item-list'
+import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
 import {StatusDot} from '@deslop/components-web/status-dot'
@@ -314,7 +314,6 @@ function List(props: {period: Period}) {
 	return (
 		<Card size="list">
 			<div role="list" aria-label="MCP servers and AI keys">
-				<ItemListHeading icon={<HardDrivesIcon />}>Servers</ItemListHeading>
 				<CatchBoundary getResetKey={() => 'servers'} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
@@ -326,7 +325,6 @@ function List(props: {period: Period}) {
 						<ServerRows period={props.period} />
 					</Suspense>
 				</CatchBoundary>
-				<ItemListHeading icon={<KeyIcon />}>Keys</ItemListHeading>
 				<CatchBoundary getResetKey={() => 'keys'} errorComponent={ReadFailure}>
 					<Suspense
 						fallback={
