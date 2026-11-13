@@ -7,7 +7,7 @@ const ERROR_STATE =
 
 export const noHeroFailure = question(
 	'component',
-	'Does `code` render an error state as a hero, with an illustration, an oversized heading or a large centred layout?',
+	'Does `code` render an error state as a hero, with an illustration or image, or a heading larger than body text?',
 	{
 		gate: unit => unit.jsx && matches(ERROR_STATE)(unit.text),
 		message: 'Show a blocking failure compactly: an icon, a short reason and a destructive Retry.',
@@ -15,7 +15,8 @@ export const noHeroFailure = question(
 			cases: [
 				'A compact error: an icon, a short reason and a Retry, such as an Alert',
 				'An empty state, or a signed-out explanation that is not an error',
-				'A missing Retry button on its own'
+				'A missing Retry button on its own',
+				'A compact failure centred in an otherwise empty screen or pane: centring alone is not a hero'
 			],
 			example: `
 				function LoadFailed(props: {retry: () => void}) {
@@ -29,9 +30,7 @@ export const noHeroFailure = question(
 			`
 		},
 		yes: {
-			cases: [
-				'An error branch with a large image or illustration, a heading larger than body text, or a padded centred hero layout'
-			],
+			cases: ['An error branch with an image or illustration, or a heading larger than body text'],
 			example: `
 				function LoadFailed() {
 					return (

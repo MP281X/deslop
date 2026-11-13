@@ -25,34 +25,27 @@ import {KeyValueStore, UserDirectories} from 'effect/persistence'
 import {ChildProcess} from 'effect/process'
 
 import {noCompatibilityCode} from '#judge/no-compatibility-code.ts'
+import {noContradictedPromise} from '#judge/no-contradicted-promise.ts'
 import {noControlForWrongJob} from '#judge/no-control-for-wrong-job.ts'
 import {noDetachedActionError} from '#judge/no-detached-action-error.ts'
 import {noDroppedContent} from '#judge/no-dropped-content.ts'
 import {noHeroFailure} from '#judge/no-hero-failure.ts'
-import {noHiddenSideEffect} from '#judge/no-hidden-side-effect.ts'
 import {noImpossibleState} from '#judge/no-impossible-state.ts'
 import {noInternalsTest} from '#judge/no-internals-test.ts'
 import {noLibraryTest} from '#judge/no-library-test.ts'
 import {noLogicInIo} from '#judge/no-logic-in-io.ts'
-import {noMisleadingName} from '#judge/no-misleading-name.ts'
 import {noMultiBehaviorTest} from '#judge/no-multi-behavior-test.ts'
-import {noOneShotInterpreter} from '#judge/no-one-shot-interpreter.ts'
 import {noReinventedHelper} from '#judge/no-reinvented-helper.ts'
-import {noRepeatedBlock} from '#judge/no-repeated-block.ts'
 import {noRepeatedFact} from '#judge/no-repeated-fact.ts'
 import {noRepeatedTextAction} from '#judge/no-repeated-text-action.ts'
 import {noRestatingComment} from '#judge/no-restating-comment.ts'
-import {noRoundaboutComputation} from '#judge/no-roundabout-computation.ts'
-import {noRoundtrip} from '#judge/no-roundtrip.ts'
 import {noSelfFetchingComponent} from '#judge/no-self-fetching-component.ts'
 import {noSilentFallback} from '#judge/no-silent-fallback.ts'
-import {noStaleComment} from '#judge/no-stale-comment.ts'
 import {noStringlyTyped} from '#judge/no-stringly-typed.ts'
 import {noTautologicalExpectation} from '#judge/no-tautological-expectation.ts'
 import {noTitleMismatchTest} from '#judge/no-title-mismatch-test.ts'
 import {noUninvalidatedWrite} from '#judge/no-uninvalidated-write.ts'
 import {noUnmountedChrome} from '#judge/no-unmounted-chrome.ts'
-import {noUnrelatedJobs} from '#judge/no-unrelated-jobs.ts'
 import {noVacuousAssertion} from '#judge/no-vacuous-assertion.ts'
 import {noVagueName} from '#judge/no-vague-name.ts'
 import {noViewStateInMemory} from '#judge/no-view-state-in-memory.ts'
@@ -75,34 +68,27 @@ const TACTICS =
 
 const QUESTIONS = {
 	'no-compatibility-code': noCompatibilityCode,
+	'no-contradicted-promise': noContradictedPromise,
 	'no-control-for-wrong-job': noControlForWrongJob,
 	'no-detached-action-error': noDetachedActionError,
 	'no-dropped-content': noDroppedContent,
 	'no-hero-failure': noHeroFailure,
-	'no-hidden-side-effect': noHiddenSideEffect,
 	'no-impossible-state': noImpossibleState,
 	'no-internals-test': noInternalsTest,
 	'no-library-test': noLibraryTest,
 	'no-logic-in-io': noLogicInIo,
-	'no-misleading-name': noMisleadingName,
 	'no-multi-behavior-test': noMultiBehaviorTest,
-	'no-one-shot-interpreter': noOneShotInterpreter,
 	'no-reinvented-helper': noReinventedHelper,
-	'no-repeated-block': noRepeatedBlock,
 	'no-repeated-fact': noRepeatedFact,
 	'no-repeated-text-action': noRepeatedTextAction,
 	'no-restating-comment': noRestatingComment,
-	'no-roundabout-computation': noRoundaboutComputation,
-	'no-roundtrip': noRoundtrip,
 	'no-self-fetching-component': noSelfFetchingComponent,
 	'no-silent-fallback': noSilentFallback,
-	'no-stale-comment': noStaleComment,
 	'no-stringly-typed': noStringlyTyped,
 	'no-tautological-expectation': noTautologicalExpectation,
 	'no-title-mismatch-test': noTitleMismatchTest,
 	'no-uninvalidated-write': noUninvalidatedWrite,
 	'no-unmounted-chrome': noUnmountedChrome,
-	'no-unrelated-jobs': noUnrelatedJobs,
 	'no-vacuous-assertion': noVacuousAssertion,
 	'no-vague-name': noVagueName,
 	'no-view-state-in-memory': noViewStateInMemory

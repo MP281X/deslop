@@ -2,14 +2,12 @@ import {question} from '#lib/question.ts'
 
 export const noVacuousAssertion = question(
 	'test',
-	'Does the test in `code` rely only on assertions that would still pass if the code under test did nothing or returned nothing?',
+	'Does the test in `code` check its promised outcome only with assertions that would still pass if the code under test did nothing or returned nothing?',
 	{
-		// A written-out expected value that pins an outcome fails when the code did nothing.
-		gate: unit => !unit.exactExpectation,
 		message: 'Assert the expected outcome itself, so the test fails when the behavior is missing.',
 		no: {
 			cases: [
-				'Tests that also assert exact values, counts or members',
+				'Tests that also assert the exact values, counts or members of the outcome the title promises; an exact assertion about something else does not count',
 				'A test whose promised behavior is that nothing happens or nothing is returned',
 				'Assertions inside helpers `code` does not show',
 				'An assertion whose two arguments are written the same, with no call: lint reports it'
