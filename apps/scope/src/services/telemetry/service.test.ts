@@ -1,4 +1,5 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -6,10 +7,8 @@ import {
 	Clock,
 	Context,
 	DateTime,
-	Deferred,
 	Effect,
 	Exit,
-	FileSystem,
 	Fiber,
 	Function,
 	Layer,
@@ -20,13 +19,16 @@ import {
 	Schema,
 	Stream,
 	String,
+	Struct,
 	pipe
 } from 'effect'
+import type {Duration} from 'effect'
 
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
+import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
-import {Entry, LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
+import {LogsRequest, TelemetryError, TracesRequest} from '#services/telemetry/schema.ts'
 import type {Overview, ReadTraceAnswer, TracesAnswer} from '#services/telemetry/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
@@ -35,6 +37,11 @@ const NOW = 1_781_870_000_000
 const START = `${BigInt(NOW) * 1_000_000n}`
 
 const platform = Layer.merge(NodeCrypto.layer, NodeServices.layer)
+
+// One app's database, kept in memory; a test that restarts Scope builds it once and opens Telemetry over it again.
+const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)
+
+type Database = Context.Context<Layer.Success<typeof memory>>
 
 function kept(telemetry: Telemetry['Service']) {
 	return Effect.map(telemetry.findTraces({errors: false, limit: 50, since: '3d', sort: 'recent'}), page =>
@@ -128,31 +135,6 @@ function span(input: SpanInput) {
 	}
 }
 
-function stored(index: number) {
-	const traceId = String.padStart(32, '0')((index + 1).toString(16))
-	const spanId = String.padStart(16, '0')((index + 1).toString(16))
-	return Entry.make({
-		denied: false,
-		durationMs: 1,
-		id: `${traceId}:${spanId}`,
-		name: 'stored.op',
-		payload: span({end: `${BigInt(START) + 1_000_000n}`, name: 'stored.op', spanId, start: START, traceId}),
-		receivedAt: NOW,
-		resource: {
-			attributes: [
-				{key: 'service.name', value: {stringValue: '@deslop/stored-server'}},
-				{key: 'scope.runtime', value: {stringValue: 'server'}}
-			]
-		},
-		service: '@deslop/stored-server',
-		signal: 'trace',
-		spanId,
-		status: 0,
-		time: START,
-		traceId
-	})
-}
-
 function versioned(service: string, version: string, spans: readonly ReturnType<typeof span>[]) {
 	return {
 		resource: {
@@ -239,18 +221,31 @@ function logs(service: string, records: readonly ReturnType<typeof log>[], runti
 	})
 }
 
-function loaded(directory: string) {
-	return Effect.gen(function* () {
-		const telemetry = Context.get(yield* Layer.build(Telemetry.layer(directory)), Telemetry)
-		yield* telemetry.ready
-		return telemetry
-	})
+// Scope started over the database, as a restart opens the one it left.
+function loaded(database: Database) {
+	return Effect.map(
+		Layer.build(pipe(Telemetry.layer, Layer.provide(Layer.succeedContext(database)))),
+		Context.get(Telemetry)
+	)
 }
 
 function fresh() {
-	return Effect.gen(function* () {
-		return yield* loaded(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())
-	})
+	return Effect.flatMap(Layer.build(memory), loaded)
+}
+
+// What the database holds, read past the service: each table's rows by key.
+function storedKeys(database: Database) {
+	return Effect.provideContext(
+		Effect.gen(function* () {
+			const sql = yield* SqlClient.SqlClient
+			return {
+				logs: Array.map(yield* sql<{id: string}>`SELECT id FROM logs ORDER BY id`, row => row.id),
+				spans: Array.map(yield* sql<{traceId: string}>`SELECT traceId FROM spans ORDER BY traceId`, row => row.traceId),
+				traces: Array.map(yield* sql<{id: string}>`SELECT id FROM traces ORDER BY id`, row => row.id)
+			}
+		}),
+		database
+	)
 }
 
 function pickTrace(answer: TracesAnswer) {
@@ -270,47 +265,44 @@ function pickTrace(answer: TracesAnswer) {
 
 it.layer(platform)(test => {
 	test.effect(
-		'shares live recomputes across viewers and stops computing after the last viewer leaves',
+		'reads the overview again only after a committed write and stops when the last viewer leaves',
 		Effect.fnUntraced(function* () {
 			const clock = yield* Clock.Clock
 			const reads = yield* Ref.make(0)
-			const telemetry = Context.get(
-				yield* Layer.build(
-					pipe(
-						Telemetry.layer(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()),
-						Layer.provide(
-							Layer.succeed(Clock.Clock, {
-								currentTimeMillis: Effect.tap(clock.currentTimeMillis, () => Ref.update(reads, count => count + 1)),
-								currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
-								currentTimeNanos: clock.currentTimeNanos,
-								currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
-								monotonicTimeNanos: clock.monotonicTimeNanos,
-								monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
-								sleep: duration => clock.sleep(duration)
-							})
-						)
-					)
-				),
-				Telemetry
+			// Each read of the overview asks the viewer's clock for now once.
+			const counting = {
+				currentTimeMillis: Effect.tap(clock.currentTimeMillis, () => Ref.update(reads, count => count + 1)),
+				currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
+				currentTimeNanos: clock.currentTimeNanos,
+				currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
+				monotonicTimeNanos: clock.monotonicTimeNanos,
+				monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
+				sleep: (duration: Duration.Duration) => clock.sleep(duration)
+			}
+			const telemetry = yield* fresh()
+			const pushed = yield* Queue.unbounded<Overview>()
+			const viewer = pipe(
+				Stream.runForEach(telemetry.watch('3d'), value => Queue.offer(pushed, value)),
+				Effect.provideService(Clock.Clock, counting),
+				Effect.forkScoped
 			)
-			yield* telemetry.ready
 			yield* TestClock.adjust('2 seconds')
 			yield* telemetry.ingestTraces(release('0.1.1', 'a'))
 			const idle = yield* Ref.get(reads)
 			yield* TestClock.adjust('2 seconds')
 			assert.strictEqual(yield* Ref.get(reads), idle)
-			const pushed = yield* Queue.unbounded<Overview>()
-			const first = yield* Effect.forkScoped(
-				Stream.runForEach(telemetry.overview('3d'), value => Queue.offer(pushed, value))
-			)
-			const second = yield* Effect.forkScoped(
-				Stream.runForEach(telemetry.overview('3d'), value => Queue.offer(pushed, value))
-			)
+			const first = yield* viewer
+			const second = yield* viewer
 			assert.deepStrictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
-			assert.strictEqual(yield* Ref.get(reads), idle + 1)
+			// Each viewer reads once on opening; nothing reads again until a write commits.
+			assert.strictEqual(yield* Ref.get(reads), idle + 2)
+			yield* TestClock.adjust('2 seconds')
+			assert.strictEqual(yield* Ref.get(reads), idle + 2)
 			yield* telemetry.ingestTraces(release('0.1.1', 'b'))
 			yield* TestClock.adjust('2 seconds')
-			assert.deepStrictEqual(yield* Queue.take(pushed), yield* Queue.take(pushed))
+			const updated = yield* Queue.take(pushed)
+			assert.deepStrictEqual(updated, yield* Queue.take(pushed))
+			assert.strictEqual(updated.apps[0]?.operations[0]?.count, 2)
 			yield* Fiber.interrupt(first)
 			yield* Fiber.interrupt(second)
 			yield* telemetry.ingestTraces(release('0.1.1', 'c'))
@@ -318,7 +310,7 @@ it.layer(platform)(test => {
 			yield* TestClock.adjust('2 seconds')
 			assert.strictEqual(yield* Ref.get(reads), closed)
 			assert.strictEqual(
-				Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations[0]?.count,
+				Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations[0]?.count,
 				3
 			)
 		})
@@ -344,7 +336,7 @@ it.layer(platform)(test => {
 			)
 			yield* TestClock.adjust('2 seconds')
 			assert.strictEqual(
-				Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations[0]?.p95Ms,
+				Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations[0]?.p95Ms,
 				10
 			)
 			yield* telemetry.ingestTraces(
@@ -369,7 +361,7 @@ it.layer(platform)(test => {
 			yield* TestClock.adjust('2 seconds')
 			assert.deepStrictEqual(
 				Array.map(
-					Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations ?? [],
+					Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations ?? [],
 					operation => [operation.name, operation.count, operation.p95Ms]
 				),
 				[['op', 2, 40]]
@@ -397,7 +389,7 @@ it.layer(platform)(test => {
 				])
 			)
 			yield* TestClock.adjust('2 seconds')
-			assert.lengthOf(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps, 0)
+			assert.lengthOf(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps, 0)
 			yield* TestClock.adjust('61 seconds')
 			yield* telemetry.ingestTraces(
 				request('@deslop/stash-server', [
@@ -414,7 +406,7 @@ it.layer(platform)(test => {
 			assert.deepStrictEqual(
 				Array.sort(
 					Array.map(
-						Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations ?? [],
+						Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations ?? [],
 						operation => operation.name
 					),
 					Order.String
@@ -425,87 +417,29 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'answers before stored entries load, keeps an ingest made meanwhile and shows both afterwards',
+		'fails loudly on a stored row its model cannot read instead of hiding it',
 		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
 			yield* TestClock.setTime(NOW)
-			const entries = Array.makeBy(32, stored)
-			const memory = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
-			const store = KeyValueStore.toSchemaStore(memory, Entry)
-			yield* Effect.forEach(
-				entries,
-				entry =>
-					Effect.andThen(
-						store.set(entry.id, entry),
-						fs.writeFileString(`${directory}/${encodeURIComponent(entry.id)}`, '')
-					),
-				{concurrency: 1}
+			const database = yield* Layer.build(memory)
+			const telemetry = yield* loaded(database)
+			yield* telemetry.ingestTraces(release('', 'a'))
+			yield* Effect.provideContext(
+				Effect.flatMap(SqlClient.SqlClient, sql => sql`UPDATE spans SET runtime = 'lost'`),
+				database
 			)
-			const gate = yield* Deferred.make<void>()
-			const firstGet = yield* Deferred.make<void>()
-			const slow = Layer.succeed(KeyValueStore.KeyValueStore, {
-				...memory,
-				get: key =>
-					Effect.andThen(Deferred.succeed(firstGet, undefined), Effect.andThen(Deferred.await(gate), memory.get(key)))
-			})
-			const telemetry = Context.get(
-				yield* Layer.build(pipe(Layer.effect(Telemetry, Telemetry.make(directory)), Layer.provide(slow))),
-				Telemetry
-			)
-			yield* Deferred.await(firstGet)
-			yield* telemetry.ingestTraces(
-				request(
-					'@deslop/live-server',
-					[
-						span({
-							end: `${BigInt(START) + 1_000_000n}`,
-							name: 'live.op',
-							spanId: 'ffffffffffffffff',
-							start: START,
-							traceId: String.repeat(32)('f')
-						})
-					],
-					{runtime: 'server'}
-				)
-			)
-			assert.deepStrictEqual(
-				Array.map((yield* telemetry.checkIngestion()).services, service => service.app),
-				['live']
-			)
-			yield* Deferred.succeed(gate, undefined)
-			const frame = yield* pipe(
-				telemetry.overview('3d'),
-				Stream.filter(current => current.apps.length === 2),
-				Stream.runHead,
-				Effect.forkChild
-			)
-			yield* TestClock.adjust('2 seconds')
-			assert.deepStrictEqual(
-				Array.map(
-					Array.sort(
-						Option.getOrThrow(yield* Fiber.join(frame)).apps,
-						Order.mapInput(Order.String, (app: Overview['apps'][number]) => app.name)
-					),
-					app => [app.name, app.operations[0]?.name, app.operations[0]?.count]
-				),
-				[
-					['live', 'live.op', 1],
-					['stored', 'stored.op', 32]
-				]
-			)
+			assert.instanceOf(yield* Effect.flip(telemetry.trace(String.repeat(32)('a'))), TelemetryError)
+			assert.isTrue(Exit.isFailure(yield* Effect.exit(Stream.runHead(telemetry.watch('3d')))))
 		})
 	)
 
 	test.effect(
 		'retains by receipt time without changing future client timestamps',
 		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			yield* TestClock.setTime(NOW)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
+					const telemetry = yield* loaded(database)
 					yield* telemetry.ingestTraces({
 						resourceSpans: [
 							{
@@ -538,34 +472,32 @@ it.layer(platform)(test => {
 						]
 					})
 					const trace = yield* telemetry.trace(TRACE_ID)
-					assert.strictEqual(trace.spans[0]?.time, '99999999999999999999')
-					assert.strictEqual(trace.spans[0]?.receivedAt, NOW)
-					assert.strictEqual(trace.spans[0]?.payload['startTimeUnixNano'], '99999999999999999999')
-					assert.strictEqual(trace.logs[0]?.time, '99999999999999999999')
+					assert.strictEqual(trace.spans[0]?.start, 100_000_000_000_000)
+					assert.strictEqual(trace.logs[0]?.time, 100_000_000_000_000)
+					assert.deepStrictEqual(trace.logs[0]?.receivedAt, DateTime.makeUnsafe(NOW))
 				})
 			)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
-					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.receivedAt, NOW)
+					const telemetry = yield* loaded(database)
+					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.start, 100_000_000_000_000)
 				})
 			)
 			yield* TestClock.adjust('4 days')
-			const telemetry = yield* loaded(directory)
+			const telemetry = yield* loaded(database)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
-			assert.isEmpty(yield* fs.readDirectory(directory))
+			assert.deepStrictEqual(yield* storedKeys(database), {logs: [], spans: [], traces: []})
 		})
 	)
 
 	test.effect(
 		'keeps ingested spans across restarts for three days',
 		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			yield* TestClock.setTime(NOW)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
+					const telemetry = yield* loaded(database)
 					yield* telemetry.ingestTraces({
 						resourceSpans: [
 							{
@@ -584,12 +516,12 @@ it.layer(platform)(test => {
 			yield* TestClock.adjust('2 days')
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
+					const telemetry = yield* loaded(database)
 					assert.strictEqual((yield* telemetry.trace(TRACE_ID)).spans[0]?.name, 'persisted')
 				})
 			)
 			yield* TestClock.adjust('2 days')
-			const telemetry = yield* loaded(directory)
+			const telemetry = yield* loaded(database)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(telemetry.trace(TRACE_ID))))
 		})
 	)
@@ -729,7 +661,7 @@ it.layer(platform)(test => {
 			)
 			yield* TestClock.adjust('2 seconds')
 			assert.sameMembers(
-				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps, app =>
+				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps, app =>
 					Array.map(app.operations, operation => operation.name)
 				),
 				['nested', 'action']
@@ -779,7 +711,7 @@ it.layer(platform)(test => {
 			)
 			yield* TestClock.adjust('2 seconds')
 			assert.sameMembers(
-				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps, app =>
+				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps, app =>
 					Array.map(app.operations, operation => operation.name)
 				),
 				['Machine.invoke read', 'Machine.invoke']
@@ -796,12 +728,11 @@ it.layer(platform)(test => {
 	test.effect(
 		'keeps only each service’s newest release, across restarts, and never drops a local build’s entries',
 		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			yield* TestClock.setTime(NOW + 10_000)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
+					const telemetry = yield* loaded(database)
 					yield* telemetry.ingestTraces(release('0.1.999', 'a'))
 					yield* telemetry.ingestLogs(
 						logs('@deslop/stash-server', [log('old release log', START)], undefined, '0.1.999')
@@ -819,15 +750,107 @@ it.layer(platform)(test => {
 					yield* telemetry.ingestTraces(release('a3f9c21', 'e'))
 					assert.deepStrictEqual(yield* kept(telemetry), ['b', 'd', 'e'])
 					yield* TestClock.adjust('2 seconds')
-					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps.length, 1)
+					assert.strictEqual(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps.length, 1)
 				})
 			)
-			assert.deepStrictEqual(yield* kept(yield* loaded(directory)), ['b', 'd', 'e'])
-			assert.deepStrictEqual(Array.sort(yield* fs.readDirectory(directory), Order.String), [
-				'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%3Abbbbbbbbbbbbbbbb',
-				'dddddddddddddddddddddddddddddddd%3Adddddddddddddddd',
-				'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee%3Aeeeeeeeeeeeeeeee'
+			assert.deepStrictEqual(yield* kept(yield* loaded(database)), ['b', 'd', 'e'])
+			assert.deepStrictEqual(yield* storedKeys(database), {
+				logs: [],
+				spans: Array.map(['b', 'd', 'e'], String.repeat(32)),
+				traces: Array.map(['b', 'd', 'e'], String.repeat(32))
+			})
+		})
+	)
+
+	test.effect(
+		'counts each service’s latest run once and names it by what that run said',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.setTime(NOW)
+			const telemetry = yield* fresh()
+			function run(service: string, started: number, records: readonly ReturnType<typeof log>[], version?: string) {
+				return LogsRequest.make({
+					resourceLogs: [
+						{
+							resource: {
+								attributes: [
+									{key: 'service.name', value: {stringValue: service}},
+									{key: 'scope.runtime', value: {stringValue: 'server'}},
+									{key: 'scope.run.started_unix_nano', value: {stringValue: `${BigInt(started) * 1_000_000n}`}},
+									...Array.map(Option.toArray(Option.fromUndefinedOr(version)), value => ({
+										key: 'service.version',
+										value: {stringValue: value}
+									}))
+								]
+							},
+							scopeLogs: [{logRecords: records}]
+						}
+					]
+				})
+			}
+			yield* telemetry.ingestLogs(
+				run('@deslop/a-server', NOW - 60_000, [log('older', `${BigInt(NOW - 30_000) * 1_000_000n}`)], '0.1.1')
+			)
+			yield* telemetry.ingestLogs(
+				run('@deslop/a-server', NOW - 40_000, [log('first', `${BigInt(NOW - 20_000) * 1_000_000n}`)], '0.1.2')
+			)
+			yield* telemetry.ingestLogs(
+				run('@deslop/a-server', NOW - 40_000, [log('last', `${BigInt(NOW - 10_000) * 1_000_000n}`)], '0.1.2')
+			)
+			yield* telemetry.ingestLogs(run('@deslop/b-server', NOW - 50_000, [log('only', START)]))
+			assert.deepStrictEqual((yield* telemetry.checkIngestion()).services, [
+				{
+					app: 'a',
+					entries: 2,
+					lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW - 10_000)),
+					release: '0.1.2',
+					runStarted: DateTime.formatIso(DateTime.makeUnsafe(NOW - 40_000)),
+					side: 'server'
+				},
+				{
+					app: 'b',
+					entries: 1,
+					lastEvent: DateTime.formatIso(DateTime.makeUnsafe(NOW)),
+					runStarted: DateTime.formatIso(DateTime.makeUnsafe(NOW - 50_000)),
+					side: 'server'
+				}
 			])
+		})
+	)
+
+	test.effect(
+		'expires a whole trace once its first span outlives retention, with its logs',
+		Effect.fnUntraced(function* () {
+			yield* TestClock.setTime(NOW)
+			const database = yield* Layer.build(memory)
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const telemetry = yield* loaded(database)
+					yield* telemetry.ingestTraces(
+						request('@deslop/stash-server', [
+							span({name: 'root', spanId: '1111111111111111', start: START, traceId: TRACE_ID})
+						])
+					)
+					yield* TestClock.adjust('60 hours')
+					yield* telemetry.ingestTraces(
+						request('@deslop/stash-ios', [
+							span({
+								name: 'child',
+								parent: '1111111111111111',
+								spanId: '2222222222222222',
+								start: START,
+								traceId: TRACE_ID
+							})
+						])
+					)
+					yield* telemetry.ingestLogs(logs('@deslop/stash-ios', [log('late', START, {traceId: TRACE_ID})]))
+					yield* telemetry.ingestLogs(logs('@deslop/stash-ios', [log('fresh', START)]))
+				})
+			)
+			yield* TestClock.adjust('13 hours')
+			yield* loaded(database)
+			const left = yield* storedKeys(database)
+			assert.deepStrictEqual(Struct.pick(left, ['spans', 'traces']), {spans: [], traces: []})
+			assert.lengthOf(left.logs, 1)
 		})
 	)
 
@@ -849,7 +872,7 @@ it.layer(platform)(test => {
 	)
 
 	test.effect(
-		'assembles late parents, replaces repeated spans and preserves exact OTLP data',
+		'assembles late parents, replaces repeated spans and keeps exact values',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.setTime(NOW)
 			const telemetry = yield* fresh()
@@ -909,14 +932,8 @@ it.layer(platform)(test => {
 				Array.map(trace.spans, entry => entry.name),
 				['root', 'child']
 			)
-			assert.containsSubset(trace.spans, [
-				{
-					payload: {
-						attributes: [{key: 'big', value: {intValue: '9007199254740993'}}],
-						endTimeUnixNano: `${BigInt(START) + 1_500_001n}`
-					}
-				}
-			])
+			// An integer past what a number holds exactly stays the string OTLP sent; a duration keeps its nanoseconds.
+			assert.containsSubset(trace.spans, [{attributes: {big: '9007199254740993'}, durationMs: 0.500001}])
 			assert.strictEqual((yield* telemetry.readTrace({id: TRACE_ID, limit: 1000})).spans.length, 2)
 			assert.deepStrictEqual(
 				pickTrace(yield* telemetry.findTraces({errors: false, limit: 10, since: '3d', sort: 'recent'})),
@@ -993,7 +1010,7 @@ it.layer(platform)(test => {
 				1
 			)
 			assert.deepStrictEqual(
-				Array.map(trace.spans, entry => Array.map(entry.logs, logEntry => logEntry.name)),
+				Array.map(trace.spans, entry => Array.map(entry.logs, logEntry => logEntry.message)),
 				[['attached']]
 			)
 			assert.strictEqual(trace.logs.length, 1)
@@ -1083,7 +1100,7 @@ it.layer(platform)(test => {
 			)
 			yield* TestClock.adjust('2 seconds')
 			assert.sameDeepMembers(
-				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps, app =>
+				Array.flatMap(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps, app =>
 					Array.map(app.operations, operation => [operation.name, operation.failures])
 				),
 				[
@@ -1121,12 +1138,11 @@ it.layer(platform)(test => {
 	test.effect(
 		'retains denied spans across restarts without counting them as failures',
 		Effect.fnUntraced(function* () {
-			const fs = yield* FileSystem.FileSystem
-			const directory = yield* fs.makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			yield* TestClock.setTime(NOW)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
+					const telemetry = yield* loaded(database)
 					yield* telemetry.ingestTraces(
 						request('@deslop/auth-server', [
 							span({
@@ -1143,11 +1159,11 @@ it.layer(platform)(test => {
 			)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const telemetry = yield* loaded(directory)
+					const telemetry = yield* loaded(database)
 					assert.strictEqual((yield* telemetry.readTrace({id: TRACE_ID, limit: 100})).spans[0]?.denied, true)
 					yield* TestClock.adjust('2 seconds')
 					assert.strictEqual(
-						Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps[0]?.operations[0]?.failures,
+						Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations[0]?.failures,
 						0
 					)
 				})
@@ -1256,7 +1272,7 @@ it.layer(platform)(test => {
 				)
 			)
 			yield* TestClock.adjust('2 seconds')
-			const apps = Option.getOrThrow(yield* Stream.runHead(telemetry.overview('3d'))).apps
+			const apps = Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps
 			assert.deepStrictEqual(
 				Array.map(apps, app => app.name),
 				['stash']
@@ -1531,6 +1547,30 @@ it.layer(platform)(test => {
 				side: 'server',
 				spans: 1
 			})
+			// A cursor continues where its page ended, in either order.
+			const slower = yield* telemetry.findTraces({
+				cursor: slowest.nextCursor,
+				errors: false,
+				limit: 1,
+				since: '3d',
+				sort: 'slowest'
+			})
+			assert.deepStrictEqual(
+				Array.map(slower.traces, row => row.id),
+				[searched]
+			)
+			const rest = yield* telemetry.findTraces({
+				cursor: (yield* telemetry.findTraces({errors: false, limit: 2, since: '3d', sort: 'recent'})).nextCursor,
+				errors: false,
+				limit: 2,
+				since: '3d',
+				sort: 'recent'
+			})
+			assert.deepStrictEqual(
+				Array.map(rest.traces, row => row.id),
+				[searched]
+			)
+			assert.isUndefined(rest.nextCursor)
 		})
 	)
 
@@ -1797,6 +1837,12 @@ it.layer(platform)(test => {
 				message: 'slow request',
 				side: 'server'
 			})
+			const rest = yield* telemetry.searchLogs({cursor: limited.nextCursor, limit: 2, since: '3d'})
+			assert.deepStrictEqual(
+				Array.map(rest.logs, row => row.message),
+				['started', 'trace level']
+			)
+			assert.isUndefined(rest.nextCursor)
 		})
 	)
 

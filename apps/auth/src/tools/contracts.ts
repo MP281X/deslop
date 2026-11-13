@@ -71,7 +71,7 @@ export const ToolContracts = Toolkit.make(
 			'List sign-in passkeys; addedFrom is their registration origin, not their current location, and synced distinguishes device-bound credentials. Continue with nextCursor or use remove_passkey(id) for an explicit removal request.',
 		failure: AuthError,
 		parameters: Page,
-		success: Schema.Struct({nextCursor: Schema.optionalKey(Schema.String), passkeys: Schema.Array(Passkey)})
+		success: Schema.Struct({nextCursor: Schema.optionalKey(Schema.String), passkeys: Schema.Array(Passkey.json)})
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),

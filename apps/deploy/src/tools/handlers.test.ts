@@ -2,16 +2,9 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Boolean, DateTime, Effect, Formatter, Layer, Option, Ref, Schema, Stream, String, pipe} from 'effect'
 
+import type {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
 import {Fleet} from '#services/fleet/service.ts'
-import {
-	Inventory,
-	Snapshot,
-	type ExposeRequest,
-	type HideRequest,
-	type InventoryItem,
-	type Process,
-	type RunRequest
-} from '#services/inventory/schema.ts'
+import {Inventory, Snapshot, type InventoryItem, type Process, type RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import {ResourceHistory, type MachineHistory, type Sample} from '#services/metrics/schema.ts'
 import {ToolContracts} from '#tools/contracts.ts'
@@ -219,22 +212,20 @@ function machineOf(worker: string, options?: {error?: string; stale?: boolean}) 
 		60,
 		index =>
 			({
-				apps,
-				cores: [],
-				...Boolean.match(index === 0, {onFalse: () => ({cpu: 20 + index / 10}), onTrue: () => ({})}),
-				disks: Boolean.match(index === 59, {
-					onFalse: () => [],
-					onTrue: () => [{mount: '/', total: 500 * GIB, used: 250 * GIB}]
-				}),
-				...Boolean.match(index === 59, {onFalse: () => ({}), onTrue: () => ({load: [1.5, 1.2, 0.9]})}),
+				apps: Option.some(apps),
+				cpu: Option.liftPredicate(20 + index / 10, () => index !== 0),
 				memoryTotal: 16 * GIB,
 				memoryUsed: (6 + index / 10) * GIB,
-				storageUsed: (200 + index) * GIB,
+				since: start + index * 60_000 + 30_000,
+				step: 60_000,
+				storageUsed: Option.some((200 + index) * GIB),
 				time: start + index * 60_000 + 30_000
 			}) satisfies Sample
 	)
 	return {
+		disks: [{mount: '/', total: 500 * GIB, used: 250 * GIB}],
 		error: options?.error ?? '',
+		load: [1.5, 1.2, 0.9],
 		samples,
 		stale: options?.stale === true,
 		time: NOW,

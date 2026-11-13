@@ -233,6 +233,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@phosphor-icons/react':
         specifier: latest
         version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -308,6 +311,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@modelcontextprotocol/client':
         specifier: latest
         version: 2.4.0
@@ -357,6 +363,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@expo/ui':
         specifier: ^58.0.28
         version: 58.0.28(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.24)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -441,6 +450,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@phosphor-icons/react':
         specifier: latest
         version: 2.1.10(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -490,6 +502,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@expo/ui':
         specifier: ^58.0.28
         version: 58.0.28(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.24)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -554,6 +569,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       '@expo/ui':
         specifier: ^58.0.28
         version: 58.0.28(@babel/core@7.29.13(supports-color@8.1.1))(expo@58.0.24)(react-dom@19.3.1(react@19.3.1))(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.1)(supports-color@8.1.1))(react@19.3.1)
@@ -718,6 +736,9 @@ importers:
       '@effect/platform-node':
         specifier: latest
         version: 4.1.4(effect@4.1.4)(redis@6.3.1)
+      '@effect/sql-sqlite-node':
+        specifier: latest
+        version: 4.1.4(effect@4.1.4)
       effect:
         specifier: latest
         version: 4.1.4
@@ -1250,6 +1271,11 @@ packages:
     peerDependencies:
       effect: ^4.1.4
       redis: '>=5.1.0 <7.0.0'
+
+  '@effect/sql-sqlite-node@4.1.4':
+    resolution: {integrity: sha512-vEB3Xv7TftvZscuyee8doM1rXr0Dle5jxpuvjaEBlZkGAsUt0YvGudnOfEvUHMicE8wEuDQfpjWXM1q9HjNKUA==}
+    peerDependencies:
+      effect: ^4.1.4
 
   '@effect/tsgo-darwin-arm64@0.68.1':
     resolution: {integrity: sha512-G1jbH4HY07ZmiaZDeDshbIbl1Uqk5xPe5he0xYlOsoostQo94ockJQ5NpGRzSzMCMyypXRw91JYMcLWkFjv8Xw==}
@@ -6786,6 +6812,10 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@effect/sql-sqlite-node@4.1.4(effect@4.1.4)':
+    dependencies:
+      effect: 4.1.4
 
   '@effect/tsgo-darwin-arm64@0.68.1':
     optional: true

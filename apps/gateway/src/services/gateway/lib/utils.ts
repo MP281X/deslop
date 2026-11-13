@@ -3,7 +3,7 @@ import {Array, HashSet, Option, Predicate, Record, Struct, Tuple, pipe} from 'ef
 import type {Tool} from '@modelcontextprotocol/client'
 import type {McpSchema} from 'effect/ai'
 
-import type {Connection} from '#services/connections/schema.ts'
+import type {ConnectionState} from '#services/connections/schema.ts'
 
 export function indexTools(tools: readonly Tool[]) {
 	return pipe(
@@ -14,12 +14,12 @@ export function indexTools(tools: readonly Tool[]) {
 }
 
 export function prunedTools(
-	definitions: readonly Connection[],
+	definitions: readonly ConnectionState[],
 	installed: Record<string, {id: string; generation: string}>
 ) {
 	const connected = HashSet.fromIterable(
 		Array.map(
-			Array.filter(definitions, server => server.link._tag !== 'Disconnected'),
+			Array.filter(definitions, server => server.status !== 'Not connected'),
 			server => Tuple.make(server.id, server.generation)
 		)
 	)

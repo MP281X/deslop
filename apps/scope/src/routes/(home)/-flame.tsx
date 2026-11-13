@@ -9,8 +9,8 @@ import {cn} from '@deslop/components-web/utils'
 
 import {lanesOf} from '#lib/flame.ts'
 import {durationOf} from '#lib/utils.ts'
-import {appName, failedEntry} from '#services/telemetry/lib/utils.ts'
-import type {Trace} from '#services/telemetry/schema.ts'
+import {appName} from '#services/telemetry/lib/utils.ts'
+import type {TraceTree} from '#services/telemetry/schema.ts'
 
 // The flame's lanes: a 22px bar with 2px between lanes, and a 6px-padded label inside it.
 const FLAME_LANE = 24
@@ -74,12 +74,12 @@ export function TimeAxis(props: {totalMs: number}) {
 	)
 }
 
-function labelOf(span: Trace['spans'][number]) {
+function labelOf(span: TraceTree['spans'][number]) {
 	return `${span.name} · ${durationOf(span.durationMs)}`
 }
 
 // One lane per job, deeper spans packed into free time; the root and each job carry their full name and time inside the bar while they fit, else after it in the lane's free time, never clipped.
-export function Flame(props: {focus?: string; onPick: (id: string) => void; trace: Trace}) {
+export function Flame(props: {focus?: string; onPick: (id: string) => void; trace: TraceTree}) {
 	const total = Number.max(props.trace.durationMs, 1)
 	const [width, setWidth] = useState(0)
 	const [labelWidths, setLabelWidths] = useState<Record<string, number>>({})
@@ -113,7 +113,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 		Record.fromEntries(
 			Array.flatMap(
 				Array.filter(props.trace.spans, span => span.depth <= 1),
-				(span: Trace['spans'][number]) => {
+				(span: TraceTree['spans'][number]) => {
 					const measured = Option.getOrElse(Record.get(labelWidths, span.spanId), () => 0)
 					const bar = Number.max((span.durationMs / total) * width, 2)
 					if (bar >= measured + FLAME_LABEL_PADDING) return []
@@ -153,7 +153,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			after,
 			bar,
 			description: Option.match(
-				Option.flatMap(Option.fromUndefinedOr(span.parentSpanId), id => Record.get(spansById, id)),
+				Option.flatMap(span.parentSpanId, id => Record.get(spansById, id)),
 				{onNone: () => `${span.name} ${duration}`, onSome: parent => `${parent.name} · ${span.name} ${duration}`}
 			),
 			duration,
@@ -166,7 +166,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			span
 		}
 	})
-	function moveFocus(span: Trace['spans'][number], key: string) {
+	function moveFocus(span: TraceTree['spans'][number], key: string) {
 		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
 		const index = Option.getOrElse(
 			Array.findFirstIndex(siblings, other => other.spanId === span.spanId),
@@ -177,9 +177,13 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 				Match.value(key),
 				Match.when('ArrowLeft', () => Array.get(siblings, index - 1)),
 				Match.when('ArrowRight', () => Array.get(siblings, index + 1)),
-				Match.when('ArrowUp', () => Array.findFirst(props.trace.spans, other => other.spanId === span.parentSpanId)),
-				Match.when('ArrowDown', () => Array.findFirst(props.trace.spans, other => other.parentSpanId === span.spanId)),
-				Match.orElse(() => Option.none<Trace['spans'][number]>())
+				Match.when('ArrowUp', () =>
+					Array.findFirst(props.trace.spans, other => Option.contains(span.parentSpanId, other.spanId))
+				),
+				Match.when('ArrowDown', () =>
+					Array.findFirst(props.trace.spans, other => Option.contains(other.parentSpanId, span.spanId))
+				),
+				Match.orElse(() => Option.none<TraceTree['spans'][number]>())
 			),
 			{
 				onNone: () => undefined,
@@ -215,7 +219,10 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 							data-flame-fill={Boolean.match(row.bar > 2, {onFalse: () => undefined, onTrue: () => '' as const})}
 							className={cn(
 								'absolute inset-y-0 left-0 w-(--flame-bar) overflow-hidden',
-								Boolean.match(failedEntry(row.span), {onFalse: () => 'bg-(--app)', onTrue: () => 'bg-destructive'}),
+								Boolean.match(row.span.status === 'failed', {
+									onFalse: () => 'bg-(--app)',
+									onTrue: () => 'bg-destructive'
+								}),
 								Boolean.match(row.picked, {
 									onFalse: () => undefined,
 									onTrue: () => 'outline-1 outline-foreground outline-offset-[-1px]'

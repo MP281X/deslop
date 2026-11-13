@@ -14,20 +14,22 @@ import {
 	Schema,
 	Semaphore,
 	String,
-	SubscriptionRef,
+	Struct,
 	pipe
 } from 'effect'
 
-import {KeyValueStore} from 'effect/persistence'
 import {ChildProcessSpawner} from 'effect/process'
+import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {ToolPath, execute} from '@deslop/runtime/server/process'
 import {install} from '@deslop/runtime/server/services'
 
-import {DeployError, Exposure, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
+import {Exposure} from '#services/exposures/schema.ts'
+import type {ExposeInput} from '#services/exposures/schema.ts'
+import {DeployError, InventoryItem, Serve, Tailnet} from '#services/inventory/schema.ts'
 
 // A stop waits at most ten seconds for open connections such as WebSockets, never forever.
-function caddyConfig(rows: Exposure[], storage: string) {
+function caddyConfig(rows: readonly Exposure[], storage: string) {
 	return `{\n\tadmin 127.0.0.1:20219\n\tgrace_period 10s\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${Array.join(
 		Array.map(
 			Array.filter(rows, row => row.kind === 'public'),
@@ -52,6 +54,10 @@ function exposureUrl(row: Exposure) {
 	return `https://${row.hostname}`
 }
 
+const storageFailed = Effect.mapError((cause: unknown) =>
+	DeployError.make({cause, message: 'The owned exposures could not be read or written.'})
+)
+
 function failed<A, E, R>(effect: Effect.Effect<A, E, R>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
@@ -59,194 +65,210 @@ function failed<A, E, R>(effect: Effect.Effect<A, E, R>) {
 	})
 }
 
-export class Exposures extends Context.Service<
-	Exposures,
-	{
-		readonly expose: (input: Exposure) => Effect.Effect<string, DeployError>
-		readonly hide: (name: string) => Effect.Effect<void, DeployError>
-		readonly items: Effect.Effect<InventoryItem[]>
-	}
->()('@deslop/deploy/services/exposures/service/Exposures') {
-	// Ownership records, the Caddyfile and Caddy's certificates live in `directory`.
-	static readonly layer = (directory: string) =>
-		Layer.effect(
-			Exposures,
-			Effect.gen(function* () {
-				const fs = yield* FileSystem.FileSystem
-				yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
-				const store = KeyValueStore.toSchemaStore(
-					yield* KeyValueStore.KeyValueStore,
-					Schema.Record(Schema.String, Exposure)
-				)
-				const state = yield* SubscriptionRef.make(Option.getOrElse(yield* store.get('exposures'), () => ({})))
-				const lock = yield* Semaphore.make(1)
-				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
-				const worker = hostname()
-				const path = yield* Path.Path
-				// Unpacked on the first public exposure, not on every start.
-				const caddy = pipe(
-					(yield* ToolPath)('caddy'),
-					Effect.provideService(FileSystem.FileSystem, fs),
-					Effect.provideService(Path.Path, path)
-				)
-				const configFile = path.join(directory, 'Caddyfile')
-				function run(program: string, args: string[]) {
-					return pipe(
-						execute(program, args),
-						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-						Effect.timeout('30 seconds')
-					)
-				}
-				const status = pipe(
-					run('tailscale', ['serve', 'status', '--json']),
-					Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Serve)))
-				)
-				const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
-					const current = yield* status
+export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/services/exposures/service/Exposures', {
+	// The Caddyfile and Caddy's certificates live in `directory`.
+	make: Effect.fnUntraced(function* (directory: string) {
+		const fs = yield* FileSystem.FileSystem
+		const sql = yield* SqlClient.SqlClient
+		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+		const path = yield* Path.Path
+		const worker = hostname()
+		yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+
+		const listExposures = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Exposure,
+			execute: () => sql`SELECT * FROM ${sql(Exposure.table)} ORDER BY name`
+		})
+		const insertExposure = SqlSchema.void({
+			Request: Exposure.insert,
+			execute: row => sql`INSERT INTO ${sql(Exposure.table)} ${sql.insert(row)}`
+		})
+		const deleteExposure = SqlSchema.void({
+			Request: Exposure.fields.name,
+			execute: name => sql`DELETE FROM ${sql(Exposure.table)} WHERE name = ${name}`
+		})
+		const owned = pipe(listExposures(), storageFailed)
+		const lock = yield* Semaphore.make(1)
+		// Unpacked on the first public exposure, not on every start.
+		const caddy = pipe(
+			(yield* ToolPath)('caddy'),
+			Effect.provideService(FileSystem.FileSystem, fs),
+			Effect.provideService(Path.Path, path)
+		)
+		const configFile = path.join(directory, 'Caddyfile')
+		function run(program: string, args: string[]) {
+			return pipe(
+				execute(program, args),
+				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+				Effect.timeout('30 seconds')
+			)
+		}
+		const status = pipe(
+			run('tailscale', ['serve', 'status', '--json']),
+			Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Serve)))
+		)
+		const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
+			const current = yield* status
+			if (
+				Record.has(current.TCP ?? {}, `${input.port}`) ||
+				current.AllowFunnel?.[`${input.hostname}:${input.port}`] === true
+			) {
+				return yield* DeployError.make({
+					message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
+				})
+			}
+			const tailnet = yield* pipe(
+				run('tailscale', ['status', '--json']),
+				Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet)))
+			)
+			if (String.replace(/\.$/u, '')(tailnet.Self?.DNSName ?? '') !== input.hostname) {
+				return yield* DeployError.make({
+					message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
+				})
+			}
+		})
+		const caddyApply = Effect.fnUntraced(function* (rows: readonly Exposure[]) {
+			const binary = yield* caddy
+			yield* fs.makeDirectory(path.join(directory, 'caddy'), {mode: 0o700, recursive: true})
+			yield* fs.writeFileString(`${configFile}.next`, caddyConfig(rows, path.join(directory, 'caddy')), {mode: 0o600})
+			yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
+			yield* fs.rename(`${configFile}.next`, configFile)
+			yield* pipe(
+				install('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile'], {restart: false}),
+				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+				Effect.provideService(FileSystem.FileSystem, fs),
+				Effect.provideService(Path.Path, path)
+			)
+			yield* pipe(
+				run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
+				Effect.retry({schedule: Schedule.spaced('200 millis'), times: 10})
+			)
+		})
+
+		const rows = yield* owned
+		if (Array.some(rows, row => row.kind === 'public')) {
+			yield* pipe(
+				caddyApply(rows),
+				Effect.scoped,
+				Effect.ignore({
+					log: 'Warn',
+					message: 'Could not reconcile owned Caddy configuration; inspect its service and owned exposure records'
+				})
+			)
+		}
+
+		return {
+			expose: Effect.fnUntraced(
+				function* (input: ExposeInput) {
+					const current = yield* owned
+					if (Array.some(current, row => row.name === input.name)) {
+						return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
+					}
 					if (
-						Record.has(current.TCP ?? {}, `${input.port}`) ||
-						current.AllowFunnel?.[`${input.hostname}:${input.port}`] === true
+						Array.some(
+							current,
+							row => row.hostname === input.hostname && (row.kind === 'public' || row.port === input.port)
+						)
 					) {
+						return yield* DeployError.make({message: 'This hostname or port already has an owned exposure'})
+					}
+					if (input.kind === 'public' && !input.publicAccess) {
+						return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
+					}
+					// Public exposure runs the bundled Caddy, a Linux x64 build.
+					if (input.kind === 'public' && platform !== 'linux') {
 						return yield* DeployError.make({
-							message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
+							message: 'Public exposure needs a Linux worker; expose this port to the tailnet'
 						})
 					}
-					const tailnet = yield* pipe(
-						run('tailscale', ['status', '--json']),
-						Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet)))
-					)
-					if (String.replace(/\.$/u, '')(tailnet.Self?.DNSName ?? '') !== input.hostname) {
-						return yield* DeployError.make({
-							message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
-						})
+					const exposure = Exposure.make(Struct.omit(input, ['publicAccess']))
+					if (exposure.kind === 'tailnet') {
+						yield* checkTailnet(exposure)
 					}
-				})
-				const caddyApply = Effect.fnUntraced(function* (rows: Record<string, Exposure>) {
-					const binary = yield* caddy
-					yield* fs.makeDirectory(path.join(directory, 'caddy'), {mode: 0o700, recursive: true})
-					yield* fs.writeFileString(
-						`${configFile}.next`,
-						caddyConfig(Record.values(rows), path.join(directory, 'caddy')),
-						{mode: 0o600}
+					// Ownership is kept before an external process changes, so an interrupted apply stays inspectable and removable.
+					yield* pipe(insertExposure(exposure), storageFailed)
+					if (exposure.kind === 'public') {
+						yield* caddyApply([...current, exposure])
+					} else {
+						yield* run('tailscale', ['serve', '--bg', `--https=${exposure.port}`, `http://127.0.0.1:${exposure.port}`])
+						if (!ownsMapping(yield* status, exposure)) {
+							return yield* DeployError.make({
+								message: 'Tailscale configured a different hostname or target; inspect before retrying'
+							})
+						}
+					}
+					return exposureUrl(exposure)
+				},
+				Effect.scoped,
+				Semaphore.withPermit(lock),
+				failed
+			),
+			hide: Effect.fnUntraced(
+				function* (name: string) {
+					const current = yield* owned
+					const exposure = yield* pipe(
+						Effect.fromOption(Array.findFirst(current, row => row.name === name)),
+						Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
 					)
-					yield* run(binary, ['validate', '--config', `${configFile}.next`, '--adapter', 'caddyfile'])
-					yield* fs.rename(`${configFile}.next`, configFile)
-					yield* pipe(
-						install('deploy-caddy', [binary, 'run', '--config', configFile, '--adapter', 'caddyfile'], {
-							restart: false
-						}),
-						Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-						Effect.provideService(FileSystem.FileSystem, fs),
-						Effect.provideService(Path.Path, path)
-					)
-					yield* pipe(
-						run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
-						Effect.retry({schedule: Schedule.spaced('200 millis'), times: 10})
-					)
-				})
-				if (Array.some(Record.values(yield* SubscriptionRef.get(state)), row => row.kind === 'public')) {
-					yield* pipe(
-						caddyApply(yield* SubscriptionRef.get(state)),
-						Effect.scoped,
-						Effect.ignore({
-							log: 'Warn',
-							message: 'Could not reconcile owned Caddy configuration; inspect its service and owned exposure records'
-						})
-					)
-				}
-				function save(rows: Record<string, Exposure>) {
-					return pipe(store.set('exposures', rows), Effect.andThen(SubscriptionRef.set(state, rows)))
-				}
-				return Exposures.of({
-					expose: Effect.fnUntraced(
-						function* (input: Exposure) {
-							const rows = yield* SubscriptionRef.get(state)
-							if (Record.has(rows, input.name)) {
-								return yield* DeployError.make({message: 'Remove the existing owned exposure before changing it'})
-							}
-							if (
-								Array.some(
-									Record.values(rows),
-									row => row.hostname === input.hostname && (row.kind === 'public' || row.port === input.port)
-								)
-							) {
-								return yield* DeployError.make({message: 'This hostname or port already has an owned exposure'})
-							}
-							if (input.kind === 'public' && !input.publicAccess) {
-								return yield* DeployError.make({message: 'Explicitly confirm public access before publishing a port'})
-							}
-							// Public exposure runs the bundled Caddy, a Linux x64 build.
-							if (input.kind === 'public' && platform !== 'linux') {
+					if (exposure.kind === 'tailnet') {
+						const mappings = yield* status
+						if (Record.has(mappings.TCP ?? {}, `${exposure.port}`)) {
+							if (!ownsMapping(mappings, exposure)) {
 								return yield* DeployError.make({
-									message: 'Public exposure needs a Linux worker; expose this port to the tailnet'
+									message: 'This mapping was changed outside Deploy; refusing to remove it'
 								})
 							}
-							if (input.kind === 'tailnet') {
-								yield* checkTailnet(input)
-							}
-							const next = Record.set(rows, input.name, input)
-							// Persist ownership before changing an external process; an interrupted apply remains inspectable/removable.
-							yield* save(next)
-							if (input.kind === 'public') {
-								yield* caddyApply(next)
-							} else {
-								yield* run('tailscale', ['serve', '--bg', `--https=${input.port}`, `http://127.0.0.1:${input.port}`])
-								if (!ownsMapping(yield* status, input)) {
-									return yield* DeployError.make({
-										message: 'Tailscale configured a different hostname or target; inspect before retrying'
-									})
-								}
-							}
-							return exposureUrl(input)
-						},
-						Effect.scoped,
-						Semaphore.withPermit(lock),
-						failed
-					),
-					hide: Effect.fnUntraced(
-						function* (name: string) {
-							const rows = yield* SubscriptionRef.get(state)
-							const owned = yield* pipe(
-								Effect.fromOption(Record.get(rows, name)),
-								Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
-							)
-							const next = Record.remove(rows, name)
-							if (owned.kind === 'tailnet') {
-								const current = yield* status
-								if (Record.has(current.TCP ?? {}, `${owned.port}`)) {
-									if (!ownsMapping(current, owned)) {
-										return yield* DeployError.make({
-											message: 'This mapping was changed outside Deploy; refusing to remove it'
-										})
-									}
-									yield* run('tailscale', ['serve', `--https=${owned.port}`, 'off'])
-								}
-							} else {
-								yield* caddyApply(next)
-							}
-							yield* save(next)
-						},
-						Effect.scoped,
-						Semaphore.withPermit(lock),
-						failed
-					),
-					items: Effect.map(SubscriptionRef.get(state), rows =>
-						Array.map(Record.values(rows), row =>
-							InventoryItem.make({
-								detail: `${row.kind} → 127.0.0.1:${row.port}`,
-								id: `${worker}:exposure:${row.name}`,
-								kind: 'exposure',
-								name: row.name,
-								owned: true,
-								port: row.port,
-								publicAccess: row.kind === 'public',
-								state: 'configured; check backend',
-								url: exposureUrl(row),
-								worker
-							})
-						)
-					)
-				})
-			})
-		)
+							yield* run('tailscale', ['serve', `--https=${exposure.port}`, 'off'])
+						}
+					} else {
+						yield* caddyApply(Array.filter(current, row => row.name !== name))
+					}
+					yield* pipe(deleteExposure(name), storageFailed)
+				},
+				Effect.scoped,
+				Semaphore.withPermit(lock),
+				failed
+			),
+			items: Effect.map(owned, current =>
+				Array.map(current, row =>
+					InventoryItem.make({
+						detail: `${row.kind} → 127.0.0.1:${row.port}`,
+						id: `${worker}:exposure:${row.name}`,
+						kind: 'exposure',
+						name: row.name,
+						owned: true,
+						port: row.port,
+						publicAccess: row.kind === 'public',
+						state: 'configured; check backend',
+						url: exposureUrl(row),
+						worker
+					})
+				)
+			)
+		}
+	})
+}) {
+	// The table this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	static readonly migrations = Layer.effectDiscard(
+		Migrator.make({})({
+			loader: Migrator.fromRecord({
+				'0001_exposures': Effect.flatMap(
+					SqlClient.SqlClient,
+					sql => sql`
+						CREATE TABLE exposures (
+							name TEXT PRIMARY KEY,
+							kind TEXT NOT NULL,
+							hostname TEXT NOT NULL,
+							port INTEGER NOT NULL
+						) STRICT
+					`
+				)
+			}),
+			table: 'exposures_migrations'
+		})
+	)
+
+	static readonly layer = (directory: string) =>
+		Layer.provide(Layer.effect(this, this.make(directory)), this.migrations)
 }

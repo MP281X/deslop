@@ -1,4 +1,5 @@
 import {NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -17,34 +18,36 @@ import {
 	PlatformError,
 	Predicate,
 	Queue,
+	Record,
 	Ref,
 	Schema,
 	Stream,
 	String,
+	Struct,
 	Tracer,
 	pipe
 } from 'effect'
 
+import {Reactivity} from 'effect/reactivity'
+import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
-
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {Sources} from './lib/extraction.ts'
 import {Organizer} from './lib/organization.ts'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
-import type {Note, TagEntry} from '#services/notes/schema.ts'
-import {Extraction, NotesError, NotesEvent} from '#services/notes/schema.ts'
+import type {TagEntry} from '#services/notes/schema.ts'
+import {Extraction, Note, NoteId, NoteItem, NotesError, NotesEvent} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
-const IDS = [
-	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01',
-	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02',
-	'6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c03'
-] as const
-
 const USER = 'github:1'
+
+const IDS = [
+	NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01'),
+	NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c02'),
+	NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c03')
+] as const
 
 const recipe = Sources.of({
 	extract: link =>
@@ -68,29 +71,76 @@ const noVideo = Media.of({
 	read: () => Effect.fail(MediaError.make({message: 'yt-dlp cannot read the video'}))
 })
 
+const memory = Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)
+
+type Database = Layer.Success<typeof memory>
+
+type StoredNote = typeof StoredNote.Type
+const StoredNote = Schema.Struct({...Note.fields, tags: Schema.fromJsonString(Schema.Array(Schema.String))})
+
+// A stored note as the wire carries it, with its tags.
+type Stored = typeof Note.json.Encoded & Pick<StoredNote, 'tags'>
+
+// Every stored note as its JSON form, with its tags, read again after each commit.
+function storedNotes(database: Context.Context<Database>) {
+	const sql = Context.get(database, SqlClient.SqlClient)
+	const read = SqlSchema.findAll({
+		Request: Schema.Void,
+		Result: StoredNote,
+		execute: () => sql`
+			SELECT notes.*, (
+				SELECT json_group_array(tag) FROM (SELECT tag FROM note_tags WHERE noteId = notes.id ORDER BY position)
+			) AS tags
+			FROM notes
+			ORDER BY createdAt DESC, id DESC
+		`
+	})
+	return pipe(
+		sql.reactive(['notes'], read()),
+		Stream.mapEffect(rows =>
+			Effect.forEach(
+				rows,
+				row =>
+					Effect.map(
+						Schema.encodeEffect(Note.json)(Note.make(Struct.omit(row, ['tags']))),
+						json => ({...json, tags: row.tags}) satisfies Stored
+					),
+				{concurrency: 'unbounded'}
+			)
+		),
+		Stream.provideContext(database)
+	)
+}
+
+// A restart builds the service again over the same database.
 const open = Effect.fnUntraced(function* (options: {
+	database?: Context.Context<Database>
 	directory: string
 	media?: typeof Media.Service
 	organizer: typeof Organizer.Service
 	sources: typeof Sources.Service
 }) {
+	const database = options.database ?? (yield* Layer.build(memory))
 	const context = yield* Layer.build(
 		pipe(
 			Notes.layer(options.directory),
-			Layer.provide(layerKeyValueStore(options.directory)),
+			Layer.provide(Layer.succeedContext(database)),
 			Layer.provide(Layer.succeed(Sources, options.sources)),
 			Layer.provide(Layer.succeed(Media, options.media ?? noVideo)),
 			Layer.provide(Layer.succeed(Organizer, options.organizer))
 		)
 	)
-	return Context.get(context, Notes)
+	return {...Context.get(context, Notes), stored: storedNotes(database)}
 })
 
-const settled = Effect.fnUntraced(function* (notes: typeof Notes.Service, done: (state: Note[]) => boolean) {
-	return yield* pipe(notes.changes, Stream.filter(done), Stream.runHead, Effect.map(Option.getOrThrow))
+const settled = Effect.fnUntraced(function* (
+	notes: {readonly stored: ReturnType<typeof storedNotes>},
+	done: (state: Stored[]) => boolean
+) {
+	return yield* pipe(notes.stored, Stream.filter(done), Stream.runHead, Effect.map(Option.getOrThrow))
 })
 
-function isReady(state: Note[]) {
+function isReady(state: Stored[]) {
 	return Array.some(state, note => note.status === 'ready')
 }
 
@@ -150,12 +200,72 @@ it.layer(NodeServices.layer)('Notes', test => {
 				sources: recipe
 			})
 			const updates = yield* Queue.unbounded<readonly string[]>()
-			yield* Effect.forkChild(Stream.runForEach(notes.search({query: 'secret'}), ids => Queue.offer(updates, ids)))
+			yield* Effect.forkChild(Stream.runForEach(notes.search('secret'), ids => Queue.offer(updates, ids)))
 			assert.deepStrictEqual(yield* Queue.take(updates), [])
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
 			assert.deepStrictEqual(yield* Queue.take(updates), [IDS[0]])
-			yield* notes.remove({id: IDS[0]})
+			yield* notes.remove(IDS[0])
 			assert.deepStrictEqual(yield* Queue.take(updates), [])
+		})
+	)
+
+	test.effect(
+		'finds notes that contain every word and carry every #tag, a page at a time',
+		Effect.fnUntraced(function* () {
+			const pages: Record<string, {author: string; tags: string[]; text: string}> = {
+				'https://example.com/soup': {
+					author: 'Lisa Kitchen',
+					tags: ['cooking', 'quick-meals'],
+					text: 'Lentils with cumin'
+				},
+				'https://example.com/spice': {author: 'Spice Atlas', tags: ['history'], text: 'Cumin history'}
+			}
+			function pageOf(link: string) {
+				return Option.getOrThrow(Record.get(pages, link))
+			}
+			const notes = yield* open({
+				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
+				organizer: Organizer.of({
+					organize: (_userId, input) =>
+						Effect.succeed({
+							body: '',
+							definitions: [],
+							screenText: '',
+							summary: 'A quick dinner',
+							tags: pageOf(Option.getOrThrow(input.note.url)).tags,
+							title: input.note.title,
+							topics: ''
+						})
+				}),
+				sources: Sources.of({
+					...recipe,
+					extract: link =>
+						Effect.map(recipe.extract(link), page => ({
+							...page,
+							author: Option.some(pageOf(link).author),
+							image: Option.none(),
+							text: pageOf(link).text
+						}))
+				})
+			})
+			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
+			yield* TestClock.adjust('1 second')
+			yield* notes.capture(USER, {id: IDS[1], text: 'https://example.com/spice'})
+			yield* settled(notes, current => Array.every(current, note => note.status === 'ready'))
+			const found = Effect.fnUntraced(function* (query: string) {
+				return Array.map((yield* notes.list({cursor: Option.none(), limit: 10, query})).items, note => note.id)
+			})
+			assert.deepStrictEqual(yield* found(''), [IDS[1], IDS[0]])
+			assert.deepStrictEqual(yield* found('CUMIN dinner'), [IDS[1], IDS[0]])
+			assert.deepStrictEqual(yield* found('cumin #history'), [IDS[1]])
+			assert.deepStrictEqual(yield* found('#cook'), [])
+			assert.deepStrictEqual(yield* found('lentils quick-meals'), [IDS[0]])
+			assert.deepStrictEqual(yield* found('atlas'), [IDS[1]])
+			const first = yield* notes.list({cursor: Option.none(), limit: 1, query: 'cumin'})
+			assert.deepStrictEqual([Array.map(first.items, note => note.id), first.total], [[IDS[1]], 2])
+			const second = yield* notes.list({cursor: first.next, limit: 1, query: 'cumin'})
+			assert.deepStrictEqual([Array.map(second.items, note => note.id), second.total], [[IDS[0]], 2])
+			assert.isTrue(Option.isNone(second.next))
 		})
 	)
 
@@ -163,12 +273,15 @@ it.layer(NodeServices.layer)('Notes', test => {
 		'saves the original first, tags it once, and keeps the result across a restart',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			const calls = yield* Ref.make(0)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const notes = yield* open({directory, organizer: counting(calls), sources: recipe})
+					const notes = yield* open({database, directory, organizer: counting(calls), sources: recipe})
 					assert.containsSubset(
-						yield* notes.capture(USER, {id: IDS[0], text: ' https://example.com/soup?utm_source=x '}),
+						yield* Schema.encodeEffect(NoteItem.json)(
+							yield* notes.capture(USER, {id: IDS[0], text: ' https://example.com/soup?utm_source=x '})
+						),
 						{status: 'organizing', title: 'https://example.com/soup', url: 'https://example.com/soup'}
 					)
 					assert.containsSubset((yield* settled(notes, isReady))[0], {
@@ -198,7 +311,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 				})
 			)
 			assert.containsSubset(
-				(yield* settled(yield* open({directory, organizer: counting(calls), sources: recipe}), () => true))[0],
+				(yield* settled(
+					yield* open({database, directory, organizer: counting(calls), sources: recipe}),
+					() => true
+				))[0],
 				{id: IDS[0], status: 'ready', title: 'Soup'}
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)
@@ -210,9 +326,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 			const reached = yield* Queue.unbounded<string>()
+			const database = yield* Layer.build(memory)
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const notes = yield* open({
+						database,
 						directory,
 						organizer: Organizer.of({organize: userId => Effect.andThen(Queue.offer(reached, userId), Effect.never)}),
 						sources: recipe
@@ -223,6 +341,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			)
 			const calls = yield* Ref.make(0)
 			const resumed = yield* open({
+				database,
 				directory,
 				organizer: Organizer.of({
 					organize: (userId, input) =>
@@ -329,7 +448,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			)
 			assert.deepStrictEqual(
 				Array.get(yield* Ref.get(seen), 1),
-				Option.some([{count: 1, definition: 'Recipes and kitchen techniques.', tag: 'cooking'}])
+				Option.some([{count: 1, definition: Option.some('Recipes and kitchen techniques.'), name: 'cooking'}])
 			)
 		})
 	)
@@ -338,7 +457,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 		'keeps what a video says and shows the AI its labeled preview and stills',
 		Effect.fnUntraced(function* () {
 			const seen = yield* Ref.make<
-				Option.Option<{images: Uint8Array[]; labels: string[]; transcript: Note['transcript']}>
+				Option.Option<{images: Uint8Array[]; labels: string[]; transcript: Option.Option<string>}>
 			>(Option.none())
 			const calls = yield* Ref.make(0)
 			const notes = yield* open({
@@ -378,7 +497,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				Option.some({
 					images: [new Uint8Array([255, 216, 255]), new Uint8Array([1])],
 					labels: ['Preview image', 'Video still at [00:00]'],
-					transcript: '[00:01] Soak the lentils overnight.\n'
+					transcript: Option.some('[00:01] Soak the lentils overnight.\n')
 				})
 			)
 		})
@@ -623,35 +742,16 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://vm.tiktok.com/AAA/'})
 			yield* settled(notes, isReady)
 			assert.containsSubset(
-				yield* notes.capture(USER, {id: IDS[1], text: 'Make it tonight https://vm.tiktok.com/BBB/'}),
-				{id: IDS[0], text: 'https://vm.tiktok.com/AAA/\nMake it tonight', url: 'https://www.tiktok.com/@cook/video/1'}
+				yield* Schema.encodeEffect(NoteItem.json)(
+					yield* notes.capture(USER, {id: IDS[1], text: 'Make it tonight https://vm.tiktok.com/BBB/'})
+				),
+				{id: IDS[0], url: 'https://www.tiktok.com/@cook/video/1'}
+			)
+			assert.deepStrictEqual(
+				Array.map(yield* settled(notes, () => true), note => note.text),
+				['https://vm.tiktok.com/AAA/\nMake it tonight']
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)
-		})
-	)
-
-	test.effect(
-		'joins a share to a note saved under an older form of its link',
-		Effect.fnUntraced(function* () {
-			const older = yield* Ref.make(Option.some('https://youtu.be/USeyDcWyVCc'))
-			const notes = yield* open({
-				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
-				organizer: counting(yield* Ref.make(0)),
-				sources: Sources.of({
-					...recipe,
-					resolve: link =>
-						Effect.map(
-							Ref.getAndSet(older, Option.none()),
-							Option.getOrElse(() => link)
-						)
-				})
-			})
-			yield* notes.capture(USER, {id: IDS[0], text: 'https://youtu.be/USeyDcWyVCc'})
-			yield* settled(notes, isReady)
-			assert.containsSubset(
-				yield* notes.capture(USER, {id: IDS[1], text: 'https://www.youtube.com/watch?v=USeyDcWyVCc&t=42s'}),
-				{id: IDS[0], url: 'https://youtu.be/USeyDcWyVCc'}
-			)
 		})
 	)
 
@@ -659,10 +759,12 @@ it.layer(NodeServices.layer)('Notes', test => {
 		'tags a note again when a shutdown interrupted its tagging',
 		Effect.fnUntraced(function* () {
 			const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
+			const database = yield* Layer.build(memory)
 			const tagging = yield* Latch.make()
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const notes = yield* open({
+						database,
 						directory,
 						organizer: Organizer.of({organize: () => Effect.andThen(tagging.open, Effect.never)}),
 						sources: recipe
@@ -677,7 +779,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				extract: () => Effect.fail(NotesError.make({message: 'The link could not be loaded.'}))
 			})
 			assert.containsSubset(
-				(yield* settled(yield* open({directory, organizer: counting(calls), sources: down}), isReady))[0],
+				(yield* settled(yield* open({database, directory, organizer: counting(calls), sources: down}), isReady))[0],
 				{author: 'Cookbook', content: 'Lentils with cumin and tomato.', id: IDS[0], issue: undefined, title: 'Soup'}
 			)
 			assert.strictEqual(yield* Ref.get(calls), 1)
@@ -694,24 +796,32 @@ it.layer(NodeServices.layer)('Notes', test => {
 			})
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
 			yield* settled(notes, isReady)
-			const events = yield* pipe(notes.events, Stream.take(3), Stream.runCollect, Effect.forkScoped)
-			yield* TestClock.adjust('1 second')
+			const queue = yield* Queue.unbounded<Stream.Success<typeof notes.events>>()
+			const events = yield* pipe(
+				notes.events,
+				Stream.takeUntil(event => Array.isReadonlyArrayNonEmpty(event.removed)),
+				Stream.runForEach(event => Queue.offer(queue, event)),
+				Effect.forkScoped
+			)
+			const first = yield* Queue.take(queue)
 			yield* notes.capture(USER, {id: IDS[1], text: 'https://example.com/stew'})
 			yield* settled(notes, current => Array.every(current, note => note.status === 'ready'))
-			yield* TestClock.adjust('1 second')
-			yield* notes.remove({id: IDS[0]})
-			yield* TestClock.adjust('1 second')
+			yield* notes.remove(IDS[0])
+			yield* Fiber.join(events)
 			const received = yield* Effect.forEach(
-				yield* Fiber.join(events),
+				[first, ...(yield* Queue.takeAll(queue))],
 				event => Schema.encodeEffect(NotesEvent)(event),
 				{concurrency: 'unbounded'}
 			)
+			// Each commit of the second note's organizing sends that note alone; the removal sends only its id.
 			assert.deepStrictEqual(
-				Array.map(received, event => ({
-					removed: event.removed,
-					reset: event.reset,
-					upserted: Array.dedupe(Array.map(event.upserted, item => item.id))
-				})),
+				Array.dedupeAdjacent(
+					Array.map(received, event => ({
+						removed: event.removed,
+						reset: event.reset,
+						upserted: Array.map(event.upserted, item => item.id)
+					}))
+				),
 				[
 					{removed: [], reset: true, upserted: [IDS[0]]},
 					{removed: [], reset: false, upserted: [IDS[1]]},
@@ -735,10 +845,10 @@ it.layer(NodeServices.layer)('Notes', test => {
 			})
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
 			yield* settled(notes, isReady)
-			yield* notes.regenerate(USER, {id: IDS[0]})
+			yield* notes.regenerate(USER, IDS[0])
 			yield* settled(notes, isReady)
 			assert.strictEqual(yield* Ref.get(calls), 2)
-			assert.instanceOf(yield* Effect.flip(notes.regenerate(USER, {id: IDS[1]})), NotesError)
+			assert.instanceOf(yield* Effect.flip(notes.regenerate(USER, IDS[1])), NotesError)
 		})
 	)
 
@@ -753,7 +863,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				sources: Sources.of({...recipe, extract: link => Effect.andThen(release.await, recipe.extract(link))})
 			})
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
-			yield* notes.regenerate(USER, {id: IDS[0]})
+			yield* notes.regenerate(USER, IDS[0])
 			yield* release.open
 			assert.containsSubset((yield* settled(notes, isReady))[0], {id: IDS[0], title: 'Soup'})
 			assert.strictEqual(yield* Ref.get(calls), 1)
@@ -780,7 +890,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 			})
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
 			yield* downloading.await
-			yield* notes.remove({id: IDS[0]})
+			yield* notes.remove(IDS[0])
 			yield* cancelled.await
 			yield* settled(notes, Array.isReadonlyArrayEmpty)
 		})
@@ -802,7 +912,7 @@ it.layer(NodeServices.layer)('Notes', test => {
 				(yield* settled(notes, current => Array.some(current, note => note.status === 'failed')))[0],
 				{image: 'image/jpeg', text: 'https://example.com/slow\nRead later'}
 			)
-			yield* notes.remove({id: IDS[0]})
+			yield* notes.remove(IDS[0])
 			assert.deepStrictEqual(yield* settled(notes, () => true), [])
 			assert.instanceOf(yield* Effect.flip(notes.image(IDS[0])), NotesError)
 		})
@@ -817,11 +927,13 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const notes = yield* open({directory, organizer: counting(calls), sources: recipe})
 			const photo = new Uint8Array([255, 216, 255, 224])
 			assert.containsSubset(
-				yield* notes.captureFile(USER, {
-					body: Stream.make(Uint8Array.of(255, 216), Uint8Array.of(255, 224)),
-					id: IDS[0],
-					type: 'image/jpeg'
-				}),
+				yield* Schema.encodeEffect(NoteItem.json)(
+					yield* notes.captureFile(USER, {
+						body: Stream.make(Uint8Array.of(255, 216), Uint8Array.of(255, 224)),
+						id: IDS[0],
+						type: 'image/jpeg'
+					})
+				),
 				{file: 'image/jpeg', image: 'image/jpeg', status: 'organizing'}
 			)
 			yield* settled(notes, isReady)

@@ -1,4 +1,7 @@
-import {Context, Schema} from 'effect'
+import {Context, Schema, Struct} from 'effect'
+
+import {Jwk} from 'effect/jose'
+import {Model} from 'effect/schema'
 
 import {ClientInfo, User} from '@deslop/runtime/shared/auth'
 
@@ -108,44 +111,63 @@ export const Origin = Schema.Struct({
 export type SessionVia = typeof SessionVia.Type
 export const SessionVia = Schema.Literals(['Code', 'GitHub', 'Passkey'])
 
-// Only the address a sign-in came from is read again; the user agent labels it when it is made.
-export type StoredOrigin = typeof StoredOrigin.Type
-export const StoredOrigin = Schema.Struct({address: Schema.optionalKey(Schema.String)})
-
-export type Grant = typeof Grant.Type
-export const Grant = Schema.Struct({
-	...CredentialOwner.fields,
-	client: Schema.String,
-	credential: Schema.TaggedUnion({
-		// Keep every spent refresh token's hash until the family ends.
-		App: {
-			clientId: Schema.NonEmptyString,
-			expiresAt: Schema.Finite,
-			generation: Schema.Int,
-			hash: Schema.String,
-			replaced: Schema.Array(Schema.String)
-		},
-		Browser: {expiresAt: Schema.Finite, hash: Schema.String, via: SessionVia}
-	}),
-	device: Schema.String,
-	lastActive: Schema.Finite,
-	origin: StoredOrigin,
-	parent: Schema.optionalKey(Schema.NonEmptyString)
-})
-
-export type Grants = typeof Grants.Type
-export const Grants = Schema.Record(Schema.String, Grant)
-
-export type SignedInApp = typeof SignedInApp.Type
-export const SignedInApp = Schema.Struct({
-	address: Schema.optionalKey(Schema.String),
+// What every sign-in keeps: its family, whose it is, how the list names it, and the hash of its one live secret. Only the address is kept of where it came from; the user agent labels it when it is made.
+const SignInFields = {
+	address: Model.FieldOption(Schema.String),
 	client: Schema.String,
 	device: Schema.String,
+	expiresAt: Schema.Int,
 	family: Schema.NonEmptyString,
-	kind: Schema.Literals(['App', 'Browser']),
-	lastActive: Schema.Finite,
-	parent: Schema.optionalKey(Schema.NonEmptyString)
-})
+	hash: Model.Sensitive(Schema.String),
+	incarnation: Model.Sensitive(CredentialOwner.fields.incarnation),
+	lastActive: Schema.Int,
+	userId: User.fields.id,
+	userName: User.fields.name
+}
+
+// One row of `browser_sessions`: a browser signed in to Auth by its session cookie.
+export class BrowserSession extends Model.Class<BrowserSession>('BrowserSession')({...SignInFields, via: SessionVia}) {
+	static readonly table = 'browser_sessions'
+}
+
+// One row of `app_grants`: an app, agent or command holding a refresh token; a web app's sign-in ends with the browser it came from.
+export class AppGrant extends Model.Class<AppGrant>('AppGrant')({
+	...SignInFields,
+	clientId: Schema.NonEmptyString,
+	generation: Schema.Int,
+	parent: Model.FieldOption(BrowserSession.fields.family)
+}) {
+	static readonly table = 'app_grants'
+}
+
+// One row of `spent_refresh_tokens`: a refresh token already exchanged, kept until its family ends so a replay of it ends the family.
+export class SpentRefreshToken extends Model.Class<SpentRefreshToken>('SpentRefreshToken')({
+	family: AppGrant.fields.family,
+	hash: Model.Sensitive(Schema.String)
+}) {
+	static readonly table = 'spent_refresh_tokens'
+}
+
+// The one row of `signing_keys`: the key access tokens are signed with, so they stay valid across a restart.
+export class SigningKey extends Model.Class<SigningKey>('SigningKey')({
+	privateJwk: Model.Sensitive(Schema.fromJsonString(Schema.RedactedFromValue(Jwk.PrivateJwk)))
+}) {
+	static readonly table = 'signing_keys'
+}
+
+// A sign-in by its family, if it is still live at `now`.
+export type SignInLookup = typeof SignInLookup.Type
+export const SignInLookup = Schema.Struct({family: Schema.String, now: Schema.Int})
+
+// An account's sign-ins still live at `now`.
+export type OwnedSignIns = typeof OwnedSignIns.Type
+export const OwnedSignIns = Schema.Struct({now: Schema.Int, owner: CredentialOwner})
+
+// What the signed-in list shows of a browser session or an app grant.
+export class SignedInApp extends Model.Class<SignedInApp>('SignedInApp')({
+	...Struct.pick(Model.fields(AppGrant), ['address', 'client', 'device', 'family', 'lastActive', 'parent']),
+	kind: Schema.Literals(['App', 'Browser'])
+}) {}
 
 export type RevokeParams = typeof RevokeParams.Type
 export const RevokeParams = Schema.Struct({client_id: Schema.NonEmptyString, token: Schema.NonEmptyString})

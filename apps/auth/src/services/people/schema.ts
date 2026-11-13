@@ -1,5 +1,7 @@
 import {Schema} from 'effect'
 
+import {Model} from 'effect/schema'
+
 import {User} from '@deslop/runtime/shared/auth'
 
 import {CredentialOwner, SessionVia} from '#services/tokens/schema.ts'
@@ -20,18 +22,19 @@ export const Person = Schema.Struct({...Account.fields, since: Schema.Finite})
 export type MemberStatus = typeof MemberStatus.Type
 export const MemberStatus = Schema.Literals(['Waiting', 'Allowed'])
 
-export type MemberRow = typeof MemberRow.Type
-export const MemberRow = Schema.Struct({
-	fullName: Schema.String,
-	id: Schema.NonEmptyString,
-	incarnation: CredentialOwner.fields.incarnation,
-	name: Schema.NonEmptyString,
-	since: Schema.Finite,
+// One row of `members`: a GitHub account that signed in, from its first sign-in until an admin removes or declines it.
+export class Member extends Model.Class<Member>('Member')({
+	fullName: Model.FieldOption(Schema.String),
+	id: User.fields.id,
+	// The registration its credentials belong to; it never leaves the server.
+	incarnation: Model.Sensitive(CredentialOwner.fields.incarnation),
+	name: User.fields.name,
+	// When the account first asked for access, then when an admin allowed it.
+	since: Schema.Int,
 	status: MemberStatus
-})
-
-export type Members = typeof Members.Type
-export const Members = Schema.Array(MemberRow)
+}) {
+	static readonly table = 'members'
+}
 
 export type GitHubUser = typeof GitHubUser.Type
 export const GitHubUser = Schema.Struct({

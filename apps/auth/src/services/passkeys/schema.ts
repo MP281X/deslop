@@ -1,5 +1,9 @@
 import {Schema} from 'effect'
 
+import {Model} from 'effect/schema'
+
+import {User} from '@deslop/runtime/shared/auth'
+
 import {CredentialOwner} from '#services/tokens/schema.ts'
 
 // The WebAuthn JSON forms `@simplewebauthn` and the browser exchange, so each side decodes what the other sent; arrays stay mutable because the library's own types are, not to satisfy a readonly rule.
@@ -80,22 +84,22 @@ export const Assertion = Schema.Struct({
 export type ClientData = typeof ClientData.Type
 export const ClientData = Schema.Struct({challenge: Schema.String})
 
-export type StoredPasskey = typeof StoredPasskey.Type
-export const StoredPasskey = Schema.Struct({
-	...CredentialOwner.fields,
+// One row of `passkeys`, and what the account menu lists of it: where it was added and whether it syncs. The key, its counter and its owner never leave the server.
+export class Passkey extends Model.Class<Passkey>('Passkey')({
 	addedFrom: Schema.String,
-	counter: Schema.Int,
+	counter: Model.Sensitive(Schema.Int),
+	// The credential id the authenticator chose.
 	id: Schema.NonEmptyString,
-	publicKey: Schema.NonEmptyString,
-	synced: Schema.Boolean,
-	transports: Schema.Array(Transport)
-})
-
-export type StoredPasskeys = typeof StoredPasskeys.Type
-export const StoredPasskeys = Schema.Array(StoredPasskey)
-
-export type Passkey = typeof Passkey.Type
-export const Passkey = Schema.Struct({addedFrom: Schema.String, id: Schema.NonEmptyString, synced: Schema.Boolean})
+	incarnation: Model.Sensitive(CredentialOwner.fields.incarnation),
+	// The COSE public key, as URL-safe base64.
+	publicKey: Model.Sensitive(Schema.NonEmptyString),
+	synced: Model.BooleanSqlite,
+	transports: Model.Sensitive(Schema.fromJsonString(Schema.Array(Transport))),
+	userId: Model.Sensitive(User.fields.id),
+	userName: Model.Sensitive(User.fields.name)
+}) {
+	static readonly table = 'passkeys'
+}
 
 export type PasskeyParams = typeof PasskeyParams.Type
 export const PasskeyParams = Schema.Struct({id: Schema.NonEmptyString})

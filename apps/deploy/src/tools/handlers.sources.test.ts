@@ -2,8 +2,9 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Effect, Formatter, Layer, Option, Ref, Schema, Stream, pipe} from 'effect'
 
+import type {HideRequest} from '#services/exposures/schema.ts'
 import {Fleet} from '#services/fleet/service.ts'
-import {type HideRequest, type InventoryItem, Inventory, Snapshot} from '#services/inventory/schema.ts'
+import {type InventoryItem, Inventory, Snapshot} from '#services/inventory/schema.ts'
 import {MachineHistory} from '#services/metrics/schema.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 import {ToolHandlers} from '#tools/handlers.ts'
@@ -12,7 +13,15 @@ const NOW = Date.UTC(2026, 10, 10, 12)
 
 function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 	const snapshot = Snapshot.make({items: [], sources: [], time: 0})
-	const machine = MachineHistory.make({error: '', samples: [], stale: false, time: 0, worker: 'dev'})
+	const machine = MachineHistory.make({
+		disks: [],
+		error: '',
+		load: [],
+		samples: [],
+		stale: false,
+		time: 0,
+		worker: 'dev'
+	})
 	return Fleet.of({
 		current: () => Effect.succeed([]),
 		expose: () => Effect.succeed(''),

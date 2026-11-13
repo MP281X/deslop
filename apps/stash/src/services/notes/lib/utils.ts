@@ -1,6 +1,6 @@
-import {Array, Function, Option, Order, Predicate, Record, String, pipe} from 'effect'
+import {Array, Function, Option, Order, Record, String, pipe} from 'effect'
 
-import type {Note, NotesEvent} from '#services/notes/schema.ts'
+import type {NoteItem} from '#services/notes/schema.ts'
 
 const URL_PATTERN = /https?:\/\/[^\s<>"]+/iu
 
@@ -103,7 +103,7 @@ export function commentFor(text: string) {
 	return pipe(text, String.replaceAll(new RegExp(URL_PATTERN.source, 'giu'), ''), plainText)
 }
 
-export function tagCounts(notes: NotesEvent['upserted']) {
+export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 	return pipe(
 		Array.flatMap(notes, note => note.tags),
 		Array.groupBy(Function.identity),
@@ -118,36 +118,16 @@ export function tagCounts(notes: NotesEvent['upserted']) {
 	)
 }
 
-export function findNotes(notes: Note[], query: string) {
+// A query's lowercase words: a `#word` names a tag every result carries, any other word is text every result contains.
+export function queryWords(query: string) {
 	const words = pipe(query, String.toLowerCase, String.split(/\s+/u), Array.filter(String.isNonEmpty))
-	const tags = pipe(
-		words,
-		Array.filter(String.startsWith('#')),
-		Array.map(String.slice(1)),
-		Array.filter(String.isNonEmpty)
-	)
-	const terms = Array.filter(words, word => !String.startsWith('#')(word))
-	if (Array.isReadonlyArrayEmpty(words)) return notes
-	return Array.filter(notes, note => {
-		if (!Array.every(tags, tag => Array.contains(note.tags, tag))) return false
-		const haystack = pipe(
-			[
-				note.title,
-				note.summary,
-				note.author,
-				note.text,
-				note.content,
-				note.topics,
-				note.body,
-				note.screenText,
-				note.transcript,
-				note.url,
-				...note.tags
-			],
-			Array.filter(Predicate.isNotUndefined),
-			Array.join(' '),
-			String.toLowerCase
-		)
-		return Array.every(terms, term => String.includes(term)(haystack))
-	})
+	return {
+		tags: pipe(
+			words,
+			Array.filter(String.startsWith('#')),
+			Array.map(String.slice(1)),
+			Array.filter(String.isNonEmpty)
+		),
+		terms: Array.filter(words, word => !String.startsWith('#')(word))
+	}
 }

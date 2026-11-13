@@ -1,6 +1,11 @@
 import {Schema} from 'effect'
 
+import {Model} from 'effect/schema'
+
 import {AiProvider} from '@deslop/runtime/shared/ai'
+import {User} from '@deslop/runtime/shared/auth'
+
+import {UsageRange} from '#services/usage/schema.ts'
 
 export {AiProvider}
 export const PROVIDER_NAMES = {
@@ -9,19 +14,40 @@ export const PROVIDER_NAMES = {
 	'opencode-zen': 'OpenCode Zen',
 	openrouter: 'OpenRouter'
 } satisfies Record<AiProvider, string>
-export type AiKeyInfo = typeof AiKeyInfo.Type
-export const AiKeyInfo = Schema.Struct({
-	last4: Schema.String,
-	lastStatus: Schema.optional(Schema.Finite),
-	provider: AiProvider
-})
-export type AiStoredKey = typeof AiStoredKey.Type
-export const AiStoredKey = Schema.Struct({...AiKeyInfo.fields, secret: Schema.RedactedFromValue(Schema.String)})
+
 export type AiSetKey = typeof AiSetKey.Type
 export const AiSetKey = Schema.Struct({provider: AiProvider, secret: Schema.RedactedFromValue(Schema.NonEmptyString)})
+
+// One person's key for one provider; the page knows it by its last four characters and the status its last call got.
+export class AiKey extends Model.Class<AiKey>('AiKey')({
+	last4: Schema.String,
+	lastStatus: Model.FieldOption(Schema.Int),
+	owner: Model.Sensitive(User.fields.id),
+	provider: AiProvider,
+	secret: Model.Sensitive(AiSetKey.fields.secret)
+}) {
+	static readonly table = 'ai_keys'
+}
+export type AiKeyInfo = typeof AiKey.json.Type
+
+// One person's calls to one provider in one hour: what the known prices sum to, and how many calls had none.
+export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
+	costUsd: Schema.Finite,
+	hour: Schema.Int,
+	owner: Model.Sensitive(User.fields.id),
+	provider: AiProvider,
+	unknownCostCalls: Schema.Int
+}) {
+	static readonly table = 'ai_usage'
+}
+
+// What a period's report reads of a person's hours.
+export type AiUsageQuery = typeof AiUsageQuery.Type
+export const AiUsageQuery = Schema.Struct({...UsageRange.fields, owner: AiUsage.fields.owner})
+
+// A call being metered: what its response reported, read as it streams.
 export type AiUsageEntry = typeof AiUsageEntry.Type
 export const AiUsageEntry = Schema.Struct({
-	app: Schema.String,
 	at: Schema.Finite,
 	cacheReadTokens: Schema.Finite,
 	cacheWriteTokens: Schema.Finite,
@@ -32,8 +58,6 @@ export const AiUsageEntry = Schema.Struct({
 	outputTokens: Schema.Finite,
 	provider: AiProvider
 })
-export type AiUsageLine = typeof AiUsageLine.Type
-export const AiUsageLine = Schema.fromJsonString(AiUsageEntry)
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
 export const AiUsageBreakdown = Schema.Struct({
 	costUsd: Schema.Finite,

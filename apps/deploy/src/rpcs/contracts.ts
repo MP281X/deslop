@@ -4,7 +4,8 @@ import {Rpc, RpcGroup} from 'effect/rpc'
 
 import {AuthError, RpcAuth} from '@deslop/runtime/shared/auth'
 
-import {DeployError, ExposeRequest, HideRequest, RunRequest, Snapshot} from '#services/inventory/schema.ts'
+import {ExposeRequest, HideRequest} from '#services/exposures/schema.ts'
+import {DeployError, RunRequest, Snapshot} from '#services/inventory/schema.ts'
 import {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 
 export class RpcContracts extends RpcGroup.make(

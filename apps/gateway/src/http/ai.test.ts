@@ -1,6 +1,7 @@
 import {gzipSync} from 'node:zlib'
 
 import {NodeCrypto, NodeHttpServer, NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -10,14 +11,13 @@ import {
 	ConfigProvider,
 	Context,
 	Effect,
-	FileSystem,
 	Layer,
 	Option,
-	Path,
 	Queue,
 	Redacted,
 	Ref,
 	Schema,
+	Stream,
 	String,
 	pipe
 } from 'effect'
@@ -25,18 +25,16 @@ import {
 import {Signature} from 'effect/crypto'
 import {HttpClient, HttpClientResponse, HttpRouter, HttpServerResponse} from 'effect/http'
 import {Jwk, Jwt} from 'effect/jose'
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
+import {SqlClient} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {Sessions} from '@deslop/runtime/server/sessions'
 import {AccessClaims} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers} from '#http/handlers.ts'
-import type {AiUsageEntry} from '#services/ai/schema.ts'
-import {AiUsageLine} from '#services/ai/schema.ts'
-import {AiProxy, layerAiProxy} from '#services/ai/service.ts'
+import {AiProxy} from '#services/ai/service.ts'
 
-const APP = 'Stash'
 const JSON_BODY = '{ "model": "test", "usage": {"input_tokens": 10, "output_tokens": 5} }'
 const SSE_BODY =
 	'event: message_start\ndata: {"message":{"model":"test","usage":{"input_tokens":10}}}\n\nevent: message_delta\ndata: {"usage":{"output_tokens":5}}\n\n'
@@ -60,7 +58,7 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 					AccessClaims,
 					{
 						aud: 'deslop',
-						azp: APP,
+						azp: 'Stash',
 						exp: now + expires,
 						iat: now,
 						iss: 'https://auth.mp281x.xyz/api/auth',
@@ -75,27 +73,9 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 			)
 		)
 	})
-	const saved = yield* Queue.unbounded<AiUsageEntry>()
 	const calls = yield* Queue.unbounded<{key: string; url: string; body: string}>()
 	const pricingDown = yield* Ref.make(false)
-	const base = Context.get(yield* Layer.build(KeyValueStore.layerMemory), KeyValueStore.KeyValueStore)
-	const platform = yield* Layer.build(NodeServices.layer)
-	const system = Context.get(platform, FileSystem.FileSystem)
-	const directory = yield* system.makeTempDirectoryScoped()
-	// The usage ledger appends a line for each recorded call; the test reads that line back as it is written.
-	const files = FileSystem.FileSystem.of({
-		...system,
-		writeFileString: Effect.fnUntraced(function* (file, text, options) {
-			const written = yield* system.writeFileString(file, text, options)
-			if (options?.flag === 'a' && String.includes('/ai-usage/')(file)) {
-				yield* Option.match(Schema.decodeOption(AiUsageLine)(String.trim(text)), {
-					onNone: () => Effect.void,
-					onSome: entry => Queue.offer(saved, entry)
-				})
-			}
-			return written
-		})
-	})
+	const database = yield* Layer.build(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer))
 	const client = HttpClient.make(request =>
 		Effect.gen(function* () {
 			if (request.url === 'https://auth.mp281x.xyz/.well-known/jwks.json') {
@@ -139,20 +119,37 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 		})
 	)
 	const services = pipe(
-		layerAiProxy(directory),
+		AiProxy.layer,
 		Layer.provide(Auth.layer),
 		Layer.provide(Sessions.layer),
 		Layer.provide(
 			Layer.mergeAll(
-				Layer.succeed(FileSystem.FileSystem, files),
-				Layer.succeed(Path.Path, Context.get(platform, Path.Path)),
-				Layer.succeed(KeyValueStore.KeyValueStore, base),
+				NodeServices.layer,
+				Layer.succeedContext(database),
 				Layer.succeed(HttpClient.HttpClient, client),
 				NodeCrypto.layer
 			)
 		)
 	)
 	const context = yield* Layer.build(services)
+	const sql = Context.get(database, SqlClient.SqlClient)
+	// Alice's usage after the services made its table, then again after each call of hers is saved.
+	const saved = yield* Queue.unbounded<{costUsd: number; unknownCostCalls: number}>()
+	yield* Effect.forkScoped(
+		Stream.runForEach(
+			sql.reactive(
+				{aiUsage: ['alice']},
+				Effect.flatMap(
+					sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
+					Schema.decodeUnknownEffect(
+						Schema.Tuple([Schema.Struct({costUsd: Schema.Finite, unknownCostCalls: Schema.Finite})])
+					)
+				)
+			),
+			rows => Queue.offer(saved, rows[0])
+		)
+	)
+	assert.deepStrictEqual(yield* Queue.take(saved), {costUsd: 0, unknownCostCalls: 0})
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
@@ -181,15 +178,18 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	}
 })
 
-it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its client label', () =>
+it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its cost', () =>
 	pipe(
 		Effect.gen(function* () {
 			const f = yield* fixture()
 			yield* f.ai.setKey('alice', 'anthropic', Redacted.make('alice-secret'))
 			yield* f.ai.setKey('bob', 'anthropic', Redacted.make('bob-secret'))
 			const token = yield* f.sign()
-			for (const path of ['json', 'stream']) {
-				const response = yield* f.request(`/ai/anthropic/${path}?q=1`, {
+			for (const call of [
+				{costUsd: 0.00004, path: 'json'},
+				{costUsd: 0.00008, path: 'stream'}
+			]) {
+				const response = yield* f.request(`/ai/anthropic/${call.path}?q=1`, {
 					body: '{ "model": "test" }',
 					headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json', cookie: 'bob'},
 					method: 'POST'
@@ -198,30 +198,29 @@ it.live('forwards JSON and SSE unchanged using the JWT owner key and meters its 
 				assert.equal(response.headers.get('x-upstream'), 'yes')
 				assert.equal(
 					yield* Effect.promise(() => response.text()),
-					Boolean.match(path === 'json', {onFalse: () => SSE_BODY, onTrue: () => JSON_BODY})
+					Boolean.match(call.path === 'json', {onFalse: () => SSE_BODY, onTrue: () => JSON_BODY})
 				)
 				assert.deepEqual(yield* Queue.take(f.calls), {
 					body: '{ "model": "test" }',
 					key: 'alice-secret',
-					url: `https://api.anthropic.com/${path}?q=1`
+					url: `https://api.anthropic.com/${call.path}?q=1`
 				})
-				const entry = yield* Queue.take(f.saved)
-				assert.equal(entry.costSource, 'models.dev')
-				assert.equal(entry.costUsd, 0.00004)
-				assert.equal(entry.app, APP)
+				const usage = yield* Queue.take(f.saved)
+				assert.closeTo(usage.costUsd, call.costUsd, 1e-12)
+				assert.strictEqual(usage.unknownCostCalls, 0)
 			}
-			const keys = yield* f.ai.keys('alice')
-			assert.deepEqual(keys, [{last4: 'cret', lastStatus: 201, provider: 'anthropic'}])
-			assert.equal(keys[0]?.lastStatus, 201)
+			assert.deepStrictEqual(
+				Array.map(yield* f.ai.keys('alice'), key => ({...key, lastStatus: Option.getOrUndefined(key.lastStatus)})),
+				[{last4: 'cret', lastStatus: 201, provider: 'anthropic'}]
+			)
 			const response = yield* f.request('/ai/anthropic/cost', {
 				body: '{"model":"test"}',
 				headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
 				method: 'POST'
 			})
 			yield* Effect.promise(() => response.text())
-			const cost = yield* Queue.take(f.saved)
-			assert.equal(cost.costSource, 'provider')
-			assert.equal(cost.costUsd, 0.123)
+			// A price the provider reports is taken as it is.
+			assert.closeTo((yield* Queue.take(f.saved)).costUsd, 0.12308, 1e-12)
 			yield* f.ai.removeKey('alice', 'anthropic')
 			const missing = yield* f.request('/ai/anthropic/json', {headers: {authorization: `Bearer ${token}`}})
 			assert.equal(missing.status, 402)
@@ -250,7 +249,7 @@ it.live('retries a failed pricing refresh on the next call instead of pricing a 
 			})
 			assert.equal(first.status, 201)
 			yield* Effect.promise(() => first.text())
-			assert.equal((yield* Queue.take(f.saved)).costSource, 'unknown')
+			assert.deepStrictEqual(yield* Queue.take(f.saved), {costUsd: 0, unknownCostCalls: 1})
 			yield* Ref.set(f.pricingDown, false)
 			const second = yield* f.request('/ai/anthropic/json', {
 				body: '{"model":"test"}',
@@ -260,8 +259,8 @@ it.live('retries a failed pricing refresh on the next call instead of pricing a 
 			assert.equal(second.status, 201)
 			yield* Effect.promise(() => second.text())
 			const priced = yield* Queue.take(f.saved)
-			assert.equal(priced.costSource, 'models.dev')
-			assert.equal(priced.costUsd, 0.00004)
+			assert.closeTo(priced.costUsd, 0.00004, 1e-12)
+			assert.strictEqual(priced.unknownCostCalls, 1)
 		}),
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This HTTP test entry point owns its configured service lifetime.
 		Effect.provide(

@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Context, Effect, Function, Layer, pipe} from 'effect'
+import {Context, DateTime, Effect, Function, Layer, Option, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
@@ -8,18 +8,27 @@ import {AiGateway, AiUnavailable} from '@deslop/runtime/server/ai'
 
 import {Organizer} from './organization.ts'
 
-import {Note} from '#services/notes/schema.ts'
+import {Note, NoteId} from '#services/notes/schema.ts'
 
 const NOTE = Note.make({
+	author: Option.none(),
+	body: Option.none(),
 	content: '',
-	createdAt: 0,
-	id: '6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01',
+	createdAt: DateTime.makeUnsafe(0),
+	file: Option.none(),
+	id: NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01'),
+	image: Option.none(),
+	issue: Option.none(),
+	requester: 'github:1',
+	screenText: Option.none(),
 	source: 'Note',
 	status: 'organizing',
 	summary: '',
-	tags: [],
 	text: 'Remember the lentils',
-	title: 'Lentils'
+	title: 'Lentils',
+	topics: Option.none(),
+	transcript: Option.none(),
+	url: Option.none()
 })
 
 function open(gateway: AiGateway['Service'], client: HttpClient.HttpClient) {

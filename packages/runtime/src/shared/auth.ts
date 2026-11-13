@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
-import {Array, Context, Effect, Option, Order, Predicate, Schema, String} from 'effect'
+import {Array, Context, Effect, Option, Predicate, Schema, String} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 import {Headers, HttpClient} from 'effect/http'
@@ -83,16 +83,6 @@ export const COOKIE = {httpOnly: true, path: '/', sameSite: 'lax', secure: true}
 
 export const SESSION_COOKIE = '__Host-session'
 
-export function matchingSessions<A extends {key: string; value: {user: User; expiresAt: number}}>(
-	saved: Option.Option<A>[],
-	userId: string
-) {
-	return Array.sort(
-		Array.filter(Array.getSomes(saved), session => session.value.user.id === userId),
-		Order.mapInput(Order.flip(Order.Number), (session: A) => session.value.expiresAt)
-	)
-}
-
 // RFC 9110 auth schemes are case-insensitive and may be followed by more than one space.
 export function bearerOf(headers: Headers.Headers) {
 	return Option.flatMapNullishOr(
@@ -116,6 +106,9 @@ export const CALLBACK_PATH = '/auth/callback'
 
 // An access token lives ten minutes, so a removed account or signed-out session stops working everywhere within that time.
 export const ACCESS_SECONDS = 600
+
+// A refresh token lasts thirty days from its last use, so a session unused for longer cannot be renewed.
+export const REFRESH_SECONDS = 30 * 86_400
 
 // A client id is its registration, encoded: anyone may register, and Auth checks the callbacks again at authorize.
 export function clientIdOf(client: ClientInfo) {
@@ -144,7 +137,7 @@ export function isDenied(error: unknown) {
 export function rejected(message: string) {
 	return Effect.mapError(cause => {
 		if (Schema.is(AuthError)(cause)) return cause
-		if (Predicate.isTagged(cause, 'KeyValueStoreError') || HttpClient.isTransientError(cause)) {
+		if (Predicate.isTagged(cause, 'SqlError') || HttpClient.isTransientError(cause)) {
 			return AuthError.make({cause, error: 'temporarily_unavailable', message})
 		}
 		return AuthError.make({cause, message})

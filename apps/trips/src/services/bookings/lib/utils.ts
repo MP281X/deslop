@@ -1,17 +1,14 @@
 import {Array, Boolean, DateTime, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
 
-import {ActivityProps} from '#services/bookings/schema.ts'
+import {ActivityProps, Flight, Stay, Train} from '#services/bookings/schema.ts'
 import type {
 	Booking,
 	BookingList,
 	Chip,
-	Flight,
 	FlightPhase,
 	Leg,
 	LocalTime,
-	Stay,
 	Tone,
-	Train,
 	TrainPhase
 } from '#services/bookings/schema.ts'
 
@@ -57,8 +54,8 @@ export function clockAt(time: number, timeZone: string) {
 	})
 }
 
-export function labelled(label: string, value?: string) {
-	return Option.map(Option.fromUndefinedOr(value), found => `${label} ${found}`)
+export function labelled(label: string, value: Option.Option<string>) {
+	return Option.map(value, found => `${label} ${found}`)
 }
 
 export function line(parts: Option.Option<string>[]) {
@@ -67,15 +64,20 @@ export function line(parts: Option.Option<string>[]) {
 
 export function departureOf(booking: Flight | Train) {
 	if (booking._tag === 'train') {
+		const live = Option.getOrUndefined(booking.live)
 		// A train still to leave waits for its timetable, however early it runs before.
-		return booking.departs + (booking.live?.departureDelay ?? Number.max(booking.live?.delayMinutes ?? 0, 0)) * MINUTE
+		return booking.departs + (live?.departureDelay ?? Number.max(live?.delayMinutes ?? 0, 0)) * MINUTE
 	}
-	return booking.live?.departureActual ?? booking.live?.departureEstimated ?? booking.departs
+	const live = Option.getOrUndefined(booking.live)
+	return live?.departureActual ?? live?.departureEstimated ?? booking.departs
 }
 
 export function arrivalOf(booking: Flight | Train) {
-	if (booking._tag === 'train') return booking.arrives + (booking.live?.delayMinutes ?? 0) * MINUTE
-	return booking.live?.arrivalActual ?? booking.live?.arrivalEstimated ?? booking.arrives
+	if (booking._tag === 'train') {
+		return booking.arrives + Option.match(booking.live, {onNone: () => 0, onSome: live => live.delayMinutes}) * MINUTE
+	}
+	const live = Option.getOrUndefined(booking.live)
+	return live?.arrivalActual ?? live?.arrivalEstimated ?? booking.arrives
 }
 
 export function startOf(booking: Booking) {
@@ -124,7 +126,12 @@ function near(left: number, right: number) {
 }
 
 function sameConfirmation(left: Booking, right: Booking) {
-	return left.confirmation !== undefined && left.confirmation === right.confirmation
+	return Option.exists(left.confirmation, code => Option.contains(right.confirmation, code))
+}
+
+// A field the newer ticket leaves out keeps what the older one printed.
+function newer<A>(existing: Option.Option<A>, incoming: Option.Option<A>) {
+	return Option.orElse(incoming, () => existing)
 }
 
 // The same segment, keyed by origin since BA15 flies two legs a day, or a rebooking under the same confirmation and route.
@@ -161,25 +168,40 @@ function sameReservation(existing: Booking, incoming: Booking) {
 
 // The newer ticket wins field by field; the id stays, and live data survives only while it describes the same service.
 function combine(existing: Booking, incoming: Booking) {
-	const kept = {id: existing.id}
 	if (existing._tag === 'flight' && incoming._tag === 'flight') {
-		const merged = {...existing, ...incoming, ...kept}
-		if (
+		const same =
 			existing.airlineCode === incoming.airlineCode &&
 			existing.number === incoming.number &&
 			Math.abs(incoming.departs - existing.departs) <= HOUR
-		) {
-			return merged
-		}
-		return Struct.omit(merged, ['live'])
+		return Flight.make({
+			...Struct.pick(incoming, Struct.keys(Flight.fields)),
+			boardingAt: newer(existing.boardingAt, incoming.boardingAt),
+			boardingGroup: newer(existing.boardingGroup, incoming.boardingGroup),
+			confirmation: newer(existing.confirmation, incoming.confirmation),
+			id: existing.id,
+			live: Option.filter(existing.live, () => same),
+			seat: newer(existing.seat, incoming.seat)
+		})
 	}
 	if (existing._tag === 'train' && incoming._tag === 'train') {
-		const merged = {...existing, ...incoming, ...kept}
-		if (existing.number === incoming.number && Math.abs(incoming.departs - existing.departs) <= HOUR) return merged
-		return Struct.omit(merged, ['live'])
+		const same = existing.number === incoming.number && Math.abs(incoming.departs - existing.departs) <= HOUR
+		return Train.make({
+			...Struct.pick(incoming, Struct.keys(Train.fields)),
+			coach: newer(existing.coach, incoming.coach),
+			confirmation: newer(existing.confirmation, incoming.confirmation),
+			id: existing.id,
+			live: Option.filter(existing.live, () => same),
+			seat: newer(existing.seat, incoming.seat)
+		})
 	}
-	if (existing._tag === 'stay' && incoming._tag === 'stay') return {...existing, ...incoming, ...kept}
-	return {...incoming, ...kept}
+	if (existing._tag === 'stay' && incoming._tag === 'stay') {
+		return Stay.make({
+			...Struct.pick(incoming, Struct.keys(Stay.fields)),
+			confirmation: newer(existing.confirmation, incoming.confirmation),
+			id: existing.id
+		})
+	}
+	return incoming
 }
 
 export function upsert(current: BookingList, incoming: BookingList) {
@@ -220,12 +242,12 @@ export function activeWindow(booking: Booking, now: number) {
 }
 
 function flightPhase(flight: Flight, now: number) {
-	const state = flight.live?.state
+	const state = Option.getOrUndefined(flight.live)?.state
 	if (flight.status === 'cancelled' || state === 'cancelled') return 'cancelled'
 	if (state === 'diverted') return 'diverted'
 	if (state === 'landed' || state === 'arrived') return 'landed'
 	if (state === 'departed' || state === 'airborne') return 'airborne'
-	if (flight.boardingAt !== undefined && now >= flight.boardingAt) return 'boarding'
+	if (Option.exists(flight.boardingAt, at => now >= at)) return 'boarding'
 	if (now >= departureOf(flight) - 45 * MINUTE) return 'gate'
 	if (now >= departureOf(flight) - AIRPORT_LEAD) return 'airport'
 	return 'leave'
@@ -233,7 +255,7 @@ function flightPhase(flight: Flight, now: number) {
 
 function flightTarget(flight: Flight, phase: FlightPhase) {
 	if (phase === 'leave') return departureOf(flight) - AIRPORT_LEAD
-	if (phase === 'airport' || phase === 'gate') return flight.boardingAt ?? departureOf(flight)
+	if (phase === 'airport' || phase === 'gate') return Option.getOrElse(flight.boardingAt, () => departureOf(flight))
 	if (phase === 'boarding') return departureOf(flight)
 	return arrivalOf(flight)
 }
@@ -241,17 +263,26 @@ function flightTarget(flight: Flight, phase: FlightPhase) {
 function flightHeadline(flight: Flight, phase: FlightPhase) {
 	if (phase === 'leave') return `Leave for ${flight.from.code ?? flight.from.name}`
 	if (phase === 'airport') {
-		return Option.getOrElse(labelled('Terminal', flight.live?.departureTerminal), () => 'At the airport')
+		return Option.getOrElse(
+			labelled(
+				'Terminal',
+				Option.flatMapNullishOr(flight.live, live => live.departureTerminal)
+			),
+			() => 'At the airport'
+		)
 	}
 	if (phase === 'gate') {
-		if (flight.boardingAt === undefined) return 'Departs in'
+		if (Option.isNone(flight.boardingAt)) return 'Departs in'
 		return 'Boards in'
 	}
 	if (phase === 'boarding') return 'Boarding'
 	if (phase === 'airborne') return 'Lands in'
 	if (phase === 'landed') {
 		return Option.getOrElse(
-			labelled('Bags on belt', flight.live?.belt),
+			labelled(
+				'Bags on belt',
+				Option.flatMapNullishOr(flight.live, live => live.belt)
+			),
 			() => `Landed in ${flight.to.city ?? flight.to.name}`
 		)
 	}
@@ -264,12 +295,22 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase)
 		return Option.getOrElse(
 			Option.orElse(
 				Option.map(stayAfter(bookings, flight), stay => `Next: ${stay.name}`),
-				() => labelled('Gate', flight.live?.arrivalGate)
+				() =>
+					labelled(
+						'Gate',
+						Option.flatMapNullishOr(flight.live, live => live.arrivalGate)
+					)
 			),
 			() => ''
 		)
 	}
-	return line([labelled('Group', flight.boardingGroup), labelled('was', flight.live?.previousGate)])
+	return line([
+		labelled('Group', flight.boardingGroup),
+		labelled(
+			'was',
+			Option.flatMapNullishOr(flight.live, live => live.previousGate)
+		)
+	])
 }
 
 function chipOf(text: string, tone: Tone) {
@@ -277,10 +318,23 @@ function chipOf(text: string, tone: Tone) {
 }
 
 function flightChip(flight: Flight, phase: FlightPhase) {
-	if (phase === 'landed') return Option.map(labelled('Belt', flight.live?.belt), text => chipOf(text, 'plain'))
+	if (phase === 'landed') {
+		return Option.map(
+			labelled(
+				'Belt',
+				Option.flatMapNullishOr(flight.live, live => live.belt)
+			),
+			text => chipOf(text, 'plain')
+		)
+	}
 	return Option.map(
-		Option.orElse(Option.fromUndefinedOr(flight.live?.departureGate), () =>
-			Option.map(Option.fromUndefinedOr(flight.live?.departureTerminal), terminal => `T${terminal}`)
+		Option.orElse(
+			Option.flatMapNullishOr(flight.live, live => live.departureGate),
+			() =>
+				Option.map(
+					Option.flatMapNullishOr(flight.live, live => live.departureTerminal),
+					terminal => `T${terminal}`
+				)
 		),
 		text => chipOf(text, 'warn')
 	)
@@ -335,7 +389,10 @@ function flightActivity(flight: Flight, bookings: BookingList, now: number) {
 			phase !== 'landed' && phase !== 'cancelled' && phase !== 'diverted'
 		),
 		...Option.match(
-			Option.filter(Option.fromUndefinedOr(flight.live?.takeoffActual), () => phase === 'airborne'),
+			Option.filter(
+				Option.flatMapNullishOr(flight.live, live => live.takeoffActual),
+				() => phase === 'airborne'
+			),
 			{onNone: () => ({}), onSome: progressFrom => ({progressFrom})}
 		),
 		arrivalNote: flight.to.city ?? flight.to.name,
@@ -362,14 +419,23 @@ function flightActivity(flight: Flight, bookings: BookingList, now: number) {
 
 function trainPhase(train: Train, now: number) {
 	if (train.status === 'cancelled') return 'cancelled'
-	if (train.live?.state === 'arrived') return 'arrived'
-	if (train.live?.state === 'departed') return 'running'
-	if (train.live?.departurePlatform !== undefined || now >= departureOf(train) - STATION_LEAD) return 'platform'
+	const live = Option.getOrUndefined(train.live)
+	if (live?.state === 'arrived') return 'arrived'
+	if (live?.state === 'departed') return 'running'
+	if (live?.departurePlatform !== undefined || now >= departureOf(train) - STATION_LEAD) return 'platform'
 	return 'upcoming'
 }
 
 function trainHeadline(train: Train, phase: TrainPhase) {
-	if (phase === 'running') return Option.getOrElse(labelled('Past', train.live?.lastSeen?.station), () => 'Arrives in')
+	if (phase === 'running') {
+		return Option.getOrElse(
+			labelled(
+				'Past',
+				Option.flatMapNullishOr(train.live, live => live.lastSeen?.station)
+			),
+			() => 'Arrives in'
+		)
+	}
 	if (phase === 'arrived') return `Arrived in ${train.to.name}`
 	if (phase === 'cancelled') return 'Cancelled'
 	return 'Departs in'
@@ -384,8 +450,10 @@ function trainLabel(phase: TrainPhase, delay: number) {
 
 function platformTone(train: Train) {
 	if (
-		train.live?.departurePlatformPlanned !== undefined &&
-		train.live.departurePlatform !== train.live.departurePlatformPlanned
+		Option.exists(
+			train.live,
+			live => live.departurePlatformPlanned !== undefined && live.departurePlatform !== live.departurePlatformPlanned
+		)
 	) {
 		return 'warn'
 	}
@@ -394,9 +462,21 @@ function platformTone(train: Train) {
 
 function trainChip(train: Train, phase: TrainPhase) {
 	if (phase === 'running' || phase === 'arrived') {
-		return Option.map(labelled('Bin', train.live?.arrivalPlatform), text => chipOf(text, 'plain'))
+		return Option.map(
+			labelled(
+				'Bin',
+				Option.flatMapNullishOr(train.live, live => live.arrivalPlatform)
+			),
+			text => chipOf(text, 'plain')
+		)
 	}
-	return Option.map(labelled('Bin', train.live?.departurePlatform), text => chipOf(text, platformTone(train)))
+	return Option.map(
+		labelled(
+			'Bin',
+			Option.flatMapNullishOr(train.live, live => live.departurePlatform)
+		),
+		text => chipOf(text, platformTone(train))
+	)
 }
 
 function trainTone(phase: TrainPhase, delay: number) {
@@ -412,7 +492,7 @@ function trainDelayNote(phase: TrainPhase, delay: number) {
 
 function trainActivity(train: Train, now: number) {
 	const phase = trainPhase(train, now)
-	const delay = train.live?.delayMinutes ?? 0
+	const delay = Option.match(train.live, {onNone: () => 0, onSome: live => live.delayMinutes})
 	const tone = trainTone(phase, delay)
 	return {
 		...Option.match(trainChip(train, phase), {onNone: () => ({}), onSome: chip => ({chip})}),

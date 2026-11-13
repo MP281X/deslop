@@ -1,9 +1,9 @@
 import {Array, Option, Record, String, Struct, pipe} from 'effect'
 
 import {plainText} from '#services/notes/lib/utils.ts'
-import type {Note, Organization, TagDefinition} from '#services/notes/schema.ts'
+import type {Organization, TagName} from '#services/notes/schema.ts'
 
-export function normalizeTags(tags: Note['tags']) {
+export function normalizeTags(tags: readonly TagName[]) {
 	return pipe(
 		tags,
 		Array.map(tag => pipe(tag, String.toLowerCase, plainText, String.replace(/^#+/u, ''), String.replaceAll(' ', '-'))),
@@ -17,45 +17,32 @@ function tagKey(tag: string) {
 	return pipe(tag, String.replaceAll(/[^a-z0-9+#]/gu, ''), String.replace(/^(.{2,}[^s])s$/u, '$1'))
 }
 
-function reuseTags(tags: Note['tags'], existing: Note['tags']) {
-	const byKey = Array.groupBy(existing, tagKey)
-	return Array.dedupe(
-		Array.map(tags, tag =>
-			pipe(
-				Array.head(byKey[tagKey(tag)] ?? []),
-				Option.getOrElse(() => tag)
+// A tag as the tags in use spell it, when one shares its key.
+function spelled(byKey: Record.ReadonlyRecord<string, Array.NonEmptyArray<TagName>>, tag: TagName) {
+	return Option.match(Record.get(byKey, tagKey(tag)), {onNone: () => tag, onSome: Array.headNonEmpty})
+}
+
+// The organization's tags as the tags in use spell them, each with the first definition the AI gave it.
+export function reconcileOrganization(organization: Organization, inUse: readonly TagName[]) {
+	const byKey = Array.groupBy(inUse, tagKey)
+	// Read from the last, so the first definition of a tag is the one kept.
+	const definitions = Record.fromEntries(
+		Array.reverse(
+			Array.getSomes(
+				Array.map(organization.definitions, item =>
+					Option.map(
+						Array.head(normalizeTags([item.tag])),
+						tag => [spelled(byKey, tag), Option.liftPredicate(plainText(item.definition), String.isNonEmpty)] as const
+					)
+				)
 			)
 		)
 	)
-}
-
-export function reconcileOrganization(organization: Organization, inUse: string[], known: Record<string, string>) {
-	const tags = reuseTags(organization.tags, inUse)
 	return {
-		definitions: pipe(
-			organization.definitions,
-			Array.map(item =>
-				pipe(
-					Array.head(reuseTags(normalizeTags([item.tag]), inUse)),
-					Option.map(name => ({definition: plainText(item.definition), tag: name}))
-				)
-			),
-			Array.getSomes,
-			Array.filter(item => Array.contains(tags, item.tag) && !Record.has(known, item.tag))
-		),
-		organization: {...Struct.omit(organization, ['definitions']), tags}
+		organization: Struct.omit(organization, ['definitions', 'tags']),
+		tags: Array.map(Array.dedupe(Array.map(organization.tags, tag => spelled(byKey, tag))), name => ({
+			definition: Option.flatten(Record.get(definitions, name)),
+			name
+		}))
 	}
-}
-
-export function reconcileDefinitions(entries: TagDefinition[], known: Record<string, string>) {
-	const definitions = {
-		...Record.fromEntries(
-			Array.map(
-				Array.dedupeWith(entries, (left, right) => left.tag === right.tag),
-				entry => [entry.tag, entry.definition] as const
-			)
-		),
-		...known
-	}
-	return {definitions, rows: Array.map(Record.toEntries(definitions), pair => ({definition: pair[1], tag: pair[0]}))}
 }

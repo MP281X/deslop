@@ -1,52 +1,35 @@
 import {NodeCrypto} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Effect, Layer, Ref, String, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
 import {Headers} from 'effect/http'
 import {Jwks, Jwt} from 'effect/jose'
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
+import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
 import {AccessClaims, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
 
+import {AppGrant} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 const USER = {incarnation: 'fixture', user: {id: 'github:42', name: 'octocat'}}
 
 const open = Effect.gen(function* () {
-	const store = yield* KeyValueStore.KeyValueStore
-	yield* store.clear
-	const failing = yield* Ref.make(false)
-	const tokens = Context.get(
-		yield* Layer.build(
-			pipe(
-				Tokens.layer,
-				Layer.provide(
-					Layer.succeed(
-						KeyValueStore.KeyValueStore,
-						KeyValueStore.make({
-							...store,
-							set: (key, value) =>
-								Effect.flatMap(Ref.get(failing), fail => {
-									if (fail) {
-										return Effect.fail(
-											new KeyValueStore.KeyValueStoreError({key, message: 'Disk unavailable', method: 'set'})
-										)
-									}
-									return store.set(key, value)
-								})
-						})
-					)
-				),
-				Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://issuer.mp281x.xyz/nested'})))
-			)
-		),
-		Tokens
+	const context = yield* Layer.build(
+		pipe(
+			Tokens.layer,
+			Layer.provideMerge(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
+			Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://issuer.mp281x.xyz/nested'})))
+		)
 	)
+	const tokens = Context.get(context, Tokens)
+	const sql = Context.get(context, SqlClient.SqlClient)
 	const digest = yield* Digest.Digest
 	const code = yield* tokens.issue(
 		{
@@ -63,12 +46,15 @@ const open = Effect.gen(function* () {
 			{},
 			user => Effect.succeed(user)
 		),
-		failing,
+		// The database refuses one kind of write to the app grants, as a full disk would, until `recover`.
+		fail: (write: 'INSERT' | 'UPDATE') =>
+			sql`CREATE TEMP TRIGGER refuse BEFORE ${sql.literal(write)} ON ${sql(AppGrant.table)} BEGIN SELECT RAISE(ABORT, 'Disk unavailable'); END`,
+		recover: sql`DROP TRIGGER temp.refuse`,
 		tokens
 	}
 })
 
-it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
+it.layer(NodeCrypto.layer)(test => {
 	test.effect(
 		'uses the configured Auth origin as the token issuer',
 		Effect.fnUntraced(function* () {
@@ -121,9 +107,9 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 		'does not consume an authorization code before its grant is persisted',
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
-			yield* Ref.set(fixture.failing, true)
+			yield* fixture.fail('INSERT')
 			assert.strictEqual((yield* Effect.flip(fixture.exchange)).error, 'temporarily_unavailable')
-			yield* Ref.set(fixture.failing, false)
+			yield* fixture.recover
 			assert.strictEqual((yield* fixture.exchange)._tag, 'Granted')
 			assert.strictEqual((yield* fixture.exchange)._tag, 'Replayed')
 		})
@@ -136,7 +122,7 @@ it.layer(Layer.merge(NodeCrypto.layer, KeyValueStore.layerMemory))(test => {
 			const granted = yield* fixture.exchange
 			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
 			yield* TestClock.adjust('2 minutes')
-			yield* Ref.set(fixture.failing, true)
+			yield* fixture.fail('UPDATE')
 			assert.deepStrictEqual(
 				yield* fixture.tokens.verify(Headers.fromInput({authorization: `Bearer ${granted.tokens.access_token}`})),
 				USER

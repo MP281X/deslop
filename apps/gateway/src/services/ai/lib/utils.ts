@@ -1,33 +1,35 @@
-import {Array, Number, Order, Record} from 'effect'
+import {Boolean, Number, Option, Result, Schema, String} from 'effect'
 
+import {Usage} from '#services/ai/schema.ts'
 import type {AiUsageEntry} from '#services/ai/schema.ts'
-import type {UsageRange} from '#services/usage/schema.ts'
 
-function totals(rows: AiUsageEntry[]) {
-	return {
-		costUsd: Number.sumAll(Array.map(rows, row => row.costUsd ?? 0)),
-		unknownCostCalls: Array.countBy(rows, row => row.costSource === 'unknown')
-	}
-}
-
-function grouped(rows: AiUsageEntry[], key: (entry: AiUsageEntry) => string) {
-	return Array.map(Record.toEntries(Array.groupBy(rows, key)), entry => ({name: entry[0], ...totals(entry[1])}))
-}
-
-// The period's totals and buckets, shared by the service and its tests.
-export function report(entries: AiUsageEntry[], range: UsageRange) {
-	const selected = Array.filter(entries, entry => entry.at >= range.from && entry.at < range.to)
-	function bucket(entry: AiUsageEntry) {
-		return Math.floor(entry.at / range.size) * range.size
-	}
-	return {
-		byProvider: grouped(selected, entry => entry.provider),
-		series: Array.sort(
-			Array.map(Record.values(Array.groupBy(selected, entry => `${bucket(entry)}`)), group => ({
-				at: bucket(group[0]),
-				byProvider: grouped(group, entry => entry.provider)
-			})),
-			Order.mapInput(Number.Order, (entry: {at: number}) => entry.at)
-		)
-	}
+export function readUsage(text: string, entry: AiUsageEntry) {
+	if (String.isEmpty(String.trim(text)) || text === '[DONE]') return Result.succeed(entry)
+	return Result.map(Schema.decodeResult(Schema.fromJsonString(Usage))(text), decoded => {
+		const usage = {...decoded.message?.usage, ...decoded.usage}
+		const cacheReadTokens =
+			usage.cache_read_input_tokens ?? decoded.usage?.prompt_tokens_details?.cached_tokens ?? entry.cacheReadTokens
+		const cacheWriteTokens =
+			usage.cache_creation_input_tokens ??
+			decoded.usage?.prompt_tokens_details?.cache_write_tokens ??
+			entry.cacheWriteTokens
+		return {
+			...entry,
+			cacheReadTokens,
+			cacheWriteTokens,
+			// Input is counted without cached tokens, as Anthropic's messages report it; chat completions' prompt_tokens include them, whichever provider serves the shape.
+			inputTokens:
+				usage.input_tokens ??
+				Option.match(Option.fromUndefinedOr(usage.prompt_tokens), {
+					onNone: () => entry.inputTokens,
+					onSome: prompt => Number.max(0, prompt - cacheReadTokens - cacheWriteTokens)
+				}),
+			model: decoded.model ?? decoded.message?.model ?? entry.model,
+			outputTokens: usage.output_tokens ?? usage.completion_tokens ?? entry.outputTokens,
+			...Boolean.match(decoded.usage?.cost !== undefined || decoded.cost !== undefined, {
+				onFalse: () => ({}),
+				onTrue: () => ({costSource: 'provider' as const, costUsd: decoded.usage?.cost ?? decoded.cost})
+			})
+		} satisfies AiUsageEntry
+	})
 }

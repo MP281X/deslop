@@ -255,6 +255,11 @@ export const lint: OxlintConfig = {
 			{message: 'Use Match.', selector: 'SwitchStatement'},
 			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'},
 			{
+				// A module augmentation is the one place an interface belongs: TypeScript merges declarations only into interfaces.
+				message: 'Declare a type, not an interface.',
+				selector: 'TSInterfaceDeclaration:not(TSModuleDeclaration TSInterfaceDeclaration)'
+			},
+			{
 				message: 'Name tools in snake_case.',
 				selector:
 					'CallExpression[callee.object.name="Tool"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/])'
@@ -814,7 +819,6 @@ export const lint: OxlintConfig = {
 			'error',
 			{arrayLiteralTypeAssertions: 'never', assertionStyle: 'never', objectLiteralTypeAssertions: 'never'}
 		],
-		'typescript/consistent-type-definitions': ['error', 'type'],
 		'typescript/consistent-type-imports': ['error', {fixStyle: 'separate-type-imports', prefer: 'type-imports'}],
 		'typescript/method-signature-style': 'error',
 		'typescript/no-dynamic-delete': 'error',

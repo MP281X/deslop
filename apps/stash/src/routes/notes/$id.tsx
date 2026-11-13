@@ -52,7 +52,7 @@ import {BrandLogo} from '#lib/icons.tsx'
 import {appOf, brandOf, kinds, subjectOf} from '#lib/kinds.ts'
 import {imageAtom, noteAtom, notesAtom, regenerateAtom, removal} from '#lib/notes.ts'
 import {primary} from '#lib/session.ts'
-import type {Note, NoteItem} from '#services/notes/schema.ts'
+import type {NoteItem} from '#services/notes/schema.ts'
 
 const prose = [text.body, lineSpacing(space[1]), foregroundStyle(colors.foreground), textSelection(true)]
 
@@ -213,7 +213,7 @@ function FullBody(props: {note: NoteItem}) {
 				<HStack modifiers={[frame({alignment: 'trailing', maxWidth: Infinity})]}>
 					<Problem
 						label="Note body unavailable"
-						saved={Option.exists(AsyncResult.value(full), note => note.body !== undefined)}
+						saved={Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))}
 						onRetry={reload}
 					/>
 				</HStack>
@@ -221,7 +221,7 @@ function FullBody(props: {note: NoteItem}) {
 			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
 				Option.match(AsyncResult.value(full), {
 					onNone: () => undefined,
-					onSome: note => note.body !== undefined && <Body text={note.body} />
+					onSome: note => Option.match(note.body, {onNone: () => undefined, onSome: body => <Body text={body} />})
 				})}
 		</VStack>
 	)
@@ -244,9 +244,9 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} name="Note" onRetry={reload} />
 	}
-	const issue = props.note.issue ?? 'Can’t Read This Link'
+	const issue = Option.getOrElse(props.note.issue, () => 'Can’t Read This Link')
 	const kept =
-		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => note.body !== undefined)
+		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
 		<ScrollView>
 			<VStack
@@ -267,7 +267,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 				>
 					{props.note.title}
 				</Text>
-				{props.note.image !== undefined && <Cover note={props.note} />}
+				{Option.isSome(props.note.image) && <Cover note={props.note} />}
 				{pipe(
 					Match.value(props.note.status),
 					Match.when('organizing', () => <Reading note={props.note} />),
@@ -317,8 +317,9 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: string
 	)
 }
 
+// The navigation path names the note by its id.
 function NoteScreen(props: {
-	id: Note['id']
+	id: string
 	notes: readonly NoteItem[]
 	onClose: () => void
 	onTag: (tag: string) => void
@@ -333,7 +334,7 @@ function NoteScreen(props: {
 				<Toolbar>
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
-						{Option.match(Option.fromNullishOr(item.url), {
+						{Option.match(item.url, {
 							onNone: () => undefined,
 							onSome: url => (
 								<ToolbarItem placement="topBarTrailing">
@@ -364,10 +365,7 @@ function NoteScreen(props: {
 						})}
 						<ToolbarItem placement="topBarTrailing">
 							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-								{Option.match(Option.fromNullishOr(item.url), {
-									onNone: () => undefined,
-									onSome: url => <ShareLink item={url} />
-								})}
+								{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
 								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
 								<Button
 									label="Delete"
@@ -388,7 +386,7 @@ function NoteScreen(props: {
 	)
 }
 
-export function NoteRoute(props: {id: Note['id']; onClose: () => void; onTag: (tag: string) => void}) {
+export function NoteRoute(props: {id: string; onClose: () => void; onTag: (tag: string) => void}) {
 	return (
 		<Loaded atom={notesAtom} name="Notes">
 			{notes => <NoteScreen id={props.id} notes={notes} onClose={props.onClose} onTag={props.onTag} />}

@@ -110,24 +110,6 @@ export const Serve = Schema.Struct({
 	)
 })
 
-export type Exposure = typeof Exposure.Type
-export const Exposure = Schema.Struct({
-	hostname: Schema.String.check(
-		Schema.isMaxLength(253),
-		Schema.isPattern(/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u)
-	),
-	kind: Schema.Literals(['tailnet', 'public']),
-	name: Schema.NonEmptyString.check(Schema.isMaxLength(260)),
-	port: Schema.Int.check(Schema.isBetween({maximum: 65_535, minimum: 1024})),
-	publicAccess: Schema.Boolean
-})
-
-export type ExposeRequest = typeof ExposeRequest.Type
-export const ExposeRequest = Schema.Struct({...Exposure.fields, target: Schema.optionalKey(Schema.String)})
-
-export type HideRequest = typeof HideRequest.Type
-export const HideRequest = Schema.Struct({name: Schema.String, target: Schema.optionalKey(Schema.String)})
-
 export type RunRequest = typeof RunRequest.Type
 export const RunRequest = Schema.Struct({
 	name: Schema.String,

@@ -3,14 +3,11 @@ import {
 	Boolean,
 	Clock,
 	Context,
-	Deferred,
+	DateTime,
 	Duration,
 	Effect,
-	FileSystem,
-	HashMap,
 	HashSet,
 	Layer,
-	Number,
 	Option,
 	Order,
 	Predicate,
@@ -19,48 +16,31 @@ import {
 	Schema,
 	Stream,
 	String,
-	SubscriptionRef,
-	SynchronizedRef,
+	Struct,
 	pipe
 } from 'effect'
 
 import {Digest} from 'effect/crypto'
-import {KeyValueStore} from 'effect/persistence'
-
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {Reactivity} from 'effect/reactivity'
+import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {
 	appName,
 	attributesFlat,
-	brokeAt,
-	deniedSpan,
-	durationMs,
-	entryText,
-	failedEntry,
-	failureMessage,
-	isoMillis,
+	diagnosis,
 	isoTime,
+	latencyOf,
 	levelOf,
-	logMessage,
-	machineTimer,
-	markedStream,
-	newestVersions,
+	logOf,
+	newestReleases,
 	overviewOf,
-	readLinks,
-	reconcileReleases,
-	retentionOf,
 	rounded,
-	serviceName,
-	serviceStatuses,
 	sideFor,
-	sideOf,
-	spanName,
-	subscription,
-	traceRoot,
-	traceTiming,
-	linkedTraces,
-	traceView,
-	tracedTrace
+	spansOf,
+	supersededBy,
+	touchedTraces,
+	traceIdsOf,
+	traceTree
 } from '#services/telemetry/lib/utils.ts'
 import type {Traced} from '#services/telemetry/lib/utils.ts'
 import type {
@@ -76,213 +56,198 @@ import type {
 	OperationRow,
 	OperationTrace,
 	OperationsAnswer,
+	Overview,
 	Range,
 	ReadTraceAnswer,
 	ReadTraceParams,
 	Rejection,
 	SearchLogsParams,
 	TraceRow,
+	TraceTree,
 	TracesAnswer,
 	TracesRequest
 } from '#services/telemetry/schema.ts'
-import {Entry, rangeStart, TelemetryError} from '#services/telemetry/schema.ts'
+import {
+	FoundTrace,
+	LatencyQuery,
+	Log,
+	LogQuery,
+	rangeStart,
+	Release,
+	ServiceRun,
+	SettledTrace,
+	Span,
+	SpanLink,
+	Superseded,
+	TelemetryError,
+	Trace,
+	TraceDetail,
+	TraceId,
+	TraceQuery
+} from '#services/telemetry/schema.ts'
 
-const RETENTION = Duration.days(3)
+const MISSING =
+	'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
 
-const failedSave = Effect.mapError((cause: unknown) =>
-	TelemetryError.make({cause, message: 'The telemetry storage could not be read or written.'})
+const UNAVAILABLE = 'The telemetry storage could not be read or written.'
+
+const LEVELS: Record<NonNullable<SearchLogsParams['level']>, number> = {debug: 5, error: 17, info: 9, warn: 13}
+
+// The span columns an arriving copy of a stored span replaces; its trace and id stay.
+const SPAN_UPDATES = Array.filter(
+	Struct.keys(Span.insert.fields),
+	column => column !== 'traceId' && column !== 'spanId'
 )
 
-// The newest failing trace an operation holds, whose span and message the tools show.
-function latestFailure(traces: readonly OperationTrace[]) {
-	return Array.match(
-		Array.filter(traces, trace => trace.failure !== undefined),
-		{
-			onEmpty: () => undefined,
-			onNonEmpty: failures =>
-				Array.max(
-					failures,
-					Order.mapInput(Order.BigInt, trace => BigInt(trace.time))
-				)
-		}
-	)
+// The trace columns a new span changes; when the trace first arrived stays.
+const TRACE_UPDATES = Array.filter(
+	Struct.keys(Trace.insert.fields),
+	column => column !== 'id' && column !== 'receivedAt'
+)
+
+const storageFailed = Effect.mapError((cause: unknown) => TelemetryError.make({cause, message: UNAVAILABLE}))
+
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly telemetry: never
+	}
 }
 
-// The page's own operations for one frame, failing first and then most recent, with the numbers the tools need.
-function operationsAnswer(traces: readonly Traced[], now: number, input: ListOperationsParams) {
+// Rows written in statements of 500, well under SQLite's limit on one statement's parameters.
+function chunked<A, E>(rows: readonly A[], save: (chunk: Array.NonEmptyReadonlyArray<A>) => Effect.Effect<void, E>) {
+	return Effect.forEach(Array.chunksOf(rows, 500), save, {concurrency: 1, discard: true})
+}
+
+function tracedOf(row: SettledTrace) {
+	return {
+		app: appName(row.service),
+		failed: row.failed,
+		name: row.name,
+		runtime: row.runtime,
+		trace: {duration: row.duration, id: row.id, start: row.start}
+	} satisfies Traced
+}
+
+// The overview's kept traces with their labels and failures; a trace pruned since the overview counted it stays without them until the next read.
+function detailed(overview: Overview, rows: readonly TraceDetail[]) {
+	const byId = Record.fromEntries(Array.map(rows, row => [row.id, row] as const))
+	return {
+		apps: Array.map(overview.apps, app => ({
+			...app,
+			operations: Array.map(app.operations, operation => ({
+				...operation,
+				traces: Array.map(operation.traces, trace =>
+					Option.match(Record.get(byId, trace.id), {
+						onNone: () => trace,
+						onSome: row => {
+							const error = diagnosis(row)
+							return {
+								...trace,
+								...Option.match(row.label, {onNone: () => ({}), onSome: label => ({label})}),
+								...Option.match(row.broken, {
+									onNone: () => ({}),
+									onSome: span => ({
+										failure: {
+											span,
+											...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
+										}
+									})
+								})
+							}
+						}
+					})
+				)
+			}))
+		}))
+	} satisfies Overview
+}
+
+// Failing traces above the rest, then the newest: the largest is an operation's newest failure when it has one.
+const newestFailureLast = Order.combine(
+	Order.mapInput(Order.Boolean, (trace: OperationTrace) => trace.failure !== undefined),
+	Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
+)
+
+// The newest failing trace an operation keeps, whose span and message the tools show; its kept traces hold its newest failures.
+function latestFailure(operation: Operation) {
+	const newest = Array.max(operation.traces, newestFailureLast)
+	return Option.map(Option.fromUndefinedOr(newest.failure), failure => ({...failure, trace: newest.id}))
+}
+
+// The page's own operations for one frame, in the overview's order, with the numbers the tools need.
+function operationsAnswer(overview: Overview, name?: string) {
 	const apps = Array.map(
-		Array.filter(overviewOf(traces, now, input.since).apps, app => input.app === undefined || app.name === input.app),
+		Array.filter(overview.apps, app => name === undefined || app.name === name),
 		app => ({
 			app: app.name,
-			operations: Array.map(
-				Array.sort(
-					app.operations,
-					Order.combine(
-						Order.mapInput(Order.flip(Order.Boolean), (operation: Operation) => operation.failures > 0),
-						Order.mapInput(Order.flip(Order.BigInt), (operation: Operation) =>
-							Array.match(operation.traces, {
-								onEmpty: () => 0n,
-								onNonEmpty: found =>
-									BigInt(
-										Array.max(
-											found,
-											Order.mapInput(Order.BigInt, (trace: OperationTrace) => BigInt(trace.time))
-										).time
-									)
-							})
-						)
-					)
-				),
-				operation => {
-					const slowest = Option.getOrThrow(Array.head(operation.traces))
-					const failure = latestFailure(operation.traces)
-					const side = sideFor(app.name, operation.runtime)
-					return {
-						name: operation.name,
-						p50Ms: rounded(operation.p50Ms),
-						p95Ms: rounded(operation.p95Ms),
-						runs: operation.count,
-						slowest: slowest.id,
-						...Boolean.match(operation.failures > 0, {
-							onFalse: () => ({}),
-							onTrue: () => ({failures: operation.failures})
-						}),
-						...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-						...Option.match(Option.fromUndefinedOr(failure), {
-							onNone: () => ({}),
-							onSome: found => ({
-								failure: {
-									span: found.failure?.span ?? '',
-									trace: found.id,
-									...Option.match(Option.fromNullishOr(found.failure?.error), {
-										onNone: () => ({}),
-										onSome: error => ({error})
-									})
-								}
-							})
-						})
-					} satisfies OperationRow
-				}
-			)
+			operations: Array.map(app.operations, operation => {
+				const side = sideFor(app.name, operation.runtime)
+				return {
+					name: operation.name,
+					p50Ms: rounded(operation.p50Ms),
+					p95Ms: rounded(operation.p95Ms),
+					runs: operation.count,
+					slowest: Array.headNonEmpty(operation.traces).id,
+					...Boolean.match(operation.failures > 0, {
+						onFalse: () => ({}),
+						onTrue: () => ({failures: operation.failures})
+					}),
+					...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
+					...Option.match(latestFailure(operation), {onNone: () => ({}), onSome: failure => ({failure})})
+				} satisfies OperationRow
+			})
 		})
 	)
 	return {apps: Array.filter(apps, app => Array.isReadonlyArrayNonEmpty(app.operations))} satisfies OperationsAnswer
 }
 
-function findTracesAnswer(entries: readonly Entry[], input: FindTracesParams, now: number) {
-	const cutoff = rangeStart(input.since, now)
-	const text = Option.getOrElse(Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase), () => '')
-	type Candidate = {row: TraceRow; timing: ReturnType<typeof traceTiming>}
-	const rows = Array.getSomes(
-		Array.map(
-			Record.values(
-				Array.groupBy(
-					Array.filter(entries, entry => entry.traceId !== ''),
-					entry => entry.traceId
-				)
-			),
-			records => {
-				const spans = Array.filter(records, entry => entry.signal === 'trace')
-				if (!Array.isReadonlyArrayNonEmpty(spans)) return Option.none<Candidate>()
-				const timing = traceTiming([...records])
-				if (BigInt(timing.time) < cutoff) return Option.none<Candidate>()
-				const root = traceRoot(spans)
-				if (subscription(root, spans) || machineTimer(root)) return Option.none<Candidate>()
-				const app = appName(root.service)
-				if (input.app !== undefined && app !== input.app) return Option.none<Candidate>()
-				if (input.operation !== undefined && root.name !== input.operation) return Option.none<Candidate>()
-				if (input.span !== undefined && !Array.some(spans, span => span.name === input.span)) {
-					return Option.none<Candidate>()
-				}
-				if (text !== '' && !Array.some(records, entry => String.includes(text)(entryText(entry)))) {
-					return Option.none<Candidate>()
-				}
-				const broken = brokeAt(spans)
-				if (input.errors && Option.isNone(broken)) return Option.none<Candidate>()
-				const side = sideOf(root.service, root.resource)
-				const relay = Option.flatMap(
-					Array.findFirst(spans, span => span.name === 'Gateway.call'),
-					span => Option.fromUndefinedOr(attributesFlat(span.payload, span.name, false))
-				)
-				const failure = Option.map(broken, span => {
-					const error = failureMessage(span.payload)
-					if (String.isNonEmpty(error)) return `${span.name}: ${error}`
-					return span.name
-				})
-				return Option.some<Candidate>({
-					row: {
-						app,
-						at: isoTime(timing.time),
-						id: root.traceId,
-						ms: rounded(timing.durationMs),
-						operation: root.name,
-						...Option.match(relay, {
-							onNone: () => ({}),
-							onSome: attrs => ({
-								...Boolean.match(Predicate.isString(attrs['mcp.server']), {
-									onFalse: () => ({}),
-									onTrue: () => ({server: `${attrs['mcp.server']}`})
-								}),
-								...Boolean.match(Predicate.isString(attrs['mcp.tool']), {
-									onFalse: () => ({}),
-									onTrue: () => ({tool: `${attrs['mcp.tool']}`})
-								})
-							})
-						}),
-						spans: spans.length,
-						...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-						...Option.match(failure, {onNone: () => ({}), onSome: message => ({failure: message})})
-					},
-					timing
-				})
-			}
-		)
+function traceRow(row: FoundTrace) {
+	const side = sideFor(row.service, row.runtime)
+	const relay = Option.flatMap(row.relay, attributes =>
+		Option.fromUndefinedOr(attributesFlat(attributes, 'Gateway.call', false))
 	)
-	const remaining = Array.filter(
-		Array.sort(
-			rows,
-			Order.combine(
-				Boolean.match(input.sort === 'slowest', {
-					onFalse: () => Order.flip(Order.mapInput(Order.BigInt, (item: Candidate) => BigInt(item.timing.time))),
-					onTrue: () => Order.flip(Order.mapInput(Order.Number, (item: Candidate) => item.timing.durationMs))
-				}),
-				Order.mapInput(Order.flip(Order.String), (item: Candidate) => item.row.id)
-			)
-		),
-		item => {
-			if (input.cursor === undefined) return true
-			if (input.sort === 'slowest' && item.timing.durationMs !== input.cursor.ms) {
-				return item.timing.durationMs < input.cursor.ms
-			}
-			if (input.sort !== 'slowest' && item.timing.time !== input.cursor.time) {
-				return BigInt(item.timing.time) < BigInt(input.cursor.time)
-			}
-			return item.row.id < input.cursor.id
-		}
-	)
-	const page = Array.take(remaining, input.limit)
+	const error = diagnosis(row)
 	return {
-		...Option.match(
-			Option.filter(Array.last(page), () => remaining.length > input.limit),
-			{
-				onNone: () => ({}),
-				onSome: item => ({nextCursor: {id: item.row.id, ms: item.timing.durationMs, time: item.timing.time}})
-			}
-		),
-		total: rows.length,
-		traces: Array.map(page, item => item.row)
-	} satisfies TracesAnswer
+		app: appName(row.service),
+		at: isoTime(row.start),
+		id: row.id,
+		ms: rounded(Duration.toMillis(row.duration)),
+		operation: row.name,
+		...Option.match(relay, {
+			onNone: () => ({}),
+			onSome: attrs => ({
+				...Boolean.match(Predicate.isString(attrs['mcp.server']), {
+					onFalse: () => ({}),
+					onTrue: () => ({server: `${attrs['mcp.server']}`})
+				}),
+				...Boolean.match(Predicate.isString(attrs['mcp.tool']), {
+					onFalse: () => ({}),
+					onTrue: () => ({tool: `${attrs['mcp.tool']}`})
+				})
+			})
+		}),
+		spans: row.spans,
+		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
+		...Option.match(row.broken, {
+			onNone: () => ({}),
+			onSome: span => ({
+				failure: Boolean.match(String.isNonEmpty(error), {onFalse: () => span, onTrue: () => `${span}: ${error}`})
+			})
+		})
+	} satisfies TraceRow
 }
 
-function compactLog(entry: Pick<Entry, 'name' | 'payload' | 'time'>) {
-	return {at: isoTime(entry.time), level: levelOf(entry), message: entry.name} satisfies CompactLog
+function compactLog(log: Pick<Log, 'message' | 'severity' | 'time'>) {
+	return {at: isoTime(log.time), level: levelOf(log.severity), message: log.message} satisfies CompactLog
 }
 
-function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
-	const failedSpan = failedEntry(span)
-	const error = Boolean.match(failedSpan, {onFalse: () => '', onTrue: () => failureMessage(span.payload)})
-	const attrs = attributesFlat(span.payload, span.name, failedSpan)
-	const side = sideOf(span.service, span.resource)
+type TreeSpan = TraceTree['spans'][number]
+
+function compactSpan(span: TreeSpan) {
+	const failedSpan = span.status === 'failed'
+	const error = Boolean.match(failedSpan, {onFalse: () => '', onTrue: () => diagnosis(span)})
+	const attrs = attributesFlat(span.attributes, span.name, failedSpan)
+	const side = sideFor(span.service, span.runtime)
 	const logs = Array.map(span.logs, compactLog)
 	return {
 		app: appName(span.service),
@@ -290,49 +255,48 @@ function compactSpan(span: ReturnType<typeof traceView>['spans'][number]) {
 		id: span.spanId,
 		ms: rounded(span.durationMs),
 		name: span.name,
-		...Boolean.match(span.parentSpanId !== '', {onFalse: () => ({}), onTrue: () => ({parent: span.parentSpanId})}),
+		...Option.match(span.parentSpanId, {onNone: () => ({}), onSome: parent => ({parent})}),
 		...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 		...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})}),
-		...Boolean.match(span.denied, {onFalse: () => ({}), onTrue: () => ({denied: true})}),
+		...Boolean.match(span.status === 'denied', {onFalse: () => ({}), onTrue: () => ({denied: true})}),
 		...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})}),
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})})
 	}
 }
 
-function readTraceAnswer(
-	entries: readonly Entry[],
-	id: string,
-	limit: number,
-	offset: number,
-	details: boolean,
-	selectedSpanId?: string
-) {
-	const traces = linkedTraces(entries, id)
-	const view = traceView([...entries], id)
-	const timing = traceTiming(Array.filter(entries, entry => HashSet.has(traces, entry.traceId)))
-	const ancestors = Option.match(
-		Option.flatMap(Option.fromUndefinedOr(view.failureSpanId), spanId =>
-			Array.findFirst(view.spans, span => span.spanId === spanId)
+// Where a tree starts: its earliest span, or its earliest log when no span arrived.
+function startOf(tree: TraceTree) {
+	return Option.getOrElse(
+		Array.match(
+			Array.map(tree.spans, span => span.start),
+			{
+				onEmpty: () => Option.map(Array.head(tree.logs), log => log.time),
+				onNonEmpty: starts => Option.some(Array.min(starts, Order.Number))
+			}
 		),
-		{
-			onNone: () => HashSet.empty<string>(),
-			onSome: span =>
-				HashSet.fromIterable(
-					Array.unfold({id: span.spanId, seen: HashSet.empty<string>()}, current => {
-						if (current.id === '' || HashSet.has(current.seen, current.id)) return Option.none()
-						const seen = HashSet.add(current.seen, current.id)
-						return Option.map(
-							Array.findFirst(view.spans, found => found.spanId === current.id),
-							found => [found.spanId, {id: found.parentSpanId, seen}] as const
-						)
-					})
-				)
-		}
+		() => 0
+	)
+}
+
+function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details: boolean, selectedSpanId?: string) {
+	const byId = Record.fromEntries(Array.map(tree.spans, span => [span.spanId, span] as const))
+	// The failing span and its parents up to the root, stopping at a parent already walked.
+	const ancestors = HashSet.fromIterable(
+		Array.unfold({id: Option.fromUndefinedOr(tree.failureSpanId), seen: HashSet.empty<string>()}, current =>
+			Option.flatMap(
+				Option.filter(current.id, id => !HashSet.has(current.seen, id)),
+				id =>
+					Option.map(Record.get(byId, id), found => [
+						found.spanId,
+						{id: found.parentSpanId, seen: HashSet.add(current.seen, id)}
+					])
+			)
+		)
 	)
 	const candidates = Array.filter(
 		Array.sort(
-			view.spans,
-			Order.mapInput(Order.flip(Order.Number), (span: ReturnType<typeof traceView>['spans'][number]) => span.durationMs)
+			tree.spans,
+			Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)
 		),
 		span => !HashSet.has(ancestors, span.spanId)
 	)
@@ -340,600 +304,532 @@ function readTraceAnswer(
 		ancestors,
 		HashSet.fromIterable(Array.map(Array.take(Array.drop(candidates, offset), limit), span => span.spanId))
 	)
-	const spans = Array.flatMap(view.spans, span => {
+	const spans = Array.flatMap(tree.spans, span => {
 		if (selectedSpanId !== undefined) {
 			return Boolean.match(span.spanId === selectedSpanId, {onFalse: () => [], onTrue: () => [compactSpan(span)]})
 		}
 		if (details || HashSet.has(kept, span.spanId)) return [compactSpan(span)]
 		return []
 	})
-	const logs = Array.map(view.logs, compactLog)
-	const omitted = view.spans.length - spans.length
+	const logs = Array.map(tree.logs, compactLog)
+	const omitted = tree.spans.length - spans.length
 	return {
-		at: isoTime(timing.time),
-		...Option.match(Option.fromUndefinedOr(view.failureSpanId), {
+		at: isoTime(startOf(tree)),
+		...Option.match(Option.fromUndefinedOr(tree.failureSpanId), {
 			onNone: () => ({}),
 			onSome: spanId => ({failure: spanId})
 		}),
-		id,
+		id: tree.id,
 		...Boolean.match(offset + limit < candidates.length, {
 			onFalse: () => ({}),
 			onTrue: () => ({nextOffset: offset + limit})
 		}),
-		ms: rounded(timing.durationMs),
+		ms: rounded(tree.durationMs),
 		spans,
 		...Boolean.match(Array.isReadonlyArrayNonEmpty(logs), {onFalse: () => ({}), onTrue: () => ({logs})}),
 		...Boolean.match(omitted > 0, {onFalse: () => ({}), onTrue: () => ({omitted})})
 	} satisfies ReadTraceAnswer
 }
 
-function severityAtLeast(entry: Pick<Entry, 'payload'>, minimum: number) {
-	const recorded = entry.payload['severityNumber']
-	if (Predicate.isNumber(recorded)) return recorded >= minimum
-	return {debug: 5, error: 17, info: 9, trace: 0, warn: 13}[levelOf(entry)] >= minimum
-}
-
-function searchLogsAnswer(entries: readonly Entry[], input: SearchLogsParams, now: number) {
-	const cutoff = rangeStart(input.since, now)
-	const text = Option.getOrElse(Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase), () => '')
-	const levels: Record<NonNullable<SearchLogsParams['level']>, number> = {debug: 5, error: 17, info: 9, warn: 13}
-	const minimum = Option.getOrElse(
-		Option.map(Option.fromUndefinedOr(input.level), level => levels[level]),
-		() => 0
-	)
-	const traceId = Option.map(Option.fromUndefinedOr(input.trace), String.toLowerCase)
-	const matched = Array.filter(entries, entry => {
-		if (entry.signal !== 'log' || BigInt(entry.time) < cutoff) return false
-		if (input.app !== undefined && appName(entry.service) !== input.app) return false
-		if (Option.exists(traceId, wanted => entry.traceId !== wanted)) return false
-		if (text !== '' && !String.includes(text)(entryText(entry))) return false
-		return input.level === undefined || severityAtLeast(entry, minimum)
-	})
-	const remaining = Array.filter(
-		Array.sort(
-			matched,
-			Order.combine(
-				Order.flip(Order.mapInput(Order.BigInt, (entry: Entry) => BigInt(entry.time))),
-				Order.mapInput(Order.String, (entry: Entry) => entry.id)
-			)
-		),
-		entry =>
-			input.cursor === undefined ||
-			BigInt(entry.time) < BigInt(input.cursor.time) ||
-			(entry.time === input.cursor.time && entry.id > input.cursor.id)
-	)
-	const page = Array.take(remaining, input.limit)
-	return {
-		...Option.match(
-			Option.filter(Array.last(page), () => remaining.length > input.limit),
-			{onNone: () => ({}), onSome: entry => ({nextCursor: {id: entry.id, time: entry.time}})}
-		),
-		logs: Array.map(page, entry => {
-			const attrs = attributesFlat(entry.payload, '', false)
-			const side = sideOf(entry.service, entry.resource)
-			return {
-				app: appName(entry.service),
-				at: isoTime(entry.time),
-				level: levelOf(entry),
-				message: entry.name,
-				...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-				...Boolean.match(entry.traceId !== '', {onFalse: () => ({}), onTrue: () => ({trace: entry.traceId})}),
-				...Boolean.match(entry.spanId !== '', {onFalse: () => ({}), onTrue: () => ({span: entry.spanId})}),
-				...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})})
-			}
-		}),
-		total: matched.length
-	} satisfies LogsAnswer
-}
-
-function percentile(times: readonly number[], ratio: number) {
-	return Option.getOrElse(Array.get(times, Number.max(0, Math.ceil(times.length * ratio) - 1)), () => 0)
-}
-
-function measureLatencyAnswer(entries: readonly Entry[], input: MeasureLatencyParams, now: number) {
-	const cutoff = rangeStart(input.since, now)
-	const spans = Array.filter(
-		entries,
-		entry =>
-			entry.signal === 'trace' &&
-			entry.name === input.name &&
-			BigInt(entry.time) >= cutoff &&
-			!markedStream(entry) &&
-			!machineTimer(entry) &&
-			(input.app === undefined || appName(entry.service) === input.app)
-	)
-	const times = Array.sort(
-		Array.map(spans, entry => entry.durationMs),
-		Order.Number
-	)
-	return {
-		count: spans.length,
-		failures: Array.countBy(spans, failedEntry),
-		maxMs: rounded(Option.getOrElse(Array.last(times), () => 0)),
-		p50Ms: rounded(percentile(times, 0.5)),
-		p95Ms: rounded(percentile(times, 0.95))
-	} satisfies LatencyAnswer
-}
-
-function ingestionAnswer(entries: readonly Entry[], rejections: readonly Rejection[]) {
-	const rejected = Array.map(rejections, rejection => ({
-		count: rejection.count,
-		credential: rejection.credential,
-		lastAt: isoMillis(rejection.lastAt),
-		route: rejection.route,
-		status: rejection.status
-	}))
-	return {
-		services: Array.map(serviceStatuses([...entries]), status => {
-			const side = sideFor(status.name, status.runtime)
-			return {
-				app: appName(status.name),
-				entries: status.entries,
-				lastEvent: isoTime(status.lastEventAt),
-				runStarted: isoTime(status.runStartedAt),
-				...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
-				...Boolean.match(String.isNonEmpty(status.version), {
-					onFalse: () => ({}),
-					onTrue: () => ({release: status.version})
-				})
-			}
-		}),
-		...Boolean.match(Array.isReadonlyArrayNonEmpty(rejected), {
-			onFalse: () => ({}),
-			onTrue: () => ({rejections: rejected})
-		})
-	} satisfies IngestionAnswer
-}
-
-function deriveEntry(entry: Omit<Entry, 'denied'>) {
-	const links = readLinks(entry.payload)
-	const derived = {
-		...entry,
-		denied: deniedSpan(entry.payload),
-		...Boolean.match(Array.isReadonlyArrayNonEmpty(links), {onFalse: () => ({}), onTrue: () => ({links})})
-	}
-	if (entry.signal === 'log') return derived
-	return {...derived, name: spanName(entry.payload)}
-}
-
-type State = {
-	entries: HashMap.HashMap<string, Entry>
-	// Each settled trace derived once, shared by every live snapshot until an ingest touches that trace.
-	settled: HashMap.HashMap<string, Traced>
-	// Entry ids by service and by trace, so a save reads only the traces it touches and one open trace reads its own rows.
-	services: HashMap.HashMap<string, HashSet.HashSet<string>>
-	traces: HashMap.HashMap<string, HashSet.HashSet<string>>
-	// Span-linked traces either way by edge count, so one open trace loads the traces it joins instead of the store.
-	links: HashMap.HashMap<string, HashMap.HashMap<string, number>>
-}
-
-function attach(index: HashMap.HashMap<string, HashSet.HashSet<string>>, key: string, id: string) {
-	return HashMap.set(
-		index,
-		key,
-		HashSet.add(
-			Option.getOrElse(HashMap.get(index, key), () => HashSet.empty<string>()),
-			id
-		)
-	)
-}
-
-function detach(index: HashMap.HashMap<string, HashSet.HashSet<string>>, key: string, id: string) {
-	const remaining = HashSet.remove(
-		Option.getOrElse(HashMap.get(index, key), () => HashSet.empty<string>()),
-		id
-	)
-	if (HashSet.size(remaining) === 0) return HashMap.remove(index, key)
-	return HashMap.set(index, key, remaining)
-}
-
-function bumpLink(
-	links: HashMap.HashMap<string, HashMap.HashMap<string, number>>,
-	from: string,
-	to: string,
-	step: number
-) {
-	const current = Option.getOrElse(HashMap.get(links, from), () => HashMap.empty<string, number>())
-	const count = Option.getOrElse(HashMap.get(current, to), () => 0) + step
-	const remaining = Boolean.match(count > 0, {
-		onFalse: () => HashMap.remove(current, to),
-		onTrue: () => HashMap.set(current, to, count)
-	})
-	if (HashMap.isEmpty(remaining)) return HashMap.remove(links, from)
-	return HashMap.set(links, from, remaining)
-}
-
-// A span link joins two traces either way, so both directions count until the entry that carries it goes.
-function shiftedLinks(links: HashMap.HashMap<string, HashMap.HashMap<string, number>>, entry: Entry, step: number) {
-	return Array.reduce(entry.links ?? [], links, (current, link) => {
-		if (link.traceId === entry.traceId) return current
-		return bumpLink(bumpLink(current, entry.traceId, link.traceId, step), link.traceId, entry.traceId, step)
-	})
-}
-
-function removeEntry(state: State, entry: Entry) {
-	return {
-		entries: HashMap.remove(state.entries, entry.id),
-		links: shiftedLinks(state.links, entry, -1),
-		services: detach(state.services, entry.service, entry.id),
-		settled: Boolean.match(entry.traceId === '', {
-			onFalse: () => HashMap.remove(state.settled, entry.traceId),
-			onTrue: () => state.settled
-		}),
-		traces: Boolean.match(entry.traceId === '', {
-			onFalse: () => detach(state.traces, entry.traceId, entry.id),
-			onTrue: () => state.traces
-		})
-	}
-}
-
-function addEntry(state: State, entry: Entry) {
-	const base = Option.match(HashMap.get(state.entries, entry.id), {
-		onNone: () => state,
-		onSome: existing => removeEntry(state, existing)
-	})
-	return {
-		entries: HashMap.set(base.entries, entry.id, entry),
-		links: shiftedLinks(base.links, entry, 1),
-		services: attach(base.services, entry.service, entry.id),
-		settled: Boolean.match(entry.traceId === '', {
-			onFalse: () => HashMap.remove(base.settled, entry.traceId),
-			onTrue: () => base.settled
-		}),
-		traces: Boolean.match(entry.traceId === '', {
-			onFalse: () => attach(base.traces, entry.traceId, entry.id),
-			onTrue: () => base.traces
-		})
-	}
-}
-
-function traceIdsOf(entries: readonly Entry[]) {
-	return Array.flatMap(entries, entry =>
-		Boolean.match(entry.traceId === '', {onFalse: () => [entry.traceId], onTrue: () => []})
-	)
-}
-
-function traceRecords(state: State, traceId: string) {
-	return Array.getSomes(
-		Array.map(
-			Array.fromIterable(Option.getOrElse(HashMap.get(state.traces, traceId), () => HashSet.empty<string>())),
-			id => HashMap.get(state.entries, id)
-		)
-	)
-}
-
-function linkedFrom(
-	links: HashMap.HashMap<string, HashMap.HashMap<string, number>>,
-	frontier: readonly string[],
-	found: HashSet.HashSet<string>
-): HashSet.HashSet<string> {
-	return Array.match(
-		Array.dedupe(
-			Array.flatMap(frontier, traceId =>
-				Array.filter(
-					Array.fromIterable(
-						HashMap.keys(Option.getOrElse(HashMap.get(links, traceId), () => HashMap.empty<string, number>()))
-					),
-					linked => !HashSet.has(found, linked)
-				)
-			)
-		),
-		{
-			onEmpty: () => found,
-			onNonEmpty: reached => linkedFrom(links, reached, HashSet.union(found, HashSet.fromIterable(reached)))
-		}
-	)
-}
-
-function settleTrace(state: State, traceId: string, now: number) {
-	return Option.match(tracedTrace(traceRecords(state, traceId), now), {
-		onNone: () => state,
-		onSome: row => ({...state, settled: HashMap.set(state.settled, traceId, row)})
-	})
-}
-
-function settleTraces(state: State, traceIds: readonly string[], now: number) {
-	return Array.reduce(traceIds, state, (current, traceId) => settleTrace(current, traceId, now))
-}
-
-// Every cached row, plus the rows that only become visible with age; the live stream calls this once per version.
-function snapshotOf(state: State, now: number) {
-	const [cached, rows] = Array.mapAccum(
-		Array.fromIterable(HashMap.keys(state.traces)),
-		state.settled,
-		(settled, traceId) =>
-			Option.match(HashMap.get(settled, traceId), {
-				onNone: () =>
-					Option.match(tracedTrace(traceRecords(state, traceId), now), {
-						onNone: () => [settled, Option.none<Traced>()] as const,
-						onSome: row => [HashMap.set(settled, traceId, row), Option.some(row)] as const
-					}),
-				onSome: row => [settled, Option.some(row)] as const
-			})
-	)
-	return {rows: Array.getSomes(rows), state: {...state, settled: cached}}
-}
-
 export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/services/telemetry/service/Telemetry', {
-	make: Effect.fnUntraced(function* (directory: string) {
-		const fs = yield* FileSystem.FileSystem
-		const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Entry)
+	make: Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
 		const digest = yield* Digest.Digest
+		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 		const utf8 = new TextEncoder()
 		const rejections = yield* Ref.make(Record.empty<string, Rejection>())
-		// Bumped when traces arrive, expire or finish loading, so the live page recomputes only when its rows can change.
-		const version = yield* SubscriptionRef.make(0)
-		// Completed once the previous run's store has loaded and settled.
-		const loaded = yield* Deferred.make<void>()
-		// Each service's newest release seen: what an older one sent may describe a bug since fixed, so it goes.
-		const releases = yield* Ref.make(Record.empty<string, string>())
-		const state = yield* SynchronizedRef.make<State>({
-			entries: HashMap.empty(),
-			links: HashMap.empty(),
-			services: HashMap.empty(),
-			settled: HashMap.empty(),
-			traces: HashMap.empty()
+
+		// The traces a query selects; its text matches a span's name, attributes or error, or one of its logs, never its ids or times.
+		function filterTraces(query: typeof TraceQuery.Encoded) {
+			return sql.and([
+				sql`NOT traces.waits`,
+				sql`traces.start >= ${query.cutoff}`,
+				...Array.getSomes([
+					Option.map(Option.fromNullishOr(query.services), services => sql`root.service IN ${sql.in(services)}`),
+					Option.map(Option.fromNullishOr(query.operation), name => sql`root.name = ${name}`),
+					Option.map(
+						Option.fromNullishOr(query.span),
+						name => sql`EXISTS (SELECT 1 FROM spans AS named WHERE named.traceId = traces.id AND named.name = ${name})`
+					),
+					Option.map(
+						Option.fromNullishOr(query.text),
+						text => sql`(
+							EXISTS (
+								SELECT 1 FROM spans AS said WHERE said.traceId = traces.id
+								AND instr(lower(concat_ws(' ', said.name, said.attributes, said.error, said.exception)), ${text}) > 0
+							)
+							OR EXISTS (
+								SELECT 1 FROM logs WHERE logs.traceId = traces.id
+								AND instr(lower(concat_ws(' ', logs.message, logs.attributes)), ${text}) > 0
+							)
+						)`
+					),
+					Option.liftPredicate(sql`traces.broken IS NOT NULL`, () => query.errors)
+				])
+			])
+		}
+		function filterLogs(query: typeof LogQuery.Encoded) {
+			return sql.and([
+				sql`time >= ${query.cutoff}`,
+				...Array.getSomes([
+					Option.map(Option.fromNullishOr(query.services), services => sql`service IN ${sql.in(services)}`),
+					Option.map(Option.fromNullishOr(query.traceId), traceId => sql`traceId = ${traceId}`),
+					Option.map(
+						Option.fromNullishOr(query.text),
+						text => sql`instr(lower(concat_ws(' ', message, attributes)), ${text}) > 0`
+					),
+					Option.map(Option.fromNullishOr(query.minimum), minimum => sql`severity >= ${minimum}`)
+				])
+			])
+		}
+		// The trace's root and where it broke, beside the trace itself.
+		const traceJoins = sql`
+			FROM traces
+			JOIN spans AS root ON root.traceId = traces.id AND root.spanId = traces.root
+			LEFT JOIN spans AS broken ON broken.traceId = traces.id AND broken.spanId = traces.broken
+		`
+
+		const listReleases = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Release,
+			execute: () => sql`SELECT * FROM ${sql(Release.table)}`
 		})
-		// A development debugger needs recent runs of the current release; older entries would only slow every start and query.
-		const prune = Effect.gen(function* () {
-			const receivedAt = yield* Clock.currentTimeMillis
-			yield* SynchronizedRef.updateEffect(
-				state,
-				Effect.fnUntraced(function* (current) {
-					const retention = retentionOf(
-						current.entries,
-						yield* Ref.get(releases),
-						receivedAt,
-						Duration.toMillis(RETENTION)
+		const saveReleases = SqlSchema.void({
+			Request: Schema.NonEmptyArray(Release.insert),
+			execute: rows => sql`
+				INSERT INTO ${sql(Release.table)} ${sql.insert(rows)}
+				ON CONFLICT (service) DO UPDATE SET version = excluded.version
+			`
+		})
+		const listSenders = SqlSchema.findAll({
+			Request: Schema.Array(Span.fields.service),
+			Result: Schema.Struct(Struct.pick(Span.fields, ['service', 'version'])),
+			execute: services => sql`
+				SELECT DISTINCT service, version FROM spans WHERE ${sql.in('service', services)}
+				UNION
+				SELECT DISTINCT service, version FROM logs WHERE ${sql.in('service', services)}
+			`
+		})
+		// A trace goes when every span and log it holds came from a superseded release; a standalone log goes on its own.
+		const deleteSuperseded = SqlSchema.void({
+			Request: Schema.NonEmptyArray(Superseded),
+			execute: senders => {
+				const old = sql.or(
+					Array.map(senders, sender => sql`(service = ${sender.service} AND version = ${sender.version})`)
+				)
+				const doomed = sql`
+					SELECT traceId FROM (
+						SELECT traceId, service, version FROM spans
+						UNION ALL
+						SELECT traceId, service, version FROM logs WHERE traceId IS NOT NULL
 					)
-					yield* Effect.forEach(retention.expired, entry => store.remove(entry.id), {concurrency: 1, discard: true})
-					return {
-						entries: retention.next,
-						links: Array.reduce(retention.expired, current.links, (links, entry) => shiftedLinks(links, entry, -1)),
-						services: Array.reduce(retention.expired, current.services, (index, entry) =>
-							detach(index, entry.service, entry.id)
-						),
-						settled: Array.reduce(Array.dedupe(traceIdsOf(retention.expired)), current.settled, (settled, traceId) =>
-							HashMap.remove(settled, traceId)
-						),
-						traces: Array.reduce(retention.expired, current.traces, (index, entry) =>
-							Boolean.match(entry.traceId === '', {
-								onFalse: () => detach(index, entry.traceId, entry.id),
-								onTrue: () => index
-							})
-						)
-					}
+					GROUP BY traceId
+					HAVING min(CASE WHEN ${old} THEN 1 ELSE 0 END) = 1
+				`
+				return Effect.andThen(
+					sql`DELETE FROM logs WHERE traceId IN (${doomed}) OR (traceId IS NULL AND ${old})`,
+					sql`DELETE FROM traces WHERE id IN (${doomed})`
+				)
+			}
+		})
+		const listSpans = SqlSchema.findAll({
+			Request: Schema.Array(TraceId),
+			Result: Span,
+			execute: ids => sql`SELECT * FROM ${sql(Span.table)} WHERE ${sql.in('traceId', ids)}`
+		})
+		const listLogs = SqlSchema.findAll({
+			Request: Schema.Array(TraceId),
+			Result: Log,
+			execute: ids => sql`SELECT * FROM ${sql(Log.table)} WHERE ${sql.in('traceId', ids)}`
+		})
+		const listLinks = SqlSchema.findAll({
+			Request: Schema.Array(TraceId),
+			Result: SpanLink,
+			execute: ids => sql`SELECT * FROM ${sql(SpanLink.table)} WHERE ${sql.in('traceId', ids)}`
+		})
+		// The trace and every trace a span link joins to it, either way.
+		const listLinkedTraces = SqlSchema.findAll({
+			Request: TraceId,
+			Result: Schema.Struct({id: TraceId}),
+			execute: id => sql`
+				WITH RECURSIVE linked (id) AS (
+					SELECT ${id}
+					UNION
+					SELECT span_links.linkedTraceId FROM span_links JOIN linked ON span_links.traceId = linked.id
+					UNION
+					SELECT span_links.traceId FROM span_links JOIN linked ON span_links.linkedTraceId = linked.id
+				)
+				SELECT id FROM linked
+			`
+		})
+		const saveTraces = SqlSchema.void({
+			Request: Schema.NonEmptyArray(Trace.insert),
+			execute: rows => sql`
+				INSERT INTO ${sql(Trace.table)} ${sql.insert(rows)}
+				ON CONFLICT (id) DO UPDATE SET ${sql.csv(Array.map(TRACE_UPDATES, column => sql`${sql(column)} = excluded.${sql(column)}`))}
+			`
+		})
+		// A retried export or a finished run sends a span again; the newer copy replaces the stored one.
+		const saveSpans = SqlSchema.void({
+			Request: Schema.NonEmptyArray(Span.insert),
+			execute: rows => sql`
+				INSERT INTO ${sql(Span.table)} ${sql.insert(rows)}
+				ON CONFLICT (traceId, spanId) DO UPDATE SET ${sql.csv(Array.map(SPAN_UPDATES, column => sql`${sql(column)} = excluded.${sql(column)}`))}
+			`
+		})
+		const saveLinks = SqlSchema.void({
+			Request: Schema.NonEmptyArray(SpanLink.insert),
+			execute: rows => sql`INSERT OR IGNORE INTO ${sql(SpanLink.table)} ${sql.insert(rows)}`
+		})
+		// A retried export carries the same record, so its digest replaces the row instead of adding one.
+		const saveLogs = SqlSchema.void({
+			Request: Schema.NonEmptyArray(Log.insert),
+			execute: rows => sql`INSERT OR REPLACE INTO ${sql(Log.table)} ${sql.insert(rows)}`
+		})
+		// A development debugger needs recent runs; whole traces go once their first span is older than the cutoff, with their logs.
+		const deleteExpired = SqlSchema.void({
+			Request: Log.fields.receivedAt,
+			execute: cutoff =>
+				Effect.andThen(
+					sql`
+						DELETE FROM logs
+						WHERE receivedAt < ${cutoff} OR traceId IN (SELECT id FROM traces WHERE receivedAt < ${cutoff})
+					`,
+					sql`DELETE FROM traces WHERE receivedAt < ${cutoff}`
+				)
+		})
+		// Every trace the operations list can show: not a wait, and rooted or a minute old, since its root may never come.
+		const listSettled = SqlSchema.findAll({
+			Request: Schema.Finite,
+			Result: SettledTrace,
+			execute: now => sql`
+				SELECT
+					traces.id, traces.start, traces.duration, root.service, root.runtime, root.name,
+					traces.broken IS NOT NULL AS failed
+				${traceJoins}
+				WHERE NOT traces.waits AND (traces.rooted OR traces.start < ${now - 60_000})
+			`
+		})
+		// The label and failure of the traces the overview keeps, read for them alone.
+		const listDetails = SqlSchema.findAll({
+			Request: Schema.Array(TraceId),
+			Result: TraceDetail,
+			execute: ids => sql`
+				SELECT
+					traces.id,
+					CASE WHEN json_type(root.attributes, '$."trace.label"') = 'text'
+						THEN json_extract(root.attributes, '$."trace.label"')
+					END AS label,
+					broken.name AS broken, broken.error, broken.exception
+				${traceJoins}
+				WHERE ${sql.in('traces.id', ids)}
+			`
+		})
+		const listServices = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: Schema.Struct(Struct.pick(Span.fields, ['service'])),
+			execute: () => sql`SELECT DISTINCT service FROM spans UNION SELECT DISTINCT service FROM logs`
+		})
+		// One page of traces, newest or slowest first, after the cursor's row; one more than asked tells whether a next page exists.
+		const pageTraces = SqlSchema.findAll({
+			Request: TraceQuery,
+			Result: FoundTrace,
+			execute: query => {
+				const after = Option.match(Option.fromNullishOr(query.cursor), {
+					onNone: () => sql`1=1`,
+					onSome: cursor =>
+						Boolean.match(query.slowest, {
+							onFalse: () =>
+								sql`(traces.start < ${cursor.start} OR (traces.start = ${cursor.start} AND traces.id < ${cursor.id}))`,
+							onTrue: () =>
+								sql`(traces.duration < ${cursor.duration} OR (traces.duration = ${cursor.duration} AND traces.id < ${cursor.id}))`
+						})
 				})
+				return sql`
+					SELECT
+						traces.id, traces.start, traces.duration, root.service, root.runtime, root.name,
+						broken.name AS broken, broken.error, broken.exception,
+						(SELECT count(*) FROM spans AS counted WHERE counted.traceId = traces.id) AS spans,
+						(
+							SELECT relay.attributes FROM spans AS relay
+							WHERE relay.traceId = traces.id AND relay.name = 'Gateway.call' LIMIT 1
+						) AS relay
+					${traceJoins}
+					WHERE ${filterTraces(query)} AND ${after}
+					ORDER BY ${Boolean.match(query.slowest, {onFalse: () => sql`traces.start DESC`, onTrue: () => sql`traces.duration DESC`})}, traces.id DESC
+					LIMIT ${query.limit + 1}
+				`
+			}
+		})
+		const countTraces = SqlSchema.findOne({
+			Request: TraceQuery,
+			Result: Schema.Struct({count: Schema.Int}),
+			execute: query => sql`SELECT count(*) AS count ${traceJoins} WHERE ${filterTraces(query)}`
+		})
+		const pageLogs = SqlSchema.findAll({
+			Request: LogQuery,
+			Result: Log,
+			execute: query => {
+				const after = Option.match(Option.fromNullishOr(query.cursor), {
+					onNone: () => sql`1=1`,
+					onSome: cursor => sql`(time < ${cursor.time} OR (time = ${cursor.time} AND id > ${cursor.id}))`
+				})
+				return sql`
+					SELECT * FROM logs
+					WHERE ${filterLogs(query)} AND ${after}
+					ORDER BY time DESC, id
+					LIMIT ${query.limit + 1}
+				`
+			}
+		})
+		const countLogs = SqlSchema.findOne({
+			Request: LogQuery,
+			Result: Schema.Struct({count: Schema.Int}),
+			execute: query => sql`SELECT count(*) AS count FROM logs WHERE ${filterLogs(query)}`
+		})
+		// The spans of one name that measure work: a subscription's stream and a machine's timer are waits.
+		const listLatencies = SqlSchema.findAll({
+			Request: LatencyQuery,
+			Result: Schema.Struct(Struct.pick(Span.fields, ['duration', 'status'])),
+			execute: query => sql`
+				SELECT duration, status FROM spans
+				WHERE name = ${query.name} AND start >= ${query.cutoff}
+				AND ${Option.match(Option.fromNullishOr(query.services), {
+					onNone: () => sql`1=1`,
+					onSome: services => sql`service IN ${sql.in(services)}`
+				})}
+				AND json_extract(attributes, '$."rpc.stream"') IS NOT 1
+				AND json_extract(attributes, '$."machine.invoke.kind"') IS NOT 'Timer'
+			`
+		})
+		const listRuns = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: ServiceRun,
+			execute: () => sql`
+				WITH
+					entries AS (
+						SELECT service, runtime, run, version, start AS time FROM spans
+						UNION ALL
+						SELECT service, runtime, run, version, time FROM logs
+					),
+					latest AS (SELECT service, max(coalesce(run, 0)) AS run FROM entries GROUP BY service)
+				SELECT
+					entries.service, count(*) AS entries, max(entries.time) AS lastEvent,
+					max(entries.run) AS run, max(entries.runtime) AS runtime, max(entries.version) AS version
+				FROM entries JOIN latest ON latest.service = entries.service AND coalesce(entries.run, 0) = latest.run
+				GROUP BY entries.service
+				ORDER BY entries.service
+			`
+		})
+
+		// The services an app's name covers, or every service when none is asked for.
+		const servicesOf = Effect.fnUntraced(function* (app?: string) {
+			if (app === undefined) return Option.none<readonly string[]>()
+			return Option.some(
+				Array.filter(
+					Array.map(yield* listServices(), row => row.service),
+					service => appName(service) === app
+				)
 			)
-			yield* SubscriptionRef.update(version, Number.increment)
 		})
-		// The layer answers at once; the stores of the previous run arrive in the background and merge under any ingest that lands meanwhile.
+		// What an older release sends is dropped; a newer release's first records delete everything its service's older ones sent.
+		const supersede = Effect.fnUntraced(function* (
+			senders: readonly {service: string; version: Option.Option<string>}[]
+		) {
+			const known = Record.fromEntries(Array.map(yield* listReleases(), row => [row.service, row.version] as const))
+			const newest = newestReleases(senders, known)
+			const changed = Array.map(
+				Record.toEntries(Record.filter(newest, (version, service) => known[service] !== version)),
+				entry => ({service: entry[0], version: entry[1]})
+			)
+			yield* Array.match(changed, {onEmpty: () => Effect.void, onNonEmpty: saveReleases})
+			const superseded = supersededBy(newest)
+			const services = Array.dedupe([
+				...Array.map(changed, release => release.service),
+				...Array.map(Array.filter(senders, superseded), sender => sender.service)
+			])
+			if (Array.isReadonlyArrayEmpty(services)) return
+			yield* Array.match(
+				Array.getSomes(
+					Array.map(Array.filter(yield* listSenders(services), superseded), sender =>
+						Option.map(sender.version, version => ({service: sender.service, version}))
+					)
+				),
+				{onEmpty: () => Effect.void, onNonEmpty: deleteSuperseded}
+			)
+		})
+		// Three days of telemetry: a development debugger needs recent runs, and older ones would slow every query.
+		const prune = pipe(
+			Clock.currentTimeMillis,
+			Effect.flatMap(now => deleteExpired(DateTime.makeUnsafe(now - Duration.toMillis(Duration.days(3))))),
+			Reactivity.mutation(['telemetry']),
+			sql.withTransaction,
+			storageFailed,
+			withReactivity
+		)
+		// The overview as of now, counted over every settled trace; a trace whose root never came joins it a minute after it started.
+		const readOverview = Effect.fnUntraced(function* (range: Range) {
+			const now = yield* Clock.currentTimeMillis
+			const counted = overviewOf(Array.map(yield* listSettled(now), tracedOf), now, range)
+			return detailed(
+				counted,
+				yield* listDetails(
+					Array.flatMap(counted.apps, app =>
+						Array.flatMap(app.operations, operation => Array.map(operation.traces, trace => trace.id))
+					)
+				)
+			)
+		})
+		const tree = Effect.fnUntraced(function* (id: string) {
+			const traceId = String.toLowerCase(id)
+			const ids = Array.map(yield* listLinkedTraces(traceId), row => row.id)
+			const spans = yield* listSpans(ids)
+			const logs = yield* listLogs(ids)
+			if (Array.isReadonlyArrayEmpty(spans) && Array.isReadonlyArrayEmpty(logs)) {
+				return yield* TelemetryError.make({message: MISSING})
+			}
+			return traceTree(traceId, spans, logs, yield* listLinks(ids))
+		})
+
+		yield* prune
 		yield* pipe(
-			Effect.gen(function* () {
-				const entries = Array.getSomes(
-					yield* Effect.forEach(
-						Array.filter(yield* fs.readDirectory(directory), file => !String.endsWith('.tmp')(file)),
-						file =>
-							pipe(
-								Effect.try({
-									catch: cause => TelemetryError.make({cause, message: `${file} has no readable name.`}),
-									try: () => decodeURIComponent(file)
-								}),
-								Effect.flatMap(key => store.get(key))
-							),
-						{concurrency: 8}
-					)
-				)
-				// An ingest during the load already replaced what the disk holds; its newer entry stays.
-				const now = yield* Clock.currentTimeMillis
-				yield* SynchronizedRef.update(state, current => {
-					const merged = Array.reduce(entries, current, (all, entry) => {
-						if (HashMap.has(all.entries, entry.id)) return all
-						return addEntry(all, entry)
-					})
-					return settleTraces(merged, Array.fromIterable(HashMap.keys(merged.traces)), now)
-				})
-				yield* Ref.update(releases, known => newestVersions(entries, known))
-			}),
-			Effect.ignore({log: 'Warn', message: 'Stored telemetry could not be loaded'}),
+			Effect.sleep('1 hour'),
 			Effect.andThen(prune),
-			Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'}),
-			Effect.andThen(Deferred.succeed(loaded, undefined)),
-			Effect.andThen(
-				Effect.forever(
-					pipe(
-						Effect.sleep('1 hour'),
-						Effect.andThen(prune),
-						Effect.ignore({log: 'Warn', message: 'Expired telemetry could not be deleted'})
-					)
-				)
-			),
+			Effect.ignore({log: 'Error', message: 'Expired telemetry could not be deleted'}),
+			Effect.forever,
 			Effect.forkScoped
 		)
-		const read = Effect.map(SynchronizedRef.get(state), current => Array.fromIterable(HashMap.values(current.entries)))
-		// What an older release sends is dropped; a newer release's first entries delete everything its service's older ones sent.
-		const save = Effect.fnUntraced(function* (entries: Entry[], receivedAt: number) {
-			yield* Effect.uninterruptible(
-				SynchronizedRef.updateEffect(
-					state,
-					Effect.fnUntraced(function* (current) {
-						const reconciliation = reconcileReleases(
-							traceId =>
-								Array.getSomes(
-									Array.map(
-										Array.fromIterable(
-											Option.getOrElse(HashMap.get(current.traces, traceId), () => HashSet.empty<string>())
-										),
-										id => HashMap.get(current.entries, id)
-									)
-								),
-							service =>
-								Array.getSomes(
-									Array.map(
-										Array.fromIterable(
-											Option.getOrElse(HashMap.get(current.services, service), () => HashSet.empty<string>())
-										),
-										id => HashMap.get(current.entries, id)
-									)
-								),
-							entries,
-							yield* Ref.get(releases)
-						)
-						yield* Effect.forEach(reconciliation.replaced, entry => store.remove(entry.id), {
-							concurrency: 1,
-							discard: true
-						})
-						yield* Effect.forEach(reconciliation.accepted, entry => store.set(entry.id, entry), {
-							concurrency: 1,
-							discard: true
-						})
-						yield* Ref.set(releases, reconciliation.newest)
-						return settleTraces(
-							Array.reduce(
-								reconciliation.accepted,
-								Array.reduce(reconciliation.replaced, current, removeEntry),
-								addEntry
-							),
-							Array.dedupe(traceIdsOf([...reconciliation.accepted, ...reconciliation.replaced])),
-							receivedAt
-						)
-					})
-				)
-			)
-			yield* SubscriptionRef.update(version, Number.increment)
-		}, failedSave)
-		// Open pages share one snapshot of the settled rows; only a trace an ingest touched is derived again. Changes coalesce during the one-second pause.
-		const live = yield* pipe(
-			SubscriptionRef.changes(version),
-			Stream.buffer({capacity: 1, strategy: 'sliding'}),
-			Stream.flatMap(() =>
-				Stream.concat(
-					Stream.fromEffect(
-						Effect.gen(function* () {
-							const now = yield* Clock.currentTimeMillis
-							const traces = yield* SynchronizedRef.modify(state, current => {
-								const snapshot = snapshotOf(current, now)
-								return [snapshot.rows, snapshot.state]
-							})
-							return {now, traces}
-						})
-					),
-					Stream.drain(Stream.fromEffect(Effect.sleep('1 second')))
-				)
-			),
-			Stream.share({capacity: 1, replay: 1, strategy: 'sliding'})
-		)
+
 		return {
 			checkIngestion: Effect.fn('Telemetry.checkIngestion')(function* () {
-				return ingestionAnswer(yield* read, Record.values(yield* Ref.get(rejections)))
-			}),
+				const rejected = Array.map(Record.values(yield* Ref.get(rejections)), rejection => ({
+					...Struct.pick(rejection, ['count', 'credential', 'route', 'status']),
+					lastAt: isoTime(rejection.lastAt)
+				}))
+				return {
+					services: Array.map(yield* listRuns(), run => {
+						const side = sideFor(run.service, run.runtime)
+						return {
+							app: appName(run.service),
+							entries: run.entries,
+							lastEvent: isoTime(run.lastEvent),
+							runStarted: isoTime(Option.getOrElse(Option.map(run.run, DateTime.toEpochMillis), () => 0)),
+							...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
+							...Option.match(run.version, {onNone: () => ({}), onSome: release => ({release})})
+						}
+					}),
+					...Boolean.match(Array.isReadonlyArrayNonEmpty(rejected), {
+						onFalse: () => ({}),
+						onTrue: () => ({rejections: rejected})
+					})
+				} satisfies IngestionAnswer
+			}, storageFailed),
 			findTraces: Effect.fn('Telemetry.findTraces')(function* (input: FindTracesParams) {
-				return findTracesAnswer(yield* read, input, yield* Clock.currentTimeMillis)
-			}),
-			ingestLogs: Effect.fn('Telemetry.ingestLogs')(function* (payload: LogsRequest) {
-				const receivedAt = yield* Clock.currentTimeMillis
-				yield* save(
-					yield* Effect.forEach(
+				const query = {
+					cursor: Option.fromUndefinedOr(input.cursor),
+					cutoff: rangeStart(input.since, yield* Clock.currentTimeMillis),
+					errors: input.errors,
+					limit: input.limit,
+					operation: Option.fromUndefinedOr(input.operation),
+					services: yield* servicesOf(input.app),
+					slowest: input.sort === 'slowest',
+					span: Option.fromUndefinedOr(input.span),
+					text: Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase)
+				} satisfies TraceQuery
+				const rows = yield* pageTraces(query)
+				const page = Array.take(rows, input.limit)
+				return {
+					...Option.match(
+						Option.filter(Array.last(page), () => rows.length > input.limit),
+						{onNone: () => ({}), onSome: row => ({nextCursor: Struct.pick(row, ['duration', 'id', 'start'])})}
+					),
+					total: (yield* countTraces(query)).count,
+					traces: Array.map(page, traceRow)
+				} satisfies TracesAnswer
+			}, storageFailed),
+			ingestLogs: Effect.fn('Telemetry.ingestLogs')(
+				function* (payload: LogsRequest) {
+					const receivedAt = yield* Clock.currentTimeMillis
+					const logs = yield* Effect.forEach(
 						Array.flatMap(payload.resourceLogs ?? [], group =>
-							Array.flatMap(group.scopeLogs ?? [], scope =>
-								Array.map(scope.logRecords ?? [], log => ({group, log, scope}))
-							)
+							Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))
 						),
-						item =>
-							Effect.flatMap(
-								// A log record has no id of its own, so the identity is what it carries: a retried export replaces its entry instead of adding one.
-								pipe(
-									Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
-										attributes: item.log.attributes ?? [],
-										body: item.log.body ?? {},
-										observedTimeUnixNano: item.log.observedTimeUnixNano ?? '',
-										resource: item.group.resource ?? {},
-										severityNumber: item.log.severityNumber,
-										severityText: item.log.severityText ?? '',
-										spanId: item.log.spanId ?? '',
-										timeUnixNano: item.log.timeUnixNano,
-										traceId: item.log.traceId ?? ''
-									}),
-									Effect.mapError(cause => TelemetryError.make({cause, message: 'A log record could not be encoded.'}))
-								),
-								encoded =>
-									Effect.map(digest.digestHex(Digest.sha256, utf8.encode(encoded)), id =>
-										deriveEntry({
-											durationMs: 0,
-											id,
-											name: logMessage(item.log.body ?? {}),
-											payload: item.log,
-											receivedAt,
-											resource: item.group.resource ?? {},
-											service: serviceName(item.group.resource ?? {}),
-											signal: 'log' as const,
-											spanId: String.toLowerCase(item.log.spanId ?? ''),
-											status: Boolean.match((item.log.severityNumber ?? 0) >= 17, {
-												onFalse: () => 0 as const,
-												onTrue: () => 2 as const
-											}),
-											time: item.log.timeUnixNano,
-											traceId: String.toLowerCase(item.log.traceId ?? '')
-										})
-									)
-							),
-						{concurrency: 1}
-					),
-					receivedAt
-				)
-			}),
-			ingestTraces: Effect.fn('Telemetry.ingestTraces')(function* (payload: TracesRequest) {
-				const receivedAt = yield* Clock.currentTimeMillis
-				yield* save(
-					Array.flatMap(payload.resourceSpans ?? [], group =>
-						Array.flatMap(group.scopeSpans ?? [], scope =>
-							Array.map(scope.spans ?? [], span =>
-								deriveEntry({
-									durationMs: durationMs(span.startTimeUnixNano, span.endTimeUnixNano ?? '0'),
-									id: `${String.toLowerCase(span.traceId)}:${String.toLowerCase(span.spanId)}`,
-									name: '',
-									payload: span,
-									receivedAt,
-									resource: group.resource ?? {},
-									service: serviceName(group.resource ?? {}),
-									signal: 'trace' as const,
-									spanId: String.toLowerCase(span.spanId),
-									status: span.status?.code ?? 0,
-									time: span.startTimeUnixNano,
-									traceId: String.toLowerCase(span.traceId)
-								})
+						Effect.fnUntraced(function* (item) {
+							// A log record has no id of its own, so the identity is what it carries.
+							const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
+								attributes: item.log.attributes ?? [],
+								body: item.log.body ?? {},
+								observedTimeUnixNano: item.log.observedTimeUnixNano ?? '',
+								resource: item.group.resource ?? {},
+								severityNumber: item.log.severityNumber,
+								severityText: item.log.severityText ?? '',
+								spanId: item.log.spanId ?? '',
+								timeUnixNano: item.log.timeUnixNano,
+								traceId: item.log.traceId ?? ''
+							})
+							return logOf(
+								item.group,
+								item.log,
+								yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)),
+								receivedAt
 							)
-						)
-					),
-					receivedAt
-				)
-			}),
+						}),
+						{concurrency: 1}
+					)
+					yield* chunked(logs, saveLogs)
+					yield* supersede(logs)
+				},
+				Reactivity.mutation(['telemetry']),
+				sql.withTransaction,
+				storageFailed,
+				withReactivity
+			),
+			// One commit per export, and the pages read again only after it.
+			ingestTraces: Effect.fn('Telemetry.ingestTraces')(
+				function* (payload: TracesRequest) {
+					const receivedAt = yield* Clock.currentTimeMillis
+					const incoming = spansOf(payload)
+					yield* chunked(
+						touchedTraces(incoming.spans, yield* listSpans(traceIdsOf(incoming.spans)), receivedAt),
+						saveTraces
+					)
+					yield* chunked(incoming.spans, saveSpans)
+					yield* chunked(incoming.links, saveLinks)
+					yield* supersede(incoming.spans)
+				},
+				Reactivity.mutation(['telemetry']),
+				sql.withTransaction,
+				storageFailed,
+				withReactivity
+			),
 			listOperations: Effect.fn('Telemetry.listOperations')(function* (input: ListOperationsParams) {
-				const current = Option.getOrThrow(yield* Stream.runHead(live))
-				return operationsAnswer(current.traces, current.now, input)
-			}),
+				return operationsAnswer(yield* readOverview(input.since), input.app)
+			}, storageFailed),
 			measureLatency: Effect.fn('Telemetry.measureLatency')(function* (input: MeasureLatencyParams) {
-				return measureLatencyAnswer(yield* read, input, yield* Clock.currentTimeMillis)
-			}),
-			// The same snapshot for every viewer; each time frame maps it to its own operations and traces.
-			overview: (range: Range) => Stream.map(live, current => overviewOf(current.traces, current.now, range)),
+				const rows = yield* listLatencies({
+					cutoff: rangeStart(input.since, yield* Clock.currentTimeMillis),
+					name: input.name,
+					services: yield* servicesOf(input.app)
+				})
+				const latency = latencyOf(
+					Array.map(rows, row => Option.match(row.duration, {onNone: () => 0, onSome: Duration.toMillis}))
+				)
+				return {
+					count: rows.length,
+					failures: Array.countBy(rows, row => row.status === 'failed'),
+					maxMs: rounded(latency.maxMs),
+					p50Ms: rounded(latency.p50Ms),
+					p95Ms: rounded(latency.p95Ms)
+				} satisfies LatencyAnswer
+			}, storageFailed),
 			readTrace: Effect.fn('Telemetry.readTrace')(function* (
 				input: ReadTraceParams,
 				offset: number = 0,
 				spanId?: string,
 				details: boolean = false
 			) {
-				const traceId = String.toLowerCase(input.id)
-				const entries = yield* read
-				if (!Array.some(entries, entry => entry.traceId === traceId)) {
-					return yield* TelemetryError.make({
-						message:
-							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
-					})
-				}
-				return readTraceAnswer(entries, traceId, input.limit, offset, details, spanId)
-			}),
-			ready: Deferred.await(loaded),
+				return readTraceAnswer(yield* tree(input.id), input.limit, offset, details, spanId)
+			}, storageFailed),
 			reject: Effect.fnUntraced(function* (input: Pick<Rejection, 'credential' | 'route' | 'status'>) {
 				const now = yield* Clock.currentTimeMillis
 				const key = `${input.route}:${input.status}:${input.credential}`
@@ -942,28 +838,133 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				)
 			}),
 			searchLogs: Effect.fn('Telemetry.searchLogs')(function* (input: SearchLogsParams) {
-				return searchLogsAnswer(yield* read, input, yield* Clock.currentTimeMillis)
-			}),
-			trace: Effect.fn('Telemetry.trace')(function* (id: string) {
-				const traceId = String.toLowerCase(id)
-				const current = yield* SynchronizedRef.get(state)
-				if (Array.isReadonlyArrayEmpty(traceRecords(current, traceId))) {
-					return yield* TelemetryError.make({
-						message:
-							'No kept telemetry has this trace id: check the id, check ingestion with check_ingestion, or reproduce it if it is older than three days.'
-					})
-				}
-				// The trace and every trace a span link joins to it, either way, read from the link index.
-				return traceView(
-					Array.flatMap(Array.fromIterable(linkedFrom(current.links, [traceId], HashSet.make(traceId))), linked =>
-						traceRecords(current, linked)
+				const query = {
+					cursor: Option.fromUndefinedOr(input.cursor),
+					cutoff: rangeStart(input.since, yield* Clock.currentTimeMillis),
+					limit: input.limit,
+					minimum: Option.map(Option.fromUndefinedOr(input.level), level => LEVELS[level]),
+					services: yield* servicesOf(input.app),
+					text: Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase),
+					traceId: Option.map(Option.fromUndefinedOr(input.trace), String.toLowerCase)
+				} satisfies LogQuery
+				const rows = yield* pageLogs(query)
+				const page = Array.take(rows, input.limit)
+				return {
+					...Option.match(
+						Option.filter(Array.last(page), () => rows.length > input.limit),
+						{onNone: () => ({}), onSome: log => ({nextCursor: Struct.pick(log, ['id', 'time'])})}
 					),
-					traceId
+					logs: Array.map(page, log => {
+						const attrs = attributesFlat(log.attributes, '', false)
+						const side = sideFor(log.service, log.runtime)
+						return {
+							app: appName(log.service),
+							at: isoTime(log.time),
+							level: levelOf(log.severity),
+							message: log.message,
+							...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
+							...Option.match(log.traceId, {onNone: () => ({}), onSome: trace => ({trace})}),
+							...Option.match(log.spanId, {onNone: () => ({}), onSome: span => ({span})}),
+							...Option.match(Option.fromUndefinedOr(attrs), {onNone: () => ({}), onSome: value => ({attrs: value})})
+						}
+					}),
+					total: (yield* countLogs(query)).count
+				} satisfies LogsAnswer
+			}, storageFailed),
+			// A trace and every trace a span link joins to it, as one tree.
+			trace: Effect.fn('Telemetry.trace')(tree, storageFailed),
+			// What the page watches: read again after each committed write, at most once a second, always the newest.
+			watch: (range: Range) =>
+				pipe(
+					sql.reactive(['telemetry'], readOverview(range)),
+					Stream.mapError(cause => TelemetryError.make({cause, message: UNAVAILABLE})),
+					Stream.buffer({capacity: 1, strategy: 'sliding'}),
+					Stream.flatMap(overview =>
+						Stream.concat(Stream.succeed(overview), Stream.drain(Stream.fromEffect(Effect.sleep('1 second'))))
+					)
 				)
-			})
 		}
-	}, failedSave)
+	})
 }) {
-	static readonly layer = (directory: string) =>
-		pipe(Layer.effect(this, this.make(directory)), Layer.provide(layerKeyValueStore(directory)))
+	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	static readonly migrations = Layer.effectDiscard(
+		Migrator.make({})({
+			loader: Migrator.fromRecord({
+				'0001_telemetry': Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient
+					yield* sql`
+						CREATE TABLE traces (
+							id TEXT PRIMARY KEY,
+							root TEXT NOT NULL,
+							start REAL NOT NULL,
+							duration REAL NOT NULL,
+							broken TEXT,
+							rooted INTEGER NOT NULL,
+							waits INTEGER NOT NULL,
+							receivedAt INTEGER NOT NULL
+						) STRICT
+					`
+					yield* sql`CREATE INDEX traces_by_start ON traces (start)`
+					yield* sql`CREATE INDEX traces_by_received ON traces (receivedAt)`
+					// Keyed by trace first, so a trace reads as one range of the table.
+					yield* sql`
+						CREATE TABLE spans (
+							traceId TEXT NOT NULL REFERENCES traces (id) ON DELETE CASCADE,
+							spanId TEXT NOT NULL,
+							parentSpanId TEXT,
+							name TEXT NOT NULL,
+							service TEXT NOT NULL,
+							runtime TEXT NOT NULL,
+							run INTEGER,
+							version TEXT,
+							start REAL NOT NULL,
+							duration REAL,
+							status TEXT NOT NULL,
+							error TEXT,
+							exception TEXT,
+							attributes TEXT NOT NULL,
+							PRIMARY KEY (traceId, spanId)
+						) STRICT, WITHOUT ROWID
+					`
+					yield* sql`CREATE INDEX spans_by_name ON spans (name, start)`
+					yield* sql`CREATE INDEX spans_by_release ON spans (service, version)`
+					yield* sql`
+						CREATE TABLE span_links (
+							traceId TEXT NOT NULL,
+							spanId TEXT NOT NULL,
+							linkedTraceId TEXT NOT NULL,
+							linkedSpanId TEXT NOT NULL,
+							PRIMARY KEY (traceId, spanId, linkedTraceId, linkedSpanId),
+							FOREIGN KEY (traceId, spanId) REFERENCES spans (traceId, spanId) ON DELETE CASCADE
+						) STRICT, WITHOUT ROWID
+					`
+					yield* sql`CREATE INDEX span_links_by_linked ON span_links (linkedTraceId)`
+					yield* sql`
+						CREATE TABLE logs (
+							id TEXT PRIMARY KEY,
+							traceId TEXT,
+							spanId TEXT,
+							service TEXT NOT NULL,
+							runtime TEXT NOT NULL,
+							run INTEGER,
+							version TEXT,
+							time REAL NOT NULL,
+							severity INTEGER NOT NULL,
+							message TEXT NOT NULL,
+							attributes TEXT NOT NULL,
+							receivedAt INTEGER NOT NULL
+						) STRICT
+					`
+					yield* sql`CREATE INDEX logs_by_time ON logs (time)`
+					yield* sql`CREATE INDEX logs_by_trace ON logs (traceId)`
+					yield* sql`CREATE INDEX logs_by_release ON logs (service, version)`
+					yield* sql`CREATE INDEX logs_by_received ON logs (receivedAt)`
+					yield* sql`CREATE TABLE releases (service TEXT PRIMARY KEY, version TEXT NOT NULL) STRICT`
+				})
+			}),
+			table: 'telemetry_migrations'
+		})
+	)
+
+	static readonly layer = Layer.provide(Layer.effect(this, this.make), this.migrations)
 }

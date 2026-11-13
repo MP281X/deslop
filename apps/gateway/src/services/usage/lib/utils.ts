@@ -2,12 +2,8 @@ import {Boolean, Clock, Effect, Schedule, Stream, pipe} from 'effect'
 
 import {type Period, type UsageRange, periodRange} from '#services/usage/schema.ts'
 
-// A period's report and its changes in a window that reopens at every bucket boundary; `changed` starts with its current value.
-export function usageWindow<A, E, R>(
-	period: Period,
-	changed: Stream.Stream<void, E, R>,
-	read: (range: UsageRange) => Effect.Effect<A, E, R>
-) {
+// A period's report as it changes, in a window that reopens at every bucket boundary; `watch` reads the window again after each recorded call.
+export function usageWindow<A, E, R>(period: Period, watch: (range: UsageRange) => Stream.Stream<A, E, R>) {
 	return pipe(
 		Stream.fromEffectSchedule(
 			Effect.void,
@@ -19,16 +15,14 @@ export function usageWindow<A, E, R>(
 			Stream.unwrap(
 				Effect.gen(function* () {
 					const range = periodRange(period, yield* Clock.currentTimeMillis)
-					return Stream.map(
-						// A burst of changes coalesces into one report a second; the window is read again with each.
-						pipe(
-							changed,
-							Stream.buffer({capacity: 1, strategy: 'sliding'}),
-							Stream.flatMap(() =>
-								Stream.concat(Stream.fromEffect(read(range)), Stream.drain(Stream.fromEffect(Effect.sleep('1 second'))))
-							)
-						),
-						value => ({range, report: value})
+					// A burst of calls coalesces into one report a second, always the newest; a report that did not change is not sent again.
+					return pipe(
+						watch(range),
+						Stream.changes,
+						Stream.buffer({capacity: 1, strategy: 'sliding'}),
+						Stream.flatMap(report =>
+							Stream.concat(Stream.succeed({range, report}), Stream.drain(Stream.fromEffect(Effect.sleep('1 second'))))
+						)
 					)
 				})
 			)

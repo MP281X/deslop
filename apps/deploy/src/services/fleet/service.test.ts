@@ -38,14 +38,27 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					worker: 'worker'
 				})
 				const snapshot = Snapshot.make({items: [item], sources: [], time: 123})
-				const history = MachineHistory.make({
+				const history = {
 					cpuModel: 'Fixture CPU',
+					disks: [],
 					error: '',
-					samples: [Sample.make({cores: [], disks: [], memoryTotal: 1024, memoryUsed: 512, time: 0})],
+					load: [],
+					samples: [
+						Sample.make({
+							apps: Option.none(),
+							cpu: Option.none(),
+							memoryTotal: 1024,
+							memoryUsed: 512,
+							since: 0,
+							step: 60_000,
+							storageUsed: Option.none(),
+							time: 0
+						})
+					],
 					stale: false,
 					time: 0,
 					worker: 'worker'
-				})
+				} satisfies MachineHistory
 				const group = RpcContracts.omit(
 					'inventory.watch',
 					'metrics.watch',

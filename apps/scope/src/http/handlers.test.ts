@@ -1,15 +1,15 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Clock, ConfigProvider, Context, DateTime, Effect, FileSystem, Layer, pipe, Schema, String} from 'effect'
+import {Array, Clock, ConfigProvider, Context, DateTime, Effect, Layer, Option, pipe, Schema, String} from 'effect'
 
 import {Mac} from 'effect/crypto'
 import {Hex} from 'effect/encoding'
 import {HttpClient, HttpRouter} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
+import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
-
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {runIds} from '#services/github/lib/utils.ts'
@@ -129,35 +129,22 @@ function send(web: Effect.Success<ReturnType<typeof serve>>['web'], path: string
 }
 
 const openTelemetry = Effect.fnUntraced(function* () {
+	const database = yield* Layer.build(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer))
 	const telemetry = Context.get(
-		yield* Layer.build(Telemetry.layer(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped())),
+		yield* Layer.build(pipe(Telemetry.layer, Layer.provide(Layer.succeedContext(database)))),
 		Telemetry
 	)
-	yield* telemetry.ready
-	return telemetry
+	return {database, telemetry}
 })
 
+// A database that still reads but refuses every write, as a full disk does.
 const brokenTelemetry = Effect.fnUntraced(function* () {
-	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
-	const storage = pipe(
-		Layer.effect(
-			KeyValueStore.KeyValueStore,
-			Effect.map(KeyValueStore.KeyValueStore, base =>
-				KeyValueStore.KeyValueStore.of({
-					...base,
-					set: key =>
-						Effect.fail(new KeyValueStore.KeyValueStoreError({key, message: 'Storage unavailable', method: 'set'}))
-				})
-			)
-		),
-		Layer.provide(layerKeyValueStore(directory))
+	const opened = yield* openTelemetry()
+	yield* Effect.provideContext(
+		Effect.flatMap(SqlClient.SqlClient, sql => sql`PRAGMA query_only = ON`),
+		opened.database
 	)
-	const telemetry = Context.get(
-		yield* Layer.build(pipe(Layer.effect(Telemetry, Telemetry.make(directory)), Layer.provide(storage))),
-		Telemetry
-	)
-	yield* telemetry.ready
-	return telemetry
+	return opened.telemetry
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes', test => {
@@ -165,7 +152,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 		Effect.scoped(
 			Effect.gen(function* () {
 				yield* TestClock.setTime(NOW)
-				const telemetry = yield* openTelemetry()
+				const telemetry = (yield* openTelemetry()).telemetry
 				const server = yield* serve(telemetry)
 				const start = NOW - 5 * 60_000
 				const signed = Effect.fnUntraced(function* (event: string, payload: unknown) {
@@ -193,8 +180,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 					Array.map(trace.spans, span => span.name),
 					['CI', 'build', 'Run tests']
 				)
-				assert.strictEqual(trace.spans[1]?.parentSpanId, ids.spanId)
-				assert.strictEqual(trace.spans[2]?.parentSpanId, trace.spans[1]?.spanId)
+				assert.deepStrictEqual(trace.spans[1]?.parentSpanId, Option.some(ids.spanId))
+				assert.deepStrictEqual(trace.spans[2]?.parentSpanId, Option.fromUndefinedOr(trace.spans[1]?.spanId))
+				// GitHub doesn't promise order: a start delivered after the run finished leaves it finished.
+				assert.strictEqual((yield* signed('workflow_run', runEvent(start, 'in_progress'))).status, 204)
+				assert.isTrue(
+					Option.isSome(Option.getOrThrow(Array.head((yield* telemetry.trace(ids.traceId)).spans)).duration)
+				)
 				for (const filtered of [
 					{event: 'ping', payload: {zen: 'Keep it up'}},
 					{event: 'workflow_job', payload: jobEvent(start, 'skipped')},
@@ -215,7 +207,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 		Effect.scoped(
 			Effect.gen(function* () {
 				yield* TestClock.setTime(NOW)
-				const telemetry = yield* openTelemetry()
+				const telemetry = (yield* openTelemetry()).telemetry
 				const server = yield* serve(telemetry)
 				const body = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
 					runEvent(NOW - 5 * 60_000, 'completed')
@@ -254,7 +246,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 		Effect.scoped(
 			Effect.gen(function* () {
 				yield* TestClock.setTime(NOW)
-				const telemetry = yield* openTelemetry()
+				const telemetry = (yield* openTelemetry()).telemetry
 				const server = yield* serve(telemetry)
 				const refused = yield* send(server.web, '/v1/traces', {
 					body: '{}',

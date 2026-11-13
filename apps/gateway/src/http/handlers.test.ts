@@ -29,12 +29,12 @@ import {
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/client'
 import {McpSchema, McpServer} from 'effect/ai'
 import {Cookies, FetchHttpClient, HttpClient, HttpClientResponse, HttpRouter} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
 import {RpcTest} from 'effect/rpc'
+import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
+import {layerDataStore} from '@deslop/runtime/server/store'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
@@ -42,7 +42,7 @@ import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {AiProvider, AiUsageReport} from '#services/ai/schema.ts'
-import {layerAiProxy} from '#services/ai/service.ts'
+import {AiProxy} from '#services/ai/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
 import {ConnectionInfo} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
@@ -182,6 +182,22 @@ function account(login?: string) {
 	)
 }
 
+// The provider's token endpoint: it refuses renewals while told to, and the `no-refresh` code issues a token it cannot renew.
+function tokenAnswer(form: URLSearchParams, refuseRefresh: boolean, grants: number) {
+	if (form.get('grant_type') === 'refresh_token' && refuseRefresh) {
+		return Response.json({error: 'invalid_grant'}, {status: 400})
+	}
+	if (form.get('code') === 'no-refresh') {
+		return Response.json({access_token: 'another-account', expires_in: 30, token_type: 'Bearer'})
+	}
+	return Response.json({
+		access_token: `upstream-${form.get('grant_type') ?? ''}-${grants}`,
+		expires_in: 60,
+		refresh_token: `refresh-${form.get('grant_type') ?? ''}-${grants}`,
+		token_type: 'Bearer'
+	})
+}
+
 function layerAuth(verified: Ref.Ref<number>) {
 	return Layer.succeedContext(
 		Auth.makeContext(
@@ -209,6 +225,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const memoMap = yield* Layer.makeMemoMap
 	const verified = yield* Ref.make(0)
 	const rejectAccess = yield* Ref.make('never')
+	const refuseRefresh = yield* Ref.make(false)
 	const pauseReject = yield* Ref.make(false)
 	const rejectReady = yield* Queue.make<true>()
 	const rejectContinue = yield* Queue.make<true>()
@@ -371,45 +388,14 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 					refresh: form.get('refresh_token') ?? '',
 					resource: form.get('resource') ?? ''
 				})
-				if (form.get('code') === 'no-refresh') {
-					return HttpClientResponse.fromWeb(
-						request,
-						Response.json({access_token: 'another-account', expires_in: 30, token_type: 'Bearer'})
-					)
-				}
-				return HttpClientResponse.fromWeb(
-					request,
-					Response.json({
-						access_token: `upstream-${form.get('grant_type') ?? ''}-${grants.length}`,
-						expires_in: 60,
-						refresh_token: `refresh-${form.get('grant_type') ?? ''}-${grants.length}`,
-						token_type: 'Bearer'
-					})
-				)
+				return HttpClientResponse.fromWeb(request, tokenAnswer(form, yield* Ref.get(refuseRefresh), grants.length))
 			}
 			return HttpClientResponse.fromWeb(request, new Response(undefined, {status: 404}))
 		})
 	)
-	const storageFails = yield* Ref.make(false)
-	const store = pipe(
-		Layer.effect(
-			KeyValueStore.KeyValueStore,
-			Effect.gen(function* () {
-				const base = yield* KeyValueStore.KeyValueStore
-				return KeyValueStore.KeyValueStore.of({
-					...base,
-					get: key =>
-						Effect.gen(function* () {
-							if (yield* Ref.get(storageFails)) {
-								return yield* new KeyValueStore.KeyValueStoreError({key, message: 'Storage unavailable', method: 'get'})
-							}
-							return yield* base.get(key)
-						})
-				})
-			})
-		),
-		Layer.provide(layerKeyValueStore(directory))
-	)
+	// The app's data store in the home's directory, so a second set of servers on the same home is a restart.
+	const store = layerDataStore(directory)
+	const database = yield* Layer.buildWithMemoMap(store, memoMap, scope)
 	const platform = Layer.mergeAll(
 		NodeCrypto.layer,
 		NodeServices.layer,
@@ -428,7 +414,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 	const services = yield* Layer.buildWithMemoMap(
 		pipe(
 			Gateway.layer,
-			Layer.provideMerge(Layer.mergeAll(Connections.layer, layerAiProxy(directory))),
+			Layer.provideMerge(Layer.mergeAll(Connections.layer, AiProxy.layer)),
 			Layer.provide(McpServer.McpServer.layer),
 			Layer.provide(store),
 			Layer.provide(platform),
@@ -486,6 +472,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		metadataUnavailable,
 		pauseReject,
 		providerName,
+		refuseRefresh,
 		registrations,
 		rejectAccess,
 		rejectContinue,
@@ -498,9 +485,9 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		sessions,
 		setKey: (session: string, aiProvider: AiProvider, secret: string) =>
 			client('ai.setKey', {provider: aiProvider, secret: Redacted.make(secret)}, {headers: {cookie: session}}),
+		sql: Context.get(database, SqlClient.SqlClient),
 		stall,
 		stallReady,
-		storageFails,
 		toolNames,
 		upstreamRequests,
 		upstreamTools,
@@ -647,8 +634,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 			assert.strictEqual(response.status, 302)
 			assert.strictEqual(response.headers.get('location'), '/')
-			assert.isNotEmpty((yield* gateway.list())[0]?.error ?? '')
-			assert.strictEqual(gateway.registrations.length, 1)
+			assert.isTrue(
+				Option.exists(
+					Option.flatMap(Array.head(yield* gateway.list()), server => server.error),
+					String.isNonEmpty
+				)
+			)
+			assert.strictEqual(gateway.registrations.length, 0)
 			assert.strictEqual(gateway.grants.length, 0)
 			yield* Ref.set(gateway.metadataUnavailable, false)
 			assert.include(
@@ -668,8 +660,13 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				const response = yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
 				assert.strictEqual(response.status, 302)
 				assert.strictEqual(response.headers.get('location'), '/')
-				assert.include((yield* gateway.list())[0]?.error ?? '', 'S256 PKCE')
-				assert.strictEqual(gateway.registrations.length, 1)
+				assert.isTrue(
+					Option.exists(
+						Option.flatMap(Array.head(yield* gateway.list()), server => server.error),
+						String.includes('S256 PKCE')
+					)
+				)
+				assert.strictEqual(gateway.registrations.length, 0)
 			}
 			yield* Ref.set(gateway.challengeMethods, Option.some(['S256']))
 			assert.include(
@@ -858,7 +855,8 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 		'reports a storage failure as temporarily unavailable',
 		Effect.fnUntraced(function* () {
 			const gateway = yield* servers()
-			yield* Ref.set(gateway.storageFails, true)
+			yield* gateway.setKey(SESSION, 'anthropic', 'sk-octocat')
+			yield* gateway.sql`UPDATE ai_keys SET provider = 'retired'`
 			const failure = yield* Effect.flip(gateway.keys(SESSION))
 			assert.isTrue(Schema.is(AuthError)(failure))
 			assert.strictEqual(failure.error, 'temporarily_unavailable')
@@ -1173,7 +1171,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 					assert.strictEqual((yield* callTool(gateway.web, TOKEN, 'mobbin__search', {query: 'claude'})).status, 200)
 					assert.strictEqual(MutableHashMap.size(gateway.sessions), 0)
 					assert.deepStrictEqual(MutableList.toArray(gateway.grants), [
-						{client: 'client-2', grant: 'authorization_code', refresh: '', resource: PROVIDERS.mobbin.url}
+						{client: 'client-1', grant: 'authorization_code', refresh: '', resource: PROVIDERS.mobbin.url}
 					])
 				})
 			)
@@ -1200,7 +1198,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.deepStrictEqual(MutableList.toArray(gateway.grants), [
 				{
-					client: 'client-2',
+					client: 'client-1',
 					grant: 'refresh_token',
 					refresh: 'refresh-authorization_code-1',
 					resource: PROVIDERS.mobbin.url
@@ -1351,7 +1349,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			yield* send(gateway.web, '/oauth/connect?id=mobbin', {headers: {cookie: SESSION}})
-			assert.strictEqual(gateway.registrations.length, 3)
+			assert.strictEqual(gateway.registrations.length, 2)
 			yield* TestClock.adjust('40 seconds')
 			const called = yield* modern(gateway.web, TOKEN, 'tools/call', {
 				arguments: {query: 'still connected'},
@@ -1360,7 +1358,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isTrue(String.includes('still connected')(yield* Effect.promise(() => called.text())))
 			assert.deepStrictEqual(
 				Array.map(MutableList.toArray(gateway.grants), grant => `${grant.grant}:${grant.client}`),
-				['authorization_code:client-2', 'refresh_token:client-2']
+				['authorization_code:client-1', 'refresh_token:client-1']
 			)
 		})
 	)
@@ -1444,7 +1442,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			assert.strictEqual(gateway.grants.length, 0)
 			assert.deepStrictEqual(
-				Array.map(yield* gateway.list(), server => server.error),
+				Array.map(yield* gateway.list(), server => Option.getOrUndefined(server.error)),
 				['The answer came from another authorization server']
 			)
 			params.set('iss', PROVIDERS.mobbin.issuer)
@@ -1499,6 +1497,62 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				['nger']
 			)
 			assert.strictEqual((yield* callTool(gateway.web, '', 'remove_ai_key', {provider: 'anthropic'})).status, 401)
+		})
+	)
+	test.effect(
+		'shows a connection as expired once its provider refuses to renew it',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			yield* gateway.add(PROVIDERS.mobbin.url)
+			yield* connect(gateway.web, 'mobbin', {code: 'approved', iss: PROVIDERS.mobbin.issuer})
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			yield* Ref.set(gateway.refuseRefresh, true)
+			// Past its renewal margin the call spends the refresh token, which the provider refuses.
+			yield* TestClock.adjust('40 seconds')
+			yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'renew'}, name: 'mobbin__search'})
+			assert.deepStrictEqual(
+				Array.map(MutableList.toArray(gateway.grants), grant => grant.grant),
+				['authorization_code', 'refresh_token']
+			)
+			yield* TestClock.adjust('21 seconds')
+			assert.deepStrictEqual(
+				Array.map(yield* gateway.list(), server => server.status),
+				['Expired']
+			)
+		})
+	)
+	test.effect(
+		'drops an hour of calls or AI usage older than the longest period as a new call arrives',
+		Effect.fnUntraced(function* () {
+			const gateway = yield* servers()
+			const added = yield* gateway.add('https://public.example.com/mcp')
+			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
+			const calls = Effect.gen(function* () {
+				yield* modern(gateway.web, TOKEN, 'tools/call', {arguments: {query: 'hour'}, name: `${added.id}__search`})
+				const response = yield* send(gateway.web, '/ai/anthropic/json', {
+					body: '{"model":"test"}',
+					headers: {authorization: 'Bearer agent.stranger.signature', 'content-type': 'application/json'},
+					method: 'POST'
+				})
+				yield* Effect.promise(() => response.text())
+			})
+			const hours = Effect.gen(function* () {
+				const recorded = yield* gateway.sql<{hour: number}>`
+					SELECT hour FROM connection_calls UNION ALL SELECT hour FROM ai_usage ORDER BY hour
+				`
+				return Array.map(recorded, row => row.hour)
+			})
+			const hour = Effect.map(Clock.currentTimeMillis, now => Math.floor(now / 3_600_000) * 3_600_000)
+			yield* modern(gateway.web, TOKEN, 'tools/list')
+			const first = yield* hour
+			yield* calls
+			yield* TestClock.adjust('1 second')
+			assert.deepStrictEqual(yield* hours, [first, first])
+			yield* TestClock.adjust('31 days')
+			const later = yield* hour
+			yield* calls
+			yield* TestClock.adjust('1 second')
+			assert.deepStrictEqual(yield* hours, [later, later])
 		})
 	)
 })

@@ -1,12 +1,13 @@
 import {NodeCrypto, NodeServices} from '@effect/platform-node'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {Array, Context, Effect, FileSystem, Layer, Option, Schema, Stream, pipe} from 'effect'
 
 import {HttpRouter} from 'effect/http'
+import {Reactivity} from 'effect/reactivity'
 
 import {Auth, HttpAuth} from '@deslop/runtime/server/auth'
-import {layerKeyValueStore} from '@deslop/runtime/server/store'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {Media} from '#services/media/service.ts'
@@ -14,11 +15,11 @@ import {Media} from '#services/media/service.ts'
 import {Sources} from '#services/notes/lib/extraction.ts'
 // oxlint-disable-next-line no-restricted-imports -- As above: the AI organizer is Notes' own internal.
 import {Organizer} from '#services/notes/lib/organization.ts'
-import type {Note} from '#services/notes/schema.ts'
+import {NoteId} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
 const USER = {id: 'github:1', name: 'tester'}
-const ID = '6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01'
+const ID = NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01')
 
 const organizer = Organizer.of({
 	organize: () =>
@@ -51,12 +52,11 @@ const auth = Layer.succeedContext(
 )
 
 const serve = Effect.fnUntraced(function* () {
-	const directory = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()
 	const notes = Context.get(
 		yield* Layer.build(
 			pipe(
-				Notes.layer(directory),
-				Layer.provide(layerKeyValueStore(directory)),
+				Notes.layer(yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped()),
+				Layer.provide(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer)),
 				Layer.provide(Layer.succeed(Sources, sources)),
 				Layer.provide(Layer.succeed(Media, media)),
 				Layer.provide(Layer.succeed(Organizer, organizer))
@@ -85,8 +85,14 @@ function send(web: Effect.Success<ReturnType<typeof serve>>['web'], path: string
 	return Effect.promise(() => web.handler(new Request(new URL(path, 'https://stash.mp281x.xyz'), init)))
 }
 
-const settled = Effect.fnUntraced(function* (notes: typeof Notes.Service, done: (current: Note[]) => boolean) {
-	return yield* pipe(notes.changes, Stream.filter(done), Stream.runHead, Effect.map(Option.getOrThrow))
+// The note once the list shows it ready.
+const ready = Effect.fnUntraced(function* (notes: typeof Notes.Service, id: NoteId) {
+	yield* pipe(
+		notes.events,
+		Stream.filter(event => Array.some(event.upserted, item => item.id === id && item.status === 'ready')),
+		Stream.runHead
+	)
+	return yield* notes.get(id)
 })
 
 it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash HTTP routes', test => {
@@ -101,10 +107,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash HTTP routes',
 					method: 'POST'
 				})
 				assert.strictEqual(response.status, 204)
-				const ready = yield* settled(server.notes, current =>
-					Array.some(current, note => note.id === ID && note.status === 'ready')
-				)
-				assert.containsSubset(ready[0], {id: ID, requester: USER.id, status: 'ready', text})
+				assert.containsSubset(yield* ready(server.notes, ID), {id: ID, requester: USER.id, status: 'ready', text})
 			})
 		)
 	)
@@ -132,7 +135,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash HTTP routes',
 					method: 'POST'
 				})
 				assert.strictEqual(refused.status, 400)
-				assert.lengthOf(yield* server.notes.list, 1)
+				assert.strictEqual((yield* server.notes.list({cursor: Option.none(), limit: 10, query: ''})).total, 1)
 			})
 		)
 	)

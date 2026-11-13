@@ -29,7 +29,7 @@ export const bookingsAtom = Atom.keepAlive(
 		return cachedList(
 			get,
 			bookingsFile,
-			Booking,
+			Booking.json,
 			pipe(liveStream(RpcClient, 'bookings.events'), Stream.scan(Array.empty<Booking>, apply), Stream.drop(1)),
 			session.reconnectOrSignOut
 		)

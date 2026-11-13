@@ -1,6 +1,8 @@
-import {Config, Effect, FileSystem, Layer, Option, Path, Predicate, Semaphore, Struct, pipe} from 'effect'
+import {SqliteClient} from '@effect/sql-sqlite-node'
 
-import {KeyValueStore} from 'effect/persistence'
+import {Config, Effect, FileSystem, Layer, Option, Path} from 'effect'
+
+import {Reactivity} from 'effect/reactivity'
 
 import {appName, packageRoot} from '#server/package.ts'
 
@@ -32,44 +34,16 @@ export const dataDirectory = Effect.gen(function* () {
 	return directory
 })
 
-// Schema stores share Effect's filesystem implementation, but replace values atomically instead of truncating them in place.
-export function layerKeyValueStore(directory: string) {
-	return pipe(
-		Layer.effect(
-			KeyValueStore.KeyValueStore,
-			Effect.gen(function* () {
-				const base = yield* KeyValueStore.KeyValueStore
-				const fs = yield* FileSystem.FileSystem
-				const path = yield* Path.Path
-				const writes = yield* Semaphore.make(1)
-				return KeyValueStore.make({
-					...Struct.omit(base, ['set', 'modify', 'modifyUint8Array']),
-					set: (key, value) => {
-						if (key === '' || key === '.' || key === '..') {
-							return Effect.fail(
-								new KeyValueStore.KeyValueStoreError({key, message: 'Invalid storage key', method: 'set'})
-							)
-						}
-						const target = path.join(directory, encodeURIComponent(key))
-						return pipe(
-							Effect.gen(function* () {
-								if (Predicate.isString(value)) yield* fs.writeFileString(`${target}.tmp`, value, {mode: 0o600})
-								else yield* fs.writeFile(`${target}.tmp`, value, {mode: 0o600})
-							}),
-							Effect.andThen(fs.rename(`${target}.tmp`, target)),
-							Effect.uninterruptible,
-							Semaphore.withPermit(writes),
-							Effect.mapError(
-								cause =>
-									new KeyValueStore.KeyValueStoreError({cause, key, message: 'Cannot save the value', method: 'set'})
-							)
-						)
-					}
-				})
-			})
-		),
-		Layer.provide(KeyValueStore.layerFileSystem(directory))
+// The app's one SQLite database sits in `directory`, the data directory in production and a temporary one in tests; the database and the services share one Reactivity, so a committed write reaches every live query.
+export function layerDataStore(directory: string) {
+	return Layer.unwrap(
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem
+			const filename = (yield* Path.Path).join(directory, 'data.sqlite')
+			// SQLite creates its file but not the folder around it, and gives its -wal and -shm files the database's own mode: it holds tokens and keys, so only the user reads it.
+			yield* fs.makeDirectory(directory, {mode: 0o700, recursive: true})
+			yield* fs.writeFile(filename, new Uint8Array(), {flag: 'a', mode: 0o600})
+			return Layer.merge(SqliteClient.layer({filename}), Reactivity.layer)
+		})
 	)
 }
-
-export const layerDataStore = Layer.unwrap(Effect.map(dataDirectory, layerKeyValueStore))

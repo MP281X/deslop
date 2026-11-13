@@ -5,7 +5,7 @@ import {Tool, Toolkit} from 'effect/ai'
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
 import {AiProvider} from '#services/ai/schema.ts'
-import {ServerId} from '#services/connections/schema.ts'
+import {ConnectionStatus, ServerId} from '#services/connections/schema.ts'
 
 export const ToolContracts = Toolkit.make(
 	Tool.make('list_mcp_connections', {
@@ -23,7 +23,7 @@ export const ToolContracts = Toolkit.make(
 					error: Schema.optionalKey(Schema.String),
 					id: ServerId,
 					instructions: Schema.optionalKey(Schema.String),
-					status: Schema.Literals(['Connected', 'Not connected', 'Expired']),
+					status: ConnectionStatus,
 					tools: Schema.Int
 				})
 			)

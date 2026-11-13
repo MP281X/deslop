@@ -2,7 +2,8 @@ import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {DeployError, Exposure, WorkerInventory, App, InventoryQuery, RunJobInput} from '#services/inventory/schema.ts'
+import {ExposeInput} from '#services/exposures/schema.ts'
+import {DeployError, WorkerInventory, App, InventoryQuery, RunJobInput} from '#services/inventory/schema.ts'
 import {HistoryToolInput, WorkerHistory} from '#services/metrics/schema.ts'
 
 type MetricSummary = typeof MetricSummary.Type
@@ -71,7 +72,7 @@ export const ToolContracts = Toolkit.make(
 		description:
 			'Give a local port the requested HTTPS hostname and ownership name on a configured worker; public exposure requires explicit publicAccess=true consent. Returns the URL, adds no authentication and starts no application; list_apps shows owned exposures.',
 		failure: DeployError,
-		parameters: Schema.Struct({...Exposure.fields, worker: Schema.optionalKey(Schema.String)}),
+		parameters: Schema.Struct({...ExposeInput.fields, worker: Schema.optionalKey(Schema.String)}),
 		success: Schema.Struct({url: Schema.String})
 	})
 		.annotate(Tool.Destructive, true)

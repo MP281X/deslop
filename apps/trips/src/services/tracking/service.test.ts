@@ -1,3 +1,4 @@
+import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
 import {
@@ -9,6 +10,7 @@ import {
 	Context,
 	Deferred,
 	Effect,
+	Equal,
 	Exit,
 	Fiber,
 	Layer,
@@ -21,98 +23,121 @@ import {
 } from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
+import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
 import {HOUR} from '#services/bookings/lib/utils.ts'
-import type {BookingList} from '#services/bookings/schema.ts'
+import type {Booking} from '#services/bookings/schema.ts'
 import {Flight, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Tracker} from '#services/tracking/service.ts'
 
-const FLIGHT = Flight.make({
+const ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+
+const FLIGHT = {
 	airline: 'British Airways',
 	airlineCode: 'BA',
 	arrives: 3 * HOUR,
+	boardingAt: Option.none(),
+	boardingGroup: Option.none(),
+	confirmation: Option.none(),
 	departs: 2 * HOUR,
 	from: {code: 'FCO', name: 'Rome', timeZone: 'Europe/Rome'},
-	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+	id: ID,
+	live: Option.none(),
 	number: '553',
+	seat: Option.none(),
 	status: 'confirmed',
 	to: {code: 'LHR', name: 'London', timeZone: 'Europe/London'}
-})
-const TRAIN = Train.make({
+} as const
+
+const TRAIN = {
 	arrives: 3 * HOUR,
+	coach: Option.none(),
+	confirmation: Option.none(),
 	departs: 2 * HOUR,
 	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
-	id: FLIGHT.id,
+	id: ID,
+	live: Option.none(),
 	number: '9541',
 	operator: 'trenitalia',
 	operatorName: 'Frecciarossa',
+	seat: Option.none(),
 	status: 'confirmed',
 	to: {name: 'Milano Centrale', timeZone: 'Europe/Rome'}
-})
+} as const
 
-function bookingsAt(state: Ref.Ref<BookingList>) {
+// The bookings as a list in memory; a newer state replaces the one it was made from only while that one is still stored.
+function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 	return Bookings.of({
 		changes: Stream.never,
 		events: Stream.never,
-		list: Ref.get(state),
+		list: Effect.tap(Ref.get(state), () =>
+			Option.match(Option.fromUndefinedOr(listed), {
+				onNone: () => Effect.void,
+				onSome: queue => Queue.offer(queue, undefined)
+			})
+		),
 		remove: () => Effect.void,
-		save: () => Effect.void,
-		update: (id, change) =>
-			Ref.update(
-				state,
-				Array.map(booking => {
-					if (booking.id === id) return change(booking)
-					return booking
-				})
-			)
+		replace: (before, after) =>
+			Effect.andThen(
+				Ref.update(
+					state,
+					Array.map(booking =>
+						Boolean.match(Equal.equals(booking, before), {onFalse: () => booking, onTrue: () => after})
+					)
+				),
+				Effect.undefined
+			),
+		save: () => Effect.undefined
 	})
 }
 
-it.layer(
-	Layer.merge(KeyValueStore.layerMemory, ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'})))
-)(test => {
+// A tracker over its own empty database, and the lookup counts that database holds.
+const open = Effect.fnUntraced(function* (bookings: typeof Bookings.Service, client: HttpClient.HttpClient) {
+	const database = yield* Layer.build(SqliteClient.layer({filename: ':memory:'}))
+	const tracker = Context.get(
+		yield* Layer.build(
+			pipe(
+				Tracker.layer,
+				Layer.provide(Layer.succeedContext(database)),
+				Layer.provide(Layer.succeed(Bookings, bookings)),
+				Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+			)
+		),
+		Tracker
+	)
+	const sql = Context.get(database, SqlClient.SqlClient)
+	return {lookups: sql<{calls: number; month: string}>`SELECT month, calls FROM lookups`, sql, tracker}
+})
+
+it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'})))(test => {
 	test.effect(
 		'refuses legacy dot-segment and non-numeric numbers before any provider lookup or spend',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.adjust('1 hour')
-			const store = yield* KeyValueStore.KeyValueStore
-			yield* store.clear
-			const state = yield* Ref.make<BookingList>([])
+			const state = yield* Ref.make<Booking[]>([])
 			const calls = yield* Ref.make(0)
-			const initial = yield* Queue.unbounded<void>()
-			const tracker = Context.get(
-				yield* Layer.build(
-					pipe(
-						Tracker.layer,
-						Layer.provide(
-							Layer.succeed(Bookings, {
-								...bookingsAt(state),
-								list: Effect.tap(Ref.get(state), () => Queue.offer(initial, undefined))
-							})
-						),
-						Layer.provide(
-							Layer.succeed(
-								HttpClient.HttpClient,
-								HttpClient.make(request =>
-									Effect.as(
-										Ref.update(calls, count => count + 1),
-										HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
-									)
-								)
-							)
-						)
+			const listed = yield* Queue.unbounded<void>()
+			const opened = yield* open(
+				bookingsAt(state, listed),
+				HttpClient.make(request =>
+					Effect.as(
+						Ref.update(calls, count => count + 1),
+						HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
 					)
-				),
-				Tracker
+				)
 			)
-			yield* Queue.take(initial)
-			for (const booking of [TRAIN, FLIGHT]) {
+			yield* Queue.take(listed)
+			for (const booking of [Train.make(TRAIN), Flight.make(FLIGHT)]) {
 				for (const number of ['.', '..', '../../path', '9541?other=true']) {
-					yield* Ref.set(state, [{...booking, number}])
-					const result = yield* Effect.exit(tracker.refresh(booking.id))
+					yield* Ref.set(state, [
+						Boolean.match(booking._tag === 'flight', {
+							onFalse: () => Train.make({...TRAIN, number}),
+							onTrue: () => Flight.make({...FLIGHT, number})
+						})
+					])
+					const result = yield* Effect.exit(opened.tracker.refresh(booking.id))
 					assert.isTrue(
 						Exit.hasFails(result),
 						Exit.match(result, {onFailure: Cause.pretty, onSuccess: () => `${booking._tag}: ${number} skipped`})
@@ -122,7 +147,7 @@ it.layer(
 					yield* TestClock.adjust('1 minute')
 				}
 			}
-			assert.isUndefined(yield* store.get('aeroapi'))
+			assert.deepStrictEqual(yield* opened.lookups, [])
 		})
 	)
 
@@ -130,8 +155,8 @@ it.layer(
 		'discards flight and train answers after rebooking, but saves an unchanged reservation',
 		Effect.fnUntraced(function* () {
 			yield* TestClock.adjust('1 hour')
-			for (const booking of [FLIGHT, TRAIN]) {
-				const state = yield* Ref.make<BookingList>([])
+			for (const booking of [Flight.make(FLIGHT), Train.make(TRAIN)]) {
+				const state = yield* Ref.make<Booking[]>([])
 				const asked = yield* Deferred.make<boolean>()
 				const release = yield* Deferred.make<boolean>()
 				const client = HttpClient.make(request =>
@@ -172,31 +197,25 @@ it.layer(
 						)
 					})
 				)
-				const tracker = Context.get(
-					yield* Layer.build(
-						pipe(
-							Tracker.layer,
-							Layer.provide(Layer.succeed(Bookings, bookingsAt(state))),
-							Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
-						)
-					),
-					Tracker
-				)
+				const opened = yield* open(bookingsAt(state), client)
 				yield* Ref.set(state, [booking])
-				const lookup = yield* Effect.forkScoped(tracker.refresh(booking.id))
+				const lookup = yield* Effect.forkScoped(opened.tracker.refresh(booking.id))
 				yield* Deferred.await(asked)
-				const replacement = {...booking, number: '999'}
+				const replacement = Boolean.match(booking._tag === 'flight', {
+					onFalse: () => Train.make({...TRAIN, number: '999'}),
+					onTrue: () => Flight.make({...FLIGHT, number: '999'})
+				})
 				yield* Ref.set(state, [replacement])
 				yield* Deferred.succeed(release, true)
 				yield* Fiber.join(lookup)
 				assert.deepStrictEqual(yield* Ref.get(state), [replacement])
 				yield* Ref.set(state, [booking])
 				yield* TestClock.adjust('1 minute')
-				yield* tracker.refresh(booking.id)
+				yield* opened.tracker.refresh(booking.id)
 				assert.isTrue(
 					Option.exists(
 						Array.head(yield* Ref.get(state)),
-						current => current._tag !== 'stay' && current.live !== undefined
+						current => current._tag !== 'stay' && Option.isSome(current.live)
 					)
 				)
 			}
@@ -204,33 +223,37 @@ it.layer(
 	)
 
 	test.effect(
-		'keeps a corrupt lookup counter intact and makes no paid request',
+		"counts FlightAware's lookups by month and stops at the month's thousandth",
 		Effect.fnUntraced(function* () {
 			yield* TestClock.adjust('1 hour')
-			const store = yield* KeyValueStore.KeyValueStore
-			yield* store.set('aeroapi', 'corrupt')
-			const state = yield* Ref.make<BookingList>([])
+			const state = yield* Ref.make<Booking[]>([Flight.make(FLIGHT)])
 			const calls = yield* Ref.make(0)
-			const client = HttpClient.make(request =>
-				Effect.gen(function* () {
-					yield* Ref.update(calls, count => count + 1)
-					return HttpClientResponse.fromWeb(request, Response.json({flights: []}))
-				})
-			)
-			const tracker = Context.get(
-				yield* Layer.build(
-					pipe(
-						Tracker.layer,
-						Layer.provide(Layer.succeed(Bookings, bookingsAt(state))),
-						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
+			const opened = yield* open(
+				bookingsAt(state),
+				HttpClient.make(request =>
+					Effect.as(
+						Ref.update(calls, count => count + 1),
+						HttpClientResponse.fromWeb(request, Response.json({flights: []}))
 					)
-				),
-				Tracker
+				)
 			)
-			yield* Ref.set(state, [FLIGHT])
-			assert.isTrue(Exit.hasFails(yield* Effect.exit(tracker.refresh(FLIGHT.id))))
-			assert.strictEqual(yield* store.get('aeroapi'), 'corrupt')
-			assert.strictEqual(yield* Ref.get(calls), 0)
+			yield* opened.tracker.refresh(ID)
+			assert.deepStrictEqual(yield* opened.lookups, [{calls: 1, month: '1970-01'}])
+			yield* opened.sql`UPDATE lookups SET calls = 1000`
+			yield* TestClock.adjust('1 minute')
+			assert.isTrue(Exit.hasFails(yield* Effect.exit(opened.tracker.refresh(ID))))
+			assert.strictEqual(yield* Ref.get(calls), 1)
+			// A new month starts its own count, and the old month's row goes.
+			yield* TestClock.adjust('31 days')
+			yield* Ref.set(state, [
+				Flight.make({
+					...FLIGHT,
+					arrives: (yield* Clock.currentTimeMillis) + 3 * HOUR,
+					departs: (yield* Clock.currentTimeMillis) + 2 * HOUR
+				})
+			])
+			yield* opened.tracker.refresh(ID)
+			assert.deepStrictEqual(yield* opened.lookups, [{calls: 1, month: '1970-02'}])
 		})
 	)
 
@@ -239,43 +262,30 @@ it.layer(
 		Effect.fnUntraced(function* () {
 			const now = yield* Clock.currentTimeMillis
 			const train = Train.make({...TRAIN, arrives: now + 2 * HOUR, departs: now + HOUR})
-			const store = yield* KeyValueStore.KeyValueStore
-			yield* store.clear
-			const state = yield* Ref.make<BookingList>([])
-			const initial = yield* Queue.unbounded<void>()
+			const state = yield* Ref.make<Booking[]>([])
+			const listed = yield* Queue.unbounded<void>()
 			const calls = yield* Ref.make(0)
-			const client = HttpClient.make(request =>
-				Effect.gen(function* () {
-					yield* Ref.update(calls, count => count + 1)
-					return HttpClientResponse.fromWeb(
-						request,
-						Response.json({codLocOrig: '../S08409', millisDataPartenza: 'not-a-number'})
-					)
-				})
+			const opened = yield* open(
+				bookingsAt(state, listed),
+				HttpClient.make(request =>
+					Effect.gen(function* () {
+						yield* Ref.update(calls, count => count + 1)
+						return HttpClientResponse.fromWeb(
+							request,
+							Response.json({codLocOrig: '../S08409', millisDataPartenza: 'not-a-number'})
+						)
+					})
+				)
 			)
-			const tracker = Context.get(
-				yield* Layer.build(
-					pipe(
-						Tracker.layer,
-						Layer.provide(
-							Layer.succeed(Bookings, {
-								...bookingsAt(state),
-								list: Effect.tap(Ref.get(state), () => Queue.offer(initial, undefined))
-							})
-						),
-						Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
-					)
-				),
-				Tracker
-			)
-			yield* Queue.take(initial)
+			yield* Queue.take(listed)
 			yield* Ref.set(state, [train])
-			const lookup = yield* Effect.forkScoped(Effect.exit(tracker.refresh(train.id)))
+			const lookup = yield* Effect.forkScoped(Effect.exit(opened.tracker.refresh(train.id)))
 			yield* TestClock.adjust('5 seconds')
 			const result = yield* Fiber.join(lookup)
 			assert.strictEqual(yield* Ref.get(calls), 3)
 			assert.isTrue(Exit.hasFails(result), Exit.match(result, {onFailure: Cause.pretty, onSuccess: () => 'no failure'}))
-			assert.isUndefined(yield* store.get('aeroapi'))
+			assert.deepStrictEqual(yield* opened.lookups, [])
+			assert.deepStrictEqual(yield* Ref.get(state), [train])
 		})
 	)
 })

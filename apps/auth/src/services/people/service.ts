@@ -1,26 +1,30 @@
-import {Array, Boolean, Clock, Context, Effect, Layer, Option, Stream, Struct, SubscriptionRef, pipe} from 'effect'
+import type {Stream} from 'effect'
+import {Boolean, Clock, Context, Effect, Layer, Option, Schema, String, Struct, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import type {Headers} from 'effect/http'
-import {KeyValueStore} from 'effect/persistence'
+import {Reactivity} from 'effect/reactivity'
+import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Auth, adminIds, localAuth, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User} from '@deslop/runtime/shared/auth'
-import {AuthError, DEVELOPER, bearerOf, rejected} from '@deslop/runtime/shared/auth'
+import {AuthError, DEVELOPER, bearerOf, isAdmin, rejected} from '@deslop/runtime/shared/auth'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
 import {Passkeys} from '#services/passkeys/service.ts'
-import {admission, listPeople, ownerOf, personOf, registerMember, roleOf} from '#services/people/lib/utils.ts'
+import {listPeople, ownerOf, personOf, roleOf} from '#services/people/lib/utils.ts'
 import type {AdmitParams, GitHubUser, Person} from '#services/people/schema.ts'
-import {Members, SignedAccount} from '#services/people/schema.ts'
+import {Member, SignedAccount} from '#services/people/schema.ts'
 import {randomTokenOf} from '#services/tokens/lib/utils.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 import type {CredentialOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
-function member(id: string, current: Members) {
-	return Array.findFirst(current, row => row.id === id)
+declare module 'effect/reactivity/Reactivity' {
+	interface Keys {
+		readonly people: never
+	}
 }
 
 export class People extends Context.Service<
@@ -36,102 +40,147 @@ export class People extends Context.Service<
 		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
 	}
 >()('@deslop/auth/services/people/service/People') {
-	static readonly layer = Layer.effectContext(
-		Effect.gen(function* () {
-			const store = KeyValueStore.toSchemaStore(yield* KeyValueStore.KeyValueStore, Members)
-			const state = yield* SubscriptionRef.make<Members>(Option.getOrElse(yield* store.get('members'), () => []))
-			const tokens = yield* Tokens
-			const passkeys = yield* Passkeys
-			const github = yield* GitHub
-			const admins = yield* adminIds
-			const local = yield* localAuth
-			const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
-			const developer = {incarnation: 'local', user: DEVELOPER}
-			// Every change saves the next members before memory and the live views see them.
-			const transact = Effect.fnUntraced(function* <A, E>(
-				change: (current: Members) => Effect.Effect<readonly [A, Members], E>
-			) {
-				return yield* SubscriptionRef.modifyEffect(state, current =>
-					Effect.tap(change(current), result => store.set('members', result[1]))
+	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
+	static readonly migrations = Layer.effectDiscard(
+		Migrator.make({})({
+			loader: Migrator.fromRecord({
+				'0001_members': Effect.flatMap(
+					SqlClient.SqlClient,
+					sql => sql`
+						CREATE TABLE members (
+							id TEXT PRIMARY KEY,
+							name TEXT NOT NULL,
+							fullName TEXT,
+							incarnation TEXT NOT NULL,
+							since INTEGER NOT NULL,
+							status TEXT NOT NULL
+						) STRICT
+					`
 				)
-			}, Effect.uninterruptible)
-			const currentOwner = Effect.fnUntraced(function* (owner: CredentialOwner) {
-				const row = member(owner.user.id, yield* SubscriptionRef.get(state))
-				if (local && owner.user.id === DEVELOPER.id && owner.incarnation === developer.incarnation) return row
-				if (!Option.exists(row, found => found.incarnation === owner.incarnation)) {
-					return yield* AuthError.make({
-						error: 'invalid_grant',
-						message: 'This account registration ended. Sign in again.'
-					})
-				}
-				return row
-			})
-			const allowed = Effect.fnUntraced(function* (owner: CredentialOwner) {
-				if (roleOf(admins, owner.user.id, yield* currentOwner(owner)) === 'Waiting') {
-					return yield* AuthError.make({
-						error: 'access_denied',
-						message: 'An admin has not allowed this GitHub account yet'
-					})
-				}
-				return owner
-			})
-			const sessionOwner = Effect.fnUntraced(function* (headers: Headers.Headers) {
-				if (local) return developer
-				return yield* allowed(yield* tokens.session(headers))
-			})
-			function admin(user: User) {
-				return requireAdmin(admins, user, 'Only an admin can manage people')
-			}
-			// The accounts asking for access first, then admins, then members, each newest first.
-			const list = Effect.fn('People.list')(function* (user: User) {
-				yield* admin(user)
-				return listPeople(yield* SubscriptionRef.get(state), admins)
-			}, rejected('Cannot read people'))
+			}),
+			table: 'members_migrations'
+		})
+	)
 
-			// An admin who has not signed in since GITHUB_ADMINS named them still shows their GitHub profile.
-			yield* pipe(
-				Effect.forEach(
-					admins,
-					Effect.fnUntraced(function* (id) {
-						if (Option.isSome(member(`github:${id}`, yield* SubscriptionRef.get(state)))) return
-						const profile = yield* github.profile(id)
-						const since = yield* Clock.currentTimeMillis
-						const incarnation = yield* randomToken(32)
-						yield* transact(current => {
-							if (Option.isSome(member(`github:${profile.id}`, current))) {
-								return Effect.succeed([undefined, current] as const)
-							}
-							return Effect.succeed([
-								undefined,
-								[
-									...current,
-									{
-										fullName: profile.name ?? '',
-										id: `github:${profile.id}`,
-										incarnation,
-										name: profile.login,
-										since,
-										status: 'Allowed'
-									}
-								]
-							] as const)
+	static readonly layer = Layer.provide(
+		Layer.effectContext(
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient
+				const tokens = yield* Tokens
+				const passkeys = yield* Passkeys
+				const github = yield* GitHub
+				const admins = yield* adminIds
+				const local = yield* localAuth
+				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
+				const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
+				const developer = {incarnation: 'local', user: DEVELOPER}
+				const members = yield* SqlModel.makeRepository(Member, {
+					idColumn: 'id',
+					spanPrefix: 'People',
+					tableName: Member.table
+				})
+				const listMembers = SqlSchema.findAll({
+					Request: Schema.Void,
+					Result: Member,
+					// Newest first; of two at the same moment, the one recorded later.
+					execute: () => sql`SELECT * FROM ${sql(Member.table)} ORDER BY since DESC, rowid DESC`
+				})
+				// An admin's answer lets the account in from now on.
+				const allowMember = SqlSchema.findOne({
+					Request: Schema.Struct(Struct.pick(Member.update.fields, ['id', 'since'])),
+					Result: Member,
+					execute: request => sql`
+						UPDATE ${sql(Member.table)} SET status = ${'Allowed' satisfies Member['status']}, since = ${request.since}
+						WHERE id = ${request.id}
+						RETURNING *
+					`
+				})
+				// Each sign-in takes the account's current GitHub login and name.
+				const renameMember = SqlSchema.findOne({
+					Request: Schema.Struct(Struct.pick(Member.update.fields, ['fullName', 'id', 'name'])),
+					Result: Member,
+					execute: request => sql`
+						UPDATE ${sql(Member.table)} SET ${sql.update(request, ['id'])} WHERE id = ${request.id} RETURNING *
+					`
+				})
+				// An admin's profile is added once; a sign-in that recorded the admin meanwhile is kept.
+				const addAdmin = SqlSchema.void({
+					Request: Member.insert,
+					execute: row => sql`INSERT INTO ${sql(Member.table)} ${sql.insert(row)} ON CONFLICT (id) DO NOTHING`
+				})
+				function member(id: string) {
+					return Effect.catchNoSuchElement(members.findById(id))
+				}
+				// A local install's developer account keeps the one registration its sessions name; any other gets a fresh one.
+				function incarnationOf(profile: GitHubUser) {
+					if (local && profile.id === 0) return Effect.succeed(developer.incarnation)
+					return randomToken(32)
+				}
+				function existing(id: string) {
+					return Effect.flatMap(member(id), Effect.fromOption)
+				}
+				const currentOwner = Effect.fnUntraced(function* (owner: CredentialOwner) {
+					const row = yield* member(owner.user.id)
+					if (local && owner.user.id === DEVELOPER.id && owner.incarnation === developer.incarnation) return row
+					if (!Option.exists(row, found => found.incarnation === owner.incarnation)) {
+						return yield* AuthError.make({
+							error: 'invalid_grant',
+							message: 'This account registration ended. Sign in again.'
 						})
-					}),
-					{concurrency: 1, discard: true}
-				),
-				Effect.ignore({log: 'Warn', message: 'The admins’ GitHub profiles could not be read'}),
-				Effect.forkScoped
-			)
+					}
+					return row
+				})
+				const allowed = Effect.fn('People.allowed')(function* (owner: CredentialOwner) {
+					if (roleOf(admins, owner.user.id, yield* currentOwner(owner)) === 'Waiting') {
+						return yield* AuthError.make({
+							error: 'access_denied',
+							message: 'An admin has not allowed this GitHub account yet'
+						})
+					}
+					return owner
+				}, rejected('Cannot read the account'))
+				const sessionOwner = Effect.fnUntraced(function* (headers: Headers.Headers) {
+					if (local) return developer
+					return yield* allowed(yield* tokens.session(headers))
+				})
+				function admin(user: User) {
+					return requireAdmin(admins, user, 'Only an admin can manage people')
+				}
+				const list = Effect.fn('People.list')(function* (user: User) {
+					yield* admin(user)
+					return listPeople(yield* listMembers(), admins)
+				}, rejected('Cannot read people'))
 
-			const people = People.of({
-				// Read again when the account's role or its sessions change, so a sign-out elsewhere or an admission shows here.
-				account: headers =>
-					pipe(
-						Stream.merge(
-							Stream.map(SubscriptionRef.changes(state), () => undefined),
-							tokens.changes
-						),
-						Stream.mapEffect(() =>
+				// An admin who has not signed in since GITHUB_ADMINS named them still shows their GitHub profile.
+				yield* pipe(
+					Effect.forEach(
+						admins,
+						Effect.fnUntraced(function* (id) {
+							if (Option.isSome(yield* member(`github:${id}`))) return
+							const profile = yield* github.profile(id)
+							yield* pipe(
+								addAdmin({
+									fullName: Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty),
+									id: `github:${profile.id}`,
+									incarnation: yield* incarnationOf(profile),
+									name: profile.login,
+									since: yield* Clock.currentTimeMillis,
+									status: 'Allowed'
+								}),
+								Reactivity.mutation(['people'])
+							)
+						}),
+						{concurrency: 1, discard: true}
+					),
+					Effect.ignore({log: 'Warn', message: 'The admins’ GitHub profiles could not be read'}),
+					Effect.forkScoped
+				)
+
+				const people = People.of({
+					// Read again when an account or a sign-in changes, so a sign-out elsewhere or an admission shows here.
+					account: headers =>
+						sql.reactive(
+							['people', 'tokens'],
 							pipe(
 								Effect.gen(function* () {
 									const session = yield* tokens.browserSession(headers)
@@ -148,73 +197,108 @@ export class People extends Context.Service<
 								}),
 								rejected('Cannot read the account')
 							)
-						)
-					),
-				admin,
-				// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
-				admit: Effect.fn('People.admit')(function* (params: AdmitParams, user: User) {
-					yield* admin(user)
-					const now = yield* Clock.currentTimeMillis
-					const result = yield* transact(current => Effect.fromResult(admission(current, admins, params, now)))
-					// A declined account is signed out and loses its passkeys, so it can sign in again to ask again.
-					if (!params.allow) {
-						yield* tokens.forget(result.owner)
-						yield* passkeys.forget(result.owner)
-					}
-					return result.person
-				}, rejected('Cannot answer the access request')),
-				allowed: Effect.fn('People.allowed')(allowed),
-				list,
-				people: user => Stream.mapEffect(SubscriptionRef.changes(state), () => list(user)),
-				register: Effect.fn('People.register')(function* (profile: GitHubUser) {
-					const since = yield* Clock.currentTimeMillis
-					return yield* transact(current =>
-						Effect.gen(function* () {
-							return registerMember(
-								current,
-								admins,
-								profile,
-								since,
-								yield* Option.match(member(`github:${profile.id}`, current), {
-									onNone: () => {
-										if (local && profile.id === 0) return Effect.succeed('local')
-										return randomToken(32)
-									},
-									onSome: row => Effect.succeed(row.incarnation)
-								})
+						),
+					admin,
+					// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
+					admit: Effect.fn('People.admit')(
+						function* (params: AdmitParams, user: User) {
+							yield* admin(user)
+							const now = yield* Clock.currentTimeMillis
+							const answered = yield* pipe(
+								Effect.gen(function* () {
+									const row = yield* existing(params.id)
+									if (roleOf(admins, row.id, Option.some(row)) !== 'Waiting') {
+										return yield* AuthError.make({message: 'This account is not asking for access'})
+									}
+									if (params.allow) return yield* allowMember({id: row.id, since: now})
+									yield* members.delete(row.id)
+									return row
+								}),
+								Reactivity.mutation(['people']),
+								sql.withTransaction
 							)
-						})
+							// A declined account is signed out and loses its passkeys, so it can sign in again to ask again.
+							if (!params.allow) {
+								yield* tokens.forget(ownerOf(answered))
+								yield* passkeys.forget(ownerOf(answered))
+							}
+							return personOf(admins, answered)
+						},
+						withReactivity,
+						rejected('Cannot answer the access request')
+					),
+					allowed,
+					list,
+					people: user => sql.reactive(['people'], list(user)),
+					register: Effect.fn('People.register')(
+						function* (profile: GitHubUser) {
+							const id = `github:${profile.id}`
+							const fullName = Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty)
+							const since = yield* Clock.currentTimeMillis
+							const row = yield* pipe(
+								member(id),
+								Effect.flatMap(
+									Option.match({
+										onNone: () =>
+											Effect.flatMap(incarnationOf(profile), incarnation =>
+												members.insert({
+													fullName,
+													id,
+													incarnation,
+													name: profile.login,
+													since,
+													status: Boolean.match(isAdmin(admins, id), {
+														onFalse: () => 'Waiting' as const,
+														onTrue: () => 'Allowed' as const
+													})
+												})
+											),
+										onSome: () => renameMember({fullName, id, name: profile.login})
+									})
+								),
+								Reactivity.mutation(['people']),
+								sql.withTransaction
+							)
+							return ownerOf(row)
+						},
+						withReactivity,
+						rejected('Cannot record the GitHub account')
+					),
+					remove: Effect.fn('People.remove')(
+						function* (id: string, user: User) {
+							yield* admin(user)
+							if (roleOf(admins, id, Option.none()) === 'Admin') {
+								return yield* AuthError.make({
+									message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'
+								})
+							}
+							const removed = yield* pipe(
+								existing(id),
+								Effect.tap(row => members.delete(row.id)),
+								Reactivity.mutation(['people']),
+								sql.withTransaction
+							)
+							// Membership commits first. Cleanup is scoped to its incarnation and cannot remove a concurrent new registration.
+							yield* tokens.forget(ownerOf(removed))
+							yield* passkeys.forget(ownerOf(removed))
+							return personOf(admins, removed)
+						},
+						withReactivity,
+						rejected('Cannot remove this account')
 					)
-				}, rejected('Cannot record the GitHub account')),
-				remove: Effect.fn('People.remove')(function* (id: string, user: User) {
-					yield* admin(user)
-					if (roleOf(admins, id, Option.none()) === 'Admin') {
-						return yield* AuthError.make({message: 'Admins come from GITHUB_ADMINS, so they cannot be removed here'})
-					}
-					const removed = yield* transact(current =>
-						Effect.gen(function* () {
-							return [
-								yield* Effect.fromOption(member(id, current)),
-								Array.filter(current, row => row.id !== id)
-							] as const
-						})
-					)
-					// Membership commits first. Cleanup is scoped to its incarnation and cannot remove a concurrent new registration.
-					yield* tokens.forget(ownerOf(removed))
-					yield* passkeys.forget(ownerOf(removed))
-					return personOf(admins, removed)
-				}, rejected('Cannot remove this account'))
-			})
-			return pipe(
-				Context.make(People, people),
-				Context.add(
-					RpcOwner,
-					RpcOwner.of((effect, request) =>
-						Effect.flatMap(sessionOwner(request.headers), owner => Effect.provideService(effect, CurrentOwner, owner))
+				})
+				return pipe(
+					Context.make(People, people),
+					Context.add(
+						RpcOwner,
+						RpcOwner.of((effect, request) =>
+							Effect.flatMap(sessionOwner(request.headers), owner => Effect.provideService(effect, CurrentOwner, owner))
+						)
 					)
 				)
-			)
-		})
+			})
+		),
+		this.migrations
 	)
 }
 

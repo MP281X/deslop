@@ -1,4 +1,6 @@
-import {Schema, Struct} from 'effect'
+import {Schema} from 'effect'
+
+import {Model} from 'effect/schema'
 
 export class ChaptersError extends Schema.TaggedError<ChaptersError>()('ChaptersError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -15,32 +17,36 @@ export const Series = Schema.Literals(['manga', 'webcomic'])
 export type ChapterPath = typeof ChapterPath.Type
 export const ChapterPath = Schema.TemplateLiteralParser([Series, ':', Schema.FiniteFromString])
 
-export type Chapter = typeof Chapter.Type
-export const Chapter = Schema.Struct({
+// The server's own bookkeeping, which never reaches the iPhone.
+const serverOnly = Model.FieldOnly(['select', 'insert', 'update'])
+
+// One row of `chapters`: a fetched chapter, kept because Reddit's feeds show only recent posts and a reader's page must stay on the translation it started; with the one reader's place in it.
+export class Chapter extends Model.Class<Chapter>('Chapter')({
 	// Set once every registered iPhone has been told, or when the chapter arrived before anyone could be.
-	notified: Schema.Boolean,
+	notified: serverOnly(Schema.BooleanFromBit),
 	// Extras between two chapters carry a half number, such as 8.5.
 	number: Schema.Finite,
-	pages: Schema.Array(Schema.String),
+	pages: Model.JsonFromString(Schema.Array(Schema.String)),
 	postedAt: Schema.Finite,
-	reading: Schema.optionalKey(Reading),
+	reading: Model.FieldOption(Model.JsonFromString(Reading)),
 	// When the revision that supplied the current pages was posted; only a later revision replaces them.
-	revisedAt: Schema.optionalKey(Schema.Finite),
+	revisedAt: Model.FieldOption(serverOnly(Schema.Finite)),
 	series: Series,
-	source: Schema.String,
+	// The reader link the pages came from, so a revision that links it again is not read.
+	source: serverOnly(Schema.String),
 	title: Schema.String
-})
+}) {
+	static readonly table = 'chapters'
+}
 
 // A chapter as the iPhone sees it; the whole list with its page links is a few hundred kilobytes.
-export type ChapterItem = typeof ChapterItem.Type
-export const ChapterItem = Chapter.mapFields(Struct.omit(['notified', 'revisedAt', 'source']))
+export type ChapterItem = typeof Chapter.json.Type
 
-export type ChapterList = typeof ChapterList.Type
-export const ChapterList = Schema.Array(ChapterItem)
+export type ChapterList = readonly ChapterItem[]
 
 // The whole list once per connection, then only the chapters that changed, such as the one being read.
 export type ChaptersEvent = typeof ChaptersEvent.Type
-export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: ChapterList})
+export const ChaptersEvent = Schema.Struct({reset: Schema.Boolean, upserted: Schema.Array(Chapter.json)})
 
 export type ReadingUpdate = typeof ReadingUpdate.Type
 export const ReadingUpdate = Schema.Struct({
@@ -55,6 +61,14 @@ export const ChapterNotification = Schema.Struct({path: ChapterPath})
 
 export type PushToken = typeof PushToken.Type
 export const PushToken = Schema.String.check(Schema.isPattern(/^Expo(?:nent)?PushToken\[[\w-]{10,64}\]$/u))
+
+// One row of `devices`, and what the iPhone registers: the Expo token new chapters are announced to.
+export class Device extends Model.Class<Device>('Device')({
+	// A push token is a secret: it never leaves the server and prints redacted.
+	token: Model.Sensitive(Schema.RedactedFromValue(PushToken))
+}) {
+	static readonly table = 'devices'
+}
 
 // A cubari series answer: imgur pages are objects, every other source's pages are links.
 export type CubariSeries = typeof CubariSeries.Type
@@ -82,7 +96,7 @@ export const Post = Schema.Struct({
 	series: Series
 })
 
-// A reader link that answered 404 for its chapter; the sync skips it until the chapter gains another link.
+// A reader link that answered 404 for its chapter; the sync skips it until the chapter gains another link, and asks again after a restart.
 export type DeadLink = typeof DeadLink.Type
 export const DeadLink = Schema.Struct({key: Schema.String, link: Schema.String})
 

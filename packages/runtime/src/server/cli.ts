@@ -23,7 +23,6 @@ import {
 import {Command, Flag} from 'effect/cli'
 import type {HttpServerResponse} from 'effect/http'
 import {HttpRouter} from 'effect/http'
-import type {KeyValueStore} from 'effect/persistence'
 
 import {AiGateway} from '#server/ai.ts'
 import {Auth} from '#server/auth.ts'
@@ -42,7 +41,7 @@ import {AppError} from '#server/process.ts'
 import {install, installUpdates, status, uninstall} from '#server/services.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
-import {layerDataStore} from '#server/store.ts'
+import {dataDirectory, layerDataStore} from '#server/store.ts'
 import {activate, update} from '#server/update.ts'
 import type {RpcAuth} from '#shared/auth.ts'
 import {Origin, Port, SecureOrigin} from '#shared/schema.ts'
@@ -105,7 +104,7 @@ export type Provided =
 	| Auth
 	| AiGateway
 	| RpcAuth
-	| KeyValueStore.KeyValueStore
+	| Layer.Success<ReturnType<typeof layerDataStore>>
 	| Layer.Success<typeof layerProtocol>
 
 export type Routes<A, E> = Layer.Layer<
@@ -117,7 +116,11 @@ export type Routes<A, E> = Layer.Layer<
 >
 
 export type App<A, E> = {
-	readonly auth?: Layer.Layer<Auth | RpcAuth, E, Layer.Success<typeof layerPlatform> | KeyValueStore.KeyValueStore>
+	readonly auth?: Layer.Layer<
+		Auth | RpcAuth,
+		E,
+		Layer.Success<typeof layerPlatform> | Layer.Success<ReturnType<typeof layerDataStore>>
+	>
 	readonly icon: string
 	readonly routes: Routes<A, E>
 	readonly middleware?: <A, R>(
@@ -147,7 +150,7 @@ function server<A, E>(app: App<A, E>) {
 				}),
 				Layer.provideMerge(AiGateway.layer),
 				Layer.provide(Sessions.layer),
-				Layer.provide(layerDataStore)
+				Layer.provide(Layer.unwrap(Effect.map(dataDirectory, layerDataStore)))
 			),
 			{disableLogger: true, middleware: guard}
 		),

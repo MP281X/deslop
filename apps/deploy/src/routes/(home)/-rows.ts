@@ -66,9 +66,9 @@ export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 
 // The rows whose apps the range recorded; a history without app readings, such as a Mac's, keeps them all.
 export function ranged(rows: readonly Row[], minutes: number, history?: MachineHistory) {
-	if (history === undefined || !Array.some(history.samples, sample => sample.apps !== undefined)) return rows
+	if (history === undefined || !Array.some(history.samples, sample => Option.isSome(sample.apps))) return rows
 	const recorded = HashSet.fromIterable(
-		Array.flatMap(history.samples, sample => Array.map(sample.apps ?? [], app => app.id))
+		Array.flatMap(history.samples, sample => Array.map(Option.getOrElse(sample.apps, Array.empty), app => app.id))
 	)
 	const start = chartWindow(minutes, history.time).start
 	return Array.filter(

@@ -1,7 +1,7 @@
 import {RegistryContext} from '@effect/atom-react'
 import {assert, beforeAll, it} from '@effect/vitest'
 
-import {Array, Cause, Effect, Option, String} from 'effect'
+import {Array, Cause, Duration, Effect, Option, String} from 'effect'
 
 import {RouterProvider, createMemoryHistory, createRouter} from '@tanstack/react-router'
 import {AsyncResult, AtomRegistry} from 'effect/reactivity'
@@ -14,32 +14,35 @@ import {routeTree} from '#routeTree.gen.ts'
 
 import {overviewAtom, traceAtom} from '#lib/utils.ts'
 import {Route} from '#routes/(home)/index.tsx'
-import {traceView} from '#services/telemetry/lib/utils.ts'
-import {Entry, TelemetryError} from '#services/telemetry/schema.ts'
-import type {Overview, Range, Trace} from '#services/telemetry/schema.ts'
+import {traceTree} from '#services/telemetry/lib/utils.ts'
+import {Span, TelemetryError} from '#services/telemetry/schema.ts'
+import type {Overview, Range, TraceTree} from '#services/telemetry/schema.ts'
 
 const ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const RANGE: Range = '1h'
 beforeAll(() => Route.options.component?.preload?.())
-const trace = traceView(
+const trace = traceTree(
+	ID,
 	[
-		Entry.make({
-			denied: false,
-			durationMs: 10,
-			id: 'private-span',
+		Span.make({
+			attributes: {},
+			duration: Option.some(Duration.millis(10)),
+			error: Option.none(),
+			exception: Option.none(),
 			name: 'Private retained span',
-			payload: {},
-			receivedAt: 1_781_870_000_000,
-			resource: {},
+			parentSpanId: Option.none(),
+			run: Option.none(),
+			runtime: 'server',
 			service: '@deslop/deploy-server',
-			signal: 'trace',
 			spanId: 'aaaaaaaaaaaaaaaa',
-			status: 0,
-			time: '1781870000000000000',
-			traceId: ID
+			start: 1_781_870_000_000,
+			status: 'ok',
+			traceId: ID,
+			version: Option.none()
 		})
 	],
-	ID
+	[],
+	[]
 )
 
 /* oxlint-disable no-restricted-globals, no-restricted-properties -- Node has no screen to match; scope a desktop browser's matchMedia to the render and restore its descriptor. */
@@ -61,7 +64,7 @@ const desktopScreen = Effect.acquireRelease(
 /* oxlint-enable no-restricted-globals, no-restricted-properties */
 
 function render(
-	result: AsyncResult.AsyncResult<Trace, AuthError | TelemetryError>,
+	result: AsyncResult.AsyncResult<TraceTree, AuthError | TelemetryError>,
 	overview?: AsyncResult.AsyncResult<Overview, AuthError | TelemetryError>,
 	path = '/',
 	traceId = ID
@@ -87,7 +90,7 @@ function render(
 														p50Ms: 10,
 														p95Ms: 10,
 														runtime: 'server',
-														traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+														traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
 													}
 												]
 											}
@@ -232,7 +235,7 @@ it.effect(
 it.effect(
 	'centres an icon in an authorised empty waterfall without loading or explanatory copy',
 	Effect.fnUntraced(function* () {
-		const html = yield* render(AsyncResult.success(traceView([], ID)))
+		const html = yield* render(AsyncResult.success(traceTree(ID, [], [], [])))
 		assert.include(html, 'aria-label="No spans"')
 		assert.notInclude(html, '>No spans<')
 		assert.notInclude(html, 'aria-busy="true"')
@@ -246,10 +249,7 @@ it.effect(
 		const html = yield* render(
 			AsyncResult.success({
 				...trace,
-				spans: Array.map(trace.spans, span => ({
-					...span,
-					payload: {...span.payload, attributes: [{key, value: {stringValue: String.repeat(4000)('v')}}]}
-				}))
+				spans: Array.map(trace.spans, span => ({...span, attributes: {[key]: String.repeat(4000)('v')}}))
 			})
 		)
 		assert.include(html, `title="${key}"`)
@@ -258,7 +258,7 @@ it.effect(
 )
 
 it.effect(
-	'lists the chosen app’s operations, failing first, with a side glyph only for a shared name',
+	'lists only the chosen app’s operations, in the overview’s order, with a side glyph only for a shared name',
 	Effect.fnUntraced(function* () {
 		const html = yield* render(
 			AsyncResult.success(trace),
@@ -274,7 +274,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -282,22 +282,22 @@ it.effect(
 						name: 'gateway',
 						operations: [
 							{
-								count: 9,
-								failures: 0,
-								name: 'gateway.idle',
-								p50Ms: 40,
-								p95Ms: 40,
-								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
-							},
-							{
 								count: 2,
 								failures: 3,
 								name: 'gateway.fail',
 								p50Ms: 12,
 								p95Ms: 12,
 								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781850000000000000'}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_850_000_000}]
+							},
+							{
+								count: 9,
+								failures: 0,
+								name: 'gateway.idle',
+								p50Ms: 40,
+								p95Ms: 40,
+								runtime: 'server',
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					},
@@ -311,7 +311,7 @@ it.effect(
 								p50Ms: 48,
 								p95Ms: 48,
 								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781840000000000000'}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_840_000_000}]
 							},
 							{
 								count: 3,
@@ -320,7 +320,7 @@ it.effect(
 								p50Ms: 60,
 								p95Ms: 60,
 								runtime: 'web',
-								traces: [{durationMs: 10, id: ID, time: '1781830000000000000'}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_830_000_000}]
 							}
 						]
 					}
@@ -360,7 +360,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781870000000000000'}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -374,7 +374,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{durationMs: 10, id: ID, time: '1781860000000000000'}]
+								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -405,7 +405,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
+								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -419,7 +419,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781850000000000000'}]
+								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					},
@@ -433,7 +433,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, failure: {span: 'run'}, id: ID, time: '1781860000000000000'}]
+								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -457,7 +457,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, id: ID, time: '1781840000000000000'}]
+								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -471,7 +471,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{durationMs: 1, id: ID, time: '1781850000000000000'}]
+								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					}
@@ -514,7 +514,9 @@ it.effect(
 								p50Ms: 10,
 								p95Ms: 10,
 								runtime: 'server',
-								traces: [{durationMs: 10, failure: {span: 'Parser.decode'}, id: ID, time: '1781870000000000000'}]
+								traces: [
+									{duration: Duration.millis(10), failure: {span: 'Parser.decode'}, id: ID, start: 1_781_870_000_000}
+								]
 							}
 						]
 					}

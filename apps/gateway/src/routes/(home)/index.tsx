@@ -59,7 +59,7 @@ function serverHue(server: ConnectionInfo) {
 	return APP_HUES[key] ?? 'var(--muted-foreground)'
 }
 function urgency(server: ConnectionInfo) {
-	if (server.error !== undefined || server.status === 'Expired') return 0
+	if (Option.isSome(server.error) || server.status === 'Expired') return 0
 	if (server.status === 'Not connected') return 1
 	return 2
 }
@@ -140,8 +140,8 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]; server: ConnectionInfo}) {
 	const [connecting, connect] = useAtom(connectAtom(props.server.id))
 	const connected = props.server.status === 'Connected'
-	const needsUser = !connected || props.server.error !== undefined
-	const failed = props.server.status === 'Expired' || props.server.error !== undefined
+	const needsUser = !connected || Option.isSome(props.server.error)
+	const failed = props.server.status === 'Expired' || Option.isSome(props.server.error)
 	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
 	const series = serverSeries(props.report, props.server.id, props.period)
 	return (
@@ -240,7 +240,9 @@ function KeyRow(props: {
 					<ItemDescription>{`…${props.info.last4}`}</ItemDescription>
 				</ItemContent>
 				<ItemActions>
-					{(props.info.lastStatus === 401 || props.info.lastStatus === 403) && <StatusDot status="error" />}
+					{Option.exists(props.info.lastStatus, status => status === 401 || status === 403) && (
+						<StatusDot status="error" />
+					)}
 					<Sparkline color="var(--primary)" values={providerSeries(props.report, props.provider, props.period)} />
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
 				</ItemActions>
