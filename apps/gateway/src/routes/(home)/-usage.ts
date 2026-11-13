@@ -6,10 +6,9 @@ import type {AiUsageBreakdown, AiUsageReport, SpendSource} from '#services/ai-me
 import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
-// A sum whose every call had no known price shows a dash, not a zero.
+// `~` marks a figure that is estimated or missing a call's cost.
 function costOf(sum: AiUsageBreakdown) {
-	if (sum.costUsd === 0 && sum.unknownCostCalls > 0) return '—'
-	return `${Boolean.match(sum.estimatedCalls > 0, {onFalse: () => '', onTrue: () => '~'})}${usdOf(sum.costUsd)}${Boolean.match(sum.unknownCostCalls > 0, {onFalse: () => '', onTrue: () => ' + ?'})}`
+	return `${Boolean.match(sum.estimatedCalls > 0 || sum.unknownCostCalls > 0, {onFalse: () => '', onTrue: () => '~'})}${usdOf(sum.costUsd)}`
 }
 
 // Each bucket of the period, filled with zero where nothing was recorded.

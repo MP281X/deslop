@@ -11,7 +11,7 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {readUsage} from './lib/utils.ts'
 import {AiUsage, AiUsageBreakdown, AiUsageQuery} from './schema.ts'
-import type {AiUsageEntry} from './schema.ts'
+import type {AiUsageEntry, SpendSource} from './schema.ts'
 
 import {usageWindow} from '#services/usage/lib/utils.ts'
 import type {Period} from '#services/usage/schema.ts'
@@ -66,7 +66,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 				FROM ${sql(AiUsage.table)} WHERE ${within(query)} GROUP BY 1, spendSource ORDER BY 1, spendSource
 			`
 			})
-			const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry) {
+			const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry, spendSource: SpendSource) {
 				yield* pipe(
 					Effect.andThen(
 						addUsage({
@@ -74,7 +74,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 							estimatedCalls: Boolean.match(entry.estimated, {onFalse: () => 0, onTrue: () => 1}),
 							hour: DateTime.startOf(entry.at, 'hour'),
 							owner: id,
-							spendSource: entry.spendSource,
+							spendSource,
 							unknownCostCalls: Boolean.match(entry.costSource === 'unknown', {onFalse: () => 0, onTrue: () => 1})
 						}),
 						deleteUsageBefore({hour: DateTime.subtractDuration(entry.at, Duration.days(30)), owner: id})
@@ -104,7 +104,7 @@ export class AiMetering extends Context.Service<AiMetering>()(
 								inputTokens: 0,
 								model,
 								outputTokens: 0,
-								spendSource: 'unattributed'
+								spendSource: Option.none()
 							},
 							pending: ''
 						}
@@ -153,7 +153,10 @@ export class AiMetering extends Context.Service<AiMetering>()(
 							)
 							yield* updateUsage(state.pending)
 						}
-						yield* saveUsage(id, state.current)
+						yield* Option.match(state.current.spendSource, {
+							onNone: () => Effect.void,
+							onSome: spendSource => saveUsage(id, state.current, spendSource)
+						})
 					},
 					Effect.catch(error => Effect.logWarning('AI usage could not be saved', error))
 				),

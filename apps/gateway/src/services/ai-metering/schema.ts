@@ -9,7 +9,10 @@ import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 import {UsageRange} from '#services/usage/schema.ts'
 
 export type SpendSource = typeof SpendSource.Type
-export const SpendSource = Schema.Literals(['balance', 'byok', 'free', 'go', 'go-plus', 'unattributed'])
+export const SpendSource = Schema.Literals(['balance', 'byok', 'free', 'go', 'go-plus'])
+// The two payers the home list shows a row for.
+export type Payer = typeof Payer.Type
+export const Payer = Schema.Literals(['balance', 'byok'])
 
 // One person's hour, separated by the balance or account OpenCode billed.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
@@ -39,7 +42,8 @@ export const AiUsageEntry = Schema.Struct({
 	inputTokens: Schema.Finite,
 	model: Schema.OptionFromOptional(AiModelId),
 	outputTokens: Schema.Finite,
-	spendSource: SpendSource
+	// None until a response names who billed it; a call that never does is not recorded.
+	spendSource: Schema.OptionFromOptionalKey(SpendSource)
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
 export const AiUsageBreakdown = Schema.Struct({
