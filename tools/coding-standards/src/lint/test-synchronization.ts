@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Predicate} from 'effect'
+import {Array, Boolean, MutableList, Option, Predicate} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -265,23 +265,26 @@ export const testSynchronization = defineRule({
 				}
 			},
 			'Program:exit': program => {
-				if (
-					!containsNode({
-						context,
-						matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
-						node: program,
-						throughFunctions: true
-					})
-				) {
-					for (const node of MutableList.toArray(waits)) {
-						MutableList.append(findings, {
-							message:
-								'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
-							node
-						})
-					}
-				}
-				const all = MutableList.toArray(findings)
+				const all = Array.appendAll(
+					MutableList.toArray(findings),
+					Boolean.match(
+						containsNode({
+							context,
+							matches: node => isTestClockCall(context, node, 'adjust') || isTestClockCall(context, node, 'setTime'),
+							node: program,
+							throughFunctions: true
+						}),
+						{
+							onFalse: () =>
+								Array.map(MutableList.toArray(waits), node => ({
+									message:
+										'Advance TestClock for time-dependent logic, or await its Deferred, Latch, Queue or Stream milestone.',
+									node
+								})),
+							onTrue: Array.empty
+						}
+					)
+				)
 				for (const finding of all) {
 					if (!Array.some(all, other => other.node !== finding.node && inside(finding.node, other.node))) {
 						context.report(finding)

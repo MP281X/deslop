@@ -349,8 +349,9 @@ function checkPromise(context: Context, node: ESTree.CallExpression) {
 		resolved.type !== 'ArrowFunctionExpression' &&
 		resolved.type !== 'FunctionExpression' &&
 		resolved.type !== 'FunctionDeclaration'
-	)
-		{return}
+	) {
+		return
+	}
 	const returned = returnedExpression(resolved)
 	if (Predicate.isNotNullish(returned) && rejection(context, returned)) {
 		context.report({
@@ -415,8 +416,8 @@ export const recoverNamedFailures = defineRule({
 							argument.properties,
 							property =>
 								!property.computed &&
-								property.key.type === 'Identifier' &&
-								property.key.name === 'log' &&
+								((property.key.type === 'Identifier' && property.key.name === 'log') ||
+									(property.key.type === 'Literal' && property.key.value === 'log')) &&
 								property.value.type === 'Literal' &&
 								(property.value.value === true || Predicate.isString(property.value.value))
 						)

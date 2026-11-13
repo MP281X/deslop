@@ -841,8 +841,9 @@ function generatorBody(context: LintContext, returned: ESTree.CallExpression) {
 		generator.body === null ||
 		Array.isArrayNonEmpty(generator.params) ||
 		Option.isSome(String.match(/\b(?:arguments|this)\b/u)(context.sourceCode.getText(generator.body)))
-	)
-		{return Option.none<ESTree.FunctionBody>()}
+	) {
+		return Option.none<ESTree.FunctionBody>()
+	}
 	return Option.some(generator.body)
 }
 

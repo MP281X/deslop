@@ -1,7 +1,7 @@
 // oxlint-disable-next-line effecttsgo/node-builtin-import -- Vite+ loads this configuration before an Effect runtime; discover native app boundaries synchronously.
 import {globSync} from 'node:fs'
 
-import {Array, String} from 'effect'
+import {Array, Predicate, String} from 'effect'
 
 import {defineConfig} from 'vite-plus'
 
@@ -218,7 +218,10 @@ export default defineConfig({
 		overrides: [
 			{
 				files: ['**/tools/coding-standards/src/lint.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program']}
+				rules: {
+					'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program'],
+					'eslint-js/no-restricted-syntax': lint.rules['eslint-js/no-restricted-syntax']
+				}
 			},
 			{
 				files: ['**/packages/runtime/src/server/tables.test.ts'],
@@ -227,7 +230,19 @@ export default defineConfig({
 			// The judge's program harness is owned by the separate judge overhaul.
 			{
 				files: ['tools/coding-standards/src/judge.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': 'off', '@deslop/coding-standards/test-registration': 'off'}
+				rules: {
+					'@deslop/coding-standards/no-trivial-indirection': 'off',
+					'@deslop/coding-standards/recover-named-failures': 'off',
+					'@deslop/coding-standards/test-boundaries': 'off',
+					'@deslop/coding-standards/test-registration': 'off',
+					'eslint-js/no-restricted-syntax': [
+						'error',
+						...Array.filter(
+							lint.rules['eslint-js/no-restricted-syntax'],
+							restriction => !Predicate.isString(restriction) && !String.includes('data|info|obj')(restriction.selector)
+						)
+					]
+				}
 			},
 			{
 				files: ['packages/**'],
