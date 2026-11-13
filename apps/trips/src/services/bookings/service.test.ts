@@ -7,14 +7,14 @@ import {Array, Context, Effect, Layer, Option, Queue, Ref, Result, Schema, Strea
 import {Reactivity} from 'effect/reactivity'
 import {SqlClient} from 'effect/sql'
 
+import {UserId} from '@deslop/runtime/shared/auth'
+
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
-import {BookingsError, BookingsEvent, Flight} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError, BookingsEvent, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-
-const USER = 'github:1'
 
 const FLIGHT = {
 	airlineCode: 'BA',
@@ -28,6 +28,8 @@ const FLIGHT = {
 	status: 'confirmed',
 	to: 'LHR'
 } as const
+
+const USER = UserId.make('github:1')
 
 const places = Places.of({
 	airport: code => {
@@ -169,7 +171,7 @@ it.layer(NodeCrypto.layer)('Bookings', test => {
 			const bookings = yield* open(database, extractor)
 			const events = yield* watch(bookings)
 			assert.containsSubset(yield* next(events), {reset: true, upserted: [{id, number: '553'}]})
-			yield* bookings.remove(id)
+			yield* bookings.remove(BookingId.make(id))
 			assert.deepStrictEqual(yield* next(events), {removed: [id], reset: false, upserted: []})
 		})
 	)

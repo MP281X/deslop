@@ -28,11 +28,11 @@ import {TestClock} from 'effect/testing'
 
 import {HOUR} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
-import {Flight, Train} from '#services/bookings/schema.ts'
+import {BookingId, Flight, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Tracking} from '#services/tracking/service.ts'
 
-const ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
+const ID = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
 
 const FLIGHT = {
 	airline: 'British Airways',

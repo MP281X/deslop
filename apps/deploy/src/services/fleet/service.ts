@@ -23,6 +23,7 @@ import {RpcClient, RpcSerialization} from 'effect/rpc'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import type {User} from '@deslop/runtime/shared/auth'
+import {UserId} from '@deslop/runtime/shared/auth'
 import {RpcStream, layerRpcStreamClient} from '@deslop/runtime/shared/rpc'
 import {RPC_PATH} from '@deslop/runtime/shared/schema'
 
@@ -37,7 +38,7 @@ import type {HistoryQuery, MachineHistory} from '#services/metrics/schema.ts'
 import {Metrics} from '#services/metrics/service.ts'
 
 // Who another worker's Deploy acts as: its bearer is the shared key, never a person's sign-in.
-const PEER = {id: 'deploy:peer', name: 'deploy'} satisfies User
+const PEER = {id: UserId.make('deploy:peer'), name: 'deploy'} satisfies User
 
 const makeRemoteClient = RpcClient.make(RpcContracts.middleware(RpcStream), {flatten: true})
 

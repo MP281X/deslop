@@ -18,12 +18,12 @@ import {AuthError, DEVELOPER} from '@deslop/runtime/shared/auth'
 
 import type {serversAtom} from '#lib/gateway.ts'
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {ConnectionItem} from '#services/connections/schema.ts'
+import {ConnectionItem, ServerId} from '#services/connections/schema.ts'
 
 const sample = ConnectionItem.make({
 	error: Option.none(),
 	icons: [],
-	id: 'private',
+	id: ServerId.make('private'),
 	name: 'Private MCP server',
 	status: 'Connected',
 	tools: 0,

@@ -31,13 +31,13 @@ import {TestClock} from 'effect/testing'
 
 import {activityProps, HOUR} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
-import {Flight} from '#services/bookings/schema.ts'
+import {BookingId, Flight} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {Activity, Device, JwtClaims} from '#services/push/schema.ts'
 import {Push} from '#services/push/service.ts'
 
-const BOOKING = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
-const OTHER = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e'
+const BOOKING = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d')
+const OTHER = BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5e')
 
 const FLIGHT = {
 	airline: 'British Airways',
@@ -57,7 +57,7 @@ const FLIGHT = {
 } as const
 
 // A running activity the server started on a channel, for a booking no longer listed, so the first round ends it.
-function running(bookingId: string, channel: string) {
+function running(bookingId: BookingId, channel: string) {
 	return Activity.insert.make({
 		bookingId,
 		bundle: 'xyz.mp281x.trips.dev',

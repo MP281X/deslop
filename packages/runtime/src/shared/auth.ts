@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-type -- Schema types pair with their values so consumers can import either.
-import {Array, Context, Effect, Option, Predicate, Schema, String} from 'effect'
+import {Array, Context, Effect, Option, Predicate, Schema, String, pipe} from 'effect'
 
 import {Base64Url} from 'effect/encoding'
 import {Headers, HttpClient} from 'effect/http'
@@ -32,8 +32,11 @@ export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
 	}
 }
 
+export type UserId = typeof UserId.Type
+export const UserId = pipe(Schema.NonEmptyString, Schema.brand('UserId'))
+
 export type User = typeof User.Type
-export const User = Schema.Struct({id: Schema.NonEmptyString, name: Schema.NonEmptyString})
+export const User = Schema.Struct({id: UserId, name: Schema.NonEmptyString})
 
 // Valid at every Deslop app for ten minutes.
 export type AccessClaims = typeof AccessClaims.Type
@@ -45,7 +48,7 @@ export const AccessClaims = Schema.Struct({
 	iss: Schema.NonEmptyString,
 	name: Schema.NonEmptyString,
 	sid: Schema.NonEmptyString,
-	sub: Schema.NonEmptyString
+	sub: UserId
 })
 
 export type ClientRegistration = typeof ClientRegistration.Type
@@ -115,7 +118,7 @@ export function clientIdOf(client: ClientRegistration) {
 	return Base64Url.encode(Schema.encodeSync(Schema.fromJsonString(ClientRegistration))(client))
 }
 
-export const DEVELOPER = {id: 'github:0', name: 'dev'} satisfies User
+export const DEVELOPER = {id: UserId.make('github:0'), name: 'dev'} satisfies User
 
 // GITHUB_ADMINS lists bare GitHub ids; a user's id carries its provider as a prefix.
 export function isAdmin(admins: readonly string[], id: string) {

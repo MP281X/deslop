@@ -17,7 +17,7 @@ import {listReducer} from '@deslop/runtime/shared/list'
 import {RpcClient, session} from '#lib/session.ts'
 import {byStart} from '#services/bookings/lib/utils.ts'
 import type {BookingSource} from '#services/bookings/schema.ts'
-import {Booking, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
+import {Booking, BookingId, BookingsError, IMAGE_BYTES} from '#services/bookings/schema.ts'
 
 const bookingsFile = new File(Paths.document, 'bookings.json')
 
@@ -98,7 +98,7 @@ export const removal = makeRemoval({
 		provideRuntimeOnce(
 			get,
 			RpcClient.runtime,
-			Effect.flatMap(RpcClient, client => client('bookings.remove', {id}))
+			Effect.flatMap(RpcClient, client => client('bookings.remove', {id: BookingId.make(id)}))
 		)
 })
 

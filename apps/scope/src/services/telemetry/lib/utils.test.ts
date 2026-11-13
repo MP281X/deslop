@@ -4,6 +4,7 @@ import {Array, Duration, Option, String} from 'effect'
 
 import {overviewOf} from '#services/telemetry/lib/utils.ts'
 import type {Traced} from '#services/telemetry/lib/utils.ts'
+import {TraceId} from '#services/telemetry/schema.ts'
 
 const NOW = 1_781_870_000_000
 const HOUR = 3_600_000
@@ -14,7 +15,7 @@ function traced(id: string, app: string, start: number, durationMs: number) {
 		failed: false,
 		name: 'share',
 		runtime: 'server',
-		trace: {duration: Duration.millis(durationMs), id, start}
+		trace: {duration: Duration.millis(durationMs), id: TraceId.make(id), start}
 	} satisfies Traced
 }
 

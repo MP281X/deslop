@@ -25,15 +25,16 @@ import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {AiGateway} from '@deslop/runtime/server/ai'
 import {ToolPath} from '@deslop/runtime/server/process'
+import {UserId} from '@deslop/runtime/shared/auth'
 
 import {MediaError} from '#services/media/schema.ts'
 import {Media} from '#services/media/service.ts'
 
 const CAPTIONS = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHo preparato le lenticchie.\n'
 
-const USER = 'github:1'
-
 const GATEWAY = 'https://gateway.mp281x.xyz/ai/openrouter/v1'
+
+const USER = UserId.make('github:1')
 
 const gateway = AiGateway.of({
 	apiUrl: () => Effect.succeed(GATEWAY),

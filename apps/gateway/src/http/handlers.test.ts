@@ -35,7 +35,7 @@ import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
 import {layerDataStore} from '@deslop/runtime/server/store'
-import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
+import {AUTH_URL, AuthError, UserId} from '@deslop/runtime/shared/auth'
 import type {User} from '@deslop/runtime/shared/auth'
 
 import {AiHttpHandlers, HttpHandlers} from '#http/handlers.ts'
@@ -44,7 +44,7 @@ import {RpcHandlers} from '#rpcs/handlers.ts'
 import type {AiProvider, AiUsageReport} from '#services/ai-proxy/schema.ts'
 import {AiProxy} from '#services/ai-proxy/service.ts'
 import {mcpClient} from '#services/connections/lib/utils.ts'
-import {ConnectionItem} from '#services/connections/schema.ts'
+import {ConnectionItem, ServerId} from '#services/connections/schema.ts'
 import type {McpUsageReport} from '#services/connections/schema.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway} from '#services/gateway/service.ts'
@@ -52,11 +52,6 @@ import type {UsageRange} from '#services/usage/schema.ts'
 import {GatewayMcp} from '#tools/handlers.ts'
 
 const GATEWAY_URL = 'https://gateway.mp281x.xyz'
-const ACCOUNTS: Record<string, User> = {
-	dev: {id: 'github:0', name: 'dev'},
-	octocat: {id: 'github:42', name: 'octocat'},
-	stranger: {id: 'github:7', name: 'stranger'}
-}
 const PROVIDERS = {
 	dual: {
 		issuer: 'https://app.dualos.ai',
@@ -71,6 +66,12 @@ const PROVIDERS = {
 }
 const SESSION = 'session=octocat'
 const TOKEN = 'agent.octocat.signature'
+
+const ACCOUNTS: Record<string, User> = {
+	dev: {id: UserId.make('github:0'), name: 'dev'},
+	octocat: {id: UserId.make('github:42'), name: 'octocat'},
+	stranger: {id: UserId.make('github:7'), name: 'stranger'}
+}
 
 function discoveryResponse(url: string, challengeMethods?: string[]) {
 	if (url === 'https://challenge.example.com/resource-info') {
@@ -482,7 +483,7 @@ const servers = Effect.fnUntraced(function* (home?: string, origin: string = GAT
 		rejectReady,
 		remove: (id: string, session: string = SESSION) =>
 			Context.get(rpc, Connections).remove(
-				id,
+				ServerId.make(id),
 				Option.getOrThrow(Option.fromUndefinedOr(ACCOUNTS[String.replace(/^session=/u, '')(session)]))
 			),
 		sessions,

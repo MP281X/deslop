@@ -79,8 +79,10 @@ export class Gateway extends Context.Service<
 				return `${String.slice(0, 41)(String.replaceAll(/[^a-zA-Z0-9_-]/gu, '_')(fullName))}__encoded_${String.slice(0, 12)(Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(fullName))))}`
 			})
 			const visible = yield* Ref.make(HashSet.empty<string>())
-			const installed = yield* Ref.make<Record<string, {fingerprint: string; generation: string; id: string}>>({})
-			const usable = Effect.fnUntraced(function* (id: string, generation: string) {
+			const installed = yield* Ref.make<
+				Record<string, {fingerprint: string; generation: string; id: ConnectionState['id']}>
+			>({})
+			const usable = Effect.fnUntraced(function* (id: ConnectionState['id'], generation: string) {
 				return Option.exists(
 					yield* Effect.option(connections.get(id)),
 					found => found.generation === generation && found.status === 'Connected'

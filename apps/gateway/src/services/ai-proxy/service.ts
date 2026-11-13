@@ -34,6 +34,7 @@ import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {Auth, localAuth} from '@deslop/runtime/server/auth'
 import {AuthError, bearerOf, failureOptions, isJwt} from '@deslop/runtime/shared/auth'
+import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {readUsage} from '#services/ai-proxy/lib/utils.ts'
 import type {AiProvider, AiUsageEntry} from '#services/ai-proxy/schema.ts'
@@ -146,7 +147,7 @@ const make = Effect.gen(function* () {
 		Request: Schema.Struct({hour: Schema.Finite, owner: AiUsage.fields.owner}),
 		execute: request => sql`DELETE FROM ${sql(AiUsage.table)} WHERE owner = ${request.owner} AND hour < ${request.hour}`
 	})
-	function within(query: AiUsageQuery) {
+	function within(query: typeof AiUsageQuery.Encoded) {
 		return sql`owner = ${query.owner} AND hour >= ${query.from} AND hour < ${query.to}`
 	}
 	const listTotals = SqlSchema.findAll({
@@ -174,7 +175,7 @@ const make = Effect.gen(function* () {
 		`
 	})
 
-	const saveUsage = Effect.fnUntraced(function* (id: string, entry: AiUsageEntry) {
+	const saveUsage = Effect.fnUntraced(function* (id: UserId, entry: AiUsageEntry) {
 		const metered = {entry}
 		if (
 			entry.costSource !== 'provider' &&
@@ -225,7 +226,7 @@ const make = Effect.gen(function* () {
 		)
 	})
 	return {
-		list: (id: string) => asAuthError(listKeys(id)),
+		list: (id: UserId) => asAuthError(listKeys(id)),
 		proxy: Effect.fnUntraced(function* (provider: AiProvider, rest: string) {
 			const request = yield* HttpServerRequest.HttpServerRequest
 			const now = yield* Clock.currentTimeMillis
@@ -368,8 +369,8 @@ const make = Effect.gen(function* () {
 				{headers: Headers.removeMany(response.headers, responseBlocked), status: response.status}
 			)
 		}),
-		removeKey: (id: string, provider: AiProvider) => asAuthError(deleteKey({owner: id, provider})),
-		setKey: (id: string, provider: AiProvider, secret: Redacted.Redacted) =>
+		removeKey: (id: UserId, provider: AiProvider) => asAuthError(deleteKey({owner: id, provider})),
+		setKey: (id: UserId, provider: AiProvider, secret: Redacted.Redacted) =>
 			asAuthError(
 				saveKey({
 					last4: String.slice(-4)(Redacted.value(secret)),
@@ -380,7 +381,7 @@ const make = Effect.gen(function* () {
 				})
 			),
 		// A person's report now and after each of their recorded calls.
-		usage: (id: string, period: Period) =>
+		usage: (id: UserId, period: Period) =>
 			usageWindow(period, range =>
 				Stream.mapError(
 					sql.reactive(

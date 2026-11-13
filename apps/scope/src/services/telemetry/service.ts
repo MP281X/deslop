@@ -706,7 +706,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			)
 		})
 		const tree = Effect.fnUntraced(function* (id: string) {
-			const traceId = String.toLowerCase(id)
+			const traceId = TraceId.make(String.toLowerCase(id))
 			const ids = Array.map(yield* listLinkedTraces(traceId), row => row.id)
 			const spans = yield* listSpans(ids)
 			const logs = yield* listLogs(ids)
@@ -878,7 +878,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 					minimum: Option.map(Option.fromUndefinedOr(input.level), level => LEVELS[level]),
 					services: yield* servicesOf(input.app),
 					text: Option.map(Option.fromUndefinedOr(input.text), String.toLowerCase),
-					traceId: Option.map(Option.fromUndefinedOr(input.trace), String.toLowerCase)
+					traceId: Option.map(Option.fromUndefinedOr(input.trace), id => TraceId.make(String.toLowerCase(id)))
 				} satisfies LogQuery
 				const page = pageOf(yield* pageLogs(query), input.limit)
 				return {

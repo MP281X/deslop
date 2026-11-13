@@ -5,6 +5,7 @@ import {Array, Boolean, Duration, Option, String, Struct, pipe} from 'effect'
 import {navigationOf, nextSearch, selectionOf} from '#lib/telemetry.ts'
 import type {NavigationEvent, Search} from '#lib/telemetry.ts'
 import type {Overview} from '#services/telemetry/schema.ts'
+import {TraceId} from '#services/telemetry/schema.ts'
 
 const OPERATION = {app: 'deploy', name: 'Inventory.snapshot', runtime: 'server' as const}
 
@@ -15,7 +16,7 @@ function follow(events: NavigationEvent[], search: Search = {}) {
 function failureTrace(start: number, failed: boolean) {
 	return {
 		duration: Duration.millis(1),
-		id: String.repeat(32)('a'),
+		id: TraceId.make(String.repeat(32)('a')),
 		start,
 		...Boolean.match(failed, {onFalse: () => ({}), onTrue: () => ({failure: {span: 'run'}})})
 	}
@@ -151,8 +152,8 @@ it('opens the app with the newest failed trace, else the first tab', () => {
 })
 
 it('selects the app, operation, trace and span the URL names, defaulting a desktop layout', () => {
-	const traceId = String.repeat(32)('a')
-	const otherId = String.repeat(32)('b')
+	const traceId = TraceId.make(String.repeat(32)('a'))
+	const otherId = TraceId.make(String.repeat(32)('b'))
 	const overview: Overview = {
 		apps: [
 			{

@@ -3,6 +3,7 @@ import {Clock, Context, DateTime, Effect, Layer, Option, Redacted, Schema, Strin
 import type {HttpClient} from 'effect/http'
 
 import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/ai'
+import type {UserId} from '@deslop/runtime/shared/auth'
 
 import type {BookingSource, ExtractedItems} from '#services/bookings/schema.ts'
 import {BookingsError, Extraction} from '#services/bookings/schema.ts'
@@ -34,7 +35,7 @@ function bounded(text: string) {
 
 export class Extractor extends Context.Service<
 	Extractor,
-	{readonly read: (userId: string, source: BookingSource) => Effect.Effect<ExtractedItems, BookingsError>}
+	{readonly read: (userId: UserId, source: BookingSource) => Effect.Effect<ExtractedItems, BookingsError>}
 >()('@deslop/trips/services/bookings/lib/extraction/Extractor') {
 	static readonly layer = Layer.effect(
 		this,

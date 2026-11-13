@@ -16,7 +16,7 @@ export const BookingSource = Schema.Union([
 ])
 
 export type BookingId = typeof BookingId.Type
-export const BookingId = Schema.String.check(Schema.isUUID())
+export const BookingId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('BookingId'))
 
 // Coordinates and the time zone never come from the ticket.
 export type Place = typeof Place.Type

@@ -5,6 +5,7 @@ import {Context, DateTime, Effect, Function, Layer, Option, pipe} from 'effect'
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
 import {AiGateway, AiUnavailableError} from '@deslop/runtime/server/ai'
+import {UserId} from '@deslop/runtime/shared/auth'
 
 import {Organizer} from './organization.ts'
 
@@ -19,7 +20,7 @@ const NOTE = Note.make({
 	id: NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01'),
 	image: Option.none(),
 	issue: Option.none(),
-	requester: 'github:1',
+	requester: UserId.make('github:1'),
 	screenText: Option.none(),
 	source: 'Note',
 	status: 'organizing',
@@ -60,7 +61,7 @@ it.effect(
 			)
 		)
 		const error = yield* Effect.flip(
-			(yield* open(gateway, client)).organize('github:1', {images: [], note: NOTE, tags: []})
+			(yield* open(gateway, client)).organize(NOTE.requester, {images: [], note: NOTE, tags: []})
 		)
 		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The gateway's instruction must reach the note unchanged.
 		assert.strictEqual(error.message, 'Add an Anthropic key in Gateway')
@@ -78,7 +79,7 @@ it.effect(
 			(yield* open(
 				gateway,
 				HttpClient.make(() => Effect.die('No gateway, no request'))
-			)).organize('github:1', {images: [], note: NOTE, tags: []})
+			)).organize(NOTE.requester, {images: [], note: NOTE, tags: []})
 		)
 		// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The runtime's instruction must reach the note unchanged.
 		assert.strictEqual(error.message, 'Start the app with --gateway')

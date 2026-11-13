@@ -12,13 +12,13 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
-import {AccessClaims, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
+import {AccessClaims, SESSION_COOKIE, UserId} from '@deslop/runtime/shared/auth'
 
 import {AppGrant} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-const USER = {incarnation: 'fixture', user: {id: 'github:42', name: 'octocat'}}
+const USER = {incarnation: 'fixture', user: {id: UserId.make('github:42'), name: 'octocat'}}
 
 const open = Effect.gen(function* () {
 	const context = yield* Layer.build(

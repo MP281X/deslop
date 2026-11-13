@@ -8,6 +8,7 @@ import {HttpClient, HttpClientRequest} from 'effect/http'
 import {localAuth} from '#server/auth.ts'
 import {Sessions} from '#server/sessions.ts'
 import type {AiProvider} from '#shared/ai.ts'
+import type {UserId} from '#shared/auth.ts'
 
 export class AiUnavailableError extends Schema.TaggedError<AiUnavailableError>()('AiUnavailableError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -33,12 +34,12 @@ export class AiGateway extends Context.Service<
 	{
 		apiUrl: (provider: AiProvider) => Effect.Effect<string, AiUnavailableError>
 		authorize: (
-			userId: string
+			userId: UserId
 		) => Effect.Effect<(client: HttpClient.HttpClient) => HttpClient.HttpClient, AiUnavailableError>
 	}
 >()('@deslop/runtime/server/ai/AiGateway') {
 	static readonly languageModel = Effect.fn('AiGateway.languageModel')(function* (
-		userId: string,
+		userId: UserId,
 		options: {maxTokens: number}
 	) {
 		const gateway = yield* AiGateway
@@ -70,7 +71,7 @@ export class AiGateway extends Context.Service<
 						)
 				})
 			}
-			const authorize = Effect.fnUntraced(function* (userId: string) {
+			const authorize = Effect.fnUntraced(function* (userId: UserId) {
 				if (local) return Function.identity<HttpClient.HttpClient>
 				const token = yield* Effect.mapError(sessions.tokenOf(userId), cause =>
 					AiUnavailableError.make({cause, message: cause.message})

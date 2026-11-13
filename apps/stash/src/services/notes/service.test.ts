@@ -32,6 +32,8 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient, SqlSchema} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
+import {UserId} from '@deslop/runtime/shared/auth'
+
 import {Sources} from './lib/extraction.ts'
 import {Organizer} from './lib/organization.ts'
 
@@ -41,7 +43,7 @@ import type {TagEntry} from '#services/notes/schema.ts'
 import {Extraction, Note, NoteId, NoteItem, NotesError, NotesEvent} from '#services/notes/schema.ts'
 import {Notes} from '#services/notes/service.ts'
 
-const USER = 'github:1'
+const USER = UserId.make('github:1')
 
 const IDS = [
 	NoteId.make('6f1c9a52-8d0e-4c3b-9a51-2f6d7e8b9c01'),

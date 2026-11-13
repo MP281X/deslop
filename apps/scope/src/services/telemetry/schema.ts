@@ -10,10 +10,14 @@ export class TelemetryError extends Schema.TaggedError<TelemetryError>()('Teleme
 }) {}
 
 export type TraceId = typeof TraceId.Type
-export const TraceId = Schema.String.check(Schema.isPattern(/^[a-fA-F0-9]{32}$/u))
+export const TraceId = pipe(
+	Schema.String,
+	Schema.check(Schema.isPattern(/^[a-fA-F0-9]{32}$/u)),
+	Schema.brand('TraceId')
+)
 
 export type SpanId = typeof SpanId.Type
-export const SpanId = Schema.String.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u))
+export const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u)), Schema.brand('SpanId'))
 
 export type Nano = typeof Nano.Type
 export const Nano = Schema.String.check(Schema.isPattern(/^\d{1,20}$/u))

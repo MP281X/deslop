@@ -29,6 +29,7 @@ import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {AiGateway} from '@deslop/runtime/server/ai'
 import {ToolPath} from '@deslop/runtime/server/process'
+import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {
 	captionTracks,
@@ -55,10 +56,10 @@ export class Media extends Context.Service<
 	Media,
 	{
 		readonly fileFrames: (file: string) => Effect.Effect<Still[], MediaError>
-		readonly fileTranscript: (userId: string, file: string) => Effect.Effect<Option.Option<string>, MediaError>
+		readonly fileTranscript: (userId: UserId, file: string) => Effect.Effect<Option.Option<string>, MediaError>
 		readonly frames: (link: string) => Effect.Effect<Still[], MediaError>
 		readonly read: (
-			userId: string,
+			userId: UserId,
 			link: string,
 			fallback?: string
 		) => Effect.Effect<{info: string; transcript: Effect.Effect<Option.Option<string>, MediaError>}, MediaError>
@@ -153,7 +154,7 @@ export class Media extends Context.Service<
 			})
 
 			const listen = Effect.fnUntraced(function* (
-				userId: string,
+				userId: UserId,
 				input: {file: string; seconds: Option.Option<number>}
 			) {
 				const media = yield* probe(input.file)
@@ -324,7 +325,7 @@ export class Media extends Context.Service<
 			})
 
 			const transcribe = Effect.fnUntraced(function* (
-				userId: string,
+				userId: UserId,
 				link: string,
 				media: Metadata,
 				fallback?: string

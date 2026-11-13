@@ -8,6 +8,7 @@ import {Atom, AtomRpc} from 'effect/reactivity'
 
 import {liveAtom, liveStream, reconnectOnDrop} from '@deslop/runtime/client/live-stream'
 import {AUTH_URL, AuthError} from '@deslop/runtime/shared/auth'
+import type {UserId} from '@deslop/runtime/shared/auth'
 import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
@@ -131,7 +132,7 @@ export const peopleAtom = Atom.keepAlive(liveAtom(RpcClient, 'people.watch'))
 export const appsAtom = Atom.keepAlive(liveAtom(RpcClient, 'tokens.watchApps'))
 
 // One per person, so a failed answer shows beneath that person's row.
-export const admitAtom = Atom.family((id: string) =>
+export const admitAtom = Atom.family((id: UserId) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('people.admit', {allow, id})))
 )
 

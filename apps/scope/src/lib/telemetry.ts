@@ -23,7 +23,7 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {Operation, Range} from '#services/telemetry/schema.ts'
+import {Operation, Range, TraceId} from '#services/telemetry/schema.ts'
 import type {OperationTrace, Overview, TraceTree} from '#services/telemetry/schema.ts'
 
 // The pane Back returns to; from Traces it is the operations, which the URL leaves unnamed.
@@ -171,7 +171,7 @@ const traceAtoms = Atom.family((range: Range) =>
 			get(overviewAtom(range))
 			return keepValueThroughOutages(
 				get,
-				Stream.fromEffect(Effect.flatMap(RpcClient, client => client('telemetry.trace', {id: _id}))),
+				Stream.fromEffect(Effect.flatMap(RpcClient, client => client('telemetry.trace', {id: TraceId.make(_id)}))),
 				reconnectOnDrop
 			)
 		})

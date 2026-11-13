@@ -7,6 +7,7 @@ import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
 import {AuthError, ClientRegistration, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
+import type {UserId} from '@deslop/runtime/shared/auth'
 import {isPrivateAddress} from '@deslop/runtime/shared/net'
 
 import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin, SignedInApp} from '#services/tokens/schema.ts'
@@ -29,7 +30,7 @@ export function sameOwner(left: CredentialOwner, right: CredentialOwner) {
 }
 
 // The account a stored credential belongs to, from the owner columns it keeps.
-export function credentialOwnerOf(row: {incarnation: string; userId: string; userName: string}) {
+export function credentialOwnerOf(row: {incarnation: string; userId: UserId; userName: string}) {
 	return {incarnation: row.incarnation, user: {id: row.userId, name: row.userName}}
 }
 

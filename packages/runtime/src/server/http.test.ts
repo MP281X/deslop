@@ -29,7 +29,7 @@ import {crossSiteGuard, layerAnnounce, layerRoutes} from '#server/http.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
 import {layerDataStore} from '#server/store.ts'
-import {AccessClaims, AuthError, SESSION_COOKIE, clientIdOf} from '#shared/auth.ts'
+import {AccessClaims, AuthError, SESSION_COOKIE, UserId, clientIdOf} from '#shared/auth.ts'
 
 const handler = Effect.fnUntraced(function* (
 	settings: Record<string, string>,
@@ -289,7 +289,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 							iss: 'https://auth.example.com/api/auth',
 							name: 'octocat',
 							sid: 'family',
-							sub: 'github:42'
+							sub: UserId.make('github:42')
 						},
 						yield* Jwk.importPrivate((yield* Jwk.generateKeyPair({algorithm: 'EdDSA'})).privateKey, 'EdDSA')
 					)

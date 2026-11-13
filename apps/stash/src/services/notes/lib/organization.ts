@@ -3,6 +3,7 @@ import {Array, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} f
 import type {HttpClient} from 'effect/http'
 
 import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/ai'
+import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {normalizeTags} from './tags.ts'
 
@@ -86,7 +87,7 @@ export class Organizer extends Context.Service<
 	Organizer,
 	{
 		readonly organize: (
-			userId: string,
+			userId: UserId,
 			input: {images: Picture[]; note: Note; tags: TagEntry[]}
 		) => Effect.Effect<Organization, NotesError>
 	}

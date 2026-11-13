@@ -13,7 +13,8 @@ import {TestClock} from 'effect/testing'
 
 import {HttpHandlers} from '#http/handlers.ts'
 import {runIds} from '#services/github/lib/utils.ts'
-import type {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
+import type {WorkflowJob} from '#services/github/schema.ts'
+import {WorkflowRun} from '#services/github/schema.ts'
 import {Telemetry} from '#services/telemetry/service.ts'
 
 const SECRET = 'webhook-secret'
@@ -42,7 +43,7 @@ function runEvent(start: number, action: string) {
 			run_started_at: iso(start),
 			updated_at: iso(start + 4 * 60_000)
 		}
-	} satisfies WorkflowRun
+	} satisfies typeof WorkflowRun.Encoded
 }
 
 function jobEvent(start: number, conclusion: string) {
@@ -70,7 +71,7 @@ function jobEvent(start: number, conclusion: string) {
 				}
 			]
 		}
-	} satisfies WorkflowJob
+	} satisfies typeof WorkflowJob.Encoded
 }
 
 function otlp(start: number) {
@@ -170,7 +171,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Scope HTTP routes',
 				})
 				const run = runEvent(start, 'completed')
 				assert.strictEqual((yield* signed('workflow_run', run)).status, 204)
-				const ids = runIds(run)
+				const ids = runIds(yield* Schema.decodeEffect(WorkflowRun)(run))
 				assert.deepStrictEqual(
 					Array.map((yield* telemetry.trace(ids.traceId)).spans, span => span.name),
 					['CI']

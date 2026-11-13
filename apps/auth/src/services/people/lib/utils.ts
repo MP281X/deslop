@@ -1,6 +1,6 @@
 import {Array, HashSet, Number, Option, Order, String, Struct, pipe} from 'effect'
 
-import {isAdmin} from '@deslop/runtime/shared/auth'
+import {UserId, isAdmin} from '@deslop/runtime/shared/auth'
 
 import type {Member, Role} from '#services/people/schema.ts'
 import {Person} from '#services/people/schema.ts'
@@ -19,13 +19,10 @@ export function roleOf(admins: readonly string[], id: string, row: Option.Option
 
 export function personOf(admins: readonly string[], row: Member) {
 	return Person.make({
-		...Struct.pick(row, ['id', 'name', 'since']),
-		...pipe(
-			row.fullName,
-			Option.filter(String.isNonEmpty),
-			Option.match({onNone: () => ({}), onSome: fullName => ({fullName})})
-		),
-		role: roleOf(admins, row.id, Option.some(row))
+		...Struct.pick(row, ['id', 'name']),
+		fullName: Option.filter(row.fullName, String.isNonEmpty),
+		role: roleOf(admins, row.id, Option.some(row)),
+		since: Option.some(row.since)
 	})
 }
 
@@ -38,7 +35,15 @@ export function listPeople(rows: readonly Member[], admins: readonly string[]) {
 			...pipe(
 				admins,
 				Array.filter(id => !HashSet.has(knownIds, `github:${id}`)),
-				Array.map(id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0}))
+				Array.map(id =>
+					Person.make({
+						fullName: Option.none(),
+						id: UserId.make(`github:${id}`),
+						name: `GitHub ${id}`,
+						role: 'Admin',
+						since: Option.none()
+					})
+				)
 			),
 			...known
 		],

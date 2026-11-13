@@ -72,7 +72,7 @@ const VERIFIER = String.repeat(43)('x')
 type FamilyParams = typeof FamilyParams.Type
 const FamilyParams = Schema.Struct({family: Schema.NonEmptyString})
 type PersonParams = typeof PersonParams.Type
-const PersonParams = Schema.Struct({id: Schema.NonEmptyString})
+const PersonParams = Schema.Struct({id: User.fields.id})
 
 const me = Layer.provide(
 	HttpRouter.add('GET', '/me', Effect.flatMap(CurrentUser, HttpServerResponse.schemaJson(User))),

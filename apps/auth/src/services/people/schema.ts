@@ -1,8 +1,8 @@
-import {Schema} from 'effect'
+import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {User} from '@deslop/runtime/shared/auth'
+import {User, UserId} from '@deslop/runtime/shared/auth'
 
 import {CredentialOwner, SessionVia} from '#services/tokens/schema.ts'
 
@@ -11,13 +11,33 @@ export type Role = typeof Role.Type
 export const Role = Schema.Literals(['Admin', 'Member', 'Waiting'])
 
 export type Account = typeof Account.Type
-export const Account = Schema.Struct({...User.fields, fullName: Schema.optionalKey(Schema.String), role: Role})
+export const Account = Schema.Struct({
+	...User.fields,
+	fullName: Schema.OptionFromOptionalKey(Schema.String),
+	role: Role
+})
 
 export type SignedAccount = typeof SignedAccount.Type
 export const SignedAccount = Schema.Struct({...Account.fields, via: SessionVia})
 
 export type Person = typeof Person.Type
-export const Person = Schema.Struct({...Account.fields, since: Schema.Finite})
+export const Person = Schema.Struct({
+	...Account.fields,
+	// An admin whose profile has not arrived has no membership date; the existing wire encodes that as zero.
+	since: pipe(
+		Schema.Finite,
+		Schema.decodeTo(Schema.Option(Schema.DateTimeUtc), {
+			decode: SchemaGetter.transform(value =>
+				pipe(
+					value,
+					Option.liftPredicate(time => time !== 0),
+					Option.map(DateTime.makeUnsafe)
+				)
+			),
+			encode: SchemaGetter.transform(value => Option.match(value, {onNone: () => 0, onSome: DateTime.toEpochMillis}))
+		})
+	)
+})
 
 export type MemberStatus = typeof MemberStatus.Type
 export const MemberStatus = Schema.Literals(['Waiting', 'Allowed'])
@@ -30,7 +50,7 @@ export class Member extends Model.Class<Member>('Member')({
 	incarnation: Model.Sensitive(CredentialOwner.fields.incarnation),
 	name: User.fields.name,
 	// When the account first asked for access, then when an admin allowed it.
-	since: Schema.Int,
+	since: Schema.DateTimeUtcFromMillis,
 	status: MemberStatus
 }) {
 	static readonly table = 'members'
@@ -40,8 +60,8 @@ export type GitHubUser = typeof GitHubUser.Type
 export const GitHubUser = Schema.Struct({
 	id: Schema.Int,
 	login: Schema.NonEmptyString,
-	name: Schema.optionalKey(Schema.NullOr(Schema.String))
+	name: Schema.OptionFromOptionalNullOr(Schema.String)
 })
 
 export type AdmitParams = typeof AdmitParams.Type
-export const AdmitParams = Schema.Struct({allow: Schema.Boolean, id: Schema.NonEmptyString})
+export const AdmitParams = Schema.Struct({allow: Schema.Boolean, id: UserId})

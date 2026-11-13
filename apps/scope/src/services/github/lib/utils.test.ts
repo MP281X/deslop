@@ -23,7 +23,7 @@ const layer = Layer.provide(
 	Layer.mergeAll(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer, NodeCrypto.layer, NodeServices.layer)
 )
 
-const run = WorkflowRun.make({
+const run = Schema.decodeSync(WorkflowRun)({
 	action: 'completed',
 	repository: REPOSITORY,
 	workflow_run: {
@@ -42,7 +42,7 @@ const run = WorkflowRun.make({
 	}
 })
 
-const job = WorkflowJob.make({
+const job = Schema.decodeSync(WorkflowJob)({
 	action: 'completed',
 	repository: REPOSITORY,
 	workflow_job: {
@@ -71,7 +71,7 @@ const job = WorkflowJob.make({
 				number: 2,
 				started_at: '2026-11-03T08:01:00Z'
 			},
-			...SKIPPED
+			...Schema.encodeSync(WorkflowJob.fields.workflow_job.fields.steps)(SKIPPED)
 		]
 	}
 })

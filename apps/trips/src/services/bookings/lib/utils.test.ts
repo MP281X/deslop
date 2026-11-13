@@ -3,7 +3,7 @@ import {assert, it} from '@effect/vitest'
 import {Array, DateTime, Option} from 'effect'
 
 import {activeWindow, activityProps, HOUR, instantOf, MINUTE, upsert} from '#services/bookings/lib/utils.ts'
-import {Flight, Train} from '#services/bookings/schema.ts'
+import {BookingId, Flight, Train} from '#services/bookings/schema.ts'
 
 function at(iso: string) {
 	return DateTime.toEpochMillis(DateTime.makeUnsafe(iso))
@@ -20,7 +20,7 @@ const FLIGHT = {
 	confirmation: Option.none(),
 	departs: DEPARTS,
 	from: {city: 'Rome', code: 'FCO', name: 'Fiumicino', timeZone: 'Europe/Rome'},
-	id: '7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
+	id: BookingId.make('7f0c8f8e-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 	live: Option.none(),
 	number: '553',
 	seat: Option.none(),
@@ -34,7 +34,7 @@ const TRAIN = {
 	confirmation: Option.none(),
 	departs: DEPARTS,
 	from: {name: 'Roma Termini', timeZone: 'Europe/Rome'},
-	id: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+	id: BookingId.make('1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'),
 	live: Option.none(),
 	number: '9541',
 	operator: 'trenitalia',
@@ -60,7 +60,7 @@ it('merges a reservation seen again, keeps what the newer ticket leaves out, and
 		confirmation: Option.some('ABC123'),
 		live: Option.some({checkedAt: 1, departureGate: 'B12', state: 'scheduled' as const})
 	})
-	const again = {...FLIGHT, id: 'aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f', seat: Option.some('14A')}
+	const again = {...FLIGHT, id: BookingId.make('aaaaaaaa-0d0a-4a5e-9d8f-5b2a1c3d4e5f'), seat: Option.some('14A')}
 	assert.deepStrictEqual(
 		Array.map(upsert([tracked], [Flight.make(again)]), booking => [
 			booking.id,
@@ -88,7 +88,7 @@ it('keeps the two legs of one flight number apart', () => {
 		...first,
 		departs: DEPARTS + 15 * HOUR,
 		from: first.to,
-		id: 'bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f',
+		id: BookingId.make('bbbbbbbb-0d0a-4a5e-9d8f-5b2a1c3d4e5f'),
 		to: {city: 'Sydney', code: 'SYD', name: 'Kingsford Smith', timeZone: 'Australia/Sydney'}
 	})
 	assert.strictEqual(upsert([Flight.make(first)], [second]).length, 2)

@@ -52,7 +52,6 @@ import type {
 	Discovery,
 	McpUsageReport,
 	OAuthClient,
-	ServerId,
 	ServerUrl
 } from '#services/connections/schema.ts'
 import {
@@ -60,6 +59,7 @@ import {
 	ConnectionCalls,
 	ConnectionGrant,
 	ConnectionState,
+	ServerId,
 	McpUsageServer,
 	Metadata,
 	Registration,
@@ -509,14 +509,14 @@ export class Connections extends Context.Service<
 						return yield* AuthError.make({message: 'The gateway cannot connect to itself'})
 					}
 					const added = AuthError.make({message: 'This MCP has already been added.'})
-					const base = serverName(url) || 'mcp'
+					const base = ServerId.make(serverName(url) || 'mcp')
 					const taken = yield* asStorageAuthError(findTaken({id: base, url}))
 					if (Array.some(taken, row => row.url === url)) return yield* added
 					const suffix = String.slice(0, 6)(String.toLowerCase(yield* nonce))
 					const id = pipe(
 						taken,
 						Array.some(row => row.id === base),
-						Boolean.match({onFalse: () => base, onTrue: () => `${base}_${suffix}`})
+						Boolean.match({onFalse: () => base, onTrue: () => ServerId.make(`${base}_${suffix}`)})
 					)
 					const connection = yield* discover(
 						{generation: yield* nonce, id, name: String.capitalize(base), url},

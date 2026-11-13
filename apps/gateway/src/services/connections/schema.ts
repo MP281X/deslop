@@ -1,4 +1,4 @@
-import {Option, Result, Schema, Struct} from 'effect'
+import {Option, Result, Schema, Struct, pipe} from 'effect'
 
 import {Url} from 'effect/http'
 import {Model} from 'effect/schema'
@@ -6,7 +6,11 @@ import {Model} from 'effect/schema'
 export class UpstreamError extends Schema.TaggedError<UpstreamError>()('UpstreamError', {cause: Schema.Defect()}) {}
 
 export type ServerId = typeof ServerId.Type
-export const ServerId = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u))
+export const ServerId = pipe(
+	Schema.String,
+	Schema.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,23}$/u)),
+	Schema.brand('ServerId')
+)
 
 export type ServerUrl = typeof ServerUrl.Type
 export const ServerUrl = Schema.NonEmptyString.check(

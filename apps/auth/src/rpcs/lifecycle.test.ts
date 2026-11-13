@@ -2,7 +2,7 @@ import {NodeCrypto} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Effect, Layer, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, Option, Stream, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -12,7 +12,7 @@ import {RpcTest} from 'effect/rpc'
 import {SqlClient} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {SESSION_COOKIE, isDenied} from '@deslop/runtime/shared/auth'
+import {SESSION_COOKIE, UserId, isDenied} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
@@ -26,9 +26,9 @@ import type {ClientRequest} from '#services/tokens/schema.ts'
 import {BrowserSession} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
-const ADMIN = {id: 'github:42', name: 'admin'}
-const PROFILE = {id: 7, login: 'member'}
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+const ADMIN = {id: UserId.make('github:42'), name: 'admin'}
+const PROFILE = {id: 7, login: 'member', name: Option.none<string>()}
 
 const open = Effect.gen(function* () {
 	const database = yield* Layer.build(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer))
@@ -47,7 +47,7 @@ const open = Effect.gen(function* () {
 					GitHub.of({
 						cancel: () => Effect.die('Unused GitHub cancellation'),
 						finish: () => Effect.die('Unused GitHub callback'),
-						profile: () => Effect.succeed({id: 42, login: 'admin'}),
+						profile: () => Effect.succeed({id: 42, login: 'admin', name: Option.none()}),
 						start: () => Effect.die('Unused GitHub redirect')
 					})
 				)
@@ -109,7 +109,7 @@ it.layer(NodeCrypto.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
 			const member = yield* fixture.people.register(PROFILE)
-			const other = yield* fixture.people.register({id: 9, login: 'another'})
+			const other = yield* fixture.people.register({id: 9, login: 'another', name: Option.none()})
 			const headers = Headers.fromInput({
 				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(member, {}, 'GitHub', '')).token}`
 			})

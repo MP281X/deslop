@@ -140,7 +140,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							if (request.headers['x-github-event'] === 'workflow_job') {
 								const event = yield* Schema.decodeEffect(Schema.fromJsonString(WorkflowJob))(text)
 								// A job that never ran, skipped by its condition, has nothing to show.
-								if (event.action === 'completed' && event.workflow_job.conclusion !== 'skipped') {
+								if (event.action === 'completed' && !Option.contains(event.workflow_job.conclusion, 'skipped')) {
 									yield* telemetry.ingestTraces(jobTrace(event))
 									yield* Option.match(token, {
 										onNone: () => Effect.void,

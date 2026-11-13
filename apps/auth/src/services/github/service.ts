@@ -1,4 +1,4 @@
-import {Cache, Config, Context, Effect, Layer, Redacted, Struct, pipe} from 'effect'
+import {Cache, Config, Context, Effect, Layer, Option, Redacted, Struct, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {HttpClient, HttpClientRequest, HttpClientResponse, UrlParams} from 'effect/http'
@@ -13,7 +13,7 @@ import {hashOf, randomTokenOf} from '#services/tokens/lib/utils.ts'
 
 const HEADERS = {accept: 'application/vnd.github+json', 'user-agent': '@deslop/auth'}
 const CALLBACK = `${AUTH_URL}/auth/github/callback`
-const DEVELOPER_PROFILE = GitHubUser.make({id: 0, login: DEVELOPER.name})
+const DEVELOPER_PROFILE = GitHubUser.make({id: 0, login: DEVELOPER.name, name: Option.none()})
 
 // GitHub proves who someone is; the step in between lives here for ten minutes, and an Auth restart cancels it.
 export class GitHub extends Context.Service<

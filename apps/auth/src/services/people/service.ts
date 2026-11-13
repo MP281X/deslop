@@ -1,5 +1,5 @@
 import type {Stream} from 'effect'
-import {Boolean, Clock, Context, Effect, Layer, Option, Schema, String, Struct, pipe} from 'effect'
+import {Boolean, Context, DateTime, Effect, Layer, Option, Schema, String, Struct, pipe} from 'effect'
 
 import {SecureRandom} from 'effect/crypto'
 import type {Headers} from 'effect/http'
@@ -8,7 +8,7 @@ import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {Auth, adminIds, localAuth, requireAdmin} from '@deslop/runtime/server/auth'
 import type {User} from '@deslop/runtime/shared/auth'
-import {AuthError, DEVELOPER, bearerOf, isAdmin, asAuthError} from '@deslop/runtime/shared/auth'
+import {AuthError, DEVELOPER, UserId, bearerOf, isAdmin, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {RpcOwner} from '#rpcs/contracts.ts'
 import {GitHub} from '#services/github/service.ts'
@@ -37,7 +37,7 @@ export class People extends Context.Service<
 		readonly list: (user: User) => Effect.Effect<Person[], AuthError>
 		readonly watch: (user: User) => Stream.Stream<Person[], AuthError>
 		readonly register: (github: GitHubUser) => Effect.Effect<CredentialOwner, AuthError>
-		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
+		readonly remove: (id: UserId, user: User) => Effect.Effect<Person, AuthError>
 	}
 >()('@deslop/auth/services/people/service/People') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
@@ -108,7 +108,7 @@ export class People extends Context.Service<
 					Request: Member.insert,
 					execute: row => sql`INSERT INTO ${sql(Member.table)} ${sql.insert(row)} ON CONFLICT (id) DO NOTHING`
 				})
-				function member(id: string) {
+				function member(id: UserId) {
 					return Effect.catchNoSuchElement(members.findById(id))
 				}
 				// A local install's developer account keeps the one registration its sessions name; any other gets a fresh one.
@@ -116,7 +116,7 @@ export class People extends Context.Service<
 					if (local && profile.id === 0) return Effect.succeed(developer.incarnation)
 					return randomToken(32)
 				}
-				function existing(id: string) {
+				function existing(id: UserId) {
 					return Effect.flatMap(member(id), Effect.fromOption)
 				}
 				const currentOwner = Effect.fnUntraced(function* (owner: CredentialOwner) {
@@ -156,15 +156,15 @@ export class People extends Context.Service<
 					Effect.forEach(
 						admins,
 						Effect.fnUntraced(function* (id) {
-							if (Option.isSome(yield* member(`github:${id}`))) return
+							if (Option.isSome(yield* member(UserId.make(`github:${id}`)))) return
 							const profile = yield* github.profile(id)
 							yield* Reactivity.mutation(
 								addAdmin({
-									fullName: Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty),
-									id: `github:${profile.id}`,
+									fullName: Option.filter(profile.name, String.isNonEmpty),
+									id: UserId.make(`github:${profile.id}`),
 									incarnation: yield* incarnationOf(profile),
 									name: profile.login,
-									since: yield* Clock.currentTimeMillis,
+									since: yield* DateTime.now,
 									status: 'Allowed'
 								}),
 								['people']
@@ -188,6 +188,7 @@ export class People extends Context.Service<
 										onNone: () =>
 											SignedAccount.make({
 												...session.owner.user,
+												fullName: Option.none(),
 												role: roleOf(admins, session.owner.user.id, Option.none()),
 												via: session.via
 											}),
@@ -202,7 +203,7 @@ export class People extends Context.Service<
 					admit: Effect.fn('People.admit')(
 						function* (params: AdmitParams, user: User) {
 							yield* admin(user)
-							const now = yield* Clock.currentTimeMillis
+							const now = yield* DateTime.now
 							const answered = yield* pipe(
 								Effect.gen(function* () {
 									const row = yield* existing(params.id)
@@ -230,9 +231,9 @@ export class People extends Context.Service<
 					list,
 					register: Effect.fn('People.register')(
 						function* (profile: GitHubUser) {
-							const id = `github:${profile.id}`
-							const fullName = Option.filter(Option.fromNullishOr(profile.name), String.isNonEmpty)
-							const since = yield* Clock.currentTimeMillis
+							const id = UserId.make(`github:${profile.id}`)
+							const fullName = Option.filter(profile.name, String.isNonEmpty)
+							const since = yield* DateTime.now
 							const row = yield* pipe(
 								member(id),
 								Effect.flatMap(
@@ -263,7 +264,7 @@ export class People extends Context.Service<
 						asAuthError('Cannot record the GitHub account')
 					),
 					remove: Effect.fn('People.remove')(
-						function* (id: string, user: User) {
+						function* (id: UserId, user: User) {
 							yield* admin(user)
 							if (roleOf(admins, id, Option.none()) === 'Admin') {
 								return yield* AuthError.make({

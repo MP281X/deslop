@@ -18,7 +18,7 @@ import {
 
 import {Model} from 'effect/schema'
 
-import {Nano, rangeStart, Runtime, Side, Span} from '#services/telemetry/schema.ts'
+import {Nano, rangeStart, Runtime, Side, Span, SpanId, TraceId} from '#services/telemetry/schema.ts'
 import type {
 	Attribute,
 	Attributes,
@@ -238,15 +238,15 @@ export function spansOf(payload: TracesRequest) {
 					Array.map(event => attributesOf(event.attributes))
 				)
 				const failed = span.status?.code === 2
-				const traceId = String.toLowerCase(span.traceId)
-				const spanId = String.toLowerCase(span.spanId)
+				const traceId = TraceId.make(String.toLowerCase(span.traceId))
+				const spanId = SpanId.make(String.toLowerCase(span.spanId))
 				return {
 					links: Array.flatMap(span.links ?? [], link =>
 						Boolean.match(String.toLowerCase(link.traceId) === traceId, {
 							onFalse: () => [
 								{
-									linkedSpanId: String.toLowerCase(link.spanId),
-									linkedTraceId: String.toLowerCase(link.traceId),
+									linkedSpanId: SpanId.make(String.toLowerCase(link.spanId)),
+									linkedTraceId: TraceId.make(String.toLowerCase(link.traceId)),
 									spanId,
 									traceId
 								}
@@ -271,7 +271,7 @@ export function spansOf(payload: TracesRequest) {
 							Option.filter(String.isNonEmpty)
 						),
 						name: spanName(span, attributes),
-						parentSpanId: lowerId(span.parentSpanId),
+						parentSpanId: Option.map(lowerId(span.parentSpanId), id => SpanId.make(id)),
 						spanId,
 						start: millisOf(span.startTimeUnixNano),
 						status: Boolean.match(failed, {
@@ -318,9 +318,9 @@ export function logOf(
 		message: Array.join(leaves(log.body ?? {}), ' '),
 		receivedAt: Model.Override(DateTime.makeUnsafe(receivedAt)),
 		severity: severityOf(log.severityNumber, log.severityText),
-		spanId: lowerId(log.spanId),
+		spanId: Option.map(lowerId(log.spanId), value => SpanId.make(value)),
 		time: millisOf(log.timeUnixNano),
-		traceId: lowerId(log.traceId)
+		traceId: Option.map(lowerId(log.traceId), value => TraceId.make(value))
 	} satisfies typeof Log.insert.Type
 }
 
@@ -493,7 +493,8 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 					pipe(
 						linksOf,
 						Record.get(`${span.traceId}:${span.spanId}`),
-						Option.getOrElse(() => Array.empty<SpanLink>()),
+						Option.flatMap(Option.fromUndefinedOr),
+						Option.getOrElse(Array.empty<SpanLink>),
 						Array.findFirst(link => HashSet.has(ids, link.linkedSpanId))
 					)
 				),
@@ -504,7 +505,7 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 }
 
 // A trace and the traces its links join, as one tree in start order with each span's logs beside it.
-export function traceTree(id: string, spans: readonly Span[], logs: readonly Log[], links: readonly SpanLink[]) {
+export function traceTree(id: TraceId, spans: readonly Span[], logs: readonly Log[], links: readonly SpanLink[]) {
 	const ordered = Array.sort(spans, byStart)
 	const indexed = Array.map(ordered, (span, index) => ({index, span}))
 	const byId = Record.fromEntries(Array.map(indexed, item => [item.span.spanId, item] as const))

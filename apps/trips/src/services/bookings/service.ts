@@ -4,14 +4,15 @@ import {SecureRandom} from 'effect/crypto'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
+import type {UserId} from '@deslop/runtime/shared/auth'
 import {listEvents} from '@deslop/runtime/shared/list'
 
 import {Extractor} from './lib/extraction.ts'
 import {Places} from './lib/places.ts'
 
 import {byStart, instantOf, upsert} from '#services/bookings/lib/utils.ts'
-import type {Booking, BookingId, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
-import {BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
+import type {Booking, BookingSource, ExtractedItem, LocalTime} from '#services/bookings/schema.ts'
+import {BookingId, BookingsError, Flight, Place, Stay, Train} from '#services/bookings/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
@@ -107,7 +108,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		const resolve = Effect.fnUntraced(function* (item: ExtractedItem) {
 			const base = {
 				confirmation: Option.fromUndefinedOr(item.confirmation),
-				id: yield* random.uuidV4(),
+				id: BookingId.make(yield* random.uuidV4()),
 				status: item.status
 			}
 			if (item.kind === 'flight') {
@@ -208,7 +209,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 					asBookingsError
 				)
 			}, withReactivity),
-			save: Effect.fn('Bookings.save')(function* (userId: string, source: BookingSource) {
+			save: Effect.fn('Bookings.save')(function* (userId: UserId, source: BookingSource) {
 				const items = yield* extractor.read(userId, source)
 				if (Array.isReadonlyArrayEmpty(items)) {
 					return yield* BookingsError.make({

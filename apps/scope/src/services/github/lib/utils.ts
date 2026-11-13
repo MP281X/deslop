@@ -1,8 +1,8 @@
 import {Array, Boolean, DateTime, Option, String, pipe} from 'effect'
 
-import type {WorkflowJob, WorkflowRun} from '#services/github/schema.ts'
+import type {WorkflowJob, WorkflowJobId, WorkflowRun, WorkflowRunId} from '#services/github/schema.ts'
 import type {ExportedSpan} from '#services/telemetry/schema.ts'
-import {LogsRequest, TracesRequest} from '#services/telemetry/schema.ts'
+import {LogsRequest, SpanId, TraceId, TracesRequest} from '#services/telemetry/schema.ts'
 
 // A log line as GitHub writes it: an ISO time, then the runner's message.
 const LOG_LINE = /^(\d{4}-\d{2}-\d{2}T\S+Z) (.*)$/u
@@ -13,8 +13,8 @@ const LOG_COMMAND =
 const ANSI = /\u001B\[[0-9;]*m/gu
 
 // An ISO time as OTLP's nanoseconds.
-function nanos(time: string) {
-	return `${BigInt(DateTime.toEpochMillis(DateTime.makeUnsafe(time))) * 1_000_000n}`
+function nanos(time: DateTime.Utc) {
+	return `${BigInt(DateTime.toEpochMillis(time)) * 1_000_000n}`
 }
 
 function hex(value: number, width: number) {
@@ -22,24 +22,24 @@ function hex(value: number, width: number) {
 }
 
 // A run attempt is one trace and its ids come from GitHub's, so each event joins it and a repeated delivery replaces what it sent.
-function traceIdOf(run: number, attempt: number) {
-	return `${hex(run, 24)}${hex(attempt, 8)}`
+function traceIdOf(run: WorkflowRunId, attempt: number) {
+	return TraceId.make(`${hex(run, 24)}${hex(attempt, 8)}`)
 }
 
-function runSpanId(run: number) {
-	return `1${hex(run, 15)}`
+function runSpanId(run: WorkflowRunId) {
+	return SpanId.make(`1${hex(run, 15)}`)
 }
 
-function jobSpanId(job: number) {
-	return `2${hex(job, 15)}`
+function jobSpanId(job: WorkflowJobId) {
+	return SpanId.make(`2${hex(job, 15)}`)
 }
 
 // A conclusion as an OTLP status: a failure or timeout failed, success is ok, and a cancelled or skipped one is neither.
-function statusOf(conclusion: string | null, message: string) {
-	if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'startup_failure') {
+function statusOf(conclusion: Option.Option<string>, message: string) {
+	if (Option.exists(conclusion, value => Array.contains(['failure', 'timed_out', 'startup_failure'], value))) {
 		return {code: 2, message}
 	}
-	if (conclusion === 'success') return {code: 1, message: ''}
+	if (Option.contains(conclusion, 'success')) return {code: 1, message: ''}
 	return {code: 0, message: ''}
 }
 
@@ -84,13 +84,19 @@ export function runTrace(event: WorkflowRun) {
 				text('github.run_number', `${run.run_number}`),
 				text('github.run_attempt', `${run.run_attempt}`),
 				text('trace.label', runLabel(run)),
-				text('git.branch', run.head_branch ?? ''),
+				text(
+					'git.branch',
+					Option.getOrElse(run.head_branch, () => '')
+				),
 				text('git.commit', run.head_sha),
-				text('github.conclusion', run.conclusion ?? ''),
+				text(
+					'github.conclusion',
+					Option.getOrElse(run.conclusion, () => '')
+				),
 				text('url.full', run.html_url)
 			],
 			kind: 1,
-			name: run.name ?? run.display_title,
+			name: Option.getOrElse(run.name, () => run.display_title),
 			parentSpanId: '',
 			startTimeUnixNano: nanos(run.run_started_at),
 			status: statusOf(run.conclusion, `${run.display_title} failed`),
@@ -108,19 +114,13 @@ export function runTrace(event: WorkflowRun) {
 function stepsOf(job: WorkflowJob['workflow_job']) {
 	return Array.getSomes(
 		Array.map(job.steps, step =>
-			Option.map(
-				Option.all({
-					completed: Option.fromNullishOr(step.completed_at),
-					started: Option.fromNullishOr(step.started_at)
-				}),
-				times => ({...step, ...times})
-			)
+			Option.map(Option.all({completed: step.completed_at, started: step.started_at}), times => ({...step, ...times}))
 		)
 	)
 }
 
-function stepSpanId(job: number, step: number) {
-	return `3${hex(job, 12)}${hex(step, 3)}`
+function stepSpanId(job: WorkflowJobId, step: number) {
+	return SpanId.make(`3${hex(job, 12)}${hex(step, 3)}`)
 }
 
 // A job as a span with its steps beneath it, each step linking to its GitHub log.
@@ -132,17 +132,21 @@ export function jobTrace(event: WorkflowJob) {
 	return repositoryTraces(event.repository.full_name, [
 		{
 			attributes: [
-				text('github.runner', job.runner_name ?? ''),
-				text('github.conclusion', job.conclusion ?? ''),
+				text(
+					'github.runner',
+					Option.getOrElse(job.runner_name, () => '')
+				),
+				text(
+					'github.conclusion',
+					Option.getOrElse(job.conclusion, () => '')
+				),
 				{
 					key: 'github.queued_ms',
-					value: {
-						intValue: `${DateTime.toEpochMillis(DateTime.makeUnsafe(job.started_at)) - DateTime.toEpochMillis(DateTime.makeUnsafe(job.created_at))}`
-					}
+					value: {intValue: `${DateTime.toEpochMillis(job.started_at) - DateTime.toEpochMillis(job.created_at)}`}
 				},
 				text('url.full', job.html_url)
 			],
-			endTimeUnixNano: nanos(job.completed_at ?? job.started_at),
+			endTimeUnixNano: nanos(Option.getOrElse(job.completed_at, () => job.started_at)),
 			kind: 1,
 			name: job.name,
 			parentSpanId: runSpanId(job.run_id),
@@ -156,7 +160,10 @@ export function jobTrace(event: WorkflowJob) {
 		},
 		...Array.map(steps, step => ({
 			attributes: [
-				text('github.conclusion', step.conclusion ?? ''),
+				text(
+					'github.conclusion',
+					Option.getOrElse(step.conclusion, () => '')
+				),
 				text('url.full', `${job.html_url}#step:${step.number}:1`)
 			],
 			endTimeUnixNano: nanos(step.completed),
@@ -179,9 +186,9 @@ function severityOf(command: string) {
 }
 
 // Steps run in time order, so a line advances the pointer past every step that had already ended.
-function stepIndexAfter(steps: readonly {end: number}[], index: number, time: number): number {
+function stepIndexAfter(steps: readonly {end: DateTime.Utc}[], index: number, time: DateTime.Utc): number {
 	const step = steps[index]
-	if (step === undefined || time <= step.end) return index
+	if (step === undefined || DateTime.isLessThanOrEqualTo(time, step.end)) return index
 	return stepIndexAfter(steps, index + 1, time)
 }
 
@@ -189,9 +196,9 @@ function stepIndexAfter(steps: readonly {end: number}[], index: number, time: nu
 export function jobLogs(event: WorkflowJob, log: string) {
 	const traceId = traceIdOf(event.workflow_job.run_id, event.workflow_job.run_attempt)
 	const steps = Array.map(stepsOf(event.workflow_job), step => ({
-		end: DateTime.toEpochMillis(DateTime.makeUnsafe(step.completed)),
+		end: step.completed,
 		spanId: stepSpanId(event.workflow_job.id, step.number),
-		start: DateTime.toEpochMillis(DateTime.makeUnsafe(step.started))
+		start: step.started
 	}))
 	// Log lines and steps both arrive in time order, so one pointer moves through the steps once.
 	const [, lines] = pipe(
@@ -210,7 +217,7 @@ export function jobLogs(event: WorkflowJob, log: string) {
 							onNone: () => ({command: '', message}),
 							onSome: command => ({command: command[1] ?? '', message: command[2] ?? ''})
 						}),
-						time: DateTime.toEpochMillis(date)
+						time: date
 					}))
 				}),
 				Option.filter(
@@ -228,10 +235,10 @@ export function jobLogs(event: WorkflowJob, log: string) {
 					severityNumber: severityOf(line.command),
 					spanId: pipe(
 						Option.fromUndefinedOr(steps[next]),
-						Option.filter(step => line.time >= step.start),
+						Option.filter(step => DateTime.isGreaterThanOrEqualTo(line.time, step.start)),
 						Option.match({onNone: () => jobSpanId(event.workflow_job.id), onSome: step => step.spanId})
 					),
-					timeUnixNano: `${BigInt(line.time) * 1_000_000n}`,
+					timeUnixNano: nanos(line.time),
 					traceId
 				}))
 			] as const

@@ -15,11 +15,11 @@ import {routeTree} from '#routeTree.gen.ts'
 import {overviewAtom, traceAtom} from '#lib/telemetry.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceTree} from '#services/telemetry/lib/utils.ts'
-import {Span, TelemetryError} from '#services/telemetry/schema.ts'
+import {Span, SpanId, TraceId, TelemetryError} from '#services/telemetry/schema.ts'
 import type {Overview, Range, TraceTree} from '#services/telemetry/schema.ts'
 
-const ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const RANGE: Range = '1h'
+const ID = TraceId.make('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
 beforeAll(() => Route.options.component?.preload?.())
 const trace = traceTree(
 	ID,
@@ -34,7 +34,7 @@ const trace = traceTree(
 			run: Option.none(),
 			runtime: 'server',
 			service: '@deslop/deploy-server',
-			spanId: 'aaaaaaaaaaaaaaaa',
+			spanId: SpanId.make('aaaaaaaaaaaaaaaa'),
 			start: 1_781_870_000_000,
 			status: 'ok',
 			traceId: ID,
