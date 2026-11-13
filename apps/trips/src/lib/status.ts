@@ -1,8 +1,8 @@
 import {DateTime, Duration, Number, Option} from 'effect'
 import type {Record} from 'effect'
 
-import {weekdayOf} from '@deslop/components-mobile/format'
 import {colors, hues} from '@deslop/components-mobile/theme'
+import {weekdayOf} from '@deslop/runtime/shared/format'
 
 import {clockAt, departureOf, labelled} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, FlightTracking, Tone, Train, TrainTracking} from '#services/bookings/schema.ts'

@@ -7,9 +7,10 @@ import {accessibilityLabel, buttonStyle, foregroundStyle, frame, menuIndicator} 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useId} from 'react'
 
+import {ageOf} from '@deslop/runtime/shared/format'
+
 import {StatusDot} from '#components/status-dot.tsx'
 import {colors, space, text} from '#components/theme.ts'
-import {ageOf} from '#lib/format.ts'
 
 const ageAtom = Atom.family((_id: string) =>
 	Atom.withLabel(

@@ -10,11 +10,11 @@ import type {ReactNode} from 'react'
 
 import {AccountAvatar} from '@deslop/components-web/app-bar'
 import {EmptyState, Loaded} from '@deslop/components-web/fallbacks'
-import {monthOf} from '@deslop/components-web/format'
 import {ResultError} from '@deslop/components-web/result-error'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
+import {monthOf} from '@deslop/runtime/shared/format'
 
 import {accountAtom, admitAtom, peopleAtom} from '#lib/auth.ts'
 import {PeopleRowsSkeleton} from '#lib/components.tsx'

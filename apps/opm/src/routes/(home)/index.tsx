@@ -34,7 +34,6 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
-import {dayOf} from '@deslop/components-mobile/format'
 import {Problem} from '@deslop/components-mobile/problem'
 import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
@@ -52,6 +51,7 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {dayOf} from '@deslop/runtime/shared/format'
 
 import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'

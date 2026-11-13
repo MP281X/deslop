@@ -5,8 +5,8 @@ import {useLayoutEffect, useRef, useState} from 'react'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 import {cn} from '@deslop/components-web/classes'
-import {durationOf} from '@deslop/components-web/format'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import {durationOf} from '@deslop/runtime/shared/format'
 
 import {lanesOf} from '#lib/flame.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'

@@ -1,7 +1,7 @@
 import {Array, Option, pipe} from 'effect'
 
 import {cn} from '@deslop/components-web/classes'
-import {bytesOf, percentOf} from '@deslop/components-web/format'
+import {countOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {Tree} from '#routes/(home)/-tree.tsx'
@@ -12,7 +12,7 @@ import type {ProcessNode} from '#services/inventory/lib/utils.ts'
 function Figures(props: {node: ProcessNode}) {
 	return (
 		<span className="flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums">
-			<span className="w-14 text-right whitespace-nowrap">{bytesOf(props.node.memory)}</span>
+			<span className="w-14 text-right whitespace-nowrap">{`${countOf(props.node.memory / 1024 ** 2)} MiB`}</span>
 			<span className="text-muted-foreground w-11 text-right whitespace-nowrap">
 				{Option.match(props.node.cpu, {onNone: () => '—', onSome: percentOf})}
 			</span>

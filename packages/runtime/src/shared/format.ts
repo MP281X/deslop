@@ -1,6 +1,6 @@
 import {DateTime, Duration, Number, String} from 'effect'
 
-// One English form for what a person reads: dates day first on a 24-hour clock ("21 Oct", "15:28"), numbers grouped ("1,234", "$1.23").
+// One English form for what a person reads on the web and the iPhone: dates day first on a 24-hour clock ("21 Oct", "15:28"), numbers grouped ("1,234", "$1.23").
 const DATES = 'en-GB'
 const NUMBERS = 'en'
 const CLOCKS = {
@@ -12,7 +12,6 @@ const CLOCKS = {
 const count = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 0})
 const compactCount = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 1, notation: 'compact'})
 const fraction = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 1})
-const whole = new Intl.NumberFormat(NUMBERS, {maximumFractionDigits: 0})
 const usd = new Intl.NumberFormat(NUMBERS, {
 	currency: 'USD',
 	maximumFractionDigits: 2,
@@ -64,6 +63,11 @@ export function dayOf(at: DateTime.DateTime) {
 	return inZone(at, {day: 'numeric', month: 'short', year: 'numeric'})
 }
 
+// A day with its weekday, for plans: "Fri 21 Nov".
+export function weekdayOf(at: DateTime.DateTime) {
+	return inZone(at, {day: 'numeric', month: 'short', weekday: 'short'})
+}
+
 // A month: "Nov 2026".
 export function monthOf(at: DateTime.DateTime) {
 	return inZone(at, {month: 'short', year: 'numeric'})
@@ -78,16 +82,11 @@ export function compactCountOf(value: number) {
 	return compactCount.format(value)
 }
 
-// One decimal under 100, so a size keeps three figures: "5.3 MiB", "151 MiB", "10.7 GiB".
-function figureOf(value: number) {
-	if (value < 100) return fraction.format(value)
-	return whole.format(value)
-}
-
+// A size to one decimal in its largest binary unit: "151.3 MiB", "10.7 GiB".
 export function bytesOf(value: number) {
-	if (value >= 1024 ** 4) return `${figureOf(value / 1024 ** 4)} TiB`
-	if (value >= 1024 ** 3) return `${figureOf(value / 1024 ** 3)} GiB`
-	return `${figureOf(value / 1024 ** 2)} MiB`
+	if (value >= 1024 ** 4) return `${fraction.format(value / 1024 ** 4)} TiB`
+	if (value >= 1024 ** 3) return `${fraction.format(value / 1024 ** 3)} GiB`
+	return `${fraction.format(value / 1024 ** 2)} MiB`
 }
 
 export function percentOf(value: number) {

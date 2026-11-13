@@ -10,11 +10,11 @@ import {toQR} from 'toqr'
 
 import {CopyButton} from '@deslop/components-web/copy-button'
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {timerOf} from '@deslop/components-web/format'
 import {GitHubIcon} from '@deslop/components-web/icons'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
+import {timerOf} from '@deslop/runtime/shared/format'
 
 import {
 	approveLink,

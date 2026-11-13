@@ -3,11 +3,11 @@ import {Array, Boolean, Option, Record, String, pipe} from 'effect'
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
 import {cn} from '@deslop/components-web/classes'
-import {clockOf, durationOf} from '@deslop/components-web/format'
 import {AppMark, ThemedMark} from '@deslop/components-web/marks'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {GithubDark} from '@deslop/components-web/ui/svgs/githubDark'
 import {GithubLight} from '@deslop/components-web/ui/svgs/githubLight'
+import {clockOf, durationOf} from '@deslop/runtime/shared/format'
 
 import {attributesOf, errorOf} from '#lib/telemetry.ts'
 import {appName} from '#services/telemetry/lib/utils.ts'

@@ -6,7 +6,8 @@ import {ArrowClockwiseIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useId, useRef, useState} from 'react'
 
-import {ageOf} from '#components/format.ts'
+import {ageOf} from '@deslop/runtime/shared/format'
+
 import {StatusDot} from '#components/status-dot.tsx'
 import {Button} from '#components/ui/button.tsx'
 import {Popover, PopoverContent, PopoverTitle, PopoverTrigger} from '#components/ui/popover.tsx'

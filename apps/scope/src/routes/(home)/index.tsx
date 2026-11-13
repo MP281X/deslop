@@ -11,7 +11,6 @@ import type {ReactElement, ReactNode} from 'react'
 import {AppBarTab, AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
 import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
-import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/components-web/format'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {AppMark} from '@deslop/components-web/marks'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -21,6 +20,7 @@ import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/comp
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
+import {ageOf, clockOf, compactCountOf, countOf, durationOf} from '@deslop/runtime/shared/format'
 
 import {
 	Search,

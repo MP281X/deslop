@@ -11,7 +11,6 @@
 		"./apps": "./src/apps.ts",
 		"./copy-button": "./src/copy-button.tsx",
 		"./fallbacks": "./src/fallbacks.tsx",
-		"./format": "./src/format.ts",
 		"./icons": "./src/icons.tsx",
 		"./item-list": "./src/item-list.tsx",
 		"./marks": "./src/marks.tsx",

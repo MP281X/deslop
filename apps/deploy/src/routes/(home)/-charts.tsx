@@ -7,9 +7,9 @@ import type {PointerEvent} from 'react'
 
 import {cn} from '@deslop/components-web/classes'
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/components-web/format'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
+import {bytesOf, clockOf, dayOf, percentOf} from '@deslop/runtime/shared/format'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bandFill, bands, focusedBand, runs} from '#routes/(home)/-usage.ts'

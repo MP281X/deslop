@@ -10,7 +10,6 @@
 		"./*": "./src/*.tsx",
 		"./theme": "./src/theme.ts",
 		"./alerts": "./src/lib/alerts.ts",
-		"./format": "./src/lib/format.ts",
 		"./files": "./src/lib/files.ts",
 		"./images": "./src/lib/images.ts",
 		"./notifications": "./src/lib/notifications.ts",

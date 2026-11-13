@@ -1,6 +1,6 @@
 import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 
-import {usdOf} from '@deslop/components-web/format'
+import {usdOf} from '@deslop/runtime/shared/format'
 
 import type {AiUsageBreakdown, AiUsageReport} from '#services/ai-metering/schema.ts'
 import type {AiProvider} from '#services/ai-proxy/schema.ts'
