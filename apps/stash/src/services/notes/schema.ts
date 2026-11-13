@@ -1,8 +1,9 @@
-import {DateTime, Schema, SchemaGetter, Struct, pipe} from 'effect'
+import {Schema, Struct, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
 import {User} from '@deslop/runtime/shared/auth'
+import {DateTimeUtcFromFiniteSeconds} from '@deslop/runtime/shared/time'
 
 export class NotesError extends Schema.TaggedError<NotesError>()('NotesError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -169,13 +170,7 @@ export type FxPost = typeof FxPost.Type
 export const FxPost = Schema.Struct({
 	article: Schema.OptionFromOptionalKey(FxArticle),
 	author: Schema.Struct({id: PostAuthorId, name: Schema.String, screen_name: Schema.String}),
-	created_timestamp: pipe(
-		Schema.Finite,
-		Schema.decodeTo(Schema.DateTimeUtc, {
-			decode: SchemaGetter.transform(seconds => DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)),
-			encode: SchemaGetter.transform(at => DateTime.toEpochMillis(at) / 1000)
-		})
-	),
+	created_timestamp: DateTimeUtcFromFiniteSeconds,
 	id: PostId,
 	likes: Schema.OptionFromOptionalKey(Schema.Finite),
 	media: Schema.OptionFromOptionalKey(

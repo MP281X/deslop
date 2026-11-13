@@ -30,10 +30,10 @@ const SignInState = Schema.fromJsonString(
 
 type CallbackParams = typeof CallbackParams.Type
 const CallbackParams = Schema.Struct({
-	code: Schema.optionalKey(Schema.String),
-	error: Schema.optionalKey(Schema.String),
-	iss: Schema.optionalKey(Schema.String),
-	state: Schema.optionalKey(Schema.String)
+	code: Schema.OptionFromOptionalKey(Schema.String),
+	error: Schema.OptionFromOptionalKey(Schema.String),
+	iss: Schema.OptionFromOptionalKey(Schema.String),
+	state: Schema.OptionFromOptionalKey(Schema.String)
 })
 
 function signedOut(next: string, cause: unknown) {
@@ -120,18 +120,18 @@ function layerSignIn(issuer: string) {
 								const started = yield* Effect.result(
 									Effect.gen(function* () {
 										const params = yield* HttpServerRequest.schemaSearchParams(CallbackParams)
-										if (params.state !== saved.state) {
+										if (!Option.contains(params.state, saved.state)) {
 											return yield* AuthError.make({message: 'The sign-in began in another browser'})
 										}
-										if (params.error !== undefined || params.code === undefined) {
-											return yield* AuthError.make({message: `Auth answered ${params.error ?? 'without a code'}`})
+										if (Option.isSome(params.error) || Option.isNone(params.code)) {
+											return yield* AuthError.make({message: `Auth answered ${Option.getOrElse(params.error, () => 'without a code')}`})
 										}
-										if (params.iss !== new URL(ISSUER_PATH, issuer).href) {
+										if (!Option.contains(params.iss, new URL(ISSUER_PATH, issuer).href)) {
 											return yield* AuthError.make({message: 'The answer came from another issuer'})
 										}
 										return yield* sessions.start({
 											client_id: yield* clientId,
-											code: params.code,
+											code: yield* Effect.fromOption(params.code),
 											code_verifier: saved.verifier,
 											redirect_uri: callback
 										})

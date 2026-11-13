@@ -14,6 +14,15 @@ export const DateTimeUtcFromFiniteMillis = pipe(
 export type DurationFromFiniteMillis = typeof DurationFromFiniteMillis.Type
 export const DurationFromFiniteMillis = pipe(Schema.Finite, Schema.decodeTo(Schema.DurationFromMillis))
 
+export type DateTimeUtcFromFiniteSeconds = typeof DateTimeUtcFromFiniteSeconds.Type
+export const DateTimeUtcFromFiniteSeconds = pipe(
+	Schema.Finite,
+	Schema.decodeTo(Schema.DateTimeUtc, {
+		decode: SchemaGetter.transform(seconds => DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)),
+		encode: SchemaGetter.transform(at => DateTime.toEpochMillis(at) / 1000)
+	})
+)
+
 export type DateTimeUtcFromSeconds = typeof DateTimeUtcFromSeconds.Type
 export const DateTimeUtcFromSeconds = pipe(
 	Schema.Int,

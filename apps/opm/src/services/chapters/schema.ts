@@ -2,7 +2,7 @@ import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
+import {DateTimeUtcFromFiniteMillis, DateTimeUtcFromFiniteSeconds} from '@deslop/runtime/shared/time'
 
 export type ChapterNumber = typeof ChapterNumber.Type
 export const ChapterNumber = pipe(Schema.Finite, Schema.brand('ChapterNumber'))
@@ -112,18 +112,7 @@ export const CubariSeries = Schema.Struct({
 				Schema.Array(Schema.Union([Schema.String, Schema.Struct({src: Schema.String})]))
 			),
 			release_date: Schema.OptionFromOptionalKey(
-				Schema.Record(
-					Schema.String,
-					pipe(
-						Schema.Finite,
-						Schema.decodeTo(Schema.DateTimeUtc, {
-							decode: SchemaGetter.transform(seconds =>
-								DateTime.mapEpochMillis(DateTime.makeUnsafe(0), () => seconds * 1000)
-							),
-							encode: SchemaGetter.transform(at => DateTime.toEpochMillis(at) / 1000)
-						})
-					)
-				)
+				Schema.Record(Schema.String, DateTimeUtcFromFiniteSeconds)
 			),
 			// imgchest albums without a name answer null.
 			title: Schema.OptionFromOptionalKey(Schema.OptionFromNullOr(Schema.String))
