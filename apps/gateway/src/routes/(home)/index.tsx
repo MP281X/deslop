@@ -134,6 +134,11 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 	const connected = props.server.status === 'Connected'
 	const needsUser = !connected || Option.isSome(props.server.error)
 	const failed = props.server.status === 'Expired' || Option.isSome(props.server.error)
+	// A fixed name per failure: the upstream's own text can carry a response body or a bearer token.
+	const failure = Boolean.match(props.server.status === 'Expired', {
+		onFalse: () => 'Server unavailable',
+		onTrue: () => 'Authorization expired'
+	})
 	const action = Boolean.match(connected, {onFalse: () => 'Connect' as const, onTrue: () => 'Reconnect' as const})
 	const series = serverSeries(props.report, props.server.id, props.period)
 	return (
@@ -148,12 +153,7 @@ function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]
 				</ItemContent>
 				<ItemActions>
 					{failed && (
-						<span
-							role="img"
-							className="flex shrink-0 items-center"
-							aria-label={Option.getOrElse(props.server.error, () => 'Authorization expired')}
-							title={Option.getOrElse(props.server.error, () => 'Authorization expired')}
-						>
+						<span role="img" className="flex shrink-0 items-center" aria-label={failure} title={failure}>
 							<StatusDot status="error" />
 						</span>
 					)}

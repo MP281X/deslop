@@ -204,7 +204,7 @@ export function AppBar(props: {
 						>
 							<CaretLeftIcon className="size-4" />
 						</Button>
-						<span className="font-heading max-w-48 min-w-0 truncate text-sm font-semibold">{heading.title}</span>
+						<span className="font-heading max-w-48 min-w-0 truncate text-sm">{heading.title}</span>
 					</div>
 				)
 			})}

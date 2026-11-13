@@ -22,7 +22,7 @@
 ## Patterns
 
 - **Primitives.** In `packages/components-web`, run `vpx shadcn@latest add --all --overwrite`, point `cn` imports at `#lib/classes.ts`, drop the `cn` dependency and fix only compiler rejections.
-- **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move `src/components/ui/svgs/` to canonical `src/ui/svgs/`, keeping registry artwork.
+- **Software marks.** Run `vpx shadcn@latest add @svgl/<name>` there; move `src/components/ui/svgs/` to canonical `src/ui/svgs/`, keeping registry artwork but renaming any SVG id another mark already uses (`a` → `edge-a`).
 
 ## Choices
 

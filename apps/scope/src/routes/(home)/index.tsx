@@ -64,7 +64,7 @@ const KINDS: Record<Runtime, ReactElement> = {
 
 // One run or many, in the reader's words.
 function runsOf(n: number) {
-	return `${countOf(n)}${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
+	return `${countOf(n)} ${Boolean.match(n === 1, {onFalse: () => 'runs', onTrue: () => 'run'})}`
 }
 const route = getRouteApi('/(home)/')
 const RANGES = Array.map(Range.literals, value => ({label: value, value}))

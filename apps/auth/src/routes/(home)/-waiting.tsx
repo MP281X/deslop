@@ -88,7 +88,11 @@ function CodeCard(props: {request: PendingAuthorization}) {
 						<QrCode text={approveLink(props.request.id)} className="size-32" />
 					</span>
 					<div className="flex min-w-0 flex-col gap-2">
-						<CopyButton label={`Copy the code ${requestCode(props.request.id)}`} value={requestCode(props.request.id)}>
+						<CopyButton
+							label={`Copy the code ${requestCode(props.request.id)}`}
+							value={requestCode(props.request.id)}
+							failure="Cannot copy the code; type it in instead"
+						>
 							{requestCode(props.request.id)}
 						</CopyButton>
 						<Countdown expiresAt={props.request.expiresAt} />
