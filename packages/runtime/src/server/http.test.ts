@@ -76,10 +76,10 @@ function cookiePairs(response: Response) {
 
 const send = Effect.fnUntraced(function* (
 	web: Effect.Success<ReturnType<typeof handler>>,
+	method: 'GET' | 'POST',
 	url: string,
 	headers: Record<string, string>
 ) {
-	const method = Boolean.match(String.includes('/auth/')(url), {onFalse: () => 'POST', onTrue: () => 'GET'})
 	const context = yield* Effect.context<FileSystem.FileSystem | Path.Path>()
 	return yield* Effect.promise(() => web.handler(new Request(url, {headers, method}), context))
 })
@@ -174,7 +174,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					{APP_URL: 'http://localhost:5000'},
 					{auth: Layer.succeedContext(Auth.makeContext(Auth.of({token: () => outage, user: () => outage})))}
 				)
-				const response = yield* send(web, 'http://localhost:5000/api/account', {host: 'localhost:5000'})
+				const response = yield* send(web, 'GET', 'http://localhost:5000/api/account', {host: 'localhost:5000'})
 				assert.strictEqual(response.status, 503)
 				assert.strictEqual(response.headers.get('retry-after'), '5')
 			})
@@ -226,13 +226,13 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					'100.68.201.107',
 					'dev.example.ts.net:25270'
 				]) {
-					assert.strictEqual((yield* send(web, `http://${host}/write`, {host})).status, 204, host)
+					assert.strictEqual((yield* send(web, 'POST', `http://${host}/write`, {host})).status, 204, host)
 				}
 				assert.strictEqual(
-					(yield* send(web, 'http://rebound.example.com/write', {host: 'rebound.example.com'})).status,
+					(yield* send(web, 'POST', 'http://rebound.example.com/write', {host: 'rebound.example.com'})).status,
 					403
 				)
-				const signIn = yield* send(web, 'https://dev.example.ts.net:25270/auth/sign-in', {
+				const signIn = yield* send(web, 'GET', 'https://dev.example.ts.net:25270/auth/sign-in', {
 					host: 'dev.example.ts.net:25270'
 				})
 				assert.isNull(signIn.headers.get('location'))
@@ -246,16 +246,19 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const web = yield* handler({APP_URL: 'https://scope.example.com', AUTH_URL: 'https://auth.example.com'})
 				const host = 'scope.example.com'
 				assert.strictEqual(
-					(yield* send(web, 'https://other.example.ts.net/write', {host: 'other.example.ts.net'})).status,
+					(yield* send(web, 'POST', 'https://other.example.ts.net/write', {host: 'other.example.ts.net'})).status,
 					204
 				)
-				assert.strictEqual((yield* send(web, `https://${host}/write`, {host, origin: `https://${host}`})).status, 204)
 				assert.strictEqual(
-					(yield* send(web, `https://${host}/write`, {host, origin: 'https://evil.example.com'})).status,
+					(yield* send(web, 'POST', `https://${host}/write`, {host, origin: `https://${host}`})).status,
+					204
+				)
+				assert.strictEqual(
+					(yield* send(web, 'POST', `https://${host}/write`, {host, origin: 'https://evil.example.com'})).status,
 					403
 				)
 				assert.strictEqual(
-					(yield* send(web, `https://${host}/write`, {
+					(yield* send(web, 'POST', `https://${host}/write`, {
 						host,
 						origin: 'https://evil.example.com',
 						'sec-fetch-site': 'same-origin'
@@ -263,12 +266,12 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					204
 				)
 				assert.strictEqual(
-					(yield* send(web, `https://${host}/v1/traces`, {host, origin: 'https://evil.example.com'})).status,
+					(yield* send(web, 'POST', `https://${host}/v1/traces`, {host, origin: 'https://evil.example.com'})).status,
 					204
 				)
 				for (const path of ['/auth/sign-in', '/auth/sign-out']) {
 					assert.strictEqual(
-						(yield* send(web, `https://${host}${path}?next=https%3A%2F%2Fevil.example.com`, {host})).status,
+						(yield* send(web, 'GET', `https://${host}${path}?next=https%3A%2F%2Fevil.example.com`, {host})).status,
 						400
 					)
 				}
@@ -316,7 +319,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const host = 'scope.example.com'
 				const next = 'https://scope.example.com/detail'
 
-				const started = yield* send(web, `https://${host}/auth/sign-in?${new URLSearchParams({next})}`, {host})
+				const started = yield* send(web, 'GET', `https://${host}/auth/sign-in?${new URLSearchParams({next})}`, {host})
 				const authorize = new URL(started.headers.get('location') ?? '')
 				assert.strictEqual(
 					`${authorize.origin}${authorize.pathname}`,
@@ -340,6 +343,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 
 				const forged = yield* send(
 					web,
+					'GET',
 					`https://${host}/auth/callback?${new URLSearchParams({code: 'approved', iss: 'https://auth.example.com/api/auth', state: 'forged'})}`,
 					{cookie: signIn, host}
 				)
@@ -348,6 +352,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 
 				const finished = yield* send(
 					web,
+					'GET',
 					`https://${host}/auth/callback?${new URLSearchParams({code: 'approved', iss: 'https://auth.example.com/api/auth', state})}`,
 					{cookie: signIn, host}
 				)
@@ -372,11 +377,11 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				)
 				assert.isTrue(String.isNonEmpty(session))
 
-				const user = yield* send(web, `https://${host}/api/account`, {cookie: session, host})
+				const user = yield* send(web, 'GET', `https://${host}/api/account`, {cookie: session, host})
 				assert.strictEqual(user.status, 200)
 				assert.include(yield* Effect.promise(() => user.json()), {id: 'github:42', name: 'octocat'})
 
-				const ended = yield* send(web, `https://${host}/auth/sign-out?${new URLSearchParams({next})}`, {
+				const ended = yield* send(web, 'GET', `https://${host}/auth/sign-out?${new URLSearchParams({next})}`, {
 					cookie: session,
 					host
 				})
@@ -387,7 +392,10 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const revoked = yield* Queue.take(calls)
 				assert.strictEqual(revoked.get('token'), 'refresh-1')
 				assert.strictEqual(revoked.get('client_id'), exchange.get('client_id'))
-				assert.strictEqual((yield* send(web, `https://${host}/api/account`, {cookie: session, host})).status, 401)
+				assert.strictEqual(
+					(yield* send(web, 'GET', `https://${host}/api/account`, {cookie: session, host})).status,
+					401
+				)
 			}),
 			// The app's name, which its client id carries, comes from its package.
 			Effect.provideServiceEffect(
