@@ -39,9 +39,9 @@ const ToolHandlers = ToolContracts.toLayer(
 					)
 				}
 			}),
-			remove_ai_key: Effect.fnUntraced(function* (input) {
-				yield* ai.removeKey((yield* CurrentUser).id, input.provider)
-				return {provider: input.provider}
+			remove_ai_key: Effect.fnUntraced(function* () {
+				yield* ai.removeKey((yield* CurrentUser).id)
+				return {provider: 'opencode' as const}
 			}),
 			remove_mcp_server: Effect.fnUntraced(function* (input) {
 				yield* connections.remove(input.server, yield* CurrentUser)

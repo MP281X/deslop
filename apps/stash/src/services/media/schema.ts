@@ -61,12 +61,16 @@ export const Transcript = Schema.Struct({
 
 export type TranscriptionResponse = typeof TranscriptionResponse.Type
 export const TranscriptionResponse = Schema.Struct({
-	candidates: Schema.NonEmptyArray(
-		Schema.Struct({
-			content: Schema.Struct({
-				parts: Schema.Array(Schema.Struct({text: Schema.String, thought: Schema.optional(Schema.Boolean)}))
-			}),
-			finishReason: Schema.Literal('STOP')
-		})
+	candidates: Schema.OptionFromOptionalKey(
+		Schema.Array(
+			Schema.Struct({
+				content: Schema.OptionFromOptionalKey(
+					Schema.Struct({
+						parts: Schema.Array(Schema.Struct({text: Schema.String, thought: Schema.optional(Schema.Boolean)}))
+					})
+				),
+				finishReason: Schema.OptionFromOptionalKey(Schema.String)
+			})
+		)
 	)
 })

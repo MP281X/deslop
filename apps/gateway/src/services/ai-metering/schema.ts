@@ -2,18 +2,17 @@ import {Schema} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {AiModelId, AiProvider} from '@deslop/runtime/shared/ai'
+import {AiModelId} from '@deslop/runtime/shared/ai'
 import {User} from '@deslop/runtime/shared/auth'
 import {DateTimeUtcFromFiniteMillis} from '@deslop/runtime/shared/time'
 
 import {UsageRange} from '#services/usage/schema.ts'
 
-// One person's calls to one provider in one hour: what the known prices sum to, and how many calls had none.
+// One person's OpenCode calls in one hour: the reported costs and the count without one.
 export class AiUsage extends Model.Class<AiUsage>('AiUsage')({
 	costUsd: Schema.Finite,
 	hour: Schema.DateTimeUtcFromMillis,
 	owner: Model.Sensitive(User.fields.id),
-	provider: AiProvider,
 	unknownCostCalls: Schema.Int
 }) {
 	static readonly table = 'ai_usage'
@@ -29,44 +28,19 @@ export const AiUsageEntry = Schema.Struct({
 	at: DateTimeUtcFromFiniteMillis,
 	cacheReadTokens: Schema.Finite,
 	cacheWriteTokens: Schema.Finite,
-	costSource: Schema.Literals(['provider', 'models.dev', 'unknown']),
+	costSource: Schema.Literals(['provider', 'unknown']),
 	costUsd: Schema.OptionFromOptionalKey(Schema.Finite),
 	inputTokens: Schema.Finite,
 	model: Schema.OptionFromOptional(AiModelId),
-	outputTokens: Schema.Finite,
-	provider: AiProvider
+	outputTokens: Schema.Finite
 })
 export type AiUsageBreakdown = typeof AiUsageBreakdown.Type
-export const AiUsageBreakdown = Schema.Struct({
-	costUsd: Schema.Finite,
-	name: Schema.String,
-	unknownCostCalls: Schema.Finite
-})
+export const AiUsageBreakdown = Schema.Struct({costUsd: Schema.Finite, unknownCostCalls: Schema.Finite})
 export type AiUsageReport = typeof AiUsageReport.Type
 export const AiUsageReport = Schema.Struct({
-	byProvider: Schema.Array(AiUsageBreakdown),
-	series: Schema.Array(Schema.Struct({at: DateTimeUtcFromFiniteMillis, byProvider: Schema.Array(AiUsageBreakdown)}))
+	series: Schema.Array(Schema.Struct({at: DateTimeUtcFromFiniteMillis, ...AiUsageBreakdown.fields})),
+	total: AiUsageBreakdown
 })
-
-export type ModelsCatalog = typeof ModelsCatalog.Type
-export const ModelsCatalog = Schema.Record(
-	Schema.String,
-	Schema.Struct({
-		models: Schema.Record(
-			AiModelId,
-			Schema.Struct({
-				cost: Schema.OptionFromOptionalKey(
-					Schema.Struct({
-						cache_read: Schema.OptionFromOptionalKey(Schema.Finite),
-						cache_write: Schema.OptionFromOptionalKey(Schema.Finite),
-						input: Schema.Finite,
-						output: Schema.Finite
-					})
-				)
-			})
-		)
-	})
-)
 export type Usage = typeof Usage.Type
 export const Usage = Schema.Struct({
 	cost: Schema.OptionFromOptionalKey(Schema.Finite),

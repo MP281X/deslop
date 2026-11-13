@@ -33,7 +33,7 @@ const CAPTIONS = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nHo preparato le lenti
 const USER = UserId.make('github:1')
 
 const gateway = AiGateway.of({
-	apiUrl: () => Effect.succeed('https://gateway.mp281x.xyz/ai/opencode-zen'),
+	apiUrl: Effect.succeed('https://gateway.mp281x.xyz/ai'),
 	authorize: userId => {
 		assert.strictEqual(userId, USER)
 		return Effect.succeed(Function.identity)
@@ -97,6 +97,10 @@ const audioSpawner = Effect.fnUntraced(function* () {
 			if (String.endsWith('/ffmpeg')(command.command) && Array.contains(command.args, 'segment')) {
 				yield* fs.writeFile(String.replace('%03d', '000')(file), new Uint8Array([1]))
 				yield* fs.writeFile(String.replace('%03d', '001')(file), new Uint8Array([2]))
+				yield* fs.writeFileString(
+					argument(command, '-segment_list'),
+					'part-000.flac,0,120.024\npart-001.flac,120.024,140.024\n'
+				)
 				return handle('')
 			}
 			return yield* Effect.die(`Unexpected process: ${command.command}`)

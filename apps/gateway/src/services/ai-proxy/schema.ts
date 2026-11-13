@@ -1,27 +1,30 @@
-import {Schema} from 'effect'
+import {Schema, Struct} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {AiProvider} from '@deslop/runtime/shared/ai'
 import {User} from '@deslop/runtime/shared/auth'
 
-export {AiProvider}
-export const PROVIDER_NAMES = {'opencode-go': 'OpenCode Go', 'opencode-zen': 'OpenCode Zen'} satisfies Record<
-	AiProvider,
-	string
->
+export type ConnectionUrl = typeof ConnectionUrl.Type
+export const ConnectionUrl = Schema.String.check(
+	Schema.isPattern(/^https:\/\/opencode\.ai\/inference\/custom\/conn_[A-Za-z0-9_-]+$/u)
+)
 
-export type AiSetKey = typeof AiSetKey.Type
-export const AiSetKey = Schema.Struct({provider: AiProvider, secret: Schema.RedactedFromValue(Schema.NonEmptyString)})
-
-// One person's key for one provider; the page knows it by its last four characters and the status its last call got.
+// One person's OpenCode credential and optional connected-Claude address; the secret never returns to the page.
 export class AiKey extends Model.Class<AiKey>('AiKey')({
+	connectionUrl: Model.FieldOption(ConnectionUrl),
 	last4: Schema.String,
 	lastStatus: Model.FieldOption(Schema.Int),
 	owner: Model.Sensitive(User.fields.id),
-	provider: AiProvider,
-	secret: Model.Sensitive(AiSetKey.fields.secret)
+	secret: Model.Sensitive(Schema.RedactedFromValue(Schema.NonEmptyString))
 }) {
 	static readonly table = 'ai_keys'
 }
-export type AiKeyItem = typeof AiKey.json.Type
+
+export type AiSetKey = typeof AiSetKey.Type
+export const AiSetKey = Schema.Struct({
+	connectionUrl: Schema.OptionFromOptionalKey(ConnectionUrl),
+	secret: Schema.OptionFromOptionalKey(Schema.RedactedFromValue(Schema.NonEmptyString))
+})
+
+export type AiKeyItem = typeof AiKeyItem.Type
+export const AiKeyItem = Schema.Struct(Struct.pick(AiKey.fields, ['connectionUrl', 'last4', 'lastStatus']))

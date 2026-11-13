@@ -3,7 +3,6 @@ import {Array, DateTime, Duration, HashMap, Option, pipe} from 'effect'
 import {usdOf} from '@deslop/runtime/shared/format'
 
 import type {AiUsageBreakdown, AiUsageReport} from '#services/ai-metering/schema.ts'
-import type {AiProvider} from '#services/ai-proxy/schema.ts'
 import type {McpUsageServer, ServerId} from '#services/connections/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
@@ -19,16 +18,8 @@ function seriesOf(range: UsageRange, value: (at: DateTime.Utc) => number) {
 		value(DateTime.addDuration(range.from, Duration.times(range.size, index)))
 	)
 }
-export function providerSeries(report: AiUsageReport, provider: AiProvider, range: UsageRange) {
-	const costs = HashMap.fromIterable(
-		Array.flatMap(report.series, bucket =>
-			pipe(
-				bucket.byProvider,
-				Array.filter(sum => sum.name === provider),
-				Array.map(sum => [bucket.at, sum.costUsd] as const)
-			)
-		)
-	)
+export function aiSeries(report: AiUsageReport, range: UsageRange) {
+	const costs = HashMap.fromIterable(Array.map(report.series, bucket => [bucket.at, bucket.costUsd] as const))
 	return seriesOf(range, at =>
 		pipe(
 			costs,
@@ -37,13 +28,8 @@ export function providerSeries(report: AiUsageReport, provider: AiProvider, rang
 		)
 	)
 }
-export function providerCost(report: AiUsageReport, provider: AiProvider) {
-	return pipe(
-		report.byProvider,
-		Array.findFirst(sum => sum.name === provider),
-		Option.map(costOf),
-		Option.getOrElse(() => '—')
-	)
+export function aiCost(report: AiUsageReport) {
+	return costOf(report.total)
 }
 export function serverSeries(report: readonly McpUsageServer[], id: ServerId, range: UsageRange) {
 	return seriesOf(range, at =>

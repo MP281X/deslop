@@ -16,7 +16,7 @@ import type {Period} from '#services/usage/schema.ts'
 
 declare module 'effect/reactivity/Reactivity' {
 	interface Keys {
-		readonly aiKeys: never
+		readonly aiKey: never
 	}
 }
 
@@ -86,11 +86,11 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 )
 
 // Read like the live streams, so a refusal clears the keys too; saving a key rereads them.
-export const aiKeysAtom = RpcClient.runtime.factory.withReactivity(['aiKeys'])(
+export const aiKeyAtom = RpcClient.runtime.factory.withReactivity(['aiKey'])(
 	RpcClient.runtime.atom(get =>
 		keepValueThroughOutages(
 			get,
-			Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai-proxy.list', undefined))),
+			Stream.fromEffect(Effect.flatMap(RpcClient, client => client('ai-proxy.key', undefined))),
 			reconnectOnDrop
 		)
 	)

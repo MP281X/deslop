@@ -195,14 +195,11 @@ export class Media extends Context.Service<
 					return Option.none()
 				}
 				const speech = yield* Effect.mapError(
-					Effect.all(
-						{authorize: gateway.authorize(userId), url: gateway.apiUrl('opencode-zen')},
-						{concurrency: 'unbounded'}
-					),
+					Effect.all({authorize: gateway.authorize(userId), url: gateway.apiUrl}, {concurrency: 'unbounded'}),
 					cause => MediaError.make({cause: Redacted.make(cause), message: cause.message})
 				)
 				const work = yield* fs.makeTempDirectoryScoped({prefix: 'deslop-speech-'})
-				// Five-minute lossless chunks bound the inline audio payload and each transcription request.
+				// Two-minute s16 mono chunks stay below 4 MiB of FLAC and 5.34 MiB after base64, inside Gateway's 10 MiB body limit.
 				const extracted = yield* run('ffmpeg', [
 					'-v',
 					'error',
@@ -212,6 +209,8 @@ export class Media extends Context.Service<
 					'-t',
 					`${Duration.toSeconds(Duration.sum(Option.getOrThrow(seconds), Duration.seconds(1)))}`,
 					'-vn',
+					'-map_metadata',
+					'-1',
 					'-map',
 					'0:a:0',
 					'-ac',
@@ -225,7 +224,11 @@ export class Media extends Context.Service<
 					'-f',
 					'segment',
 					'-segment_time',
-					'300',
+					'120',
+					'-segment_list',
+					path.join(work, 'chunks.csv'),
+					'-segment_list_type',
+					'csv',
 					'-reset_timestamps',
 					'1',
 					path.join(work, 'part-%03d.flac')
@@ -235,19 +238,28 @@ export class Media extends Context.Service<
 				}
 				return yield* transcription.withPermit(
 					Effect.gen(function* () {
-						const files = pipe(
-							yield* fs.readDirectory(work),
-							Array.filter(String.endsWith('.flac')),
-							Array.sort(Order.String)
+						// Raw FLAC segment headers may omit duration or retain the whole file's duration; the muxer's CSV has the actual boundaries.
+						const chunks = yield* pipe(
+							String.trim(yield* fs.readFileString(path.join(work, 'chunks.csv'))),
+							String.split('\n'),
+							Effect.forEach(
+								line =>
+									Schema.decodeUnknownEffect(
+										Schema.Tuple([Schema.String, Schema.FiniteFromString, Schema.FiniteFromString])
+									)(String.split(line, ',')),
+								{concurrency: 1}
+							)
 						)
-						return speechOnly(
+						return Option.liftPredicate(
 							pipe(
 								yield* Effect.forEach(
-									files,
-									Effect.fnUntraced(function* (file) {
-										const duration = Option.getOrThrow(yield* lengthOf(path.join(work, file)))
+									chunks,
+									Effect.fnUntraced(function* (chunk, index) {
+										const duration = Duration.seconds(chunk[2] - chunk[1])
 										const response = yield* pipe(
-											HttpClientRequest.post(`${speech.url}/google/v1beta/models/gemini-3.8-flash:generateContent`),
+											HttpClientRequest.post(
+												`${speech.url}/google/v1beta/models/gemini-3.5-flash-lite:generateContent`
+											),
 											HttpClientRequest.bodyJson({
 												contents: [
 													{
@@ -257,7 +269,7 @@ export class Media extends Context.Service<
 															},
 															{
 																inlineData: {
-																	data: Base64.encode(yield* fs.readFile(path.join(work, file))),
+																	data: Base64.encode(yield* fs.readFile(path.join(work, chunk[0]))),
 																	mimeType: 'audio/flac'
 																}
 															}
@@ -266,21 +278,14 @@ export class Media extends Context.Service<
 													}
 												],
 												generationConfig: {
+													maxOutputTokens: 4096,
 													responseJsonSchema: Schema.toJsonSchemaDocument(Transcript).schema,
 													responseMimeType: 'application/json'
 												}
 											}),
 											Effect.flatMap(speech.authorize(HttpClient.filterStatusOk(http)).execute),
-											Effect.flatMap(HttpClientResponse.schemaBodyJson(TranscriptionResponse)),
-											Effect.flatMap(generated =>
-												Schema.decodeEffect(Schema.fromJsonString(Transcript))(
-													pipe(
-														generated.candidates[0].content.parts,
-														Array.filter(part => part.thought !== true),
-														Array.map(part => part.text),
-														Array.join('')
-													)
-												)
+											Effect.flatMap(upstream =>
+												Effect.option(HttpClientResponse.schemaBodyJson(TranscriptionResponse)(upstream))
 											),
 											Effect.timeout('1 minute'),
 											Effect.mapError(cause =>
@@ -288,11 +293,71 @@ export class Media extends Context.Service<
 											),
 											Effect.withSpan('Media.transcribeAudio')
 										)
-										return {duration, segments: response.segments}
+										const candidate = pipe(
+											response,
+											Option.flatMap(value => value.candidates),
+											Option.flatMap(Array.head)
+										)
+										const transcript = pipe(
+											candidate,
+											Option.filter(value => Option.contains(value.finishReason, 'STOP')),
+											Option.flatMap(value => value.content),
+											Option.map(value =>
+												pipe(
+													value.parts,
+													Array.filter(part => part.thought !== true),
+													Array.map(part => part.text),
+													Array.join('')
+												)
+											),
+											Option.flatMap(Schema.decodeOption(Schema.fromJsonString(Transcript)))
+										)
+										if (Option.isNone(transcript)) {
+											yield* Effect.logWarning('Audio chunk has no usable answer', {
+												chunk: index + 1,
+												finishReason: pipe(
+													candidate,
+													Option.flatMap(value => value.finishReason),
+													Option.getOrElse(() => 'missing or blocked')
+												)
+											})
+											return {duration, segments: []}
+										}
+										const segments = Array.filter(
+											Option.getOrThrow(transcript).segments,
+											segment =>
+												Duration.isGreaterThanOrEqualTo(segment.start, Duration.zero) &&
+												Duration.isLessThan(segment.start, duration)
+										)
+										if (segments.length !== Option.getOrThrow(transcript).segments.length) {
+											yield* Effect.logWarning('Audio chunk returned timestamps outside its duration', {
+												chunk: index + 1,
+												dropped: Option.getOrThrow(transcript).segments.length - segments.length
+											})
+										}
+										if (Array.isArrayEmpty(segments)) {
+											yield* Effect.logWarning('Audio chunk returned no speech segments', {chunk: index + 1})
+										}
+										if (
+											Array.isReadonlyArrayNonEmpty(segments) &&
+											Option.isNone(
+												speechOnly(
+													pipe(
+														segments,
+														Array.map(segment => `[${clock(segment.start)}] ${segment.text}\n`),
+														Array.join('')
+													)
+												)
+											)
+										) {
+											yield* Effect.logWarning('Audio chunk did not contain usable speech', {chunk: index + 1})
+											return {duration, segments: []}
+										}
+										return {duration, segments}
 									}),
 									{concurrency: 1}
 								),
-								// Codec frame boundaries need not be exactly 300 seconds apart.
+								// Codec frame boundaries need not be exactly 120 seconds apart; empty chunks keep their duration too.
 								Array.mapAccum(Duration.zero, (offset, chunk) => [
 									Duration.sum(offset, chunk.duration),
 									Array.map(
@@ -302,7 +367,8 @@ export class Media extends Context.Service<
 								]),
 								result => Array.flatten(result[1]),
 								Array.join('')
-							)
+							),
+							String.isNonEmpty
 						)
 					})
 				)

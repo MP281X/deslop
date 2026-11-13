@@ -34,11 +34,9 @@ it.layer(NodeServices.layer)(test => {
 				)
 			)
 			const gateway = Context.get(context, AiGateway)
-			assert.instanceOf(yield* Effect.flip(gateway.apiUrl('opencode-zen')), AiUnavailableError)
+			assert.instanceOf(yield* Effect.flip(gateway.apiUrl), AiUnavailableError)
 			assert.deepEqual(
-				yield* (yield* (yield* gateway.authorize(UserId.make('anyone')))(client).get(
-					'http://localhost/ai/opencode-zen'
-				)).json,
+				yield* (yield* (yield* gateway.authorize(UserId.make('anyone')))(client).get('http://localhost/ai')).json,
 				{authorization: ''}
 			)
 		})

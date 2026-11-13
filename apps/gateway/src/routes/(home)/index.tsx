@@ -25,14 +25,13 @@ import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} f
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {countOf} from '@deslop/runtime/shared/format'
 
-import {addAtom, aiKeysAtom, aiUsageAtom, connectAtom, mcpUsageAtom, serversAtom, setKeyAtom} from '#lib/gateway.ts'
+import {addAtom, aiKeyAtom, aiUsageAtom, connectAtom, mcpUsageAtom, serversAtom, setKeyAtom} from '#lib/gateway.ts'
 import {Search} from '#lib/search.ts'
-import {AddKeyDialog, PROVIDERS, ProviderMark} from '#routes/(home)/-keys.tsx'
-import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
+import {AddKeyDialog, ProviderMark} from '#routes/(home)/-keys.tsx'
+import {aiCost, aiSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
 import type {AiUsageReport} from '#services/ai-metering/schema.ts'
-import {PROVIDER_NAMES} from '#services/ai-proxy/schema.ts'
-import type {AiKeyItem, AiProvider} from '#services/ai-proxy/schema.ts'
+import type {AiKeyItem} from '#services/ai-proxy/schema.ts'
 import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
@@ -225,13 +224,7 @@ function ServerRows(props: {period: Period}) {
 }
 
 // One key: its provider's mark and name, the secret's last four, then its cost over the period.
-function KeyRow(props: {
-	cost: string
-	info: AiKeyItem
-	period: UsageRange
-	provider: AiProvider
-	report: AiUsageReport
-}) {
+function KeyRow(props: {cost: string; info: AiKeyItem; period: UsageRange; report: AiUsageReport}) {
 	return (
 		<div role="listitem">
 			<Item size="row">
@@ -241,7 +234,7 @@ function KeyRow(props: {
 					</span>
 				</ItemMedia>
 				<ItemContent>
-					<ItemTitle>{PROVIDER_NAMES[props.provider]}</ItemTitle>
+					<ItemTitle>OpenCode</ItemTitle>
 					<ItemDescription>{`…${props.info.last4}`}</ItemDescription>
 				</ItemContent>
 				<ItemActions>
@@ -250,10 +243,7 @@ function KeyRow(props: {
 							<StatusDot status="error" />
 						</span>
 					)}
-					<Sparkline
-						color="var(--muted-foreground)"
-						values={providerSeries(props.report, props.provider, props.period)}
-					/>
+					<Sparkline color="var(--muted-foreground)" values={aiSeries(props.report, props.period)} />
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{props.cost}</span>
 				</ItemActions>
 			</Item>
@@ -261,31 +251,12 @@ function KeyRow(props: {
 	)
 }
 
-function KeyUsage(props: {keys: readonly AiKeyItem[]; period: Period}) {
-	const keysByProvider = Array.groupBy(props.keys, key => key.provider)
+function KeyUsage(props: {info: AiKeyItem; period: Period}) {
 	return (
 		<Loaded atom={aiUsageAtom(props.period)}>
-			{current =>
-				Array.flatMap(PROVIDERS, provider =>
-					pipe(
-						Option.fromUndefinedOr(keysByProvider[provider]),
-						Option.map(Array.headNonEmpty),
-						Option.match({
-							onNone: () => [],
-							onSome: info => [
-								<KeyRow
-									key={provider}
-									provider={provider}
-									info={info}
-									report={current.report}
-									period={current.range}
-									cost={providerCost(current.report, provider)}
-								/>
-							]
-						})
-					)
-				)
-			}
+			{current => (
+				<KeyRow info={props.info} report={current.report} period={current.range} cost={aiCost(current.report)} />
+			)}
 		</Loaded>
 	)
 }
@@ -293,19 +264,19 @@ function KeyUsage(props: {keys: readonly AiKeyItem[]; period: Period}) {
 // Only providers with a key have a row; the field adds and replaces them.
 function KeyRows(props: {period: Period}) {
 	return (
-		<Loaded atom={aiKeysAtom}>
+		<Loaded atom={aiKeyAtom}>
 			{all =>
-				Array.match(all, {
-					onEmpty: () => null,
-					onNonEmpty: keys => (
+				Option.match(all, {
+					onNone: () => null,
+					onSome: info => (
 						<Suspense
 							fallback={
-								<RowsSkeleton label="AI keys" rows={keys.length}>
+								<RowsSkeleton label="OpenCode key" rows={1}>
 									<RowBones />
 								</RowsSkeleton>
 							}
 						>
-							<KeyUsage keys={keys} period={props.period} />
+							<KeyUsage info={info} period={props.period} />
 						</Suspense>
 					)
 				})
@@ -347,7 +318,7 @@ function List(props: {period: Period}) {
 }
 
 // The field adds a server URL through the existing flow, or opens the key flow with a pasted key.
-function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}) {
+function AddField(props: {onKey: (secret: string, url: string) => void}) {
 	const send = useAtomSet(addAtom.send)
 	const editing = pipe(useMachineResult(AtomMachine.select(addAtom, 'Editing')), AsyncResult.value, Option.flatten)
 	const adding = pipe(useMachineResult(AtomMachine.select(addAtom, 'Adding')), AsyncResult.value, Option.flatten)
@@ -367,8 +338,13 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 	function submit() {
 		const value = String.trim(typed)
 		if (value === '' || busy) return
-		if (String.startsWith('sk-')(value)) {
-			props.onKey(PROVIDERS[0], value)
+		if (String.startsWith('https://opencode.ai/inference/custom/')(value)) {
+			props.onKey('', value)
+			send({_tag: 'Typed', url: ''})
+			return
+		}
+		if (Option.isNone(Option.liftThrowable(() => new URL(value))())) {
+			props.onKey(value, '')
 			send({_tag: 'Typed', url: ''})
 			return
 		}
@@ -412,7 +388,7 @@ function GatewayProblem(props: {period: Period}) {
 	return (
 		<StaleProblem
 			label="Out of date"
-			readers={[serversAtom, mcpUsageAtom(props.period), aiKeysAtom, aiUsageAtom(props.period)]}
+			readers={[serversAtom, mcpUsageAtom(props.period), aiKeyAtom, aiUsageAtom(props.period)]}
 		/>
 	)
 }
@@ -422,16 +398,16 @@ function HomeRoute() {
 	const navigate = route.useNavigate()
 	const period = Option.getOrElse(search.period, () => '7d' as const)
 	// Open, which opening it is (so each starts with the pasted secret), and the provider it adds.
-	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; provider: AiProvider; secret: string}>({
+	const [keyDialog, setKeyDialog] = useState<{open: boolean; opened: number; secret: string; url: string}>({
 		open: false,
 		opened: 0,
-		provider: PROVIDERS[0],
-		secret: ''
+		secret: '',
+		url: ''
 	})
 	const resetKey = useAtomSet(setKeyAtom)
-	function addKey(provider: AiProvider, secret: string) {
+	function addKey(secret: string, url: string) {
 		resetKey(Atom.Reset)
-		setKeyDialog(previous => ({open: true, opened: previous.opened + 1, provider, secret}))
+		setKeyDialog(previous => ({open: true, opened: previous.opened + 1, secret, url}))
 	}
 
 	return (
@@ -467,9 +443,8 @@ function HomeRoute() {
 			<AddKeyDialog
 				key={keyDialog.opened}
 				open={keyDialog.open}
-				provider={keyDialog.provider}
 				secret={keyDialog.secret}
-				onProvider={provider => setKeyDialog(previous => ({...previous, provider}))}
+				url={keyDialog.url}
 				onOpenChange={open => setKeyDialog(previous => ({...previous, open}))}
 			/>
 		</div>

@@ -16,11 +16,11 @@ export const RpcHandlers = RpcContracts.toLayer(
 		const metering = yield* AiMetering
 		return RpcContracts.of({
 			'ai-metering.usage': period => Stream.unwrap(Effect.map(CurrentUser, user => metering.usage(user.id, period))),
-			'ai-proxy.list': Effect.fnUntraced(function* () {
-				return yield* ai.list((yield* CurrentUser).id)
+			'ai-proxy.key': Effect.fnUntraced(function* () {
+				return yield* ai.key((yield* CurrentUser).id)
 			}),
 			'ai-proxy.setKey': Effect.fnUntraced(function* (input) {
-				yield* ai.setKey((yield* CurrentUser).id, input.provider, input.secret)
+				yield* ai.setKey((yield* CurrentUser).id, input)
 			}),
 			'connections.add': Effect.fnUntraced(function* (input, options) {
 				const added = yield* connections.add(input.url, yield* CurrentUser, options.headers)

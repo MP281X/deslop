@@ -4,7 +4,6 @@ import {Tool, Toolkit} from 'effect/ai'
 
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {AiProvider} from '#services/ai-proxy/schema.ts'
 import {ConnectionStatus, ServerId} from '#services/connections/schema.ts'
 
 export const ToolContracts = Toolkit.make(
@@ -48,8 +47,8 @@ export const ToolContracts = Toolkit.make(
 		description:
 			'Use when the user asks to remove their provider key; removes it so their AI calls through Gateway stop using it.',
 		failure: AuthError,
-		parameters: Schema.Struct({provider: AiProvider.annotate({description: 'The provider whose key to remove.'})}),
-		success: Schema.Struct({provider: AiProvider})
+		parameters: Schema.Struct({}),
+		success: Schema.Struct({provider: Schema.Literal('opencode')})
 	})
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true)
