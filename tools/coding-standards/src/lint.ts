@@ -67,25 +67,6 @@ const REACT_LEGACY_APIS = ['Component', 'PureComponent', 'createRef', 'forwardRe
 const REACT_LEGACY_MESSAGE = 'Use React 19 function components with refs as props; React Compiler owns memoization.'
 const MAP_MESSAGE =
 	'Use HashMap, or MutableHashMap for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
-const REACT_HOOKS = [
-	'use',
-	'useActionState',
-	'useContext',
-	'useDebugValue',
-	'useDeferredValue',
-	'useEffect',
-	'useEffectEvent',
-	'useId',
-	'useImperativeHandle',
-	'useInsertionEffect',
-	'useLayoutEffect',
-	'useOptimistic',
-	'useReducer',
-	'useRef',
-	'useState',
-	'useSyncExternalStore',
-	'useTransition'
-]
 const NUMBER_CHECK_MESSAGE =
 	'Model a missing number with Option and validate one with Schema.Finite; Number.parse reads one from text.'
 const RUN_MESSAGE =
@@ -169,19 +150,26 @@ const RULES = {
 	'swiftui-theme-values': swiftuiThemeValues
 }
 
-const RESTRICTED_IMPORTS = {
+// The type keeps the export declarable under isolated declarations, which can't infer the spread entries.
+export const restrictedImports: {
+	paths: {importNames?: string[]; message: string; name: string}[]
+	patterns: {group: string[]; message: string}[]
+} = {
 	paths: [
-		{importNames: REACT_LEGACY_APIS, message: REACT_LEGACY_MESSAGE, name: 'react'},
-		{message: 'Read and write data through Effect Atom.', name: '@tanstack/react-query'},
-		...Array.flatMap(['vitest', 'vite-plus/test', '@effect/vitest'], name => [
-			{importNames: ['vi'], message: 'A Layer is the seam; never use vi.', name},
-			{importNames: ['expect'], message: 'Use assert from @effect/vitest.', name}
-		]),
+		{importNames: ['default', ...REACT_LEGACY_APIS], message: REACT_LEGACY_MESSAGE, name: 'react'},
+		{
+			importNames: ['vi', 'vitest', 'expect'],
+			message: 'Use assert from @effect/vitest and a Layer as the seam, not vi or vitest.',
+			name: '@effect/vitest'
+		},
+		...Array.map(['vitest', 'vite-plus/test'], name => ({
+			message: 'Import tests and assert from @effect/vitest; vi is only for a documented native-module seam.',
+			name
+		})),
 		{importNames: RUNNERS, message: RUN_MESSAGE, name: 'effect/Effect'}
 	],
 	patterns: [
-		{message: 'Prove a screen in the browser; no UI tests.', regex: '^(?:@testing-library/|jsdom$|happy-dom$)'},
-		{message: 'Use public package exports.', regex: '^@[^/]+/[^/]+/(?:src|lib)(?:/|$)'},
+		{group: ['@*/*/src', '@*/*/src/**', '@*/*/lib', '@*/*/lib/**'], message: 'Use public package exports.'},
 		// A service folder's public face is its schema, service and lib/utils; its own files reach the rest with `./`.
 		{
 			group: [
@@ -193,24 +181,7 @@ const RESTRICTED_IMPORTS = {
 				'!#services/*/lib/utils.ts'
 			],
 			message: 'Import a service only through its schema.ts, service.ts or lib/utils.ts; inside it, use ./.'
-		},
-		{
-			message: 'Use glob from the FileSystem service.',
-			regex: '^(?:glob|fast-glob|globby|minimatch|picomatch|micromatch)(?:/|$)'
-		},
-		{message: 'Use Schema.', regex: '^(?:zod|valibot|yup|io-ts)(?:/|$)'},
-		{message: 'Use Csv from effect/encoding.', regex: '^(?:papaparse|csv-parse|csv-stringify)(?:/|$)'},
-		{message: 'Use Yaml from effect/encoding.', regex: '^(?:yaml|js-yaml)(?:/|$)'},
-		{message: 'Use Toml from effect/encoding.', regex: '^(?:smol-toml|@iarna/toml|toml)(?:/|$)'},
-		{message: 'Use Ini from effect/encoding.', regex: '^ini(?:/|$)'},
-		{message: 'Use Xml from effect/encoding.', regex: '^(?:fast-xml-parser|xml2js|sax)(?:/|$)'},
-		{message: 'Use Zip or Tar from effect/encoding.', regex: '^(?:jszip|fflate|adm-zip|tar|tar-stream)(?:/|$)'},
-		{message: 'Use effect/cli.', regex: '^(?:commander|yargs)(?:/|$)'},
-		{message: 'Use uuidV4 from the SecureRandom service in effect/crypto.', regex: '^uuid(?:/|$)'},
-		{message: 'Use HttpClient.', regex: '^(?:axios|node-fetch)(?:/|$)'},
-		{message: 'Use Config.', regex: '^dotenv(?:/|$)'},
-		{message: 'Use ChildProcess from effect/process.', regex: '^execa(?:/|$)'},
-		{message: 'Use the concurrency option of Effect.all or Effect.forEach.', regex: '^p-limit(?:/|$)'}
+		}
 	]
 }
 
@@ -260,7 +231,7 @@ export const lint: OxlintConfig = {
 			}
 		}
 	],
-	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'react', 'unicorn', 'vitest'],
+	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'node', 'react', 'unicorn', 'vitest'],
 	rules: {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
 		...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'off' as const]),
@@ -269,7 +240,12 @@ export const lint: OxlintConfig = {
 			'error',
 			{message: 'Use const and Effect collection combinators.', selector: 'VariableDeclaration[kind="let"]'},
 			{message: 'Use Match.', selector: 'SwitchStatement'},
-			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'}
+			{message: 'Decode with Schema or use Predicate.hasProperty.', selector: 'BinaryExpression[operator="in"]'},
+			{
+				message: 'Name tools in snake_case.',
+				selector:
+					'CallExpression[callee.object.name="Tool"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/])'
+			}
 		],
 
 		'effecttsgo/any-unknown-in-error-context': 'error',
@@ -291,7 +267,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/promise-in-effect-success': 'error',
 		'effecttsgo/schema-class-object-literal': 'error',
 		'effecttsgo/schema-literal-non-finite': 'error',
-		'effecttsgo/unsafe-effect-type-assertion': 'error',
 
 		'effecttsgo/catch-unfailable-effect': 'error',
 		'effecttsgo/effect-fn-iife': 'error',
@@ -312,8 +287,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/try-catch-in-effect-gen': 'error',
 
 		'effecttsgo/async-function': 'error',
-		'effecttsgo/global-console': 'error',
-		'effecttsgo/global-console-in-effect': 'error',
 		'effecttsgo/global-date': 'error',
 		'effecttsgo/global-date-in-effect': 'error',
 		'effecttsgo/global-fetch': 'error',
@@ -368,6 +341,7 @@ export const lint: OxlintConfig = {
 		'effecttsgo/multiple-catch-tag': 'error',
 		'effecttsgo/nested-effect-gen-yield': 'error',
 		'effecttsgo/new-schema-class': 'error',
+		'effecttsgo/on-exit-failure-to-on-error': 'error',
 		'effecttsgo/option-match-to-from-option': 'error',
 		'effecttsgo/prefer-schema-type-property': 'error',
 		'effecttsgo/prefer-succeed-some-or-none': 'error',
@@ -393,9 +367,11 @@ export const lint: OxlintConfig = {
 		'effecttsgo/unnecessary-pipe-chain': 'error',
 		'effecttsgo/unnecessary-typeof-type': 'error',
 
+		'eslint/accessor-pairs': ['error', {enforceForClassMembers: true, enforceForTSTypes: true}],
 		'eslint/arrow-body-style': ['error', 'as-needed'],
 		'eslint/constructor-super': 'error',
 		'eslint/curly': ['error', 'multi-line', 'consistent'],
+		'eslint/default-param-last': 'error',
 		'eslint/eqeqeq': 'error',
 		'eslint/for-direction': 'error',
 		'eslint/func-names': ['error', 'as-needed', {generators: 'never'}],
@@ -404,19 +380,23 @@ export const lint: OxlintConfig = {
 			'declaration',
 			{allowArrowFunctions: false, allowTypeAnnotation: false, overrides: {namedExports: 'declaration'}}
 		],
+		'eslint/grouped-accessor-pairs': 'error',
+		'eslint/logical-assignment-operators': 'error',
 		'eslint/no-alert': 'error',
+		'eslint/no-await-in-loop': 'error',
 		'eslint/no-caller': 'error',
 		'eslint/no-compare-neg-zero': 'error',
-		'eslint/no-cond-assign': 'error',
-		'eslint/no-constant-binary-expression': 'error',
-		'eslint/no-constant-condition': 'error',
+		'eslint/no-cond-assign': ['error', 'always'],
+		'eslint/no-constant-binary-expression': ['error', {checkRelationalComparisons: true}],
+		'eslint/no-constant-condition': ['error', {checkLoops: 'all'}],
 		'eslint/no-constructor-return': 'error',
 		'eslint/no-continue': 'error',
 		'eslint/no-control-regex': 'error',
 		'eslint/no-debugger': 'error',
 		'eslint/no-delete-var': 'error',
+		'eslint/no-div-regex': 'error',
 		'eslint/no-dupe-else-if': 'error',
-		'eslint/no-else-return': 'error',
+		'eslint/no-else-return': ['error', {allowElseIf: false}],
 		'eslint/no-empty': 'error',
 		'eslint/no-empty-character-class': 'error',
 		'eslint/no-empty-function': ['error', {allow: ['arrowFunctions']}],
@@ -434,45 +414,73 @@ export const lint: OxlintConfig = {
 		'eslint/no-irregular-whitespace': 'error',
 		'eslint/no-iterator': 'error',
 		'eslint/no-labels': 'error',
+		'eslint/no-lone-blocks': 'error',
 		'eslint/no-lonely-if': 'error',
 		'eslint/no-loss-of-precision': 'error',
 		'eslint/no-misleading-character-class': 'error',
 		'eslint/no-multi-assign': 'error',
+		'eslint/no-multi-str': 'error',
 		'eslint/no-negated-condition': 'error',
 		'eslint/no-new': 'error',
 		'eslint/no-new-func': 'error',
 		'eslint/no-nonoctal-decimal-escape': 'error',
+		'eslint/no-object-constructor': 'error',
 		'eslint/no-param-reassign': ['error', {props: true}],
 		'eslint/no-plusplus': 'error',
 		'eslint/no-proto': 'error',
+		'eslint/no-regex-spaces': 'error',
 		'eslint/no-restricted-exports': ['error', {restrictedNamedExportsPattern: 'Live$'}],
 		'eslint/no-restricted-globals': [
 			'error',
-			{message: 'Interrupt through Effect: a fiber, Effect.timeout, or a Scope.', name: 'AbortController'},
-			{message: "Import Array from 'effect'.", name: 'Array'},
-			{message: 'Use Base64 or Base64Url from effect/encoding.', name: 'atob'},
-			{message: "Import Boolean from 'effect'.", name: 'Boolean'},
-			{message: 'Use Base64 or Base64Url from effect/encoding.', name: 'btoa'},
-			{message: 'Use the effect/crypto services: SecureRandom, Digest, Signature.', name: 'crypto'},
-			{message: 'Define a Schema.TaggedError and fail with it.', name: 'Error'},
-			{message: NUMBER_CHECK_MESSAGE, name: 'isFinite'},
-			{message: NUMBER_CHECK_MESSAGE, name: 'isNaN'},
-			{message: MAP_MESSAGE, name: 'Map'},
-			{message: NUMBER_CHECK_MESSAGE, name: 'NaN'},
-			{message: "Import Number from 'effect'.", name: 'Number'},
-			{message: 'Use Number.parse.', name: 'parseFloat'},
-			{message: 'Use Number.parse.', name: 'parseInt'},
-			{message: 'Use Effect: Effect.tryPromise at the boundary, Effect.all to combine.', name: 'Promise'},
-			{message: "Use Predicate or Record from 'effect'.", name: 'Reflect'},
-			{message: SET_MESSAGE, name: 'Set'},
-			{message: "Import String from 'effect'.", name: 'String'},
-			{message: 'Read configuration with Config and services from the context.', name: 'global'},
-			{message: 'Read configuration with Config and services from the context.', name: 'globalThis'}
+			{
+				checkGlobalObject: true,
+				globalObjects: ['window'],
+				globals: [
+					{message: 'Use import.meta.dirname.', name: '__dirname'},
+					{message: 'Use import.meta.filename.', name: '__filename'},
+					{message: 'Use Effect logging or Console from effect.', name: 'console'},
+					{message: 'Interrupt an Effect fiber or close its Scope.', name: 'clearTimeout'},
+					{message: 'Interrupt an Effect fiber or close its Scope.', name: 'clearInterval'},
+					{message: 'Schedule work with Effect and Scope.', name: 'setImmediate'},
+					{message: 'Interrupt an Effect fiber or close its Scope.', name: 'clearImmediate'},
+					{message: 'Schedule work with Effect and Scope.', name: 'queueMicrotask'},
+					{message: 'Interrupt through Effect: a fiber, Effect.timeout, or a Scope.', name: 'AbortController'},
+					{message: "Import Array from 'effect'.", name: 'Array'},
+					{message: 'Use Base64 or Base64Url from effect/encoding.', name: 'atob'},
+					{message: "Import Boolean from 'effect'.", name: 'Boolean'},
+					{message: 'Use Base64 or Base64Url from effect/encoding.', name: 'btoa'},
+					{message: 'Use the effect/crypto services: SecureRandom, Digest, Signature.', name: 'crypto'},
+					{message: 'Define a Schema.TaggedError and fail with it.', name: 'Error'},
+					{message: NUMBER_CHECK_MESSAGE, name: 'isFinite'},
+					{message: NUMBER_CHECK_MESSAGE, name: 'isNaN'},
+					{message: MAP_MESSAGE, name: 'Map'},
+					{message: NUMBER_CHECK_MESSAGE, name: 'NaN'},
+					{message: "Import Number from 'effect'.", name: 'Number'},
+					{message: 'Use Number.parse.', name: 'parseFloat'},
+					{message: 'Use Number.parse.', name: 'parseInt'},
+					{message: 'Use Effect: Effect.tryPromise at the boundary, Effect.all to combine.', name: 'Promise'},
+					{message: "Use Predicate or Record from 'effect'.", name: 'Reflect'},
+					{message: SET_MESSAGE, name: 'Set'},
+					{message: "Import String from 'effect'.", name: 'String'},
+					{message: 'Read configuration with Config and services from the context.', name: 'global'},
+					{message: 'Read configuration with Config and services from the context.', name: 'globalThis'}
+				]
+			}
 		],
-		'eslint/no-restricted-imports': ['error', RESTRICTED_IMPORTS],
+		'eslint/no-restricted-imports': ['error', restrictedImports],
 		'eslint/no-restricted-properties': [
 			'error',
 			{message: 'Use standalone pipe.', property: 'pipe'},
+			{
+				message: 'Name the log level: Effect.logInfo, logWarning, logError or logDebug.',
+				object: 'Effect',
+				property: 'log'
+			},
+			...Array.map(['useSearch', 'useParams', 'useNavigate', 'useLoaderData', 'useRouteContext'], property => ({
+				message: 'Use getRouteApi(path) and its typed route hooks.',
+				object: 'Route',
+				property
+			})),
 			// The Effect compiler's preferEffectRecord diagnostic owns keys, values, entries, fromEntries, hasOwn and hasOwnProperty.
 			{
 				allowProperties: ['entries', 'fromEntries', 'hasOwn', 'keys', 'values'],
@@ -486,11 +494,6 @@ export const lint: OxlintConfig = {
 			{message: 'Use Number.min.', object: 'Math', property: 'min'},
 			{message: 'Use Number.round.', object: 'Math', property: 'round'},
 			...Array.map(REACT_LEGACY_APIS, property => ({message: REACT_LEGACY_MESSAGE, object: 'React', property})),
-			...Array.map(REACT_HOOKS, property => ({
-				message: `Import ${property} by name from react.`,
-				object: 'React',
-				property
-			})),
 			{message: 'Use Schema.Struct.', object: 'Schema', property: 'Class'},
 			{message: 'Use a branded schema.', object: 'Schema', property: 'Opaque'},
 			{message: 'Use Schema.Struct.', object: 'Schema', property: 'TaggedClass'},
@@ -501,14 +504,11 @@ export const lint: OxlintConfig = {
 			...Array.map(
 				[
 					'addEventListener',
-					'atob',
-					'btoa',
 					'cancelAnimationFrame',
 					'cancelIdleCallback',
 					'dispatchEvent',
 					'localStorage',
 					'navigator',
-					'queueMicrotask',
 					'removeEventListener',
 					'requestAnimationFrame',
 					'requestIdleCallback',
@@ -517,43 +517,47 @@ export const lint: OxlintConfig = {
 				],
 				property => ({message: `Use the bare ${property} global.`, object: 'window', property})
 			),
-			...Array.map(['clearInterval', 'clearTimeout', 'setInterval', 'setTimeout'], property => ({
+			...Array.map(['setInterval', 'setTimeout'], property => ({
 				message: 'Use Effect.sleep or Schedule.',
 				object: 'window',
 				property
 			})),
-			{
-				message: 'Interrupt through Effect: a fiber, Effect.timeout, or a Scope.',
-				object: 'window',
-				property: 'AbortController'
-			},
-			{message: 'Use the effect/crypto services.', object: 'window', property: 'crypto'},
 			{message: 'Use HttpClient.', object: 'window', property: 'fetch'},
 			{message: 'Use Clock.', object: 'window', property: 'performance'}
 		],
 		'eslint/no-return-assign': 'error',
 		'eslint/no-self-assign': 'error',
 		'eslint/no-self-compare': 'error',
-		'eslint/no-sequences': 'error',
+		'eslint/no-sequences': ['error', {allowInParentheses: false}],
 		'eslint/no-shadow': [
 			'error',
 			{allow: ['Array', 'Boolean', 'Console', 'Effect', 'HashMap', 'Number', 'Option', 'Schema', 'String']}
 		],
-		'eslint/no-shadow-restricted-names': 'error',
+		'eslint/no-shadow-restricted-names': ['error', {reportGlobalThis: true}],
 		'eslint/no-sparse-arrays': 'error',
 		'eslint/no-ternary': 'error',
 		'eslint/no-throw-literal': 'error',
 		'eslint/no-unexpected-multiline': 'error',
-		'eslint/no-unmodified-loop-condition': 'error',
+		'eslint/no-unmodified-loop-condition': ['error', {checkConditionalExpressions: true}],
 		'eslint/no-unreachable-loop': 'error',
 		'eslint/no-unsafe-finally': 'error',
+		'eslint/no-unsafe-negation': ['error', {enforceForOrderingRelations: true}],
 		'eslint/no-unsafe-optional-chaining': ['error', {disallowArithmeticOperators: true}],
-		'eslint/no-unused-expressions': 'error',
+		'eslint/no-unused-expressions': [
+			'error',
+			{
+				allowShortCircuit: false,
+				allowTaggedTemplates: false,
+				allowTernary: false,
+				enforceForJSX: true,
+				ignoreDirectives: false
+			}
+		],
 		'eslint/no-use-before-define': ['error', {classes: true, functions: true, typedefs: false, variables: true}],
 		'eslint/no-useless-backreference': 'error',
 		'eslint/no-useless-call': 'error',
 		'eslint/no-useless-catch': 'error',
-		'eslint/no-useless-computed-key': 'error',
+		'eslint/no-useless-computed-key': ['error', {enforceForClassMembers: true}],
 		'eslint/no-useless-concat': 'error',
 		'eslint/no-useless-constructor': 'error',
 		'eslint/no-useless-escape': 'error',
@@ -561,26 +565,36 @@ export const lint: OxlintConfig = {
 		'eslint/no-useless-return': 'error',
 		'eslint/no-var': 'error',
 		'eslint/no-void': 'error',
-		'eslint/no-warning-comments': 'error',
+		'eslint/no-warning-comments': ['error', {location: 'anywhere'}],
 		'eslint/no-with': 'error',
 		'eslint/object-shorthand': 'error',
 		'eslint/prefer-arrow-callback': 'error',
+		'eslint/prefer-exponentiation-operator': 'error',
+		'eslint/prefer-regex-literals': ['error', {disallowRedundantWrapping: true}],
+		'eslint/prefer-rest-params': 'error',
+		'eslint/prefer-spread': 'error',
 		'eslint/prefer-template': 'error',
-		'eslint/preserve-caught-error': 'error',
+		'eslint/preserve-caught-error': ['error', {requireCatchParameter: true}],
 		'eslint/require-unicode-regexp': 'error',
 		'eslint/require-yield': 'error',
 		'eslint/sort-keys': ['error', 'asc', {allowLineSeparatedGroups: true, natural: true}],
+		'eslint/symbol-description': 'error',
+		'eslint/unicode-bom': 'error',
 		'eslint/valid-typeof': 'error',
 		'eslint/yoda': 'error',
 
+		'import/extensions': ['error', 'always', {ignorePackages: true}],
 		'import/first': 'error',
 		'import/newline-after-import': 'error',
 		'import/no-absolute-path': 'error',
+		'import/no-amd': 'error',
 		'import/no-commonjs': ['error', {allowConditionalRequire: false}],
 		'import/no-default-export': 'error',
 		'import/no-duplicates': 'error',
+		'import/no-empty-named-blocks': 'error',
 		'import/no-named-as-default': 'error',
 		'import/no-named-as-default-member': 'error',
+		'import/no-named-default': 'error',
 		'import/no-namespace': ['error', {ignore: ['[!#./]*', '[!#./]*/**']}],
 		'import/no-relative-parent-imports': 'error',
 		'import/no-self-import': 'error',
@@ -624,8 +638,12 @@ export const lint: OxlintConfig = {
 
 		...recommended,
 
+		'node/no-path-concat': 'error',
+		'node/no-top-level-await': ['error', {ignoreBin: false}],
+
 		'oxc/approx-constant': 'error',
 		'oxc/bad-array-method-on-arguments': 'error',
+		'oxc/bad-bitwise-operator': 'error',
 		'oxc/bad-char-at-comparison': 'error',
 		'oxc/bad-comparison-sequence': 'error',
 		'oxc/bad-match-all-arg': 'error',
@@ -645,7 +663,6 @@ export const lint: OxlintConfig = {
 		'react/checked-requires-onchange-or-readonly': 'error',
 		'react/error-boundaries': 'error',
 		'react/exhaustive-deps': 'error',
-		'react/exhaustive-effect-dependencies': 'error',
 		'react/globals': 'error',
 		'react/hook-use-state': 'error',
 		'react/hooks': 'error',
@@ -656,11 +673,18 @@ export const lint: OxlintConfig = {
 		'react/jsx-boolean-value': ['error', 'never'],
 		'react/jsx-curly-brace-presence': ['error', {children: 'never', propElementValues: 'always', props: 'never'}],
 		'react/jsx-fragments': ['error', 'syntax'],
-		'react/jsx-key': 'error',
+		'react/jsx-key': ['error', {checkFragmentShorthand: true, checkKeyMustBeforeSpread: true}],
 		'react/jsx-no-comment-textnodes': 'error',
 		'react/jsx-no-script-url': 'error',
-		'react/jsx-no-target-blank': 'error',
+		'react/jsx-no-target-blank': [
+			'error',
+			{allowReferrer: false, enforceDynamicLinks: 'always', forms: true, links: true, warnOnSpreadAttributes: true}
+		],
 		'react/jsx-no-useless-fragment': 'error',
+		'react/jsx-pascal-case': [
+			'error',
+			{allowAllCaps: false, allowLeadingUnderscore: false, allowNamespace: false, ignore: []}
+		],
 		'react/jsx-props-no-spread-multi': 'error',
 		'react/no-array-index-key': 'error',
 		'react/no-children-prop': 'error',
@@ -670,7 +694,9 @@ export const lint: OxlintConfig = {
 		'react/no-namespace': 'error',
 		'react/no-object-type-as-default-prop': 'error',
 		'react/no-react-children': 'error',
-		'react/no-unknown-property': 'error',
+		'react/no-this-in-sfc': 'error',
+		'react/no-unescaped-entities': 'error',
+		'react/no-unknown-property': ['error', {ignore: [], requireDataLowercase: true}],
 		'react/purity': 'error',
 		'react/refs': 'error',
 		'react/rule-suppression': 'error',
@@ -758,7 +784,12 @@ export const lint: OxlintConfig = {
 		'shadcn/no-unknown-classes': 'error',
 		'shadcn/require-static-classes': 'error',
 
-		'typescript/ban-ts-comment': ['error', {'ts-nocheck': true}],
+		'typescript/adjacent-overload-signatures': 'error',
+		'typescript/ban-ts-comment': [
+			'error',
+			{'ts-check': true, 'ts-expect-error': true, 'ts-ignore': true, 'ts-nocheck': true}
+		],
+		'typescript/class-literal-property-style': 'error',
 		'typescript/consistent-generic-constructors': 'error',
 		'typescript/consistent-indexed-object-style': 'error',
 		'typescript/consistent-type-assertions': [
@@ -775,7 +806,7 @@ export const lint: OxlintConfig = {
 		'typescript/no-import-type-side-effects': 'error',
 		'typescript/no-inferrable-types': ['error', {ignoreParameters: true}],
 		'typescript/no-misused-new': 'error',
-		'typescript/no-namespace': ['error', {allowDeclarations: true}],
+		'typescript/no-namespace': ['error', {allowDeclarations: false, allowDefinitionFiles: false}],
 		'typescript/no-non-null-assertion': 'error',
 		'typescript/no-restricted-types': [
 			'error',
@@ -796,14 +827,13 @@ export const lint: OxlintConfig = {
 				}
 			}
 		],
-		'typescript/no-this-alias': 'error',
+		'typescript/no-this-alias': ['error', {allowDestructuring: false, allowedNames: []}],
 		'typescript/no-unnecessary-type-constraint': 'error',
 		'typescript/no-unsafe-declaration-merging': 'error',
 		'typescript/no-unsafe-function-type': 'error',
 		'typescript/no-wrapper-object-types': 'error',
-		'typescript/prefer-as-const': 'error',
 		'typescript/prefer-function-type': 'error',
-		'typescript/triple-slash-reference': 'error',
+		'typescript/triple-slash-reference': ['error', {lib: 'never', path: 'never', types: 'never'}],
 		'typescript/unified-signatures': 'error',
 
 		'typescript/await-thenable': 'error',
@@ -826,18 +856,20 @@ export const lint: OxlintConfig = {
 		'typescript/no-unnecessary-qualifier': 'error',
 		'typescript/no-unnecessary-template-expression': 'error',
 		'typescript/no-unnecessary-type-arguments': 'error',
-		'typescript/no-unnecessary-type-assertion': 'error',
 		'typescript/no-unnecessary-type-conversion': 'error',
 		'typescript/no-unnecessary-type-parameters': 'error',
 		'typescript/no-unsafe-argument': 'error',
 		'typescript/no-unsafe-assignment': 'error',
 		'typescript/no-unsafe-call': 'error',
+		'typescript/no-unsafe-enum-comparison': 'error',
 		'typescript/no-unsafe-member-access': 'error',
 		'typescript/no-unsafe-return': 'error',
 		'typescript/no-unsafe-unary-minus': 'error',
 		'typescript/no-useless-default-assignment': 'error',
 		'typescript/prefer-nullish-coalescing': ['error', {ignoreTernaryTests: true}],
 		'typescript/prefer-optional-chain': 'error',
+		'typescript/prefer-readonly': ['error', {}],
+		'typescript/related-getter-setter-pairs': 'error',
 		'typescript/restrict-plus-operands': 'error',
 		'typescript/restrict-template-expressions': 'error',
 		'typescript/strict-boolean-expressions': [
@@ -848,38 +880,72 @@ export const lint: OxlintConfig = {
 		'typescript/strict-void-return': 'error',
 		'typescript/unbound-method': 'error',
 
+		'unicorn/consistent-empty-array-spread': 'error',
 		'unicorn/consistent-function-scoping': 'error',
-		'unicorn/filename-case': 'error',
+		'unicorn/consistent-template-literal-escape': 'error',
+		'unicorn/filename-case': ['error', {case: 'kebabCase', ignore: [], multipleFileExtensions: false}],
 		'unicorn/no-abusive-eslint-disable': 'error',
 		'unicorn/no-accessor-recursion': 'error',
+		'unicorn/no-await-expression-member': 'error',
+		'unicorn/no-document-cookie': 'error',
 		'unicorn/no-empty-file': 'error',
 		'unicorn/no-immediate-mutation': 'error',
 		'unicorn/no-instanceof-builtins': 'error',
 		'unicorn/no-invalid-fetch-options': 'error',
 		'unicorn/no-invalid-remove-event-listener': 'error',
+		'unicorn/no-negation-in-equality-check': 'error',
 		'unicorn/no-null': 'error',
 		'unicorn/no-object-as-default-parameter': 'error',
 		'unicorn/no-process-exit': 'error',
 		'unicorn/no-thenable': 'error',
 		'unicorn/no-unnecessary-await': 'error',
+		'unicorn/no-unreadable-array-destructuring': 'error',
+		'unicorn/no-unreadable-iife': 'error',
 		'unicorn/no-useless-fallback-in-spread': 'error',
 		'unicorn/no-useless-spread': 'error',
 		'unicorn/numeric-separators-style': 'error',
 		'unicorn/prefer-add-event-listener': 'error',
 		'unicorn/prefer-bigint-literals': 'error',
+		'unicorn/prefer-blob-reading-methods': 'error',
+		'unicorn/prefer-class-fields': 'error',
+		'unicorn/prefer-classlist-toggle': 'error',
+		'unicorn/prefer-dom-node-remove': 'error',
+		'unicorn/prefer-import-meta-properties': 'error',
+		'unicorn/prefer-modern-dom-apis': 'error',
+		'unicorn/prefer-node-protocol': 'error',
 		'unicorn/prefer-optional-catch-binding': 'error',
 		// The compiler's preferEffectString moves native string methods to Effect's String, whose replace with a global pattern this still turns into replaceAll.
 		'unicorn/prefer-string-replace-all': 'error',
+		'unicorn/require-module-attributes': 'error',
 		'unicorn/require-module-specifiers': 'error',
+		'unicorn/require-number-to-fixed-digits-argument': 'error',
 		'unicorn/require-post-message-target-origin': 'error',
+		'unicorn/text-encoding-identifier-case': ['error', {}],
 
+		'vitest/consistent-each-for': ['error', {}],
+		'vitest/consistent-test-filename': ['error', {}],
 		'vitest/expect-expect': 'error',
+		'vitest/hoisted-apis-on-top': 'error',
+		'vitest/max-nested-describe': ['error', {}],
 		'vitest/no-commented-out-tests': 'error',
 		'vitest/no-conditional-tests': 'error',
 		'vitest/no-disabled-tests': 'error',
+		'vitest/no-duplicate-hooks': 'error',
 		'vitest/no-focused-tests': 'error',
 		'vitest/no-identical-title': 'error',
+		'vitest/no-import-node-test': 'error',
+		'vitest/no-mocks-import': 'error',
+		'vitest/no-test-return-statement': 'error',
+		'vitest/padding-around-after-all-blocks': 'error',
+		'vitest/padding-around-test-blocks': 'error',
 		'vitest/prefer-each': 'error',
+		'vitest/prefer-hooks-in-order': 'error',
+		'vitest/prefer-hooks-on-top': 'error',
+		'vitest/prefer-lowercase-title': ['error', {allowedPrefixes: [], ignore: [], ignoreTopLevelDescribe: false}],
+		'vitest/prefer-mock-promise-shorthand': 'error',
+		'vitest/prefer-mock-return-shorthand': 'error',
+		'vitest/prefer-spy-on': 'error',
+		'vitest/require-mock-type-parameters': ['error', {checkImportFunctions: true}],
 		'vitest/valid-describe-callback': 'error',
 		'vitest/valid-title': 'error',
 		'vitest/warn-todo': 'error',
@@ -895,21 +961,7 @@ export const lint: OxlintConfig = {
 
 // Deslop's own turns these on; every other codebase using `lint` keeps them off.
 export const deslopRules: OxlintConfig['rules'] = {
-	...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
-	'eslint/no-restricted-imports': [
-		'error',
-		{
-			...RESTRICTED_IMPORTS,
-			patterns: [
-				...RESTRICTED_IMPORTS.patterns,
-				{
-					message: 'Store app data in Effect KeyValueStore; no SQL database or migrations.',
-					regex:
-						'^(?:better-sqlite3|sqlite3?|node:sqlite|@effect/sql(?:-[a-z-]+)?|drizzle-orm|kysely|prisma|@prisma/client)(?:/|$)'
-				}
-			]
-		}
-	]
+	...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const])
 }
 
 const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: {...DESLOP_RULES, ...RULES}})

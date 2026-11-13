@@ -448,7 +448,7 @@ export const judge = Effect.fnUntraced(function* (urls: Urls, ignore: readonly s
 	yield* Effect.forEach([...verdict.findings, ...misjudged], line => Console.log(line), {concurrency: 1, discard: true})
 	if (Array.isReadonlyArrayNonEmpty(verdict.findings)) yield* Console.log(TACTICS)
 	const distinct = Array.dedupeWith(judged, (first, second) => first.key === second.key)
-	yield* Effect.log(
+	yield* Effect.logInfo(
 		`judge: ${distinct.length} units; ${asked} questions asked, ${remembered} answered from memory, ${Number.sumAll(Array.map(distinct, entry => entry.skipped.length))} skipped by gates; ${totals.calls} calls, $${Number.round(totals.cost, 4)}, ${Number.round(((yield* Clock.currentTimeMillis) - started) / 1000, 1)}s; ${verdict.findings.length + misjudged.length} findings, ${unjudged} unjudged`
 	)
 	if (Array.isReadonlyArrayNonEmpty(verdict.findings) || Array.isReadonlyArrayNonEmpty(misjudged) || unjudged > 0) {
