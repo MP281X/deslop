@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, Record, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, Record, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
@@ -38,12 +38,7 @@ function ErrorText(props: {message: string}) {
 			return (
 				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
 					<span className="font-medium">
-						{code}{' '}
-						{pipe(
-							STATUS,
-							Record.get(code),
-							Option.getOrElse(() => '')
-						)}
+						{code} {pipe(STATUS, Record.get(code), Option.getOrElse(Function.constant('')))}
 					</span>
 					<span>{method}</span>
 					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>
@@ -71,7 +66,10 @@ function SpanHeader(props: {span: TraceTree['spans'][number]}) {
 			<span
 				className={cn(
 					'min-w-0 truncate',
-					Boolean.match(props.span.status === 'failed', {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+					Boolean.match(props.span.status === 'failed', {
+						onFalse: Function.constUndefined,
+						onTrue: Function.constant('text-destructive')
+					})
 				)}
 			>
 				{props.span.name}
@@ -96,12 +94,12 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 		>
 			<SpanHeader span={props.span} />
 			{Option.match(error, {
-				onNone: () => null,
+				onNone: Function.constNull,
 				onSome: message => (
 					<div role="listitem" className="col-span-2 grid h-8 grid-cols-subgrid items-center gap-2.5 max-sm:h-11">
 						<span className="text-muted-foreground flex items-center gap-1.5 truncate">
 							{Boolean.match(props.span.status === 'denied', {
-								onFalse: () => 'error',
+								onFalse: Function.constant('error'),
 								onTrue: () => (
 									<>
 										<LockIcon aria-hidden className="size-3 shrink-0" />
@@ -114,8 +112,8 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 							className={cn(
 								'block min-w-0 truncate',
 								Boolean.match(props.span.status === 'failed', {
-									onFalse: () => undefined,
-									onTrue: () => 'text-destructive'
+									onFalse: Function.constUndefined,
+									onTrue: Function.constant('text-destructive')
 								})
 							)}
 							title={message}
@@ -156,7 +154,10 @@ export function SpanDetail(props: {span: TraceTree['spans'][number]}) {
 					<span
 						className={cn(
 							'text-muted-foreground block min-w-0 truncate',
-							Boolean.match(log.severity >= 17, {onFalse: () => undefined, onTrue: () => 'text-destructive'})
+							Boolean.match(log.severity >= 17, {
+								onFalse: Function.constUndefined,
+								onTrue: Function.constant('text-destructive')
+							})
 						)}
 						title={log.message}
 					>

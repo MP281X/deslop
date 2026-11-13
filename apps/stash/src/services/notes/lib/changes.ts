@@ -1,4 +1,4 @@
-import {Array, Boolean, HashSet, Match, Option, Result, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Function, HashSet, Match, Option, Result, String, Struct, pipe} from 'effect'
 
 import type {UserId} from '@deslop/runtime/shared/auth'
 
@@ -151,7 +151,8 @@ export function newNote(requester: UserId, input: Capture, url: Option.Option<st
 					Option.getOrElse(() => input.text),
 					String.slice(0, 200)
 				),
-			onSome: type => Boolean.match(type === 'image/jpeg', {onFalse: () => 'video', onTrue: () => 'image'})
+			onSome: type =>
+				Boolean.match(type === 'image/jpeg', {onFalse: Function.constant('video'), onTrue: Function.constant('image')})
 		}),
 		topics: Option.none(),
 		transcript: Option.none(),

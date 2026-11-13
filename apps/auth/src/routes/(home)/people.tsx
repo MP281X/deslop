@@ -1,6 +1,6 @@
 import {useAtom, useAtomSuspense} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Function, Option} from 'effect'
 
 import {ShieldIcon, UsersIcon} from '@phosphor-icons/react'
 import {Navigate, createFileRoute} from '@tanstack/react-router'
@@ -75,7 +75,7 @@ function Since(props: {since: Person['since']}) {
 	return (
 		<ItemActions>
 			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{Option.match(props.since, {onNone: () => null, onSome: monthOf})}
+				{Option.match(props.since, {onNone: Function.constNull, onSome: monthOf})}
 			</span>
 		</ItemActions>
 	)

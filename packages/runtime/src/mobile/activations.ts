@@ -1,4 +1,4 @@
-import {DateTime, Duration, Option} from 'effect'
+import {DateTime, Duration, Function, Option} from 'effect'
 
 import {Atom} from 'effect/reactivity'
 import {AppState} from 'react-native'
@@ -16,7 +16,7 @@ export const activationsAtom = Atom.make(get => {
 		if (state !== 'active' || Option.isNone(left.at)) return
 		Option.map(left.at, at => get.set(awayAtom, DateTime.distance(at, DateTime.nowUnsafe())))
 		left.at = Option.none()
-		get.setSelf(Option.getOrElse(get.self<number>(), () => 0) + 1)
+		get.setSelf(Option.getOrElse(get.self<number>(), Function.constant(0)) + 1)
 	})
 	get.addFinalizer(() => subscription.remove())
 	return 0

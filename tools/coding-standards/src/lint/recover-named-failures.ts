@@ -1,18 +1,26 @@
-import {Array, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
 
 import {
 	childNodes,
+	containsNode,
 	effectMethod,
 	importedMember,
+	isImportBinding,
 	memberName,
+	matches,
 	resolveBinding,
 	returnedExpression,
 	variableOf,
 	variableFromScope
 } from '#lib/ast.ts'
+
+const REJECTING_APIS = [
+	{methods: ['deleteItemAsync'], source: 'expo-secure-store'},
+	{methods: ['setBadgeCountAsync', 'requestPermissionsAsync', 'getExpoPushTokenAsync'], source: 'expo-notifications'}
+]
 
 function constructedFields(node?: ESTree.Expression | null) {
 	if (node?.type !== 'CallExpression' && node?.type !== 'NewExpression') return Option.none()
@@ -246,10 +254,134 @@ function reportOption(context: Context, key: string, bare: boolean, options?: ES
 	}
 }
 
-export const preserveErrorCause = defineRule({
+function logged(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'CallExpression' &&
+			child.callee.type === 'MemberExpression' &&
+			importedMember({context, importedName: 'Effect', node: child.callee}) &&
+			Option.exists(memberName(child.callee), matches(/^log(?:Trace|Debug|Info|Warning|Error|Fatal)$/u)),
+		node,
+		throughFunctions: true
+	})
+}
+
+function rejection(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child => {
+			if (child.type !== 'CallExpression') return false
+			if (child.callee.type === 'Identifier') {
+				return Array.some(REJECTING_APIS, api =>
+					Array.some(
+						api.methods,
+						importedName =>
+							child.callee.type === 'Identifier' &&
+							isImportBinding({context, importedName, node: child.callee, source: api.source})
+					)
+				)
+			}
+			if (child.callee.type !== 'MemberExpression') return false
+			if (child.callee.object.type === 'Identifier') {
+				return Array.some(
+					REJECTING_APIS,
+					api =>
+						child.callee.type === 'MemberExpression' &&
+						child.callee.object.type === 'Identifier' &&
+						isImportBinding({context, node: child.callee.object, source: api.source}) &&
+						Option.exists(memberName(child.callee), name => Array.contains(api.methods, name))
+				)
+			}
+			return (
+				Option.contains(memberName(child.callee), 'downloadAsync') &&
+				child.callee.object.type === 'CallExpression' &&
+				child.callee.object.callee.type === 'MemberExpression' &&
+				Option.contains(memberName(child.callee.object.callee), 'fromModule') &&
+				child.callee.object.callee.object.type === 'Identifier' &&
+				isImportBinding({context, importedName: 'Asset', node: child.callee.object.callee.object, source: 'expo-asset'})
+			)
+		},
+		node,
+		throughFunctions: false
+	})
+}
+
+function messageTest(context: Context, node: ESTree.Node) {
+	return containsNode({
+		context,
+		matches: child =>
+			child.type === 'BinaryExpression' &&
+			Array.contains(['===', '!==', '==', '!='], child.operator) &&
+			Array.some(
+				[child.left, child.right],
+				side => side.type === 'MemberExpression' && Option.contains(memberName(side), 'message')
+			),
+		node,
+		throughFunctions: true
+	})
+}
+
+function loggedRecovery(context: Context, node: ESTree.CallExpression) {
+	return (
+		logged(context, node) ||
+		(node.parent.type === 'CallExpression' &&
+			node.parent.callee.type === 'Identifier' &&
+			isImportBinding({context, importedName: 'pipe', node: node.parent.callee, source: 'effect'}) &&
+			Array.some(
+				node.parent.arguments,
+				step =>
+					step.type === 'CallExpression' &&
+					Option.exists(
+						effectMethod({context, node: step}),
+						method => method === 'tapError' || method === 'tapCause'
+					) &&
+					logged(context, step)
+			))
+	)
+}
+
+function checkPromise(context: Context, node: ESTree.CallExpression) {
+	const callback = node.arguments[0]
+	if (callback === undefined) return
+	const resolved = resolveBinding(context, callback)
+	if (
+		resolved.type !== 'ArrowFunctionExpression' &&
+		resolved.type !== 'FunctionExpression' &&
+		resolved.type !== 'FunctionDeclaration'
+	)
+		{return}
+	const returned = returnedExpression(resolved)
+	if (Predicate.isNotNullish(returned) && rejection(context, returned)) {
+		context.report({
+			message:
+				'Wrap rejecting I/O in Effect.tryPromise({try, catch}); keep the original failure as the typed error’s cause.',
+			node
+		})
+	}
+}
+
+export const recoverNamedFailures = defineRule({
 	create: context => ({
 		CallExpression: node => {
 			const name = effectMethod({context, node})
+			if (Option.exists(name, method => Array.contains(['catch', 'catchCause', 'orElseSucceed'], method))) {
+				if (loggedRecovery(context, node)) return
+				context.report({
+					message:
+						'Recover with Effect.catchTag for a named failure, use Effect.option for absence, or log the failure before recovering; do not turn every failure into an ordinary result.',
+					node
+				})
+				return
+			}
+			if (Option.contains(name, 'promise')) {
+				checkPromise(context, node)
+				return
+			}
+			if (Option.exists(name, method => method === 'catchIf' || method === 'retry') && messageTest(context, node)) {
+				context.report({message: 'Choose recovery or retry by a typed reason or tag, not message wording.', node})
+				return
+			}
 			if (Option.contains(name, 'mapError')) {
 				const bare = detailedFailure(context, node)
 				pipe(
@@ -266,6 +398,37 @@ export const preserveErrorCause = defineRule({
 			}
 			if (!Option.exists(name, method => method === 'try' || method === 'tryPromise')) return
 			reportOption(context, 'catch', true, node.arguments[0])
+		},
+		MemberExpression: node => {
+			if (!importedMember({context, importedName: 'Effect', node})) return
+			const method = Option.getOrElse(memberName(node), Function.constant(''))
+			if (!Array.contains(['ignore', 'ignoreCause', 'orDie', 'orDieWith'], method)) return
+			if (
+				Array.contains(['ignore', 'ignoreCause'], method) &&
+				node.parent.type === 'CallExpression' &&
+				Array.some(
+					node.parent.arguments,
+					argument =>
+						argument.type === 'ObjectExpression' &&
+						Array.every(argument.properties, property => property.type === 'Property') &&
+						Array.some(
+							argument.properties,
+							property =>
+								!property.computed &&
+								property.key.type === 'Identifier' &&
+								property.key.name === 'log' &&
+								property.value.type === 'Literal' &&
+								(property.value.value === true || Predicate.isString(property.value.value))
+						)
+				)
+			) {
+				return
+			}
+			context.report({
+				message:
+					'Keep the typed failure with its cause, or log best-effort work with Effect.ignore({log: "Warn", message}); do not drop it or turn it into a defect.',
+				node
+			})
 		}
 	}),
 	meta: {fixable: 'code', type: 'problem'}

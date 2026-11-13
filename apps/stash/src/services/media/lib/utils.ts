@@ -1,4 +1,4 @@
-import {Array, Boolean, Duration, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, Number, Option, Order, Record, Schema, String, pipe} from 'effect'
 
 import type {Metadata, Comment} from '#services/media/schema.ts'
 
@@ -7,27 +7,29 @@ const BLOCKED =
 
 const byStanding = pipe(
 	Order.flip(Order.Boolean),
-	Order.mapInput((comment: Comment) => Option.getOrElse(comment.is_pinned, () => false)),
+	Order.mapInput((comment: Comment) => Option.getOrElse(comment.is_pinned, Function.constFalse)),
 	Order.combine(
-		Order.mapInput(Order.flip(Order.Number), (comment: Comment) => Option.getOrElse(comment.like_count, () => 0))
+		Order.mapInput(Order.flip(Order.Number), (comment: Comment) =>
+			Option.getOrElse(comment.like_count, Function.constant(0))
+		)
 	)
 )
 
 function commentLine(comment: Comment) {
 	return Array.join(
 		[
-			`**${Option.getOrElse(comment.author, () => 'Someone')}**`,
+			`**${Option.getOrElse(comment.author, Function.constant('Someone'))}**`,
 			pipe(
 				comment.author_is_uploader,
-				Option.getOrElse(() => false),
-				Boolean.match({onFalse: () => '', onTrue: () => ' (the uploader)'})
+				Option.getOrElse(Function.constFalse),
+				Boolean.match({onFalse: Function.constant(''), onTrue: Function.constant(' (the uploader)')})
 			),
 			pipe(
 				comment.is_pinned,
-				Option.getOrElse(() => false),
-				Boolean.match({onFalse: () => '', onTrue: () => ', pinned'})
+				Option.getOrElse(Function.constFalse),
+				Boolean.match({onFalse: Function.constant(''), onTrue: Function.constant(', pinned')})
 			),
-			Option.match(comment.like_count, {onNone: () => '', onSome: likes => `, ${likes} likes`}),
+			Option.match(comment.like_count, {onNone: Function.constant(''), onSome: likes => `, ${likes} likes`}),
 			`: ${String.trim(comment.text)}`
 		],
 		''
@@ -122,7 +124,7 @@ export function mediaMarkdown(media: Metadata, link: string) {
 			),
 			pipe(
 				media.comments,
-				Option.map(Array.filter(comment => Option.getOrElse(comment.parent, () => 'root') === 'root')),
+				Option.map(Array.filter(comment => Option.getOrElse(comment.parent, Function.constant('root')) === 'root')),
 				Option.filter(comments => Array.isReadonlyArrayNonEmpty(comments)),
 				Option.map(
 					comments =>
@@ -193,21 +195,21 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 				cues,
 				Array.get(index - 1),
 				Option.match({
-					onNone: () => true,
+					onNone: Function.constTrue,
 					onSome: previous =>
 						input.authored ||
 						previous.text !== cue.text ||
 						pipe(
 							Option.all([previous.end, cue.start]),
 							Option.map(times => Duration.isLessThan(times[0], times[1])),
-							Option.getOrElse(() => true)
+							Option.getOrElse(Function.constTrue)
 						)
 				})
 			)
 		),
 		Array.map(
 			cue =>
-				`[${Option.match(Option.all([cue.start, cue.end]), {onNone: () => '—', onSome: times => clock(times[0])})}] ${cue.text}\n`
+				`[${Option.match(Option.all([cue.start, cue.end]), {onNone: Function.constant('—'), onSome: times => clock(times[0])})}] ${cue.text}\n`
 		),
 		Array.join('')
 	)
@@ -238,7 +240,7 @@ export function speechOnly(transcript: string) {
 		Option.map(parts =>
 			Array.reduce(Array.getSomes(Array.map(parts, Number.parse)), 0, (total, part) => total * 60 + part)
 		),
-		Option.getOrElse(() => 0)
+		Option.getOrElse(Function.constant(0))
 	)
 	if (words.length < 8 || words.length * 60 < 40 * Number.max(seconds, 15)) return Option.none()
 	return Option.some(

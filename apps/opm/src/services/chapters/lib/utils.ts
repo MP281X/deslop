@@ -2,6 +2,7 @@ import {
 	Array,
 	Boolean,
 	DateTime,
+	Function,
 	HashMap,
 	HashSet,
 	Number,
@@ -57,13 +58,13 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 							known,
 							HashMap.get(keyOf(post)),
 							Option.match({
-								onNone: () => true,
+								onNone: Function.constTrue,
 								onSome: item =>
 									post.revised &&
 									pipe(
 										item.revisedAt,
 										Option.orElse(() => item.postedAt),
-										Option.match({onNone: () => true, onSome: at => DateTime.isGreaterThan(post.postedAt, at)})
+										Option.match({onNone: Function.constTrue, onSome: at => DateTime.isGreaterThan(post.postedAt, at)})
 									) &&
 									link !== item.source
 							})
@@ -111,8 +112,8 @@ export function indexChapters(current: readonly Chapter[], chapters: readonly Ch
 	)
 }
 
-export function notificationOf(data: unknown) {
-	return Option.map(Schema.decodeUnknownOption(ChapterNotification)(data), target => ({
+export function notificationOf(payload: unknown) {
+	return Option.map(Schema.decodeUnknownOption(ChapterNotification)(payload), target => ({
 		number: target.path[2],
 		series: target.path[0]
 	}))
@@ -177,7 +178,7 @@ export function nameOf(title: string) {
 	const name = String.trim(String.replace(/^.*?(?:Chapter|OPM(?:\s+WC)?)\s+[\d.]+\s*[:–—-]?\s*/iu, '')(title))
 	return Option.match(String.match(/^(?:translated|english(?:\s+translations?)?|translations?|raw)$/iu)(name), {
 		onNone: () => name,
-		onSome: () => ''
+		onSome: Function.constant('')
 	})
 }
 
@@ -199,10 +200,10 @@ export function chaptersFromIndex(index: CubariSeries, kind: Series) {
 					revisedAt: Option.none(),
 					series: kind,
 					source: `https://cubari.moe/read/gist/${INDEXES[kind]}/${entry[0]}/1/`,
-					title: nameOf(Option.getOrElse(Option.flatten(entry[1].title), () => ''))
+					title: nameOf(Option.getOrElse(Option.flatten(entry[1].title), Function.constant('')))
 				})
 			),
-			Result.fromOption(() => undefined)
+			Result.fromOption(Function.constUndefined)
 		)
 	)
 }

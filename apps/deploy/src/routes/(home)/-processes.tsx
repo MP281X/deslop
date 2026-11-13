@@ -1,4 +1,4 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Function, Option, pipe} from 'effect'
 
 import {cn} from '@deslop/components-web/classes'
 import {countOf, percentOf} from '@deslop/runtime/shared/format'
@@ -14,7 +14,7 @@ function Figures(props: {node: ProcessNode}) {
 		<span className="flex shrink-0 items-center gap-2 font-mono text-xs tabular-nums">
 			<span className="w-14 text-right whitespace-nowrap">{`${countOf(props.node.memory / 1024 ** 2)} MiB`}</span>
 			<span className="text-muted-foreground w-11 text-right whitespace-nowrap">
-				{Option.match(props.node.cpu, {onNone: () => '—', onSome: percentOf})}
+				{Option.match(props.node.cpu, {onNone: Function.constant('—'), onSome: percentOf})}
 			</span>
 		</span>
 	)

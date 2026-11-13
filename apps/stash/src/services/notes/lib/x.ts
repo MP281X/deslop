@@ -1,4 +1,4 @@
-import {Array, DateTime, HashMap, HashSet, Match, Option, Order, Result, String, pipe} from 'effect'
+import {Array, DateTime, Function, HashMap, HashSet, Match, Option, Order, Result, String, pipe} from 'effect'
 
 import {canonical, plainText} from '#services/notes/lib/utils.ts'
 import type {FxArticle, FxConversation, FxPost, TikTokPage} from '#services/notes/schema.ts'
@@ -8,14 +8,16 @@ const X_LINK = /^https?:\/\/(?:[\w-]+\.)?(?:x|twitter)\.com\//u
 
 const byTime = Order.mapInput(DateTime.Order, (post: FxPost) => post.created_timestamp)
 
-const byLikes = Order.mapInput(Order.flip(Order.Number), (post: FxPost) => Option.getOrElse(post.likes, () => 0))
+const byLikes = Order.mapInput(Order.flip(Order.Number), (post: FxPost) =>
+	Option.getOrElse(post.likes, Function.constant(0))
+)
 
 export function tikTokExtraction(
 	item: TikTokPage['__DEFAULT_SCOPE__']['webapp.video-detail']['itemInfo']['itemStruct'],
 	url: URL
 ) {
 	const images = Array.filterMap(item.imagePost.images, image =>
-		Result.fromOption(Array.head(image.imageURL.urlList), () => undefined)
+		Result.fromOption(Array.head(image.imageURL.urlList), Function.constUndefined)
 	)
 	return Extraction.make({
 		author: Option.some(item.author.nickname),
@@ -45,7 +47,7 @@ function articleText(article: FxArticle) {
 				entities,
 				HashMap.get(`${range.key}`),
 				Option.flatMap(entity => Option.orElse(entity.value.data.markdown, () => entity.value.data.url)),
-				Result.fromOption(() => undefined)
+				Result.fromOption(Function.constUndefined)
 			)
 		)
 		const text = pipe([String.trim(block.text), ...attached], Array.filter(String.isNonEmpty), Array.join(' '))
@@ -70,7 +72,7 @@ function said(post: FxPost) {
 	return pipe(
 		[
 			`**${post.author.name} (@${post.author.screen_name})**: ${plainText(post.text)}`,
-			Option.match(post.article, {onNone: () => '', onSome: articleText})
+			Option.match(post.article, {onNone: Function.constant(''), onSome: articleText})
 		],
 		Array.filter(String.isNonEmpty),
 		Array.join('\n\n')
@@ -157,7 +159,7 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 		pages: pipe(
 			links,
 			Array.filter(link => !X_LINK.test(link)),
-			Array.filterMap(link => Result.fromOption(Option.liftThrowable(() => new URL(link))(), () => undefined)),
+			Array.filterMap(link => Result.fromOption(Option.liftThrowable(() => new URL(link))(), Function.constUndefined)),
 			Array.take(3)
 		),
 		posts: pipe(
@@ -167,7 +169,7 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 					String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
 					Option.flatMap(match => Array.get(match, 1)),
 					Option.map(id => PostId.make(id)),
-					Result.fromOption(() => undefined)
+					Result.fromOption(Function.constUndefined)
 				)
 			),
 			Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),
@@ -206,7 +208,7 @@ export function conversationExtraction(
 				section('Earlier in the conversation', Array.map(plan.earlier, said)),
 				said(plan.status),
 				...Array.map(plan.followUps, post => plainText(post.text)),
-				Option.match(plan.quote, {onNone: () => '', onSome: post => `Quoting ${said(post)}`}),
+				Option.match(plan.quote, {onNone: Function.constant(''), onSome: post => `Quoting ${said(post)}`}),
 				section('Linked posts', Array.map(posts, said)),
 				section('Linked pages', Array.getSomes(linked.pages)),
 				section(
@@ -241,7 +243,7 @@ export function conversationExtraction(
 						Array.map(
 							post =>
 								`**${post.author.name} (@${post.author.screen_name})**${Option.match(post.likes, {
-									onNone: () => '',
+									onNone: Function.constant(''),
 									onSome: likes => `, ${likes} likes`
 								})}: ${plainText(post.text)}`
 						)

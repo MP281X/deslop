@@ -1,6 +1,6 @@
 import {useAtom, useAtomMount, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option} from 'effect'
+import {Array, Boolean, Function, Option} from 'effect'
 
 import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -49,7 +49,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 		<DropdownMenuGroup>
 			{/* A failed read says so, rather than looking like an account without passkeys. */}
 			{Option.match(AsyncResult.error(read), {
-				onNone: () => null,
+				onNone: Function.constNull,
 				onSome: failure => <MenuFailure message={`Passkeys unavailable · ${failure.message}`} />
 			})}
 			{Array.map(passkeys, passkey => (
@@ -57,7 +57,10 @@ function PasskeyItems(props: {via: SessionVia}) {
 					<KeyIcon />
 					<span className="truncate">{passkey.addedFrom}</span>
 					<span className="text-muted-foreground ml-auto pl-3 text-xs">
-						{Boolean.match(passkey.synced, {onFalse: () => 'One device', onTrue: () => 'Synced'})}
+						{Boolean.match(passkey.synced, {
+							onFalse: Function.constant('One device'),
+							onTrue: Function.constant('Synced')
+						})}
 					</span>
 				</DropdownMenuItem>
 			))}
@@ -72,7 +75,7 @@ function PasskeyItems(props: {via: SessionVia}) {
 				Add a passkey
 			</DropdownMenuItem>
 			{Option.match(AsyncResult.error(adding), {
-				onNone: () => null,
+				onNone: Function.constNull,
 				onSome: failure => <MenuFailure message={failure.message} />
 			})}
 		</DropdownMenuGroup>
@@ -111,7 +114,7 @@ export function AccountMenu(props: {account: SignedAccount}) {
 					Sign out
 				</DropdownMenuItem>
 				{Option.match(AsyncResult.error(signOut), {
-					onNone: () => null,
+					onNone: Function.constNull,
 					onSome: failure => <MenuFailure message={failure.message} />
 				})}
 			</DropdownMenuContent>

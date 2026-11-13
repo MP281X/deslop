@@ -16,6 +16,7 @@ import {Gateway} from '#services/gateway/service.ts'
 function returning<E, R>(step: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>) {
 	return pipe(
 		step,
+		Effect.tapError(cause => Effect.logWarning('The sign-in callback could not be completed', cause)),
 		Effect.orElseSucceed(() => HttpServerResponse.redirect('/')),
 		Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
 	)

@@ -1,4 +1,18 @@
-import {Array, Boolean, DateTime, Duration, Equal, Number, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {
+	Array,
+	Boolean,
+	DateTime,
+	Duration,
+	Equal,
+	Function,
+	Number,
+	Option,
+	Order,
+	Record,
+	String,
+	Struct,
+	pipe
+} from 'effect'
 
 import {ActivityProps, Flight, Stay, Train} from '#services/bookings/schema.ts'
 import type {
@@ -306,7 +320,7 @@ function flightHeadline(flight: Flight, phase: FlightPhase) {
 				'Terminal',
 				Option.flatMap(flight.live, live => live.departureTerminal)
 			),
-			() => 'At the airport'
+			Function.constant('At the airport')
 		)
 	}
 	if (phase === 'gate') {
@@ -339,7 +353,7 @@ function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase)
 					Option.flatMap(flight.live, live => live.arrivalGate)
 				)
 			),
-			Option.getOrElse(() => '')
+			Option.getOrElse(Function.constant(''))
 		)
 	}
 	return line([
@@ -433,7 +447,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: DateTime.Utc
 		delay: Duration.minutes(delay),
 		departureNote: departureNote(phase, delay),
 		departureTime: clockAt(departureOf(flight), flight.from.timeZone),
-		departureTone: Boolean.match(delay >= 5, {onFalse: () => 'plain', onTrue: () => 'warn'}),
+		departureTone: Boolean.match(delay >= 5, {onFalse: Function.constant('plain'), onTrue: Function.constant('warn')}),
 		detail: flightDetail(flight, bookings, phase),
 		from: Option.getOrElse(flight.from.code, () => flight.from.name),
 		headline: flightHeadline(flight, phase),
@@ -477,7 +491,7 @@ function trainHeadline(train: Train, phase: TrainPhase) {
 					Option.map(seen => seen.station)
 				)
 			),
-			() => 'Arrives in'
+			Function.constant('Arrives in')
 		)
 	}
 	if (phase === 'arrived') return `Arrived in ${train.to.name}`
@@ -563,8 +577,8 @@ function trainActivity(train: Train, now: DateTime.Utc) {
 		phase,
 		progressFrom: Option.none(),
 		symbol: Boolean.match(phase === 'cancelled', {
-			onFalse: () => 'tram.fill',
-			onTrue: () => 'exclamationmark.triangle.fill'
+			onFalse: Function.constant('tram.fill'),
+			onTrue: Function.constant('exclamationmark.triangle.fill')
 		}),
 		title: titleOf(train),
 		to: train.to.name,
@@ -578,5 +592,5 @@ export function activityProps(journey: Flight | Train, bookings: BookingList, no
 }
 
 export function urgencyOf(props: ActivityProps) {
-	return `${props.phase}|${Option.match(props.chip, {onNone: () => '', onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
+	return `${props.phase}|${Option.match(props.chip, {onNone: Function.constant(''), onSome: chip => chip.text})}|${Number.round(Duration.toMinutes(props.delay) / 5, 0)}`
 }

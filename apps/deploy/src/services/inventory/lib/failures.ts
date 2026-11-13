@@ -1,4 +1,4 @@
-import {Array, DateTime, Match, Number, Option, Record, String, pipe} from 'effect'
+import {Array, DateTime, Function, Match, Number, Option, Record, String, pipe} from 'effect'
 
 import {UnitId} from '#services/inventory/schema.ts'
 
@@ -24,10 +24,10 @@ function failureReason(result: string, status: number, ran: boolean) {
 		),
 		Match.when('signal', () => `Killed by ${signal}`),
 		Match.when('core-dump', () => `Crashed with ${signal}`),
-		Match.when('oom-kill', () => 'Killed for running out of memory'),
-		Match.when('timeout', () => 'Timed out'),
-		Match.when('watchdog', () => 'Stopped answering its watchdog'),
-		Match.when('start-limit-hit', () => 'Restarted too often'),
+		Match.when('oom-kill', Function.constant('Killed for running out of memory')),
+		Match.when('timeout', Function.constant('Timed out')),
+		Match.when('watchdog', Function.constant('Stopped answering its watchdog')),
+		Match.when('start-limit-hit', Function.constant('Restarted too often')),
 		Match.orElse(() => `Failed: ${result}`)
 	)
 }
@@ -66,7 +66,7 @@ export function unitFailures(text: string) {
 						// A unit whose start step failed never ran its main process, which leaves its code 0.
 						reason: failureReason(
 							fields['Result'] ?? '',
-							Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
+							Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), Function.constant(0)),
 							fields['ExecMainCode'] !== '0'
 						)
 					}

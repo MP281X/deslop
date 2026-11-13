@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Option, pipe} from 'effect'
+import {Function, Option, pipe} from 'effect'
 
 import {KeyIcon} from '@phosphor-icons/react'
 import {getRouteApi} from '@tanstack/react-router'
@@ -27,7 +27,7 @@ export function Failures() {
 					Option.orElse(() => AsyncResult.error(codeSignIn)),
 					Option.orElse(() => AsyncResult.error(passkey))
 				),
-				{onNone: () => null, onSome: failure => <FieldError>{failure.message}</FieldError>}
+				{onNone: Function.constNull, onSome: failure => <FieldError>{failure.message}</FieldError>}
 			)}
 			{failed && <FieldError>GitHub sign-in failed. Try again.</FieldError>}
 		</>

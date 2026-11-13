@@ -10,6 +10,7 @@ import {
 	Duration,
 	Effect,
 	FileSystem,
+	Function,
 	Layer,
 	Number,
 	Option,
@@ -286,6 +287,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 				yield* Ref.set(failure, Option.none())
 			}),
 			Effect.withSpan('Metrics.collect', {attributes: {worker}}),
+			Effect.tapError(cause => Effect.logWarning('Metrics could not be sampled', cause)),
 			Effect.catch(cause => Ref.set(failure, Option.some(cause.message)))
 		)
 		const prune = pipe(
@@ -324,7 +326,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					load: now.load,
 					samples: history(samples, query.minutes, time),
 					stale: Option.match(Array.last(samples), {
-						onNone: () => true,
+						onNone: Function.constTrue,
 						onSome: value => pipe(value.time, DateTime.distance(time), Duration.isGreaterThan(Duration.seconds(90)))
 					}),
 					time,

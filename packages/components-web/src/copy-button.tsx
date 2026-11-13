@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Boolean, Effect, Schema, Stream} from 'effect'
+import {Boolean, Effect, Function, Schema, Stream} from 'effect'
 
 import {CheckIcon, CopyIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -57,7 +57,10 @@ export function CopyButton(props: {
 				size={props.size}
 				className={props.className}
 				aria-label={props.label}
-				title={Boolean.match(failed && !explained, {onFalse: () => undefined, onTrue: () => 'Cannot copy'})}
+				title={Boolean.match(failed && !explained, {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('Cannot copy')
+				})}
 				onClick={() => copy()}
 			>
 				{props.children}

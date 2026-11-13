@@ -1,5 +1,5 @@
 import type {Duration} from 'effect'
-import {Array, Boolean, DateTime, HashSet, Option, Order, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, HashSet, Option, Order, String, pipe} from 'effect'
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
 import {itemOwner, type Row, rowUsageOrder, sourceBelongsToWorker} from '#services/inventory/lib/utils.ts'
@@ -64,7 +64,7 @@ export function ranged(rows: readonly Row[], minutes: Duration.Duration, history
 		row =>
 			Option.contains(row.item.scheduled, true) ||
 			Option.match(owner(row), {
-				onNone: () => true,
+				onNone: Function.constTrue,
 				onSome: id =>
 					HashSet.has(recorded, id) ||
 					pipe(

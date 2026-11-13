@@ -5,6 +5,7 @@ import {
 	DateTime,
 	Duration,
 	Effect,
+	Function,
 	HashSet,
 	Layer,
 	Number,
@@ -181,7 +182,7 @@ function latestFailure(operation: Operation) {
 function operationsAnswer(overview: Overview, name: Option.Option<AppName>) {
 	const apps = pipe(
 		overview.apps,
-		Array.filter(app => Option.match(name, {onNone: () => true, onSome: value => app.name === value})),
+		Array.filter(app => Option.match(name, {onNone: Function.constTrue, onSome: value => app.name === value})),
 		Array.map(app => ({
 			app: app.name,
 			operations: Array.map(app.operations, operation => {

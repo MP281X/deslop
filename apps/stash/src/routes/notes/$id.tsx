@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -99,7 +99,7 @@ function BodyLine(props: {line: string}) {
 					<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
 						{Boolean.match(String.startsWith('- ')(props.line), {
 							onFalse: () => String.replace(/\s.*$/u, '')(props.line),
-							onTrue: () => '•'
+							onTrue: Function.constant('•')
 						})}
 					</Text>
 					<Text markdownEnabled modifiers={[...prose, frame({alignment: 'leading', maxWidth: Infinity})]}>
@@ -226,8 +226,9 @@ function FullBody(props: {note: NoteItem}) {
 			)}
 			{!Option.exists(AsyncResult.error(full), Schema.is(AuthError)) &&
 				Option.match(AsyncResult.value(full), {
-					onNone: () => undefined,
-					onSome: note => Option.match(note.body, {onNone: () => undefined, onSome: body => <Body text={body} />})
+					onNone: Function.constUndefined,
+					onSome: note =>
+						Option.match(note.body, {onNone: Function.constUndefined, onSome: body => <Body text={body} />})
 				})}
 		</VStack>
 	)
@@ -250,7 +251,7 @@ function Detail(props: {note: NoteItem; onRetry: () => void; onTag: (tag: TagNam
 	if (AsyncResult.isFailure(full) && Option.exists(AsyncResult.error(full), Schema.is(AuthError))) {
 		return <FailureContent cause={full.cause} onRetry={reload} />
 	}
-	const issue = Option.getOrElse(props.note.issue, () => 'Can’t Read This Link')
+	const issue = Option.getOrElse(props.note.issue, Function.constant('Can’t Read This Link'))
 	const kept =
 		String.isNonEmpty(props.note.summary) || Option.exists(AsyncResult.value(full), note => Option.isSome(note.body))
 	return (
@@ -342,7 +343,7 @@ function NoteScreen(props: {
 					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
 					<Toolbar.Content>
 						{Option.match(item.url, {
-							onNone: () => undefined,
+							onNone: Function.constUndefined,
 							onSome: url => (
 								<ToolbarItem placement="topBarTrailing">
 									{Option.match(brandOf(item), {
@@ -363,7 +364,10 @@ function NoteScreen(props: {
 												}}
 												modifiers={[
 													accessibilityLabel(
-														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
+														Option.match(appOf(item), {
+															onNone: Function.constant('Open Link'),
+															onSome: name => `Open in ${name}`
+														})
 													)
 												]}
 											>
@@ -376,7 +380,7 @@ function NoteScreen(props: {
 						})}
 						<ToolbarItem placement="topBarTrailing">
 							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-								{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
+								{Option.match(item.url, {onNone: Function.constUndefined, onSome: url => <ShareLink item={url} />})}
 								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
 								<Button
 									label="Delete"

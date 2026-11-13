@@ -64,8 +64,8 @@ const withSessionLock = Effect.fnUntraced(function* <A, E, R>(effect: Effect.Eff
 	const acquire = Effect.gen(function* () {
 		const now = yield* Clock.currentTimeMillis
 		if (
-			Option.exists(yield* Effect.option(fs.stat(paths.lock)), info =>
-				Option.exists(info.mtime, time => now - time.getTime() > 30_000)
+			Option.exists(yield* Effect.option(fs.stat(paths.lock)), metadata =>
+				Option.exists(metadata.mtime, time => now - time.getTime() > 30_000)
 			)
 		) {
 			yield* Effect.ignore(fs.remove(paths.lock, {recursive: true}), {

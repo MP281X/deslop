@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Boolean, Option, Predicate} from 'effect'
+import {Boolean, Function, Option, Predicate} from 'effect'
 
 import {CheckIcon, KeyIcon, XIcon} from '@phosphor-icons/react'
 import {createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -73,7 +73,7 @@ function Enter(props: {
 				{Predicate.isObject(props.state) && <FieldError id="code-error">{props.state.failed}</FieldError>}
 			</Field>
 			{Option.match(props.answered, {
-				onNone: () => null,
+				onNone: Function.constNull,
 				onSome: answer => (
 					<p className="text-muted-foreground flex items-center gap-1.5 text-xs" role="status">
 						{Boolean.match(answer.accept, {
@@ -110,7 +110,9 @@ function Content(props: CodeView & {onType: (code: string) => void}) {
 }
 
 function SignInsRoute() {
-	useAtomMount(linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, () => '')})))
+	useAtomMount(
+		linkedCodeAtom(route.useSearch({select: search => Option.getOrElse(search.code, Function.constant(''))}))
+	)
 	// The answer outlives the card: the lookup can drop its request before the consent response arrives.
 	useAtomMount(consentAtom)
 	const send = useAtomSet(codeAtom.send)
@@ -118,7 +120,7 @@ function SignInsRoute() {
 		send({_tag: 'Typed', typed})
 	}
 	return Option.match(AsyncResult.value(useAtomValue(codeViewAtom)), {
-		onNone: () => null,
+		onNone: Function.constNull,
 		onSome: view => <Content {...view} onType={type} />
 	})
 }

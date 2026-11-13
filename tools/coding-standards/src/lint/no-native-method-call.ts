@@ -4,6 +4,7 @@ import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {matches, memberName, memberRoot, resolveBinding, variableOf} from '#lib/ast.ts'
+import {collectingLoop} from '#lint/no-collecting-loop.ts'
 
 // The compiler's preferEffectArray and preferEffectString own string methods and mapped array methods such as map; this rule keeps the array methods they skip and Promise chains.
 const REPLACEMENTS: Record.ReadonlyRecord<string, string> = {
@@ -149,6 +150,7 @@ function ownsMethod(input: {context: Context; receiver: ESTree.Expression}) {
 export const noNativeMethodCall = defineRule({
 	create: context => ({
 		CallExpression: node => {
+			if (collectingLoop(context, node)) return
 			if (
 				node.callee.type !== 'MemberExpression' ||
 				!Option.exists(

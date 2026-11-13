@@ -1,4 +1,4 @@
-import {Array, Boolean, Iterable, Number, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, Iterable, Number, Option, Schema, String, pipe} from 'effect'
 
 import {ProcessIdFromString, UnitId} from '#services/inventory/schema.ts'
 import type {ProcessId} from '#services/inventory/schema.ts'
@@ -38,7 +38,7 @@ function lsofSocket(file: OpenFile) {
 	}
 	const address = String.replace(
 		/^\*:/u,
-		Boolean.match(file.type === 'IPv4', {onFalse: () => '*:', onTrue: () => '0.0.0.0:'})
+		Boolean.match(file.type === 'IPv4', {onFalse: Function.constant('*:'), onTrue: Function.constant('0.0.0.0:')})
 	)(file.address)
 	return Option.flatMap(file.pid, pid =>
 		Option.map(portOf(address), port => ({
@@ -47,7 +47,7 @@ function lsofSocket(file: OpenFile) {
 			process: Option.some({name: file.process, pid}),
 			protocol: String.toLowerCase(file.protocol),
 			state: Boolean.match(file.protocol === 'TCP', {
-				onFalse: () => 'UNCONN',
+				onFalse: Function.constant('UNCONN'),
 				onTrue: () => String.replace(/^ST=/u, '')(file.state) || 'LISTEN'
 			})
 		}))
@@ -85,7 +85,7 @@ export function lsofSockets(text: string) {
 
 export function socketUnit(cgroup: string) {
 	return Option.map(
-		Iterable.findLast(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup), () => true),
+		Iterable.findLast(String.matchAll(/\/([^/]+\.service)(?=\/|\n|$)/gu)(cgroup), Function.constTrue),
 		match => UnitId.make(match[1] ?? '')
 	)
 }

@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, String, pipe} from 'effect'
+import {Array, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {RouterProvider, createRouter} from '@tanstack/react-router'
 import type {AnyContext, AnyRoute, AnyRouter} from '@tanstack/react-router'
@@ -35,7 +35,7 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 				Array.findLast(router.state.matches, match => match.error === error),
 				Option.orElse(() => Array.last(router.state.matches)),
 				Option.flatMap(match => Option.liftPredicate(match.routeId, String.isString)),
-				Option.getOrElse(() => '__root__')
+				Option.getOrElse(Function.constant('__root__'))
 			),
 			source,
 			stack
@@ -43,10 +43,10 @@ export function mountRouter<TRouteTree extends AnyRoute & {types: {routerContext
 	}
 	// The typed router takes full options in `update`; this view merges the partial one the router has always accepted.
 	const anyRouter: AnyRouter = router
-	anyRouter.update({defaultOnCatch: (error, info) => report(error, 'route', info.componentStack)})
+	anyRouter.update({defaultOnCatch: (error, caught) => report(error, 'route', caught.componentStack)})
 	createRoot(root, {
-		onCaughtError: (error, info) => report(error, 'caught', info.componentStack),
-		onUncaughtError: (error, info) => report(error, 'uncaught', info.componentStack)
+		onCaughtError: (error, caught) => report(error, 'caught', caught.componentStack),
+		onUncaughtError: (error, caught) => report(error, 'uncaught', caught.componentStack)
 	}).render(
 		<StrictMode>
 			<RouterProvider router={router} />

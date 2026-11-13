@@ -1,4 +1,4 @@
-import {Array, Option, Predicate, pipe} from 'effect'
+import {Array, Function, Option, Predicate, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -235,7 +235,7 @@ function sum(context: Context, node: ESTree.CallExpression) {
 	const callback = node.arguments[node.arguments.length - 1]
 	if (!isNumber(0, seed) || Predicate.isUndefined(callback)) return
 	Option.match(summand(context, callback), {
-		onNone: () => undefined,
+		onNone: Function.constUndefined,
 		onSome: found => {
 			const items = node.arguments[0]
 			// A curried step in a pipe has no one-step replacement, so only the data-first form is rewritten.

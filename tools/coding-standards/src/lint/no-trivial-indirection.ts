@@ -6,6 +6,7 @@ import type {Context, ESTree} from 'vite-plus/lint/plugins'
 import {
 	boundReads,
 	composedSteps,
+	effectImport,
 	importedMember,
 	matches,
 	memberName,
@@ -479,9 +480,56 @@ function componentIndirection(context: Context, node: ESTree.Function | ESTree.A
 	}
 }
 
+function compilerConstant(context: Context, node: ESTree.Node): boolean {
+	if (Predicate.isNullish(node.parent)) return false
+	if (node.parent.type === 'Property' && node.parent.parent.type === 'ObjectExpression') {
+		return compilerConstant(context, node.parent.parent)
+	}
+	return (
+		node.parent.type === 'CallExpression' &&
+		node.parent.callee.type === 'MemberExpression' &&
+		importedMember({context, importedName: 'Effect', node: node.parent.callee}) &&
+		Option.exists(memberName(node.parent.callee), method =>
+			Array.contains(['map', 'match', 'matchEffect', 'sync'], method)
+		)
+	)
+}
+
 export const noTrivialIndirection = defineRule({
 	create: context => {
 		function checkFunction(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+			if (
+				node.type !== 'FunctionDeclaration' &&
+				node.parent.type !== 'VariableDeclarator' &&
+				!node.async &&
+				!node.generator &&
+				Array.isArrayEmpty(node.params)
+			) {
+				const returned = returnedExpression(node)
+				const constants: Record<string, string> = {
+					false: 'constFalse',
+					null: 'constNull',
+					true: 'constTrue',
+					undefined: 'constUndefined'
+				}
+				const literal = returned?.type === 'Literal' && !Predicate.hasProperty(returned, 'regex')
+				const undefinedValue = returned?.type === 'Identifier' && returned.name === 'undefined'
+				if ((literal || undefinedValue) && !compilerConstant(context, node)) {
+					const key = context.sourceCode.getText(returned)
+					const replacement = constants[key] ?? `constant(${key})`
+					context.report({
+						fix: fixer =>
+							pipe(
+								effectImport({context, fixer, name: 'Function', node}),
+								Option.map(imports => [...imports, fixer.replaceText(node, `Function.${replacement}`)]),
+								Option.getOrElse(() => [])
+							),
+						message: `Use Function.${replacement} for a fixed-value callback.`,
+						node
+					})
+					return
+				}
+			}
 			componentIndirection(context, node)
 			if (reportsIndirection({context, node})) {
 				context.report({message: indirectionMessage({context, node}), node})
@@ -592,5 +640,5 @@ export const noTrivialIndirection = defineRule({
 			}
 		}
 	},
-	meta: {type: 'problem'}
+	meta: {fixable: 'code', type: 'problem'}
 })

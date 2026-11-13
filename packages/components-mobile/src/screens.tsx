@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSet, useAtomSuspense} from '@effect/atom-react'
 
-import {Boolean, Option} from 'effect'
+import {Boolean, Function, Option} from 'effect'
 import type {Cause} from 'effect'
 
 import {Button, Host, Image, Rectangle, Spacer, Text, VStack} from '@expo/ui/swift-ui'
@@ -89,7 +89,7 @@ export function Loaded<A, E>(props: {
 	const loaded = useAtomSuspense(props.atom, {includeFailure: true})
 	const refresh = useAtomRefresh(props.atom)
 	return Option.match(blockingFailure(loaded), {
-		onNone: () => Option.match(AsyncResult.value(loaded), {onNone: () => null, onSome: props.children}),
+		onNone: () => Option.match(AsyncResult.value(loaded), {onNone: Function.constNull, onSome: props.children}),
 		onSome: cause => <FailureContent cause={cause} onRetry={refresh} />
 	})
 }
@@ -136,7 +136,7 @@ export function SessionGate(props: {children: ReactNode; logo: number | string; 
 				)}
 			</MachineState>
 			<MachineState machine={props.session.machine} path="SigningIn">
-				{() => <SignInScreen logo={props.logo} onSignIn={() => undefined} tint={props.tint} waiting />}
+				{() => <SignInScreen logo={props.logo} onSignIn={Function.constUndefined} tint={props.tint} waiting />}
 			</MachineState>
 			<MachineState machine={props.session.machine} path="SignedIn">
 				{() => props.children}

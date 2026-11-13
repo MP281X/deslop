@@ -1,4 +1,4 @@
-import {Array, Effect, Number, Option, Schema, Stream, String, pipe} from 'effect'
+import {Array, Effect, Function, Number, Option, Schema, Stream, String, pipe} from 'effect'
 
 import {ChildProcess} from 'effect/process'
 
@@ -25,8 +25,8 @@ type PullRequest = typeof PullRequest.Type
 const PullRequest = Schema.Struct({baseRefName: Schema.String, number: Schema.Finite})
 
 const run = Effect.fnUntraced(function* (command: string, args: string[], cwd: string) {
-	const handle = yield* ChildProcess.make(command, args, {cwd, stderr: 'ignore', stdout: 'pipe'})
-	const output = yield* Effect.all([Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode], {
+	const child = yield* ChildProcess.make(command, args, {cwd, stderr: 'ignore', stdout: 'pipe'})
+	const output = yield* Effect.all([Stream.mkString(Stream.decodeText(child.stdout)), child.exitCode], {
 		concurrency: 'unbounded'
 	})
 	return {exitCode: output[1], stdout: output[0]}
@@ -48,7 +48,7 @@ function changedLines(header: string, body: string[]) {
 	const first = pipe(
 		String.match(HUNK_HEADER)(header),
 		Option.flatMap(found => Number.parse(found[1] ?? '')),
-		Option.getOrElse(() => 0)
+		Option.getOrElse(Function.constant(0))
 	)
 	const positions = Array.scan(body, {changed: Option.none<number>(), next: first}, (at, line) => {
 		if (String.startsWith('+')(line)) return {changed: Option.some(at.next), next: at.next + 1}

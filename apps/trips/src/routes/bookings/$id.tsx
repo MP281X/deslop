@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Duration, Option, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Option, pipe} from 'effect'
 
 import {
 	Button,
@@ -310,7 +310,7 @@ export function BookingRoute(props: {bookings: BookingList; id: Booking['id']; o
 											{routeOf(booking)}
 										</Text>
 										{Option.match(problemOf(booking, status, now), {
-											onNone: () => undefined,
+											onNone: Function.constUndefined,
 											onSome: problem => (
 												<HStack spacing={space[2]}>
 													<StatusDot status={problem.status} />

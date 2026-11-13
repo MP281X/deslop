@@ -1,4 +1,4 @@
-import {Array, Option, Result, pipe} from 'effect'
+import {Array, Function, Option, Result, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Fixer} from 'vite-plus/lint/plugins'
@@ -80,7 +80,7 @@ export const noDoubleNullishCheck = defineRule({
 			const checks = Array.map(operands({node, operator: node.operator}), operand =>
 				comparedNullish({context, node: operand, operator: variant.comparison})
 			)
-			const present = Array.filterMap(checks, check => Result.fromOption(check, () => undefined))
+			const present = Array.filterMap(checks, check => Result.fromOption(check, Function.constUndefined))
 			if (Array.some(present, first => Array.some(present, second => doubled({context, first, second})))) {
 				context.report({
 					fix: fixer =>

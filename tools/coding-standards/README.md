@@ -32,16 +32,22 @@ Every action is a subcommand: `tactics`, `judge` or `sign-in`. `coding-standards
 
 The preset leaves type-aware lint and type checking off, so a syntax-only pass stays possible; the two flags turn them on, and `--tsrs-lint` runs them on tsrs instead of Oxlint's tsgolint backend.
 
-Native rules enforce function declarations, standalone `pipe`, no ternaries and Unicode regular expressions (`u` or `v`). The preset loads only `no-restricted-syntax` from `oxlint-plugin-eslint` to reject `let`, switches, binary `in` checks and RPC names other than `<service folder>.<verb>`. These replacements report violations without the former custom migration fixes.
+Native rules enforce function declarations, standalone `pipe`, no ternaries, no empty functions and Unicode regular expressions (`u` or `v`). The preset loads only `no-restricted-syntax` from `oxlint-plugin-eslint` to reject `let`, switches, binary `in` checks and declarations with generic names. Required library property keys are not declarations and remain allowed.
 
 Custom rules retain the cases native rules cannot express: `prefer-predicate` owns runtime `typeof` and replaceable type-guard wrappers; `no-intermediate-collection` owns collections materialized only for a count, first item or emptiness check; `no-trivial-indirection` includes constant-return helpers and adjacent Option wrap/unwrap operations. Delimiter and schema encode/decode round trips are not assumed to preserve a value. Private derived-type aliases remain derived through generic wrappers. Boolean-name checks use explicit AST type annotations where available; Oxlint's JS plugin API exposes no TypeScript program, so opaque inferred calls remain outside that check.
+
+`recover-named-failures` owns typed recovery, rejecting native I/O adapters, error causes and error-message dispatch. Recover with `Effect.catchTag`, represent absence with `Effect.option`, or log best-effort failures. Catch-all recovery after a logging tap remains allowed. The competing compiler rewrites for catch-all recovery and `orDie` are not enabled.
+
+`no-collecting-loop` refuses collection mutation inside loops, including effectful loops and callbacks inside them. Use collection operations, `Array.mapAccum` for dependent items, or `Effect.forEach` for effectful work. Native-method checks defer to it at those sites. Copying folds and repeated searches remain separate checks.
+
+`effect-call-form` also owns anonymous generator callbacks and Effect property definitions. `no-redundant-annotation` owns inferred return, state, ref-null and empty-array types. Fixed primitive callbacks use `Function.constUndefined`, `constNull`, `constTrue`, `constFalse` or `constant(value)`; the Effect compiler keeps its direct `map`, `match` and `sync` replacements.
 
 ```jsonc
 // tsconfig.json
 {"extends": "@deslop/coding-standards/tsconfig.json"}
 ```
 
-Add your own ignores and opt into `deslopRules` for Deslop's own choices.
+Add your own ignores and repository-specific selectors alongside the preset's `lint.rules['eslint-js/no-restricted-syntax']`. Deslop's gradients, icon weights, RPC names, import allowlist and app-only native-module boundary live in its root configuration, not a `deslopRules` export.
 
 ## Judge
 

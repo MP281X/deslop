@@ -1,4 +1,4 @@
-import {Duration, Effect, Option, Stream, pipe} from 'effect'
+import {Duration, Effect, Function, Option, Stream, pipe} from 'effect'
 
 import {Atom, AtomRpc} from 'effect/reactivity'
 
@@ -49,13 +49,10 @@ export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
 )
 
 // Opens the Expose dialog on a port, clear of the last attempt's failure.
-export const openExposeAtom = Atom.writable(
-	() => undefined,
-	(context, port: InventoryItem) => {
-		context.set(exposeAtom, Atom.Reset)
-		context.set(exposeTargetAtom, Option.some(port))
-	}
-)
+export const openExposeAtom = Atom.writable(Function.constUndefined, (context, port: InventoryItem) => {
+	context.set(exposeAtom, Atom.Reset)
+	context.set(exposeTargetAtom, Option.some(port))
+})
 
 // Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
 export const runAtom = Atom.family((_id: ItemId) =>

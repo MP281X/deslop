@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, String, pipe} from 'effect'
+import {Array, Boolean, Function, Option, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -35,7 +35,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 			Array.findFirst(item => Option.contains(item.self, true) && item.worker === props.port.worker),
 			Option.flatMap(item => item.hostname)
 		),
-		() => ''
+		Function.constant('')
 	)
 	const pending = AsyncResult.isWaiting(result)
 	return (
@@ -89,7 +89,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 							readOnly
 							value={Boolean.match(tailnetHost === '', {
 								onFalse: () => `https://${tailnetHost}:${Option.getOrUndefined(props.port.port)}`,
-								onTrue: () => ''
+								onTrue: Function.constant('')
 							})}
 						/>
 					</Field>
@@ -121,7 +121,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 					className="max-sm:h-11"
 					disabled={pending || (kind === 'tailnet' && tailnetHost === '') || (kind === 'public' && hostname === '')}
 				>
-					{Boolean.match(pending, {onFalse: () => 'Expose', onTrue: () => 'Exposing…'})}
+					{Boolean.match(pending, {onFalse: Function.constant('Expose'), onTrue: Function.constant('Exposing…')})}
 				</Button>
 			</DialogFooter>
 		</form>
@@ -131,7 +131,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 export function ExposeDialog() {
 	const [target, setTarget] = useAtom(exposeTargetAtom)
 	return Option.match(Option.all({port: target, snapshot: AsyncResult.value(useAtomValue(inventoryAtom))}), {
-		onNone: () => null,
+		onNone: Function.constNull,
 		onSome: open => (
 			<Dialog
 				open

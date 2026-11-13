@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Option, Order, Record, String, Struct, pipe} from 'effect'
+import {Array, Boolean, DateTime, Function, Option, Order, Record, String, Struct, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -155,7 +155,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 			<Item
 				size="row"
 				aria-label={`${props.client.device}, active ${active}${Option.match(address, {
-					onNone: () => '',
+					onNone: Function.constant(''),
 					onSome: value => ` · ${value}`
 				})}`}
 			>
@@ -176,7 +176,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 				<ItemActions>
 					<span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums">{active}</span>
 					<span className="text-muted-foreground w-28 shrink-0 truncate text-right font-mono text-xs max-sm:hidden">
-						{Option.getOrElse(address, () => '')}
+						{Option.getOrElse(address, Function.constant(''))}
 					</span>
 				</ItemActions>
 			</Item>
@@ -268,8 +268,8 @@ const signInListAtom = Atom.readable(
 export function SignInList(props: {checking?: boolean; pending: Option.Option<PendingAuthorization>}) {
 	return (
 		<Loaded atom={signInListAtom}>
-			{data => {
-				const clients = clientsOf(data.signIns)
+			{sessions => {
+				const clients = clientsOf(sessions.signIns)
 				const checking = props.checking === true && Option.isNone(props.pending)
 				if (Array.isReadonlyArrayEmpty(clients) && Option.isNone(props.pending) && !checking) {
 					return <EmptyState label="No sign-ins" icon={<HardDrivesIcon className="size-5" weight="light" />} />
@@ -280,7 +280,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 							{Boolean.match(checking, {
 								onFalse: () =>
 									Option.match(props.pending, {
-										onNone: () => null,
+										onNone: Function.constNull,
 										onSome: request => <PendingRow request={request} />
 									}),
 								onTrue: () => (
@@ -290,7 +290,7 @@ export function SignInList(props: {checking?: boolean; pending: Option.Option<Pe
 								)
 							})}
 							{Array.map(clients, client => (
-								<ClientRow key={client.family} client={client} now={data.now} />
+								<ClientRow key={client.family} client={client} now={sessions.now} />
 							))}
 						</div>
 					</Card>

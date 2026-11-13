@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Option, Order, Result, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Function, Option, Order, Result, String, pipe} from 'effect'
 
 import {AIRPORT_LEAD, arrivalOf, departureOf, MINUTE} from '#services/bookings/lib/utils.ts'
 import type {Booking, Flight, FlightTracking, Place, Train, TrainTracking} from '#services/bookings/schema.ts'
@@ -249,7 +249,7 @@ export function isDue(booking: Booking, now: DateTime.Utc, attemptedAt: Option.O
 	})
 	return Option.exists(checkEvery(booking, now), every =>
 		Option.match(checkedAt, {
-			onNone: () => true,
+			onNone: Function.constTrue,
 			onSome: at => pipe(at, DateTime.distance(now), Duration.isGreaterThanOrEqualTo(every))
 		})
 	)

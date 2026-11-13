@@ -1,4 +1,4 @@
-import {Array, Boolean, Duration, MutableList, Option, Order, Record, pipe} from 'effect'
+import {Array, Boolean, Duration, Function, Option, Order, Record, pipe} from 'effect'
 
 import type {SpanId} from '#services/telemetry/schema.ts'
 
@@ -45,54 +45,60 @@ export function lanesOf<T extends FlameSpan>(
 		Array.filter(span => span.depth > 1 || (span.depth === 0 && !Option.contains(root, span))),
 		Array.sort(byStart<T>())
 	)
-	const placed = MutableList.make<{lane: number; span: T}>()
-	const lanes = MutableList.make<Lane>()
-	function place(span: T, lane: number) {
-		MutableList.append(placed, {lane, span})
-	}
-	function addLane(span: T) {
-		const interval = {end: Duration.sum(span.offsetMs, span.durationMs), start: span.offsetMs}
-		const intervals = pipe(
-			reservations,
-			Record.get(span.spanId),
-			Option.match({
-				onNone: () => Array.make(interval),
-				onSome: reserve => Array.make(interval, {end: Duration.sum(interval.end, reserve), start: interval.end})
-			})
-		)
-		MutableList.append(lanes, {intervals, lastEnd: Option.none()})
-		place(span, lanes.length - 1)
-	}
-	Option.map(root, addLane)
-	Array.forEach(jobs, addLane)
-	Array.forEach(rest, span => {
-		const existing = MutableList.toArray(lanes)
-		const end = Duration.sum(span.offsetMs, span.durationMs)
-		pipe(
-			existing,
-			Array.findFirstIndex(
-				lane =>
-					Array.every(lane.intervals, interval => !collides(span, interval)) &&
-					Option.match(lane.lastEnd, {
-						onNone: () => true,
-						onSome: previousEnd =>
-							Boolean.match(Duration.isZero(span.durationMs), {
-								onFalse: () => Duration.isLessThanOrEqualTo(previousEnd, span.offsetMs),
-								onTrue: () => Duration.isLessThan(previousEnd, span.offsetMs)
-							})
+	const initial = Array.appendAll(Option.toArray(root), jobs)
+	const [, placed] = Array.mapAccum(
+		rest,
+		Array.map<T[], Lane>(initial, span => {
+			const interval = {end: Duration.sum(span.offsetMs, span.durationMs), start: span.offsetMs}
+			return {
+				intervals: pipe(
+					reservations,
+					Record.get(span.spanId),
+					Option.match({
+						onNone: () => Array.make(interval),
+						onSome: reserve => Array.make(interval, {end: Duration.sum(interval.end, reserve), start: interval.end})
 					})
-			),
-			Option.match({
-				onNone: () => {
-					MutableList.append(lanes, {intervals: [], lastEnd: Option.some(end)})
-					place(span, lanes.length - 1)
-				},
-				onSome: lane => {
-					Array.getUnsafe(existing, lane).lastEnd = Option.some(end)
-					place(span, lane)
-				}
-			})
-		)
-	})
-	return MutableList.toArray(placed)
+				),
+				lastEnd: Option.none<Duration.Duration>()
+			}
+		}),
+		(existing, span) => {
+			const end = Duration.sum(span.offsetMs, span.durationMs)
+			return pipe(
+				existing,
+				Array.findFirstIndex(
+					lane =>
+						Array.every(lane.intervals, interval => !collides(span, interval)) &&
+						Option.match(lane.lastEnd, {
+							onNone: Function.constTrue,
+							onSome: previousEnd =>
+								Boolean.match(Duration.isZero(span.durationMs), {
+									onFalse: () => Duration.isLessThanOrEqualTo(previousEnd, span.offsetMs),
+									onTrue: () => Duration.isLessThan(previousEnd, span.offsetMs)
+								})
+						})
+				),
+				Option.match({
+					onNone: () =>
+						[
+							Array.append(existing, {intervals: [], lastEnd: Option.some(end)}),
+							{lane: existing.length, span}
+						] as const,
+					onSome: lane =>
+						[
+							Array.map(existing, (current, index) => {
+								if (index === lane) return {...current, lastEnd: Option.some(end)}
+								return current
+							}),
+							{lane, span}
+						] as const
+				})
+			)
+		}
+	)
+	return pipe(
+		initial,
+		Array.map((span, lane) => ({lane, span})),
+		Array.appendAll(placed)
+	)
 }

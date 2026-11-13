@@ -7,6 +7,7 @@ import {
 	Config,
 	Context,
 	Effect,
+	Function,
 	Layer,
 	Match,
 	Option,
@@ -617,6 +618,7 @@ export class Connections extends Context.Service<
 						return {state: Option.some(stateId), url: authorization.authorizationUrl.href}
 					}),
 					Effect.timeout(Duration.seconds(20)),
+					Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, asAuthError('Cannot connect this MCP')),
@@ -662,7 +664,7 @@ export class Connections extends Context.Service<
 					Effect.gen(function* () {
 						if (Option.isSome(params.error) || Option.isNone(params.code)) {
 							return yield* AuthError.make({
-								message: `The provider declined the connection (${Option.getOrElse(params.error, () => 'no code')})`
+								message: `The provider declined the connection (${Option.getOrElse(params.error, Function.constant('no code'))})`
 							})
 						}
 						// RFC 9700 §4.4.2: the answer must come from this server's authorization server, by its own callback or its issuer.
@@ -699,6 +701,7 @@ export class Connections extends Context.Service<
 						)
 					}),
 					Effect.timeout(Duration.seconds(30)),
+					Effect.tapError(cause => Effect.logWarning('The MCP connection could not be completed', cause)),
 					Effect.catch(cause => fail(connection, cause))
 				)
 			}, asAuthError('Cannot finish the connection')),

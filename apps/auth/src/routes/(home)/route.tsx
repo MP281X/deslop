@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Match, Option, Schema, pipe} from 'effect'
+import {Array, Boolean, Function, Match, Option, Schema, pipe} from 'effect'
 
 import {HourglassIcon, SignOutIcon} from '@phosphor-icons/react'
 import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tanstack/react-router'
@@ -30,7 +30,10 @@ function Tabs(props: {admin: boolean}) {
 	]
 	return (
 		<AppBarTabs
-			value={Boolean.match(matchRoute({to: '/people'}) !== false, {onFalse: () => '/', onTrue: () => '/people'})}
+			value={Boolean.match(matchRoute({to: '/people'}) !== false, {
+				onFalse: Function.constant('/'),
+				onTrue: Function.constant('/people')
+			})}
 		>
 			{Array.map(tabs, tab => (
 				<AppBarTab key={tab.to} value={tab.to} render={<Link to={tab.to} />}>
@@ -76,7 +79,7 @@ function PageProblem() {
 // The account menu joins the mounted bar once the account is known.
 function AccountControl() {
 	return Option.match(useAtomSuspense(accountAtom).value, {
-		onNone: () => false,
+		onNone: Function.constFalse,
 		onSome: signed => <AccountMenu account={signed} />
 	})
 }
@@ -97,13 +100,13 @@ function ShellPage() {
 	return (
 		<Page>
 			{signingOut && <SigningOut />}
-			{Option.match(requestId, {onNone: () => null, onSome: id => <Waiting account={account} id={id} />})}
+			{Option.match(requestId, {onNone: Function.constNull, onSome: id => <Waiting account={account} id={id} />})}
 			{Option.match(account, {
 				onNone: () => Option.isNone(requestId) && !signingOut && <SignIn />,
 				onSome: signed =>
 					Boolean.match(Option.isSome(requestId) && signed.role !== 'Waiting', {
 						onFalse: () => <Signed account={signed} />,
-						onTrue: () => null
+						onTrue: Function.constNull
 					})
 			})}
 		</Page>

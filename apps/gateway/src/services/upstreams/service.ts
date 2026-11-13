@@ -1,4 +1,18 @@
-import {Array, Context, Duration, Effect, Exit, Layer, Option, RcMap, Schema, Scope, Semaphore, pipe} from 'effect'
+import {
+	Array,
+	Context,
+	Duration,
+	Effect,
+	Exit,
+	Function,
+	Layer,
+	Option,
+	RcMap,
+	Schema,
+	Scope,
+	Semaphore,
+	pipe
+} from 'effect'
 
 import {SdkHttpError, StreamableHTTPClientTransport, UnauthorizedError} from '@modelcontextprotocol/client'
 import {McpClient, McpClientError, McpProtocol, McpSchema} from 'effect/ai'
@@ -39,7 +53,7 @@ export function upstreamStatus(error: unknown): number {
 
 const accessToken = Context.Reference<Option.Option<string>>('gateway/UpstreamAccess', {defaultValue: Option.none})
 const requestHeaders = Effect.map(accessToken, token => ({
-	[REQUEST_AUTHORIZATION]: Option.match(token, {onNone: () => '', onSome: value => `Bearer ${value}`})
+	[REQUEST_AUTHORIZATION]: Option.match(token, {onNone: Function.constant(''), onSome: value => `Bearer ${value}`})
 }))
 
 function unsupportedProtocol(error: McpClientError.McpClientError) {

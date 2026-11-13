@@ -9,6 +9,7 @@ import {
 	Context,
 	Effect,
 	FileSystem,
+	Function,
 	HashMap,
 	Layer,
 	Number,
@@ -84,48 +85,42 @@ function portItems(
 					)
 				})
 			})
-			const response = yield* Boolean.match(
-				probeSocket(
-					socket,
-					Option.getOrElse(process, () => '')
-				),
-				{
-					onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
-					onTrue: Effect.fnUntraced(function* () {
-						// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
-						return yield* pipe(
-							http.head(`http://127.0.0.1:${socket.port}/`, {
-								headers: HttpTraceContext.toHeaders(
-									new Tracer.NativeSpan({
-										annotations: Context.empty(),
-										kind: 'internal',
-										links: [],
-										name: 'Deploy.probe',
-										parent: Option.none(),
-										sampled: false,
-										startTime: 0n
-									})
-								)
-							}),
-							Effect.map(value => ({
-								http: true,
-								ui:
-									value.status >= 200 &&
-									value.status < 400 &&
-									String.includes('text/html')(value.headers['content-type'] ?? '')
-							})),
-							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
-							// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
-							Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
-							Effect.timeout(Duration.millis(700)),
-							Effect.option
-						)
-					})
-				}
-			)
+			const response = yield* Boolean.match(probeSocket(socket, Option.getOrElse(process, Function.constant(''))), {
+				onFalse: () => Effect.succeed(Option.none<{http: boolean; ui: boolean}>()),
+				onTrue: Effect.fnUntraced(function* () {
+					// The probe sends an unsampled trace context, so the app's HEAD span is never exported.
+					return yield* pipe(
+						http.head(`http://127.0.0.1:${socket.port}/`, {
+							headers: HttpTraceContext.toHeaders(
+								new Tracer.NativeSpan({
+									annotations: Context.empty(),
+									kind: 'internal',
+									links: [],
+									name: 'Deploy.probe',
+									parent: Option.none(),
+									sampled: false,
+									startTime: 0n
+								})
+							)
+						}),
+						Effect.map(value => ({
+							http: true,
+							ui:
+								value.status >= 200 &&
+								value.status < 400 &&
+								String.includes('text/html')(value.headers['content-type'] ?? '')
+						})),
+						Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'}),
+						// A probe expects refusals and 4xx from ports that aren't web pages, so it records no span.
+						Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
+						Effect.timeout(Duration.millis(700)),
+						Effect.option
+					)
+				})
+			})
 			return InventoryItem.make({
 				address: Option.some(socket.address),
-				detail: `${socket.address} · ${Option.getOrElse(process, () => 'process unavailable')}`,
+				detail: `${socket.address} · ${Option.getOrElse(process, Function.constant('process unavailable'))}`,
 				http: Option.some(Option.exists(response, value => value.http)),
 				id: ItemId.make(`${worker}:port:${socket.protocol}:${socket.address}`),
 				kind: 'port',
@@ -190,12 +185,12 @@ export class Inventory extends Context.Service<
 			const processState = yield* Ref.make(Option.none<ReturnType<typeof processReadings>>())
 			const units = Effect.fnUntraced(function* (system: boolean) {
 				const scope = Boolean.match(system, {onFalse: () => 'user' as const, onTrue: () => 'system' as const})
-				const manager = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
+				const scopeFlags = Boolean.match(system, {onFalse: () => ['--user'], onTrue: () => []})
 				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
 						Array.map(
 							yield* Effect.flatMap(
-								command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']),
+								command('systemctl', [...scopeFlags, 'list-timers', '--all', '--output=json', '--no-pager']),
 								Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
 							),
 							timer =>
@@ -207,7 +202,7 @@ export class Inventory extends Context.Service<
 					)
 				)
 				const rows = yield* Effect.flatMap(
-					command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
+					command('systemctl', [...scopeFlags, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
 					Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
 				)
 				const failed = pipe(
@@ -220,7 +215,7 @@ export class Inventory extends Context.Service<
 					Option.flatten(
 						yield* pipe(
 							command('systemctl', [
-								...manager,
+								...scopeFlags,
 								'show',
 								...failed,
 								'-p',
@@ -251,11 +246,7 @@ export class Inventory extends Context.Service<
 							row.active === 'activating' ||
 							row.active === 'deactivating' ||
 							(row.active === 'active' && row.sub === 'running'),
-						scheduled: pipe(
-							scheduled,
-							HashMap.get(row.unit),
-							Option.map(() => true)
-						),
+						scheduled: pipe(scheduled, HashMap.get(row.unit), Option.map(Function.constTrue)),
 						scope: Option.some(scope),
 						state: Boolean.match(row.active === 'active', {
 							onFalse: () => `${row.active} · ${row.sub}`,
@@ -284,12 +275,12 @@ export class Inventory extends Context.Service<
 								...Array.map(
 									Array.fromIterable(
 										String.matchAll(/traefik\.http\.services\.[^=,]+\.loadbalancer\.server\.port=([0-9]+)/gu)(
-											Option.getOrElse(row.Labels, () => '')
+											Option.getOrElse(row.Labels, Function.constant(''))
 										)
 									),
 									match => ({
 										address: 'container',
-										port: Option.getOrElse(Number.parse(match[1] ?? ''), () => 0),
+										port: Option.getOrElse(Number.parse(match[1] ?? ''), Function.constant(0)),
 										protocol: 'tcp' as const
 									})
 								),
@@ -297,7 +288,7 @@ export class Inventory extends Context.Service<
 									Array.fromIterable(String.matchAll(/((?:[0-9.]+|\[::\])):([0-9]+)->[0-9]+\/(tcp|udp)/gu)(row.Ports)),
 									match => ({
 										address: `${match[1]}:${match[2]}`,
-										port: Option.getOrElse(Number.parse(match[2] ?? ''), () => 0),
+										port: Option.getOrElse(Number.parse(match[2] ?? ''), Function.constant(0)),
 										protocol: Boolean.match(match[3] === 'udp', {
 											onFalse: () => 'tcp' as const,
 											onTrue: () => 'udp' as const
@@ -322,7 +313,9 @@ export class Inventory extends Context.Service<
 							links: Option.some(
 								Array.dedupe(
 									Array.map(
-										Array.fromIterable(String.matchAll(/Host\(`([^`]+)`\)/gu)(Option.getOrElse(row.Labels, () => ''))),
+										Array.fromIterable(
+											String.matchAll(/Host\(`([^`]+)`\)/gu)(Option.getOrElse(row.Labels, Function.constant('')))
+										),
 										match => `https://${match[1]}`
 									)
 								)
@@ -330,7 +323,7 @@ export class Inventory extends Context.Service<
 							name: row.Names,
 							state: Boolean.match(String.includes('unhealthy')(row.Status), {
 								onFalse: () => row.State,
-								onTrue: () => 'unhealthy'
+								onTrue: Function.constant('unhealthy')
 							}),
 							url: Option.none(),
 							worker
@@ -360,7 +353,7 @@ export class Inventory extends Context.Service<
 									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
 									unit: processId =>
 										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
-											socketUnit(Option.getOrElse(cgroup, () => ''))
+											socketUnit(Option.getOrElse(cgroup, Function.constant('')))
 										)
 								}
 							)
@@ -427,10 +420,10 @@ export class Inventory extends Context.Service<
 										state: Option.match(agent.pid, {
 											onNone: () =>
 												Boolean.match(agent.status === 0, {
-													onFalse: () => 'failed · failed',
-													onTrue: () => 'inactive · dead'
+													onFalse: Function.constant('failed · failed'),
+													onTrue: Function.constant('inactive · dead')
 												}),
-											onSome: () => 'running'
+											onSome: Function.constant('running')
 										}),
 										url: Option.none(),
 										worker
@@ -445,7 +438,7 @@ export class Inventory extends Context.Service<
 									cwd: Effect.fnUntraced(function* (processId) {
 										return pipe(
 											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', `${processId}`, '-d', 'cwd', '-Fn'])),
-											Option.getOrElse(() => ''),
+											Option.getOrElse(Function.constant('')),
 											String.split('\n'),
 											Array.findFirst(String.startsWith('n')),
 											Option.map(String.slice(1))
@@ -517,7 +510,10 @@ export class Inventory extends Context.Service<
 													kind: 'peer',
 													name: peer.HostName,
 													self: Option.some(true),
-													state: Boolean.match(peer.Online, {onFalse: () => 'offline', onTrue: () => 'online'}),
+													state: Boolean.match(peer.Online, {
+														onFalse: Function.constant('offline'),
+														onTrue: Function.constant('online')
+													}),
 													url: Option.none(),
 													worker
 												})
@@ -537,8 +533,11 @@ export class Inventory extends Context.Service<
 														detail: `${pipe(
 															status.AllowFunnel,
 															Option.exists(permissions => permissions[site[0]] === true),
-															Boolean.match({onFalse: () => 'tailnet', onTrue: () => 'Funnel permitted (public)'})
-														)} → ${Option.getOrElse(handler[1].Proxy, () => 'non-proxy handler')}`,
+															Boolean.match({
+																onFalse: Function.constant('tailnet'),
+																onTrue: Function.constant('Funnel permitted (public)')
+															})
+														)} → ${Option.getOrElse(handler[1].Proxy, Function.constant('non-proxy handler'))}`,
 														health: pipe(
 															status.AllowFunnel,
 															Option.exists(permissions => permissions[site[0]] === true),

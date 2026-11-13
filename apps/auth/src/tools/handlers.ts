@@ -1,4 +1,4 @@
-import {Array, Boolean, Effect, Layer, Option, Order, Stream, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Effect, Function, Layer, Option, Order, Stream, String, Struct, pipe} from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
 
@@ -17,7 +17,7 @@ function page<A>(rows: readonly A[], key: (row: A) => string, input: {cursor: Op
 	const remaining = pipe(
 		rows,
 		Array.sort(Order.mapInput(Order.String, key)),
-		Array.filter(row => Option.match(input.cursor, {onNone: () => true, onSome: cursor => key(row) > cursor}))
+		Array.filter(row => Option.match(input.cursor, {onNone: Function.constTrue, onSome: cursor => key(row) > cursor}))
 	)
 	const items = Array.take(remaining, input.limit)
 	return {
@@ -43,7 +43,7 @@ export const layerMcpOwner = Layer.unwrap(
 					onFalse: () => Effect.flatMap(tokens.verify(request.headers), people.allowed),
 					onTrue: () => Effect.succeed({incarnation: IncarnationId.make('local'), user: DEVELOPER})
 				}),
-				// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- MCP's wire error exposes no internal authorization cause.
+				// oxlint-disable-next-line @deslop/coding-standards/recover-named-failures -- MCP's wire error exposes no internal authorization cause.
 				Effect.mapError((error: AuthError) =>
 					McpSchema.McpErrorBase.make({
 						code: Boolean.match(error.error === 'temporarily_unavailable', {

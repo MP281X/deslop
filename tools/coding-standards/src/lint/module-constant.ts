@@ -110,7 +110,7 @@ export const moduleConstant = defineRule({
 				),
 				Array.last,
 				Option.map(statement => statement.range[1]),
-				Option.getOrElse(() => 0)
+				Option.getOrElse(Function.constant(0))
 			)
 			for (const statement of program.body) {
 				pipe(

@@ -7,27 +7,19 @@ import type {Plugin} from 'vite-plus/lint/plugins'
 
 import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
-import {iconWeight} from '#lint/icon-weight.ts'
 import {moduleConstant} from '#lint/module-constant.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
 import {noBarrelModule} from '#lint/no-barrel-module.ts'
 import {noClickableBadge} from '#lint/no-clickable-badge.ts'
+import {noCollectingLoop} from '#lint/no-collecting-loop.ts'
 import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
 import {noDestructuredParameter} from '#lint/no-destructured-parameter.ts'
-import {noDiscardedFailure} from '#lint/no-discarded-failure.ts'
 import {noDoubleNullishCheck} from '#lint/no-double-nullish-check.ts'
-import {noEffectGenCallback} from '#lint/no-effect-gen-callback.ts'
-import {noEffectPropertyArrow} from '#lint/no-effect-property-arrow.ts'
-import {noEmptyRecovery} from '#lint/no-empty-recovery.ts'
-import {noErrorMessageControlFlow} from '#lint/no-error-message-control-flow.ts'
 import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
-import {noFalliblePromise} from '#lint/no-fallible-promise.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
-import {noGradient} from '#lint/no-gradient.ts'
 import {noHandWrittenHelper} from '#lint/no-hand-written-helper.ts'
 import {noIntermediateCollection} from '#lint/no-intermediate-collection.ts'
-import {noLoopCollector} from '#lint/no-loop-collector.ts'
 import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
 import {noNativeControl} from '#lint/no-native-control.ts'
@@ -49,7 +41,7 @@ import {noUnexplainedDisable} from '#lint/no-unexplained-disable.ts'
 import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
 import {preferPredicate} from '#lint/prefer-predicate.ts'
-import {preserveErrorCause} from '#lint/preserve-error-cause.ts'
+import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
@@ -98,7 +90,6 @@ const SET_MESSAGE =
 	'Use HashSet, or MutableHashSet for local mutation; for identity keys, wrap objects the code owns in Equal.byReferenceUnsafe, which marks them reference-compared globally.'
 
 // Checks of Deslop's own choices, which only Deslop's conventions can serve.
-const DESLOP_RULES = {'icon-weight': iconWeight}
 
 const RULES = {
 	'effect-call-form': effectCallForm,
@@ -107,22 +98,15 @@ const RULES = {
 	'no-accumulating-copy': noAccumulatingCopy,
 	'no-barrel-module': noBarrelModule,
 	'no-clickable-badge': noClickableBadge,
+	'no-collecting-loop': noCollectingLoop,
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
 	'no-destructured-parameter': noDestructuredParameter,
-	'no-discarded-failure': noDiscardedFailure,
 	'no-double-nullish-check': noDoubleNullishCheck,
-	'no-effect-gen-callback': noEffectGenCallback,
-	'no-effect-property-arrow': noEffectPropertyArrow,
-	'no-empty-recovery': noEmptyRecovery,
-	'no-error-message-control-flow': noErrorMessageControlFlow,
 	'no-fake-ref-state': noFakeRefState,
-	'no-fallible-promise': noFalliblePromise,
 	'no-floating-derived-type': noFloatingDerivedType,
-	'no-gradient': noGradient,
 	'no-hand-written-helper': noHandWrittenHelper,
 	'no-intermediate-collection': noIntermediateCollection,
-	'no-loop-collector': noLoopCollector,
 	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
 	'no-native-control': noNativeControl,
@@ -144,7 +128,7 @@ const RULES = {
 	'no-unvalidated-json-decode': noUnvalidatedJsonDecode,
 	'no-wall-clock': noWallClock,
 	'prefer-predicate': preferPredicate,
-	'preserve-error-cause': preserveErrorCause,
+	'recover-named-failures': recoverNamedFailures,
 	'schema-type-pair': schemaTypePair,
 	'service-method-span': serviceMethodSpan,
 	'service-schema-file': serviceSchemaFile,
@@ -181,7 +165,9 @@ export const restrictedImports: {
 	]
 }
 
-export const lint: OxlintConfig = {
+export const lint: OxlintConfig & {
+	rules: {'eslint-js/no-restricted-syntax': ['error', ...{message: string; selector: string}[]]}
+} = {
 	categories: {
 		correctness: 'off',
 		nursery: 'off',
@@ -216,7 +202,6 @@ export const lint: OxlintConfig = {
 			}
 		},
 		{files: ['**/*.ts'], rules: {'react/rules-of-hooks': 'off'}},
-		{files: ['**/*.test.ts'], rules: {'@deslop/coding-standards/no-discarded-failure': 'off'}},
 		{
 			files: ['**/*.tsx'],
 			rules: {
@@ -230,10 +215,15 @@ export const lint: OxlintConfig = {
 	plugins: ['effecttsgo', 'eslint', 'typescript', 'oxc', 'import', 'jsx-a11y', 'node', 'react', 'unicorn', 'vitest'],
 	rules: {
 		...Record.mapEntries(RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const]),
-		...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'off' as const]),
 
 		'eslint-js/no-restricted-syntax': [
 			'error',
+			{
+				message:
+					'Name this declaration for the domain value it holds; data, info, obj, temp, tmp, helper, manager and handle hide that meaning.',
+				selector:
+					':matches(VariableDeclarator > Identifier.id, FunctionDeclaration > Identifier.id, ClassDeclaration > Identifier.id, :matches(FunctionDeclaration, FunctionExpression, ArrowFunctionExpression) > Identifier.params, CatchClause > Identifier.param)[name=/^(data|info|obj|temp|tmp|helper|manager|handle)$/]'
+			},
 			{
 				message: 'Name an error class <Domain>Error.',
 				selector:
@@ -271,11 +261,6 @@ export const lint: OxlintConfig = {
 				message: 'Name tools in snake_case.',
 				selector:
 					'CallExpression[callee.object.name="Tool"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z][a-z0-9]*(_[a-z0-9]+)*$/])'
-			},
-			{
-				message: "Name an RPC '<service folder>.<verb>', as in 'metrics.history'.",
-				selector:
-					'CallExpression[callee.object.name="Rpc"][callee.property.name="make"] > Literal.arguments:first-child:not([value=/^[a-z]+(?:-[a-z]+)*\\.[a-z][A-Za-z]*$/])'
 			}
 		],
 
@@ -299,7 +284,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/schema-class-object-literal': 'error',
 		'effecttsgo/schema-literal-non-finite': 'error',
 
-		'effecttsgo/catch-unfailable-effect': 'error',
 		'effecttsgo/effect-fn-iife': 'error',
 		'effecttsgo/effect-gen-uses-adapter': 'error',
 		'effecttsgo/effect-in-failure': 'error',
@@ -338,14 +322,8 @@ export const lint: OxlintConfig = {
 
 		'effecttsgo/acquire-release-disposable': 'error',
 		'effecttsgo/all-of-map-to-for-each': 'error',
-		'effecttsgo/catch-all-tag-dispatch-to-catch-tag': 'error',
-		'effecttsgo/catch-all-to-map-error': 'error',
-		'effecttsgo/catch-chain-to-first-success-of': 'error',
-		'effecttsgo/catch-conditional-refail-to-catch-if': 'error',
 		'effecttsgo/catch-if-tag-to-catch-tag': 'error',
-		'effecttsgo/catch-refail-to-tap-error': 'error',
 		'effecttsgo/catch-tag-to-catch-reason': 'error',
-		'effecttsgo/catch-to-or-else-succeed': 'error',
 		'effecttsgo/deterministic-keys': 'error',
 		'effecttsgo/effect-do-notation': 'error',
 		'effecttsgo/effect-fn-opportunity': 'error',
@@ -381,7 +359,6 @@ export const lint: OxlintConfig = {
 		'effecttsgo/provide-merge-all-to-array': 'error',
 		'effecttsgo/race-first-with-sleep-to-timeout': 'error',
 		'effecttsgo/redundant-map-error': 'error',
-		'effecttsgo/redundant-or-die': 'error',
 		'effecttsgo/redundant-schema-tag-identifier': 'error',
 		'effecttsgo/result-match-to-from-result': 'error',
 		'effecttsgo/run-of-exit-to-run-exit': 'error',
@@ -430,7 +407,7 @@ export const lint: OxlintConfig = {
 		'eslint/no-else-return': ['error', {allowElseIf: false}],
 		'eslint/no-empty': 'error',
 		'eslint/no-empty-character-class': 'error',
-		'eslint/no-empty-function': ['error', {allow: ['arrowFunctions']}],
+		'eslint/no-empty-function': 'error',
 		'eslint/no-empty-pattern': 'error',
 		'eslint/no-empty-static-block': 'error',
 		'eslint/no-eval': 'error',
@@ -1005,12 +982,7 @@ export const lint: OxlintConfig = {
 	}
 }
 
-// Deslop's own turns these on; every other codebase using `lint` keeps them off.
-export const deslopRules: OxlintConfig['rules'] = {
-	...Record.mapEntries(DESLOP_RULES, (_, name) => [`@deslop/coding-standards/${name}`, 'error' as const])
-}
-
-const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: {...DESLOP_RULES, ...RULES}})
+const plugin: Plugin = definePlugin({meta: {name: '@deslop/coding-standards'}, rules: RULES})
 
 // oxlint-disable-next-line import/no-default-export -- Vite+ loads a lint plugin from its module's default export.
 export default plugin

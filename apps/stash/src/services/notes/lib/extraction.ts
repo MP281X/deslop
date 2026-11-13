@@ -7,6 +7,7 @@ import {
 	ByteSize,
 	Context,
 	Effect,
+	Function,
 	Layer,
 	Option,
 	Random,
@@ -142,7 +143,7 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 				})
 			)
 		),
-		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+		Effect.provideService(HttpClient.TracerDisabledWhen, Function.constTrue),
 		Effect.mapError(cause =>
 			pipe(
 				cause,
@@ -177,7 +178,7 @@ const follow = Effect.fnUntraced(function* <A, E>(
 		),
 		timeLimit('15 seconds', UNREACHABLE, 'Unreachable'),
 		Effect.retry({
-			times: Boolean.match(proxied, {onFalse: () => 0, onTrue: () => 2}),
+			times: Boolean.match(proxied, {onFalse: Function.constant(0), onTrue: Function.constant(2)}),
 			while: error => error.reason === 'Unreachable'
 		})
 	)
@@ -206,7 +207,7 @@ function fx<S extends Schema.Constraint>(schema: S, path: string) {
 function whole<A extends FxPost>(post: A) {
 	if (
 		Option.match(post.article, {
-			onNone: () => true,
+			onNone: Function.constTrue,
 			onSome: article => Array.isReadonlyArrayNonEmpty(article.content.blocks)
 		})
 	) {
@@ -235,7 +236,7 @@ const fetchOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, tit
 		author: embed.author_name,
 		image: embed.thumbnail_url,
 		slides: Option.none(),
-		text: plainText(Option.getOrElse(embed.title, () => '')),
+		text: plainText(Option.getOrElse(embed.title, Function.constant(''))),
 		title: title(embed),
 		url: canonical(url),
 		video: Option.none()
@@ -251,8 +252,8 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 		author: embed.author_name,
 		image: Option.none(),
 		slides: Option.none(),
-		text: plainText(load(Option.getOrElse(embed.html, () => ''))('blockquote p').text()),
-		title: `${Option.getOrElse(embed.author_name, () => 'A post')} on X`,
+		text: plainText(load(Option.getOrElse(embed.html, Function.constant('')))('blockquote p').text()),
+		title: `${Option.getOrElse(embed.author_name, Function.constant('A post'))} on X`,
 		url: canonical(url),
 		// Without the thread nothing says whether the post has a video, so yt-dlp tries.
 		video: Option.some(canonical(url))
@@ -387,7 +388,7 @@ const readPage = Effect.fnUntraced(function* (url: URL) {
 							pipe(
 								reader(url),
 								Effect.map(rendered => ({...rendered, author: extraction.author, image: extraction.image})),
-								Effect.orElseSucceed(() => extraction)
+								Effect.catchTag('NotesError', () => Effect.succeed(extraction))
 							)
 					})
 			})
@@ -399,7 +400,7 @@ function readLinked(url: URL) {
 	return pipe(
 		Boolean.match(url.hostname === 'github.com', {
 			onFalse: () => readPage(url),
-			onTrue: () => Effect.catch(gitHub(url), () => readPage(url))
+			onTrue: () => Effect.catchTag(gitHub(url), 'NotesError', () => readPage(url))
 		}),
 		Effect.map(found => `### ${found.title}\n\n${found.url}\n\n${String.slice(0, 40_000)(found.text)}`),
 		timeLimit('40 seconds', 'The linked page took too long.'),
@@ -456,7 +457,10 @@ export class Sources extends Context.Service<
 						// TikTok answers some exits with a login page instead of the post.
 						if (source === 'TikTok' && String.includes('/photo/')(url.pathname)) {
 							return yield* Effect.retry(tikTokPhotos(url), {
-								times: Boolean.match(Option.isSome(yield* Exit), {onFalse: () => 0, onTrue: () => 2}),
+								times: Boolean.match(Option.isSome(yield* Exit), {
+									onFalse: Function.constant(0),
+									onTrue: Function.constant(2)
+								}),
 								while: error => error.reason === 'UnreadablePhoto'
 							})
 						}
@@ -464,17 +468,19 @@ export class Sources extends Context.Service<
 							return yield* fetchOEmbed(
 								'https://www.tiktok.com/oembed?url=',
 								url,
-								embed => `${Option.getOrElse(embed.author_name, () => 'A video')} on TikTok`
+								embed => `${Option.getOrElse(embed.author_name, Function.constant('A video'))} on TikTok`
 							)
 						}
-						if (source === 'X') return yield* Effect.catch(xThread(url), () => xOEmbed(url))
+						if (source === 'X') return yield* Effect.catchTag(xThread(url), 'NotesError', () => xOEmbed(url))
 						// YouTube answers a datacenter address with a bot check, but its oEmbed still answers.
 						if (isYouTube(url.href)) {
 							return yield* fetchOEmbed('https://www.youtube.com/oembed?format=json&url=', url, embed =>
-								plainText(Option.getOrElse(embed.title, () => 'A YouTube video'))
+								plainText(Option.getOrElse(embed.title, Function.constant('A YouTube video')))
 							)
 						}
-						if (url.hostname === 'github.com') return yield* Effect.catch(gitHub(url), () => readPage(url))
+						if (url.hostname === 'github.com') {
+							return yield* Effect.catchTag(gitHub(url), 'NotesError', () => readPage(url))
+						}
 						return yield* readPage(url)
 					},
 					timeLimit('2 minutes', 'Reading the link took too long.'),

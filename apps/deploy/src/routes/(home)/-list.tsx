@@ -1,7 +1,7 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
 import type {DateTime} from 'effect'
-import {Array, Boolean, Duration, Equal, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
+import {Array, Boolean, Duration, Equal, Function, HashSet, Number, Option, Order, Stream, pipe} from 'effect'
 
 import {AppWindowIcon, PlayIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -41,7 +41,7 @@ export function InventoryContent(props: {children: ReactNode}) {
 	return (
 		<Loaded atom={inventoryAtom}>
 			{() => (
-				<CatchBoundary getResetKey={() => 'inventory'} errorComponent={ReadFailure}>
+				<CatchBoundary getResetKey={Function.constant('inventory')} errorComponent={ReadFailure}>
 					{props.children}
 				</CatchBoundary>
 			)}
@@ -120,7 +120,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 				>
 					<Badge variant="outline">
 						{Option.match(exposure.port, {
-							onNone: () => Option.match(exposure.url, {onNone: () => '', onSome: host}),
+							onNone: () => Option.match(exposure.url, {onNone: Function.constant(''), onSome: host}),
 							onSome: port => `${port}`
 						})}
 					</Badge>
@@ -187,7 +187,7 @@ function AppRow(props: {
 				Option.getOrElse(props.row.item.next, () => props.now),
 				props.now
 			),
-		onTrue: () => ''
+		onTrue: Function.constant('')
 	})
 	const reasonText = Boolean.match(scheduled, {
 		onFalse: () => reasonLine(props.row.item, props.now),
@@ -210,7 +210,7 @@ function AppRow(props: {
 							props.row.item.processes,
 							Option.getOrElse(Array.empty<Process>),
 							Array.match({
-								onEmpty: () => undefined,
+								onEmpty: Function.constUndefined,
 								onNonEmpty: entries =>
 									Array.max(
 										entries,
@@ -223,7 +223,10 @@ function AppRow(props: {
 				</ItemMedia>
 				<ItemContent className="pointer-events-none relative z-10">
 					<ItemTitle
-						className={Boolean.match(failing, {onFalse: () => 'w-full', onTrue: () => 'max-w-1/2'})}
+						className={Boolean.match(failing, {
+							onFalse: Function.constant('w-full'),
+							onTrue: Function.constant('max-w-1/2')
+						})}
 						title={fullName}
 					>
 						<span className="min-w-0 truncate">{name}</span>
@@ -269,7 +272,7 @@ function AppRow(props: {
 					</span>
 					{/* An endpoint this app exposed is hidden through Deploy's hide_exposure tool, not this page. */}
 					{Boolean.match(scheduled, {
-						onFalse: () => null,
+						onFalse: Function.constNull,
 						onTrue: () => (
 							<span className="flex size-5 shrink-0 items-center justify-center">
 								<RunNow disabled={running} item={props.row.item} onRun={() => run(requestOf(props.row.item))} />
@@ -359,7 +362,7 @@ export function ListPane(props: {
 									/>
 								)}
 								{Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {
-									onFalse: () => null,
+									onFalse: Function.constNull,
 									onTrue: () => (
 										<ListRows
 											compact={props.compact}

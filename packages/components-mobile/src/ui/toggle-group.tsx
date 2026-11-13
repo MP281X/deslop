@@ -1,4 +1,4 @@
-import {Boolean} from 'effect'
+import {Boolean, Function} from 'effect'
 
 import {Button, HStack, ScrollView} from '@expo/ui/swift-ui'
 import {
@@ -19,7 +19,7 @@ import type {ColorValue} from 'react-native'
 import {colors, space, text} from '#components/theme.ts'
 
 const ToggleGroupContext = createContext<{onValueChange: (value: string) => void; tint: ColorValue; value: string}>({
-	onValueChange: () => undefined,
+	onValueChange: Function.constUndefined,
 	tint: colors.foreground,
 	value: ''
 })

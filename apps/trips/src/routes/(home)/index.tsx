@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomSuspense, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Number, Option, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Function, Number, Option, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -69,7 +69,7 @@ function headingOf(booking: Booking) {
 function scheduleOf(booking: Booking) {
 	if (booking._tag === 'stay') {
 		const nights = Number.round(Duration.toDays(DateTime.distance(booking.checkIn, booking.checkOut)), 0)
-		return `${nights} ${Boolean.match(nights === 1, {onFalse: () => 'nights', onTrue: () => 'night'})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
+		return `${nights} ${Boolean.match(nights === 1, {onFalse: Function.constant('nights'), onTrue: Function.constant('night')})} · check-in ${clockAt(booking.checkIn, booking.place.timeZone)}`
 	}
 	const departs = clockAt(startOf(booking), booking.from.timeZone)
 	const arrives = clockAt(endOf(booking), booking.to.timeZone)
@@ -79,7 +79,7 @@ function scheduleOf(booking: Booking) {
 
 // The schedule and the gate or platform it leaves from, each shown once.
 function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
-	const where = Option.getOrElse(status.where, () => '')
+	const where = Option.getOrElse(status.where, Function.constant(''))
 	return pipe([scheduleOf(booking), where], Array.filter(String.isNonEmpty), Array.join(' · '))
 }
 
@@ -103,7 +103,10 @@ function Gutter(props: {countdown: Countdown}) {
 						{props.countdown.days}
 					</Text>
 					<Text modifiers={[text.caption, foregroundStyle(colors.mutedForeground)]}>
-						{Boolean.match(props.countdown.days === 1, {onFalse: () => 'days', onTrue: () => 'day'})}
+						{Boolean.match(props.countdown.days === 1, {
+							onFalse: Function.constant('days'),
+							onTrue: Function.constant('day')
+						})}
 					</Text>
 				</>
 			)}
@@ -137,7 +140,7 @@ function BookingRow(props: {
 								</Text>
 							</ItemContent>
 							{Option.match(problemOf(props.booking, status, props.now), {
-								onNone: () => undefined,
+								onNone: Function.constUndefined,
 								onSome: problem => (
 									<ItemActions>
 										<HStack spacing={space[2]}>

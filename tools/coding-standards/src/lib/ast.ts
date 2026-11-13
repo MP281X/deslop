@@ -938,11 +938,11 @@ function pipeStep(context: Context, node: ESTree.Node) {
 // A function applied to its data: data-first `Module.name(data, ...operands)` or data-last `Module.name(...operands)(data)`.
 function appliedStep(context: Context, node: ESTree.Node) {
 	if (node.type !== 'CallExpression') return Option.none()
-	const data = Array.head(node.arguments)
+	const subject = Array.head(node.arguments)
 	if (node.callee.type === 'CallExpression') {
 		if (node.arguments.length !== 1) return Option.none()
 		return Option.all({
-			data,
+			data: subject,
 			step: effectStep(context, node.callee.callee, {
 				call: Option.none(),
 				node: node.callee,
@@ -951,7 +951,7 @@ function appliedStep(context: Context, node: ESTree.Node) {
 		})
 	}
 	return Option.all({
-		data,
+		data: subject,
 		step: effectStep(context, node.callee, {call: Option.some(node), node, operands: Array.drop(node.arguments, 1)})
 	})
 }

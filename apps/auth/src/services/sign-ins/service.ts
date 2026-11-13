@@ -4,6 +4,7 @@ import {
 	Context,
 	Duration,
 	Effect,
+	Function,
 	HashMap,
 	Layer,
 	Match,
@@ -74,7 +75,10 @@ function pendingOf(entry: TransientRecord<SignIn>) {
 			Device: device => clientIconOf(device.request.clientId)
 		}),
 		id: signIn.id,
-		kind: Boolean.match(signIn.delivery._tag === 'Browser', {onFalse: () => 'App', onTrue: () => 'Browser'})
+		kind: Boolean.match(signIn.delivery._tag === 'Browser', {
+			onFalse: Function.constant('App'),
+			onTrue: Function.constant('Browser')
+		})
 	})
 }
 
@@ -262,11 +266,12 @@ export class SignIns extends Context.Service<
 					function* (delivery: Delivery, origin: Origin) {
 						const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
 						const receiver = yield* randomToken(32)
-						const group = addressGroup(Option.getOrElse(origin.address, () => 'unknown'))
+						const group = addressGroup(Option.getOrElse(origin.address, Function.constant('unknown')))
 						const current = yield* records.values
 						const fromGroup = Array.filter(
 							current,
-							entry => addressGroup(Option.getOrElse(entry.value.origin.address, () => 'unknown')) === group
+							entry =>
+								addressGroup(Option.getOrElse(entry.value.origin.address, Function.constant('unknown'))) === group
 						)
 						if (current.length >= 1000 || fromGroup.length >= 20 || Option.isSome(yield* records.get(code))) {
 							return yield* AuthError.make({error: 'temporarily_unavailable', message: 'Start the sign-in again'})

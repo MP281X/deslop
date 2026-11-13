@@ -1,4 +1,4 @@
-import {Array, DateTime, Duration, Effect, HashSet, MutableList, Option, String, pipe} from 'effect'
+import {Array, DateTime, Duration, Effect, Function, HashSet, Option, String, pipe} from 'effect'
 
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {
@@ -8,7 +8,7 @@ import {
 	getDefaultCalendarSync,
 	requestCalendarPermissions
 } from 'expo-calendar'
-import type {ExpoCalendar, ExpoCalendarEvent} from 'expo-calendar'
+import type {ExpoCalendar} from 'expo-calendar'
 
 import {bookingsAtom} from '#lib/bookings.ts'
 import {BOOKING_LINK, linkOf} from '#lib/deep-links.ts'
@@ -33,7 +33,7 @@ function eventOf(booking: Booking) {
 			alarms: [{relativeOffset: -3 * 60}],
 			endDate: DateTime.toDateUtc(booking.checkOut),
 			location: Option.getOrElse(booking.place.address, () => booking.name),
-			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), () => ''),
+			notes: Option.getOrElse(labelled('Confirmation', booking.confirmation), Function.constant('')),
 			startDate: DateTime.toDateUtc(booking.checkIn),
 			timeZone: booking.place.timeZone,
 			title: booking.name
@@ -65,37 +65,38 @@ function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar[
 			booking.status === 'confirmed' &&
 			DateTime.isGreaterThan(endOf(booking), DateTime.subtractDuration(now, Duration.days(1)))
 	)
-	const create = MutableList.make<ReturnType<typeof eventOf> & {url: string}>()
-	const update = MutableList.make<{event: ExpoCalendarEvent; details: ReturnType<typeof eventOf>}>()
-	for (const booking of bookings) {
+	const planned = Array.map(bookings, booking => {
 		const details = {...eventOf(booking), url: linkOf(booking.id)}
-		Option.match(Array.head(eventsByUrl[details.url] ?? []), {
-			onNone: () => {
-				MutableList.append(create, details)
-			},
-			onSome: event => {
-				if (
-					!(
-						sameTime(event.startDate, details.startDate) &&
-						sameTime(event.endDate, details.endDate) &&
-						event.title === details.title &&
-						event.location === details.location &&
-						event.notes === details.notes
-					)
-				) {
-					MutableList.append(update, {details, event})
-				}
-			}
-		})
-	}
+		return {details, event: Array.head(eventsByUrl[details.url] ?? [])}
+	})
 	const kept = HashSet.fromIterable(Array.map(bookings, booking => linkOf(booking.id)))
 	return {
-		create: MutableList.toArray(create),
+		create: pipe(
+			planned,
+			Array.filter(entry => Option.isNone(entry.event)),
+			Array.map(entry => entry.details)
+		),
 		remove: Array.filter(
 			events,
 			event => event.url !== undefined && String.startsWith(BOOKING_LINK)(event.url) && !HashSet.has(kept, event.url)
 		),
-		update: MutableList.toArray(update)
+		update: Array.flatMap(planned, entry =>
+			pipe(
+				entry.event,
+				Option.filter(
+					event =>
+						!(
+							sameTime(event.startDate, entry.details.startDate) &&
+							sameTime(event.endDate, entry.details.endDate) &&
+							event.title === entry.details.title &&
+							event.location === entry.details.location &&
+							event.notes === entry.details.notes
+						)
+				),
+				Option.map(event => ({details: entry.details, event})),
+				Option.toArray
+			)
+		)
 	}
 }
 

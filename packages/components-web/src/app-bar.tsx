@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Effect, Equal, Option, Predicate, String, pipe} from 'effect'
+import {Array, Boolean, Effect, Equal, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -153,7 +153,7 @@ export function AppBarChoice<A>(props: {
 				props.options,
 				Array.findFirst(option => Equal.equals(option.value, props.value)),
 				Option.map(option => option.label),
-				Option.getOrElse(() => '')
+				Option.getOrElse(Function.constant(''))
 			)}
 			onValueChange={label =>
 				pipe(

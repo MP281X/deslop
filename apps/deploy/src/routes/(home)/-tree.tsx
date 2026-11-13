@@ -1,4 +1,4 @@
-import {Array, Boolean} from 'effect'
+import {Array, Boolean, Function} from 'effect'
 
 import type {CSSProperties, ReactNode} from 'react'
 
@@ -25,7 +25,12 @@ function Branch(props: {depth: number; row: TreeRow}) {
 	const style: TreeStyle = {'--tree-depth': props.depth}
 	return (
 		<div className="relative" style={style}>
-			<div className={Boolean.match(hasChildren, {onFalse: () => undefined, onTrue: () => 'tree-sticky'})}>
+			<div
+				className={Boolean.match(hasChildren, {
+					onFalse: Function.constUndefined,
+					onTrue: Function.constant('tree-sticky')
+				})}
+			>
 				<Item
 					role="treeitem"
 					aria-level={props.depth + 1}

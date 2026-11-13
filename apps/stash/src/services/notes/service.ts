@@ -7,6 +7,7 @@ import {
 	Effect,
 	FiberMap,
 	FileSystem,
+	Function,
 	Layer,
 	Match,
 	Option,
@@ -260,8 +261,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		const tagNote = Effect.fnUntraced(function* (userId: UserId, note: Note, stills: Picture[]) {
 			const label = Boolean.match(Option.isNone(note.file), {
-				onFalse: () => 'The saved photo',
-				onTrue: () => 'Preview image'
+				onFalse: Function.constant('The saved photo'),
+				onTrue: Function.constant('Preview image')
 			})
 			const preview = yield* optional(
 				'The preview could not be read',
@@ -518,7 +519,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				if (String.isEmpty(text)) return yield* NotesError.make({message: 'Paste a link or write a note.'})
 				const url = yield* pipe(
 					Option.fromUndefinedOr(captureUrl(text)),
-					Option.map(link => Effect.orElseSucceed(sources.resolve(link), () => link)),
+					Option.map(link => Effect.catchTag(sources.resolve(link), 'NotesError', () => Effect.succeed(link))),
 					Effect.transposeOption
 				)
 				const saved = yield* pipe(

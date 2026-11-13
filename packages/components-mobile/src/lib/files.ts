@@ -34,7 +34,7 @@ export function cachedList<S extends Schema.Top, E, R>(
 ) {
 	const json = Schema.fromJsonString(Schema.Array(item))
 	const hydrate = Option.match(get.self<AsyncResult.AsyncResult<Schema.$Array<S>['Type'], E>>(), {
-		onNone: () => true,
+		onNone: Function.constTrue,
 		onSome: result => {
 			if (Option.isSome(AsyncResult.value(result))) return false
 			if (!AsyncResult.isFailure(result)) return true

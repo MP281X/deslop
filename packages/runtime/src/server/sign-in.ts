@@ -1,4 +1,4 @@
-import {Config, Effect, Layer, Option, Result, Schema, String, pipe} from 'effect'
+import {Config, Effect, Function, Layer, Option, Result, Schema, String, pipe} from 'effect'
 
 import {Digest, SecureRandom} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -63,7 +63,7 @@ function layerSignIn(issuer: string) {
 			}
 			// A destination on this app only, so the round trip through Auth cannot be turned into an open redirect.
 			function withRedirect<E, R>(
-				handle: (
+				route: (
 					request: HttpServerRequest.HttpServerRequest,
 					next: URL
 				) => Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>
@@ -76,7 +76,7 @@ function layerSignIn(issuer: string) {
 						Option.filter(next => next.origin === canonical),
 						Option.match({
 							onNone: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
-							onSome: next => handle(request, next)
+							onSome: next => route(request, next)
 						})
 					)
 				)
@@ -125,7 +125,7 @@ function layerSignIn(issuer: string) {
 										}
 										if (Option.isSome(params.error) || Option.isNone(params.code)) {
 											return yield* AuthError.make({
-												message: `Auth answered ${Option.getOrElse(params.error, () => 'without a code')}`
+												message: `Auth answered ${Option.getOrElse(params.error, Function.constant('without a code'))}`
 											})
 										}
 										if (!Option.contains(params.iss, new URL(ISSUER_PATH, issuer).href)) {

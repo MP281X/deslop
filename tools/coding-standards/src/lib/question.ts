@@ -25,7 +25,7 @@ function dedent(example: string) {
 			Array.filter(line => String.isNonEmpty(String.trim(line))),
 			Array.map(line => line.length - String.trimStart(line).length)
 		),
-		{onEmpty: () => 0, onNonEmpty: Array.min(Order.Number)}
+		{onEmpty: Function.constant(0), onNonEmpty: Array.min(Order.Number)}
 	)
 	return pipe(lines, Array.map(String.slice(indent)), Array.join('\n'))
 }

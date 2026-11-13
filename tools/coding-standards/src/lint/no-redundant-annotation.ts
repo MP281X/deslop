@@ -1,4 +1,4 @@
-import {Array, Equivalence, Option, Predicate, String, pipe} from 'effect'
+import {Array, Equivalence, Function, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Reference, Variable} from 'vite-plus/lint/plugins'
@@ -20,8 +20,9 @@ type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function
 
 function elementType(node: ESTree.TSType) {
 	if (node.type === 'TSArrayType') return Option.some(node.elementType)
-	if (node.type === 'TSTypeReference' && node.typeName.type === 'Identifier' && node.typeName.name === 'Array')
+	if (node.type === 'TSTypeReference' && node.typeName.type === 'Identifier' && node.typeName.name === 'Array') {
 		return Option.fromNullishOr(node.typeArguments?.params[0])
+	}
 	return Option.none()
 }
 
@@ -135,7 +136,14 @@ export const noRedundantAnnotation = defineRule({
 				const argument = node.arguments[0]
 				const types = node.typeArguments
 				const type = types?.params[0]
-				if (node.arguments.length !== 1 || types?.params.length !== 1 || argument?.type !== 'Literal' || !type) return
+				if (
+					node.arguments.length !== 1 ||
+					types?.params.length !== 1 ||
+					argument?.type !== 'Literal' ||
+					Predicate.isNullish(type)
+				) {
+					return
+				}
 				if (
 					node.callee.type === 'Identifier' &&
 					isImportBinding({context, importedName: 'useRef', node: node.callee, source: 'react'}) &&
@@ -146,7 +154,7 @@ export const noRedundantAnnotation = defineRule({
 						type.types,
 						Array.findFirst(member => member.type === 'TSNullKeyword'),
 						Option.match({
-							onNone: () => undefined,
+							onNone: Function.constUndefined,
 							onSome: member =>
 								context.report({
 									fix: fixer => {
@@ -170,8 +178,9 @@ export const noRedundantAnnotation = defineRule({
 							importedMember({context, importedName, node: node.callee, propertyName: 'make'})
 						)
 					)
-				)
+				) {
 					return
+				}
 				if (
 					(Predicate.isString(argument.value) && type.type === 'TSStringKeyword') ||
 					(Predicate.isNumber(argument.value) && type.type === 'TSNumberKeyword') ||
@@ -189,9 +198,15 @@ export const noRedundantAnnotation = defineRule({
 			VariableDeclarator: node => {
 				const annotation = node.id.typeAnnotation
 				const init = node.init
-				if (init?.type !== 'ArrayExpression' || Array.isArrayNonEmpty(init.elements) || !annotation) return
+				if (
+					init?.type !== 'ArrayExpression' ||
+					Array.isArrayNonEmpty(init.elements) ||
+					Predicate.isNullish(annotation)
+				) {
+					return
+				}
 				Option.match(elementType(annotation.typeAnnotation), {
-					onNone: () => undefined,
+					onNone: Function.constUndefined,
 					onSome: element =>
 						context.report({
 							fix: fixer =>

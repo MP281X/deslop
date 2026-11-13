@@ -46,7 +46,15 @@ import {defineRule} from 'vite-plus/lint/plugins'
 // oxlint-disable-next-line @deslop/coding-standards/no-renamed-import -- Effect's Context module and the linter's Context type are distinct contracts.
 import type {Context as LintContext, ESTree} from 'vite-plus/lint/plugins'
 
-import {effectImport, importedMember, isImportBinding, matches, memberName, variableFromScope} from '#lib/ast.ts'
+import {
+	effectImport,
+	importedMember,
+	isImportBinding,
+	matches,
+	memberName,
+	returnedExpression,
+	variableFromScope
+} from '#lib/ast.ts'
 
 const MODULES: Record.ReadonlyRecord<string, Record.ReadonlyRecord<string, unknown>> = {
 	Array,
@@ -234,7 +242,7 @@ function stableConstructor(context: LintContext, node: ESTree.CallExpression) {
 				'Schema.withDecodingDefaultTypeKey',
 				'Schema.withDecodingDefaultKey'
 			],
-			`${node.callee.object.name}.${Option.getOrElse(memberName(node.callee), () => '')}`
+			`${node.callee.object.name}.${Option.getOrElse(memberName(node.callee), Function.constant(''))}`
 		) &&
 		isImportBinding({
 			context,
@@ -280,7 +288,7 @@ function argumentKind(context: LintContext, node: ESTree.Node): string {
 			}
 			return 'unknown'
 		}),
-		Option.getOrElse(() => 'unknown')
+		Option.getOrElse(Function.constant('unknown'))
 	)
 }
 
@@ -290,10 +298,10 @@ function predicateDataFirst(context: LintContext, callee: ESTree.MemberExpressio
 	if (first === undefined) return false
 	const firstKind = argumentKind(context, first)
 	const secondKind = Option.match(Option.fromUndefinedOr(second), {
-		onNone: () => 'missing',
+		onNone: Function.constant('missing'),
 		onSome: argument => argumentKind(context, argument)
 	})
-	const method = Option.getOrElse(memberName(callee), () => '')
+	const method = Option.getOrElse(memberName(callee), Function.constant(''))
 	if (method === 'forEach') return secondKind === 'function' || (firstKind !== 'function' && secondKind === 'unknown')
 	if (Array.contains(['zip', 'zipWith', 'raceFirst', 'race', 'merge'], method)) {
 		return secondKind !== 'missing' && secondKind !== 'object'
@@ -708,7 +716,7 @@ function normalizePipe(context: LintContext, node: ESTree.CallExpression) {
 				}
 				const safe = Array.every(forwarded, call =>
 					Option.match(call, {
-						onNone: () => true,
+						onNone: Function.constTrue,
 						onSome: operation =>
 							pipe(
 								operation.arguments,
@@ -795,15 +803,106 @@ function normalizeDual(context: LintContext, node: ESTree.CallExpression) {
 	})
 }
 
+function namedGeneratorBoundary(node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	return (
+		node.async ||
+		node.generator ||
+		node.returnType !== null ||
+		node.parent.type === 'VariableDeclarator' ||
+		node.parent.type === 'PropertyDefinition' ||
+		node.type === 'FunctionDeclaration' ||
+		(node.type === 'FunctionExpression' && node.id !== null)
+	)
+}
+
+function effectProperty(context: LintContext, returned: ESTree.CallExpression) {
+	return (
+		(returned.callee.type === 'Identifier' &&
+			isImportBinding({context, importedName: 'pipe', node: returned.callee, source: 'effect'}) &&
+			Array.some(
+				returned.arguments,
+				argument =>
+					argument.type !== 'SpreadElement' &&
+					(importedMember({context, importedName: 'Effect', node: argument}) ||
+						(argument.type === 'CallExpression' &&
+							importedMember({context, importedName: 'Effect', node: argument.callee})))
+			)) ||
+		importedMember({context, importedName: 'Effect', node: returned.callee, propertyName: 'tryPromise'})
+	)
+}
+
+function generatorBody(context: LintContext, returned: ESTree.CallExpression) {
+	const generator = returned.arguments[0]
+	if (
+		generator?.type !== 'FunctionExpression' ||
+		!generator.generator ||
+		generator.async ||
+		generator.id !== null ||
+		generator.body === null ||
+		Array.isArrayNonEmpty(generator.params) ||
+		Option.isSome(String.match(/\b(?:arguments|this)\b/u)(context.sourceCode.getText(generator.body)))
+	)
+		{return Option.none<ESTree.FunctionBody>()}
+	return Option.some(generator.body)
+}
+
+function normalizeGenerator(context: LintContext, node: ESTree.Function | ESTree.ArrowFunctionExpression) {
+	if (namedGeneratorBoundary(node)) return
+	const returned = returnedExpression(node)
+	if (returned?.type !== 'CallExpression') return
+	if (node.parent.type === 'Property') {
+		if (Array.isArrayNonEmpty(node.params) && effectProperty(context, returned)) {
+			context.report({
+				message:
+					'Define the Effect property with Effect.fnUntraced(function* (input) { return yield* work }), or Effect.fn("Service.method")(function* …) for a traced boundary.',
+				node
+			})
+		}
+		return
+	}
+	if (
+		!importedMember({context, importedName: 'Effect', node: returned.callee, propertyName: 'gen'}) ||
+		returned.arguments.length !== 1 ||
+		!Array.every(
+			node.params,
+			parameter => parameter.type === 'Identifier' && Predicate.isNotNullish(parameter.typeAnnotation)
+		)
+	) {
+		return
+	}
+	Option.match(generatorBody(context, returned), {
+		onNone: Function.constVoid,
+		onSome: body =>
+			context.report({
+				fix: fixer => {
+					const parameters = pipe(
+						node.params,
+						Array.map(parameter => context.sourceCode.getText(parameter)),
+						Array.join(', ')
+					)
+					return fixer.replaceText(
+						node,
+						`Effect.fnUntraced(function* ${Option.match(Option.fromNullishOr(node.typeParameters), {onNone: Function.constant(''), onSome: type => context.sourceCode.getText(type)})}(${parameters}) ${context.sourceCode.getText(body)})`
+					)
+				},
+				message:
+					'Pass the generator to Effect.fnUntraced(function* (input) { … }); use Effect.fn("Service.method") for a traced boundary.',
+				node
+			})
+	})
+}
+
 export const effectCallForm = defineRule({
 	create: context => ({
+		ArrowFunctionExpression: node => normalizeGenerator(context, node),
 		CallExpression: node => {
 			normalizeForwarding(context, node)
 			normalizeCallee(context, node)
 			normalizeSchema(context, node)
 			normalizePipe(context, node)
 			normalizeDual(context, node)
-		}
+		},
+		FunctionExpression: node => normalizeGenerator(context, node)
 	}),
 	meta: {fixable: 'code', type: 'problem'}
 })

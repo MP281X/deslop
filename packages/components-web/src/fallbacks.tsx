@@ -1,6 +1,6 @@
 import {useAtomMount, useAtomRefresh, useAtomSuspense} from '@effect/atom-react'
 
-import {Cause, Effect, Option} from 'effect'
+import {Cause, Effect, Function, Option} from 'effect'
 
 import {ArrowClockwiseIcon, HouseIcon, LockIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -76,7 +76,7 @@ export function Loaded<A, E>(props: {
 	const result = useAtomSuspense(props.atom, {includeFailure: true})
 	const refresh = useAtomRefresh(props.atom)
 	return Option.match(blockingFailure(result), {
-		onNone: () => Option.match(AsyncResult.value(result), {onNone: () => null, onSome: props.children}),
+		onNone: () => Option.match(AsyncResult.value(result), {onNone: Function.constNull, onSome: props.children}),
 		onSome: cause => <ReadFailure error={Cause.squash(cause)} reset={refresh} />
 	})
 }

@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Match, Option, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Function, HashSet, Match, Option, Schema, String, pipe} from 'effect'
 
 import {
 	Button,
@@ -196,7 +196,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 							</ContextMenu.Trigger>
 							<ContextMenu.Items>
 								{Option.match(props.note.url, {
-									onNone: () => undefined,
+									onNone: Function.constUndefined,
 									onSome: url => (
 										<Button
 											onPress={() => {
@@ -205,7 +205,7 @@ function NoteRow(props: {note: NoteItem; onOpen: (id: Note['id']) => void; onReg
 										>
 											<Label
 												title={Option.match(appOf(props.note), {
-													onNone: () => 'Open Link',
+													onNone: Function.constant('Open Link'),
 													onSome: name => `Open in ${name}`
 												})}
 												{...Option.match(brandOf(props.note), {
@@ -272,8 +272,8 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 		<Menu
 			label="Filter"
 			systemImage={Boolean.match(props.kind === undefined, {
-				onFalse: () => 'line.3.horizontal.decrease.circle.fill',
-				onTrue: () => 'line.3.horizontal.decrease'
+				onFalse: Function.constant('line.3.horizontal.decrease.circle.fill'),
+				onTrue: Function.constant('line.3.horizontal.decrease')
 			})}
 			modifiers={[labelStyle('iconOnly'), menuOrder('fixed')]}
 		>
@@ -314,7 +314,7 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 				const notes = Array.filter(
 					all,
 					note =>
-						Option.match(found, {onNone: () => true, onSome: ids => HashSet.has(ids, note.id)}) &&
+						Option.match(found, {onNone: Function.constTrue, onSome: ids => HashSet.has(ids, note.id)}) &&
 						(props.tag === undefined || Array.contains(note.tags, props.tag)) &&
 						(props.kind === undefined || kindOf(note) === props.kind)
 				)
@@ -370,8 +370,8 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 										<Overlay.Content>
 											<Empty
 												systemImage={Boolean.match(String.isEmpty(query), {
-													onFalse: () => 'magnifyingglass',
-													onTrue: () => 'tray'
+													onFalse: Function.constant('magnifyingglass'),
+													onTrue: Function.constant('tray')
 												})}
 												label="No notes match"
 											/>
@@ -432,8 +432,8 @@ export function HomeRoute(props: {
 					<ToolbarItem placement="topBarLeading">
 						<Problem
 							label={Boolean.match(AsyncResult.isFailure(notes), {
-								onFalse: () => 'Search unavailable',
-								onTrue: () => 'Out of date'
+								onFalse: Function.constant('Search unavailable'),
+								onTrue: Function.constant('Out of date')
 							})}
 							onRetry={() => {
 								refreshNotes()
