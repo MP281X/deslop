@@ -6,7 +6,7 @@ import {Auth} from '@deslop/runtime/server/auth'
 import {layerMcp} from '@deslop/runtime/server/http'
 import {AuthError, CurrentUser} from '@deslop/runtime/shared/auth'
 
-import {AiProxy} from '#services/ai/service.ts'
+import {AiProxy} from '#services/ai-proxy/service.ts'
 import {Connections} from '#services/connections/service.ts'
 import {Gateway, GatewayDiscovery, VerifiedCaller} from '#services/gateway/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
@@ -21,15 +21,28 @@ const ToolHandlers = ToolContracts.toLayer(
 				const all = yield* connections.definitions
 				if (input.server !== undefined && !Array.some(all, server => server.id === input.server)) {
 					return yield* AuthError.make({
-						message: `Unknown server ${input.server}; valid servers: ${pipe(all, Array.map(server => server.id), Array.join(', '))}. Nothing changed.`
+						message: `Unknown server ${input.server}; valid servers: ${pipe(
+							all,
+							Array.map(server => server.id),
+							Array.join(', ')
+						)}. Nothing changed.`
 					})
 				}
 				return {
-					servers: pipe(all, Array.filter(server => input.server === undefined || server.id === input.server), Array.map(server => ({
+					servers: pipe(
+						all,
+						Array.filter(server => input.server === undefined || server.id === input.server),
+						Array.map(server => ({
 							...Option.match(server.error, {onNone: () => ({}), onSome: error => ({error})}),
-							...pipe(server.instructions, Option.filter(() => input.server === server.id), pipelineSubject1363 => Option.match(pipelineSubject1363, {onNone: () => ({}), onSome: instructions => ({instructions})})),
+							...pipe(
+								server.instructions,
+								Option.filter(() => input.server === server.id),
+								pipelineSubject1363 =>
+									Option.match(pipelineSubject1363, {onNone: () => ({}), onSome: instructions => ({instructions})})
+							),
 							...Struct.pick(server, ['id', 'status', 'tools'])
-						})))
+						}))
+					)
 				}
 			}),
 			remove_ai_key: Effect.fnUntraced(function* (input) {
@@ -51,12 +64,11 @@ export const GatewayMcp = Layer.unwrap(
 		// One tools/list verifies its bearer in the discovery middleware; the MCP auth middleware reads the same answer.
 		const cached = Auth.of({
 			token: headers => auth.token(headers),
-			user: headers =>
-				Effect.gen(function* () {
-					const saved = Option.getOrUndefined(yield* VerifiedCaller)
-					if (saved?.key === (headers['authorization'] ?? '')) return yield* Effect.fromResult(saved.result)
-					return yield* auth.user(headers)
-				})
+			user: Effect.fnUntraced(function* (headers) {
+				const saved = Option.getOrUndefined(yield* VerifiedCaller)
+				if (saved?.key === (headers['authorization'] ?? '')) return yield* Effect.fromResult(saved.result)
+				return yield* auth.user(headers)
+			})
 		})
 		return pipe(
 			layerMcp({

@@ -32,14 +32,23 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			})
 			const fleet = Fleet.of({
 				current: () =>
-					pipe(currents, Ref.update(count => count + 1), pipelineSubject1163 => Effect.as(pipelineSubject1163, [history])),
+					pipe(
+						currents,
+						Ref.update(count => count + 1),
+						pipelineSubject1163 => Effect.as(pipelineSubject1163, [history])
+					),
 				expose: () => Effect.succeed(''),
 				hide: () => Effect.void,
 				history: () => Effect.succeed(history),
 				local: Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
-				metrics: query =>
-					pipe(entered, pipelineSubject1495 => Queue.offer(pipelineSubject1495, query.minutes), pipelineSubject1480 => Effect.andThen(pipelineSubject1480, Effect.never), Effect.onInterrupt(() =>
-						Queue.offer(closed, query.minutes))),
+				metrics: Effect.fnUntraced(function* (query) {
+					return yield* pipe(
+						entered,
+						pipelineSubject1495 => Queue.offer(pipelineSubject1495, query.minutes),
+						pipelineSubject1480 => Effect.andThen(pipelineSubject1480, Effect.never),
+						Effect.onInterrupt(() => Queue.offer(closed, query.minutes))
+					)
+				}),
 				run: () => Effect.void,
 				snapshot: Effect.never
 			})
@@ -103,11 +112,19 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 								expose: () => Effect.succeed(''),
 								hide: () => Effect.void,
 								history: () => Effect.never,
-								local: pipe(locals, Ref.update(count => count + 1), Effect.as(snapshot)),
+								local: pipe(
+									locals,
+									Ref.update(count => count + 1),
+									Effect.as(snapshot)
+								),
 								metrics: () => Effect.never,
 								run: () => Effect.void,
-								snapshot: pipe(entered, pipelineSubject4334 => Queue.offer(pipelineSubject4334, undefined), pipelineSubject4319 => Effect.andThen(pipelineSubject4319, Effect.never), Effect.onInterrupt(() =>
-									Queue.offer(closed, undefined)))
+								snapshot: pipe(
+									entered,
+									pipelineSubject4334 => Queue.offer(pipelineSubject4334, undefined),
+									pipelineSubject4319 => Effect.andThen(pipelineSubject4319, Effect.never),
+									Effect.onInterrupt(() => Queue.offer(closed, undefined))
+								)
 							})
 						)
 					),

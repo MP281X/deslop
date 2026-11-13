@@ -15,7 +15,6 @@ import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 
-import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {
 	approveLink,
 	copyCodeAtom,
@@ -25,7 +24,8 @@ import {
 	secondAtom,
 	signInAtom,
 	signInLabel
-} from '#lib/utils.ts'
+} from '#lib/auth.ts'
+import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
 import {Failures} from '#routes/(home)/-sign-in.tsx'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
@@ -171,14 +171,19 @@ export function Waiting(props: {account: Option.Option<SignedAccount>; id: strin
 				/>
 			),
 			Waiting: value =>
-				pipe(props.account, Option.filter(signed => signed.role !== 'Waiting'), pipelineSubject5819 => Option.match(pipelineSubject5819, {
-						onNone: () => <CodeCard request={value.request} />,
-						onSome: () => (
-							<Suspense fallback={<SignInRowsSkeleton pending />}>
-								<SignInList pending={Option.some(value.request)} />
-							</Suspense>
-						)
-					}))
+				pipe(
+					props.account,
+					Option.filter(signed => signed.role !== 'Waiting'),
+					pipelineSubject5819 =>
+						Option.match(pipelineSubject5819, {
+							onNone: () => <CodeCard request={value.request} />,
+							onSome: () => (
+								<Suspense fallback={<SignInRowsSkeleton pending />}>
+									<SignInList pending={Option.some(value.request)} />
+								</Suspense>
+							)
+						})
+				)
 		})
 	)
 }

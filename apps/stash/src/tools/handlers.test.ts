@@ -62,6 +62,7 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))('Stash tools', test 
 						)
 					)
 					const notes = Context.get(context, Notes)
+					// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This test entry point owns the toolkit's lifetime.
 					const toolkit = yield* pipe(ToolContracts, Effect.provide(ToolHandlers), Effect.provideService(Notes, notes))
 					const saved = yield* pipe(
 						toolkit.handle('save_note', {text: 'Remember the milk'}, '1'),

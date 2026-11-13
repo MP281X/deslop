@@ -51,21 +51,29 @@ const tailscale = Effect.gen(function* () {
 				yield* Ref.update(stopped, n => n + 1)
 				yield* Ref.set(current, {})
 			}
-			const text = yield* Effect.mapError(Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
-					yield* pipe(command.args, Array.contains('serve'), pipelineSubject1580 => Boolean.match(pipelineSubject1580, {
-						onFalse: () =>
-							Effect.succeed({
-								Self: {
-									DNSName: 'dev.tailnet-8c4c.ts.net.',
-									HostName: 'dev',
-									OS: 'linux',
-									Online: true,
-									TailscaleIPs: []
-								}
-							}),
-						onTrue: () => Ref.get(current)
-					}))
-				), cause => PlatformError.badArgument({cause, method: 'encode', module: 'fixture'}))
+			const text = yield* Effect.mapError(
+				Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
+					yield* pipe(
+						command.args,
+						subject1604 => Array.contains(subject1604, 'serve'),
+						pipelineSubject1580 =>
+							Boolean.match(pipelineSubject1580, {
+								onFalse: () =>
+									Effect.succeed({
+										Self: {
+											DNSName: 'dev.tailnet-8c4c.ts.net.',
+											HostName: 'dev',
+											OS: 'linux',
+											Online: true,
+											TailscaleIPs: []
+										}
+									}),
+								onTrue: () => Ref.get(current)
+							})
+					)
+				),
+				cause => PlatformError.badArgument({cause, method: 'encode', module: 'fixture'})
+			)
 			return ChildProcessSpawner.makeHandle({
 				all: Stream.empty,
 				exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),

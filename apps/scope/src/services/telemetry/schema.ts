@@ -10,13 +10,13 @@ export class TelemetryError extends Schema.TaggedError<TelemetryError>()('Teleme
 }) {}
 
 export type TraceId = typeof TraceId.Type
-export const TraceId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{32}$/u)))
+export const TraceId = Schema.String.check(Schema.isPattern(/^[a-fA-F0-9]{32}$/u))
 
 export type SpanId = typeof SpanId.Type
-export const SpanId = pipe(Schema.String, Schema.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u)))
+export const SpanId = Schema.String.check(Schema.isPattern(/^[a-fA-F0-9]{16}$/u))
 
 export type Nano = typeof Nano.Type
-export const Nano = pipe(Schema.String, Schema.check(Schema.isPattern(/^\d{1,20}$/u)))
+export const Nano = Schema.String.check(Schema.isPattern(/^\d{1,20}$/u))
 
 export type Attribute = typeof Attribute.Type
 export const Attribute = Schema.Struct({key: Schema.String, value: Schema.JsonObject})
@@ -366,10 +366,9 @@ export const CompactLog = Schema.Struct({
 
 type App = typeof App.Type
 // The tools' inputs: every field optional except where a tool cannot answer without it.
-const App = pipe(
-	Schema.String,
-	Schema.annotateEncoded({description: 'App name as list_operations shows it, such as "trips"; omit for every app.'})
-)
+const App = Schema.annotateEncoded<Schema.String>({
+	description: 'App name as list_operations shows it, such as "trips"; omit for every app.'
+})(Schema.String)
 
 export const Since = pipe(
 	Range,
@@ -435,7 +434,9 @@ export const FindTracesParams = Schema.Struct({
 
 export type ReadTraceParams = typeof ReadTraceParams.Type
 export const ReadTraceParams = Schema.Struct({
-	id: (Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or search_traces.'}))(TraceId),
+	id: Schema.annotateEncoded<typeof TraceId>({
+		description: 'The full 32-hex trace id from list_operations or search_traces.'
+	})(TraceId),
 	limit: pipe(
 		Schema.Int,
 		Schema.check(Schema.isBetween({maximum: 1000, minimum: 1})),
@@ -488,10 +489,9 @@ export const SearchLogsParams = Schema.Struct({
 export type MeasureLatencyParams = typeof MeasureLatencyParams.Type
 export const MeasureLatencyParams = Schema.Struct({
 	app: Schema.optionalKey(App),
-	name: pipe(
-		Schema.NonEmptyString,
-		Schema.annotateEncoded({description: 'Exact span name, such as "notes.search" or "GET /api/notes".'})
-	),
+	name: Schema.annotateEncoded<Schema.NonEmptyString>({
+		description: 'Exact span name, such as "notes.search" or "GET /api/notes".'
+	})(Schema.NonEmptyString),
 	since: Since
 })
 

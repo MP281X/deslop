@@ -4,8 +4,8 @@ import {Atom} from 'effect/reactivity'
 import {randomUUID} from 'expo-crypto'
 import {Directory, File, Paths} from 'expo-file-system'
 
+import {alertFailure, cachedList, writeAtomically} from '@deslop/components-mobile/device'
 import {makeRemoval} from '@deslop/components-mobile/removal'
-import {alertFailure, cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {keepValueThroughOutages, liveStream} from '@deslop/runtime/client/live-stream'
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 import {provideRuntimeOnce} from '@deslop/runtime/mobile/session'
@@ -84,11 +84,14 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 
 export const regenerateAtom = Atom.keepAlive(
 	Atom.fn((id: Note['id'], get) =>
-		(alertFailure('Not Regenerated'))(provideRuntimeOnce(
+		alertFailure(
+			provideRuntimeOnce(
 				get,
 				RpcClient.runtime,
 				Effect.flatMap(RpcClient, client => client('notes.regenerate', {id}))
-			))
+			),
+			'Not Regenerated'
+		)
 	)
 )
 
@@ -126,7 +129,7 @@ export const writeAtom = Atom.keepAlive(
 						if (get(draftAtom) === text) get.set(draftAtom, '')
 					})
 				),
-				alertFailure('Note Not Saved')
+				effect => alertFailure(effect, 'Note Not Saved')
 			),
 		{concurrent: true}
 	)

@@ -96,7 +96,8 @@ function calendarPlan(all: BookingList, events: Awaited<ReturnType<ExpoCalendar[
 
 // The bookings mirror into one calendar; an event's URL names its booking, so a later sync finds it again.
 export const calendarAtom = Atom.make(get =>
-	Effect.ignore(Effect.gen(function* () {
+	Effect.ignore(
+		Effect.gen(function* () {
 			const loaded = get(bookingsAtom)
 			if (!AsyncResult.isSuccess(loaded)) return
 			if (
@@ -107,27 +108,33 @@ export const calendarAtom = Atom.make(get =>
 			) {
 				return
 			}
-			const calendar = yield* pipe(yield* Effect.tryPromise({
-						catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
-						try: () => getCalendars(EntityTypes.EVENT)
-					}), Array.findFirst(found => found.title === CALENDAR), pipelineSubject4314 => Option.match(pipelineSubject4314, {
-					onNone: () =>
-						Effect.tryPromise({
-							catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
-							try: () => {
-								const source = getDefaultCalendarSync().source
-								return createCalendar({
-									color: COLOR,
-									entityType: EntityTypes.EVENT,
-									name: CALENDAR,
-									source,
-									sourceId: source.id,
-									title: CALENDAR
-								})
-							}
-						}),
-					onSome: found =>
-						Effect.gen(function* () {
+			const calendar = yield* pipe(
+				yield* Effect.tryPromise({
+					catch: cause => BookingsError.make({cause, message: 'The calendars could not be listed.'}),
+					try: () => getCalendars(EntityTypes.EVENT)
+				}),
+				subject4511 => Array.findFirst(subject4511, found => found.title === CALENDAR),
+				pipelineSubject4314 =>
+					Option.match(pipelineSubject4314, {
+						onNone: () =>
+							Effect.tryPromise({
+								catch: cause => BookingsError.make({cause, message: 'The Trips calendar could not be created.'}),
+								try: () => {
+									const source = getDefaultCalendarSync().source
+									return createCalendar({
+										color: COLOR,
+										entityType: EntityTypes.EVENT,
+										name: CALENDAR,
+										source,
+										...Option.match(Option.fromUndefinedOr(source.id), {
+											onNone: () => ({}),
+											onSome: sourceId => ({sourceId})
+										}),
+										title: CALENDAR
+									})
+								}
+							}),
+						onSome: Effect.fnUntraced(function* (found) {
 							if (String.toLowerCase(found.color ?? '') !== COLOR) {
 								yield* Effect.tryPromise({
 									catch: cause => BookingsError.make({cause, message: 'The Trips calendar colour could not be set.'}),
@@ -136,7 +143,8 @@ export const calendarAtom = Atom.make(get =>
 							}
 							return found
 						})
-				}))
+					})
+			)
 			const now = yield* Clock.currentTimeMillis
 			const events = yield* Effect.tryPromise({
 				catch: cause => BookingsError.make({cause, message: 'The calendar events could not be listed.'}),
@@ -178,5 +186,7 @@ export const calendarAtom = Atom.make(get =>
 					}),
 				{concurrency: 1, discard: true}
 			)
-		}), {log: 'Warn', message: 'The calendar was not synced'})
+		}),
+		{log: 'Warn', message: 'The calendar was not synced'}
+	)
 )

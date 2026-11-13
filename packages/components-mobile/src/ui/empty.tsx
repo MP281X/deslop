@@ -1,4 +1,4 @@
-import {Option} from 'effect'
+import {Option, Record} from 'effect'
 
 import {Button, Image, VStack} from '@expo/ui/swift-ui'
 import type {ImageProps} from '@expo/ui/swift-ui'
@@ -38,7 +38,7 @@ export function Empty(props: {
 		>
 			{props.systemImage !== undefined && (
 				<Image
-					systemName={props.systemImage}
+					{...Record.getSomes({systemName: Option.fromUndefinedOr(props.systemImage)})}
 					modifiers={[
 						font({textStyle: 'largeTitle'}),
 						imageScale('large'),
@@ -65,7 +65,10 @@ export function EmptyAction(props: {
 	return (
 		<Button
 			label={props.label}
-			systemImage={props.systemImage}
+			{...Option.match(Option.fromUndefinedOr(props.systemImage), {
+				onNone: () => ({}),
+				onSome: systemImage => ({systemImage})
+			})}
 			onPress={props.onPress}
 			modifiers={[buttonStyle('glassProminent'), buttonBorderShape('capsule'), controlSize('large'), tint(props.tint)]}
 		/>

@@ -65,7 +65,7 @@ export const layerPeerAuth = Layer.effectContext(
 )
 type RemoteClient = Effect.Success<typeof makeRemoteClient>
 
-function changeFailed<A, E>(effect: Effect.Effect<A, E>) {
+function asDeployError<A, E>(effect: Effect.Effect<A, E>) {
 	return Effect.mapError(effect, cause => {
 		if (Schema.is(DeployError)(cause)) return cause
 		return DeployError.make({cause, message: 'Worker exposure change failed'})
@@ -75,7 +75,7 @@ function changeFailed<A, E>(effect: Effect.Effect<A, E>) {
 // A worker's last saved history, windowed to the range the page asked for.
 function cachedHistory(query: HistoryQuery, time: number, saved?: MachineHistory) {
 	return {
-		...Record.getSomes({cpuModel: Option.fromUndefinedOr(saved?.cpuModel)}),
+		...Option.match(Option.fromUndefinedOr(saved?.cpuModel), {onNone: () => ({}), onSome: cpuModel => ({cpuModel})}),
 		disks: saved?.disks ?? [],
 		load: saved?.load ?? [],
 		samples: history(saved?.samples ?? [], query.minutes, time),
@@ -95,7 +95,7 @@ export class Fleet extends Context.Service<
 		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
->('@deslop/deploy/services/fleet/service/Fleet') {
+>()('@deslop/deploy/services/fleet/service/Fleet') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -139,19 +139,29 @@ export class Fleet extends Context.Service<
 					const url = new URL(RPC_PATH, worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
-					return yield* pipe(makeRemoteClient, Effect.flatMap(client => use(client, peerHeaders)), pipelineSubject5527 => Effect.provide(pipelineSubject5527, pipe(
-								RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
-								Layer.provide(NodeSocket.layerWebSocket(url.href)),
-								Layer.provide(RpcSerialization.layerSchemaBinary()),
-								Layer.provideMerge(layerRpcStreamClient)
-							)))
+					return yield* pipe(
+						makeRemoteClient,
+						Effect.flatMap(client => use(client, peerHeaders)),
+						pipelineSubject5527 =>
+							// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
+							Effect.provide(
+								pipelineSubject5527,
+								pipe(
+									RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
+									Layer.provide(NodeSocket.layerWebSocket(url.href)),
+									Layer.provide(RpcSerialization.layerSchemaBinary()),
+									Layer.provideMerge(layerRpcStreamClient)
+								)
+							)
+					)
 				},
 				Effect.scoped,
 				Effect.timeout('15 seconds')
 			)
 			function selectedWorker(target: string) {
 				return Effect.mapError(Effect.fromOption(Array.findFirst(workers, worker => worker.name === target)), cause =>
-						DeployError.make({cause, message: 'This worker is not configured on the control plane'}))
+					DeployError.make({cause, message: 'This worker is not configured on the control plane'})
+				)
 			}
 			return Fleet.of({
 				current: Effect.fnUntraced(function* (query) {
@@ -178,13 +188,13 @@ export class Fleet extends Context.Service<
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
 						client('exposures.expose', Struct.omit(input, ['target']), {headers})
 					)
-				}, changeFailed),
+				}, asDeployError),
 				hide: Effect.fnUntraced(function* (input) {
 					if (input.target === undefined || input.target === '') return yield* exposures.hide(input.name)
 					return yield* remote(yield* selectedWorker(input.target), (client, headers) =>
 						client('exposures.hide', {name: input.name}, {headers})
 					)
-				}, changeFailed),
+				}, asDeployError),
 				history: metrics.read,
 				local,
 				metrics: Effect.fnUntraced(function* (query) {

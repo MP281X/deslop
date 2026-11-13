@@ -1,13 +1,14 @@
-import {Array, Boolean, DateTime, Match, Number, Option, Order, String, pipe, type Record} from 'effect'
+import type {Record} from 'effect'
+import {Array, Boolean, DateTime, Match, Number, Option, Order, String, pipe} from 'effect'
 
 import {ChartLineIcon} from '@phosphor-icons/react'
 import {useState} from 'react'
 import type {PointerEvent} from 'react'
 
+import {cn} from '@deslop/components-web/classes'
 import {EmptyState} from '@deslop/components-web/fallbacks'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
 import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '@deslop/components-web/ui/tooltip'
-import {cn} from '@deslop/components-web/utils'
 
 import {chartTicks} from '#routes/(home)/-chart.ts'
 import {bytes, rate} from '#routes/(home)/-rows.ts'
@@ -47,14 +48,19 @@ function x(history: MachineHistory, minutes: number, at: number) {
 
 // The sample nearest the pointer's horizontal place on the chart.
 function nearest(history: MachineHistory, minutes: number, at: number) {
-	return pipe(history.samples, Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})), pipelineSubject2113 => Array.match(pipelineSubject2113, {
-			onEmpty: () => 0,
-			onNonEmpty: entries =>
-				Array.min(
-					entries,
-					Order.mapInput(Order.Number, entry => entry.distance)
-				).index
-		}))
+	return pipe(
+		history.samples,
+		Array.map((sample, index) => ({distance: Math.abs(x(history, minutes, sample.time) - at), index})),
+		pipelineSubject2113 =>
+			Array.match(pipelineSubject2113, {
+				onEmpty: () => 0,
+				onNonEmpty: entries =>
+					Array.min(
+						entries,
+						Order.mapInput(Order.Number, entry => entry.distance)
+					).index
+			})
+	)
 }
 
 // The machine's share each band holds over time, stacked on the whole machine's 0–100%, with a tooltip and cursor on the hovered band.
@@ -207,8 +213,16 @@ function UsageChart(props: {
 								aria-hidden="true"
 								className="pointer-events-none absolute top-(--tip-y) left-(--tip-x) size-px"
 								style={{
-									'--tip-x': `${pipe(Option.fromUndefinedOr(cursor), Option.map(value => value.x), Option.getOrElse(() => 0))}%`,
-									'--tip-y': `${pipe(Option.fromUndefinedOr(cursor), Option.map(value => value.y), Option.getOrElse(() => 0))}%`
+									'--tip-x': `${pipe(
+										Option.fromUndefinedOr(cursor),
+										Option.map(value => value.x),
+										Option.getOrElse(() => 0)
+									)}%`,
+									'--tip-y': `${pipe(
+										Option.fromUndefinedOr(cursor),
+										Option.map(value => value.y),
+										Option.getOrElse(() => 0)
+									)}%`
 								}}
 							/>
 						}
@@ -236,7 +250,10 @@ function TimeAxis(props: {className?: string; minutes: number; now: number}) {
 			aria-hidden="true"
 			className={cn('text-muted-foreground relative h-4 font-mono text-xs tabular-nums', props.className)}
 		>
-			{pipe(chartTicks(props.minutes, props.now), Array.filter(tick => tick.label), Array.map(tick => (
+			{pipe(
+				chartTicks(props.minutes, props.now),
+				Array.filter(tick => tick.label),
+				Array.map(tick => (
 					<span
 						key={tick.at}
 						className={cn(
@@ -262,7 +279,8 @@ function TimeAxis(props: {className?: string; minutes: number; now: number}) {
 							Match.orElse(() => time.format(tick.at))
 						)}
 					</span>
-				)))}
+				))
+			)}
 		</div>
 	)
 }
@@ -362,7 +380,7 @@ export function ChartBlock(props: {
 		{
 			cover: false,
 			figure: Boolean.match(latest === undefined, {onFalse: () => bytes(latest?.memoryUsed ?? 0), onTrue: () => '—'}),
-			focus,
+			...Option.match(Option.fromUndefinedOr(focus), {onNone: () => ({}), onSome: focusValue => ({focus: focusValue})}),
 			format: bytes,
 			label: 'Memory',
 			layers: Array.map(all, band => ({...band, readings: band.memoryBytes, values: band.memory})),
@@ -371,7 +389,7 @@ export function ChartBlock(props: {
 		{
 			cover: false,
 			figure: Option.match(cpu, {onNone: () => '—', onSome: rate}),
-			focus,
+			...Option.match(Option.fromUndefinedOr(focus), {onNone: () => ({}), onSome: focusValue => ({focus: focusValue})}),
 			format: rate,
 			label: 'CPU',
 			layers: Array.map(all, band => ({...band, readings: band.cpu, values: band.cpu})),
@@ -416,7 +434,10 @@ export function ChartBlock(props: {
 						<UsageChart
 							className="h-16 sm:h-32"
 							cover={chart.cover}
-							focus={chart.focus}
+							{...Option.match(Option.fromUndefinedOr(chart.focus), {
+								onNone: () => ({}),
+								onSome: focusValue => ({focus: focusValue})
+							})}
 							format={chart.format}
 							history={props.history}
 							label={chart.label}

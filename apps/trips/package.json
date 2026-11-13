@@ -38,7 +38,6 @@
 	"devDependencies": {
 		"@deslop/components-mobile": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/ai-anthropic": "latest",
 		"@effect/atom-react": "latest",
 		"@effect/platform-node": "latest",
 		"@effect/sql-sqlite-node": "latest",

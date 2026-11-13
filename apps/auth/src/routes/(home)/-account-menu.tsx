@@ -17,7 +17,6 @@ import {
 	DropdownMenuTrigger
 } from '@deslop/components-web/ui/dropdown-menu'
 
-import {AccountAvatar} from '#lib/components.tsx'
 import {
 	accountMenuOpenAtom,
 	addPasskeyAtom,
@@ -25,20 +24,14 @@ import {
 	menuSignOutAtom,
 	passkeysAtom,
 	resumePasskeyAtom
-} from '#lib/utils.ts'
+} from '#lib/auth.ts'
+import {AccountAvatar} from '#lib/components.tsx'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
 const route = getRouteApi('/(home)')
 
 // A failed menu action says so directly under it, as the menu already reports an unreadable passkey list.
-function MenuFailure(props: {message: string}) {
-	return (
-		<DropdownMenuItem disabled variant="destructive" className="max-sm:h-11">
-			{props.message}
-		</DropdownMenuItem>
-	)
-}
 
 function PasskeyItems(props: {via: SessionVia}) {
 	const read = useAtomValue(passkeysAtom)
@@ -50,7 +43,13 @@ function PasskeyItems(props: {via: SessionVia}) {
 			{/* A failed read says so, rather than looking like an account without passkeys. */}
 			{Option.match(AsyncResult.error(read), {
 				onNone: () => null,
-				onSome: failure => <MenuFailure message={`Passkeys unavailable · ${failure.message}`} />
+				onSome: failure => (
+					<DropdownMenuItem
+						disabled
+						variant="destructive"
+						className="max-sm:h-11"
+					>{`Passkeys unavailable · ${failure.message}`}</DropdownMenuItem>
+				)
 			})}
 			{Array.map(passkeys, passkey => (
 				<DropdownMenuItem key={passkey.id} disabled>
@@ -73,7 +72,11 @@ function PasskeyItems(props: {via: SessionVia}) {
 			</DropdownMenuItem>
 			{Option.match(AsyncResult.error(adding), {
 				onNone: () => null,
-				onSome: failure => <MenuFailure message={failure.message} />
+				onSome: failure => (
+					<DropdownMenuItem disabled variant="destructive" className="max-sm:h-11">
+						{failure.message}
+					</DropdownMenuItem>
+				)
 			})}
 		</DropdownMenuGroup>
 	)
@@ -112,7 +115,11 @@ export function AccountMenu(props: {account: SignedAccount}) {
 				</DropdownMenuItem>
 				{Option.match(AsyncResult.error(signOut), {
 					onNone: () => null,
-					onSome: failure => <MenuFailure message={failure.message} />
+					onSome: failure => (
+						<DropdownMenuItem disabled variant="destructive" className="max-sm:h-11">
+							{failure.message}
+						</DropdownMenuItem>
+					)
 				})}
 			</DropdownMenuContent>
 		</DropdownMenu>

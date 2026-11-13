@@ -13,7 +13,7 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {routeTree} from '#routeTree.gen.ts'
 
-import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
+import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {DeployError, InventoryItem, Snapshot} from '#services/inventory/schema.ts'
 import {MachineHistory, Sample} from '#services/metrics/schema.ts'

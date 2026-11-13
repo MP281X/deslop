@@ -4,14 +4,18 @@ import {Atom} from 'effect/reactivity'
 import {geocodeAsync} from 'expo-location'
 import {Linking} from 'react-native'
 
-import {alertFailure} from '@deslop/components-mobile/utils'
+import {alertFailure} from '@deslop/components-mobile/device'
 
 import {departureOf, MINUTE, stayAfter} from '#services/bookings/lib/utils.ts'
 import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 
 export function placeLine(place: Place) {
-	return pipe([place.name, place.address ?? place.city ?? ''], pipelineSubject520 => Array.filter(pipelineSubject520, String.isNonEmpty), Array.join(', '))
+	return pipe(
+		[place.name, place.address ?? place.city ?? ''],
+		pipelineSubject520 => Array.filter(pipelineSubject520, String.isNonEmpty),
+		Array.join(', ')
+	)
 }
 
 type Coordinates = {latitude: number; longitude: number}
@@ -33,16 +37,21 @@ const coordinatesOf = Effect.fnUntraced(function* (place: Place) {
 
 export type Ride = {label: string; place: Place}
 
-export function ridesFor(booking: Booking, bookings: BookingList, now: number) {
+export function ridesOf(booking: Booking, bookings: BookingList, now: number) {
 	if (booking._tag === 'stay') return [{label: booking.name, place: booking.place}] satisfies Ride[]
 	const stay = Option.map(
 		stayAfter(bookings, booking),
 		found => ({label: found.name, place: found.place}) satisfies Ride
 	)
-	return pipe(stay, Option.filter(() => now > departureOf(booking) - 30 * MINUTE), pipelineSubject1591 => Option.match(pipelineSubject1591, {
-			onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
-			onSome: next => [next] satisfies Ride[]
-		}))
+	return pipe(
+		stay,
+		Option.filter(() => now > departureOf(booking) - 30 * MINUTE),
+		pipelineSubject1591 =>
+			Option.match(pipelineSubject1591, {
+				onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
+				onSome: next => [next] satisfies Ride[]
+			})
+	)
 }
 
 export const mapsAtom = Atom.fn((ride: Ride) =>
@@ -60,7 +69,7 @@ export const mapsAtom = Atom.fn((ride: Ride) =>
 					)
 			})
 		),
-		alertFailure('No Directions')
+		effect => alertFailure(effect, 'No Directions')
 	)
 )
 
@@ -81,6 +90,6 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 					)
 			})
 		),
-		alertFailure('No Uber')
+		effect => alertFailure(effect, 'No Uber')
 	)
 )

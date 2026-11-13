@@ -18,9 +18,17 @@ export function prunedTools(
 	installed: Record<string, {id: string; generation: string}>
 ) {
 	const connected = HashSet.fromIterable(
-		pipe(definitions, Array.filter(server => server.status !== 'Not connected'), Array.map(server => Tuple.make(server.id, server.generation)))
+		pipe(
+			definitions,
+			Array.filter(server => server.status !== 'Not connected'),
+			Array.map(server => Tuple.make(server.id, server.generation))
+		)
 	)
-	return pipe(Record.toEntries(installed), Array.filter(entry => !HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))), Array.map(entry => entry[0]))
+	return pipe(
+		Record.toEntries(installed),
+		Array.filter(entry => !HashSet.has(connected, Tuple.make(entry[1].id, entry[1].generation))),
+		Array.map(entry => entry[0])
+	)
 }
 
 // Bounds that only restate a JSON number's range tell an agent nothing.

@@ -1,3 +1,4 @@
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- A real scoped loopback server proves the worker RPC transport.
 import {createServer} from 'node:http'
 
 import {NodeCrypto, NodeHttpClient, NodeHttpServer, NodeServices} from '@effect/platform-node'
@@ -9,7 +10,7 @@ import {HttpRouter, HttpServer} from 'effect/http'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import * as ServerRuntime from '@deslop/runtime/server/http'
+import {layerServerProtocol, layerRpc} from '@deslop/runtime/server/http'
 import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
@@ -69,7 +70,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 					pipe(
 						HttpRouter.serve(
 							pipe(
-								ServerRuntime.layerRpc({
+								layerRpc({
 									group,
 									handlers: group.toLayer({
 										'inventory.snapshot': () =>
@@ -102,7 +103,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeHttpClient.layerFetch, NodeCrypt
 								Layer.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({DEPLOY_KEY: 'shared-key'})))
 							)
 						),
-						Layer.provide(ServerRuntime.layerProtocol),
+						Layer.provide(layerServerProtocol),
 						Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0}))
 					)
 				)

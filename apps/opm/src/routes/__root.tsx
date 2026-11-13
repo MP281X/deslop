@@ -9,7 +9,7 @@ import {Suspense, useState} from 'react'
 import {Loaded, SessionGate} from '@deslop/components-mobile/screens'
 import {colors} from '@deslop/components-mobile/theme'
 
-import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, diagnosticsAtom, openedAtom, primary, pushAtom, session} from '#lib/chapters.ts'
 import {ChaptersRoute} from '#routes/(home)/index.tsx'
 import {ReaderRoute, ReaderSkeleton} from '#routes/chapters/$number.tsx'
 import icon from '#routes/icon.png'
@@ -20,7 +20,14 @@ import type {Series} from '#services/chapters/schema.ts'
 function Destination(props: {number: number; series: Series; start?: number}) {
 	return (
 		<Loaded atom={chaptersAtom} name="Chapters">
-			{chapters => <ReaderRoute chapters={chapters} number={props.number} series={props.series} start={props.start} />}
+			{chapters => (
+				<ReaderRoute
+					chapters={chapters}
+					number={props.number}
+					series={props.series}
+					{...Option.match(Option.fromUndefinedOr(props.start), {onNone: () => ({}), onSome: start => ({start})})}
+				/>
+			)}
 		</Loaded>
 	)
 }
@@ -60,7 +67,14 @@ function AppRoutes() {
 						onSome: target => (
 							<NavigationDestination key={value} value={value}>
 								<Suspense fallback={<ReaderSkeleton number={target[2]} />}>
-									<Destination number={target[2]} series={target[0]} start={resumePage} />
+									<Destination
+										number={target[2]}
+										series={target[0]}
+										{...Option.match(Option.fromUndefinedOr(resumePage), {
+											onNone: () => ({}),
+											onSome: start => ({start})
+										})}
+									/>
 								</Suspense>
 							</NavigationDestination>
 						)

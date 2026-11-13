@@ -1,7 +1,7 @@
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Effect, Fiber, Layer, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Fiber, Layer, Stream} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
@@ -35,12 +35,15 @@ const servers = HttpClient.make(request =>
 	})
 )
 
-const layer = Layer.provide(Apps.layer, Layer.mergeAll(
-			SqliteClient.layer({filename: ':memory:'}),
-			Reactivity.layer,
-			Layer.succeed(HttpClient.HttpClient, servers),
-			ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://auth.mp281x.xyz'}))
-		))
+const layer = Layer.provide(
+	Apps.layer,
+	Layer.mergeAll(
+		SqliteClient.layer({filename: ':memory:'}),
+		Reactivity.layer,
+		Layer.succeed(HttpClient.HttpClient, servers),
+		ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://auth.mp281x.xyz'}))
+	)
+)
 
 it.effect(
 	'keeps a restarting app announcement retryable',
@@ -57,7 +60,7 @@ it.effect(
 	'lists an app whose server names this Auth',
 	Effect.fnUntraced(function* () {
 		const apps = Context.get(yield* Layer.build(layer), Apps)
-		const watching = yield* Effect.forkScoped(Stream.runCollect(Stream.take(apps.catalog, 4)))
+		const watching = yield* Effect.forkScoped(Stream.runCollect(Stream.take(apps.watch, 4)))
 		yield* Effect.yieldNow
 		yield* apps.register('https://stash.mp281x.xyz')
 		yield* apps.register('https://scope.mp281x.xyz')
@@ -87,6 +90,6 @@ it.effect(
 		]) {
 			assert.strictEqual((yield* Effect.flip(apps.register(origin)))._tag, 'AuthError', origin)
 		}
-		assert.deepStrictEqual(yield* Effect.flatMap(Stream.runHead(apps.catalog), Effect.fromOption), [])
+		assert.deepStrictEqual(yield* Effect.flatMap(Stream.runHead(apps.watch), Effect.fromOption), [])
 	})
 )

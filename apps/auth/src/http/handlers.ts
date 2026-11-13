@@ -13,7 +13,7 @@ import {
 	SESSION_COOKIE,
 	clientIdOf,
 	failureOptions,
-	rejected
+	asAuthError
 } from '@deslop/runtime/shared/auth'
 
 import {App, AppParams} from '#services/apps/schema.ts'
@@ -140,7 +140,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 					Option.map(addressGroup),
 					Option.getOrElse(() => 'unknown')
 				)
-				return yield* Effect.matchEffect(limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}), {
+				return yield* Effect.matchEffect(
+					limiter.consume({key: `${route}:${address}`, limit: perAddress, onExceeded: 'fail', window: '1 minute'}),
+					{
 						onFailure: failure =>
 							Effect.succeed(
 								HttpServerResponse.text('Too many requests; retry later', {
@@ -154,7 +156,8 @@ export const HttpHandlers = HttpRouter.use(router =>
 								})
 							),
 						onSuccess: () => handler
-					})
+					}
+				)
 			})
 		}
 
@@ -171,11 +174,14 @@ export const HttpHandlers = HttpRouter.use(router =>
 				'apps',
 				10
 			)(
-				Effect.catchIf(Effect.gen(function* () {
-						const params = yield* (rejected('Send the app’s origin'))(HttpServerRequest.schemaBodyJson(AppParams))
+				Effect.catchIf(
+					Effect.gen(function* () {
+						const params = yield* asAuthError('Send the app’s origin')(HttpServerRequest.schemaBodyJson(AppParams))
 						return yield* HttpServerResponse.schemaJson(App.json)(yield* apps.register(params.origin))
-					}), Schema.is(AuthError), failure =>
-						Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403))))
+					}),
+					Schema.is(AuthError),
+					failure => Effect.succeed(HttpServerResponse.text(failure.message, failureOptions(failure, 403)))
+				)
 			)
 		)
 		yield* router.add(
@@ -207,11 +213,12 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const params = yield* Effect.mapError(HttpServerRequest.schemaBodyJson(Registration), cause =>
-								AuthError.make({
-									cause,
-									error: 'invalid_client_metadata',
-									message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
-								}))
+							AuthError.make({
+								cause,
+								error: 'invalid_client_metadata',
+								message: 'Send up to 4 redirect_uris of at most 200 characters and a client_name of at most 100'
+							})
+						)
 						if (!Array.every(params.redirect_uris, allowedRedirect)) {
 							return yield* AuthError.make({
 								error: 'invalid_redirect_uri',
@@ -246,53 +253,66 @@ export const HttpHandlers = HttpRouter.use(router =>
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest
 						// Until the client and its callback check out, an error stays on this page: RFC 9700 §4.11 forbids redirecting it.
-						const asked = yield* (rejected('The authorization request names no client_id'))(HttpServerRequest.schemaSearchParams(AuthorizeClient))
+						const asked = yield* asAuthError('The authorization request names no client_id')(
+							HttpServerRequest.schemaSearchParams(AuthorizeClient)
+						)
 						const client = yield* tokens.client(asked)
 						return yield* pipe(
 							HttpServerRequest.schemaSearchParams(AuthorizeParams),
-							rejected('Invalid authorization request'),
-							Effect.flatMap(params => clientRequest(asked, client, params)),
-							Effect.flatMap(
-								Effect.fnUntraced(function* (checked) {
-									if (!webRedirect(checked.redirectUri)) {
-										return waitingAt(yield* signIns.start({_tag: 'Client', request: checked}, originOf(request)))
-									}
-									const browser = yield* pipe(
-										tokens.browserSession(request.headers),
-										Effect.tap(found => people.allowed(found.owner)),
-										Effect.result
-									)
-									if (browser._tag === 'Failure') {
-										if (
-											browser.failure.error === 'temporarily_unavailable' ||
-											browser.failure.error === 'access_denied'
-										) {
-											return yield* browser.failure
+							asAuthError('Invalid authorization request'),
+							subject8703 => Effect.flatMap(subject8703, params => clientRequest(asked, client, params)),
+							subject8774 =>
+								Effect.flatMap(
+									subject8774,
+									Effect.fnUntraced(function* (checked) {
+										if (!webRedirect(checked.redirectUri)) {
+											return waitingAt(yield* signIns.start({_tag: 'Client', request: checked}, originOf(request)))
+										}
+										const browser = yield* pipe(
+											tokens.browserSession(request.headers),
+											Effect.tap(found => people.allowed(found.owner)),
+											Effect.result
+										)
+										if (browser._tag === 'Failure') {
+											if (
+												browser.failure.error === 'temporarily_unavailable' ||
+												browser.failure.error === 'access_denied'
+											) {
+												return yield* browser.failure
+											}
+											return HttpServerResponse.redirect(
+												`/?${new URLSearchParams({next: new URL(request.url, origin).href})}`
+											)
 										}
 										return HttpServerResponse.redirect(
-											`/?${new URLSearchParams({next: new URL(request.url, origin).href})}`
+											callbackUrl(
+												checked,
+												{
+													code: yield* tokens.issue({...checked, parent: browser.success.family}, browser.success.owner)
+												},
+												tokens.issuer
+											)
 										)
-									}
-									return HttpServerResponse.redirect(
-										callbackUrl(
-											checked,
-											{code: yield* tokens.issue({...checked, parent: browser.success.family}, browser.success.owner)},
-											tokens.issuer
-										)
-									)
-								})
-							),
-							Effect.catchIf(Schema.is(AuthError), failure =>
-								Effect.succeed(
-									HttpServerResponse.redirect(
-										callbackUrl(
-											{redirectUri: client.redirectUri, state: asked.state},
-											{error: failure.error ?? 'invalid_request', error_description: failure.message},
-											tokens.issuer
+									})
+								),
+							subject9853 =>
+								Effect.catchIf(subject9853, Schema.is(AuthError), failure =>
+									Effect.succeed(
+										HttpServerResponse.redirect(
+											callbackUrl(
+												{
+													redirectUri: client.redirectUri,
+													...Option.match(Option.fromUndefinedOr(asked.state), {
+														onNone: () => ({}),
+														onSome: state => ({state})
+													})
+												},
+												{error: failure.error ?? 'invalid_request', error_description: failure.message},
+												tokens.issuer
+											)
 										)
 									)
 								)
-							)
 						)
 					})
 				)
@@ -308,7 +328,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest
-						const params = yield* (rejected('Send a client_id'))(HttpServerRequest.schemaBodyUrlParams(DeviceParams))
+						const params = yield* asAuthError('Send a client_id')(HttpServerRequest.schemaBodyUrlParams(DeviceParams))
 						const started = yield* signIns.start(
 							{
 								_tag: 'Device',
@@ -340,11 +360,13 @@ export const HttpHandlers = HttpRouter.use(router =>
 			)(
 				oauth(
 					Effect.gen(function* () {
-						const grant = yield* (rejected('Send a grant_type'))(HttpServerRequest.schemaBodyUrlParams(TokenGrant))
+						const grant = yield* asAuthError('Send a grant_type')(HttpServerRequest.schemaBodyUrlParams(TokenGrant))
 						if (grant.grant_type === DEVICE_GRANT) {
 							return HttpServerResponse.jsonUnsafe(
 								yield* signIns.poll(
-									yield* (rejected('Send the device_code and client_id'))(HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams))
+									yield* asAuthError('Send the device_code and client_id')(
+										HttpServerRequest.schemaBodyUrlParams(DeviceTokenParams)
+									)
 								)
 							)
 						}
@@ -356,7 +378,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 						}
 						return Match.valueTags(
 							yield* tokens.exchange(
-								yield* (rejected('Invalid token request'))(HttpServerRequest.schemaBodyUrlParams(TokenParams)),
+								yield* asAuthError('Invalid token request')(HttpServerRequest.schemaBodyUrlParams(TokenParams)),
 								originOf(yield* HttpServerRequest.HttpServerRequest),
 								people.allowed
 							),
@@ -384,7 +406,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						yield* tokens.revoke(
-							yield* (rejected('Invalid revocation request'))(HttpServerRequest.schemaBodyUrlParams(RevokeParams))
+							yield* asAuthError('Invalid revocation request')(HttpServerRequest.schemaBodyUrlParams(RevokeParams))
 						)
 						return HttpServerResponse.empty({status: 200})
 					})
@@ -401,7 +423,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const started = yield* github.start(
-							yield* (rejected('Invalid sign-in request'))(HttpServerRequest.schemaSearchParams(SignInParams))
+							yield* asAuthError('Invalid sign-in request')(HttpServerRequest.schemaSearchParams(SignInParams))
 						)
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.redirect(started.url),
@@ -416,8 +438,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 		yield* router.add(
 			'GET',
 			'/auth/github/callback',
-			Effect.catch(Effect.gen(function* () {
-					const params = yield* (rejected('GitHub sent no code'))(HttpServerRequest.schemaSearchParams(CallbackParams))
+			Effect.catch(
+				Effect.gen(function* () {
+					const params = yield* asAuthError('GitHub sent no code')(HttpServerRequest.schemaSearchParams(CallbackParams))
 					if ((yield* HttpServerRequest.HttpServerRequest).cookies[LOGIN_COOKIE] !== params.state) {
 						return yield* AuthError.make({message: 'The sign-in state does not match'})
 					}
@@ -437,13 +460,15 @@ export const HttpHandlers = HttpRouter.use(router =>
 						),
 						Effect.catch(cause => githubFailed(cause, Option.some(finished.flow)))
 					)
-				}), cause =>
+				}),
+				cause =>
 					Effect.flatMap(
 						Effect.option(
 							Effect.flatMap(HttpServerRequest.schemaSearchParams(LoginState), found => github.cancel(found.state))
 						),
 						flow => githubFailed(cause, flow)
-					))
+					)
+			)
 		)
 		yield* router.add(
 			'GET',
@@ -454,7 +479,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 			)(
 				oauth(
 					Effect.gen(function* () {
-						const next = (yield* (rejected('Invalid sign-in request'))(HttpServerRequest.schemaSearchParams(BrowserParams))).next
+						const next = (yield* asAuthError('Invalid sign-in request')(
+							HttpServerRequest.schemaSearchParams(BrowserParams)
+						)).next
 						return waitingAt(
 							yield* signIns.start(
 								{
@@ -488,7 +515,9 @@ export const HttpHandlers = HttpRouter.use(router =>
 				oauth(
 					Effect.gen(function* () {
 						const request = yield* HttpServerRequest.HttpServerRequest
-						const input = yield* (rejected('Send the passkey’s answer'))(HttpServerRequest.schemaBodyJson(PasskeySignIn))
+						const input = yield* asAuthError('Send the passkey’s answer')(
+							HttpServerRequest.schemaBodyJson(PasskeySignIn)
+						)
 						const started = yield* tokens.startSession(
 							yield* people.allowed(yield* passkeys.signIn(input.response)),
 							originOf(request),
@@ -497,7 +526,12 @@ export const HttpHandlers = HttpRouter.use(router =>
 						)
 						return HttpServerResponse.setCookieUnsafe(
 							HttpServerResponse.jsonUnsafe(
-								pipe(Option.fromUndefinedOr(input.next), Option.filter(page => returnable(page, origin)), pipelineSubject16723 => Option.match(pipelineSubject16723, {onNone: () => ({}), onSome: next => ({next})}))
+								pipe(
+									Option.fromUndefinedOr(input.next),
+									Option.filter(page => returnable(page, origin)),
+									pipelineSubject16723 =>
+										Option.match(pipelineSubject16723, {onNone: () => ({}), onSome: next => ({next})})
+								)
 							),
 							SESSION_COOKIE,
 							started.token,
@@ -513,7 +547,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 			pipe(
 				Effect.gen(function* () {
 					const request = yield* HttpServerRequest.HttpServerRequest
-					const params = yield* (rejected('Name the sign-in'))(HttpServerRequest.schemaSearchParams(RequestParams))
+					const params = yield* asAuthError('Name the sign-in')(HttpServerRequest.schemaSearchParams(RequestParams))
 					const collected = yield* signIns.collect(params.request, request.headers)
 					const cookie = `${REQUEST_COOKIE}${typedCode(params.request)}`
 					return Match.valueTags(collected, {
@@ -530,7 +564,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 							)
 					})
 				}),
-				rejected('Cannot complete the sign-in'),
+				asAuthError('Cannot complete the sign-in'),
 				Effect.catch(failure => Effect.succeed(HttpServerResponse.text(failure.message, {status: 400}))),
 				Effect.map(HttpServerResponse.setHeader('cache-control', 'no-store'))
 			)

@@ -14,12 +14,12 @@ export type NoteId = typeof NoteId.Type
 export const NoteId = pipe(Schema.String, Schema.check(Schema.isUUID()), Schema.brand('NoteId'))
 
 export type TagName = typeof TagName.Type
-export const TagName = pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(40)))
+export const TagName = Schema.NonEmptyString.check(Schema.isMaxLength(40))
 
 // A tag and what belongs under it, as the AI defines it.
 export type TagDefinition = typeof TagDefinition.Type
 export const TagDefinition = Schema.Struct({
-	definition: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(240))),
+	definition: Schema.NonEmptyString.check(Schema.isMaxLength(240)),
 	tag: TagName
 })
 
@@ -101,10 +101,7 @@ export type NotesCursor = typeof NotesCursor.Type
 export const NotesCursor = Schema.Struct(Struct.pick(Note.json.fields, ['createdAt', 'id']))
 
 export type Capture = typeof Capture.Type
-export const Capture = Schema.Struct({
-	id: NoteId,
-	text: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(20_000)))
-})
+export const Capture = Schema.Struct({id: NoteId, text: Schema.NonEmptyString.check(Schema.isMaxLength(20_000))})
 
 export type Extraction = typeof Extraction.Type
 export const Extraction = Schema.Struct({
@@ -123,13 +120,13 @@ export const TagEntry = Schema.Struct({...Tag.fields, count: Schema.Int})
 
 export type Organization = typeof Organization.Type
 export const Organization = Schema.Struct({
-	body: pipe(Schema.String, Schema.check(Schema.isMaxLength(40_000))),
+	body: Schema.String.check(Schema.isMaxLength(40_000)),
 	definitions: Schema.Array(TagDefinition),
 	screenText: Schema.String,
-	summary: pipe(Schema.String, Schema.check(Schema.isMaxLength(400))),
-	tags: pipe(Schema.Array(TagName), Schema.check(Schema.isMinLength(1), Schema.isMaxLength(3))),
-	title: pipe(Schema.String, Schema.check(Schema.isMinLength(1), Schema.isMaxLength(90))),
-	topics: pipe(Schema.String, Schema.check(Schema.isMaxLength(1000)))
+	summary: Schema.String.check(Schema.isMaxLength(400)),
+	tags: Schema.Array(TagName).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
+	title: Schema.NonEmptyString.check(Schema.isMaxLength(90)),
+	topics: Schema.String.check(Schema.isMaxLength(1000))
 })
 
 export type FxArticle = typeof FxArticle.Type

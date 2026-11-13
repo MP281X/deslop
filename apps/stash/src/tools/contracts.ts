@@ -56,14 +56,14 @@ export const ToolContracts = Toolkit.make(
 		failure: NotesError,
 		parameters: Schema.Struct({
 			id: NoteId.annotate({description: 'A known note id, or one from search_notes.'}),
-			limit: pipe(
-				Schema.Int.check(Schema.isBetween({maximum: 20_000, minimum: 1})),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed(8000))
+			limit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(8000))(
+				Schema.Int.check(Schema.isBetween({maximum: 20_000, minimum: 1}))
 			),
-			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
-			section: pipe(
-				Schema.Literals(['body', 'text', 'content', 'screenText', 'transcript', 'topics']),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed('body' as const))
+			offset: Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0))(Schema.Natural),
+			section: Schema.withDecodingDefaultTypeKey<
+				Schema.Literals<readonly ['body', 'text', 'content', 'screenText', 'transcript', 'topics']>
+			>(Effect.succeed('body' as const))(
+				Schema.Literals(['body', 'text', 'content', 'screenText', 'transcript', 'topics'])
 			)
 		}),
 		success: SavedNote

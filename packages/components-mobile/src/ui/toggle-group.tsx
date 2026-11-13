@@ -1,4 +1,4 @@
-import {Boolean} from 'effect'
+import {Boolean, Record, Option} from 'effect'
 
 import {Button, HStack, ScrollView} from '@expo/ui/swift-ui'
 import {
@@ -32,7 +32,11 @@ export function ToggleGroup(props: {
 	value: string
 }) {
 	return (
-		<ScrollView axes="horizontal" showsIndicators={false} modifiers={props.modifiers}>
+		<ScrollView
+			axes="horizontal"
+			showsIndicators={false}
+			{...Record.getSomes({modifiers: Option.fromUndefinedOr(props.modifiers)})}
+		>
 			<HStack spacing={space[2]}>
 				<ToggleGroupContext value={{onValueChange: props.onValueChange, tint: props.tint, value: props.value}}>
 					{props.children}
@@ -52,23 +56,25 @@ export function ToggleGroupItem(props: {
 	return (
 		<Button
 			label={props.children}
-			systemImage={props.systemImage}
+			{...Record.getSomes({systemImage: Option.fromUndefinedOr(props.systemImage)})}
 			onPress={() => group.onValueChange(props.value)}
-			modifiers={[
-				buttonStyle(
-					Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
-				),
-				buttonBorderShape('capsule'),
-				controlSize('regular'),
-				...Boolean.match(selected, {
-					onFalse: () => [],
-					onTrue: () => [tint(group.tint), foregroundStyle(colors.primaryForeground)]
-				}),
-				labelStyle('titleAndIcon'),
-				text.detail,
-				lineLimit(1),
-				fixedSize()
-			]}
+			{...Record.getSomes({
+				modifiers: Option.fromUndefinedOr([
+					buttonStyle(
+						Boolean.match(selected, {onFalse: () => 'glass' as const, onTrue: () => 'glassProminent' as const})
+					),
+					buttonBorderShape('capsule'),
+					controlSize('regular'),
+					...Boolean.match(selected, {
+						onFalse: () => [],
+						onTrue: () => [tint(group.tint), foregroundStyle(colors.primaryForeground)]
+					}),
+					labelStyle('titleAndIcon'),
+					text.detail,
+					lineLimit(1),
+					fixedSize()
+				])
+			})}
 		/>
 	)
 }

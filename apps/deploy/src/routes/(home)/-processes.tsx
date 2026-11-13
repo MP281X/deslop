@@ -1,6 +1,6 @@
 import {Array, Option} from 'effect'
 
-import {cn} from '@deslop/components-web/utils'
+import {cn} from '@deslop/components-web/classes'
 
 import {ApplicationIcon} from '#routes/(home)/-marks.tsx'
 import {Tree} from '#routes/(home)/-tree.tsx'

@@ -23,7 +23,7 @@ import {Digest, SecureRandom} from 'effect/crypto'
 import {Cookies} from 'effect/http'
 import type {Headers} from 'effect/http'
 
-import {AUTH_URL, AuthError, rejected} from '@deslop/runtime/shared/auth'
+import {AUTH_URL, AuthError, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
@@ -199,7 +199,7 @@ export class SignIns extends Context.Service<
 		readonly start: (delivery: Delivery, origin: Origin) => Effect.Effect<{code: string; receiver: string}, AuthError>
 		readonly status: (code: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
->('@deslop/auth/services/sign-ins/service/SignIns') {
+>()('@deslop/auth/services/sign-ins/service/SignIns') {
 	// Sign-ins live in memory: a restart ends the waiting ones, and their apps start again.
 	static readonly layer = Layer.effect(
 		SignIns,
@@ -217,11 +217,19 @@ export class SignIns extends Context.Service<
 			}
 			function watch(code: string) {
 				return Stream.switchMap(SubscriptionRef.changes(open), current =>
-					pipe(current, pipelineSubject7337 => HashMap.get(pipelineSubject7337, typedCode(code)), pipelineSubject7324 => Option.match(pipelineSubject7324, {
-						onNone: () =>
-							Stream.succeed(Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()),
-						onSome: signIn => Stream.map(signIn.ref.changes, snapshot => Option.some({signIn, state: snapshot.state}))
-					}))
+					pipe(
+						current,
+						pipelineSubject7337 => HashMap.get(pipelineSubject7337, typedCode(code)),
+						pipelineSubject7324 =>
+							Option.match(pipelineSubject7324, {
+								onNone: () =>
+									Stream.succeed(
+										Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()
+									),
+								onSome: signIn =>
+									Stream.map(signIn.ref.changes, snapshot => Option.some({signIn, state: snapshot.state}))
+							})
+					)
 				)
 			}
 			// Only the browser or command that started a sign-in, holding its cookie, receives the answer.
@@ -235,11 +243,14 @@ export class SignIns extends Context.Service<
 			})
 			const delivered = Effect.fnUntraced(function* (signIn: Open, previous: string) {
 				yield* signIn.ref.send({_tag: 'Collect', previous})
-				const done = yield* Effect.mapError(Machine.waitFor(
+				const done = yield* Effect.mapError(
+					Machine.waitFor(
 						signIn.ref,
 						snapshot =>
 							!SignInStates.matches(snapshot.state, 'Open') || SignInStates.matches(snapshot.state, 'Open.Failed')
-					), () => expired)
+					),
+					() => expired
+				)
 				return yield* Option.match(SignInStates.get(done.state, 'Delivered'), {
 					onNone: () =>
 						Option.match(SignInStates.get(done.state, 'Open.Failed'), {
@@ -277,7 +288,7 @@ export class SignIns extends Context.Service<
 						})
 					)
 					return {clientName: signIn.pending.clientName}
-				}, rejected('Cannot answer the sign-in')),
+				}, asAuthError('Cannot answer the sign-in')),
 				collect: Effect.fn('SignIns.collect')(function* (code: string, headers: Headers.Headers) {
 					const signIn = yield* received(
 						yield* Effect.mapError(Effect.fromOption(yield* find(code)), () => expired),
@@ -287,7 +298,7 @@ export class SignIns extends Context.Service<
 						return yield* AuthError.make({message: 'This sign-in is still waiting for approval'})
 					}
 					return yield* delivered(signIn, browserToken(headers))
-				}, rejected('Cannot complete the sign-in')),
+				}, asAuthError('Cannot complete the sign-in')),
 				lookup: code =>
 					Stream.map(watch(code), found =>
 						Option.flatMap(found, current =>
@@ -320,7 +331,7 @@ export class SignIns extends Context.Service<
 						return yield* AuthError.make({error: 'access_denied', message: 'The sign-in was denied'})
 					}
 					return answer.tokens
-				}, rejected('Cannot complete the sign-in')),
+				}, asAuthError('Cannot complete the sign-in')),
 				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, origin: Origin) {
 					const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
 					const now = yield* Clock.currentTimeMillis
@@ -384,7 +395,7 @@ export class SignIns extends Context.Service<
 						Effect.forkIn(scope)
 					)
 					return {code, receiver}
-				}, rejected('Cannot start the sign-in')),
+				}, asAuthError('Cannot start the sign-in')),
 				status: (code, headers) =>
 					pipe(
 						watch(code),

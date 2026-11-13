@@ -27,22 +27,22 @@ import {HttpRouter} from 'effect/http'
 import {AiGateway} from '#server/ai.ts'
 import {Auth} from '#server/auth.ts'
 import {
-	guard,
+	crossSiteGuard,
 	layerAnnounce,
 	layerIcon,
 	layerNodeHttpServer,
-	layerProtocol,
+	layerServerProtocol,
 	layerRoutes,
 	layerTelemetry,
 	layerWeb
 } from '#server/http.ts'
 import {appName, packageMetadata, packageRoot} from '#server/package.ts'
 import {AppError} from '#server/process.ts'
-import {install, installUpdates, status, uninstall} from '#server/services.ts'
+import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
 import {dataDirectory, layerDataStore} from '#server/store.ts'
-import {activate, update} from '#server/update.ts'
+import {activateRelease, updateRelease} from '#server/update.ts'
 import type {RpcAuth} from '#shared/auth.ts'
 import {Origin, Port, SecureOrigin} from '#shared/schema.ts'
 
@@ -72,18 +72,6 @@ export const ADMINS = {
 	schema: Schema.String.check(Schema.isPattern(/^\d+(?:,\d+)*$/u))
 } satisfies Setting
 
-function flagsOf(settings: Record<string, Setting>) {
-	return Record.map(settings, (setting, key) =>
-		pipe(
-			Flag.String(setting.flag),
-			Flag.withSchema(setting.schema),
-			Flag.withFallbackConfig(Config.schema(setting.schema, key)),
-			Flag.withDescription(`${setting.description} [${key}]`),
-			Flag.optional
-		)
-	)
-}
-
 const configProvider = Effect.fnUntraced(function* (given: Record<string, string>, defaultPort: number) {
 	const port = given['PORT'] ?? `${defaultPort}`
 	const url = given['APP_URL'] ?? `http://localhost:${port}`
@@ -105,7 +93,7 @@ export type Provided =
 	| AiGateway
 	| RpcAuth
 	| Layer.Success<ReturnType<typeof layerDataStore>>
-	| Layer.Success<typeof layerProtocol>
+	| Layer.Success<typeof layerServerProtocol>
 
 export type Routes<A, E> = Layer.Layer<
 	A,
@@ -132,26 +120,32 @@ export type App<A, E> = {
 }
 
 function server<A, E>(app: App<A, E>) {
-	const routes = Layer.provide(Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce), Option.match(Option.fromUndefinedOr(app.middleware), {
-				onNone: () => Layer.empty,
-				onSome: middleware => HttpRouter.middleware()(middleware).layer
-			}))
+	const routes = Layer.provide(
+		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
+		Option.match(Option.fromUndefinedOr(app.middleware), {
+			onNone: () => Layer.empty,
+			onSome: middleware => HttpRouter.middleware()(middleware).layer
+		})
+	)
 	return pipe(
 		HttpRouter.serve(
 			pipe(
 				Option.match(Option.fromUndefinedOr(app.auth), {
-					onNone: () => pipe(routes, Layer.merge(layerSessionRoutes), pipelineSubject4548 => Layer.provide(pipelineSubject4548, Auth.layer)),
+					onNone: () =>
+						pipe(routes, Layer.merge(layerSessionRoutes), pipelineSubject4548 =>
+							Layer.provide(pipelineSubject4548, Auth.layer)
+						),
 					onSome: auth => Layer.provide(routes, auth)
 				}),
 				Layer.provideMerge(AiGateway.layer),
 				Layer.provide(Sessions.layer),
 				Layer.provide(Layer.unwrap(Effect.map(dataDirectory, layerDataStore)))
 			),
-			{disableLogger: true, middleware: guard}
+			{disableLogger: true, middleware: crossSiteGuard}
 		),
 		Layer.provide(
 			Layer.mergeAll(
-				layerProtocol,
+				layerServerProtocol,
 				Boolean.match(app.telemetry === false, {onFalse: () => layerTelemetry, onTrue: () => Layer.empty})
 			)
 		),
@@ -174,7 +168,18 @@ export function runApp<A, E>(app: App<A, E>) {
 			PORT: {description: `Listen port; defaults to ${metadata.config.port}`, flag: 'port', schema: Port},
 			...app.settings
 		}
-		const root = pipe(Command.make(name), Command.withSharedFlags(flagsOf(settings)))
+		const root = Command.withSharedFlags(
+			Command.make(name),
+			Record.map(settings, (setting, key) =>
+				pipe(
+					Flag.String(setting.flag),
+					Flag.withSchema(setting.schema),
+					Flag.withFallbackConfig(Config.schema(setting.schema, key)),
+					Flag.withDescription(`${setting.description} [${key}]`),
+					Flag.optional
+				)
+			)
+		)
 		const given = Effect.map(root, input => Record.getSomes(input))
 		return yield* pipe(
 			root,
@@ -184,42 +189,38 @@ export function runApp<A, E>(app: App<A, E>) {
 				)
 			),
 			Command.withSubcommands([
-				pipe(
-					Command.make('service'),
-					Command.withSubcommands([
-						Command.make(
-							'install',
-							{},
-							Effect.fnUntraced(function* () {
-								const fs = yield* FileSystem.FileSystem
-								const path = yield* Path.Path
-								const flags = yield* given
-								yield* configProvider(flags, metadata.config.port)
-								// The unit runs whatever `current` links to: this package now, the updater's releases later.
-								const entry = path.join(yield* activate(name, yield* fs.realPath(packageRoot)), 'dist', 'server.js')
-								const args = Array.flatten(
-									Record.collect(flags, (key, value) => [`--${settings[key]?.flag ?? key}`, value])
-								)
-								yield* output(yield* install(name, [execPath, entry, ...args]))
-								yield* installUpdates(name, [execPath, entry, 'service', 'update'])
-							})
-						),
-						Command.make('status', {}, () => Effect.flatMap(status(name), output)),
-						Command.make('uninstall', {}, () => Effect.flatMap(uninstall(name), output)),
-						Command.make('update', {}, () => Effect.flatMap(update(name), output))
-					])
-				)
+				Command.withSubcommands(Command.make('service'), [
+					Command.make(
+						'install',
+						{},
+						Effect.fnUntraced(function* () {
+							const fs = yield* FileSystem.FileSystem
+							const path = yield* Path.Path
+							const flags = yield* given
+							yield* configProvider(flags, metadata.config.port)
+							// The unit runs whatever `current` links to: this package now, the updater's releases later.
+							const entry = path.join(
+								yield* activateRelease(name, yield* fs.realPath(packageRoot)),
+								'dist',
+								'server.js'
+							)
+							const args = Array.flatten(
+								Record.collect(flags, (key, value) => [`--${settings[key]?.flag ?? key}`, value])
+							)
+							yield* output(yield* installService(name, [execPath, entry, ...args]))
+							yield* installUpdateService(name, [execPath, entry, 'service', 'update'])
+						})
+					),
+					Command.make('status', {}, () => Effect.flatMap(serviceStatus(name), output)),
+					Command.make('uninstall', {}, () => Effect.flatMap(uninstallService(name), output)),
+					Command.make('update', {}, () => Effect.flatMap(updateRelease(name), output))
+				])
 			]),
 			Command.run({version: metadata.version})
 		)
 	})
 	NodeRuntime.runMain(
-		pipe(
-			program,
-			Effect.scoped,
-			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This shared CLI owns the application entry point and platform lifetime.
-			Effect.provide(layerPlatform),
-			Effect.provideService(Logger.LogToStderr, true)
-		)
+		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- This shared CLI owns the application entry point and platform lifetime.
+		pipe(program, Effect.scoped, Effect.provide(layerPlatform), Effect.provideService(Logger.LogToStderr, true))
 	)
 }

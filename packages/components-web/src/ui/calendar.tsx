@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "#lib/utils.ts"
+import { cn } from "#lib/classes.ts"
 import {
   DayPicker,
   getDefaultClassNames,
@@ -162,7 +162,7 @@ function Calendar({
           )
         },
         DayButton: ({ ...props }) => (
-          <CalendarDayButton locale={locale} {...props} />
+          <CalendarDayButton {...(locale === undefined ? {} : {locale})} {...props} />
         ),
         WeekNumber: ({ children, ...props }) => {
           return (

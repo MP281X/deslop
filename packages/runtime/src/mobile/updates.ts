@@ -1,4 +1,4 @@
-import {Boolean, Duration, Effect, Schema, pipe} from 'effect'
+import {Boolean, Duration, Effect, Schema} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
@@ -17,7 +17,8 @@ const updates = AtomMachine.make(
 	Machine.make({
 		branches: {fetched: {downloaded: {target: 'Downloaded'}, idle: {target: 'Idle'}}},
 		effects: {
-			fetch: Effect.tapError(Effect.gen(function* () {
+			fetch: Effect.tapError(
+				Effect.gen(function* () {
 					if (
 						!(yield* Effect.tryPromise({
 							catch: cause => UpdateError.make({cause, message: 'The update server was not reached'}),
@@ -30,7 +31,9 @@ const updates = AtomMachine.make(
 						catch: cause => UpdateError.make({cause, message: 'The update did not download'}),
 						try: () => fetchUpdateAsync()
 					})).isNew
-				}), error => Effect.logWarning('The app update check failed', error)),
+				}),
+				error => Effect.logWarning('The app update check failed', error)
+			),
 			reload: Effect.ignore(
 				Effect.tryPromise({
 					catch: cause => UpdateError.make({cause, message: 'The app did not reload'}),
@@ -63,7 +66,7 @@ const updates = AtomMachine.make(
 			Downloaded: {
 				on: {
 					Returned: {
-						guard: transition => transition.event.away >= Duration.toMillis(Duration.minutes(10)),
+						guard: transition => transition.event.away >= Duration.toMillis(Duration.fromInputUnsafe('10 minutes')),
 						target: 'Reloading'
 					}
 				}

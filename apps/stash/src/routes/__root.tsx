@@ -1,6 +1,6 @@
 import {useAtomSet} from '@effect/atom-react'
 
-import {Array, Match, pipe} from 'effect'
+import {Array, Match, pipe, Option} from 'effect'
 
 import {Host, NavigationDestination, NavigationStack, useNativeState} from '@expo/ui/swift-ui'
 import {tint} from '@expo/ui/swift-ui/modifiers'
@@ -29,8 +29,11 @@ function AppRoutes() {
 			<NavigationStack path={path} onPathChange={setPath} modifiers={[tint(colors.foreground)]}>
 				<HomeRoute
 					query={query}
-					tag={tag}
-					kind={kind}
+					{...Option.match(Option.fromUndefinedOr(tag), {onNone: () => ({}), onSome: tagValue => ({tag: tagValue})})}
+					{...Option.match(Option.fromUndefinedOr(kind), {
+						onNone: () => ({}),
+						onSome: kindValue => ({kind: kindValue})
+					})}
 					onCompose={() => setPath(['compose'])}
 					onKind={setKind}
 					onOpen={id => setPath([id])}

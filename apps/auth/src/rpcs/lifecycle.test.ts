@@ -55,7 +55,7 @@ const open = Effect.gen(function* () {
 		),
 		Layer.provide(Layer.succeedContext(database)),
 		Layer.provide(
-			Layer.succeed(Apps, Apps.of({catalog: Stream.succeed([]), register: () => Effect.die('Unused app registration')}))
+			Layer.succeed(Apps, Apps.of({register: () => Effect.die('Unused app registration'), watch: Stream.succeed([])}))
 		),
 		Layer.provide(
 			ConfigProvider.layer(
@@ -127,7 +127,7 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.strictEqual((yield* first(client['tokens.watchApps'](undefined, {headers}))).length, 1)
 			assert.strictEqual((yield* first(client['tokens.watchApps'](undefined, {headers: otherHeaders}))).length, 1)
 			const pending = yield* fixture.signIns.start({_tag: 'Browser'}, {})
-			yield* client['signins.answer']({accept: true, request: pending.code}, {headers})
+			yield* client['sign-ins.answer']({accept: true, request: pending.code}, {headers})
 			yield* fixture.people.remove(member.user.id, ADMIN)
 			yield* fixture.people.admit({allow: true, id: (yield* fixture.people.register(PROFILE)).user.id}, ADMIN)
 			assert.deepStrictEqual(
@@ -206,7 +206,7 @@ it.layer(NodeCrypto.layer)(test => {
 				)).error,
 				'invalid_grant'
 			)
-			assert.deepStrictEqual(yield* first(restarted.tokens.apps(renewed)), [])
+			assert.deepStrictEqual(yield* first(restarted.tokens.watchApps(renewed)), [])
 			assert.deepStrictEqual(
 				yield* restarted.auth.user(
 					Headers.fromInput({
@@ -236,7 +236,7 @@ it.layer(NodeCrypto.layer)(test => {
 				),
 				{_tag: 'Redirect', url: '/'}
 			)
-			assert.deepStrictEqual(yield* first(fixture.tokens.apps(fresh)), [])
+			assert.deepStrictEqual(yield* first(fixture.tokens.watchApps(fresh)), [])
 		})
 	)
 
@@ -246,7 +246,7 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.deepStrictEqual(
 				Array.map(
 					yield* first(
-						Stream.filter((yield* open).people.people(ADMIN), listed =>
+						Stream.filter((yield* open).people.watch(ADMIN), listed =>
 							Array.some(listed, person => person.name === 'admin')
 						)
 					),
@@ -278,7 +278,7 @@ it.layer(NodeCrypto.layer)(test => {
 				yield* fixture.auth.user(Headers.fromInput({cookie: `${SESSION_COOKIE}=${started.token}`})),
 				fresh.user
 			)
-			assert.strictEqual((yield* first(fixture.tokens.apps(fresh))).length, 1)
+			assert.strictEqual((yield* first(fixture.tokens.watchApps(fresh))).length, 1)
 		})
 	)
 

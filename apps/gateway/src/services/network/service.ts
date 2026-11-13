@@ -16,7 +16,8 @@ function requestUrl(input: RequestInfo | URL) {
 }
 
 // Validate at socket lookup, not in a separate DNS preflight: a rebinding must never select a private address.
-const layerPublicFetch = Layer.effect(FetchHttpClient.Fetch)(
+const layerPublicFetch = Layer.effect(
+	FetchHttpClient.Fetch,
 	Effect.gen(function* () {
 		const fetch = yield* FetchHttpClient.Fetch
 		const dispatcher = yield* Effect.acquireRelease(

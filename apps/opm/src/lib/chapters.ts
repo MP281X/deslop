@@ -12,8 +12,8 @@ import {
 	setNotificationHandler
 } from 'expo-notifications'
 
+import {cachedList, foregroundNotifications, writeAtomically} from '@deslop/components-mobile/device'
 import {hues} from '@deslop/components-mobile/theme'
-import {cachedList, writeAtomically} from '@deslop/components-mobile/utils'
 import {liveStream} from '@deslop/runtime/client/live-stream'
 import {keychain} from '@deslop/runtime/mobile/keychain'
 import {makeSession, provideRuntimeOnce} from '@deslop/runtime/mobile/session'
@@ -29,7 +29,7 @@ export const primary = hues.ivory
 
 export const session = makeSession('https://opm.mp281x.xyz', keychain)
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/opm/lib/chapters/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: session.protocol
 }) {}
@@ -92,7 +92,15 @@ const readerStateAtom = Atom.family((_reader: string) =>
 // The reading positions one page turn saves, in order, and the reader's next state; none for a page past the shown chapters. Passing into the next chapter finishes every page of the one before it, and reaching the last shown chapter adds the next.
 function turnPage(state: ReaderState, turn: PageTurn) {
 	const shown = Array.take(turn.following, state.shown)
-	return pipe(shown, pipelineSubject4141 => Array.zip(pipelineSubject4141, Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)), Array.findFirst(pair => turn.index < pair[1] + pair[0].pages.length), Option.map(pair => {
+	return pipe(
+		shown,
+		pipelineSubject4141 =>
+			Array.zip(
+				pipelineSubject4141,
+				Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
+			),
+		Array.findFirst(pair => turn.index < pair[1] + pair[0].pages.length),
+		Option.map(pair => {
 			const chapter = pair[0]
 			const page = turn.index - pair[1]
 			const previous = Option.getOrElse(state.inView, () => turn.opened)
@@ -127,7 +135,8 @@ function turnPage(state: ReaderState, turn: PageTurn) {
 				})
 			}
 			return {next, saves}
-		}))
+		})
+	)
 }
 
 // Each page turn saves the reading position and moves the reader on.
@@ -145,15 +154,12 @@ export const readerAtom = Atom.family((reader: string) =>
 	)
 )
 
-setNotificationHandler({
-	handleNotification: () =>
-		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
-		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
-})
+setNotificationHandler(foregroundNotifications)
 
 // Asked on the first launch, so a new chapter reaches the iPhone without a setting; a refused prompt stays refused.
 export const pushAtom = RpcClient.runtime.atom(get =>
-	Effect.ignore(Effect.gen(function* () {
+	Effect.ignore(
+		Effect.gen(function* () {
 			if (!session.signedIn(get)) return
 			yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The badge could not be cleared.'}),
@@ -175,7 +181,9 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				try: () => getExpoPushTokenAsync({projectId: extra.eas.projectId})
 			})
 			yield* Effect.flatMap(RpcClient, client => client('chapters.register', {token: Redacted.make(token.data)}))
-		}), {log: 'Warn', message: 'Notifications are not set up on this iPhone'})
+		}),
+		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}
+	)
 )
 
 const crashFile = new File(Paths.document, 'crash.txt')
@@ -197,7 +205,8 @@ ErrorUtils.setGlobalHandler((error, fatal) => {
 
 // A crash leaves no trace of its own, so the reports iOS and the handler above leave for a later launch go to the telemetry as errors.
 export const diagnosticsAtom = RpcClient.runtime.atom(get =>
-	Effect.ignore(Effect.gen(function* () {
+	Effect.ignore(
+		Effect.gen(function* () {
 			if (!session.signedIn(get)) return
 			if (crashFile.exists) {
 				yield* Effect.logError('A JavaScript error closed the app on an earlier run', crashFile.textSync())
@@ -211,7 +220,9 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 				report => Effect.logError('iOS reported a crash or hang on an earlier run', report),
 				{concurrency: 1, discard: true}
 			)
-		}), {log: 'Warn', message: 'The crash reports were not read'})
+		}),
+		{log: 'Warn', message: 'The crash reports were not read'}
+	)
 )
 
 export const openedAtom = Atom.keepAlive(

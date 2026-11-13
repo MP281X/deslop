@@ -37,7 +37,7 @@ import {BookingId} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
 import {
 	alertKey,
-	alertsFor,
+	alertsOf,
 	announced,
 	expiredActivities,
 	holds,
@@ -114,7 +114,7 @@ function seconds(time: number) {
 	return Math.floor(time / 1000)
 }
 
-function failed(message: string) {
+function asPushError(message: string) {
 	return Effect.mapError((cause: unknown) => PushError.make({cause, message}))
 }
 
@@ -195,8 +195,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			execute: ids => sql`DELETE FROM ${sql(SentAlert.table)} WHERE bookingId NOT IN ${sql.in(ids)}`
 		})
 
-		const readFailed = failed('The push state could not be read.')
-		const saveFailed = failed('The push state could not be saved.')
+		const asPushReadError = asPushError('The push state could not be read.')
+		const asPushSaveError = asPushError('The push state could not be saved.')
 
 		const signer = Option.all({keyId, privateKey, teamId})
 		if (Option.isNone(signer)) {
@@ -227,7 +227,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					{kid: found.keyId}
 				)
 			}),
-			failed('The APNs key could not sign a token.'),
+			asPushError('The APNs key could not sign a token.'),
 			Effect.cachedWithTTL(exit => Exit.match(exit, {onFailure: () => 0, onSuccess: () => '40 minutes'}))
 		)
 
@@ -235,7 +235,11 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const now = yield* Clock.currentTimeMillis
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
 			const deferred = Option.getOrUndefined(
-				pipe(yield* Ref.get(retrying), HashMap.get(key), Option.filter(pending => pending.until > now))
+				pipe(
+					yield* Ref.get(retrying),
+					HashMap.get(key),
+					Option.filter(pending => pending.until > now)
+				)
 			)
 			if (deferred !== undefined) return deferred.answer
 			const response = yield* pipe(
@@ -243,7 +247,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					HttpClientRequest.setHeader(request, 'authorization', `bearer ${Redacted.value(yield* providerToken)}`)
 				),
 				Effect.timeout('20 seconds'),
-				failed('APNs did not answer.')
+				asPushError('APNs did not answer.')
 			)
 			const reason = yield* pipe(
 				HttpClientResponse.schemaBodyJson(ApnsReason)(response),
@@ -271,35 +275,33 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			return answer
 		})
 
-		function toDevice(
+		function deviceOf(
 			target: Device,
 			type: 'alert' | 'liveactivity',
 			body: unknown,
 			priority: 5 | 10,
 			notification?: string
 		) {
-			return Effect.flatMap(
-				HttpClientRequest.bodyJson(
-					HttpClientRequest.post(`${BUNDLES[target.bundle].host}/3/device/${Redacted.value(target.token)}`, {
-						headers: {
-							'apns-priority': `${priority}`,
-							'apns-push-type': type,
-							'apns-topic': Boolean.match(type === 'liveactivity', {
-								onFalse: () => target.bundle,
-								onTrue: () => `${target.bundle}.push-type.liveactivity`
-							})
-						}
-					}),
-					body
-				),
-				request => send(request, notification)
+			return pipe(
+				HttpClientRequest.post(`${BUNDLES[target.bundle].host}/3/device/${Redacted.value(target.token)}`, {
+					headers: {
+						'apns-priority': `${priority}`,
+						'apns-push-type': type,
+						'apns-topic': Boolean.match(type === 'liveactivity', {
+							onFalse: () => target.bundle,
+							onTrue: () => `${target.bundle}.push-type.liveactivity`
+						})
+					}
+				}),
+				subject9884 => HttpClientRequest.bodyJson(subject9884, body),
+				subject9864 => Effect.flatMap(subject9864, request => send(request, notification))
 			)
 		}
 
 		// Most recent message stored, so a phone offline in flight gets the latest state when it reconnects.
 		const createChannel = Effect.fnUntraced(function* (target: Apns) {
 			const answer = yield* send(
-				yield* failed('The channel request could not be written.')(
+				yield* asPushError('The channel request could not be written.')(
 					HttpClientRequest.bodyJson(
 						HttpClientRequest.post(`${BUNDLES[target.bundle].channels}/1/apps/${target.bundle}/channels`),
 						{'message-storage-policy': 1, 'push-type': 'LiveActivity'}
@@ -324,26 +326,24 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		// The channel stores the latest message for a phone offline in flight, as long as an activity lives.
 		function broadcast(activity: Activity, aps: Record<string, unknown>, priority: 5 | 10, now: number) {
-			return Effect.flatMap(
-				HttpClientRequest.bodyJson(
-					HttpClientRequest.post(`${BUNDLES[activity.bundle].host}/4/broadcasts/apps/${activity.bundle}`, {
-						headers: {
-							'apns-channel-id': activity.channel,
-							'apns-expiration': `${seconds(now + 8 * HOUR)}`,
-							'apns-priority': `${priority}`,
-							'apns-push-type': 'liveactivity'
-						}
-					}),
-					{aps}
-				),
-				send
+			return pipe(
+				HttpClientRequest.post(`${BUNDLES[activity.bundle].host}/4/broadcasts/apps/${activity.bundle}`, {
+					headers: {
+						'apns-channel-id': activity.channel,
+						'apns-expiration': `${seconds(now + 8 * HOUR)}`,
+						'apns-priority': `${priority}`,
+						'apns-push-type': 'liveactivity'
+					}
+				}),
+				subject11602 => HttpClientRequest.bodyJson(subject11602, {aps}),
+				subject11582 => Effect.flatMap(subject11582, send)
 			)
 		}
 
 		const pushStart = Effect.fnUntraced(function* (target: Device, showing: Showing, notification: string) {
 			const channel = yield* createChannel(target)
 			const answer = yield* Effect.onError(
-				toDevice(
+				deviceOf(
 					target,
 					'liveactivity',
 					{
@@ -365,7 +365,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			)
 			if (accepted(answer)) return Result.succeed(channel)
 			yield* deleteChannel({bundle: target.bundle, channel})
-			if (!retryable(answer)) yield* pipe(forgetDevice(target), Reactivity.mutation(['push']), saveFailed)
+			if (!retryable(answer)) yield* pipe(forgetDevice(target), Reactivity.mutation(['push']), asPushSaveError)
 			return Result.fail(answer)
 		})
 
@@ -373,7 +373,13 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 			// Every trip uses the same push-to-start token, but a refusal belongs to this leg's notification only.
 			const notification = `start ${target.bundle} ${Redacted.value(target.token)} ${showing.journey.id} ${showing.leg}`
-			if (pipe(yield* Ref.get(retrying), HashMap.get(notification), Option.exists(pending => pending.until > showing.now))) {
+			if (
+				pipe(
+					yield* Ref.get(retrying),
+					HashMap.get(notification),
+					Option.exists(pending => pending.until > showing.now)
+				)
+			) {
 				return
 			}
 			const started = yield* pushStart(target, showing, notification)
@@ -389,7 +395,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					startedAt: showing.now
 				}),
 				Reactivity.mutation(['push']),
-				saveFailed
+				asPushSaveError
 			)
 		})
 
@@ -416,7 +422,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			yield* pipe(
 				activities.updateVoid({...editable(activity), endedAt: Option.some(now)}),
 				Reactivity.mutation(['push']),
-				saveFailed
+				asPushSaveError
 			)
 		})
 
@@ -444,7 +450,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					})
 				),
 				Reactivity.mutation(['push']),
-				saveFailed
+				asPushSaveError
 			)
 		})
 
@@ -456,13 +462,20 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		) {
 			const showing = {journey, leg: window.leg, now, props: activityProps(journey, all, now), window} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
-			yield* pipe(yield* readFailed(listActivities()), Array.filter(activity =>
+			yield* pipe(
+				yield* asPushReadError(listActivities()),
+				Array.filter(
+					activity =>
 						activity.bookingId === journey.id &&
 						activity.leg === window.leg &&
 						Option.isNone(activity.endedAt) &&
-						!holds(activity, window)), pipelineSubject15929 => Effect.forEach(pipelineSubject15929, activity => finish(activity, now), {concurrency: 1, discard: true}))
+						!holds(activity, window)
+				),
+				pipelineSubject15929 =>
+					Effect.forEach(pipelineSubject15929, activity => finish(activity, now), {concurrency: 1, discard: true})
+			)
 			yield* Effect.forEach(
-				showPlan(yield* readFailed(listDevices()), yield* readFailed(listActivities()), journey, window),
+				showPlan(yield* asPushReadError(listDevices()), yield* asPushReadError(listActivities()), journey, window),
 				action => {
 					if (action._tag === 'launch') return launch(action.target, showing)
 					return refresh(action.target, showing.props, now)
@@ -473,7 +486,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		// A device whose token died leaves the list with its first failed alert.
 		const notify = Effect.fnUntraced(function* (device: Device, alert: Alert, booking: Booking) {
-			const answer = yield* toDevice(
+			const answer = yield* deviceOf(
 				device,
 				'alert',
 				{
@@ -485,21 +498,28 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			if (accepted(answer)) return 'accepted' as const
 			if (retryable(answer)) return 'retry' as const
 			if (!deadToken(answer)) return 'refused' as const
-			yield* pipe(forgetDevice(device), Reactivity.mutation(['push']), saveFailed)
+			yield* pipe(forgetDevice(device), Reactivity.mutation(['push']), asPushSaveError)
 			return 'dead' as const
 		})
 
 		const announce = Effect.fnUntraced(function* (booking: Booking, now: number) {
-			const sent = Array.map(yield* readFailed(listSent(booking.id)), row => row.key)
-			const fresh = Array.filter(alertsFor(booking, now), alert => !announced(sent, alert))
+			const sent = Array.map(yield* asPushReadError(listSent(booking.id)), row => row.key)
+			const fresh = Array.filter(alertsOf(booking, now), alert => !announced(sent, alert))
 			if (Array.isReadonlyArrayEmpty(fresh)) return
-			const devices = Array.filter(yield* readFailed(listDevices()), device => device.kind === 'alert')
+			const devices = Array.filter(yield* asPushReadError(listDevices()), device => device.kind === 'alert')
 			// An alert every device refused for now, such as a throttled one, is sent again next round.
 			const done = yield* Effect.filter(
 				fresh,
 				alert =>
-					pipe(devices, pipelineSubject17824 => Effect.forEach(pipelineSubject17824, device => notify(device, alert, booking), {concurrency: 1}), Effect.map(outcomes =>
-							!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry'))),
+					pipe(
+						devices,
+						pipelineSubject17824 =>
+							Effect.forEach(pipelineSubject17824, device => notify(device, alert, booking), {concurrency: 1}),
+						Effect.map(
+							outcomes =>
+								!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry')
+						)
+					),
 				{concurrency: 1}
 			)
 			yield* Array.match(done, {
@@ -508,7 +528,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					pipe(
 						recordSent(Array.map(alerts, alert => ({bookingId: booking.id, key: alertKey(alert), sentAt: now}))),
 						Reactivity.mutation(['push']),
-						saveFailed
+						asPushSaveError
 					)
 			})
 		})
@@ -522,18 +542,21 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				yield* Effect.forEach(
 					all,
 					booking =>
-						Effect.ignore(Effect.gen(function* () {
+						Effect.ignore(
+							Effect.gen(function* () {
 								yield* announce(booking, now)
 								if (booking._tag === 'stay') return
 								yield* Option.match(activeWindow(booking, now), {
 									onNone: () => Effect.void,
 									onSome: window => show(booking, window, all, now)
 								})
-							}), {log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}),
+							}),
+							{log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}
+						),
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(
-					expiredActivities(yield* readFailed(listActivities()), all, now),
+					expiredActivities(yield* asPushReadError(listActivities()), all, now),
 					activity => finish(activity, now),
 					{concurrency: 1, discard: true}
 				)
@@ -542,7 +565,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					Effect.andThen(forgetEndedBefore(now - 2 * DAY), forgetSentExcept(Array.map(all, booking => booking.id))),
 					Reactivity.mutation(['push']),
 					sql.withTransaction,
-					saveFailed
+					asPushSaveError
 				)
 			}),
 			Semaphore.withPermit(ticking),
@@ -553,7 +576,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		yield* Effect.forkScoped(Effect.repeat(tick, Schedule.spaced('30 seconds')))
 		yield* Effect.forkScoped(
 			pipe(
-				bookings.changes,
+				bookings.watch,
 				Stream.debounce('2 seconds'),
 				Stream.runForEach(() => tick),
 				Effect.ignore({log: 'Warn', message: 'The bookings stopped reaching the push rounds'})
@@ -562,7 +585,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 
 		return {
 			register: Effect.fn('Push.register')(function* (device: typeof Device.insert.Type) {
-				yield* pipe(saveDevice(device), Reactivity.mutation(['push']), saveFailed)
+				yield* pipe(saveDevice(device), Reactivity.mutation(['push']), asPushSaveError)
 			}, withReactivity)
 		}
 	})

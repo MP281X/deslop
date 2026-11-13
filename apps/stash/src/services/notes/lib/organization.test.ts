@@ -4,7 +4,7 @@ import {Context, DateTime, Effect, Function, Layer, Option, pipe} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 
-import {AiGateway, AiUnavailable} from '@deslop/runtime/server/ai'
+import {AiGateway, AiUnavailableError} from '@deslop/runtime/server/ai'
 
 import {Organizer} from './organization.ts'
 
@@ -71,7 +71,7 @@ it.effect(
 	'names the missing gateway when the app was started without one',
 	Effect.fnUntraced(function* () {
 		const gateway = AiGateway.of({
-			apiUrl: () => Effect.fail(AiUnavailable.make({message: 'Start the app with --gateway'})),
+			apiUrl: () => Effect.fail(AiUnavailableError.make({message: 'Start the app with --gateway'})),
 			authorize: () => Effect.succeed(Function.identity)
 		})
 		const error = yield* Effect.flip(

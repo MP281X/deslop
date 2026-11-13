@@ -45,7 +45,11 @@ type Database = Context.Context<Layer.Success<typeof memory>>
 
 function kept(telemetry: Telemetry['Service']) {
 	return Effect.map(telemetry.findTraces({errors: false, limit: 50, since: '3d', sort: 'recent'}), page =>
-		pipe(page.traces, Array.map(entry => String.slice(0, 1)(entry.id)), pipelineSubject1358 => Array.sort(pipelineSubject1358, Order.String))
+		pipe(
+			page.traces,
+			Array.map(entry => String.slice(0, 1)(entry.id)),
+			pipelineSubject1358 => Array.sort(pipelineSubject1358, Order.String)
+		)
 	)
 }
 
@@ -72,10 +76,11 @@ function release(version: string, key: string, start = START) {
 				resource: {
 					attributes: [
 						{key: 'service.name', value: {stringValue: '@deslop/stash-server'}},
-						...pipe([version], pipelineSubject2108 => Array.filter(pipelineSubject2108, String.isNonEmpty), Array.map(value => ({
-							key: 'service.version',
-							value: {stringValue: value}
-						})))
+						...pipe(
+							[version],
+							pipelineSubject2108 => Array.filter(pipelineSubject2108, String.isNonEmpty),
+							Array.map(value => ({key: 'service.version', value: {stringValue: value}}))
+						)
 					]
 				},
 				scopeSpans: [
@@ -137,10 +142,11 @@ function versioned(service: string, version: string, spans: readonly ReturnType<
 		resource: {
 			attributes: [
 				{key: 'service.name', value: {stringValue: service}},
-				...pipe([version], pipelineSubject4083 => Array.filter(pipelineSubject4083, String.isNonEmpty), Array.map(value => ({
-					key: 'service.version',
-					value: {stringValue: value}
-				})))
+				...pipe(
+					[version],
+					pipelineSubject4083 => Array.filter(pipelineSubject4083, String.isNonEmpty),
+					Array.map(value => ({key: 'service.version', value: {stringValue: value}}))
+				)
 			]
 		},
 		scopeSpans: [{spans}]
@@ -220,10 +226,7 @@ function logs(service: string, records: readonly ReturnType<typeof log>[], runti
 
 // Scope started over the database, as a restart opens the one it left.
 function loaded(database: Database) {
-	return Effect.map(
-		Layer.build(Layer.provide(Telemetry.layer, Layer.succeedContext(database))),
-		Context.get(Telemetry)
-	)
+	return Effect.map(Layer.build(Layer.provide(Telemetry.layer, Layer.succeedContext(database))), Context.get(Telemetry))
 }
 
 function fresh() {
@@ -401,7 +404,11 @@ it.layer(platform)(test => {
 			)
 			yield* TestClock.adjust('2 seconds')
 			assert.deepStrictEqual(
-				pipe(Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations ?? [], Array.map(operation => operation.name), pipelineSubject12428 => Array.sort(pipelineSubject12428, Order.String)),
+				pipe(
+					Option.getOrThrow(yield* Stream.runHead(telemetry.watch('3d'))).apps[0]?.operations ?? [],
+					Array.map(operation => operation.name),
+					pipelineSubject12428 => Array.sort(pipelineSubject12428, Order.String)
+				),
 				['other', 'step']
 			)
 		})
@@ -414,7 +421,11 @@ it.layer(platform)(test => {
 			const database = yield* Layer.build(memory)
 			const telemetry = yield* loaded(database)
 			yield* telemetry.ingestTraces(release('', 'a'))
-			yield* pipe(SqlClient.SqlClient, Effect.flatMap(sql => sql`UPDATE spans SET runtime = 'lost'`), Effect.provideContext(database))
+			yield* pipe(
+				SqlClient.SqlClient,
+				Effect.flatMap(sql => sql`UPDATE spans SET runtime = 'lost'`),
+				Effect.provideContext(database)
+			)
 			assert.instanceOf(yield* Effect.flip(telemetry.trace(String.repeat(32)('a'))), TelemetryError)
 			assert.isTrue(Exit.isFailure(yield* Effect.exit(Stream.runHead(telemetry.watch('3d')))))
 		})
@@ -1537,7 +1548,7 @@ it.layer(platform)(test => {
 			})
 			// A cursor continues where its page ended, in either order.
 			const slower = yield* telemetry.findTraces({
-				cursor: slowest.nextCursor,
+				...Option.match(Option.fromUndefinedOr(slowest.nextCursor), {onNone: () => ({}), onSome: cursor => ({cursor})}),
 				errors: false,
 				limit: 1,
 				since: '3d',
@@ -1548,7 +1559,12 @@ it.layer(platform)(test => {
 				[searched]
 			)
 			const rest = yield* telemetry.findTraces({
-				cursor: (yield* telemetry.findTraces({errors: false, limit: 2, since: '3d', sort: 'recent'})).nextCursor,
+				...Option.match(
+					Option.fromUndefinedOr(
+						(yield* telemetry.findTraces({errors: false, limit: 2, since: '3d', sort: 'recent'})).nextCursor
+					),
+					{onNone: () => ({}), onSome: cursor => ({cursor})}
+				),
 				errors: false,
 				limit: 2,
 				since: '3d',
@@ -1687,14 +1703,19 @@ it.layer(platform)(test => {
 						status: {code: 2, message: 'deep boom'},
 						traceId: deep
 					}),
-					...pipe(4, pipelineSubject54741 => Array.makeBy(pipelineSubject54741, Function.identity), Array.map(index =>
-						span({
-							end: `${BigInt(START) + BigInt(70 - index * 10) * 1_000_000n}`,
-							name: `deep.slow.${index}`,
-							spanId: `dddddddddddddd${index}d`,
-							start: `${BigInt(START) + BigInt(3 + index) * 1_000_000n}`,
-							traceId: deep
-						})))
+					...pipe(
+						4,
+						pipelineSubject54741 => Array.makeBy(pipelineSubject54741, Function.identity),
+						Array.map(index =>
+							span({
+								end: `${BigInt(START) + BigInt(70 - index * 10) * 1_000_000n}`,
+								name: `deep.slow.${index}`,
+								spanId: `dddddddddddddd${index}d`,
+								start: `${BigInt(START) + BigInt(3 + index) * 1_000_000n}`,
+								traceId: deep
+							})
+						)
+					)
 				])
 			)
 			const trimmed = yield* telemetry.readTrace({id: deep, limit: 2})
@@ -1824,7 +1845,11 @@ it.layer(platform)(test => {
 				message: 'slow request',
 				side: 'server'
 			})
-			const rest = yield* telemetry.searchLogs({cursor: limited.nextCursor, limit: 2, since: '3d'})
+			const rest = yield* telemetry.searchLogs({
+				...Option.match(Option.fromUndefinedOr(limited.nextCursor), {onNone: () => ({}), onSome: cursor => ({cursor})}),
+				limit: 2,
+				since: '3d'
+			})
 			assert.deepStrictEqual(
 				Array.map(rest.logs, row => row.message),
 				['started', 'trace level']
@@ -1977,7 +2002,11 @@ it.layer(platform)(test => {
 			])
 			assert.isTrue(
 				Option.isNone(
-					pipe(answer.services, Array.findFirst(service => service.app === 'deploy'), Option.flatMap(service => Option.fromUndefinedOr(service.release)))
+					pipe(
+						answer.services,
+						Array.findFirst(service => service.app === 'deploy'),
+						Option.flatMap(service => Option.fromUndefinedOr(service.release))
+					)
 				)
 			)
 		})

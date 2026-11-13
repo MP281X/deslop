@@ -49,23 +49,38 @@ function words(text: string) {
 function stationMatch(name: string, matches: StopMatches) {
 	const named = Array.filter(matches, match => {
 		const own = words(
-			`${match.name} ${pipe(match.areas ?? [], Array.map(area => area.name), Array.join(' '))}`
+			`${match.name} ${pipe(
+				match.areas ?? [],
+				Array.map(area => area.name),
+				Array.join(' ')
+			)}`
 		)
-		return pipe(words(name), Array.findFirst(word => String.length(word) >= 3 && !Array.contains(GENERIC, word)), Option.exists(word => Array.contains(own, word)))
+		return pipe(
+			words(name),
+			Array.findFirst(word => String.length(word) >= 3 && !Array.contains(GENERIC, word)),
+			Option.exists(word => Array.contains(own, word))
+		)
 	})
-	return pipe(named, Array.findFirst(match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))), Option.orElse(() => Array.head(named)), Option.map(match =>
-			({
-				...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
-				code: match.id,
-				latitude: match.lat,
-				longitude: match.lon,
-				name: pipe(
-					String.toLowerCase(match.name),
-					String.split(' '),
-					Array.map(word => String.capitalize(word)),
-					Array.join(' ')
-				)
-			}) satisfies Place))
+	return pipe(
+		named,
+		Array.findFirst(match => Array.some(match.modes ?? [], mode => Array.contains(RAIL, mode))),
+		Option.orElse(() => Array.head(named)),
+		Option.map(
+			match =>
+				({
+					...Option.match(Option.fromUndefinedOr(match.tz), {onNone: () => ({}), onSome: timeZone => ({timeZone})}),
+					code: match.id,
+					latitude: match.lat,
+					longitude: match.lon,
+					name: pipe(
+						String.toLowerCase(match.name),
+						String.split(' '),
+						Array.map(word => String.capitalize(word)),
+						Array.join(' ')
+					)
+				}) satisfies Place
+		)
+	)
 }
 
 // Airports come from an open dataset with their zone and coordinates; stations from Transitous, which also names the Trenitalia station code.
@@ -75,7 +90,7 @@ export class Places extends Context.Service<
 		readonly airport: (code: string) => Effect.Effect<BookedPlace, BookingsError>
 		readonly station: (name: string) => Effect.Effect<Place, BookingsError>
 	}
->('@deslop/trips/services/bookings/lib/places') {
+>()('@deslop/trips/services/bookings/lib/places') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -91,7 +106,7 @@ export class Places extends Context.Service<
 					Effect.retry({schedule: Schedule.exponential('2 seconds'), times: 2}),
 					Effect.map(airportIndex)
 				),
-				exit => Exit.match(exit, {onFailure: () => Duration.zero, onSuccess: () => Duration.days(30)})
+				exit => Exit.match(exit, {onFailure: () => Duration.zero, onSuccess: () => Duration.fromInputUnsafe('30 days')})
 			)
 
 			const stations = yield* Cache.makeWith(
@@ -140,7 +155,8 @@ export class Places extends Context.Service<
 				station: Effect.fn('Places.station')(function* (name) {
 					return Option.getOrElse(
 						yield* Effect.mapError(Cache.get(stations, String.toLowerCase(String.trim(name))), cause =>
-								BookingsError.make({cause, message: `The station ${name} could not be looked up.`})),
+							BookingsError.make({cause, message: `The station ${name} could not be looked up.`})
+						),
 						() => ({name})
 					)
 				})

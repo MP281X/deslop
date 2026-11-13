@@ -88,7 +88,7 @@ export async function loadHighlighter(language: string) {
           lang,
           themes: { light: "github-light", dark: "github-dark" },
           defaultColor: false,
-          grammarState: state,
+          ...(state === undefined ? {} : {grammarState: state}),
         }).tokens
 
       // ANSI has no grammar state, so each line is tokenized on its own and

@@ -110,7 +110,11 @@ const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], 
 	`
 	assert.deepStrictEqual(
 		Array.map(tables, table => table.name),
-		pipe(models, Array.map(model => model.table), pipelineSubject4614 => Array.sort(pipelineSubject4614, Order.String)),
+		pipe(
+			models,
+			Array.map(model => model.table),
+			pipelineSubject4614 => Array.sort(pipelineSubject4614, Order.String)
+		),
 		'one model per table'
 	)
 	yield* Effect.forEach(

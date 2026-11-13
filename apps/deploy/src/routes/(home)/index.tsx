@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Record, Schema, String, pipe} from 'effect'
+import {Array, Boolean, Option, Record, Schema, String, Struct, pipe} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -8,7 +8,8 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useDeferredValue} from 'react'
 import type {ReactNode} from 'react'
 
-import {AppBar, AppBarChoice, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarChoice, AppBarTabs} from '@deslop/components-web/app-bar'
+import {cn, mediaQueryAtom} from '@deslop/components-web/classes'
 import {EmptyState, Loaded, ReadFailure} from '@deslop/components-web/fallbacks'
 import {RowsSkeleton} from '@deslop/components-web/item-list'
 import {StaleProblem} from '@deslop/components-web/problem'
@@ -17,15 +18,15 @@ import {ItemActions, ItemContent, ItemMedia} from '@deslop/components-web/ui/ite
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '@deslop/components-web/ui/resizable'
 import {ScrollArea} from '@deslop/components-web/ui/scroll-area'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
-import {cn, mediaQueryAtom} from '@deslop/components-web/utils'
+import {TabsTrigger} from '@deslop/components-web/ui/tabs'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
-import {inventoryAtom, metricsAtom} from '#lib/utils.ts'
+import {inventoryAtom, metricsAtom} from '#lib/fleet.ts'
 import {RANGES} from '#routes/(home)/-chart.ts'
 import {ChartBlock, ChartSkeleton, EmptyChart} from '#routes/(home)/-charts.tsx'
 import {InventoryContent, ListPane} from '#routes/(home)/-list.tsx'
 import {Processes} from '#routes/(home)/-processes.tsx'
-import {failedFor, order, owner, ranged} from '#routes/(home)/-rows.ts'
+import {failureOf, order, owner, ranged} from '#routes/(home)/-rows.ts'
 import icon from '#routes/icon.svg'
 import {type Row, availablePorts, processTree, workloadName, workloads} from '#services/inventory/lib/utils.ts'
 import type {InventoryItem} from '#services/inventory/schema.ts'
@@ -57,7 +58,11 @@ function RangeTabs(props: {
 			value={`${props.minutes}`}
 			options={Array.map(props.ranges, range => ({label: range.label, value: `${range.minutes}`}))}
 			onChange={value => {
-				pipe(props.ranges, Array.findFirst(range => `${range.minutes}` === value), Option.map(range => props.onChange(range.minutes)))
+				pipe(
+					props.ranges,
+					Array.findFirst(range => `${range.minutes}` === value),
+					Option.map(range => props.onChange(range.minutes))
+				)
 			}}
 		/>
 	)
@@ -97,12 +102,15 @@ function MachineTabs(props: {
 	return (
 		<AppBarTabs value={props.active ?? props.workers[0] ?? ''}>
 			{Array.map(props.workers, worker => {
-				const failed = failedFor(worker, props.inventoryFailure, props.sources, histories[worker])
+				const failed = failureOf(worker, props.inventoryFailure, props.sources, histories[worker])
 				return (
-					<AppBarTab
+					<TabsTrigger
+						nativeButton={false}
 						key={worker}
 						value={worker}
-						render={<Link to="/" search={previous => ({...previous, app: undefined, machine: worker, pane: 'apps'})} />}
+						render={
+							<Link to="/" search={previous => ({...Struct.omit(previous, ['app']), machine: worker, pane: 'apps'})} />
+						}
 					>
 						<MachineIcon worker={worker} />
 						<span className="max-w-32 truncate max-sm:sr-only">{machineName(worker)}</span>
@@ -112,7 +120,7 @@ function MachineTabs(props: {
 								<StatusDot status="off" />
 							</span>
 						)}
-					</AppBarTab>
+					</TabsTrigger>
 				)
 			})}
 		</AppBarTabs>
@@ -216,23 +224,48 @@ function DetailPane(props: {
 		<div className="flex h-full min-h-0 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone={false} minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
-					{pipe(Option.fromUndefinedOr(props.history), Option.filter(history =>
-							Array.isReadonlyArrayNonEmpty(history.samples)), pipelineSubject7936 => Option.match(pipelineSubject7936, {
-							onNone: () => <EmptyChart worker={props.worker} />,
-							onSome: history => (
-								<ChartBlock
-									history={history}
-									isPhone={false}
-									labels={props.labels}
-									minutes={props.minutes}
-									selectedOwner={props.selectedOwner}
-								/>
-							)
-						}))}
+					{pipe(
+						Option.fromUndefinedOr(props.history),
+						Option.filter(history => Array.isReadonlyArrayNonEmpty(history.samples)),
+						pipelineSubject7936 =>
+							Option.match(pipelineSubject7936, {
+								onNone: () => (
+									<EmptyChart
+										{...Option.match(Option.fromUndefinedOr(props.worker), {
+											onNone: () => ({}),
+											onSome: workerValue => ({worker: workerValue})
+										})}
+									/>
+								),
+								onSome: history => (
+									<ChartBlock
+										history={history}
+										isPhone={false}
+										// fallow-ignore-next-line code-duplication -- Chart props repeat for different resources; their render shape is not shared calculation.
+										labels={props.labels}
+										minutes={props.minutes}
+										{...Option.match(Option.fromUndefinedOr(props.selectedOwner), {
+											onNone: () => ({}),
+											onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
+										})}
+									/>
+								)
+							})
+					)}
 				</MetricsContent>
 			</Suspense>
 			<div className="flex min-h-0 flex-1 flex-col">
-				<SelectedProcesses app={props.app} pending={props.pending} row={props.row} />
+				<SelectedProcesses
+					{...Option.match(Option.fromUndefinedOr(props.app), {
+						onNone: () => ({}),
+						onSome: appValue => ({app: appValue})
+					})}
+					pending={props.pending}
+					{...Option.match(Option.fromUndefinedOr(props.row), {
+						onNone: () => ({}),
+						onSome: rowValue => ({row: rowValue})
+					})}
+				/>
 			</div>
 		</div>
 	)
@@ -254,30 +287,43 @@ function PhoneList(props: {
 		<div className="flex min-h-0 flex-1 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
-					{pipe(Option.fromUndefinedOr(props.history), Option.filter(history =>
-							Array.isReadonlyArrayNonEmpty(history.samples)), pipelineSubject9117 => Option.match(pipelineSubject9117, {
-							onNone: () => <EmptyChart />,
-							onSome: history => (
-								<ChartBlock
-									history={history}
-									isPhone
-									labels={props.labels}
-									minutes={props.minutes}
-									selectedOwner={props.selectedOwner}
-								/>
-							)
-						}))}
+					{pipe(
+						Option.fromUndefinedOr(props.history),
+						Option.filter(history => Array.isReadonlyArrayNonEmpty(history.samples)),
+						pipelineSubject9117 =>
+							Option.match(pipelineSubject9117, {
+								onNone: () => <EmptyChart />,
+								onSome: history => (
+									<ChartBlock
+										history={history}
+										isPhone
+										labels={props.labels}
+										minutes={props.minutes}
+										{...Option.match(Option.fromUndefinedOr(props.selectedOwner), {
+											onNone: () => ({}),
+											onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
+										})}
+									/>
+								)
+							})
+					)}
 				</MetricsContent>
 			</Suspense>
 			<ListPane
 				className="min-h-0 flex-1"
 				compact
 				free={props.free}
-				history={props.history}
+				{...Option.match(Option.fromUndefinedOr(props.history), {
+					onNone: () => ({}),
+					onSome: historyValue => ({history: historyValue})
+				})}
 				now={props.now}
 				onSelect={props.onSelect}
 				rows={props.rows}
-				selectedId={props.selectedId}
+				{...Option.match(Option.fromUndefinedOr(props.selectedId), {
+					onNone: () => ({}),
+					onSome: selectedIdValue => ({selectedId: selectedIdValue})
+				})}
 			/>
 		</div>
 	)
@@ -324,24 +370,46 @@ function Workspace(props: {
 										className="h-full min-w-0"
 										compact={false}
 										free={props.free}
-										history={props.history}
+										{...Option.match(Option.fromUndefinedOr(props.history), {
+											onNone: () => ({}),
+											onSome: historyValue => ({history: historyValue})
+										})}
+										// fallow-ignore-next-line code-duplication -- Inventory props repeat in different layouts; sharing this shape would hide their independent placement.
 										now={props.now}
 										onSelect={props.onSelect}
 										rows={props.rows}
-										selectedId={props.selectedRow?.item.id}
+										{...Option.match(Option.fromUndefinedOr(props.selectedRow?.item.id), {
+											onNone: () => ({}),
+											onSome: selectedIdValue => ({selectedId: selectedIdValue})
+										})}
 									/>
 								</ResizablePanel>
 								<ResizableHandle />
 								<ResizablePanel className="min-h-0">
 									<DetailPane
-										app={props.selectedApp}
-										history={props.history}
+										{...Option.match(Option.fromUndefinedOr(props.selectedApp), {
+											onNone: () => ({}),
+											onSome: appValue => ({app: appValue})
+										})}
+										{...Option.match(Option.fromUndefinedOr(props.history), {
+											onNone: () => ({}),
+											onSome: historyValue => ({history: historyValue})
+										})}
 										labels={props.labels}
 										minutes={props.minutes}
 										pending={props.pending}
-										row={props.selectedRow}
-										selectedOwner={selectedOwner}
-										worker={props.active}
+										{...Option.match(Option.fromUndefinedOr(props.selectedRow), {
+											onNone: () => ({}),
+											onSome: rowValue => ({row: rowValue})
+										})}
+										{...Option.match(Option.fromUndefinedOr(selectedOwner), {
+											onNone: () => ({}),
+											onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
+										})}
+										{...Option.match(Option.fromUndefinedOr(props.active), {
+											onNone: () => ({}),
+											onSome: workerValue => ({worker: workerValue})
+										})}
 									/>
 								</ResizablePanel>
 							</ResizablePanelGroup>
@@ -351,18 +419,37 @@ function Workspace(props: {
 								onFalse: () => (
 									<PhoneList
 										free={props.free}
-										history={props.history}
+										{...Option.match(Option.fromUndefinedOr(props.history), {
+											onNone: () => ({}),
+											onSome: historyValue => ({history: historyValue})
+										})}
 										labels={props.labels}
 										minutes={props.minutes}
 										now={props.now}
 										onSelect={props.onSelect}
 										rows={props.rows}
-										selectedId={props.selectedRow?.item.id}
-										selectedOwner={selectedOwner}
+										{...Option.match(Option.fromUndefinedOr(props.selectedRow?.item.id), {
+											onNone: () => ({}),
+											onSome: selectedIdValue => ({selectedId: selectedIdValue})
+										})}
+										{...Option.match(Option.fromUndefinedOr(selectedOwner), {
+											onNone: () => ({}),
+											onSome: selectedOwnerValue => ({selectedOwner: selectedOwnerValue})
+										})}
 									/>
 								),
 								onTrue: () => (
-									<SelectedProcesses app={props.selectedApp} pending={props.pending} row={props.selectedRow} />
+									<SelectedProcesses
+										{...Option.match(Option.fromUndefinedOr(props.selectedApp), {
+											onNone: () => ({}),
+											onSome: appValue => ({app: appValue})
+										})}
+										pending={props.pending}
+										{...Option.match(Option.fromUndefinedOr(props.selectedRow), {
+											onNone: () => ({}),
+											onSome: rowValue => ({row: rowValue})
+										})}
+									/>
 								)
 							})
 					})}
@@ -396,22 +483,41 @@ function HomeRoute() {
 	const shownHistories = AsyncResult.getOrElse(metrics, () => [])
 	const inventoryFailure = AsyncResult.isFailure(inventory)
 	// A revoked session shows the sign-in even while a cached snapshot remains.
-	const authFailure = pipe(AsyncResult.error(inventory), Option.filter(isDenied), Option.orElse(() =>
-		Option.filter(AsyncResult.error(metrics), isDenied)))
+	const authFailure = pipe(
+		AsyncResult.error(inventory),
+		Option.filter(isDenied),
+		Option.orElse(() => Option.filter(AsyncResult.error(metrics), isDenied))
+	)
 	const refreshing = shownMinutes !== minutes
 	const inventoryPending = AsyncResult.isInitial(inventory)
 	const workers = Array.dedupe([
-		...pipe(snapshot, Option.map(value => value.workers ?? Array.map(value.items, item => item.worker)), Option.getOrElse(() => [])),
+		...pipe(
+			snapshot,
+			Option.map(value => value.workers ?? Array.map(value.items, item => item.worker)),
+			option => Option.getOrElse(option, () => [])
+		),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
 	const active = search.machine ?? Option.getOrUndefined(Array.head(workers))
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
-	const rows = pipe(snapshot, Option.map(value => workloads(value.items)), Option.getOrElse(() => []))
+	const rows = pipe(
+		snapshot,
+		Option.map(value => workloads(value.items)),
+		option => Option.getOrElse(option, () => [])
+	)
 	const free = availablePorts(rows)
-	const sources = pipe(snapshot, Option.map(value => value.sources), Option.getOrElse(() => []))
-	const now = pipe(snapshot, Option.map(value => value.time), Option.getOrElse(() => 0))
+	const sources = pipe(
+		snapshot,
+		Option.map(value => value.sources),
+		option => Option.getOrElse(option, () => [])
+	)
+	const now = pipe(
+		snapshot,
+		Option.map(value => value.time),
+		Option.getOrElse(() => 0)
+	)
 	const activeRows = Option.match(Option.fromUndefinedOr(active), {
 		onNone: () => [],
 		onSome: current => Array.filter(rows, row => row.item.worker === current)
@@ -437,16 +543,21 @@ function HomeRoute() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			<AppBar
-				heading={Boolean.match(pushed, {
-					onFalse: () => undefined,
-					onTrue: () => ({
-						back: {label: 'Back', onClick: () => view({pane: 'apps'})},
-						title: Option.match(Option.fromUndefinedOr(selectedRow), {
-							onNone: () => 'Processes',
-							onSome: entry => workloadName(entry.item)
+				{...Option.match(
+					Option.fromUndefinedOr(
+						Boolean.match(pushed, {
+							onFalse: () => undefined,
+							onTrue: () => ({
+								back: {label: 'Back', onClick: () => view({pane: 'apps'})},
+								title: Option.match(Option.fromUndefinedOr(selectedRow), {
+									onNone: () => 'Processes',
+									onSome: entry => workloadName(entry.item)
+								})
+							})
 						})
-					})
-				})}
+					),
+					{onNone: () => ({}), onSome: headingValue => ({heading: headingValue})}
+				)}
 				icon={icon}
 				name="deploy"
 				controls={Boolean.match(pushed, {
@@ -461,7 +572,10 @@ function HomeRoute() {
 				tabs={Boolean.match(pushed, {
 					onFalse: () => (
 						<MachineTabs
-							active={active}
+							{...Option.match(Option.fromUndefinedOr(active), {
+								onNone: () => ({}),
+								onSome: activeValue => ({active: activeValue})
+							})}
 							histories={shownHistories}
 							inventoryFailure={inventoryFailure}
 							sources={sources}
@@ -472,10 +586,16 @@ function HomeRoute() {
 				})}
 			/>
 			<Workspace
-				active={active}
+				{...Option.match(Option.fromUndefinedOr(active), {
+					onNone: () => ({}),
+					onSome: activeValue => ({active: activeValue})
+				})}
 				authFailure={authFailure}
 				free={free}
-				history={Option.getOrUndefined(history)}
+				{...Option.match(Option.fromUndefinedOr(Option.getOrUndefined(history)), {
+					onNone: () => ({}),
+					onSome: historyValue => ({history: historyValue})
+				})}
 				isPhone={isPhone}
 				labels={bandNames}
 				minutes={shownMinutes}
@@ -486,8 +606,14 @@ function HomeRoute() {
 				refreshing={refreshing}
 				retryFailed={retryFailed}
 				rows={sorted}
-				selectedApp={search.app}
-				selectedRow={selectedRow}
+				{...Option.match(Option.fromUndefinedOr(search.app), {
+					onNone: () => ({}),
+					onSome: selectedAppValue => ({selectedApp: selectedAppValue})
+				})}
+				{...Option.match(Option.fromUndefinedOr(selectedRow), {
+					onNone: () => ({}),
+					onSome: selectedRowValue => ({selectedRow: selectedRowValue})
+				})}
 			/>
 		</div>
 	)

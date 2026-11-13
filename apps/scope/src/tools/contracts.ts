@@ -1,4 +1,4 @@
-import {Effect, Schema, Struct, pipe} from 'effect'
+import {Effect, Schema, Struct} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
@@ -22,11 +22,10 @@ import {
 
 type TextWindow = typeof TextWindow.Type
 const TextWindow = Schema.Struct({
-	textLimit: pipe(
-		Schema.Int.check(Schema.isBetween({maximum: 8000, minimum: 1})),
-		Schema.withDecodingDefaultTypeKey(Effect.succeed(2000))
+	textLimit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(2000))(
+		Schema.Int.check(Schema.isBetween({maximum: 8000, minimum: 1}))
 	),
-	textOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0)))
+	textOffset: Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0))(Schema.Natural)
 })
 
 type AttributeWindow = typeof AttributeWindow.Type
@@ -43,9 +42,8 @@ export const ToolContracts = Toolkit.make(
 		parameters: Schema.Struct({
 			...ListOperationsParams.fields,
 			cursor: Schema.optionalKey(Schema.String),
-			limit: pipe(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
+			limit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1}))
 			),
 			operation: Schema.optionalKey(Schema.String)
 		}),
@@ -70,15 +68,13 @@ export const ToolContracts = Toolkit.make(
 			...ReadTraceParams.fields,
 			...TextWindow.fields,
 			...AttributeWindow.fields,
-			logLimit: pipe(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed(20))
+			logLimit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(20))(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1}))
 			),
-			offset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey(Effect.succeed(0))),
-			section: pipe(
-				Schema.Literals(['spans', 'logs', 'attributes']),
-				Schema.withDecodingDefaultTypeKey(Effect.succeed('spans' as const))
-			),
+			offset: Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0))(Schema.Natural),
+			section: Schema.withDecodingDefaultTypeKey<Schema.Literals<readonly ['spans', 'logs', 'attributes']>>(
+				Effect.succeed('spans' as const)
+			)(Schema.Literals(['spans', 'logs', 'attributes'])),
 			span: Schema.optionalKey(Schema.String)
 		}),
 		success: Schema.Struct({

@@ -8,7 +8,7 @@ import {AsyncResult} from 'effect/reactivity'
 
 import type {Session} from '@deslop/runtime/mobile/session'
 
-import {avatarAtom} from '#lib/utils.ts'
+import {avatarAtom} from '#lib/device.ts'
 
 // Square, like the web's avatar: the picture and its fallback both fill the same 28pt tile.
 function Avatar(props: {id: string}) {
@@ -31,7 +31,14 @@ export function AccountMenu(props: {session: Session}) {
 			})}
 			modifiers={[menuStyle('button'), buttonStyle('plain'), menuIndicator('hidden'), accessibilityLabel('Account')]}
 		>
-			<Section title={Option.match(account, {onNone: () => undefined, onSome: current => `@${current.name}`})}>
+			<Section
+				{...Option.match(
+					Option.fromUndefinedOr(
+						Option.match(account, {onNone: () => undefined, onSome: current => `@${current.name}`})
+					),
+					{onNone: () => ({}), onSome: title => ({title})}
+				)}
+			>
 				<Button
 					label="Sign Out"
 					systemImage="rectangle.portrait.and.arrow.right"

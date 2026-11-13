@@ -18,8 +18,8 @@ import {OpencodeDark} from '@deslop/components-web/ui/svgs/opencodeDark'
 import {OpenrouterDark} from '@deslop/components-web/ui/svgs/openrouterDark'
 import {OpenrouterLight} from '@deslop/components-web/ui/svgs/openrouterLight'
 
-import {setKeyAtom} from '#lib/utils.ts'
-import {AiProvider, PROVIDER_NAMES} from '#services/ai/schema.ts'
+import {setKeyAtom} from '#lib/gateway.ts'
+import {AiProvider, PROVIDER_NAMES} from '#services/ai-proxy/schema.ts'
 
 export const PROVIDERS = AiProvider.literals
 

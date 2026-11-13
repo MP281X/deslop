@@ -11,7 +11,11 @@ function checkWorker(workers: readonly {worker: string}[], worker?: string) {
 	if (worker !== undefined && !Array.some(workers, row => row.worker === worker)) {
 		return Effect.fail(
 			DeployError.make({
-				message: `Unknown worker ${worker}; valid workers: ${pipe(workers, Array.map(row => row.worker), Array.join(', '))}. Nothing changed.`
+				message: `Unknown worker ${worker}; valid workers: ${pipe(
+					workers,
+					Array.map(row => row.worker),
+					Array.join(', ')
+				)}. Nothing changed.`
 			})
 		)
 	}

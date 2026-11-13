@@ -1,4 +1,4 @@
-import {Layer, pipe} from 'effect'
+import {Layer} from 'effect'
 
 import {McpServer} from 'effect/ai'
 
@@ -16,7 +16,8 @@ import {ToolHandlers} from '#tools/handlers.ts'
 // The receiver never exports its own spans or query traffic back into itself.
 runApp({
 	icon,
-	routes: Layer.provide(Layer.mergeAll(
+	routes: Layer.provide(
+		Layer.mergeAll(
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
@@ -24,6 +25,8 @@ runApp({
 					'For an overview use list_operations; if you have a trace id, read_trace directly. search_traces finds individual requests and search_logs finds uncorrelated causes.',
 				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})
-		), Telemetry.layer),
+		),
+		Telemetry.layer
+	),
 	telemetry: false
 })

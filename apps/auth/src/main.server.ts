@@ -35,7 +35,8 @@ runApp({
 	icon,
 	// No other site may frame Auth's pages, so its Approve button cannot be clicked through a disguise.
 	middleware: app => Effect.map(app, HttpServerResponse.setHeader('content-security-policy', "frame-ancestors 'none'")),
-	routes: Layer.provide(Layer.mergeAll(
+	routes: Layer.provide(
+		Layer.mergeAll(
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
@@ -43,7 +44,9 @@ runApp({
 					'Use the matching list to identify a session, passkey or person. Use answer_sign_in only for an agent sign-in you started; browser sign-ins require the browser.',
 				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers), Layer.provide(layerMcpOwner))
 			})
-		), layerServices),
+		),
+		layerServices
+	),
 	settings: {
 		GITHUB_ADMINS: ADMINS,
 		GITHUB_CLIENT_ID: {

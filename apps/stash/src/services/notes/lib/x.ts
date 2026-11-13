@@ -41,10 +41,15 @@ function articleText(article: FxArticle) {
 	)
 	const lines = Array.filterMap(article.content.blocks, block => {
 		const attached = Array.filterMap(block.entityRanges, range =>
-				Result.fromOption(
-					Option.flatMapNullishOr(HashMap.get(entities, `${range.key}`), entity => entity.value.data.markdown ?? entity.value.data.url),
-					() => undefined
-				))
+			Result.fromOption(
+				pipe(
+					entities,
+					subject1753 => HashMap.get(subject1753, `${range.key}`),
+					Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url)
+				),
+				() => undefined
+			)
+		)
 		const text = pipe([String.trim(block.text), ...attached], Array.filter(String.isNonEmpty), Array.join(' '))
 		if (String.isEmpty(text)) return Result.failVoid
 		return Result.succeed(
@@ -99,14 +104,24 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 	const byId = HashMap.fromIterable(Array.map(Array.reverse(replies), post => [post.id, post] as const))
 	// The author's follow-ups answer the saved post or an earlier follow-up; the author's answers to readers stay replies.
 	const followUps = pipe(
-		pipe(replies, Array.filter(post => post.author.id === status.author.id), Array.sort(byTime)),
-		Array.mapAccum(HashSet.make(status.id), (chain, post) => {
-			if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
-			return [HashSet.add(chain, post.id), Option.some(post)] as const
-		}),
-		result => Array.getSomes(result[1])
+		replies,
+		Array.filter(post => post.author.id === status.author.id),
+		Array.sort(byTime),
+		subject3763 =>
+			pipe(
+				subject3763,
+				Array.mapAccum(HashSet.make(status.id), (chain, post) => {
+					if (!HashSet.has(chain, post.replying_to?.status ?? '')) return [chain, Option.none<FxPost>()] as const
+					return [HashSet.add(chain, post.id), Option.some(post)] as const
+				}),
+				result => Array.getSomes(result[1])
+			)
 	)
-	const earlier = pipe(conversation.thread ?? [], Array.filter(post => post.id !== status.id), Array.sort(byTime))
+	const earlier = pipe(
+		conversation.thread ?? [],
+		Array.filter(post => post.id !== status.id),
+		Array.sort(byTime)
+	)
 	const shown = [status, ...followUps, ...Option.toArray(quote)]
 	// The posts above the saved one come after it, so its own links and photos lead.
 	const context = [...shown, ...earlier]
@@ -132,9 +147,10 @@ export function conversationPlan(conversation: FxConversation, status: FxPost, q
 		posts: pipe(
 			links,
 			Array.filterMap(link =>
-				Result.fromOption(
-					Option.flatMap(String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link), match => Array.get(match, 1)),
-					() => undefined
+				pipe(
+					String.match(/(?:x|twitter)\.com\/[^/]+\/status\/(\d+)/u)(link),
+					subject5158 => Option.flatMap(subject5158, match => Array.get(match, 1)),
+					subject5134 => Result.fromOption(subject5134, () => undefined)
 				)
 			),
 			Array.filter(linkedId => !HashSet.has(contextIds, linkedId)),
@@ -177,12 +193,16 @@ export function conversationExtraction(
 						Array.filter(post => post.author.id === plan.status.author.id && !HashSet.has(plan.followUpIds, post.id)),
 						Array.sort(byTime),
 						Array.map(answer =>
-							pipe(Option.fromNullishOr(answer.replying_to?.status), Option.flatMap(parentId =>
-									HashMap.get(plan.byId, parentId)), pipelineSubject6711 => Option.match(pipelineSubject6711, {
-									onNone: () => plainText(answer.text),
-									onSome: question =>
-										`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
-								}))
+							pipe(
+								Option.fromNullishOr(answer.replying_to?.status),
+								Option.flatMap(parentId => HashMap.get(plan.byId, parentId)),
+								pipelineSubject6711 =>
+									Option.match(pipelineSubject6711, {
+										onNone: () => plainText(answer.text),
+										onSome: question =>
+											`**${question.author.name} (@${question.author.screen_name})** wrote: ${plainText(question.text)}\nThe author answered: ${plainText(answer.text)}`
+									})
+							)
 						)
 					)
 				),

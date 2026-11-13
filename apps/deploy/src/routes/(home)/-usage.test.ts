@@ -27,7 +27,11 @@ function machine(samples: Sample[]) {
 		load: [],
 		samples,
 		stale: false,
-		time: pipe(Array.last(samples), Option.map(last => last.time), Option.getOrElse(() => 0)),
+		time: pipe(
+			Array.last(samples),
+			Option.map(last => last.time),
+			Option.getOrElse(() => 0)
+		),
 		worker: 'desktop'
 	} satisfies MachineHistory
 }

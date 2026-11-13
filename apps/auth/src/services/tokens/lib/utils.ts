@@ -6,7 +6,7 @@ import {Base64Url} from 'effect/encoding'
 import {Cookies, Headers, Url} from 'effect/http'
 import {NetAddress} from 'effect/net'
 
-import {AuthError, ClientInfo, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
+import {AuthError, ClientRegistration, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
 import {isPrivateAddress} from '@deslop/runtime/shared/net'
 
 import type {AuthorizeClient, AuthorizeParams, CredentialOwner, Origin, SignedInApp} from '#services/tokens/schema.ts'
@@ -44,9 +44,26 @@ export function hashOf(digest: Digest.Digest['Service']) {
 
 // Child app sign-ins are never rows of their own; their browser takes the newest activity and address.
 export function withChildActivity(signIns: readonly SignedInApp[]) {
-	const children = pipe(signIns, Array.filter(signIn => Option.isSome(signIn.parent)), Array.groupBy(signIn => Option.getOrElse(signIn.parent, () => '')))
-	return pipe(signIns, Array.filter(signIn => Option.isNone(signIn.parent)), Array.map(signIn => {
-			const latest = pipe(children, pipelineSubject2415 => Record.get(pipelineSubject2415, signIn.family), Option.getOrElse(() => []), pipelineSubject2380 => Array.reduce(pipelineSubject2380, signIn, Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))))
+	const children = pipe(
+		signIns,
+		Array.filter(signIn => Option.isSome(signIn.parent)),
+		Array.groupBy(signIn => Option.getOrElse(signIn.parent, () => ''))
+	)
+	return pipe(
+		signIns,
+		Array.filter(signIn => Option.isNone(signIn.parent)),
+		Array.map(signIn => {
+			const latest = pipe(
+				children,
+				pipelineSubject2415 => Record.get(pipelineSubject2415, signIn.family),
+				option => Option.getOrElse(option, () => []),
+				pipelineSubject2380 =>
+					Array.reduce(
+						pipelineSubject2380,
+						signIn,
+						Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
+					)
+			)
 			return {
 				address: latest.address,
 				client: signIn.client,
@@ -56,15 +73,16 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 				lastActive: latest.lastActive,
 				parent: signIn.parent
 			}
-		}))
+		})
+	)
 }
 
 // The address as its own family, an IPv4-mapped IPv6 address read as that IPv4 address.
 function parsedAddress(address: string) {
 	return Option.map(Result.getSuccess(NetAddress.ipFromString(address)), ip => {
-			if (NetAddress.isIpv6Address(ip)) return Option.getOrElse(NetAddress.fromIpv4Mapped(ip), () => ip)
-			return ip
-		})
+		if (NetAddress.isIpv6Address(ip)) return Option.getOrElse(NetAddress.fromIpv4Mapped(ip), () => ip)
+		return ip
+	})
 }
 
 // Whoever holds an IPv6 address holds its whole /64, so limits count the /64.
@@ -73,7 +91,12 @@ export function addressGroup(address: string) {
 		onNone: () => address,
 		onSome: ip => {
 			if (NetAddress.isIpv4Address(ip)) return NetAddress.formatIp(ip)
-			return pipe(NetAddress.ipv6ToSegments(ip), Array.take(4), Array.map(segment => segment.toString(16)), Array.join(':'))
+			return pipe(
+				NetAddress.ipv6ToSegments(ip),
+				Array.take(4),
+				Array.map(segment => segment.toString(16)),
+				Array.join(':')
+			)
 		}
 	})
 }
@@ -195,27 +218,35 @@ export function clientOf(clientId: string) {
 	return pipe(
 		Base64Url.decodeString(clientId),
 		Result.getSuccess,
-		Option.flatMap(Schema.decodeUnknownOption(Schema.fromJsonString(ClientInfo))),
+		Option.flatMap(Schema.decodeUnknownOption(Schema.fromJsonString(ClientRegistration))),
 		Option.filter(client => Array.every(client.redirects, allowedRedirect))
 	)
 }
 
 // A loopback callback as written, without its port: RFC 8252 §8.4 compares everything else exactly.
 function portless(redirect: string) {
-	return pipe(String.match(/^(?<origin>http:\/\/(?:127\.0\.0\.1|\[::1\]|localhost))(?::\d{1,5})?(?<rest>\/.*)?$/u)(redirect), Option.filter(() => Option.isSome(loopback(redirect))), Option.map(found => `${found.groups?.['origin'] ?? ''}${found.groups?.['rest'] ?? ''}`))
+	return pipe(
+		String.match(/^(?<origin>http:\/\/(?:127\.0\.0\.1|\[::1\]|localhost))(?::\d{1,5})?(?<rest>\/.*)?$/u)(redirect),
+		Option.filter(() => Option.isSome(loopback(redirect))),
+		Option.map(found => `${found.groups?.['origin'] ?? ''}${found.groups?.['rest'] ?? ''}`)
+	)
 }
 
 // The callback a request names, or a client's only one when it names none; a loopback callback may use any port, as RFC 8252 §7.3 requires.
-export function matchingRedirect(client: ClientInfo, requested: Option.Option<string>) {
+export function matchingRedirect(client: ClientRegistration, requested: Option.Option<string>) {
 	return Option.match(requested, {
 		onNone: () => Option.filter(Array.head(client.redirects), () => client.redirects.length === 1),
 		onSome: asked =>
-			pipe(client.redirects, Array.findFirst(redirect => {
+			pipe(
+				client.redirects,
+				Array.findFirst(redirect => {
 					if (redirect === asked) return true
 					return Option.isSome(
 						Option.flatMap(portless(redirect), saved => Option.filter(portless(asked), target => target === saved))
 					)
-				}), pipelineSubject8416 => Option.as(pipelineSubject8416, asked))
+				}),
+				pipelineSubject8416 => Option.as(pipelineSubject8416, asked)
+			)
 	})
 }
 
@@ -240,7 +271,12 @@ export const clientRequest = Effect.fnUntraced(function* (
 		return yield* AuthError.make({message: 'Send a PKCE code_challenge with code_challenge_method=S256'})
 	}
 	if (
-		!pipe(params.scope ?? '', String.split(' '), pipelineSubject9681 => Array.filter(pipelineSubject9681, String.isNonEmpty), Array.every(scope => scope === 'deslop' || scope === 'offline_access'))
+		!pipe(
+			params.scope ?? '',
+			String.split(' '),
+			pipelineSubject9681 => Array.filter(pipelineSubject9681, String.isNonEmpty),
+			Array.every(scope => scope === 'deslop' || scope === 'offline_access')
+		)
 	) {
 		return yield* AuthError.make({error: 'invalid_scope', message: 'Only the deslop scope is supported'})
 	}

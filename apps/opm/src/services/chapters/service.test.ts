@@ -314,7 +314,11 @@ it.layer(NodeServices.layer)(test => {
 					)
 					yield* chapters.read({done: true, number: 2, page: 0, series: 'manga'})
 					assert.deepStrictEqual(
-						pipe((yield* Effect.fromOption(yield* Stream.runHead(chapters.events))).upserted, Array.findFirst(chapter => keyOf(chapter) === 'manga:2'), Option.map(chapter => chapter.reading)),
+						pipe(
+							(yield* Effect.fromOption(yield* Stream.runHead(chapters.events))).upserted,
+							Array.findFirst(chapter => keyOf(chapter) === 'manga:2'),
+							Option.map(chapter => chapter.reading)
+						),
 						Option.some(Option.some({done: true, page: 0}))
 					)
 					yield* chapters.read({done: true, number: 1, page: 0, series: 'manga'})
@@ -375,8 +379,14 @@ it.layer(NodeServices.layer)(test => {
 							return HttpClientResponse.fromWeb(
 								request,
 								new Response(
-									`<feed>${pipe(entries, Array.map(entry =>
-												`<entry><title>${entry.title}</title><published>2026-04-06T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/${entry.slug}/1/1/"&gt;Read&lt;/a&gt;</content></entry>`), Array.join(''))}</feed>`
+									`<feed>${pipe(
+										entries,
+										Array.map(
+											entry =>
+												`<entry><title>${entry.title}</title><published>2026-04-06T00:00:00Z</published><content>&lt;a href="https://cubari.moe/read/imgchest/${entry.slug}/1/1/"&gt;Read&lt;/a&gt;</content></entry>`
+										),
+										Array.join('')
+									)}</feed>`
 								)
 							)
 						}
@@ -437,7 +447,11 @@ it.layer(NodeServices.layer)(test => {
 			])
 			const saved = stored(database).chapters()
 			assert.deepStrictEqual(
-				pipe(yield* saved, Array.findFirst(chapter => keyOf(chapter) === 'manga:3'), Option.map(chapter => chapter.source)),
+				pipe(
+					yield* saved,
+					Array.findFirst(chapter => keyOf(chapter) === 'manga:3'),
+					Option.map(chapter => chapter.source)
+				),
 				Option.some('https://cubari.moe/read/imgchest/folk/1')
 			)
 			assert.deepStrictEqual(
@@ -466,7 +480,11 @@ it.layer(NodeServices.layer)(test => {
 			)
 			const after = yield* saved
 			assert.deepStrictEqual(
-				pipe(after, Array.filter(chapter => chapter.number === 1), Array.map(chapter => [chapter.series, Option.map(chapter.reading, reading => reading.done), chapter.pages])),
+				pipe(
+					after,
+					Array.filter(chapter => chapter.number === 1),
+					Array.map(chapter => [chapter.series, Option.map(chapter.reading, reading => reading.done), chapter.pages])
+				),
 				[
 					['manga', Option.some(true), ['https://example.test/manga-1.png']],
 					['webcomic', Option.some(false), ['https://example.test/read/api/imgchest/series/revision/page.png']]
@@ -522,7 +540,12 @@ it.layer(NodeServices.layer)(test => {
 			yield* Queue.take(reported)
 			const after = yield* saved
 			assert.deepStrictEqual(
-				pipe(after, Array.filter(item => item.series === 'manga' && item.number >= 229 && item.number <= 230), Array.sort(byNumber), Array.map(item => [item.number, item.pages])),
+				pipe(
+					after,
+					Array.filter(item => item.series === 'manga' && item.number >= 229 && item.number <= 230),
+					Array.sort(byNumber),
+					Array.map(item => [item.number, item.pages])
+				),
 				[
 					[229, ['https://example.test/229.png']],
 					[230, ['https://example.test/230.png']]

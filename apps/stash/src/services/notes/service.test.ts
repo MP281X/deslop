@@ -150,16 +150,22 @@ const noKey = Organizer.of({
 
 function counting(calls: Ref.Ref<number>) {
 	return Organizer.of({
-		organize: (_userId, input) =>
-			pipe(calls, Ref.update(count => count + 1), pipelineSubject4373 => Effect.as(pipelineSubject4373, {
-					body: '',
-					definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
-					screenText: '',
-					summary: `About ${input.note.content}`,
-					tags: ['cooking', 'soup'],
-					title: 'Soup',
-					topics: 'lentils; cumin'
-				}))
+		organize: Effect.fnUntraced(function* (_userId, input) {
+			return yield* pipe(
+				calls,
+				Ref.update(count => count + 1),
+				pipelineSubject4373 =>
+					Effect.as(pipelineSubject4373, {
+						body: '',
+						definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
+						screenText: '',
+						summary: `About ${input.note.content}`,
+						tags: ['cooking', 'soup'],
+						title: 'Soup',
+						topics: 'lentils; cumin'
+					})
+			)
+		})
 	})
 }
 
@@ -329,7 +335,15 @@ it.layer(NodeServices.layer)('Notes', test => {
 					const notes = yield* open({
 						database,
 						directory,
-						organizer: Organizer.of({organize: userId => pipe(reached, pipelineSubject11291 => Queue.offer(pipelineSubject11291, userId), pipelineSubject11276 => Effect.andThen(pipelineSubject11276, Effect.never))}),
+						organizer: Organizer.of({
+							organize: Effect.fnUntraced(function* (userId) {
+								return yield* pipe(
+									reached,
+									pipelineSubject11291 => Queue.offer(pipelineSubject11291, userId),
+									pipelineSubject11276 => Effect.andThen(pipelineSubject11276, Effect.never)
+								)
+							})
+						}),
 						sources: recipe
 					})
 					yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
@@ -341,8 +355,13 @@ it.layer(NodeServices.layer)('Notes', test => {
 				database,
 				directory,
 				organizer: Organizer.of({
-					organize: (userId, input) =>
-						pipe(reached, pipelineSubject11701 => Queue.offer(pipelineSubject11701, userId), pipelineSubject11686 => Effect.andThen(pipelineSubject11686, counting(calls).organize(userId, input)))
+					organize: Effect.fnUntraced(function* (userId, input) {
+						return yield* pipe(
+							reached,
+							pipelineSubject11701 => Queue.offer(pipelineSubject11701, userId),
+							pipelineSubject11686 => Effect.andThen(pipelineSubject11686, counting(calls).organize(userId, input))
+						)
+					})
 				}),
 				sources: recipe
 			})
@@ -415,15 +434,20 @@ it.layer(NodeServices.layer)('Notes', test => {
 				}
 			]
 			const organizer = Organizer.of({
-				organize: (_userId, input) =>
-					pipe(seen, Ref.getAndUpdate(all => [...all, input.tags]), Effect.map(earlier => ({
+				organize: Effect.fnUntraced(function* (_userId, input) {
+					return yield* pipe(
+						seen,
+						Ref.getAndUpdate(all => [...all, input.tags]),
+						Effect.map(earlier => ({
 							body: '',
 							screenText: '',
 							summary: '',
 							title: 'Soup',
 							topics: '',
 							...Array.getUnsafe(answers, Number.min(earlier.length, 1))
-						})))
+						}))
+					)
+				})
 			})
 			yield* Effect.scoped(
 				Effect.gen(function* () {
@@ -463,12 +487,21 @@ it.layer(NodeServices.layer)('Notes', test => {
 						Effect.succeed({info: '# Lentils', transcript: Effect.succeedSome('[00:01] Soak the lentils overnight.\n')})
 				}),
 				organizer: Organizer.of({
-					organize: (userId, input) =>
-						pipe(seen, pipelineSubject16035 => Ref.set(pipelineSubject16035, Option.some({
-									images: Array.map(input.images, image => image.bytes),
-									labels: Array.map(input.images, image => image.label),
-									transcript: input.note.transcript
-								})), pipelineSubject16012 => Effect.andThen(pipelineSubject16012, counting(calls).organize(userId, input)))
+					organize: Effect.fnUntraced(function* (userId, input) {
+						return yield* pipe(
+							seen,
+							pipelineSubject16035 =>
+								Ref.set(
+									pipelineSubject16035,
+									Option.some({
+										images: Array.map(input.images, image => image.bytes),
+										labels: Array.map(input.images, image => image.label),
+										transcript: input.note.transcript
+									})
+								),
+							pipelineSubject16012 => Effect.andThen(pipelineSubject16012, counting(calls).organize(userId, input))
+						)
+					})
 				}),
 				sources: Sources.of({
 					...recipe,
@@ -502,9 +535,21 @@ it.layer(NodeServices.layer)('Notes', test => {
 				media: Media.of({
 					...noVideo,
 					frames: link =>
-						pipe(lookups, Ref.update(links => Array.append(links, link)), pipelineSubject17466 => Effect.andThen(pipelineSubject17466, Effect.as(sampled.await, []))),
+						pipe(
+							lookups,
+							Ref.update(links => Array.append(links, link)),
+							pipelineSubject17466 => Effect.andThen(pipelineSubject17466, Effect.as(sampled.await, []))
+						),
 					read: (_userId, link, fallback) =>
-						pipe(lookups, Ref.update(links => Array.append(links, `${link} | ${fallback ?? ''}`)), pipelineSubject17637 => Effect.as(pipelineSubject17637, {info: 'Video metadata', transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')}))
+						pipe(
+							lookups,
+							Ref.update(links => Array.append(links, `${link} | ${fallback ?? ''}`)),
+							pipelineSubject17637 =>
+								Effect.as(pipelineSubject17637, {
+									info: 'Video metadata',
+									transcript: Effect.succeedSome('[00:01] Read the captions from the post.\n')
+								})
+						)
 				}),
 				organizer: counting(calls),
 				sources: Sources.of({
@@ -590,7 +635,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 			yield* TestClock.adjust('1 second')
 			yield* release.open
 			yield* settled(notes, current => Array.every(current, note => note.status === 'ready'))
-			yield* pipe(5, Array.makeBy(() => Effect.yieldNow), pipelineSubject21217 => Effect.forEach(pipelineSubject21217, Function.identity, {concurrency: 1, discard: true}))
+			yield* pipe(
+				5,
+				Array.makeBy(() => Effect.yieldNow),
+				pipelineSubject21217 => Effect.forEach(pipelineSubject21217, Function.identity, {concurrency: 1, discard: true})
+			)
 			const [first, second] = tagList
 			assert.isDefined(first)
 			assert.isDefined(second)
@@ -676,8 +725,17 @@ it.layer(NodeServices.layer)('Notes', test => {
 			const notes = yield* open({
 				directory: yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped(),
 				organizer: Organizer.of({
-					organize: (userId, input) =>
-						pipe(seen, pipelineSubject24633 => Ref.set(pipelineSubject24633, Array.map(input.images, image => image.bytes)), pipelineSubject24610 => Effect.andThen(pipelineSubject24610, tagger.organize(userId, input)))
+					organize: Effect.fnUntraced(function* (userId, input) {
+						return yield* pipe(
+							seen,
+							pipelineSubject24633 =>
+								Ref.set(
+									pipelineSubject24633,
+									Array.map(input.images, image => image.bytes)
+								),
+							pipelineSubject24610 => Effect.andThen(pipelineSubject24610, tagger.organize(userId, input))
+						)
+					})
 				}),
 				sources: Sources.of({
 					...recipe,

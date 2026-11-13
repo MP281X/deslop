@@ -12,7 +12,7 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {routeTree} from '#routeTree.gen.ts'
 
-import {overviewAtom, traceAtom} from '#lib/utils.ts'
+import {overviewAtom, traceAtom} from '#lib/telemetry.ts'
 import {Route} from '#routes/(home)/index.tsx'
 import {traceTree} from '#services/telemetry/lib/utils.ts'
 import {Span, TelemetryError} from '#services/telemetry/schema.ts'
@@ -26,7 +26,7 @@ const trace = traceTree(
 	[
 		Span.make({
 			attributes: {},
-			duration: Option.some(Duration.millis(10)),
+			duration: Option.some(Duration.fromInputUnsafe('10 millis')),
 			error: Option.none(),
 			exception: Option.none(),
 			name: 'Private retained span',
@@ -90,7 +90,9 @@ function render(
 														p50Ms: 10,
 														p95Ms: 10,
 														runtime: 'server',
-														traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
+														traces: [
+															{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_870_000_000}
+														]
 													}
 												]
 											}
@@ -274,7 +276,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -288,7 +290,7 @@ it.effect(
 								p50Ms: 12,
 								p95Ms: 12,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_850_000_000}]
 							},
 							{
 								count: 9,
@@ -297,7 +299,7 @@ it.effect(
 								p50Ms: 40,
 								p95Ms: 40,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					},
@@ -311,7 +313,7 @@ it.effect(
 								p50Ms: 48,
 								p95Ms: 48,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_840_000_000}]
 							},
 							{
 								count: 3,
@@ -320,7 +322,7 @@ it.effect(
 								p50Ms: 60,
 								p95Ms: 60,
 								runtime: 'web',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_830_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_830_000_000}]
 							}
 						]
 					}
@@ -360,7 +362,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_870_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_870_000_000}]
 							}
 						]
 					},
@@ -374,7 +376,7 @@ it.effect(
 								p50Ms: 4,
 								p95Ms: 4,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(10), id: ID, start: 1_781_860_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('10 millis'), id: ID, start: 1_781_860_000_000}]
 							}
 						]
 					}
@@ -405,7 +407,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('1 millis'), id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -419,7 +421,14 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_850_000_000}]
+								traces: [
+									{
+										duration: Duration.fromInputUnsafe('1 millis'),
+										failure: {span: 'run'},
+										id: ID,
+										start: 1_781_850_000_000
+									}
+								]
 							}
 						]
 					},
@@ -433,7 +442,14 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), failure: {span: 'run'}, id: ID, start: 1_781_860_000_000}]
+								traces: [
+									{
+										duration: Duration.fromInputUnsafe('1 millis'),
+										failure: {span: 'run'},
+										id: ID,
+										start: 1_781_860_000_000
+									}
+								]
 							}
 						]
 					}
@@ -457,7 +473,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_840_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('1 millis'), id: ID, start: 1_781_840_000_000}]
 							}
 						]
 					},
@@ -471,7 +487,7 @@ it.effect(
 								p50Ms: 1,
 								p95Ms: 1,
 								runtime: 'server',
-								traces: [{duration: Duration.millis(1), id: ID, start: 1_781_850_000_000}]
+								traces: [{duration: Duration.fromInputUnsafe('1 millis'), id: ID, start: 1_781_850_000_000}]
 							}
 						]
 					}
@@ -515,7 +531,12 @@ it.effect(
 								p95Ms: 10,
 								runtime: 'server',
 								traces: [
-									{duration: Duration.millis(10), failure: {span: 'Parser.decode'}, id: ID, start: 1_781_870_000_000}
+									{
+										duration: Duration.fromInputUnsafe('10 millis'),
+										failure: {span: 'Parser.decode'},
+										id: ID,
+										start: 1_781_870_000_000
+									}
 								]
 							}
 						]

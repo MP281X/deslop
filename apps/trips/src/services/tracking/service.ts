@@ -32,7 +32,7 @@ import {FaFlights, Lookups, VtRun, VtStatus} from '#services/tracking/schema.ts'
 // FlightAware's personal plan includes $5 a month, a thousand lookups.
 const MONTHLY_LOOKUPS = 1000
 
-function failed(message: string) {
+function asBookingsError(message: string) {
 	return Effect.mapError((cause: unknown) => BookingsError.make({cause, message}))
 }
 
@@ -40,7 +40,7 @@ function iso(time: number) {
 	return DateTime.formatIso(DateTime.makeUnsafe(time))
 }
 
-export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/tracking/service/Tracker', {
+export class Tracking extends Context.Service<Tracking>()('@deslop/trips/services/tracking/service/Tracking', {
 	make: Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		const bookings = yield* Bookings
@@ -84,7 +84,9 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 		)
 
 		const flight = Effect.fnUntraced(function* (booking: Flight, now: number) {
-			const number = yield* (failed('This flight number is invalid. Add its ticket again.'))(Schema.decodeEffect(TripNumber)(booking.number))
+			const number = yield* asBookingsError('This flight number is invalid. Add its ticket again.')(
+				Schema.decodeEffect(TripNumber)(booking.number)
+			)
 			const apiKey = yield* Option.match(key, {
 				onNone: () => BookingsError.make({message: 'The server has no FlightAware key.'}),
 				onSome: Effect.succeed
@@ -108,7 +110,7 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 				Effect.flatMap(HttpClientResponse.filterStatusOk),
 				Effect.flatMap(HttpClientResponse.schemaBodyJson(FaFlights)),
 				Effect.timeout('20 seconds'),
-				failed(`FlightAware did not answer for ${booking.airlineCode} ${booking.number}.`)
+				asBookingsError(`FlightAware did not answer for ${booking.airlineCode} ${booking.number}.`)
 			)
 			return Option.map(pickFlight(answer.flights, booking), found => flightTracking(found, now, booking.live))
 		})
@@ -130,12 +132,14 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 				}),
 				Effect.timeout('15 seconds'),
 				Effect.retry({schedule: Schedule.exponential('1 second'), times: 2}),
-				failed(`ViaggiaTreno did not answer for train ${booking.number}.`)
+				asBookingsError(`ViaggiaTreno did not answer for train ${booking.number}.`)
 			)
 		}
 
 		const train = Effect.fnUntraced(function* (booking: Train, now: number) {
-			const number = yield* (failed('This train number is invalid. Add its ticket again.'))(Schema.decodeEffect(TripNumber)(booking.number))
+			const number = yield* asBookingsError('This train number is invalid. Add its ticket again.')(
+				Schema.decodeEffect(TripNumber)(booking.number)
+			)
 			// Today's run must be the booked one: it starts at most a day before the booked departure.
 			const run = Option.filter(yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking), found =>
 				Option.exists(
@@ -187,33 +191,61 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 			admits: (booking: Booking, now: number, attempted: number) => boolean
 		) {
 			const now = yield* Clock.currentTimeMillis
-			const attempted = pipe(yield* Ref.get(attempts), pipelineSubject7386 => Record.get(pipelineSubject7386, id), Option.getOrElse(() => 0))
-			yield* pipe(yield* bookings.list, Array.findFirst(item => item.id === id && admits(item, now, attempted)), pipelineSubject7447 => Option.match(pipelineSubject7447, {onNone: () => Effect.void, onSome: booking => observe(booking, now)}))
+			const attempted = pipe(
+				yield* Ref.get(attempts),
+				pipelineSubject7386 => Record.get(pipelineSubject7386, id),
+				Option.getOrElse(() => 0)
+			)
+			yield* pipe(
+				yield* bookings.list,
+				Array.findFirst(item => item.id === id && admits(item, now, attempted)),
+				pipelineSubject7447 =>
+					Option.match(pipelineSubject7447, {onNone: () => Effect.void, onSome: booking => observe(booking, now)})
+			)
 		}, Semaphore.withPermit(turns))
 
 		const round = Effect.gen(function* () {
 			const now = yield* Clock.currentTimeMillis
 			const attempted = yield* Ref.get(attempts)
-			yield* pipe(yield* bookings.list, Array.filter(booking =>
+			yield* pipe(
+				yield* bookings.list,
+				Array.filter(booking =>
 					isDue(
 						booking,
 						now,
-						pipe(attempted, pipelineSubject7983 => Record.get(pipelineSubject7983, booking.id), Option.getOrElse(() => 0))
-					)), pipelineSubject7818 => Effect.forEach(pipelineSubject7818, booking =>
-					pipe(
-						check(booking.id, isDue),
-						Effect.withSpan('Tracker.check'),
-						Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
-					), {concurrency: 1, discard: true}))
+						pipe(
+							attempted,
+							pipelineSubject7983 => Record.get(pipelineSubject7983, booking.id),
+							Option.getOrElse(() => 0)
+						)
+					)
+				),
+				pipelineSubject7818 =>
+					Effect.forEach(
+						pipelineSubject7818,
+						booking =>
+							pipe(
+								check(booking.id, isDue),
+								Effect.withSpan('Tracking.check'),
+								Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
+							),
+						{concurrency: 1, discard: true}
+					)
+			)
 		})
 
 		yield* Effect.forkScoped(
-			pipe(round, pipelineSubject8299 => Effect.ignore(pipelineSubject8299, {log: 'Warn', message: 'The bookings to track were not read'}), pipelineSubject8280 => Effect.repeat(pipelineSubject8280, Schedule.spaced('30 seconds')))
+			pipe(
+				round,
+				pipelineSubject8299 =>
+					Effect.ignore(pipelineSubject8299, {log: 'Warn', message: 'The bookings to track were not read'}),
+				pipelineSubject8280 => Effect.repeat(pipelineSubject8280, Schedule.spaced('30 seconds'))
+			)
 		)
 
 		return {
 			// A pull to refresh asks at once, at most once a minute and only while the journey is tracked, so it cannot drain FlightAware's allowance.
-			refresh: Effect.fn('Tracker.refresh')(function* (id: BookingId) {
+			refresh: Effect.fn('Tracking.refresh')(function* (id: BookingId) {
 				yield* check(
 					id,
 					(booking, now, attempted) => Option.isSome(checkEvery(booking, now)) && now - attempted >= MINUTE

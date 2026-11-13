@@ -34,13 +34,13 @@ import {
 	mcpUsageAtom,
 	serversAtom,
 	setKeyAtom
-} from '#lib/utils.ts'
+} from '#lib/gateway.ts'
 import {AddKeyDialog, PROVIDERS, ProviderMark, providerOfKey} from '#routes/(home)/-keys.tsx'
 import {providerCost, providerSeries, serverSeries} from '#routes/(home)/-usage.ts'
 import icon from '#routes/icon.svg'
-import {PROVIDER_NAMES} from '#services/ai/schema.ts'
-import type {AiKeyInfo, AiProvider, AiUsageReport} from '#services/ai/schema.ts'
-import type {ConnectionInfo, McpUsageServer} from '#services/connections/schema.ts'
+import {PROVIDER_NAMES} from '#services/ai-proxy/schema.ts'
+import type {AiKeyItem, AiProvider, AiUsageReport} from '#services/ai-proxy/schema.ts'
+import type {ConnectionItem, McpUsageServer} from '#services/connections/schema.ts'
 import {Period} from '#services/usage/schema.ts'
 import type {UsageRange} from '#services/usage/schema.ts'
 
@@ -53,12 +53,12 @@ const route = getRouteApi('/(home)/')
 
 const count = new Intl.NumberFormat('en')
 
-function serverHue(server: ConnectionInfo) {
+function serverHue(server: ConnectionItem) {
 	const key = String.toLowerCase(server.id)
 	if (appMarks[key] === undefined) return 'var(--muted-foreground)'
 	return APP_HUES[key] ?? 'var(--muted-foreground)'
 }
-function urgency(server: ConnectionInfo) {
+function urgency(server: ConnectionItem) {
 	if (Option.isSome(server.error) || server.status === 'Expired') return 0
 	if (server.status === 'Not connected') return 1
 	return 2
@@ -109,21 +109,31 @@ function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
 		<span className="flex size-4 shrink-0 items-center justify-center">
-			{pipe(props.sources, Array.get(failed), pipelineSubject4466 => Option.match(pipelineSubject4466, {
-				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
-				onSome: src => (
-					<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
-				)
-			}))}
+			{pipe(props.sources, Array.get(failed), pipelineSubject4466 =>
+				Option.match(pipelineSubject4466, {
+					onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
+					onSome: src => (
+						<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
+					)
+				})
+			)}
 		</span>
 	)
 }
 
 // Keyed by its sources, so icons a later discovery finds get their turn. Without a tile behind it, an icon drawn for dark backgrounds goes first.
-function ServerIcon(props: {server: ConnectionInfo}) {
+function ServerIcon(props: {server: ConnectionItem}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
-		...pipe(props.server.icons, pipelineSubject5051 => Array.sort(pipelineSubject5051, Order.mapInput(Order.Boolean, (entry: ConnectionInfo['icons'][number]) => entry.theme !== 'dark')), Array.map(entry => entry.src)),
+		...pipe(
+			props.server.icons,
+			pipelineSubject5051 =>
+				Array.sort(
+					pipelineSubject5051,
+					Order.mapInput(Order.Boolean, (entry: ConnectionItem['icons'][number]) => entry.theme !== 'dark')
+				),
+			Array.map(entry => entry.src)
+		),
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
@@ -131,7 +141,7 @@ function ServerIcon(props: {server: ConnectionInfo}) {
 }
 
 // One server: its mark, name and host, what it offers or the button that connects it, then its calls over the period.
-function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]; server: ConnectionInfo}) {
+function ServerRow(props: {period: UsageRange; report: readonly McpUsageServer[]; server: ConnectionItem}) {
 	const [connecting, connect] = useAtom(connectAtom(props.server.id))
 	const connected = props.server.status === 'Connected'
 	const needsUser = !connected || Option.isSome(props.server.error)
@@ -188,26 +198,28 @@ function ServerRows(props: {period: Period}) {
 	return (
 		<Loaded atom={serversAtom}>
 			{servers =>
-				pipe(servers, Array.sort(byUrgency), pipelineSubject7531 => Array.match(pipelineSubject7531, {
-					onEmpty: () => null,
-					onNonEmpty: ordered => (
-						<Suspense
-							fallback={
-								<RowsSkeleton label="MCP servers" rows={ordered.length}>
-									<RowBones tool />
-								</RowsSkeleton>
-							}
-						>
-							<Loaded atom={mcpUsageAtom(props.period)}>
-								{current =>
-									Array.map(ordered, server => (
-										<ServerRow key={server.id} server={server} period={current.range} report={current.report} />
-									))
+				pipe(servers, Array.sort(byUrgency), pipelineSubject7531 =>
+					Array.match(pipelineSubject7531, {
+						onEmpty: () => null,
+						onNonEmpty: ordered => (
+							<Suspense
+								fallback={
+									<RowsSkeleton label="MCP servers" rows={ordered.length}>
+										<RowBones tool />
+									</RowsSkeleton>
 								}
-							</Loaded>
-						</Suspense>
-					)
-				}))
+							>
+								<Loaded atom={mcpUsageAtom(props.period)}>
+									{current =>
+										Array.map(ordered, server => (
+											<ServerRow key={server.id} server={server} period={current.range} report={current.report} />
+										))
+									}
+								</Loaded>
+							</Suspense>
+						)
+					})
+				)
 			}
 		</Loaded>
 	)
@@ -216,7 +228,7 @@ function ServerRows(props: {period: Period}) {
 // One key: its provider's mark and name, the secret's last four, then its cost over the period.
 function KeyRow(props: {
 	cost: string
-	info: AiKeyInfo
+	info: AiKeyItem
 	period: UsageRange
 	provider: AiProvider
 	report: AiUsageReport
@@ -245,7 +257,7 @@ function KeyRow(props: {
 	)
 }
 
-function KeyUsage(props: {keys: readonly AiKeyInfo[]; period: Period}) {
+function KeyUsage(props: {keys: readonly AiKeyItem[]; period: Period}) {
 	const keysByProvider = Array.groupBy(props.keys, key => key.provider)
 	return (
 		<Loaded atom={aiUsageAtom(props.period)}>
@@ -279,20 +291,25 @@ function KeyRows(props: {period: Period}) {
 	return (
 		<Loaded atom={aiKeysAtom}>
 			{all =>
-				pipe(all, Array.filter(key => Array.contains(PROVIDERS, key.provider)), pipelineSubject9992 => Array.match(pipelineSubject9992, {
-						onEmpty: () => null,
-						onNonEmpty: keys => (
-							<Suspense
-								fallback={
-									<RowsSkeleton label="AI keys" rows={keys.length}>
-										<RowBones />
-									</RowsSkeleton>
-								}
-							>
-								<KeyUsage keys={keys} period={props.period} />
-							</Suspense>
-						)
-					}))
+				pipe(
+					all,
+					Array.filter(key => Array.contains(PROVIDERS, key.provider)),
+					pipelineSubject9992 =>
+						Array.match(pipelineSubject9992, {
+							onEmpty: () => null,
+							onNonEmpty: keys => (
+								<Suspense
+									fallback={
+										<RowsSkeleton label="AI keys" rows={keys.length}>
+											<RowBones />
+										</RowsSkeleton>
+									}
+								>
+									<KeyUsage keys={keys} period={props.period} />
+								</Suspense>
+							)
+						})
+				)
 			}
 		</Loaded>
 	)
@@ -335,11 +352,24 @@ function List(props: {period: Period}) {
 // The field adds a server URL through the existing flow, or opens the key flow with a pasted key.
 function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}) {
 	const send = useAtomSet(addAtom.send)
-	const editing = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Editing')), Option.none)
-	const adding = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Adding')), Option.none)
-	const typed = pipe(editing, Option.map(state => state.url), Option.getOrElse(() =>
-			pipe(adding, Option.map(state => state.url), Option.getOrElse(() => ''))))
-	const error = pipe(editing, Option.map(state => state.error), Option.getOrElse(() => ''))
+	const editing = pipe(useMachineResult(AtomMachine.select(addAtom, 'Editing')), AsyncResult.value, Option.flatten)
+	const adding = pipe(useMachineResult(AtomMachine.select(addAtom, 'Adding')), AsyncResult.value, Option.flatten)
+	const typed = pipe(
+		editing,
+		Option.map(state => state.url),
+		Option.getOrElse(() =>
+			pipe(
+				adding,
+				Option.map(state => state.url),
+				Option.getOrElse(() => '')
+			)
+		)
+	)
+	const error = pipe(
+		editing,
+		Option.map(state => state.error),
+		Option.getOrElse(() => '')
+	)
 	const busy = Option.isSome(adding)
 	function submit() {
 		const value = String.trim(typed)
@@ -389,7 +419,11 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 			options={PERIODS}
 			value={props.period}
 			onChange={value =>
-				pipe(PERIODS, Array.findFirst(entry => entry.value === value), Option.map(entry => props.onPeriod(entry.value)))
+				pipe(
+					PERIODS,
+					Array.findFirst(entry => entry.value === value),
+					Option.map(entry => props.onPeriod(entry.value))
+				)
 			}
 		/>
 	)
@@ -454,7 +488,9 @@ function HomeRoute() {
 						<GatewayProblem period={period} />
 						<PeriodTabs
 							period={period}
-							onPeriod={next => navigate({search: previous => ({...previous, period: next})})}
+							onPeriod={next => {
+								navigate({search: previous => ({...previous, period: next})})
+							}}
 						/>
 						<CopyEndpoint />
 					</>

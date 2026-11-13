@@ -1,10 +1,8 @@
-import {AnthropicClient, AnthropicLanguageModel} from '@effect/ai-anthropic'
-
 import {Array, Context, Effect, Layer, Option, Redacted, Schema, String, pipe} from 'effect'
 
-import {HttpClient} from 'effect/http'
+import type {HttpClient} from 'effect/http'
 
-import {AiGateway, AiUnavailable, aiFailure} from '@deslop/runtime/server/ai'
+import {AiGateway, AiUnavailableError, aiFailure} from '@deslop/runtime/server/ai'
 
 import {normalizeTags} from './tags.ts'
 
@@ -92,26 +90,18 @@ export class Organizer extends Context.Service<
 			input: {images: Picture[]; note: Note; tags: TagEntry[]}
 		) => Effect.Effect<Organization, NotesError>
 	}
->('@deslop/stash/services/notes/lib/organization/Organizer') {
+>()('@deslop/stash/services/notes/lib/organization/Organizer') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
-			const gateway = yield* AiGateway
-			const http = yield* HttpClient.HttpClient
-			const model = Effect.fnUntraced(function* (userId: string) {
-				return yield* Effect.provideServiceEffect(AnthropicLanguageModel.make({
-						config: {max_tokens: 32_000, output_config: {effort: 'high'}},
-						model: 'claude-haiku-5-5'
-					}), AnthropicClient.AnthropicClient, Effect.provideService(AnthropicClient.make({
-								apiUrl: yield* gateway.apiUrl('anthropic'),
-								transformClient: yield* gateway.authorize(userId)
-							}), HttpClient.HttpClient, http))
-			})
-
+			const modelContext = yield* Effect.context<AiGateway | HttpClient.HttpClient>()
 			return Organizer.of({
 				organize: Effect.fn('Organizer.organize')(
 					function* (userId, input) {
-						const anthropic = yield* model(userId)
+						const anthropic = yield* Effect.provideContext(
+							AiGateway.languageModel(userId, {maxTokens: 32_000}),
+							modelContext
+						)
 
 						const entry = Array.join(
 							[
@@ -123,8 +113,14 @@ export class Organizer extends Context.Service<
 									Array.take(input.tags, 150),
 									Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
 									Option.map(entries =>
-										pipe(entries, Array.map(tag =>
-													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, () => 'no definition yet')}`), Array.join('\n'))
+										pipe(
+											entries,
+											Array.map(
+												tag =>
+													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, () => 'no definition yet')}`
+											),
+											Array.join('\n')
+										)
 									),
 									Option.getOrElse(() => 'none')
 								)}`,
@@ -159,7 +155,10 @@ export class Organizer extends Context.Service<
 					},
 					Effect.timeout('5 minutes'),
 					// An overloaded API or an answer outside the schema usually succeeds on the next try.
-					Effect.retry({times: 1, while: cause => !Schema.is(NotesError)(cause) && !Schema.is(AiUnavailable)(cause)}),
+					Effect.retry({
+						times: 1,
+						while: cause => !Schema.is(NotesError)(cause) && !Schema.is(AiUnavailableError)(cause)
+					}),
 					Effect.mapError(cause => {
 						if (Schema.is(NotesError)(cause)) return cause
 						return NotesError.make({

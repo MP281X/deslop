@@ -149,7 +149,7 @@ export class Inventory extends Context.Service<
 		readonly run: (input: Omit<RunRequest, 'target'>) => Effect.Effect<void, DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
->('@deslop/deploy/services/inventory/service/Inventory') {
+>()('@deslop/deploy/services/inventory/service/Inventory') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -171,7 +171,10 @@ export class Inventory extends Context.Service<
 				const scheduled = HashMap.fromIterable(
 					Array.getSomes(
 						Array.map(
-							yield* Effect.flatMap(command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']), Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))),
+							yield* Effect.flatMap(
+								command('systemctl', [...manager, 'list-timers', '--all', '--output=json', '--no-pager']),
+								Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
+							),
 							timer =>
 								Option.map(
 									Option.fromNullishOr(timer.activates),
@@ -180,8 +183,15 @@ export class Inventory extends Context.Service<
 						)
 					)
 				)
-				const rows = yield* Effect.flatMap(command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']), Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit))))
-				const failed = pipe(rows, Array.filter(row => row.active === 'failed'), Array.map(row => row.unit))
+				const rows = yield* Effect.flatMap(
+					command('systemctl', [...manager, 'list-units', '--all', '--type=service', '--output=json', '--no-pager']),
+					Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Unit)))
+				)
+				const failed = pipe(
+					rows,
+					Array.filter(row => row.active === 'failed'),
+					Array.map(row => row.unit)
+				)
 				// Why each failed one stopped, in place of its description, which only repeats its command; an unreadable reason leaves the description.
 				const failures = Option.getOrElse(
 					Option.flatten(
@@ -211,11 +221,19 @@ export class Inventory extends Context.Service<
 						id: `${worker}:${scope}:${row.unit}`,
 						kind: 'service',
 						name: row.unit,
-						...pipe(scheduled, pipelineSubject7379 => HashMap.get(pipelineSubject7379, row.unit), pipelineSubject7366 => Option.match(pipelineSubject7366, {
-							onNone: () => ({}),
-							onSome: next =>
-								Option.match(next, {onNone: () => ({scheduled: true}), onSome: time => ({next: time, scheduled: true})})
-						})),
+						...pipe(
+							scheduled,
+							pipelineSubject7379 => HashMap.get(pipelineSubject7379, row.unit),
+							pipelineSubject7366 =>
+								Option.match(pipelineSubject7366, {
+									onNone: () => ({}),
+									onSome: next =>
+										Option.match(next, {
+											onNone: () => ({scheduled: true}),
+											onSome: time => ({next: time, scheduled: true})
+										})
+								})
+						),
 						scope,
 						state: `${row.active} · ${row.sub}`,
 						url: '',
@@ -226,7 +244,15 @@ export class Inventory extends Context.Service<
 			const docker = pipe(
 				command('docker', ['ps', '--all', '--format', '{{json .}}']),
 				Effect.flatMap(text =>
-					pipe(text, String.split('\n'), pipelineSubject7836 => Array.filter(pipelineSubject7836, String.isNonEmpty), pipelineSubject7814 => Effect.forEach(pipelineSubject7814, line => Schema.decodeEffect(Schema.fromJsonString(Container))(line), {concurrency: 1}))
+					pipe(
+						text,
+						String.split('\n'),
+						pipelineSubject7836 => Array.filter(pipelineSubject7836, String.isNonEmpty),
+						pipelineSubject7814 =>
+							Effect.forEach(pipelineSubject7814, line => Schema.decodeEffect(Schema.fromJsonString(Container))(line), {
+								concurrency: 1
+							})
+					)
 				),
 				Effect.map(rows =>
 					Array.map(rows, row =>
@@ -287,13 +313,18 @@ export class Inventory extends Context.Service<
 					collect(
 						'Listening ports',
 						Effect.flatMap(command('ss', ['-H', '-lntup']), text =>
-							portItems(Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))), worker, http, {
-								cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
-								unit: processId =>
-									Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
-										socketUnit(Option.getOrElse(cgroup, () => ''))
-									)
-							})
+							portItems(
+								Array.getSomes(pipe(String.trim(text), String.split('\n'), Array.map(socketLine))),
+								worker,
+								http,
+								{
+									cwd: processId => Effect.option(fs.readLink(`/proc/${processId}/cwd`)),
+									unit: processId =>
+										Effect.map(Effect.option(fs.readFileString(`/proc/${processId}/cgroup`)), cgroup =>
+											socketUnit(Option.getOrElse(cgroup, () => ''))
+										)
+								}
+							)
 						)
 					)
 				]
@@ -314,9 +345,13 @@ export class Inventory extends Context.Service<
 				const records = Result.map(launchd.table, text => {
 					const agents = Record.fromEntries(
 						Array.getSomes(
-							Array.map(
-								Result.getOrElse(launchd.agents, () => []),
-								agent => Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
+							pipe(
+								launchd.agents,
+								subject11493 => Result.getOrElse(subject11493, () => []),
+								subject11474 =>
+									Array.map(subject11474, agent =>
+										Option.map(agent.pid, processId => [`${processId}`, agent.label] as const)
+									)
 							)
 						)
 					)
@@ -363,12 +398,22 @@ export class Inventory extends Context.Service<
 							Effect.flatMap(command('lsof', ['-nP', '+c0', '-iTCP', '-sTCP:LISTEN', '-iUDP', '-F', 'pctPnT']), text =>
 								portItems(lsofSockets(text), worker, http, {
 									cwd: Effect.fnUntraced(function* (processId) {
-										
-										return pipe((pipe(yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])), Option.getOrElse(() => ''), String.split('\n'))), pipelineSubject13168 => Array.findFirst(pipelineSubject13168, String.startsWith('n')), pipelineSubject13157 => Option.map(pipelineSubject13157, String.slice(1)))
+										return pipe(
+											yield* Effect.option(command('lsof', ['-nP', '-a', '-p', processId, '-d', 'cwd', '-Fn'])),
+											Option.getOrElse(() => ''),
+											String.split('\n'),
+											pipelineSubject13168 => Array.findFirst(pipelineSubject13168, String.startsWith('n')),
+											pipelineSubject13157 => Option.map(pipelineSubject13157, String.slice(1))
+										)
 									}),
 									unit: processId =>
 										Effect.succeed(
-											pipe(owned, Array.findFirst(record => `${record.process.pid}` === processId), Option.map(record => record.unit), Option.getOrElse(() => ''))
+											pipe(
+												owned,
+												subject13897 => Array.findFirst(subject13897, record => `${record.process.pid}` === processId),
+												subject13975 => Option.map(subject13975, record => record.unit),
+												subject14022 => Option.getOrElse(subject14022, () => '')
+											)
 										)
 								})
 							)
@@ -383,13 +428,16 @@ export class Inventory extends Context.Service<
 						if (platform === 'darwin') {
 							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
 						}
-						const timers = yield* Effect.flatMap(command('systemctl', [
+						const timers = yield* Effect.flatMap(
+							command('systemctl', [
 								...Boolean.match(input.scope === 'system', {onFalse: () => ['--user'], onTrue: () => []}),
 								'list-timers',
 								'--all',
 								'--output=json',
 								'--no-pager'
-							]), Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer))))
+							]),
+							Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Timer)))
+						)
 						if (!Array.some(timers, timer => timer.activates === input.name)) {
 							return yield* DeployError.make({message: `${input.name} is not started by a timer`})
 						}
@@ -449,7 +497,12 @@ export class Inventory extends Context.Service<
 														name: `${site[0]}${handler[0]}`,
 														owned: false,
 														publicAccess: status.AllowFunnel?.[site[0]] === true,
-														...pipe(String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)(handler[1].Proxy ?? ''), Option.flatMap(match => Number.parse(match[1] ?? '')), pipelineSubject16997 => Option.match(pipelineSubject16997, {onNone: () => ({}), onSome: port => ({port})})),
+														...pipe(
+															String.match(/^http:\/\/(?:127\.0\.0\.1|localhost):([0-9]+)/u)(handler[1].Proxy ?? ''),
+															Option.flatMap(match => Number.parse(match[1] ?? '')),
+															pipelineSubject16997 =>
+																Option.match(pipelineSubject16997, {onNone: () => ({}), onSome: port => ({port})})
+														),
 														state: 'observed',
 														url: `https://${site[0]}${handler[0]}`,
 														worker

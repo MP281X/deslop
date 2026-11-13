@@ -20,10 +20,11 @@ export function roleOf(admins: readonly string[], id: string, row: Option.Option
 export function personOf(admins: readonly string[], row: Member) {
 	return Person.make({
 		...Struct.pick(row, ['id', 'name', 'since']),
-		...pipe(row.fullName, pipelineSubject859 => Option.filter(pipelineSubject859, String.isNonEmpty), pipelineSubject846 => Option.match(pipelineSubject846, {
-			onNone: () => ({}),
-			onSome: fullName => ({fullName})
-		})),
+		...pipe(
+			row.fullName,
+			pipelineSubject859 => Option.filter(pipelineSubject859, String.isNonEmpty),
+			pipelineSubject846 => Option.match(pipelineSubject846, {onNone: () => ({}), onSome: fullName => ({fullName})})
+		),
 		role: roleOf(admins, row.id, Option.some(row))
 	})
 }
@@ -34,7 +35,11 @@ export function listPeople(rows: readonly Member[], admins: readonly string[]) {
 	const knownIds = HashSet.fromIterable(Array.map(known, person => person.id))
 	return Array.sort(
 		[
-			...pipe(admins, Array.filter(id => !HashSet.has(knownIds, `github:${id}`)), Array.map(id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0}))),
+			...pipe(
+				admins,
+				Array.filter(id => !HashSet.has(knownIds, `github:${id}`)),
+				Array.map(id => Person.make({id: `github:${id}`, name: `GitHub ${id}`, role: 'Admin', since: 0}))
+			),
 			...known
 		],
 		Order.mapInput(Number.Order, (person: Person) => ROLE_ORDER[person.role])

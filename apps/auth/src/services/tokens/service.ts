@@ -33,7 +33,7 @@ import {
 	ISSUER_PATH,
 	REFRESH_SECONDS,
 	bearerOf,
-	rejected
+	asAuthError
 } from '@deslop/runtime/shared/auth'
 
 import {
@@ -101,7 +101,7 @@ function parts(token: string) {
 export class Tokens extends Context.Service<
 	Tokens,
 	{
-		readonly apps: (owner: CredentialOwner) => Stream.Stream<readonly SignedInApp[], AuthError>
+		readonly watchApps: (owner: CredentialOwner) => Stream.Stream<readonly SignedInApp[], AuthError>
 		readonly client: (asked: AuthorizeClient) => Effect.Effect<{clientName: string; redirectUri: string}, AuthError>
 		readonly device: (
 			request: DeviceRequest,
@@ -134,11 +134,12 @@ export class Tokens extends Context.Service<
 		) => Effect.Effect<{seconds: number; token: string}, AuthError>
 		readonly verify: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 	}
->('@deslop/auth/services/tokens/service/Tokens') {
+>()('@deslop/auth/services/tokens/service/Tokens') {
 	// The tables this service owns, made at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
 			loader: Migrator.fromRecord({
+				// fallow-ignore-next-line code-duplication -- Numbered migrations describe independent app tables; SQL declaration shape is not shared migration logic.
 				'0001_tokens': Effect.gen(function* () {
 					const sql = yield* SqlClient.SqlClient
 					yield* sql`
@@ -372,7 +373,7 @@ export class Tokens extends Context.Service<
 					)
 					if (session.hash !== (yield* hash(found.secret))) return yield* AuthError.make({message: 'Sign in first'})
 					return {family: session.family, owner: credentialOwnerOf(session), via: session.via}
-				}, rejected('Sign in first'))
+				}, asAuthError('Sign in first'))
 				const session = Effect.fn('Tokens.session')(function* (headers: Headers.Headers) {
 					return (yield* browser(headers)).owner
 				})
@@ -403,7 +404,7 @@ export class Tokens extends Context.Service<
 						return credentialOwnerOf(grant)
 					},
 					withReactivity,
-					rejected('Sign in first')
+					asAuthError('Sign in first')
 				)
 				const mint = Effect.fnUntraced(function* (
 					family: string,
@@ -452,7 +453,9 @@ export class Tokens extends Context.Service<
 					owner: CredentialOwner,
 					origin: Origin
 				) {
-					const minted = yield* (rejected('Cannot sign the access token'))(mint(family, 0, owner, clientLabel(request.clientName), now))
+					const minted = yield* asAuthError('Cannot sign the access token')(
+						mint(family, 0, owner, clientLabel(request.clientName), now)
+					)
 					const grant = {
 						address: Option.fromUndefinedOr(origin.address),
 						client: clientLabel(request.clientName),
@@ -574,7 +577,9 @@ export class Tokens extends Context.Service<
 							}
 							const owner = credentialOwnerOf(grant)
 							yield* allowed(owner)
-							const minted = yield* (rejected('Cannot sign the access token'))(mint(grant.family, grant.generation + 1, owner, grant.client, now))
+							const minted = yield* asAuthError('Cannot sign the access token')(
+								mint(grant.family, grant.generation + 1, owner, grant.client, now)
+							)
 							yield* insertSpent({family: grant.family, hash: grant.hash})
 							yield* rotateGrant({
 								// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
@@ -593,15 +598,9 @@ export class Tokens extends Context.Service<
 				})
 				const listApps = Effect.fnUntraced(function* (owner: CredentialOwner) {
 					return yield* listSignedIn({now: yield* Clock.currentTimeMillis, owner})
-				}, rejected('Cannot read the sign-ins'))
+				}, asAuthError('Cannot read the sign-ins'))
 
 				return Tokens.of({
-					// The list is read again on each change and once a minute, so expired sign-ins leave it.
-					apps: owner =>
-						Stream.merge(
-							sql.reactive(['tokens'], listApps(owner)),
-							pipe(Stream.tick('1 minute'), Stream.drop(1), Stream.mapEffect(() => listApps(owner)))
-						),
 					browserSession: browser,
 					client: Effect.fn('Tokens.client')(function* (asked: AuthorizeClient) {
 						const client = yield* pipe(
@@ -633,7 +632,7 @@ export class Tokens extends Context.Service<
 							)
 						},
 						withReactivity,
-						rejected('Cannot sign the command in')
+						asAuthError('Cannot sign the command in')
 					),
 					disconnect: Effect.fn('Tokens.disconnect')(
 						function* (family: string, owner: CredentialOwner) {
@@ -654,7 +653,7 @@ export class Tokens extends Context.Service<
 							)
 						},
 						withReactivity,
-						rejected('Cannot sign this out')
+						asAuthError('Cannot sign this out')
 					),
 					endSession: Effect.fn('Tokens.endSession')(
 						function* (headers: Headers.Headers) {
@@ -664,7 +663,7 @@ export class Tokens extends Context.Service<
 							})
 						},
 						withReactivity,
-						rejected('Cannot sign out')
+						asAuthError('Cannot sign out')
 					),
 					exchange: Effect.fn('Tokens.exchange')(
 						function* (
@@ -676,7 +675,7 @@ export class Tokens extends Context.Service<
 							return yield* rotate(params, origin, allowed)
 						},
 						withReactivity,
-						rejected('Invalid token request')
+						asAuthError('Invalid token request')
 					),
 					// Removing an account signs it out everywhere; a sign-in it approved but not yet delivered checks the account at delivery.
 					forget: Effect.fn('Tokens.forget')(
@@ -688,17 +687,25 @@ export class Tokens extends Context.Service<
 							)
 						},
 						withReactivity,
-						rejected('Cannot sign this account out')
+						asAuthError('Cannot sign this account out')
 					),
 					issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, owner: CredentialOwner) {
 						const code = yield* randomToken(32)
 						const key = yield* hash(code)
 						const now = yield* Clock.currentTimeMillis
 						yield* Ref.update(codes, current =>
-							pipe(current, HashMap.filter(entry => entry.expiresAt > now), pipelineSubject25899 => HashMap.set(pipelineSubject25899, key, {expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}}))
+							pipe(
+								current,
+								HashMap.filter(entry => entry.expiresAt > now),
+								pipelineSubject25899 =>
+									HashMap.set(pipelineSubject25899, key, {
+										expiresAt: now + 60_000,
+										state: {_tag: 'Fresh', owner, request}
+									})
+							)
 						)
 						return code
-					}, rejected('Cannot issue the authorization code')),
+					}, asAuthError('Cannot issue the authorization code')),
 					issuer,
 					jwks: {keys: [publicJwk]},
 					revoke: Effect.fn('Tokens.revoke')(
@@ -706,15 +713,15 @@ export class Tokens extends Context.Service<
 							yield* Option.match(parts(params.token), {
 								onNone: () => Effect.void,
 								onSome: Effect.fnUntraced(function* (found) {
-									yield* pipe(
+									yield* Reactivity.mutation(
 										deleteRevoked({clientId: params.client_id, family: found.family, hash: yield* hash(found.secret)}),
-										Reactivity.mutation(['tokens'])
+										['tokens']
 									)
 								})
 							})
 						},
 						withReactivity,
-						rejected('Cannot revoke the token')
+						asAuthError('Cannot revoke the token')
 					),
 					session,
 					sessionVia,
@@ -773,9 +780,19 @@ export class Tokens extends Context.Service<
 							return {seconds, token: `${family}.${sessionSecret}`}
 						},
 						withReactivity,
-						rejected('Cannot start the session')
+						asAuthError('Cannot start the session')
 					),
-					verify
+					verify,
+					// The list is read again on each change and once a minute, so expired sign-ins leave it.
+					watchApps: owner =>
+						Stream.merge(
+							sql.reactive(['tokens'], listApps(owner)),
+							pipe(
+								Stream.tick('1 minute'),
+								Stream.drop(1),
+								Stream.mapEffect(() => listApps(owner))
+							)
+						)
 				})
 			})
 		),

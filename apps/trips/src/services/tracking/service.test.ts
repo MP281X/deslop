@@ -30,7 +30,7 @@ import {HOUR} from '#services/bookings/lib/utils.ts'
 import type {Booking} from '#services/bookings/schema.ts'
 import {Flight, Train} from '#services/bookings/schema.ts'
 import {Bookings} from '#services/bookings/service.ts'
-import {Tracker} from '#services/tracking/service.ts'
+import {Tracking} from '#services/tracking/service.ts'
 
 const ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
 
@@ -70,7 +70,6 @@ const TRAIN = {
 // The bookings as a list in memory; a newer state replaces the one it was made from only while that one is still stored.
 function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 	return Bookings.of({
-		changes: Stream.never,
 		events: Stream.never,
 		list: Effect.tap(Ref.get(state), () =>
 			Option.match(Option.fromUndefinedOr(listed), {
@@ -80,10 +79,23 @@ function bookingsAt(state: Ref.Ref<Booking[]>, listed?: Queue.Queue<void>) {
 		),
 		remove: () => Effect.void,
 		replace: (before, after) =>
-			pipe(state, pipelineSubject2088 => Ref.update(pipelineSubject2088, Array.map(booking =>
-						pipe(booking, pipelineSubject2176 => Equal.equals(pipelineSubject2176, before), pipelineSubject2162 => Boolean.match(pipelineSubject2162, {onFalse: () => booking, onTrue: () => after}))
-					)), pipelineSubject2068 => Effect.andThen(pipelineSubject2068, Effect.undefined)),
-		save: () => Effect.undefined
+			pipe(
+				state,
+				pipelineSubject2088 =>
+					Ref.update(
+						pipelineSubject2088,
+						Array.map(booking =>
+							pipe(
+								booking,
+								pipelineSubject2176 => Equal.equals(pipelineSubject2176, before),
+								pipelineSubject2162 => Boolean.match(pipelineSubject2162, {onFalse: () => booking, onTrue: () => after})
+							)
+						)
+					),
+				pipelineSubject2068 => Effect.andThen(pipelineSubject2068, Effect.undefined)
+			),
+		save: () => Effect.undefined,
+		watch: Stream.never
 	})
 }
 
@@ -93,13 +105,13 @@ const open = Effect.fnUntraced(function* (bookings: typeof Bookings.Service, cli
 	const tracker = Context.get(
 		yield* Layer.build(
 			pipe(
-				Tracker.layer,
+				Tracking.layer,
 				Layer.provide(Layer.succeedContext(database)),
 				Layer.provide(Layer.succeed(Bookings, bookings)),
 				Layer.provide(Layer.succeed(HttpClient.HttpClient, client))
 			)
 		),
-		Tracker
+		Tracking
 	)
 	const sql = Context.get(database, SqlClient.SqlClient)
 	return {lookups: sql<{calls: number; month: string}>`SELECT month, calls FROM lookups`, sql, tracker}
@@ -116,7 +128,15 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state, listed),
 				HttpClient.make(request =>
-					pipe(calls, Ref.update(count => count + 1), pipelineSubject3527 => Effect.as(pipelineSubject3527, HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))))
+					pipe(
+						calls,
+						Ref.update(count => count + 1),
+						pipelineSubject3527 =>
+							Effect.as(
+								pipelineSubject3527,
+								HttpClientResponse.fromWeb(request, new Response(undefined, {status: 204}))
+							)
+					)
 				)
 			)
 			yield* Queue.take(listed)
@@ -222,7 +242,12 @@ it.layer(ConfigProvider.layer(ConfigProvider.fromUnknown({AEROAPI_KEY: 'test'}))
 			const opened = yield* open(
 				bookingsAt(state),
 				HttpClient.make(request =>
-					pipe(calls, Ref.update(count => count + 1), pipelineSubject7209 => Effect.as(pipelineSubject7209, HttpClientResponse.fromWeb(request, Response.json({flights: []}))))
+					pipe(
+						calls,
+						Ref.update(count => count + 1),
+						pipelineSubject7209 =>
+							Effect.as(pipelineSubject7209, HttpClientResponse.fromWeb(request, Response.json({flights: []})))
+					)
 				)
 			)
 			yield* opened.tracker.refresh(ID)

@@ -7,12 +7,13 @@ import {Link, Outlet, createFileRoute, getRouteApi, useMatchRoute} from '@tansta
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
 
-import {AppBar, AppBarTab, AppBarTabs} from '@deslop/components-web/app-bar'
+import {AppBar, AppBarTabs} from '@deslop/components-web/app-bar'
 import {EmptyState, FailureRetry} from '@deslop/components-web/fallbacks'
 import {Page} from '@deslop/components-web/page'
 import {StaleProblem} from '@deslop/components-web/problem'
+import {TabsTrigger} from '@deslop/components-web/ui/tabs'
 
-import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signingOutAtom} from '#lib/utils.ts'
+import {accountAtom, appsAtom, catalogAtom, peopleAtom, Search, signingOutAtom} from '#lib/auth.ts'
 import {AccountMenu} from '#routes/(home)/-account-menu.tsx'
 import {SignIn} from '#routes/(home)/-sign-in.tsx'
 import {Waiting} from '#routes/(home)/-waiting.tsx'
@@ -33,9 +34,9 @@ function Tabs(props: {admin: boolean}) {
 			value={Boolean.match(matchRoute({to: '/people'}) !== false, {onFalse: () => '/', onTrue: () => '/people'})}
 		>
 			{Array.map(tabs, tab => (
-				<AppBarTab key={tab.to} value={tab.to} render={<Link to={tab.to} />}>
+				<TabsTrigger nativeButton={false} key={tab.to} value={tab.to} render={<Link to={tab.to} />}>
 					{tab.label}
-				</AppBarTab>
+				</TabsTrigger>
 			))}
 		</AppBarTabs>
 	)

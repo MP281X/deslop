@@ -32,7 +32,7 @@ import {updateAtom} from '@deslop/runtime/mobile/updates'
 
 import {colors, radius, space, text} from './theme.ts'
 
-import {assetAtom} from '#lib/utils.ts'
+import {assetAtom} from '#lib/device.ts'
 
 // The padding comes before the frame so content stays inside the safe area while the screen fills every edge.
 const FULL_SCREEN = [padding({all: space[6]}), frame({maxHeight: Infinity, maxWidth: Infinity})]

@@ -6,7 +6,11 @@ export const launchAgents = Effect.fnUntraced(function* (text: string) {
 		Array.getSomes(
 			Array.map(pipe(String.trim(text), String.split('\n'), Array.drop(1)), line => {
 				const [pid, status, label] = String.split(line, '\t')
-				return pipe(label ?? '', Option.liftPredicate(name => String.startsWith('deslop-')(name) && !String.endsWith('-update')(name)), Option.map(name => ({label: name, pid: Number.parse(pid), status: status ?? ''})))
+				return pipe(
+					label ?? '',
+					Option.liftPredicate(name => String.startsWith('deslop-')(name) && !String.endsWith('-update')(name)),
+					Option.map(name => ({label: name, pid: Number.parse(pid), status: status ?? ''}))
+				)
 			})
 		),
 		agent =>

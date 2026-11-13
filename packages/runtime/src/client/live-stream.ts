@@ -120,7 +120,7 @@ export function liveStream<Self, Id extends string>(
 	return Stream.unwrap(Effect.map(client, call => call(tag, payload)))
 }
 
-// An atom holding one RPC stream's latest value: kept through an outage, cleared by a refusal, and reopened by `recover`, the web's `reconnectOnDrop` unless the caller passes its own policy, as a mobile session's that signs out.
+// An atom holding one RPC stream's latest value: kept through an outage, cleared by a refusal and reopened on a dropped connection.
 export function liveAtom<
 	Self,
 	Id extends string,
@@ -131,14 +131,8 @@ export function liveAtom<
 	client: AtomRpc.AtomRpcClient<Self, Id, Rpcs>,
 	tag: Tag,
 	...rest: [void] extends [Rpc.PayloadConstructor<Rpc.ExtractTag<Rpcs, Tag>>]
-		? [
-				payload?: Rpc.PayloadConstructor<Rpc.ExtractTag<Rpcs, Tag>>,
-				recover?: <A, E, R>(stream: Stream.Stream<A, E, R>) => Stream.Stream<A, E, R | AtomRegistry.AtomRegistry>
-			]
-		: [
-				payload: Rpc.PayloadConstructor<Rpc.ExtractTag<Rpcs, Tag>>,
-				recover?: <A, E, R>(stream: Stream.Stream<A, E, R>) => Stream.Stream<A, E, R | AtomRegistry.AtomRegistry>
-			]
+		? [payload?: Rpc.PayloadConstructor<Rpc.ExtractTag<Rpcs, Tag>>]
+		: [payload: Rpc.PayloadConstructor<Rpc.ExtractTag<Rpcs, Tag>>]
 ): Atom.Atom<
 	AsyncResult.AsyncResult<Stream.Success<NoInfer<Answer>>, Stream.Error<NoInfer<Answer>> | Cause.NoSuchElementError>
 >
@@ -149,12 +143,9 @@ export function liveAtom<Self, Id extends string>(
 		Rpc.Rpc<string, Schema.Codec<unknown>, RpcSchema.Stream<Schema.Codec<unknown>, Schema.Codec<unknown>>>
 	>,
 	tag: string,
-	payload?: unknown,
-	recover: <A, E, R>(
-		stream: Stream.Stream<A, E, R>
-	) => Stream.Stream<A, E, R | AtomRegistry.AtomRegistry> = reconnectOnDrop
+	payload?: unknown
 ) {
 	return client.runtime.atom(get =>
-		keepValueThroughOutages(get, Stream.unwrap(Effect.map(client, call => call(tag, payload))), recover)
+		keepValueThroughOutages(get, Stream.unwrap(Effect.map(client, call => call(tag, payload))), reconnectOnDrop)
 	)
 }

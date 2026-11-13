@@ -76,8 +76,11 @@ export const WorkerList = Schema.String.check(
 	Schema.isPattern(/^[\w-]+=https?:\/\/[^,=\s]+(?:,[\w-]+=https?:\/\/[^,=\s]+)*$/u),
 	Schema.makeFilter(
 		value =>
-			pipe(value, String.split(','), Array.every(entry =>
-				Option.exists(pipe(entry, String.split('='), Array.get(1)), Schema.is(SecureOrigin)))),
+			pipe(
+				value,
+				String.split(','),
+				Array.every(entry => Option.exists(pipe(entry, String.split('='), Array.get(1)), Schema.is(SecureOrigin)))
+			),
 		{expected: 'named HTTPS origins, or loopback HTTP origins'}
 	)
 )

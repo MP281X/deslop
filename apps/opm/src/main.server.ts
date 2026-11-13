@@ -1,4 +1,4 @@
-import {Layer, pipe} from 'effect'
+import {Layer} from 'effect'
 
 import {runApp} from '@deslop/runtime/server/cli'
 import {layerRpc} from '@deslop/runtime/server/http'

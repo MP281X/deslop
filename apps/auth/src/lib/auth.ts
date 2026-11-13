@@ -35,7 +35,7 @@ export const Search = Schema.Struct({
 
 addPageTelemetry('@deslop/auth')
 
-class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/utils/RpcClient', {
+class RpcClient extends AtomRpc.Service<RpcClient>()('@deslop/auth/lib/auth/RpcClient', {
 	group: RpcContracts.middleware(RpcStream),
 	protocol: layerPageProtocol
 }) {}
@@ -75,7 +75,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 				Typing: {fields: {answered: Schema.optionalKey(Schema.Struct(Answered)), typed: Schema.String}}
 			}
 		}),
-		streams: {lookup: (code: string) => reconnectOnDrop(liveStream(RpcClient, 'signins.lookup', {code}))}
+		streams: {lookup: (code: string) => reconnectOnDrop(liveStream(RpcClient, 'sign-ins.lookup', {code}))}
 	}).handle({
 		initial: {data: {typed: ''}, target: 'Typing'},
 		on: {
@@ -138,7 +138,7 @@ export const admitAtom = Atom.family((id: string) =>
 export const requestAtom = Atom.family((request: string) =>
 	RpcClient.runtime.atom(
 		pipe(
-			liveStream(RpcClient, 'signins.status', {request}),
+			liveStream(RpcClient, 'sign-ins.status', {request}),
 			reconnectOnDrop,
 			Stream.tap(status =>
 				pipe(
@@ -167,21 +167,20 @@ export function approveLink(id: string) {
 export const catalogAtom = Atom.keepAlive(liveAtom(RpcClient, 'apps.watch'))
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
-export const minuteAtom = Atom.make(
-	Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis)
-)
+export const minuteAtom = Atom.make(Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis))
 
 // The time each second, for a waiting sign-in's countdown.
-export const secondAtom = Atom.make(
-	Stream.mapEffect(Stream.tick('1 second'), () => Clock.currentTimeMillis)
-)
+export const secondAtom = Atom.make(Stream.mapEffect(Stream.tick('1 second'), () => Clock.currentTimeMillis))
 
 // Copies the code; the result waits a moment after, while the code shows it was copied.
 export const copyCodeAtom = Atom.fn((code: string) =>
-	Effect.andThen(Effect.tryPromise({
+	Effect.andThen(
+		Effect.tryPromise({
 			catch: cause => AuthError.make({cause, message: 'Cannot copy the code; type it in instead'}),
 			try: () => navigator.clipboard.writeText(code)
-		}), Effect.sleep('1200 millis'))
+		}),
+		Effect.sleep('1200 millis')
+	)
 )
 
 // A sign-in as the lists name it: the app or browser, then where it runs.
@@ -190,7 +189,15 @@ export function signInLabel(client: string, device: string) {
 }
 
 export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
-	pipe(RpcClient, Effect.flatMap(client => client('signins.answer', {accept: input.accept, request: input.request.id})), pipelineSubject7126 => Effect.andThen(pipelineSubject7126, Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input}))))
+	pipe(
+		RpcClient,
+		Effect.flatMap(client => client('sign-ins.answer', {accept: input.accept, request: input.request.id})),
+		pipelineSubject7126 =>
+			Effect.andThen(
+				pipelineSubject7126,
+				Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input}))
+			)
+	)
 )
 
 // Closing the browser's passkey dialog is a normal choice, so it ends the attempt quietly instead of as an error.
@@ -210,7 +217,8 @@ const refused = Effect.fnUntraced(function* (response: HttpClientResponse.HttpCl
 })
 
 export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
-	Effect.mapError(Effect.gen(function* () {
+	Effect.mapError(
+		Effect.gen(function* () {
 			const client = yield* HttpClient.HttpClient
 			const offered = yield* client.get('/auth/passkey')
 			if (offered.status !== 200) return yield* refused(offered)
@@ -245,10 +253,12 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 					onSome: page => location.assign(page)
 				})
 			)
-		}), cause => {
+		}),
+		cause => {
 			if (Schema.is(AuthError)(cause)) return cause
 			return AuthError.make({cause, message: 'Cannot sign in with a passkey'})
-		})
+		}
+	)
 )
 
 export const passkeysAtom = Atom.keepAlive(liveAtom(RpcClient, 'passkeys.watch'))

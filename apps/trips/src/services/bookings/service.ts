@@ -26,11 +26,11 @@ function at(time: LocalTime, timeZone: string) {
 	})
 }
 
-function storageFailure(cause: unknown) {
+function asStorageBookingsError(cause: unknown) {
 	return BookingsError.make({cause, message: 'The trips storage failed.'})
 }
 
-const storageFailed = Effect.mapError(storageFailure)
+const asBookingsError = Effect.mapError(asStorageBookingsError)
 
 export class Bookings extends Context.Service<Bookings>()('@deslop/trips/services/bookings/service/Bookings', {
 	make: Effect.gen(function* () {
@@ -86,15 +86,21 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			Match.exhaustive
 		)
 
-		const changes = Stream.mapError(sql.reactive(['bookings'], listAll), storageFailure)
+		const watch = Stream.mapError(sql.reactive(['bookings'], listAll), asStorageBookingsError)
 
 		// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
-		const stationFor = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
+		const stationOf = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
 			const found = yield* Effect.option(places.station(name))
-			const timeZone = yield* pipe(found, Option.flatMap(place => Option.fromUndefinedOr(place.timeZone)), Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')), pipelineSubject3522 => Option.match(pipelineSubject3522, {
-					onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
-					onSome: Effect.succeed
-				}))
+			const timeZone = yield* pipe(
+				found,
+				Option.flatMap(place => Option.fromUndefinedOr(place.timeZone)),
+				Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')),
+				pipelineSubject3522 =>
+					Option.match(pipelineSubject3522, {
+						onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
+						onSome: Effect.succeed
+					})
+			)
 			return {...Option.getOrElse(found, () => Place.make({name})), timeZone}
 		})
 
@@ -126,8 +132,8 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				})
 			}
 			if (item.kind === 'train') {
-				const from = yield* stationFor(item.from, item.operator)
-				const to = yield* stationFor(item.to, item.operator)
+				const from = yield* stationOf(item.from, item.operator)
+				const to = yield* stationOf(item.to, item.operator)
 				return Train.make({
 					...base,
 					arrives: yield* at(item.arrival, to.timeZone),
@@ -158,27 +164,35 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			yield* Effect.forEach(
 				upsert(current, incoming),
 				booking =>
-					pipe(stored, pipelineSubject6165 => Record.get(pipelineSubject6165, booking.id), pipelineSubject6152 => Option.match(pipelineSubject6152, {
-						onNone: () => insert(booking),
-						onSome: before =>
-							pipe(before, pipelineSubject6395 => Equal.equals(pipelineSubject6395, booking), pipelineSubject6381 => Boolean.match(pipelineSubject6381, {onFalse: () => update(booking), onTrue: () => Effect.void}))
-					})),
+					pipe(
+						stored,
+						pipelineSubject6165 => Record.get(pipelineSubject6165, booking.id),
+						pipelineSubject6152 =>
+							Option.match(pipelineSubject6152, {
+								onNone: () => insert(booking),
+								onSome: before =>
+									pipe(
+										before,
+										pipelineSubject6395 => Equal.equals(pipelineSubject6395, booking),
+										pipelineSubject6381 =>
+											Boolean.match(pipelineSubject6381, {onFalse: () => update(booking), onTrue: () => Effect.void})
+									)
+							})
+					),
 				{concurrency: 1, discard: true}
 			)
 		})
 
 		return {
-			// What the push rounds follow: the whole list again after each commit.
-			changes,
 			// What the phone watches: the whole list first, then only what changed, after each commit.
-			events: listEvents(changes),
-			list: storageFailed(listAll),
+			events: listEvents(watch),
+			list: asBookingsError(listAll),
 			remove: Effect.fn('Bookings.remove')(function* (id: BookingId) {
 				yield* pipe(
 					Effect.all([flights.delete(id), trains.delete(id), stays.delete(id)], {concurrency: 1, discard: true}),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
-					storageFailed
+					asBookingsError
 				)
 			}, withReactivity),
 			// The newer state replaces the one it was made from, unless the booking changed or left meanwhile.
@@ -186,11 +200,16 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				yield* pipe(
 					listAll,
 					Effect.flatMap(current =>
-						pipe(current, Array.some(row => Equal.equals(row, before)), pipelineSubject7254 => Boolean.match(pipelineSubject7254, {onFalse: () => Effect.void, onTrue: () => update(after)}))
+						pipe(
+							current,
+							Array.some(row => Equal.equals(row, before)),
+							pipelineSubject7254 =>
+								Boolean.match(pipelineSubject7254, {onFalse: () => Effect.void, onTrue: () => update(after)})
+						)
 					),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
-					storageFailed
+					asBookingsError
 				)
 			}, withReactivity),
 			save: Effect.fn('Bookings.save')(function* (userId: string, source: BookingSource) {
@@ -205,16 +224,22 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				const issues = Array.getFailures(resolved)
 				if (Array.isReadonlyArrayNonEmpty(issues)) {
 					return yield* BookingsError.make({
-						message: pipe(issues, Array.map(error => error.message), Array.join(' '))
+						message: pipe(
+							issues,
+							Array.map(error => error.message),
+							Array.join(' ')
+						)
 					})
 				}
 				yield* pipe(
 					merge(Array.getSuccesses(resolved)),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
-					storageFailed
+					asBookingsError
 				)
-			}, withReactivity)
+			}, withReactivity),
+			// What the push rounds follow: the whole list again after each commit.
+			watch
 		}
 	})
 }) {

@@ -1,11 +1,14 @@
 import {Cause, Clock, Effect, Layer, Option, pipe} from 'effect'
 
-import {FetchHttpClient, UrlParams} from 'effect/http'
+import {FetchHttpClient, HttpClient, HttpClientResponse, UrlParams} from 'effect/http'
 import {OtlpLogger, OtlpSerialization, OtlpTracer} from 'effect/observability'
+
+import {RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
 
 // Scope's receiver is public, so exporters send no credentials; a release names its version, so Scope can drop what older ones sent.
 export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mobile' | 'server', version: string) {
-	return Layer.catchCause(Layer.unwrap(
+	return Layer.catchCause(
+		Layer.unwrap(
 			Effect.gen(function* () {
 				const start = `${yield* Clock.currentTimeNanos}`
 				const redacted = yield* UrlParams.CurrentRedactedNames
@@ -15,10 +18,11 @@ export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mo
 					// A local build or Simulator run is 0.1.0, unreleased: without a version, Scope never takes it for an old release.
 					serviceVersion: Option.getOrUndefined(Option.liftPredicate(version, current => current !== '0.1.0'))
 				}
-				return Layer.provide(Layer.mergeAll(
+				return Layer.provide(
+					Layer.mergeAll(
 						OtlpTracer.layer({resource, url: new URL('/v1/traces', url).href}),
 						OtlpLogger.layer({resource, url: new URL('/v1/logs', url).href}),
-						Layer.succeed(UrlParams.CurrentRedactedNames)([
+						Layer.succeed(UrlParams.CurrentRedactedNames, [
 							...redacted,
 							'code',
 							'state',
@@ -32,10 +36,36 @@ export function layerOtlp(serviceName: string, url: string, runtime: 'web' | 'mo
 							'session',
 							'token'
 						])
-					), [OtlpSerialization.layerJson, FetchHttpClient.layer])
+					),
+					[OtlpSerialization.layerJson, FetchHttpClient.layer]
+				)
 			})
-		), cause => {
+		),
+		cause => {
 			if (Cause.hasInterrupts(cause)) return Layer.effectDiscard(Effect.interrupt)
 			return Layer.effectDiscard(Effect.logWarning('Telemetry is unavailable'))
+		}
+	)
+}
+
+export function layerWebTelemetry(applicationName: string) {
+	return Layer.unwrap(
+		Effect.gen(function* () {
+			const config = yield* pipe(
+				(yield* HttpClient.HttpClient).get(RUNTIME_PATH),
+				Effect.flatMap(HttpClientResponse.filterStatusOk),
+				Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
+				Effect.timeout('3 seconds'),
+				Effect.tapError(error => Effect.logWarning('Telemetry is off: the runtime config did not load', error)),
+				Effect.option
+			)
+			return Option.match(config, {
+				onNone: () => Layer.empty,
+				onSome: settings => {
+					if (settings.traces === '') return Layer.empty
+					return layerOtlp(`${applicationName}-client`, settings.traces, 'web', settings.version)
+				}
+			})
 		})
+	)
 }

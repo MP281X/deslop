@@ -46,12 +46,15 @@ import type {Disk, MachineHistory} from '#services/metrics/schema.ts'
 
 const CGROUP = '/sys/fs/cgroup'
 
-const storageFailed = Effect.mapError((cause: unknown) =>
+const asDeployError = Effect.mapError((cause: unknown) =>
 	DeployError.make({cause, message: 'The resource history could not be read or written.'})
 )
 
 function counted(read: () => Counters) {
-	return Effect.flatMap(Effect.try({catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}), try: read}), Schema.decodeEffect(Counters))
+	return Effect.flatMap(
+		Effect.try({catch: cause => DeployError.make({cause, message: 'The machine counters are unreadable.'}), try: read}),
+		Schema.decodeEffect(Counters)
+	)
 }
 
 function sampled<A>(read: () => A) {
@@ -66,7 +69,11 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		const fs = yield* FileSystem.FileSystem
 		const sql = yield* SqlClient.SqlClient
 		const worker = hostname()
-		const cpuModel = pipe(Array.head(cpus()), Option.map(cpu => String.trim(cpu.model)), Option.getOrElse(() => ''))
+		const cpuModel = pipe(
+			Array.head(cpus()),
+			Option.map(cpu => String.trim(cpu.model)),
+			Option.getOrElse(() => '')
+		)
 
 		// The stored point of each series that a measurement at this time joins.
 		const listBuckets = SqlSchema.findAll({
@@ -109,21 +116,44 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 		// The cgroups that are each one app, opened level by level through slices and user managers without entering an app; a cgroup gone mid-walk has no children.
 		function walk(pending: readonly string[], found: readonly string[]): Effect.Effect<readonly string[]> {
 			if (Array.isReadonlyArrayEmpty(pending)) return Effect.succeed(found)
-			return pipe(pending, pipelineSubject4010 => Effect.forEach(pipelineSubject4010, path =>
-						Effect.option(
-							Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
-								pipe(names, Array.filter(name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))), Array.map(name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`})))
-							)
-						), {concurrency: 'unbounded'}), Effect.flatMap(levels => {
+			return pipe(
+				pending,
+				pipelineSubject4010 =>
+					Effect.forEach(
+						pipelineSubject4010,
+						path =>
+							Effect.option(
+								Effect.map(fs.readDirectory(`${CGROUP}${path}`), names =>
+									pipe(
+										names,
+										Array.filter(name => Option.isSome(String.match(/\.(?:slice|scope|service)$/u)(name))),
+										Array.map(name => ({app: appCgroup(`${path}/${name}`, names), path: `${path}/${name}`}))
+									)
+								)
+							),
+						{concurrency: 'unbounded'}
+					),
+				Effect.flatMap(levels => {
 					const children = Array.flatten(Array.getSomes(levels))
 					return walk(
-						pipe(children, Array.filter(child => !child.app && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child.path))), Array.map(child => child.path)),
+						pipe(
+							children,
+							Array.filter(
+								child => !child.app && Option.isSome(String.match(/(?:\.slice|\/user@[0-9]+\.service)$/u)(child.path))
+							),
+							Array.map(child => child.path)
+						),
 						[
 							...found,
-							...pipe(children, Array.filter(child => child.app), Array.map(child => child.path))
+							...pipe(
+								children,
+								Array.filter(child => child.app),
+								Array.map(child => child.path)
+							)
 						]
 					)
-				}))
+				})
+			)
 		}
 		const appCgroups = walk([''], [])
 		// Each app cgroup's memory and CPU time, which count processes that came and went between samples.
@@ -218,7 +248,8 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			return {current, value}
 		})
 		// Each measurement joins every series in one commit, so a restart loses nothing measured.
-		const collect = Effect.catch(Effect.gen(function* () {
+		const collect = Effect.catch(
+			Effect.gen(function* () {
 				const time = yield* Clock.currentTimeMillis
 				const old = Option.getOrUndefined(yield* Ref.get(previous))
 				const disks = yield* Ref.get(storage)
@@ -231,12 +262,14 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					listBuckets(time),
 					Effect.flatMap(stored => saveSamples(rollup(measured.value.point, stored))),
 					sql.withTransaction,
-					storageFailed
+					asDeployError
 				)
 				yield* Ref.set(latest, {disks: measured.value.disks, load: measured.value.load})
 				yield* Ref.set(failure, '')
-			}), cause => Ref.set(failure, cause.message))
-		const prune = pipe(Clock.currentTimeMillis, Effect.flatMap(deleteExpired), storageFailed)
+			}),
+			cause => Ref.set(failure, cause.message)
+		)
+		const prune = pipe(Clock.currentTimeMillis, Effect.flatMap(deleteExpired), asDeployError)
 
 		yield* prune
 		yield* refreshStorage
@@ -256,7 +289,7 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 			read: Effect.fnUntraced(function* (query: HistoryQuery) {
 				const time = yield* Clock.currentTimeMillis
 				const step = SERIES[query.minutes]
-				const samples = yield* (storageFailed)(listSeries({after: chartWindow(query.minutes, time).start - step, step}))
+				const samples = yield* asDeployError(listSeries({after: chartWindow(query.minutes, time).start - step, step}))
 				const now = yield* Ref.get(latest)
 				// Built from values the model just decoded, so no sample is checked twice; the RPC encodes it against the schema.
 				return {
@@ -267,7 +300,11 @@ export class Metrics extends Context.Service<Metrics>()('@deslop/deploy/services
 					samples: history(samples, query.minutes, time),
 					stale:
 						time -
-							pipe(Array.last(samples), Option.map(value => value.time), Option.getOrElse(() => 0)) >
+							pipe(
+								Array.last(samples),
+								Option.map(value => value.time),
+								Option.getOrElse(() => 0)
+							) >
 						90_000,
 					time,
 					worker

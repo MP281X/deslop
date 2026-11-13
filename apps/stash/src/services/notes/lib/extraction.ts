@@ -18,7 +18,7 @@ import {
 	pipe
 } from 'effect'
 
-import * as cheerio from 'cheerio'
+import {load} from 'cheerio'
 import {HttpClient} from 'effect/http'
 import type {HttpClientResponse} from 'effect/http'
 import {Dns, NetAddress} from 'effect/net'
@@ -29,7 +29,7 @@ import {pageText} from './page.ts'
 import {conversationPlan, conversationExtraction, tikTokExtraction} from './x.ts'
 
 import {sourceProxy, sticky} from '#services/media/service.ts'
-import {canonical, isYouTube, plainText, sourceFor} from '#services/notes/lib/utils.ts'
+import {canonical, isYouTube, plainText, sourceOf} from '#services/notes/lib/utils.ts'
 import type {Image} from '#services/notes/schema.ts'
 import {
 	Extraction,
@@ -89,7 +89,7 @@ function readBytes(response: HttpClientResponse.HttpClientResponse) {
 }
 
 // Pinning the checked address stops a rebinding host from reaching the tailnet; the proxy resolves outside it.
-const load = Effect.fnUntraced(function* <A, E>(
+const readSource = Effect.fnUntraced(function* <A, E>(
 	url: URL,
 	read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>
 ) {
@@ -101,7 +101,9 @@ const load = Effect.fnUntraced(function* <A, E>(
 	) {
 		return yield* NotesError.make({message: 'Only public web links can be read.'})
 	}
-	const addresses = yield* Effect.mapError((yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}), cause => NotesError.make({cause, message: 'The link host could not be found.'}))
+	const addresses = yield* Effect.mapError((yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}), cause =>
+		NotesError.make({cause, message: 'The link host could not be found.'})
+	)
 	if (!Array.every(addresses, isPublicIp)) {
 		return yield* NotesError.make({message: 'The link points to a private network.'})
 	}
@@ -117,33 +119,42 @@ const load = Effect.fnUntraced(function* <A, E>(
 			}
 		}),
 		Effect.flatMap(response =>
-			pipe(read(response), pipelineSubject3721 => Effect.when(pipelineSubject3721, Effect.succeed(response.status === 200)), Effect.map(body => ({
-				body,
-				location: response.headers['location'],
-				status: response.status,
-				type: response.headers['content-type'] ?? ''
-			})))
+			pipe(
+				read(response),
+				pipelineSubject3721 => Effect.when(pipelineSubject3721, Effect.succeed(response.status === 200)),
+				Effect.map(body => ({
+					body,
+					location: response.headers['location'],
+					status: response.status,
+					type: response.headers['content-type'] ?? ''
+				}))
+			)
 		),
 		Effect.scoped,
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each request owns an agent pinned to its checked address or its proxy.
 		Effect.provide(
-			Layer.provide(NodeHttpClient.layerNodeHttpNoAgent, Option.match(proxy, {
-						onNone: () =>
-							NodeHttpClient.layerAgentOptions({
-								autoSelectFamily: false,
-								// oxlint-disable-next-line unicorn/no-null -- Node's lookup callback takes null on success.
-								lookup: (_hostname, _options, callback) => callback(null, address, 4)
-							}),
-						// Expo's types make NODE_ENV required in every environment object.
-						onSome: exit =>
-							NodeHttpClient.layerAgentOptions({
-								proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}
-							})
-					}))
+			Layer.provide(
+				NodeHttpClient.layerNodeHttpNoAgent,
+				Option.match(proxy, {
+					onNone: () =>
+						NodeHttpClient.layerAgentOptions({
+							autoSelectFamily: false,
+							// oxlint-disable-next-line unicorn/no-null -- Node's lookup callback takes null on success.
+							lookup: (_hostname, _options, callback) => callback(null, address, 4)
+						}),
+					// Expo's types make NODE_ENV required in every environment object.
+					onSome: exit =>
+						NodeHttpClient.layerAgentOptions({proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}})
+				})
+			)
 		),
 		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
 		Effect.mapError(cause =>
-			pipe(cause, pipelineSubject4873 => Option.liftPredicate(pipelineSubject4873, Schema.is(NotesError)), Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'})))
+			pipe(
+				cause,
+				pipelineSubject4873 => Option.liftPredicate(pipelineSubject4873, Schema.is(NotesError)),
+				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
+			)
 		)
 	)
 })
@@ -151,9 +162,9 @@ const load = Effect.fnUntraced(function* <A, E>(
 // One span per request to a source, with the address and its answer, while the pinned agent and proxy keep their client spans off.
 function attempt<A, E>(url: URL, read: (response: HttpClientResponse.HttpClientResponse) => Effect.Effect<A, E>) {
 	return pipe(
-		load(url, read),
+		readSource(url, read),
 		Effect.tap(found => Effect.annotateCurrentSpan('status', found.status)),
-		Effect.withSpan('Sources.fetch', {attributes: {source: sourceFor(url.href), url: url.href}})
+		Effect.withSpan('Sources.fetch', {attributes: {source: sourceOf(url.href), url: url.href}})
 	)
 }
 
@@ -187,7 +198,10 @@ const follow = Effect.fnUntraced(function* <A, E>(
 })
 
 const decode = Effect.fnUntraced(function* <S extends Schema.Constraint>(schema: S, url: URL) {
-	return yield* Effect.mapError(Schema.decodeEffect(Schema.fromJsonString(schema))((yield* follow(url, api, 0)).body), cause => NotesError.make({cause, message: 'The source answered in an unknown format.'}))
+	return yield* Effect.mapError(
+		Schema.decodeEffect(Schema.fromJsonString(schema))((yield* follow(url, api, 0)).body),
+		cause => NotesError.make({cause, message: 'The source answered in an unknown format.'})
+	)
 })
 
 function fx<S extends Schema.Constraint>(schema: S, path: string) {
@@ -216,7 +230,7 @@ const resolve = Effect.fnUntraced(function* (url: URL, hops: number): Effect.fn.
 	return yield* resolve(new URL(answer.location, url), hops + 1)
 })
 
-const fromOEmbed = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
+const oEmbedOf = Effect.fnUntraced(function* (endpoint: string, url: URL, title: (embed: OEmbed) => string) {
 	const embed = yield* decode(OEmbed, new URL(`${endpoint}${encodeURIComponent(url.href)}`))
 	return Extraction.make({
 		author: Option.fromUndefinedOr(embed.author_name),
@@ -235,11 +249,7 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 	return Extraction.make({
 		author: Option.fromUndefinedOr(embed.author_name),
 		image: Option.none(),
-		text: plainText(
-			cheerio
-				.load(embed.html ?? '')('blockquote p')
-				.text()
-		),
+		text: plainText(load(embed.html ?? '')('blockquote p').text()),
 		title: `${embed.author_name ?? 'A post'} on X`,
 		url: canonical(url),
 		// Without the thread nothing says whether the post has a video, so yt-dlp tries.
@@ -250,10 +260,12 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 // A photo post has no oEmbed and yt-dlp cannot read it, but its page under /video/ holds every slide.
 const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 	const html = yield* follow(new URL(String.replace('/photo/', '/video/')(url.href)), api, 0)
-	const item = (yield* Effect.mapError(Schema.decodeEffect(Schema.fromJsonString(TikTokPage))(
-			cheerio.load(html.body)('#__UNIVERSAL_DATA_FOR_REHYDRATION__').text()
-		), cause =>
-			NotesError.make({cause, message: 'The TikTok photo post is unreadable.', reason: 'UnreadablePhoto'}))).__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct
+	const item = (yield* Effect.mapError(
+		Schema.decodeEffect(Schema.fromJsonString(TikTokPage))(
+			load(html.body)('#__UNIVERSAL_DATA_FOR_REHYDRATION__').text()
+		),
+		cause => NotesError.make({cause, message: 'The TikTok photo post is unreadable.', reason: 'UnreadablePhoto'})
+	)).__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct
 	return tikTokExtraction(item, url)
 })
 
@@ -311,7 +323,9 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 })
 
 const gitHub = Effect.fnUntraced(function* (url: URL) {
-	const path = pipe(url.pathname, String.split('/'), pipelineSubject11879 => Array.filter(pipelineSubject11879, String.isNonEmpty))
+	const path = pipe(url.pathname, String.split('/'), pipelineSubject11879 =>
+		Array.filter(pipelineSubject11879, String.isNonEmpty)
+	)
 	const name = pipe(path, Array.take(2), Array.join('/'))
 	if (path.length === 2) return yield* repository(url, name)
 	return yield* pipe(
@@ -325,7 +339,10 @@ const gitHub = Effect.fnUntraced(function* (url: URL) {
 })
 
 const reader = Effect.fnUntraced(function* (url: URL) {
-	const answer = yield* (timeLimit('30 seconds', 'The reader took too long.'))(decode(Reader, new URL(`https://r.jina.ai/${url.href}`)))
+	const answer = yield* timeLimit(
+		'30 seconds',
+		'The reader took too long.'
+	)(decode(Reader, new URL(`https://r.jina.ai/${url.href}`)))
 	if (CHALLENGE.test(answer.data.content) || String.isEmpty(String.trim(answer.data.content))) {
 		return yield* NotesError.make({message: 'The site blocks automated reading.'})
 	}
@@ -420,7 +437,7 @@ export class Sources extends Context.Service<
 		readonly image: (url: string) => Effect.Effect<Image, NotesError>
 		readonly resolve: (url: string) => Effect.Effect<string, NotesError>
 	}
->('@deslop/stash/services/notes/lib/extraction/Sources') {
+>()('@deslop/stash/services/notes/lib/extraction/Sources') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -433,7 +450,7 @@ export class Sources extends Context.Service<
 				extract: Effect.fn('Sources.extract')(
 					function* (link) {
 						const url = yield* resolve(new URL(link), 0)
-						const source = sourceFor(url.href)
+						const source = sourceOf(url.href)
 						// TikTok answers some exits with a login page instead of the post.
 						if (source === 'TikTok' && String.includes('/photo/')(url.pathname)) {
 							return yield* Effect.retry(tikTokPhotos(url), {
@@ -442,7 +459,7 @@ export class Sources extends Context.Service<
 							})
 						}
 						if (source === 'TikTok') {
-							return yield* fromOEmbed(
+							return yield* oEmbedOf(
 								'https://www.tiktok.com/oembed?url=',
 								url,
 								embed => `${embed.author_name ?? 'A video'} on TikTok`
@@ -451,7 +468,7 @@ export class Sources extends Context.Service<
 						if (source === 'X') return yield* Effect.catch(xThread(url), () => xOEmbed(url))
 						// YouTube answers a datacenter address with a bot check, but its oEmbed still answers.
 						if (isYouTube(url.href)) {
-							return yield* fromOEmbed('https://www.youtube.com/oembed?format=json&url=', url, embed =>
+							return yield* oEmbedOf('https://www.youtube.com/oembed?format=json&url=', url, embed =>
 								plainText(embed.title ?? 'A YouTube video')
 							)
 						}

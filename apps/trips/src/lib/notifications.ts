@@ -1,8 +1,10 @@
-import {Effect, Queue, Redacted, Schema, Stream, pipe} from 'effect'
+import {Effect, Queue, Redacted, Schema, Stream} from 'effect'
 
 import {applicationId} from 'expo-application'
 import {getDevicePushTokenAsync, requestPermissionsAsync, setNotificationHandler} from 'expo-notifications'
 import {addPushToStartTokenListener} from 'expo-widgets'
+
+import {foregroundNotifications} from '@deslop/components-mobile/device'
 
 import {RpcClient, session} from '#lib/session.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
@@ -10,15 +12,12 @@ import {Bundle} from '#services/push/schema.ts'
 
 const apns = Effect.map(Schema.decodeUnknownEffect(Bundle)(applicationId), bundle => ({bundle}))
 
-setNotificationHandler({
-	handleNotification: () =>
-		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
-		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
-})
+setNotificationHandler(foregroundNotifications)
 
 // Asked on the first launch: gate changes and delays reach the iPhone through these, and the server starts the island with the push-to-start token.
 export const pushAtom = RpcClient.runtime.atom(get =>
-	Effect.ignore(Effect.gen(function* () {
+	Effect.ignore(
+		Effect.gen(function* () {
 			if (!session.signedIn(get)) return
 			const target = yield* apns
 			const client = yield* RpcClient
@@ -42,7 +41,8 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				})
 			}
 			// iOS hands out the push-to-start token and its rotations whenever it likes, for as long as the app runs.
-			yield* Stream.runForEach(Stream.callback<string>(queue =>
+			yield* Stream.runForEach(
+				Stream.callback<string>(queue =>
 					Effect.acquireRelease(
 						Effect.sync(() =>
 							addPushToStartTokenListener(event => {
@@ -51,10 +51,14 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 						),
 						subscription => Effect.sync(() => subscription.remove())
 					)
-				), token =>
+				),
+				token =>
 					Effect.ignore(client('push.register', {...target, kind: 'start', token: Redacted.make(token)}), {
 						log: 'Warn',
 						message: 'The Live Activity token was not registered'
-					}))
-		}), {log: 'Warn', message: 'Notifications are not set up on this iPhone'})
+					})
+			)
+		}),
+		{log: 'Warn', message: 'Notifications are not set up on this iPhone'}
+	)
 )

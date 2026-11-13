@@ -7,8 +7,7 @@ import type {HttpClientError} from 'effect/http/HttpClientError'
 import {OtlpExporter} from 'effect/observability'
 import {TestClock} from 'effect/testing'
 
-import {layerOtlp} from '#shared/telemetry.ts'
-import {layerWebTelemetry} from '#web/client.ts'
+import {layerOtlp, layerWebTelemetry} from '#shared/telemetry.ts'
 
 it.effect(
 	'keeps app data available when telemetry settings cannot be read',
@@ -23,7 +22,11 @@ it.effect(
 						HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
 							request =>
 								Effect.flatMap(request, input =>
-									pipe(calls, Ref.update(count => count + 1), pipelineSubject1028 => Effect.as(pipelineSubject1028, HttpClientResponse.fromWeb(input, response)))
+									pipe(
+										calls,
+										Ref.update(count => count + 1),
+										pipelineSubject1028 => Effect.as(pipelineSubject1028, HttpClientResponse.fromWeb(input, response))
+									)
 								),
 							Effect.succeed
 						)
@@ -48,7 +51,15 @@ it.effect(
 						Layer.succeed(
 							HttpClient.HttpClient,
 							HttpClient.makeWith<HttpClientError, never, HttpClientError, never>(
-								request => Effect.andThen(request, pipe(entered, pipelineSubject1894 => Queue.offer(pipelineSubject1894, undefined), pipelineSubject1879 => Effect.andThen(pipelineSubject1879, Effect.never))),
+								request =>
+									Effect.andThen(
+										request,
+										pipe(
+											entered,
+											pipelineSubject1894 => Queue.offer(pipelineSubject1894, undefined),
+											pipelineSubject1879 => Effect.andThen(pipelineSubject1879, Effect.never)
+										)
+									),
 								Effect.succeed
 							)
 						)
@@ -111,7 +122,7 @@ it.effect(
 				),
 				Effect.flatMap(HttpClientResponse.filterStatusOk),
 				Effect.tapError(error => Effect.logError(error)),
-				Effect.withSpan('fixture.request'),
+				Effect.withSpan('Fixture.request'),
 				Effect.ignore,
 				Effect.provideContext(services)
 			)

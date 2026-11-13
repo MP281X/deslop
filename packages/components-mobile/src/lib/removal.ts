@@ -1,17 +1,17 @@
-import {Context, Effect, Layer, pipe} from 'effect'
+import {Context, Effect, Layer} from 'effect'
 
 import {Machine} from '@typeonce/effect-machine'
 import {AtomMachine} from '@typeonce/effect-machine/reactivity'
 import {Atom} from 'effect/reactivity'
 
-import {alertFailure} from '#lib/utils.ts'
+import {alertFailure} from '#lib/device.ts'
 
 type RemovalError = {_tag: string; message: string}
 
 class Removal extends Context.Service<
 	Removal,
 	{readonly notRemoved: string; readonly remove: (id: string) => Effect.Effect<void, RemovalError>}
->('@deslop/components-mobile/lib/removal') {}
+>()('@deslop/components-mobile/lib/removal') {}
 
 // A removal reaches the server only after eight seconds; until then its row can restore it.
 export function makeRemoval<E extends {_tag: string; message: string}>(options: {
@@ -29,7 +29,7 @@ export function makeRemoval<E extends {_tag: string; message: string}>(options: 
 				effects: {
 					remove: Effect.gen(function* () {
 						const removal = yield* Removal
-						yield* pipe(removal.remove(id), alertFailure(removal.notRemoved))
+						yield* alertFailure(removal.remove(id), removal.notRemoved)
 					})
 				},
 				events: Machine.events({Removed: {}, Restored: {}}),

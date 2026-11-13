@@ -5,8 +5,8 @@ import {OtlpExporter} from 'effect/observability'
 import {Atom} from 'effect/reactivity'
 
 import {layerSocketProtocol} from '#client/protocol.ts'
-import {Account, RPC_PATH, RUNTIME_PATH, RuntimeConfig} from '#shared/schema.ts'
-import {layerOtlp} from '#shared/telemetry.ts'
+import {Account, RPC_PATH} from '#shared/schema.ts'
+import {layerWebTelemetry} from '#shared/telemetry.ts'
 
 const errorTelemetry = MutableRef.make(Option.none<Context.Context<never>>())
 
@@ -40,34 +40,11 @@ export const pageErrorAtom = Atom.fn(
 // The signed-in account the runtime serves; without an issuer it is the developer, who cannot sign out.
 export const accountAtom = Atom.runtime(FetchHttpClient.layer).atom(
 	pipe(
-		HttpClient.get('/auth/user'),
+		HttpClient.get('/api/account'),
 		Effect.flatMap(HttpClientResponse.filterStatusOk),
 		Effect.flatMap(HttpClientResponse.schemaBodyJson(Account))
 	)
 )
-
-// fallow-ignore-next-line unused-export -- the tests drive the runtime-config discovery directly.
-export function layerWebTelemetry(applicationName: string) {
-	return Layer.unwrap(
-		Effect.gen(function* () {
-			const config = yield* pipe(
-				(yield* HttpClient.HttpClient).get(RUNTIME_PATH),
-				Effect.flatMap(HttpClientResponse.filterStatusOk),
-				Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
-				Effect.timeout('3 seconds'),
-				Effect.tapError(error => Effect.logWarning('Telemetry is off: the runtime config did not load', error)),
-				Effect.option
-			)
-			return Option.match(config, {
-				onNone: () => Layer.empty,
-				onSome: settings => {
-					if (settings.traces === '') return Layer.empty
-					return layerOtlp(`${applicationName}-client`, settings.traces, 'web', settings.version)
-				}
-			})
-		})
-	)
-}
 
 // The page's RPC socket to its own origin.
 export const layerPageProtocol = layerSocketProtocol(Effect.sync(() => `${location.origin}${RPC_PATH}`))

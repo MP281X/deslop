@@ -119,7 +119,11 @@ it.layer(NodeServices.layer)('Inventory', test => {
 				)
 			)
 			assert.deepStrictEqual(
-				pipe(snapshot.items, Array.filter(item => item.kind === 'port'), Array.map(item => [item.name, item.state, item.url])),
+				pipe(
+					snapshot.items,
+					Array.filter(item => item.kind === 'port'),
+					Array.map(item => [item.name, item.state, item.url])
+				),
 				[
 					['127.0.0.1:5173', 'LISTEN', ''],
 					['[::]:5353', 'UNCONN', '']
@@ -128,7 +132,11 @@ it.layer(NodeServices.layer)('Inventory', test => {
 			assert.isTrue(Array.some(snapshot.sources, source => source.name === 'Docker' && source.error !== ''))
 			assert.isTrue(Array.some(snapshot.sources, source => source.name === 'User services' && source.error === ''))
 			assert.deepStrictEqual(
-				pipe(snapshot.items, Array.filter(item => item.kind === 'port'), Array.map(item => [item.port, item.protocol, item.process])),
+				pipe(
+					snapshot.items,
+					Array.filter(item => item.kind === 'port'),
+					Array.map(item => [item.port, item.protocol, item.process])
+				),
 				[
 					[5173, 'tcp', 'fixture'],
 					[5353, 'udp', '']

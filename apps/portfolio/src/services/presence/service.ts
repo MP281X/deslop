@@ -33,7 +33,7 @@ export class Presence extends Context.Service<
 		readonly join: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'name'>) => Stream.Stream<PortfolioScene>
 		readonly move: (payload: Pick<PortfolioVisitor, 'color' | 'id' | 'x' | 'y'>) => Effect.Effect<void>
 	}
->('@deslop/portfolio/services/presence/service/Presence') {
+>()('@deslop/portfolio/services/presence/service/Presence') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -57,9 +57,9 @@ export class Presence extends Context.Service<
 						Empty: {},
 						Occupied: {
 							fields: {
-								bots: pipe(PortfolioVisitor, Schema.Array),
+								bots: Schema.Array(PortfolioVisitor),
 								tabs: Schema.Record(Schema.String, Schema.Int),
-								visitors: pipe(PortfolioVisitor, Schema.Array)
+								visitors: Schema.Array(PortfolioVisitor)
 							}
 						}
 					}
@@ -72,12 +72,14 @@ export class Presence extends Context.Service<
 									color: bot.color,
 									id: bot.id,
 									name: bot.name,
-									x: Number.clamp({maximum: 0.995, minimum: 0.005})(
-										0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase)
-									),
-									y: Number.clamp({maximum: 0.995, minimum: 0.005})(
-										0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase)
-									)
+									x: Number.clamp(0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase), {
+										maximum: 0.995,
+										minimum: 0.005
+									}),
+									y: Number.clamp(0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase), {
+										maximum: 0.995,
+										minimum: 0.005
+									})
 								})
 							)
 						),
@@ -113,7 +115,11 @@ export class Presence extends Context.Service<
 									tabs: {
 										...transition.state.tabs,
 										[transition.event.visitor.id]:
-											pipe(transition.state.tabs, pipelineSubject3481 => Record.get(pipelineSubject3481, transition.event.visitor.id), Option.getOrElse(() => 0)) + 1
+											pipe(
+												transition.state.tabs,
+												pipelineSubject3481 => Record.get(pipelineSubject3481, transition.event.visitor.id),
+												Option.getOrElse(() => 0)
+											) + 1
 									},
 									visitors: upsertPortfolioVisitor(transition.state.visitors, transition.event.visitor)
 								}),
@@ -122,7 +128,12 @@ export class Presence extends Context.Service<
 							Left: {
 								branches: 'left',
 								resolve: transition => {
-									const open = pipe(transition.state.tabs, pipelineSubject3827 => Record.get(pipelineSubject3827, transition.event.id), Option.getOrElse(() => 1)) - 1
+									const open =
+										pipe(
+											transition.state.tabs,
+											pipelineSubject3827 => Record.get(pipelineSubject3827, transition.event.id),
+											Option.getOrElse(() => 1)
+										) - 1
 									if (open > 0) {
 										return transition.select.open({
 											data: {...transition.state, tabs: {...transition.state.tabs, [transition.event.id]: open}}

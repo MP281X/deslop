@@ -40,7 +40,11 @@ const KEEP = 20
 
 // Releases compare part by part as numbers, so 0.1.1235 is newer than 0.1.999.
 const byRelease = Order.mapInput(Order.Array(Order.Number), (version: string) =>
-	pipe(version, String.split('.'), Array.map(part => Option.getOrElse(Number.parse(part), () => 0)))
+	pipe(
+		version,
+		String.split('.'),
+		Array.map(part => Option.getOrElse(Number.parse(part), () => 0))
+	)
 )
 
 const byStart = Order.mapInput(Order.Number, (span: Pick<Span, 'start'>) => span.start)
@@ -65,8 +69,17 @@ export function newestReleases(senders: readonly Sender[], known: Record<string,
 	)
 	return Record.union(
 		known,
-		pipe(versioned, Array.groupBy(item => item.service), Record.map(group =>
-				pipe(group, Array.map(item => item.version), Array.max(byRelease)))),
+		pipe(
+			versioned,
+			Array.groupBy(item => item.service),
+			Record.map(group =>
+				pipe(
+					group,
+					Array.map(item => item.version),
+					Array.max(byRelease)
+				)
+			)
+		),
 		Order.max(byRelease)
 	)
 }
@@ -75,7 +88,11 @@ export function newestReleases(senders: readonly Sender[], known: Record<string,
 export function supersededBy(newest: Record<string, string>) {
 	return (sender: Sender) =>
 		Option.exists(releaseOf(sender.version), version =>
-			pipe(newest, pipelineSubject2353 => Record.get(pipelineSubject2353, sender.service), Option.exists(latest => Order.isLessThan(byRelease)(version, latest)))
+			pipe(
+				newest,
+				pipelineSubject2353 => Record.get(pipelineSubject2353, sender.service),
+				Option.exists(latest => Order.isLessThan(byRelease)(version, latest))
+			)
 		)
 }
 
@@ -86,7 +103,11 @@ function primitiveOf(value: unknown) {
 	const integer = value['intValue']
 	if (Predicate.isNumber(integer)) return integer
 	if (Predicate.isString(integer)) {
-		return pipe(Number.parse(integer), Option.filter(parsed => Math.abs(parsed) <= 2 ** 53 - 1), Option.getOrElse(() => integer))
+		return pipe(
+			Number.parse(integer),
+			Option.filter(parsed => Math.abs(parsed) <= 2 ** 53 - 1),
+			Option.getOrElse(() => integer)
+		)
 	}
 	const double = value['doubleValue']
 	if (Predicate.isNumber(double)) return double
@@ -105,7 +126,11 @@ function attributesOf(attributes: readonly Attribute[] = []) {
 }
 
 function textOf(attributes: Attributes, key: string) {
-	return pipe(attributes[key], pipelineSubject3794 => Option.liftPredicate(pipelineSubject3794, Predicate.isString), Option.getOrElse(() => ''))
+	return pipe(
+		attributes[key],
+		pipelineSubject3794 => Option.liftPredicate(pipelineSubject3794, Predicate.isString),
+		Option.getOrElse(() => '')
+	)
 }
 
 function resourceText(resource: Resource, key: string) {
@@ -125,7 +150,11 @@ function spanName(span: ExportedSpan, attributes: Attributes) {
 	if (String.isNonEmpty(route)) return `${name} ${route}`
 	// OTLP's SpanKind 2 is a server answering a request.
 	if (span['kind'] === 2) return `${name} (no route)`
-	return pipe(textOf(attributes, 'url.path'), pipelineSubject4813 => Option.liftPredicate(pipelineSubject4813, String.isNonEmpty), pipelineSubject4800 => Option.match(pipelineSubject4800, {onNone: () => name, onSome: path => `${name} ${path}`}))
+	return pipe(
+		textOf(attributes, 'url.path'),
+		pipelineSubject4813 => Option.liftPredicate(pipelineSubject4813, String.isNonEmpty),
+		pipelineSubject4800 => Option.match(pipelineSubject4800, {onNone: () => name, onSome: path => `${name} ${path}`})
+	)
 }
 
 export function appName(service: string) {
@@ -133,7 +162,7 @@ export function appName(service: string) {
 }
 
 // The tool's side: the resource's runtime, else the suffix its service name already carries; unknown names omit it.
-export function sideFor(service: string, value: Runtime) {
+export function sideOf(service: string, value: Runtime) {
 	if (Schema.is(Side)(value)) return value
 	if (String.endsWith('-server')(service)) return 'server' as const
 	if (String.endsWith('-client')(service)) return 'web' as const
@@ -160,15 +189,27 @@ function durationMs(start: string, end: string) {
 // Who sent a record: its service, the side it runs on, the run its process started and the release it built.
 function senderOf(resource: Resource) {
 	return {
-		run: pipe(resourceText(resource, 'scope.run.started_unix_nano'), pipelineSubject6229 => Option.liftPredicate(pipelineSubject6229, Schema.is(Nano)), Option.map(nano => DateTime.makeUnsafe(Math.trunc(millisOf(nano))))),
-		runtime: pipe(resourceText(resource, 'scope.runtime'), pipelineSubject6405 => Option.liftPredicate(pipelineSubject6405, Schema.is(Runtime)), Option.getOrElse(() => 'unknown' as const)),
+		run: pipe(
+			resourceText(resource, 'scope.run.started_unix_nano'),
+			pipelineSubject6229 => Option.liftPredicate(pipelineSubject6229, Schema.is(Nano)),
+			Option.map(nano => DateTime.makeUnsafe(Math.trunc(millisOf(nano))))
+		),
+		runtime: pipe(
+			resourceText(resource, 'scope.runtime'),
+			pipelineSubject6405 => Option.liftPredicate(pipelineSubject6405, Schema.is(Runtime)),
+			Option.getOrElse(() => 'unknown' as const)
+		),
 		service: serviceName(resource),
 		version: Option.liftPredicate(resourceText(resource, 'service.version'), String.isNonEmpty)
 	}
 }
 
 function lowerId(id = '') {
-	return pipe(id, pipelineSubject6702 => Option.liftPredicate(pipelineSubject6702, String.isNonEmpty), pipelineSubject6691 => Option.map(pipelineSubject6691, String.toLowerCase))
+	return pipe(
+		id,
+		pipelineSubject6702 => Option.liftPredicate(pipelineSubject6702, String.isNonEmpty),
+		pipelineSubject6691 => Option.map(pipelineSubject6691, String.toLowerCase)
+	)
 }
 
 // The words and numbers of an OTLP value, keys included: `Effect.log('saved', note)` sends an array of its arguments.
@@ -195,7 +236,11 @@ export function spansOf(payload: TracesRequest) {
 		Array.flatMap(group.scopeSpans ?? [], scope =>
 			Array.map(scope.spans ?? [], span => {
 				const attributes = attributesOf(span.attributes)
-				const exceptions = pipe(span.events ?? [], Array.filter(event => event.name === 'exception'), Array.map(event => attributesOf(event.attributes)))
+				const exceptions = pipe(
+					span.events ?? [],
+					Array.filter(event => event.name === 'exception'),
+					Array.map(event => attributesOf(event.attributes))
+				)
 				const failed = span.status?.code === 2
 				const traceId = String.toLowerCase(span.traceId)
 				const spanId = String.toLowerCase(span.spanId)
@@ -219,8 +264,16 @@ export function spansOf(payload: TracesRequest) {
 						duration: Option.map(Option.fromUndefinedOr(span.endTimeUnixNano), end =>
 							Duration.millis(durationMs(span.startTimeUnixNano, end))
 						),
-						error: pipe(span.status?.['message'], pipelineSubject8976 => Option.liftPredicate(pipelineSubject8976, Predicate.isString), Option.filter(message => failed && String.isNonEmpty(message))),
-						exception: pipe(Array.head(exceptions), Option.map(exception => textOf(exception, 'exception.message')), pipelineSubject9125 => Option.filter(pipelineSubject9125, String.isNonEmpty)),
+						error: pipe(
+							span.status?.['message'],
+							pipelineSubject8976 => Option.liftPredicate(pipelineSubject8976, Predicate.isString),
+							Option.filter(message => failed && String.isNonEmpty(message))
+						),
+						exception: pipe(
+							Array.head(exceptions),
+							Option.map(exception => textOf(exception, 'exception.message')),
+							pipelineSubject9125 => Option.filter(pipelineSubject9125, String.isNonEmpty)
+						),
 						name: spanName(span, attributes),
 						parentSpanId: lowerId(span.parentSpanId),
 						spanId,
@@ -286,11 +339,17 @@ export function levelOf(severity: number) {
 // The diagnostic a failed span is remembered by: its exception's message or its status line, first line only, no stack trace.
 export function diagnosis(span: Pick<Span, 'error' | 'exception'>) {
 	return pipe(
-		pipe(span.exception, Option.orElse(() => span.error), Option.getOrElse(() => '')),
-		value => Array.head(String.split(value, '\n')),
+		span.exception,
+		Option.orElse(() => span.error),
 		Option.getOrElse(() => ''),
-		String.trim,
-		String.slice(0, 300)
+		subject11891 =>
+			pipe(
+				subject11891,
+				value => Array.head(String.split(value, '\n')),
+				Option.getOrElse(() => ''),
+				String.trim,
+				String.slice(0, 300)
+			)
 	)
 }
 
@@ -333,10 +392,6 @@ export function isoTime(milliseconds: number) {
 	return DateTime.formatIso(DateTime.makeUnsafe(Math.trunc(milliseconds)))
 }
 
-export function rounded(ms: number) {
-	return Number.round(ms, 1)
-}
-
 // How long a span ran; an open one has run no time yet.
 function spanMs(span: Pick<Span, 'duration'>) {
 	return Option.match(span.duration, {onNone: () => 0, onSome: Duration.toMillis})
@@ -363,18 +418,35 @@ function subscription(root: SpanFacts, spans: readonly SpanFacts[]) {
 function brokeAt<A extends SpanFacts>(spans: readonly A[]) {
 	const failedSpans = Array.filter(spans, span => span.status === 'failed')
 	const parents = HashSet.fromIterable(Array.getSomes(Array.map(failedSpans, span => span.parentSpanId)))
-	return pipe(failedSpans, Array.filter(span => !HashSet.has(parents, span.spanId)), pipelineSubject14272 => Array.match(pipelineSubject14272, {onEmpty: () => Option.none<A>(), onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))}))
+	return pipe(
+		failedSpans,
+		Array.filter(span => !HashSet.has(parents, span.spanId)),
+		pipelineSubject14272 =>
+			Array.match(pipelineSubject14272, {
+				onEmpty: () => Option.none<A>(),
+				onNonEmpty: candidates => Option.some(Array.min(candidates, byStart))
+			})
+	)
 }
 
 // The span a trace starts from: one whose parent the trace doesn't hold, the earliest if a skewed clock leaves several.
 function traceRoot<A extends SpanFacts>(spans: Array.NonEmptyReadonlyArray<A>) {
 	const ids = HashSet.fromIterable(Array.map(spans, span => span.spanId))
-	return pipe(spans, Array.filter(span => !Option.exists(span.parentSpanId, parent => HashSet.has(ids, parent))), pipelineSubject14767 => Array.match(pipelineSubject14767, {onEmpty: () => spans, onNonEmpty: Function.identity}), Array.min(byStart))
+	return pipe(
+		spans,
+		Array.filter(span => !Option.exists(span.parentSpanId, parent => HashSet.has(ids, parent))),
+		pipelineSubject14767 => Array.match(pipelineSubject14767, {onEmpty: () => spans, onNonEmpty: Function.identity}),
+		candidates => Array.min(candidates, byStart)
+	)
 }
 
 // A trace's start and length, without assembling its tree.
 function timingOf(spans: Array.NonEmptyReadonlyArray<SpanFacts>) {
-	const start = pipe(spans, Array.map(span => span.start), pipelineSubject15103 => Array.min(pipelineSubject15103, Order.Number))
+	const start = pipe(
+		spans,
+		Array.map(span => span.start),
+		pipelineSubject15103 => Array.min(pipelineSubject15103, Order.Number)
+	)
 	return {durationMs: Array.reduce(spans, 0, (end, span) => Number.max(end, span.start - start + spanMs(span))), start}
 }
 
@@ -423,9 +495,23 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 	return Record.fromEntries(
 		Array.flatMap(Record.values(Array.groupBy(spans, span => span.traceId)), group => {
 			const root = traceRoot(group)
-			return pipe([root, ...group], Array.findFirst(span =>
-					pipe(linksOf, pipelineSubject17714 => Record.get(pipelineSubject17714, `${span.traceId}:${span.spanId}`), pipelineSubject17697 => Option.getOrElse(pipelineSubject17697, Array.empty), Array.findFirst(link =>
-						HashSet.has(ids, link.linkedSpanId)))), pipelineSubject17320 => Option.match(pipelineSubject17320, {onNone: () => [], onSome: link => [[root.spanId, link.linkedSpanId] as const]}))
+			return pipe(
+				[root, ...group],
+				subject18087 =>
+					Array.findFirst(subject18087, span =>
+						pipe(
+							linksOf,
+							pipelineSubject17714 => Record.get(pipelineSubject17714, `${span.traceId}:${span.spanId}`),
+							pipelineSubject17697 => Option.getOrElse(pipelineSubject17697, Array.empty),
+							candidates => Array.findFirst(candidates, link => HashSet.has(ids, link.linkedSpanId))
+						)
+					),
+				pipelineSubject17320 =>
+					Option.match(pipelineSubject17320, {
+						onNone: () => [],
+						onSome: link => [[root.spanId, link.linkedSpanId] as const]
+					})
+			)
 		})
 	)
 }
@@ -437,7 +523,11 @@ export function traceTree(id: string, spans: readonly Span[], logs: readonly Log
 	const byId = Record.fromEntries(Array.map(indexed, item => [item.span.spanId, item] as const))
 	const linked = linkedParents(ordered, links)
 	function parentOf(span: Span) {
-		return pipe(linked, pipelineSubject18179 => Record.get(pipelineSubject18179, span.spanId), Option.orElse(() => span.parentSpanId))
+		return pipe(
+			linked,
+			pipelineSubject18179 => Record.get(pipelineSubject18179, span.spanId),
+			Option.orElse(() => span.parentSpanId)
+		)
 	}
 	const sortedLogs = Array.sort(
 		logs,
@@ -446,11 +536,19 @@ export function traceTree(id: string, spans: readonly Span[], logs: readonly Log
 	const timing = Array.match(ordered, {
 		onEmpty: () => ({
 			durationMs: 0,
-			start: pipe(Array.head(sortedLogs), Option.map(log => log.time), Option.getOrElse(() => 0))
+			start: pipe(
+				Array.head(sortedLogs),
+				Option.map(log => log.time),
+				Option.getOrElse(() => 0)
+			)
 		}),
 		onNonEmpty: timingOf
 	})
-	const bySpan = pipe(sortedLogs, Array.filter(log => Option.isSome(log.spanId)), Array.groupBy(log => Option.getOrElse(log.spanId, () => '')))
+	const bySpan = pipe(
+		sortedLogs,
+		Array.filter(log => Option.isSome(log.spanId)),
+		Array.groupBy(log => Option.getOrElse(log.spanId, () => ''))
+	)
 	const tree = pipe(
 		Array.map(indexed, item => {
 			const ancestors = Array.reverse(
@@ -470,7 +568,11 @@ export function traceTree(id: string, spans: readonly Span[], logs: readonly Log
 					...Struct.pick(item.span, Struct.keys(Span.json.fields)),
 					depth: ancestors.length,
 					durationMs: spanMs(item.span),
-					logs: pipe(bySpan, pipelineSubject19446 => Record.get(pipelineSubject19446, item.span.spanId), pipelineSubject19429 => Option.getOrElse(pipelineSubject19429, Array.empty)),
+					logs: pipe(
+						bySpan,
+						pipelineSubject19446 => Record.get(pipelineSubject19446, item.span.spanId),
+						pipelineSubject19429 => Option.getOrElse(pipelineSubject19429, Array.empty)
+					),
 					offsetMs: item.span.start - timing.start,
 					parentSpanId: parentOf(item.span)
 				}
@@ -496,7 +598,11 @@ function failureCount(group: readonly Traced[]) {
 }
 
 function percentile(times: readonly number[], ratio: number) {
-	return pipe(times, pipelineSubject20399 => Array.get(pipelineSubject20399, Number.max(0, Math.ceil(times.length * ratio) - 1)), Option.getOrElse(() => 0))
+	return pipe(
+		times,
+		pipelineSubject20399 => Array.get(pipelineSubject20399, Number.max(0, Math.ceil(times.length * ratio) - 1)),
+		Option.getOrElse(() => 0)
+	)
 }
 
 // The p50, p95 and longest of some durations in milliseconds.
@@ -514,53 +620,102 @@ const slowestFirst = Order.mapInput(Order.flip(Duration.Order), (item: Traced) =
 // From an operation's traces slowest first: the slowest, with the newest failures always among them, since those are the traces worth opening.
 function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
 	const newestFailures = HashSet.fromIterable(
-		pipe(slowest, Array.filter(item => item.failed), pipelineSubject21180 => Array.sort(pipelineSubject21180, Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)), pipelineSubject21164 => Array.take(pipelineSubject21164, KEEP / 2), Array.map(item => item.trace.id))
+		pipe(
+			slowest,
+			Array.filter(item => item.failed),
+			pipelineSubject21180 =>
+				Array.sort(
+					pipelineSubject21180,
+					Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)
+				),
+			pipelineSubject21164 => Array.take(pipelineSubject21164, KEEP / 2),
+			Array.map(item => item.trace.id)
+		)
 	)
 	// The newest failures, then the slowest of the rest: the sort is stable, so each part stays slowest first.
 	const chosenFirst = Array.sort(
 		slowest,
 		Order.mapInput(Order.flip(Order.Boolean), (item: Traced) => HashSet.has(newestFailures, item.trace.id))
 	)
-	return pipe(Array.splitAtNonEmpty(chosenFirst, KEEP)[0], Array.sort(slowestFirst), Array.map(item => item.trace))
+	return pipe(
+		Array.splitAtNonEmpty(chosenFirst, KEEP)[0],
+		Array.sort(slowestFirst),
+		Array.map(item => item.trace)
+	)
 }
 
 type Ordered = {latest: number; operation: Operation}
 
 // Failing first, then most recently seen: the order the page and the tools list an app's operations in.
 function tracedOperations(group: readonly Traced[]) {
-	return pipe(Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)), Array.map(operation => {
-				const slowest = Array.sort(operation, slowestFirst)
-				// Already in order, so sorting the durations again costs one pass.
-				const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
-				return {
-					latest: pipe(operation, Array.map(item => item.trace.start), pipelineSubject22953 => Array.max(pipelineSubject22953, Order.Number)),
-					operation: {
-						count: operation.length,
-						failures: failureCount(operation),
-						name: Array.headNonEmpty(operation).name,
-						p50Ms: latency.p50Ms,
-						p95Ms: latency.p95Ms,
-						runtime: Array.headNonEmpty(operation).runtime,
-						traces: keptTraces(slowest)
-					} satisfies Operation
-				}
-			}), pipelineSubject21990 => Array.sort(pipelineSubject21990, pipe(Order.flip(Order.Boolean), Order.mapInput((item: Ordered) => item.operation.failures > 0), pipelineSubject23424 => Order.combine(pipelineSubject23424, Order.mapInput(Order.flip(Order.Number), (item: Ordered) => item.latest)))), Array.map(item => item.operation))
+	return pipe(
+		Record.values(Array.groupBy(group, item => `${item.runtime} ${item.name}`)),
+		Array.map(operation => {
+			const slowest = Array.sort(operation, slowestFirst)
+			// Already in order, so sorting the durations again costs one pass.
+			const latency = latencyOf(Array.reverse(Array.map(slowest, item => Duration.toMillis(item.trace.duration))))
+			return {
+				latest: pipe(
+					operation,
+					Array.map(item => item.trace.start),
+					pipelineSubject22953 => Array.max(pipelineSubject22953, Order.Number)
+				),
+				operation: {
+					count: operation.length,
+					failures: failureCount(operation),
+					name: Array.headNonEmpty(operation).name,
+					p50Ms: latency.p50Ms,
+					p95Ms: latency.p95Ms,
+					runtime: Array.headNonEmpty(operation).runtime,
+					traces: keptTraces(slowest)
+				} satisfies Operation
+			}
+		}),
+		pipelineSubject21990 =>
+			Array.sort(
+				pipelineSubject21990,
+				pipe(
+					Order.flip(Order.Boolean),
+					Order.mapInput((item: Ordered) => item.operation.failures > 0),
+					pipelineSubject23424 =>
+						Order.combine(
+							pipelineSubject23424,
+							Order.mapInput(Order.flip(Order.Number), (item: Ordered) => item.latest)
+						)
+				)
+			),
+		Array.map(item => item.operation)
+	)
 }
 
 // Apps with failures lead, then the busiest; each app's operations count only the traces started in the page's time frame, so a quiet app keeps its tab with no rows.
 export function overviewOf(traces: readonly Traced[], now: number, range: Range) {
 	const cutoff = rangeStart(range, now)
 	return {
-		apps: pipe(Record.values(Array.groupBy(traces, item => item.app)), Array.map(group => ({
-					failures: failureCount(group),
-					group
-				})), pipelineSubject23340 => Array.sort(pipelineSubject23340, pipe(Order.flip(Order.Number), Order.mapInput((app: {failures: number; group: readonly Traced[]}) => app.failures), pipelineSubject24159 => Order.combine(pipelineSubject24159, Order.mapInput(
+		apps: pipe(
+			Record.values(Array.groupBy(traces, item => item.app)),
+			Array.map(group => ({failures: failureCount(group), group})),
+			pipelineSubject23340 =>
+				Array.sort(
+					pipelineSubject23340,
+					pipe(
 						Order.flip(Order.Number),
-						(app: {failures: number; group: readonly Traced[]}) => app.group.length
-					)))), Array.map(app => ({
+						Order.mapInput((app: {failures: number; group: readonly Traced[]}) => app.failures),
+						pipelineSubject24159 =>
+							Order.combine(
+								pipelineSubject24159,
+								Order.mapInput(
+									Order.flip(Order.Number),
+									(app: {failures: number; group: readonly Traced[]}) => app.group.length
+								)
+							)
+					)
+				),
+			Array.map(app => ({
 				ci: Array.every(app.group, item => item.runtime === 'ci'),
 				name: Array.headNonEmpty(app.group).app,
 				operations: tracedOperations(Array.filter(app.group, item => item.trace.start >= cutoff))
-			})))
+			}))
+		)
 	} satisfies Overview
 }

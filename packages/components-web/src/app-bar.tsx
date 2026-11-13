@@ -5,7 +5,7 @@ import {Array, Effect, Option, Predicate, String} from 'effect'
 import {CaretLeftIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
 import {useState} from 'react'
-import type {KeyboardEvent, ReactElement, ReactNode} from 'react'
+import type {KeyboardEvent, ReactNode} from 'react'
 
 import type {Account} from '@deslop/runtime/shared/schema'
 import {accountAtom} from '@deslop/runtime/web/client'
@@ -142,15 +142,6 @@ export function AppBarChoice(props: {
 				))}
 			</TabsList>
 		</Tabs>
-	)
-}
-
-// A section the current URL can name: the tab navigates through `render`, a router link.
-export function AppBarTab(props: {children: ReactNode; render: ReactElement; value: string}) {
-	return (
-		<TabsTrigger value={props.value} nativeButton={false} render={props.render}>
-			{props.children}
-		</TabsTrigger>
 	)
 }
 

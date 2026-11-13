@@ -19,7 +19,11 @@ function tagKey(tag: string) {
 
 // A tag as the tags in use spell it, when one shares its key.
 function spelled(byKey: Record.ReadonlyRecord<string, Array.NonEmptyArray<TagName>>, tag: TagName) {
-	return pipe(byKey, pipelineSubject871 => Record.get(pipelineSubject871, tagKey(tag)), pipelineSubject858 => Option.match(pipelineSubject858, {onNone: () => tag, onSome: Array.headNonEmpty}))
+	return pipe(
+		byKey,
+		pipelineSubject871 => Record.get(pipelineSubject871, tagKey(tag)),
+		pipelineSubject858 => Option.match(pipelineSubject858, {onNone: () => tag, onSome: Array.headNonEmpty})
+	)
 }
 
 // The organization's tags as the tags in use spell them, each with the first definition the AI gave it.

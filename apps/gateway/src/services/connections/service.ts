@@ -48,7 +48,7 @@ import {
 } from '#services/connections/lib/utils.ts'
 import type {
 	Callback,
-	ConnectionInfo,
+	ConnectionItem,
 	Discovery,
 	McpUsageReport,
 	OAuthClient,
@@ -93,11 +93,11 @@ function siteOf(url: URL) {
 	return pipe(String.split(url.hostname, '.'), Array.drop(1), Array.join('.'))
 }
 
-function failed(message: string) {
+function asAuthError(message: string) {
 	return Effect.mapError(connectionFailure(message))
 }
 
-const storageFailed = failed('MCP storage failed')
+const asStorageAuthError = asAuthError('MCP storage failed')
 
 // The server's columns an update writes, to change only some of them.
 function editable(connection: Connection) {
@@ -126,7 +126,7 @@ function connectable(metadata: Metadata) {
 export class Connections extends Context.Service<
 	Connections,
 	{
-		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionInfo, AuthError>
+		readonly add: (url: ServerUrl, user: User, headers: Headers.Headers) => Effect.Effect<ConnectionItem, AuthError>
 		readonly begin: (id: ServerId, user: User) => Effect.Effect<{state: Option.Option<string>; url: string}, AuthError>
 		readonly called: (id: ServerId) => Effect.Effect<void>
 		// `route` is the server id a registered client's callback carries; the metadata document's callback carries none.
@@ -138,9 +138,9 @@ export class Connections extends Context.Service<
 		readonly token: (id: ServerId, generation: string, rejectedToken?: string) => Effect.Effect<string, AuthError>
 		// Each proxied call, summed into the period's buckets by server, in a window that reopens at each bucket boundary.
 		readonly usage: (period: Period) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
-		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
+		readonly watch: (user: User) => Stream.Stream<ConnectionItem[], AuthError>
 	}
->('@deslop/gateway/services/connections/service/Connections') {
+>()('@deslop/gateway/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
@@ -294,7 +294,7 @@ export class Connections extends Context.Service<
 				Reactivity.mutation(['connections']),
 				sql.withTransaction,
 				withReactivity,
-				storageFailed
+				asStorageAuthError
 			)
 		}
 		// New tokens land with the client they were issued to, and clear the server's last failure.
@@ -311,17 +311,17 @@ export class Connections extends Context.Service<
 				Reactivity.mutation(['connections']),
 				sql.withTransaction,
 				withReactivity,
-				storageFailed
+				asStorageAuthError
 			)
 		}
 		const get = Effect.fnUntraced(function* (id: ServerId) {
 			return yield* pipe(
 				findState({id, now: yield* Clock.currentTimeMillis}),
-				storageFailed,
+				asStorageAuthError,
 				Effect.flatMap(Option.match({onNone: () => Effect.fail(removedServer), onSome: Effect.succeed}))
 			)
 		})
-		const definitions = Effect.flatMap(Clock.currentTimeMillis, now => storageFailed(listStates(now)))
+		const definitions = Effect.flatMap(Clock.currentTimeMillis, now => asStorageAuthError(listStates(now)))
 		const list = Effect.map(
 			definitions,
 			Array.map(row => Struct.pick(row, ['error', 'icons', 'id', 'name', 'status', 'tools', 'url']))
@@ -368,7 +368,7 @@ export class Connections extends Context.Service<
 								endGrant({refreshToken, serverId: connection.id}),
 								Reactivity.mutation(['connections']),
 								withReactivity,
-								storageFailed
+								asStorageAuthError
 							)
 					})
 				}),
@@ -387,34 +387,7 @@ export class Connections extends Context.Service<
 			})
 			return Redacted.value(token.access_token)
 		})
-		const token = Effect.fn('Connections.token')(function* (id: ServerId, generation: string, rejectedToken?: string) {
-			// The grant is read under its server's lock, so a call that waited sees the token the one before it saved.
-			return yield* Semaphore.withPermit(
-				yield* Cache.get(locks, id),
-				Effect.timeout(Effect.gen(function* () {
-						const connection = yield* get(id)
-						if (connection.generation !== generation) {
-							return yield* AuthError.make({message: 'This MCP connection was replaced.'})
-						}
-						const now = yield* Clock.currentTimeMillis
-						return yield* Option.match(yield* storageFailed(findGrant(id)), {
-							onNone: () => Effect.fail(AuthError.make({message: `Connect ${connection.name} on ${origin}`})),
-							onSome: grant => {
-								// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
-								const margin = Option.match(grant.refreshToken, {onNone: () => 0, onSome: () => 30_000})
-								const access = Redacted.value(grant.accessToken)
-								if (access !== rejectedToken && grant.expiresAt > now + margin) return Effect.succeed(access)
-								return Option.match(grant.refreshToken, {
-									onNone: () =>
-										Effect.fail(AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})),
-									onSome: refresh =>
-										exchange(connection, grant, {grant_type: 'refresh_token', refresh_token: Redacted.value(refresh)})
-								})
-							}
-						})
-					}), '20 seconds')
-			)
-		}, failed('Cannot refresh this MCP; reconnect it from the MCP page'))
+
 		const discover = Effect.fnUntraced(function* (
 			initial: Pick<Connection, 'generation' | 'id' | 'name' | 'url'>,
 			headers: Headers.Headers
@@ -455,7 +428,10 @@ export class Connections extends Context.Service<
 								...init,
 								signal: AbortSignal.any([signal, ...Option.toArray(Option.fromNullishOr(init?.signal))])
 							}),
-						resourceMetadataUrl: challenge.resourceMetadataUrl
+						...Option.match(Option.fromUndefinedOr(challenge.resourceMetadataUrl), {
+							onNone: () => ({}),
+							onSome: resourceMetadataUrl => ({resourceMetadataUrl})
+						})
 					})
 			})
 			if (discovery.resourceMetadata !== undefined && discovery.resourceMetadata.resource !== initial.url) {
@@ -501,7 +477,7 @@ export class Connections extends Context.Service<
 					tools: Array.length(tools.tools)
 				} satisfies typeof Connection.insert.Type
 			}
-			const metadata = yield* Schema.decodeEffect(Metadata)(discovery.authorizationServerMetadata)
+			const metadata = yield* Schema.decodeUnknownEffect(Metadata)(discovery.authorizationServerMetadata)
 			yield* connectable(metadata)
 			return {
 				...initial,
@@ -537,10 +513,15 @@ export class Connections extends Context.Service<
 					}
 					const added = AuthError.make({message: 'This MCP has already been added.'})
 					const base = serverName(url) || 'mcp'
-					const taken = yield* storageFailed(findTaken({id: base, url}))
+					const taken = yield* asStorageAuthError(findTaken({id: base, url}))
 					if (Array.some(taken, row => row.url === url)) return yield* added
 					const suffix = String.slice(0, 6)(String.toLowerCase(yield* nonce))
-					const id = pipe(taken, Array.some(row => row.id === base), pipelineSubject21597 => Boolean.match(pipelineSubject21597, {onFalse: () => base, onTrue: () => `${base}_${suffix}`}))
+					const id = pipe(
+						taken,
+						Array.some(row => row.id === base),
+						pipelineSubject21597 =>
+							Boolean.match(pipelineSubject21597, {onFalse: () => base, onTrue: () => `${base}_${suffix}`})
+					)
 					const connection = yield* discover(
 						{generation: yield* nonce, id, name: String.capitalize(base), url},
 						headers
@@ -559,7 +540,7 @@ export class Connections extends Context.Service<
 				},
 				Effect.scoped,
 				Effect.timeout('20 seconds'),
-				failed('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
+				asAuthError('Cannot add this MCP. Check its public HTTPS URL and OAuth discovery support')
 			),
 			begin: Effect.fn('Connections.begin')(function* (id: ServerId, user: User) {
 				yield* admin(user)
@@ -625,7 +606,7 @@ export class Connections extends Context.Service<
 					Effect.timeout('20 seconds'),
 					Effect.catch(cause => fail(connection, cause))
 				)
-			}, failed('Cannot connect this MCP')),
+			}, asAuthError('Cannot connect this MCP')),
 			// The bar's longest period: an hour older than 30 days goes as a new call arrives.
 			called: Effect.fnUntraced(function* (id) {
 				const now = yield* Clock.currentTimeMillis
@@ -706,7 +687,7 @@ export class Connections extends Context.Service<
 					Effect.timeout('30 seconds'),
 					Effect.catch(cause => fail(connection, cause))
 				)
-			}, failed('Cannot finish the connection')),
+			}, asAuthError('Cannot finish the connection')),
 			definitions,
 			get,
 			// The server's grant and calls go with it.
@@ -716,12 +697,13 @@ export class Connections extends Context.Service<
 					deleteConnection(id),
 					Reactivity.mutation(['connections', 'connectionCalls']),
 					withReactivity,
-					failed('Cannot change this MCP connection')
+					asAuthError('Cannot change this MCP connection')
 				)
 				if (Array.isReadonlyArrayEmpty(removed)) return yield* removedServer
 			}),
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
-				yield* Effect.ignore(change(id, generation, () =>
+				yield* Effect.ignore(
+					change(id, generation, () =>
 						Match.valueTags(outcome, {
 							Discovered: discovered => ({
 								error: Option.none(),
@@ -731,9 +713,41 @@ export class Connections extends Context.Service<
 							}),
 							Failed: failure => ({error: Option.some(failure.error)})
 						})
-					), {log: 'Warn', message: 'Cannot save the MCP discovery outcome'})
+					),
+					{log: 'Warn', message: 'Cannot save the MCP discovery outcome'}
+				)
 			}),
-			token,
+			token: Effect.fn('Connections.token')(function* (id: ServerId, generation: string, rejectedToken?: string) {
+				// The grant is read under its server's lock, so a call that waited sees the token the one before it saved.
+				return yield* Semaphore.withPermit(
+					yield* Cache.get(locks, id),
+					Effect.timeout(
+						Effect.gen(function* () {
+							const connection = yield* get(id)
+							if (connection.generation !== generation) {
+								return yield* AuthError.make({message: 'This MCP connection was replaced.'})
+							}
+							const now = yield* Clock.currentTimeMillis
+							return yield* Option.match(yield* asStorageAuthError(findGrant(id)), {
+								onNone: () => Effect.fail(AuthError.make({message: `Connect ${connection.name} on ${origin}`})),
+								onSome: grant => {
+									// A token that can be refreshed is renewed 30 seconds early; one that cannot is used to its end.
+									const margin = Option.match(grant.refreshToken, {onNone: () => 0, onSome: () => 30_000})
+									const access = Redacted.value(grant.accessToken)
+									if (access !== rejectedToken && grant.expiresAt > now + margin) return Effect.succeed(access)
+									return Option.match(grant.refreshToken, {
+										onNone: () =>
+											Effect.fail(AuthError.make({message: `Reconnect ${connection.name}; its authorization expired`})),
+										onSome: refresh =>
+											exchange(connection, grant, {grant_type: 'refresh_token', refresh_token: Redacted.value(refresh)})
+									})
+								}
+							})
+						}),
+						'20 seconds'
+					)
+				)
+			}, asAuthError('Cannot refresh this MCP; reconnect it from the MCP page')),
 			usage: period =>
 				usageWindow(period, range =>
 					Stream.mapError(sql.reactive(['connectionCalls'], listCalls(range)), connectionFailure('MCP storage failed'))
@@ -745,7 +759,11 @@ export class Connections extends Context.Service<
 						admin(user),
 						Stream.merge(
 							sql.reactive(['connections'], list),
-							pipe(Stream.tick('1 minute'), Stream.drop(1), Stream.mapEffect(() => list))
+							pipe(
+								Stream.tick('1 minute'),
+								Stream.drop(1),
+								Stream.mapEffect(() => list)
+							)
 						)
 					)
 				)
@@ -798,5 +816,5 @@ export class Connections extends Context.Service<
 		})
 	)
 
-	static readonly layer = Layer.provide(Layer.effect(Connections)(Connections.make), Connections.migrations)
+	static readonly layer = Layer.provide(Layer.effect(Connections, Connections.make), Connections.migrations)
 }

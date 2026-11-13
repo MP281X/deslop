@@ -39,28 +39,38 @@ export function exitFailure(status: number) {
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
 export function unitFailures(text: string) {
 	return Record.fromEntries(
-		pipe(String.trim(text), String.split(/\n\s*\n/u), pipelineSubject1579 => Array.filter(pipelineSubject1579, String.isNonEmpty), Array.map(block => {
-			const fields = Record.fromEntries(
-				pipe(block, String.split('\n'), pipelineSubject1769 => Array.filter(pipelineSubject1769, String.includes('=')), Array.map(line => {
-					const [key, ...value] = String.split(line, '=')
-					return [key, Array.join(value, '=')] as const
-				}))
-			)
-			return [
-				fields['Id'] ?? '',
-				{
-					...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
-						onNone: () => ({}),
-						onSome: seconds => ({at: seconds * 1000})
-					}),
-					// A unit whose start step failed never ran its main process, which leaves its code 0.
-					reason: failureReason(
-						fields['Result'] ?? '',
-						Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
-						fields['ExecMainCode'] !== '0'
+		pipe(
+			String.trim(text),
+			String.split(/\n\s*\n/u),
+			pipelineSubject1579 => Array.filter(pipelineSubject1579, String.isNonEmpty),
+			Array.map(block => {
+				const fields = Record.fromEntries(
+					pipe(
+						block,
+						String.split('\n'),
+						pipelineSubject1769 => Array.filter(pipelineSubject1769, String.includes('=')),
+						Array.map(line => {
+							const [key, ...value] = String.split(line, '=')
+							return [key, Array.join(value, '=')] as const
+						})
 					)
-				}
-			] as const
-		}))
+				)
+				return [
+					fields['Id'] ?? '',
+					{
+						...Option.match(Number.parse(String.replace(/^@/u, '')(fields['StateChangeTimestamp'] ?? '')), {
+							onNone: () => ({}),
+							onSome: seconds => ({at: seconds * 1000})
+						}),
+						// A unit whose start step failed never ran its main process, which leaves its code 0.
+						reason: failureReason(
+							fields['Result'] ?? '',
+							Option.getOrElse(Number.parse(fields['ExecMainStatus'] ?? ''), () => 0),
+							fields['ExecMainCode'] !== '0'
+						)
+					}
+				] as const
+			})
+		)
 	)
 }

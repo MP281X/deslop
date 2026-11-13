@@ -47,9 +47,9 @@ import {
 import {MachineState} from '@typeonce/effect-machine-react'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
-import {Linking} from 'react-native'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {bottomBarSearch, openLinkAtom} from '@deslop/components-mobile/device'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
@@ -66,7 +66,6 @@ import {
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton, Skeleton} from '@deslop/components-mobile/ui/skeleton'
 import {ToggleGroup, ToggleGroupItem} from '@deslop/components-mobile/ui/toggle-group'
-import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 import {isDenied} from '@deslop/runtime/shared/auth'
 
@@ -184,6 +183,7 @@ function NoteRow(props: {
 	onRegenerate: (id: Note['id']) => void
 }) {
 	const machine = removal.machine(props.note.id)
+	const openLink = useAtomSet(openLinkAtom)
 	const remove = useAtomSet(removal.removeAtom)
 	const send = useAtomSet(machine.send)
 	return (
@@ -207,7 +207,7 @@ function NoteRow(props: {
 								{Option.match(props.note.url, {
 									onNone: () => undefined,
 									onSome: url => (
-										<Button onPress={() => Linking.openURL(url)}>
+										<Button onPress={() => openLink(url)}>
 											<Label
 												title={Option.match(appOf(props.note), {
 													onNone: () => 'Open Link',
@@ -291,7 +291,10 @@ function FilterMenu(props: {kind?: Kind; onKind: (kind?: Kind) => void}) {
 			<Divider />
 			<Picker<Kind>
 				label="Show"
-				selection={props.kind}
+				{...Option.match(Option.fromUndefinedOr(props.kind), {
+					onNone: () => ({}),
+					onSome: selectionValue => ({selection: selectionValue})
+				})}
 				onSelectionChange={props.onKind}
 				modifiers={[pickerStyle('inline')]}
 			>
@@ -368,17 +371,21 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 											))}
 										</ToggleGroup>
 										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{pipe(notes, Array.take(limit), Array.map((note, position) => (
-											<NoteRow
-												key={note.id}
-												note={note}
-												onAppear={() => {
-													if (position === limit - 1) setLimit(limit + 80)
-												}}
-												onOpen={props.onOpen}
-												onRegenerate={id => regenerate(id)}
-											/>
-										)))}
+										{pipe(
+											notes,
+											Array.take(limit),
+											Array.map((note, position) => (
+												<NoteRow
+													key={note.id}
+													note={note}
+													onAppear={() => {
+														if (position === limit - 1) setLimit(limit + 80)
+													}}
+													onOpen={props.onOpen}
+													onRegenerate={id => regenerate(id)}
+												/>
+											))
+										)}
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>
@@ -438,7 +445,18 @@ export function HomeRoute(props: {
 						/>
 					}
 				>
-					<Notes kind={props.kind} onOpen={props.onOpen} onTag={props.onTag} tag={props.tag} />
+					<Notes
+						{...Option.match(Option.fromUndefinedOr(props.kind), {
+							onNone: () => ({}),
+							onSome: kindValue => ({kind: kindValue})
+						})}
+						onOpen={props.onOpen}
+						onTag={props.onTag}
+						{...Option.match(Option.fromUndefinedOr(props.tag), {
+							onNone: () => ({}),
+							onSome: tagValue => ({tag: tagValue})
+						})}
+					/>
 				</Suspense>
 			</PasteSheet>
 			<Toolbar.Content>
@@ -468,7 +486,13 @@ export function HomeRoute(props: {
 					/>
 				</ToolbarItem>
 				<ToolbarItem placement="bottomBar">
-					<FilterMenu kind={props.kind} onKind={props.onKind} />
+					<FilterMenu
+						{...Option.match(Option.fromUndefinedOr(props.kind), {
+							onNone: () => ({}),
+							onSome: kindValue => ({kind: kindValue})
+						})}
+						onKind={props.onKind}
+					/>
 				</ToolbarItem>
 			</Toolbar.Content>
 		</Toolbar>

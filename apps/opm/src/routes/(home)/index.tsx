@@ -34,6 +34,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {bottomBarSearch, shortDate} from '@deslop/components-mobile/device'
 import {Problem} from '@deslop/components-mobile/problem'
 import {Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius} from '@deslop/components-mobile/theme'
@@ -49,10 +50,9 @@ import {
 	itemRow
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {bottomBarSearch, shortDate} from '@deslop/components-mobile/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
-import {chaptersAtom, primary, readAtom, session} from '#lib/utils.ts'
+import {chaptersAtom, primary, readAtom, session} from '#lib/chapters.ts'
 import {ChapterProgress, Cover} from '#modules/native/index.ts'
 import {byNumber, SERIES_NAMES} from '#services/chapters/lib/utils.ts'
 import type {ChapterItem} from '#services/chapters/schema.ts'
@@ -91,23 +91,32 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 						})}
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
-						{pipe([props.chapter.title, postedOn(props.chapter.postedAt)], pipelineSubject3000 => Array.filter(pipelineSubject3000, String.isNonEmpty), Array.join(' · '))}
+						{pipe(
+							[props.chapter.title, postedOn(props.chapter.postedAt)],
+							pipelineSubject3000 => Array.filter(pipelineSubject3000, String.isNonEmpty),
+							Array.join(' · ')
+						)}
 					</ItemDescription>
 				</ItemContent>
 				{/* Weight already says unread or read, so progress shows only for a chapter left part-way; the pages before the one on screen are read. */}
-				{pipe(props.chapter.reading, Option.filter(reading => !reading.done && reading.page > 0), pipelineSubject3305 => Option.match(pipelineSubject3305, {
-						onNone: () => null,
-						onSome: reading => (
-							<ItemActions>
-								<ChapterProgress
-									fraction={reading.page / Number.max(props.chapter.pages.length, 1)}
-									accent={primary}
-									read={colors.foreground}
-									modifiers={[frame({height: 14, width: 14})]}
-								/>
-							</ItemActions>
-						)
-					}))}
+				{pipe(
+					props.chapter.reading,
+					Option.filter(reading => !reading.done && reading.page > 0),
+					pipelineSubject3305 =>
+						Option.match(pipelineSubject3305, {
+							onNone: () => null,
+							onSome: reading => (
+								<ItemActions>
+									<ChapterProgress
+										fraction={reading.page / Number.max(props.chapter.pages.length, 1)}
+										accent={primary}
+										read={colors.foreground}
+										modifiers={[frame({height: 14, width: 14})]}
+									/>
+								</ItemActions>
+							)
+						})
+				)}
 			</Item>
 			<SwipeActions.Actions edge="leading">
 				<Button
@@ -140,24 +149,32 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
-				return pipe(chapters, pipelineSubject4852 => Array.sort(pipelineSubject4852, Order.flip(byNumber)), Array.filter(chapter =>
-								String.startsWith(needle)(`${chapter.number}`) ||
-								String.includes(needle)(String.toLowerCase(chapter.title))), pipelineSubject4821 => Array.match(pipelineSubject4821, {
-						onEmpty: () =>
-							Boolean.match(String.isEmpty(needle), {
-								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
-								onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
-							}),
-						onNonEmpty: matches => (
-							<ItemGroup>
-								<Section>
-									{Array.map(matches, chapter => (
-										<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
-									))}
-								</Section>
-							</ItemGroup>
-						)
-					}))
+				return pipe(
+					chapters,
+					pipelineSubject4852 => Array.sort(pipelineSubject4852, Order.flip(byNumber)),
+					Array.filter(
+						chapter =>
+							String.startsWith(needle)(`${chapter.number}`) ||
+							String.includes(needle)(String.toLowerCase(chapter.title))
+					),
+					pipelineSubject4821 =>
+						Array.match(pipelineSubject4821, {
+							onEmpty: () =>
+								Boolean.match(String.isEmpty(needle), {
+									onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
+									onTrue: () => <Empty systemImage="book.closed" label="No chapters yet" />
+								}),
+							onNonEmpty: matches => (
+								<ItemGroup>
+									<Section>
+										{Array.map(matches, chapter => (
+											<ChapterRow key={chapter.number} chapter={chapter} onOpen={props.onOpen} />
+										))}
+									</Section>
+								</ItemGroup>
+							)
+						})
+				)
 			}}
 		</Loaded>
 	)

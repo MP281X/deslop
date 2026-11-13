@@ -12,7 +12,7 @@ import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlModel, SqlSchema} from 'effect/sql'
 
 import {localAuth} from '@deslop/runtime/server/auth'
-import {AuthError, rejected} from '@deslop/runtime/shared/auth'
+import {AuthError, asAuthError} from '@deslop/runtime/shared/auth'
 
 import type {Assertion, Registration} from '#services/passkeys/schema.ts'
 import {ClientData, CreationOptions, Passkey, RequestOptions, Transport} from '#services/passkeys/schema.ts'
@@ -30,7 +30,7 @@ declare module 'effect/reactivity/Reactivity' {
 }
 
 // The WebAuthn library rejects a response it cannot verify, such as one for another site or with a bad signature.
-function invalid(cause: unknown) {
+function asPasskeyError(cause: unknown) {
 	return AuthError.make({cause, message: 'The passkey’s answer could not be verified'})
 }
 
@@ -73,14 +73,14 @@ export class Passkeys extends Context.Service<
 			session: {from: Origin; owner: CredentialOwner; via: SessionVia}
 		) => Effect.Effect<void, AuthError>
 		readonly forget: (owner: CredentialOwner) => Effect.Effect<void, AuthError>
-		readonly list: (owner: CredentialOwner) => Stream.Stream<readonly Passkey[], AuthError>
+		readonly watch: (owner: CredentialOwner) => Stream.Stream<readonly Passkey[], AuthError>
 		readonly registration: (owner: CredentialOwner, via: SessionVia) => Effect.Effect<CreationOptions, AuthError>
 		readonly remove: (id: string, owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly request: Effect.Effect<RequestOptions, AuthError>
 		// The account the passkey belongs to; the caller checks it may still sign in.
 		readonly signIn: (response: Assertion) => Effect.Effect<CredentialOwner, AuthError>
 	}
->('@deslop/auth/services/passkeys/service/Passkeys') {
+>()('@deslop/auth/services/passkeys/service/Passkeys') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
@@ -176,7 +176,7 @@ export class Passkeys extends Context.Service<
 							// A transport a newer browser names, and this list does not know yet, is left out rather than failing the passkey.
 							const transports = Array.filter(response.response.transports ?? [], Schema.is(Transport))
 							const verified = yield* Effect.tryPromise({
-								catch: invalid,
+								catch: asPasskeyError,
 								try: () =>
 									verifyRegistrationResponse({
 										expectedChallenge: challenge.challenge,
@@ -211,23 +211,22 @@ export class Passkeys extends Context.Service<
 							)
 						},
 						withReactivity,
-						rejected('Cannot add the passkey')
+						asAuthError('Cannot add the passkey')
 					),
 					forget: Effect.fn('Passkeys.forget')(
 						function* (owner: CredentialOwner) {
-							yield* pipe(deleteOwned(owner), Reactivity.mutation(['passkeys']))
+							yield* Reactivity.mutation(deleteOwned(owner), ['passkeys'])
 							yield* Ref.update(registering, HashMap.remove(registrationKey(owner)))
 						},
 						withReactivity,
-						rejected('Cannot remove the account’s passkeys')
+						asAuthError('Cannot remove the account’s passkeys')
 					),
-					list: owner => sql.reactive(['passkeys'], rejected('Cannot read the passkeys')(listOwned(owner))),
 					registration: Effect.fn('Passkeys.registration')(function* (owner: CredentialOwner, via: SessionVia) {
 						yield* owned(via)
 						const user = owner.user
 						const existing = yield* listOwned(owner)
 						const options = yield* Effect.tryPromise({
-							catch: invalid,
+							catch: asPasskeyError,
 							try: () =>
 								generateRegistrationOptions({
 									attestationType: 'none',
@@ -251,17 +250,17 @@ export class Passkeys extends Context.Service<
 						return yield* Schema.decodeEffect(Schema.fromJsonString(CreationOptions))(
 							yield* Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))(options)
 						)
-					}, rejected('Cannot start adding a passkey')),
+					}, asAuthError('Cannot start adding a passkey')),
 					remove: Effect.fn('Passkeys.remove')(
 						function* (id: string, owner: CredentialOwner) {
-							yield* pipe(deleteOne({id, owner}), Reactivity.mutation(['passkeys']))
+							yield* Reactivity.mutation(deleteOne({id, owner}), ['passkeys'])
 						},
 						withReactivity,
-						rejected('Cannot remove the passkey')
+						asAuthError('Cannot remove the passkey')
 					),
 					request: pipe(
 						Effect.tryPromise({
-							catch: invalid,
+							catch: asPasskeyError,
 							try: () => generateAuthenticationOptions({rpID, userVerification: 'required'})
 						}),
 						Effect.tap(options =>
@@ -273,7 +272,7 @@ export class Passkeys extends Context.Service<
 						),
 						Effect.flatMap(Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))),
 						Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(RequestOptions))),
-						rejected('Cannot start a passkey sign-in'),
+						asAuthError('Cannot start a passkey sign-in'),
 						Effect.withSpan('Passkeys.request')
 					),
 					signIn: Effect.fn('Passkeys.signIn')(function* (response: Assertion) {
@@ -291,7 +290,7 @@ export class Passkeys extends Context.Service<
 						// A copy, since the library wants bytes over a plain ArrayBuffer.
 						const publicKey = new Uint8Array(yield* Effect.fromResult(Base64Url.decode(found.publicKey)))
 						const verified = yield* Effect.tryPromise({
-							catch: invalid,
+							catch: asPasskeyError,
 							try: () =>
 								verifyAuthenticationResponse({
 									credential: {counter: found.counter, id: found.id, publicKey, transports: [...found.transports]},
@@ -305,7 +304,8 @@ export class Passkeys extends Context.Service<
 						if (!verified.verified) return yield* AuthError.make({message: 'The passkey could not be verified'})
 						yield* raiseCounter({counter: verified.authenticationInfo.newCounter, id: found.id})
 						return credentialOwnerOf(found)
-					}, rejected('Cannot sign in with the passkey'))
+					}, asAuthError('Cannot sign in with the passkey')),
+					watch: owner => sql.reactive(['passkeys'], asAuthError('Cannot read the passkeys')(listOwned(owner)))
 				})
 			})
 		),

@@ -2,7 +2,6 @@ import {Array, Boolean, HashSet, Number, Option, Order, String, pipe} from 'effe
 
 import {lowImpactIds} from '#routes/(home)/-usage.ts'
 import {appUsage, dot, itemOwner, type Row, sourceBelongsToWorker, status} from '#services/inventory/lib/utils.ts'
-import type {InventoryItem, RunRequest} from '#services/inventory/schema.ts'
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {MachineHistory} from '#services/metrics/schema.ts'
 
@@ -26,7 +25,11 @@ export function rate(value: number) {
 
 // The key a service or container's usage history is recorded under; loose ports have none.
 export function owner(row: Row) {
-	return pipe(row.item, Option.liftPredicate(item => item.kind === 'service' || item.kind === 'container'), Option.map(itemOwner))
+	return pipe(
+		row.item,
+		Option.liftPredicate(item => item.kind === 'service' || item.kind === 'container'),
+		Option.map(itemOwner)
+	)
 }
 
 // Failing rows first, then the apps by memory, then the jobs a timer starts.
@@ -38,7 +41,20 @@ function rank(row: Row) {
 	return 2
 }
 
-export const order = pipe(Order.Number, pipelineSubject1706 => Order.mapInput(pipelineSubject1706, rank), pipelineSubject1689 => Order.combine(pipelineSubject1689, Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)), pipelineSubject1673 => Order.combine(pipelineSubject1673, Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)))
+export const order = pipe(
+	Order.Number,
+	pipelineSubject1706 => Order.mapInput(pipelineSubject1706, rank),
+	pipelineSubject1689 =>
+		Order.combine(
+			pipelineSubject1689,
+			Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
+		),
+	pipelineSubject1673 =>
+		Order.combine(
+			pipelineSubject1673,
+			Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
+		)
+)
 
 // The list's two groups: a failure, warning or app outside the chart's low-impact set stays up; a healthy low-impact app sits under its own heading. No history means no divider.
 export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
@@ -59,7 +75,13 @@ export function impactGroups(rows: readonly Row[], history?: MachineHistory) {
 export function ranged(rows: readonly Row[], minutes: number, history?: MachineHistory) {
 	if (history === undefined || !Array.some(history.samples, sample => Option.isSome(sample.apps))) return rows
 	const recorded = HashSet.fromIterable(
-		Array.flatMap(history.samples, sample => pipe(sample.apps, pipelineSubject3011 => Option.getOrElse(pipelineSubject3011, Array.empty), Array.map(app => app.id)))
+		Array.flatMap(history.samples, sample =>
+			pipe(
+				sample.apps,
+				pipelineSubject3011 => Option.getOrElse(pipelineSubject3011, Array.empty),
+				Array.map(app => app.id)
+			)
+		)
 	)
 	const start = chartWindow(minutes, history.time).start
 	return Array.filter(
@@ -73,7 +95,7 @@ export function ranged(rows: readonly Row[], minutes: number, history?: MachineH
 	)
 }
 
-export function failedFor(
+export function failureOf(
 	worker: string,
 	inventoryFailure: boolean,
 	sources: readonly {error: string; name: string}[],
@@ -93,15 +115,4 @@ export function middleEllipsis(value: string) {
 
 export function host(url: string) {
 	return Option.getOrElse(Array.head(String.split(String.replace(/^https:\/\//u, '')(url), '/')), () => url)
-}
-
-export function runRequest(item: InventoryItem) {
-	return {
-		name: item.name,
-		scope: item.scope ?? 'system',
-		...Boolean.match(String.startsWith('remote:')(item.id), {
-			onFalse: () => ({}),
-			onTrue: () => ({target: item.worker})
-		})
-	} satisfies RunRequest
 }

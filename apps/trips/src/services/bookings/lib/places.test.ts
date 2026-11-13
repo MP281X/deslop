@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref, pipe} from 'effect'
+import {Array, Boolean, Context, Effect, Exit, Fiber, Layer, Ref} from 'effect'
 
 import {HttpClient, HttpClientResponse} from 'effect/http'
 import {TestClock} from 'effect/testing'

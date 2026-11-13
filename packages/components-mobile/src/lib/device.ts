@@ -6,7 +6,8 @@ import type {AtomRegistry} from 'effect/reactivity'
 import {requireNativeModule} from 'expo'
 import {Asset} from 'expo-asset'
 import {File, Paths} from 'expo-file-system'
-import {Alert} from 'react-native'
+import type {NotificationHandler} from 'expo-notifications'
+import {Alert, Linking} from 'react-native'
 
 import {isDeniedCause, keepValueThroughOutages} from '@deslop/runtime/client/live-stream'
 
@@ -14,6 +15,13 @@ class DeviceError extends Schema.TaggedError<DeviceError>()('DeviceError', {
 	cause: Schema.Defect(),
 	message: Schema.String
 }) {}
+
+// Foreground notifications have the same sound and presentation policy in every app.
+export const foregroundNotifications: NotificationHandler = {
+	handleNotification: () =>
+		// oxlint-disable-next-line eslint/no-restricted-globals -- expo-notifications' handler contract takes a Promise.
+		Promise.resolve({shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true})
+}
 
 // "21 Oct" this year, "21 Oct 2025" before it.
 export function shortDate(time: number) {
@@ -32,10 +40,19 @@ export function clipboardChangeCount() {
 }
 
 // Shows a failure's message in a system alert under the title, then fails as before.
-export function alertFailure(title: string) {
-	return <A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>) =>
-		Effect.tapError(effect, error => Effect.sync(() => Alert.alert(title, error.message)))
+export function alertFailure<A, E extends {message: string}, R>(effect: Effect.Effect<A, E, R>, title: string) {
+	return Effect.tapError(effect, error => Effect.sync(() => Alert.alert(title, error.message)))
 }
+
+export const openLinkAtom = Atom.fn((url: string) =>
+	alertFailure(
+		Effect.tryPromise({
+			catch: cause => DeviceError.make({cause, message: 'The link could not be opened.'}),
+			try: () => Linking.openURL(url)
+		}),
+		'Link Not Opened'
+	)
+)
 
 // ios/DeslopComponentsModule.swift: the search field in the middle of the bottom bar, between the toolbar's own items.
 export const bottomBarSearch = createModifier('bottomBarSearch')

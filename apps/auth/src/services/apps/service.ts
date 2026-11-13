@@ -5,7 +5,7 @@ import {HttpClient, HttpClientResponse} from 'effect/http'
 import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
-import {AuthError, rejected} from '@deslop/runtime/shared/auth'
+import {AuthError, asAuthError} from '@deslop/runtime/shared/auth'
 import {RUNTIME_PATH, RuntimeConfig} from '@deslop/runtime/shared/schema'
 
 import {App} from '#services/apps/schema.ts'
@@ -19,10 +19,10 @@ declare module 'effect/reactivity/Reactivity' {
 export class Apps extends Context.Service<
 	Apps,
 	{
-		readonly catalog: Stream.Stream<readonly App[], AuthError>
+		readonly watch: Stream.Stream<readonly App[], AuthError>
 		readonly register: (origin: string) => Effect.Effect<App, AuthError>
 	}
->('@deslop/auth/services/apps/service/Apps') {
+>()('@deslop/auth/services/apps/service/Apps') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
@@ -60,7 +60,6 @@ export class Apps extends Context.Service<
 					`
 				})
 				return Apps.of({
-					catalog: sql.reactive(['apps'], rejected('Cannot read the apps')(listApps())),
 					register: Effect.fn('Apps.register')(function* (origin: string) {
 						if (String.isEmpty(domain) || !String.endsWith(`.${domain}`)(new URL(origin).hostname)) {
 							return yield* AuthError.make({error: 'access_denied', message: `Only apps on ${domain} are listed`})
@@ -70,7 +69,7 @@ export class Apps extends Context.Service<
 							Effect.flatMap(HttpClientResponse.filterStatusOk),
 							Effect.flatMap(HttpClientResponse.schemaBodyJson(RuntimeConfig)),
 							Effect.timeout('10 seconds'),
-							rejected(`${origin} did not answer ${RUNTIME_PATH}`)
+							asAuthError(`${origin} did not answer ${RUNTIME_PATH}`)
 						)
 						if (!Option.exists(Option.fromUndefinedOr(runtime.auth), auth => new URL(auth).origin === self.origin)) {
 							return yield* AuthError.make({error: 'access_denied', message: `${origin} signs in elsewhere`})
@@ -80,10 +79,11 @@ export class Apps extends Context.Service<
 							saveApp(app),
 							Reactivity.mutation(['apps']),
 							withReactivity,
-							rejected('The app list could not be saved')
+							asAuthError('The app list could not be saved')
 						)
 						return app
-					})
+					}),
+					watch: sql.reactive(['apps'], asAuthError('Cannot read the apps')(listApps()))
 				})
 			})
 		),

@@ -25,7 +25,7 @@ import {Jwk, Jwt} from 'effect/jose'
 import {TestClock} from 'effect/testing'
 
 import {Auth} from '#server/auth.ts'
-import {guard, layerAnnounce, layerRoutes} from '#server/http.ts'
+import {crossSiteGuard, layerAnnounce, layerRoutes} from '#server/http.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerSessionRoutes} from '#server/sign-in.ts'
 import {layerDataStore} from '#server/store.ts'
@@ -63,7 +63,7 @@ const handler = Effect.fnUntraced(function* (
 					),
 					Layer.provideMerge(ConfigProvider.layer(ConfigProvider.fromUnknown(settings)))
 				),
-				{disableLogger: true, middleware: guard}
+				{disableLogger: true, middleware: crossSiteGuard}
 			)
 		),
 		web => Effect.promise(() => web.dispose())
@@ -174,7 +174,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					{APP_URL: 'http://localhost:5000'},
 					{auth: Layer.succeedContext(Auth.makeContext(Auth.of({token: () => outage, user: () => outage})))}
 				)
-				const response = yield* send(web, 'http://localhost:5000/auth/user', {host: 'localhost:5000'})
+				const response = yield* send(web, 'http://localhost:5000/api/account', {host: 'localhost:5000'})
 				assert.strictEqual(response.status, 503)
 				assert.strictEqual(response.headers.get('retry-after'), '5')
 			})
@@ -189,7 +189,15 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const context = Context.add(yield* Effect.context<FileSystem.FileSystem | Path.Path>(), FileSystem.FileSystem, {
 					...fs,
 					readFileString: () =>
-						pipe(reads, Ref.update(count => count + 1), pipelineSubject6381 => Effect.andThen(pipelineSubject6381, Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}')))
+						pipe(
+							reads,
+							Ref.update(count => count + 1),
+							pipelineSubject6381 =>
+								Effect.andThen(
+									pipelineSubject6381,
+									Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}')
+								)
+						)
 				})
 				const web = yield* handler({APP_URL: 'http://localhost:5000'})
 				for (const path of ['/api/runtime', '/api/runtime']) {
@@ -357,10 +365,14 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					),
 					authorize.searchParams.get('code_challenge')
 				)
-				const session = pipe(cookiePairs(finished), Array.filter(cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)), Array.join('; '))
+				const session = pipe(
+					cookiePairs(finished),
+					Array.filter(cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)),
+					Array.join('; ')
+				)
 				assert.isTrue(String.isNonEmpty(session))
 
-				const user = yield* send(web, `https://${host}/auth/user`, {cookie: session, host})
+				const user = yield* send(web, `https://${host}/api/account`, {cookie: session, host})
 				assert.strictEqual(user.status, 200)
 				assert.include(yield* Effect.promise(() => user.json()), {id: 'github:42', name: 'octocat'})
 
@@ -375,7 +387,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const revoked = yield* Queue.take(calls)
 				assert.strictEqual(revoked.get('token'), 'refresh-1')
 				assert.strictEqual(revoked.get('client_id'), exchange.get('client_id'))
-				assert.strictEqual((yield* send(web, `https://${host}/auth/user`, {cookie: session, host})).status, 401)
+				assert.strictEqual((yield* send(web, `https://${host}/api/account`, {cookie: session, host})).status, 401)
 			}),
 			// The app's name, which its client id carries, comes from its package.
 			Effect.provideServiceEffect(

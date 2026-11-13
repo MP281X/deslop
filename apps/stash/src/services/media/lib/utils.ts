@@ -5,7 +5,15 @@ import type {Metadata, Comment} from '#services/media/schema.ts'
 const BLOCKED =
 	/not a bot|requir(?:es|ing) login|login required|CONNECT tunnel failed|unable to connect to proxy|tunnel connection failed|ProxyError|HTTP Error (?:403|429|5\d\d)|Requested format is not available|timed out/iu
 
-const byStanding = pipe(Order.flip(Order.Boolean), Order.mapInput((comment: Comment) => comment.is_pinned ?? false), pipelineSubject415 => Order.combine(pipelineSubject415, Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)))
+const byStanding = pipe(
+	Order.flip(Order.Boolean),
+	Order.mapInput((comment: Comment) => comment.is_pinned ?? false),
+	pipelineSubject415 =>
+		Order.combine(
+			pipelineSubject415,
+			Order.mapInput(Order.flip(Order.Number), (comment: Comment) => comment.like_count ?? 0)
+		)
+)
 
 function commentLine(comment: Comment) {
 	return Array.join(
@@ -71,7 +79,7 @@ export function isBlocked(stderr: string) {
 
 export function clock(seconds: number) {
 	const parts = Duration.parts(Duration.seconds(seconds))
-	return `${(String.padStart(2, '0'))(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`)}:${(String.padStart(2, '0'))(`${parts.seconds}`)}`
+	return `${String.padStart(2, '0')(`${(parts.days * 24 + parts.hours) * 60 + parts.minutes}`)}:${String.padStart(2, '0')(`${parts.seconds}`)}`
 }
 
 export function mediaMarkdown(media: Metadata, link: string) {
@@ -95,7 +103,11 @@ export function mediaMarkdown(media: Metadata, link: string) {
 			Option.map(
 				Option.fromNullishOr(media.chapters),
 				chapters =>
-					`## Chapters\n\n${pipe(chapters, Array.map(chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`), Array.join('\n'))}`
+					`## Chapters\n\n${pipe(
+						chapters,
+						Array.map(chapter => `- [${clock(chapter.start_time)}] ${chapter.title}`),
+						Array.join('\n')
+					)}`
 			),
 			pipe(
 				Option.fromNullishOr(media.comments),
@@ -121,30 +133,40 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 			return pipe(
 				Array.findFirstIndex(lines, String.includes('-->')),
 				Option.map(index => {
-					const times = pipe(lines, pipelineSubject4749 => Array.getUnsafe(pipelineSubject4749, index), String.split(' --> '), Array.map(time =>
-						pipe(
-							time,
-							String.split(' '),
-							Array.headNonEmpty,
-							String.split(':'),
-							Array.map(Number.parse),
-							Option.all,
-							Option.map(parts => Array.reduce(parts, 0, (total, part) => total * 60 + part)),
-							Option.filter(Schema.is(Schema.Finite))
-						)))
-					return pipe(lines, pipelineSubject5058 => Array.drop(pipelineSubject5058, index + 1), Array.map(line => ({
-						end: Array.lastNonEmpty(times),
-						start: Array.headNonEmpty(times),
-						text: pipe(
-							line,
-							String.replaceAll(/<[^>]+>/gu, ''),
-							String.replaceAll('&nbsp;', ' '),
-							String.replaceAll('&lt;', '<'),
-							String.replaceAll('&gt;', '>'),
-							String.replaceAll('&amp;', '&'),
-							String.trim
+					const times = pipe(
+						lines,
+						pipelineSubject4749 => Array.getUnsafe(pipelineSubject4749, index),
+						String.split(' --> '),
+						Array.map(time =>
+							pipe(
+								time,
+								String.split(' '),
+								Array.headNonEmpty,
+								String.split(':'),
+								Array.map(Number.parse),
+								Option.all,
+								Option.map(parts => Array.reduce(parts, 0, (total, part) => total * 60 + part)),
+								Option.filter(Schema.is(Schema.Finite))
+							)
 						)
-					})))
+					)
+					return pipe(
+						lines,
+						pipelineSubject5058 => Array.drop(pipelineSubject5058, index + 1),
+						Array.map(line => ({
+							end: Array.lastNonEmpty(times),
+							start: Array.headNonEmpty(times),
+							text: pipe(
+								line,
+								String.replaceAll(/<[^>]+>/gu, ''),
+								String.replaceAll('&nbsp;', ' '),
+								String.replaceAll('&lt;', '<'),
+								String.replaceAll('&gt;', '>'),
+								String.replaceAll('&amp;', '&'),
+								String.trim
+							)
+						}))
+					)
 				}),
 				Option.getOrElse(Array.empty)
 			)
@@ -152,18 +174,31 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 		Array.filter(cue => String.isNonEmpty(cue.text))
 	)
 	// Rolling automatic captions repeat each line in the next cue.
-	return pipe(cues, Array.filter((cue, index) =>
-				Option.match(Array.get(cues, index - 1), {
-						onNone: () => true,
-						onSome: previous =>
-							input.authored ||
-							previous.text !== cue.text ||
-							Option.getOrElse(
-								Option.map(Option.all([previous.end, cue.start]), times => times[0] < times[1]),
-								() => true
-							)
-					})), Array.map(cue =>
-				`[${Option.match(Option.all([cue.start, cue.end]), {onNone: () => '—', onSome: times => clock(times[0])})}] ${cue.text}\n`), Array.join(''))
+	return pipe(
+		cues,
+		Array.filter((cue, index) =>
+			pipe(
+				cues,
+				subject5844 => Array.get(subject5844, index - 1),
+				Option.match({
+					onNone: () => true,
+					onSome: previous =>
+						input.authored ||
+						previous.text !== cue.text ||
+						pipe(
+							Option.all([previous.end, cue.start]),
+							Option.map(times => times[0] < times[1]),
+							Option.getOrElse(() => true)
+						)
+				})
+			)
+		),
+		Array.map(
+			cue =>
+				`[${Option.match(Option.all([cue.start, cue.end]), {onNone: () => '—', onSome: times => clock(times[0])})}] ${cue.text}\n`
+		),
+		Array.join('')
+	)
 }
 
 const spoken = String.replace(/^\[[^\]]+\] /u, '')
@@ -195,6 +230,10 @@ export function speechOnly(transcript: string) {
 	)
 	if (words.length < 8 || words.length * 60 < 40 * Number.max(seconds, 15)) return Option.none()
 	return Option.some(
-		pipe(lines, Array.map(line => `${line}\n`), Array.join(''))
+		pipe(
+			lines,
+			Array.map(line => `${line}\n`),
+			Array.join('')
+		)
 	)
 }

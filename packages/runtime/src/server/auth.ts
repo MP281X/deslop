@@ -50,20 +50,29 @@ export class Auth extends Context.Service<
 		readonly user: (headers: Headers.Headers) => Effect.Effect<User & {client?: string}, AuthError>
 		readonly token: (headers: Headers.Headers) => Effect.Effect<string, AuthError>
 	}
->('@deslop/runtime/server/auth') {
+>()('@deslop/runtime/server/auth') {
 	static readonly makeContext = (auth: typeof Auth.Service) =>
-		Context.add(Context.make(Auth, auth), RpcAuth, RpcAuth.of((effect, request) =>
-					Effect.flatMap(auth.user(request.headers), user =>
+		Context.add(
+			Context.make(Auth, auth),
+			RpcAuth,
+			RpcAuth.of((effect, request) =>
+				Effect.flatMap(auth.user(request.headers), user =>
+					pipe(
+						effect,
+						subject2215 => Effect.provideService(subject2215, CurrentUser, user),
+						subject2189 =>
 							Effect.raceFirst(
-								Effect.provideService(effect, CurrentUser, user),
-								// A watch outlives its token, so it ends once the credentials expire or are revoked; an auth restart does not end it.
+								subject2189,
 								pipe(
 									Effect.delay(auth.user(request.headers), '5 minutes'),
 									Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
 									Effect.forever
 								)
-							))
-				))
+							)
+					)
+				)
+			)
+		)
 
 	static readonly layer = Layer.unwrap(
 		Effect.gen(function* () {
@@ -83,10 +92,14 @@ export class Auth extends Context.Service<
 					const sessions = yield* Sessions
 					const signature = yield* Signature.Signature
 					// The key set must come from Auth's own URL, so its client never follows a redirect.
-					const jwks = yield* Effect.provideService(Jwks.makeRemote({url: new URL(JWKS_PATH, issuer).href}), HttpClient.HttpClient, HttpClient.transform(
-								yield* HttpClient.HttpClient,
-								Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'})
-							))
+					const jwks = yield* Effect.provideService(
+						Jwks.makeRemote({url: new URL(JWKS_PATH, issuer).href}),
+						HttpClient.HttpClient,
+						HttpClient.transform(
+							yield* HttpClient.HttpClient,
+							Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'})
+						)
+					)
 					const verified = Effect.fn('Auth.verify')(function* (token: string) {
 						const access = yield* pipe(
 							Jwt.verifyWithKeySet(AccessClaims, token, {
@@ -120,15 +133,19 @@ export class Auth extends Context.Service<
 					return Auth.makeContext(
 						Auth.of({
 							token: headers =>
-								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject4856 => Option.match(pipelineSubject4856, {
-									onNone: () => Effect.map(session(headers), current => current.token),
-									onSome: token => Effect.as(verified(token), token)
-								})),
+								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject4856 =>
+									Option.match(pipelineSubject4856, {
+										onNone: () => Effect.map(session(headers), current => current.token),
+										onSome: token => Effect.as(verified(token), token)
+									})
+								),
 							user: headers =>
-								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject5095 => Option.match(pipelineSubject5095, {
-									onNone: () => Effect.map(session(headers), current => current.user),
-									onSome: verified
-								}))
+								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject5095 =>
+									Option.match(pipelineSubject5095, {
+										onNone: () => Effect.map(session(headers), current => current.user),
+										onSome: verified
+									})
+								)
 						})
 					)
 				})
@@ -171,10 +188,12 @@ export function layerMcpAuth(resource: string) {
 						})
 					}
 					const user = yield* Effect.result(
-						pipe(bearer, Option.filter(isJwt), pipelineSubject6816 => Option.match(pipelineSubject6816, {
-							onNone: () => Effect.fail(signInFirst),
-							onSome: () => auth.user(headers)
-						}))
+						pipe(bearer, Option.filter(isJwt), pipelineSubject6816 =>
+							Option.match(pipelineSubject6816, {
+								onNone: () => Effect.fail(signInFirst),
+								onSome: () => auth.user(headers)
+							})
+						)
 					)
 					if (Result.isFailure(user)) {
 						if (user.failure.error === 'temporarily_unavailable') return unavailable

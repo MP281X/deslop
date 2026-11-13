@@ -77,15 +77,24 @@ export function cpuCounters(
 export function vmStatMemory(text: string, total: number) {
 	const pages = Record.fromEntries(
 		Array.getSomes(
-			pipe(text, String.split('\n'), Array.map(line =>
-				Option.map(
-					String.match(/^"?([^":]+)"?:\s+([0-9]+)\.$/u)(String.trim(line)),
-					match => [match[1] ?? '', match[2] ?? ''] as const
-				)))
+			pipe(
+				text,
+				String.split('\n'),
+				Array.map(line =>
+					Option.map(
+						String.match(/^"?([^":]+)"?:\s+([0-9]+)\.$/u)(String.trim(line)),
+						match => [match[1] ?? '', match[2] ?? ''] as const
+					)
+				)
+			)
 		)
 	)
 	const page = Schema.decodeSync(Schema.FiniteFromString)(
-		pipe(String.match(/page size of ([0-9]+) bytes/u)(text), Option.map(match => match[1] ?? ''), Option.getOrElse(() => ''))
+		pipe(
+			String.match(/page size of ([0-9]+) bytes/u)(text),
+			Option.map(match => match[1] ?? ''),
+			Option.getOrElse(() => '')
+		)
 	)
 	function count(name: string) {
 		return Schema.decodeSync(Schema.FiniteFromString)(pages[name] ?? '')
@@ -105,11 +114,17 @@ export function vmStatMemory(text: string, total: number) {
 
 // A Mac's startup volume from `df -k /`: APFS reports the system volume's own use, so its container's use is size less available.
 export function rootVolume(text: string) {
-	return pipe(String.trim(text), String.split('\n'), Array.drop(1), pipelineSubject3445 => Array.filter(pipelineSubject3445, String.isNonEmpty), Array.map(line => {
-		const fields = String.split(String.trim(line), /\s+/u)
-		const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
-		return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
-	}))
+	return pipe(
+		String.trim(text),
+		String.split('\n'),
+		Array.drop(1),
+		pipelineSubject3445 => Array.filter(pipelineSubject3445, String.isNonEmpty),
+		Array.map(line => {
+			const fields = String.split(String.trim(line), /\s+/u)
+			const size = Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024
+			return {mount: '/', total: size, used: size - Schema.decodeSync(Schema.FiniteFromString)(fields[3] ?? '') * 1024}
+		})
+	)
 }
 
 // A measurement from the machine's readings: memory in bytes, the disks it measures and up to three load averages.
@@ -142,10 +157,14 @@ export function reading(
 // A Linux sample from `/proc/meminfo`, `df -B1 --output=target,size,used` and `/proc/loadavg`.
 export function sample(current: Counters, memory: string, disk: string, previous?: Counters, load?: string) {
 	const values = Record.fromEntries(
-		pipe(String.trim(memory), String.split('\n'), Array.map(line => {
-			const fields = String.split(line, /\s+/u)
-			return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
-		}))
+		pipe(
+			String.trim(memory),
+			String.split('\n'),
+			Array.map(line => {
+				const fields = String.split(line, /\s+/u)
+				return [fields[0], Schema.decodeSync(Schema.FiniteFromString)(fields[1] ?? '') * 1024] as const
+			})
+		)
 	)
 	return reading(
 		current,
@@ -166,7 +185,12 @@ export function sample(current: Counters, memory: string, disk: string, previous
 			})
 		),
 		Schema.decodeSync(Schema.Array(Schema.FiniteFromString))(
-			pipe(String.trim(load ?? ''), String.split(/\s+/u), pipelineSubject5790 => Array.filter(pipelineSubject5790, String.isNonEmpty), Array.take(3))
+			pipe(
+				String.trim(load ?? ''),
+				String.split(/\s+/u),
+				pipelineSubject5790 => Array.filter(pipelineSubject5790, String.isNonEmpty),
+				Array.take(3)
+			)
 		),
 		previous
 	)
@@ -201,7 +225,13 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 	if (bucket.length === 1) return bucket[0]
 	const reported = Array.filter(bucket, point => Option.isSome(point.apps))
 	const appsById = Array.map(reported, point =>
-		Record.fromEntries(pipe(point.apps, pipelineSubject7269 => Option.getOrElse(pipelineSubject7269, Array.empty), Array.map(app => [app.id, app] as const)))
+		Record.fromEntries(
+			pipe(
+				point.apps,
+				pipelineSubject7269 => Option.getOrElse(pipelineSubject7269, Array.empty),
+				Array.map(app => [app.id, app] as const)
+			)
+		)
 	)
 	// An app missing from a point that reported apps used nothing then; one just started has no CPU reading yet.
 	function appMean(id: string, read: (app: AppSample) => Option.Option<number>) {
@@ -217,9 +247,16 @@ function merge(bucket: Array.NonEmptyReadonlyArray<Sample>) {
 			onNonEmpty: () =>
 				Option.some(
 					Array.map(Array.dedupe(Array.flatMap(appsById, Record.keys)), id => ({
-						...Record.getSomes({cpu: appMean(id, app => Option.fromUndefinedOr(app.cpu))}),
+						...Option.match(
+							appMean(id, app => Option.fromUndefinedOr(app.cpu)),
+							{onNone: () => ({}), onSome: cpu => ({cpu})}
+						),
 						id,
-						memory: pipe(appMean(id, app => Option.some(app.memory)), Option.getOrElse(() => 0), Number.round(0))
+						memory: pipe(
+							appMean(id, app => Option.some(app.memory)),
+							Option.getOrElse(() => 0),
+							Number.round(0)
+						)
 					}))
 				)
 		}),
@@ -241,10 +278,12 @@ export function rollup(point: Point, stored: readonly Sample[]) {
 	return Array.map(HistoryQuery.fields.minutes.literals, minutes => {
 		const step = SERIES[minutes]
 		const fresh: Sample = {...point, since: point.time, step}
-		return pipe(buckets, pipelineSubject9020 => Record.get(pipelineSubject9020, `${step}:${Math.floor(point.time / step)}`), pipelineSubject9007 => Option.match(pipelineSubject9007, {
-			onNone: () => fresh,
-			onSome: row => merge([row, fresh])
-		}))
+		return pipe(
+			buckets,
+			pipelineSubject9020 => Record.get(pipelineSubject9020, `${step}:${Math.floor(point.time / step)}`),
+			pipelineSubject9007 =>
+				Option.match(pipelineSubject9007, {onNone: () => fresh, onSome: row => merge([row, fresh])})
+		)
 	})
 }
 
@@ -266,8 +305,16 @@ export function history(samples: readonly Sample[], minutes: number, now: number
 export function bandName(id: string, labels: Record<string, string>) {
 	if (id === 'other') return 'Low impact'
 	if (id === 'system') return 'System'
-	return pipe(labels, pipelineSubject9936 => Record.get(pipelineSubject9936, id), Option.getOrElse(() =>
-		String.replaceAll(/^service:[a-z]+:(?:deslop-)?|\.service$/gu, '')(String.replace(/^container:/u, 'container ')(id))))
+	return pipe(
+		labels,
+		pipelineSubject9936 => Record.get(pipelineSubject9936, id),
+		Option.getOrElse(() =>
+			String.replaceAll(
+				/^service:[a-z]+:(?:deslop-)?|\.service$/gu,
+				''
+			)(String.replace(/^container:/u, 'container ')(id))
+		)
+	)
 }
 
 // A cgroup whose whole subtree is one app: a service other than a user manager, a Docker container's scope, or the slice a user manager names `app-<name>.slice` for what its sibling `<name>.service` starts, like T3 Code's agents; a template's instances share such a slice without that sibling, so it's walked into.
@@ -313,28 +360,36 @@ export type AppReading = {
 export function appShares(current: AppReading, previous?: AppReading) {
 	const elapsed = current.total - (previous?.total ?? current.total)
 	const measured = elapsed > 0 && current.time - (previous?.time ?? 0) <= 90_000
-	return pipe(Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)), Array.filter(entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2), Array.map(entry => {
+	return pipe(
+		Record.toEntries(Array.groupBy(Record.toEntries(current.cgroups), entry => entry[1].id)),
+		Array.filter(entry => Array.reduce(entry[1], 0, (sum, cgroup) => sum + cgroup[1].memory) >= 1024 ** 2),
+		Array.map(entry => {
 			const [id, cgroups] = entry
 			const deltas = Array.getSomes(
 				Array.map(cgroups, cgroup =>
-					pipe(Option.fromUndefinedOr(previous?.cgroups[cgroup[0]]), Option.filter(old => measured && cgroup[1].usage >= old.usage), Option.map(old => cgroup[1].usage - old.usage))
+					pipe(
+						Option.fromUndefinedOr(previous?.cgroups[cgroup[0]]),
+						Option.filter(old => measured && cgroup[1].usage >= old.usage),
+						Option.map(old => cgroup[1].usage - old.usage)
+					)
 				)
 			)
 			return {
 				...Array.match(deltas, {
 					onEmpty: () => ({}),
 					onNonEmpty: () => ({
-						cpu: pipe((Number.sumAll(deltas) / 10_000 / elapsed) * 100, pipelineSubject13253 => Number.clamp(pipelineSubject13253, {maximum: 100, minimum: 0}), Number.round(2))
+						cpu: pipe(
+							(Number.sumAll(deltas) / 10_000 / elapsed) * 100,
+							pipelineSubject13253 => Number.clamp(pipelineSubject13253, {maximum: 100, minimum: 0}),
+							Number.round(2)
+						)
 					})
 				}),
 				id,
 				memory: Number.round(Array.reduce(cgroups, 0, (sum, cgroup) => sum + cgroup[1].memory) / 1024, 0) * 1024
 			}
-		}))
-}
-
-function rounded(value: number) {
-	return Number.round(value, 1)
+		})
+	)
 }
 
 function diskTotal(machine: MachineHistory) {
@@ -356,17 +411,44 @@ function series(machine: MachineHistory, minutes: number, read: (sample: Sample)
 		)
 	)
 	return Array.makeBy(60, index =>
-		pipe(Option.fromUndefinedOr(bySlot[`${index}`]), pipelineSubject14111 => Option.flatMap(pipelineSubject14111, read), pipelineSubject14100 => Option.map(pipelineSubject14100, rounded))
+		pipe(
+			Option.fromUndefinedOr(bySlot[`${index}`]),
+			pipelineSubject14111 => Option.flatMap(pipelineSubject14111, read),
+			pipelineSubject14100 => Option.map(pipelineSubject14100, value => Number.round(value, 1))
+		)
 	)
 }
 
 function appsOf(labels: Record<string, string>, latest: Sample) {
-	const sorted = pipe(latest.apps, pipelineSubject14302 => Option.getOrElse(pipelineSubject14302, Array.empty), Array.map(app =>
+	const sorted = pipe(
+		latest.apps,
+		pipelineSubject14302 => Option.getOrElse(pipelineSubject14302, Array.empty),
+		Array.map(
+			app =>
 				({
-					...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(app.cpu), rounded)}),
+					...pipe(
+						Option.fromUndefinedOr(app.cpu),
+						subject15011 => Option.map(subject15011, value => Number.round(value, 1)),
+						subject14998 => Option.match(subject14998, {onNone: () => ({}), onSome: cpu => ({cpu})})
+					),
 					mib: Number.round(app.memory / 1024 ** 2, 0),
 					name: bandName(app.id, labels)
-				}) satisfies AppUsage), pipelineSubject14274 => Array.sort(pipelineSubject14274, pipe(Order.flip(Order.Number), Order.mapInput((app: AppUsage) => app.mib), pipelineSubject14993 => Order.combine(pipelineSubject14993, Order.mapInput(Order.String, (app: AppUsage) => app.name)))))
+				}) satisfies AppUsage
+		),
+		pipelineSubject14274 =>
+			Array.sort(
+				pipelineSubject14274,
+				pipe(
+					Order.flip(Order.Number),
+					Order.mapInput((app: AppUsage) => app.mib),
+					pipelineSubject14993 =>
+						Order.combine(
+							pipelineSubject14993,
+							Order.mapInput(Order.String, (app: AppUsage) => app.name)
+						)
+				)
+			)
+	)
 	if (sorted.length <= 15) return sorted
 	const rest = Array.drop(sorted, 15)
 	const cpus = Array.getSomes(Array.map(rest, (app: AppUsage) => Option.fromUndefinedOr(app.cpu)))
@@ -375,7 +457,7 @@ function appsOf(labels: Record<string, string>, latest: Sample) {
 		{
 			...Boolean.match(Array.isReadonlyArrayNonEmpty(cpus), {
 				onFalse: () => ({}),
-				onTrue: () => ({cpu: rounded(Number.sumAll(cpus))})
+				onTrue: () => ({cpu: Number.round(Number.sumAll(cpus), 1)})
 			}),
 			mib: Number.sumAll(Array.map(rest, (app: AppUsage) => app.mib)),
 			name: 'other'
@@ -400,13 +482,17 @@ function workerHistory(machine: MachineHistory, minutes: number, labels: Record<
 			onSome: point => ({
 				now: {
 					...Record.getSomes({
-						cpuPct: Option.map(point.cpu, rounded),
-						diskGiB: Option.map(point.storageUsed, used => rounded(used / 1024 ** 3)),
-						diskTotalGiB: Option.map(storageTotal, total => rounded(total / 1024 ** 3))
+						cpuPct: Option.map(point.cpu, value => Number.round(value, 1)),
+						diskGiB: Option.map(point.storageUsed, used => Number.round(used / 1024 ** 3, 1)),
+						diskTotalGiB: Option.map(storageTotal, total => Number.round(total / 1024 ** 3, 1))
 					}),
-					...Record.getSomes({load: Option.liftPredicate(machine.load, Array.isReadonlyArrayNonEmpty)}),
-					memoryGiB: rounded(point.memoryUsed / 1024 ** 3),
-					memoryTotalGiB: rounded(point.memoryTotal / 1024 ** 3)
+					...pipe(
+						machine.load,
+						subject17261 => Option.liftPredicate(subject17261, Array.isReadonlyArrayNonEmpty),
+						subject17248 => Option.match(subject17248, {onNone: () => ({}), onSome: load => ({load})})
+					),
+					memoryGiB: Number.round(point.memoryUsed / 1024 ** 3, 1),
+					memoryTotalGiB: Number.round(point.memoryTotal / 1024 ** 3, 1)
 				}
 			})
 		}),
@@ -422,5 +508,9 @@ export function resourceHistory(
 	input: HistoryToolInput,
 	names: Record<string, Record<string, string>>
 ) {
-	return pipe(machines, Array.filter(machine => input.worker === undefined || machine.worker === input.worker), Array.map(machine => workerHistory(machine, input.minutes, names[machine.worker] ?? {})))
+	return pipe(
+		machines,
+		Array.filter(machine => input.worker === undefined || machine.worker === input.worker),
+		Array.map(machine => workerHistory(machine, input.minutes, names[machine.worker] ?? {}))
+	)
 }

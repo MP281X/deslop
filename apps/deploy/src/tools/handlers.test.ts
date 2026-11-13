@@ -250,7 +250,7 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 }
 
 // The tool layer is the public seam: handlers and schemas as the agent receives them.
-function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
+function toolkitOf(fleet: Parameters<typeof Fleet.of>[0]) {
 	return Effect.flatMap(Layer.build(Layer.provide(ToolHandlers, Layer.succeed(Fleet, fleet))), context =>
 		Effect.provideContext(ToolContracts, context)
 	)
@@ -259,7 +259,7 @@ function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
 it.effect('answers list_apps with the page’s apps in under 20 KB and no tailnet peer', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const toolkit = yield* toolkitFor(fleetOf({snapshot: Effect.succeed(fixture())}))
+			const toolkit = yield* toolkitOf(fleetOf({snapshot: Effect.succeed(fixture())}))
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {}))))
 			)
@@ -295,7 +295,7 @@ it.effect('answers list_apps with the page’s apps in under 20 KB and no tailne
 it.effect('returns only the matching app with its process tree when list_apps names one', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const toolkit = yield* toolkitFor(fleetOf({snapshot: Effect.succeed(fixture())}))
+			const toolkit = yield* toolkitOf(fleetOf({snapshot: Effect.succeed(fixture())}))
 			const answer = Option.getOrThrow(
 				Array.last(Array.fromIterable(yield* Stream.runCollect(yield* toolkit.handle('list_apps', {app: 'minecraft'}))))
 			)
@@ -324,7 +324,7 @@ it.effect('returns only the matching app with its process tree when list_apps na
 it.effect('answers read_resource_history for 60 points and two workers in under 6 KB with named containers', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const toolkit = yield* toolkitFor(
+			const toolkit = yield* toolkitOf(
 				fleetOf({
 					metrics: () =>
 						Effect.succeed([machineOf('dev'), machineOf('desktop', {error: 'Worker unavailable', stale: true})]),
@@ -392,7 +392,7 @@ it.effect('runs a scheduled job through the deploy.run path', () =>
 				time: NOW,
 				workers: ['dev']
 			})
-			const toolkit = yield* toolkitFor(
+			const toolkit = yield* toolkitOf(
 				fleetOf({run: request => Ref.set(started, Option.some(request)), snapshot: Effect.succeed(snapshot)})
 			)
 			assert.deepStrictEqual(
@@ -411,9 +411,15 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 		Effect.gen(function* () {
 			const exposed = yield* Ref.make(Option.none<ExposeRequest>())
 			const hidden = yield* Ref.make(Option.none<HideRequest>())
-			const toolkit = yield* toolkitFor(
+			const toolkit = yield* toolkitOf(
 				fleetOf({
-					expose: input => pipe(exposed, pipelineSubject15352 => Ref.set(pipelineSubject15352, Option.some(input)), Effect.as('https://desktop.tailnet-8c4c.ts.net:4000')),
+					expose: Effect.fnUntraced(function* (input) {
+						return yield* pipe(
+							exposed,
+							pipelineSubject15352 => Ref.set(pipelineSubject15352, Option.some(input)),
+							Effect.as('https://desktop.tailnet-8c4c.ts.net:4000')
+						)
+					}),
 					hide: input => Ref.set(hidden, Option.some(input)),
 					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))
 				})

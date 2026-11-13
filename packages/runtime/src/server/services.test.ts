@@ -23,7 +23,7 @@ import {
 import {ChildProcess, ChildProcessSpawner} from 'effect/process'
 
 import {execute} from '#server/process.ts'
-import {install, installUpdates, status, uninstall} from '#server/services.ts'
+import {installService, installUpdateService, serviceStatus, uninstallService} from '#server/services.ts'
 
 it.effect('releases an interrupted command before its caller scope closes', () =>
 	Effect.scoped(
@@ -32,19 +32,27 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 			const started = yield* Queue.unbounded<void>()
 			const spawner = ChildProcessSpawner.make(() =>
 				Effect.acquireRelease(
-					pipe(started, pipelineSubject831 => Queue.offer(pipelineSubject831, undefined), pipelineSubject814 => Effect.as(pipelineSubject814, ChildProcessSpawner.makeHandle({
-							all: Stream.empty,
-							exitCode: Effect.never,
-							getInputFd: () => Sink.drain,
-							getOutputFd: () => Stream.empty,
-							isRunning: Effect.succeed(true),
-							kill: () => Effect.void,
-							pid: ChildProcessSpawner.ProcessId(1),
-							stderr: Stream.empty,
-							stdin: Sink.drain,
-							stdout: Stream.empty,
-							unref: Effect.succeed(Effect.void)
-						}))),
+					pipe(
+						started,
+						pipelineSubject831 => Queue.offer(pipelineSubject831, undefined),
+						pipelineSubject814 =>
+							Effect.as(
+								pipelineSubject814,
+								ChildProcessSpawner.makeHandle({
+									all: Stream.empty,
+									exitCode: Effect.never,
+									getInputFd: () => Sink.drain,
+									getOutputFd: () => Stream.empty,
+									isRunning: Effect.succeed(true),
+									kill: () => Effect.void,
+									pid: ChildProcessSpawner.ProcessId(1),
+									stderr: Stream.empty,
+									stdin: Sink.drain,
+									stdout: Stream.empty,
+									unref: Effect.succeed(Effect.void)
+								})
+							)
+					),
 					() => Ref.set(released, true)
 				)
 			)
@@ -76,7 +84,11 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 							[
 								command.command,
 								...Array.map(command.args, arg =>
-									pipe(arg, pipelineSubject2346 => Option.liftPredicate(pipelineSubject2346, Predicate.isString), Option.getOrElse(() => '<redacted>'))
+									pipe(
+										arg,
+										pipelineSubject2346 => Option.liftPredicate(pipelineSubject2346, Predicate.isString),
+										Option.getOrElse(() => '<redacted>')
+									)
 								)
 							],
 							' '
@@ -105,8 +117,8 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 				)
 			}
 			const entry = `${home}/.deslop/fixture/current/dist/server.js`
-			yield* run(install('fixture', [execPath, entry, '--traces', 'https://example.com/%u$HOME"\n[Service]']))
-			yield* run(installUpdates('fixture', [execPath, entry, 'service', 'update']))
+			yield* run(installService('fixture', [execPath, entry, '--traces', 'https://example.com/%u$HOME"\n[Service]']))
+			yield* run(installUpdateService('fixture', [execPath, entry, 'service', 'update']))
 			const units = Boolean.match(platform === 'darwin', {
 				onFalse: () => `${home}/.config/systemd/user`,
 				onTrue: () => `${home}/Library/LaunchAgents`
@@ -127,7 +139,7 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 					`launchctl bootstrap gui/${userInfo().uid} ${units}/deslop-fixture.plist`,
 					`launchctl bootstrap gui/${userInfo().uid} ${units}/deslop-fixture-update.plist`
 				])
-				assert.include(yield* run(status('fixture')), 'state = running')
+				assert.include(yield* run(serviceStatus('fixture')), 'state = running')
 			} else {
 				const unit = yield* fs.readFileString(`${units}/deslop-fixture.service`)
 				assert.include(
@@ -141,11 +153,11 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 					'systemctl --user restart deslop-fixture.service',
 					'systemctl --user enable --now deslop-fixture-update.timer'
 				])
-				assert.include(yield* run(status('fixture')), 'ActiveState=active')
+				assert.include(yield* run(serviceStatus('fixture')), 'ActiveState=active')
 			}
 			yield* fs.makeDirectory(`${home}/.deslop/fixture`, {recursive: true})
 			yield* fs.writeFileString(`${home}/.deslop/fixture/data`, 'keep')
-			yield* run(uninstall('fixture'))
+			yield* run(uninstallService('fixture'))
 			assert.deepStrictEqual(yield* fs.readDirectory(units), [])
 			assert.strictEqual(yield* fs.readFileString(`${home}/.deslop/fixture/data`), 'keep')
 		})

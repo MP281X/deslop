@@ -37,8 +37,8 @@ import {
 } from '@expo/ui/swift-ui/modifiers'
 import {AsyncResult} from 'effect/reactivity'
 import {Suspense} from 'react'
-import {Linking} from 'react-native'
 
+import {openLinkAtom} from '@deslop/components-mobile/device'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent, Loaded} from '@deslop/components-mobile/screens'
 import {colors, radius, space, text} from '@deslop/components-mobile/theme'
@@ -86,7 +86,12 @@ function Body(props: {text: string}) {
 			spacing={space[3]}
 			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
 		>
-			{pipe(props.text, String.split('\n'), pipelineSubject2628 => Array.map(pipelineSubject2628, String.trim), pipelineSubject2615 => Array.filter(pipelineSubject2615, String.isNonEmpty), Array.map((line, index) =>
+			{pipe(
+				props.text,
+				String.split('\n'),
+				pipelineSubject2628 => Array.map(pipelineSubject2628, String.trim),
+				pipelineSubject2615 => Array.filter(pipelineSubject2615, String.isNonEmpty),
+				Array.map((line, index) =>
 					pipe(
 						Match.value(line),
 						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
@@ -94,6 +99,7 @@ function Body(props: {text: string}) {
 							candidate => Option.isSome(String.match(/^#+\s/u)(candidate)),
 							() => (
 								<Text
+									// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
 									key={index}
 									modifiers={[text.title, foregroundStyle(colors.foreground), padding({top: space[3]})]}
 								>
@@ -104,6 +110,7 @@ function Body(props: {text: string}) {
 						Match.when(
 							candidate => Option.isSome(String.match(/^(?:[-*•]|\d+\.)\s/u)(candidate)),
 							() => (
+								// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
 								<HStack key={index} alignment="firstTextBaseline" spacing={space[2]}>
 									<Text modifiers={[text.body, foregroundStyle(colors.mutedForeground)]}>
 										{Boolean.match(String.startsWith('- ')(line), {
@@ -119,6 +126,7 @@ function Body(props: {text: string}) {
 						),
 						Match.when(String.startsWith('> '), () => (
 							<Text
+								// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
 								key={index}
 								markdownEnabled
 								modifiers={[...prose, foregroundStyle(colors.mutedForeground), padding({leading: space[3]})]}
@@ -127,11 +135,14 @@ function Body(props: {text: string}) {
 							</Text>
 						)),
 						Match.orElse(() => (
+							// oxlint-disable-next-line react/no-array-index-key -- This immutable text snapshot has repeated lines and no independent row state.
 							<Text key={index} markdownEnabled modifiers={prose}>
 								{line}
 							</Text>
 						))
-					)))}
+					)
+				)
+			)}
 		</VStack>
 	)
 }
@@ -323,61 +334,67 @@ function NoteScreen(props: {
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	return pipe(props.notes, Array.findFirst(item => item.id === props.id), pipelineSubject10185 => Option.match(pipelineSubject10185, {
-			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
-			onSome: item => (
-				<Toolbar>
-					<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
-					<Toolbar.Content>
-						{Option.match(item.url, {
-							onNone: () => undefined,
-							onSome: url => (
-								<ToolbarItem placement="topBarTrailing">
-									{Option.match(brandOf(item), {
-										onNone: () => (
-											<Button
-												label="Open Link"
-												systemImage="arrow.up.right"
-												onPress={() => Linking.openURL(url)}
-												modifiers={[labelStyle('iconOnly')]}
-											/>
-										),
-										onSome: brand => (
-											<Button
-												onPress={() => Linking.openURL(url)}
-												modifiers={[
-													accessibilityLabel(
-														Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
-													)
-												]}
-											>
-												<BrandLogo brand={kinds[brand].logo} size={20} />
-											</Button>
-										)
-									})}
-								</ToolbarItem>
-							)
-						})}
-						<ToolbarItem placement="topBarTrailing">
-							<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
-								{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
-								<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
-								<Button
-									label="Delete"
-									systemImage="trash"
-									role="destructive"
-									onPress={() => {
-										remove(props.id)
-										props.onClose()
-									}}
-									modifiers={[tint(colors.destructive)]}
-								/>
-							</Menu>
-						</ToolbarItem>
-					</Toolbar.Content>
-				</Toolbar>
-			)
-		}))
+	const openLink = useAtomSet(openLinkAtom)
+	return pipe(
+		props.notes,
+		Array.findFirst(item => item.id === props.id),
+		pipelineSubject10185 =>
+			Option.match(pipelineSubject10185, {
+				onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
+				onSome: item => (
+					<Toolbar>
+						<Detail note={item} onRetry={() => regenerate(item.id)} onTag={props.onTag} />
+						<Toolbar.Content>
+							{Option.match(item.url, {
+								onNone: () => undefined,
+								onSome: url => (
+									<ToolbarItem placement="topBarTrailing">
+										{Option.match(brandOf(item), {
+											onNone: () => (
+												<Button
+													label="Open Link"
+													systemImage="arrow.up.right"
+													onPress={() => openLink(url)}
+													modifiers={[labelStyle('iconOnly')]}
+												/>
+											),
+											onSome: brand => (
+												<Button
+													onPress={() => openLink(url)}
+													modifiers={[
+														accessibilityLabel(
+															Option.match(appOf(item), {onNone: () => 'Open Link', onSome: name => `Open in ${name}`})
+														)
+													]}
+												>
+													<BrandLogo brand={kinds[brand].logo} size={20} />
+												</Button>
+											)
+										})}
+									</ToolbarItem>
+								)
+							})}
+							<ToolbarItem placement="topBarTrailing">
+								<Menu label="More" systemImage="ellipsis" modifiers={[labelStyle('iconOnly')]}>
+									{Option.match(item.url, {onNone: () => undefined, onSome: url => <ShareLink item={url} />})}
+									<Button label="Regenerate" systemImage="arrow.clockwise" onPress={() => regenerate(item.id)} />
+									<Button
+										label="Delete"
+										systemImage="trash"
+										role="destructive"
+										onPress={() => {
+											remove(props.id)
+											props.onClose()
+										}}
+										modifiers={[tint(colors.destructive)]}
+									/>
+								</Menu>
+							</ToolbarItem>
+						</Toolbar.Content>
+					</Toolbar>
+				)
+			})
+	)
 }
 
 export function NoteRoute(props: {id: string; onClose: () => void; onTag: (tag: string) => void}) {

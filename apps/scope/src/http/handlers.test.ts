@@ -140,7 +140,11 @@ const openTelemetry = Effect.fnUntraced(function* () {
 // A database that still reads but refuses every write, as a full disk does.
 const brokenTelemetry = Effect.fnUntraced(function* () {
 	const opened = yield* openTelemetry()
-	yield* pipe(SqlClient.SqlClient, Effect.flatMap(sql => sql`PRAGMA query_only = ON`), pipelineSubject4324 => Effect.provideContext(pipelineSubject4324, opened.database))
+	yield* pipe(
+		SqlClient.SqlClient,
+		Effect.flatMap(sql => sql`PRAGMA query_only = ON`),
+		pipelineSubject4324 => Effect.provideContext(pipelineSubject4324, opened.database)
+	)
 	return opened.telemetry
 })
 

@@ -19,7 +19,7 @@
 		"./status-dot": "./src/status-dot.tsx",
 		"./ui/*": "./src/ui/*.tsx",
 		"./ui/hooks/*": "./src/ui/hooks/*.ts",
-		"./utils": "./src/lib/utils.ts",
+		"./classes": "./src/lib/classes.ts",
 		"./theme.css": "./src/theme.css"
 	},
 	"scripts": {

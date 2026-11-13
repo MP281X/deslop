@@ -31,6 +31,7 @@ import {AsyncResult} from 'effect/reactivity'
 import {Suspense, useState} from 'react'
 
 import {AccountMenu} from '@deslop/components-mobile/account'
+import {bottomBarSearch} from '@deslop/components-mobile/device'
 import {PasteSheet} from '@deslop/components-mobile/paste-sheet'
 import {Problem} from '@deslop/components-mobile/problem'
 import {FailureContent} from '@deslop/components-mobile/screens'
@@ -47,7 +48,6 @@ import {
 	itemRow
 } from '@deslop/components-mobile/ui/item'
 import {ItemGroupSkeleton} from '@deslop/components-mobile/ui/skeleton'
-import {bottomBarSearch} from '@deslop/components-mobile/utils'
 import {blockingFailure} from '@deslop/runtime/client/live-stream'
 
 import {bookingsAtom, clipboard, nowAtom, removal} from '#lib/bookings.ts'
@@ -80,7 +80,11 @@ function scheduleOf(booking: Booking) {
 // The schedule and the gate or platform it leaves from, each shown once.
 function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
 	const where = Option.match(status.where, {onNone: () => '', onSome: found => found.text})
-	return pipe([scheduleOf(booking), where], pipelineSubject3091 => Array.filter(pipelineSubject3091, String.isNonEmpty), Array.join(' · '))
+	return pipe(
+		[scheduleOf(booking), where],
+		pipelineSubject3091 => Array.filter(pipelineSubject3091, String.isNonEmpty),
+		Array.join(' · ')
+	)
 }
 
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
@@ -176,26 +180,55 @@ function BookingRow(props: {booking: Booking; countdown: Countdown; now: number;
 	)
 }
 
-function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
-	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
-	const refresh = useAtomRefresh(bookingsAtom)
-	const paste = useAtomSet(clipboard.atom.send)
-	const [pastOpen, setPastOpen] = useState(false)
-	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	const adding = Option.exists(
-		pipe(useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')), AsyncResult.getOrElse(Option.none)),
-		current => current.save
-	)
-	const blocking = Option.getOrUndefined(blockingFailure(loaded))
-	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
-	const bookings = AsyncResult.getOrElse(loaded, () => [])
-	const needle = String.toLowerCase(String.trim(props.searched))
-	const matches = Array.filter(
+function matchesOf(bookings: readonly Booking[], searched: string) {
+	const needle = String.toLowerCase(String.trim(searched))
+	return Array.filter(
 		bookings,
 		booking =>
 			String.isEmpty(needle) ||
 			String.includes(needle)(String.toLowerCase(`${headingOf(booking)} ${scheduleOf(booking)}`))
 	)
+}
+
+function PastBookings(props: {
+	bookings: readonly Booking[]
+	expanded: boolean
+	now: number
+	onExpandedChange: (expanded: boolean) => void
+	onOpen: (id: string) => void
+}) {
+	if (Array.isReadonlyArrayEmpty(props.bookings)) return undefined
+	return (
+		<Section title="Past" isExpanded={props.expanded} onIsExpandedChange={props.onExpandedChange}>
+			{Array.map(props.bookings, booking => (
+				<BookingRow
+					key={booking.id}
+					booking={booking}
+					countdown={{_tag: 'SameDay'}}
+					now={props.now}
+					onOpen={props.onOpen}
+				/>
+			))}
+		</Section>
+	)
+}
+
+function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
+	const loaded = useAtomSuspense(bookingsAtom, {includeFailure: true})
+	const refresh = useAtomRefresh(bookingsAtom)
+	const paste = useAtomSet(clipboard.atom.send)
+	const [pastOpen, setPastOpen] = useState(false)
+
+	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
+	const adding = pipe(
+		useMachineResult(AtomMachine.select(clipboard.atom, 'Answering')),
+		subject6905 => AsyncResult.getOrElse(subject6905, Option.none),
+		subject6888 => Option.exists(subject6888, current => current.save)
+	)
+	const blocking = Option.getOrUndefined(blockingFailure(loaded))
+	if (blocking !== undefined) return <FailureContent cause={blocking} name="Trips" onRetry={refresh} />
+	const bookings = AsyncResult.getOrElse(loaded, () => [])
+	const matches = matchesOf(bookings, props.searched)
 	const current = Array.filter(matches, booking => startOf(booking) - 6 * HOUR <= now && endOf(booking) + HOUR >= now)
 	const ahead = Array.filter(matches, booking => startOf(booking) - 6 * HOUR > now)
 	const past = Array.reverse(
@@ -249,14 +282,19 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 								<BookingRow
 									key={booking.id}
 									booking={booking}
-									countdown={pipe(ahead, pipelineSubject9506 => Array.get(pipelineSubject9506, position - 1), pipelineSubject9493 => Option.match(pipelineSubject9493, {
-										onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-										onSome: before =>
-											Boolean.match(daysOf(before) === daysOf(booking), {
-												onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-												onTrue: () => ({_tag: 'SameDay'}) as const
+									countdown={pipe(
+										ahead,
+										pipelineSubject9506 => Array.get(pipelineSubject9506, position - 1),
+										pipelineSubject9493 =>
+											Option.match(pipelineSubject9493, {
+												onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+												onSome: before =>
+													Boolean.match(daysOf(before) === daysOf(booking), {
+														onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+														onTrue: () => ({_tag: 'SameDay'}) as const
+													})
 											})
-									}))}
+									)}
 									now={now}
 									onOpen={props.onOpen}
 								/>
@@ -268,19 +306,13 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 							<Empty systemImage="ticket" label="Nothing coming up" />
 						</Section>
 					)}
-					{Array.isReadonlyArrayNonEmpty(past) && (
-						<Section title="Past" isExpanded={pastOpen} onIsExpandedChange={setPastOpen}>
-							{Array.map(past, booking => (
-								<BookingRow
-									key={booking.id}
-									booking={booking}
-									countdown={{_tag: 'SameDay'}}
-									now={now}
-									onOpen={props.onOpen}
-								/>
-							))}
-						</Section>
-					)}
+					<PastBookings
+						bookings={past}
+						expanded={pastOpen}
+						now={now}
+						onExpandedChange={setPastOpen}
+						onOpen={props.onOpen}
+					/>
 				</ItemGroup>
 			)}
 		</VStack>

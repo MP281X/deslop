@@ -27,7 +27,7 @@ import {TestClock} from 'effect/testing'
 
 import {Auth, HttpAuth, layerMcpAuth} from './auth.ts'
 
-import {AiGateway, AiUnavailable} from '#server/ai.ts'
+import {AiGateway, AiUnavailableError} from '#server/ai.ts'
 import {Sessions} from '#server/sessions.ts'
 import {layerDataStore} from '#server/store.ts'
 import {AccessClaims, AuthError, CurrentUser, DEVELOPER, RpcAuth, SESSION_COOKIE, needsSignIn} from '#shared/auth.ts'
@@ -46,7 +46,8 @@ const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign:
 	const down = yield* Ref.make(false)
 	const sign: Sign = Effect.fnUntraced(function* (claims = {}) {
 		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-		const signed = yield* Effect.provideService(Jwt.sign(
+		const signed = yield* Effect.provideService(
+			Jwt.sign(
 				AnyClaims,
 				{
 					aud: 'deslop',
@@ -61,7 +62,10 @@ const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign:
 				},
 				key,
 				{kid: 'fixture', typ: 'at+jwt'}
-			), Signature.Signature, signature)
+			),
+			Signature.Signature,
+			signature
+		)
 		return Redacted.value(signed)
 	})
 	const client = HttpClient.make(request =>
@@ -91,7 +95,11 @@ function layerAuth(client: HttpClient.HttpClient, settings: Record<string, strin
 			Layer.mergeAll(
 				Layer.provide(
 					Layer.unwrap(
-						pipe(FileSystem.FileSystem, Effect.flatMap(fs => fs.makeTempDirectoryScoped()), Effect.map(layerDataStore))
+						pipe(
+							FileSystem.FileSystem,
+							Effect.flatMap(fs => fs.makeTempDirectoryScoped()),
+							Effect.map(layerDataStore)
+						)
 					),
 					NodeServices.layer
 				),
@@ -106,7 +114,7 @@ function layerAuth(client: HttpClient.HttpClient, settings: Record<string, strin
 it.effect('ends a running RPC once its credentials are rejected, not while the issuer is down', () =>
 	Effect.scoped(
 		Effect.gen(function* () {
-			const verdict = yield* Ref.make<AuthError['error'] | 'valid'>('valid')
+			const verdict = yield* Ref.make<NonNullable<AuthError['error']> | 'valid'>('valid')
 			const user = Effect.flatMap(Ref.get(verdict), current => {
 				if (current === 'valid') return Effect.succeed({id: 'github:42', name: 'octocat'})
 				return Effect.fail(AuthError.make({error: current, message: 'rejected'}))
@@ -138,13 +146,19 @@ const serve = Effect.fnUntraced(function* (client: HttpClient.HttpClient) {
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
-				pipe(pipe(
-							HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})),
-							Layer.provide(HttpAuth.layer)
-						), pipelineSubject4599 => Layer.merge(pipelineSubject4599, pipe(
-							HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
-							Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
-						)), pipelineSubject4585 => Layer.provide(pipelineSubject4585, layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))),
+				pipe(
+					Layer.provide(HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})), HttpAuth.layer),
+					pipelineSubject4599 =>
+						Layer.merge(
+							pipelineSubject4599,
+							Layer.provide(
+								HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
+								layerMcpAuth('https://scope.mp281x.xyz/mcp')
+							)
+						),
+					pipelineSubject4585 =>
+						Layer.provide(pipelineSubject4585, layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
+				),
 				{disableLogger: true}
 			)
 		),
@@ -232,7 +246,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const sessions = Context.get(context, Sessions)
 			const gateway = Context.get(context, AiGateway)
 			const missing = yield* Effect.flip(gateway.authorize('github:42'))
-			assert.instanceOf(missing, AiUnavailable)
+			assert.instanceOf(missing, AiUnavailableError)
 			// oxlint-disable-next-line @deslop/coding-standards/no-error-message-assertion -- The instruction is the public recovery contract.
 			assert.equal(missing.message, 'Open Stash once so it can use AI for you')
 			const bearer = yield* issuerService.sign({azp: 'Claude Code', sid: 'bearer'})
@@ -242,15 +256,13 @@ it.layer(NodeCrypto.layer)(test => {
 					HttpClientResponse.fromWeb(request, Response.json({authorization: request.headers['authorization']}))
 				)
 			)
-			function authorization() {
-				return Effect.gen(function* () {
-					return yield* (yield* (yield* gateway.authorize('github:42'))(echo).get(
-						'https://gateway.mp281x.xyz/ai/anthropic/v1/messages'
-					)).json
-				})
-			}
+			const authorization = Effect.fnUntraced(function* () {
+				return yield* (yield* (yield* gateway.authorize('github:42'))(echo).get(
+					'https://gateway.mp281x.xyz/ai/anthropic/v1/messages'
+				)).json
+			})
 			assert.deepEqual(yield* authorization(), {authorization: `Bearer ${bearer}`})
-			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:43')), AiUnavailable)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:43')), AiUnavailableError)
 			const first = yield* sessions.start({
 				client_id: 'stash',
 				code: 'first',
@@ -271,13 +283,13 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.equal(yield* Ref.get(refreshes), 1)
 			yield* sessions.end(first)
 			yield* sessions.end(second)
-			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailable)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailableError)
 			yield* auth.user(
 				Headers.fromInput({
 					authorization: `Bearer ${yield* issuerService.sign({exp: Math.floor((yield* Clock.currentTimeMillis) / 1000) + 59})}`
 				})
 			)
-			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailable)
+			assert.instanceOf(yield* Effect.flip(gateway.authorize('github:42')), AiUnavailableError)
 		})
 	)
 
@@ -340,26 +352,40 @@ it.layer(NodeCrypto.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
 			const client = HttpClient.make(request =>
-				pipe(calls, Ref.update(count => count + 1), pipelineSubject13274 => Effect.as(pipelineSubject13274, HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))))
+				pipe(
+					calls,
+					Ref.update(count => count + 1),
+					pipelineSubject13274 =>
+						Effect.as(pipelineSubject13274, HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401})))
+				)
 			)
 			const web = yield* Effect.acquireRelease(
 				Effect.sync(() =>
 					HttpRouter.toWebHandler(
-						pipe(pipe(
-									HttpRouter.add(
-										'GET',
-										'/me',
-										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
-									),
-									Layer.provide(HttpAuth.layer)
-								), pipelineSubject13520 => Layer.merge(pipelineSubject13520, pipe(
-									HttpRouter.add(
-										'GET',
-										'/mcp',
-										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
-									),
-									Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
-								)), pipelineSubject13506 => Layer.provide(pipelineSubject13506, layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'}))),
+						pipe(
+							Layer.provide(
+								HttpRouter.add(
+									'GET',
+									'/me',
+									Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
+								),
+								HttpAuth.layer
+							),
+							pipelineSubject13520 =>
+								Layer.merge(
+									pipelineSubject13520,
+									Layer.provide(
+										HttpRouter.add(
+											'GET',
+											'/mcp',
+											Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
+										),
+										layerMcpAuth('https://scope.mp281x.xyz/mcp')
+									)
+								),
+							pipelineSubject13506 =>
+								Layer.provide(pipelineSubject13506, layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'}))
+						),
 						{disableLogger: true}
 					)
 				),

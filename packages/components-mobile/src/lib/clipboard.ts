@@ -7,14 +7,13 @@ import {File, Paths} from 'expo-file-system'
 
 import {activationsAtom} from '@deslop/runtime/mobile/activations'
 
-import {alertFailure, clipboardChangeCount, writeAtomically} from '#lib/utils.ts'
+import {alertFailure, clipboardChangeCount, writeAtomically} from '#lib/device.ts'
 
 export type ClipboardKind = typeof ClipboardKind.Type
 const ClipboardKind = Schema.Literals(['image', 'link', 'text'])
 
 export type ClipboardCopy = {readonly count: string; readonly kind: ClipboardKind}
-type Offered = ClipboardCopy
-type Answer = Offered & {readonly save: boolean}
+type Answer = ClipboardCopy & {readonly save: boolean}
 
 class ClipboardError extends Schema.TaggedError<ClipboardError>()('ClipboardError', {
 	cause: Schema.optional(Schema.Defect()),
@@ -47,7 +46,7 @@ class ClipboardOffer extends Context.Service<
 		readonly detect: Effect.Effect<Option.Option<ClipboardKind>>
 		readonly file: File
 	}
->('@deslop/components-mobile/lib/clipboard/ClipboardOffer') {}
+>()('@deslop/components-mobile/lib/clipboard/ClipboardOffer') {}
 
 // A copy is offered once: the change count it was answered at stays in the app's file, so a return offers only a newer copy.
 const clipboardMachine = Machine.make({
@@ -62,7 +61,7 @@ const clipboardMachine = Machine.make({
 		inspect: Effect.gen(function* () {
 			const offer = yield* ClipboardOffer
 			const count = `${clipboardChangeCount()}`
-			if (offer.file.exists && offer.file.textSync() === count) return Option.none<Offered>()
+			if (offer.file.exists && offer.file.textSync() === count) return Option.none<ClipboardCopy>()
 			return Option.map(yield* offer.detect, kind => ({count, kind}))
 		})
 	},
@@ -173,7 +172,7 @@ export function makeClipboard<E extends {_tag: string; message: string}>(options
 								Boolean.match(options.answered(error), {onFalse: () => Effect.void, onTrue: () => handled})
 							),
 							Effect.andThen(handled),
-							alertFailure(options.labels.notSaved),
+							effect => alertFailure(effect, options.labels.notSaved),
 							Effect.ignore({log: 'Warn', message: 'The clipboard copy was not saved'})
 						)
 					}),
