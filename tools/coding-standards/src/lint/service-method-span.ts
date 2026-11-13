@@ -1,10 +1,11 @@
-import {Array, Option, pipe} from 'effect'
+import {Array, Option, Predicate, String, pipe} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
 
 import {
 	containsNode,
+	childNodes,
 	effectImport,
 	effectMethod,
 	importedMember,
@@ -14,31 +15,19 @@ import {
 	resolveBinding
 } from '#lib/ast.ts'
 
-// These constructors and fully applied combinators return an Effect, unlike predicates, runners and curried combinators.
-function effectCall(context: Context, node: ESTree.Node, inPipe: boolean) {
-	if (node.type === 'MemberExpression') {
-		return importedMember({context, importedName: 'Effect', node, propertyName: 'void'})
-	}
-	if (node.type !== 'CallExpression') return false
-	return Option.exists(effectMethod({context, node}), method => {
-		if (
-			Array.contains(
-				['gen', 'succeed', 'fail', 'die', 'sync', 'suspend', 'try', 'promise', 'tryPromise', 'sleep', 'all'],
-				method
-			)
-		) {
-			return Array.isReadonlyArrayNonEmpty(node.arguments)
-		}
-		if (Array.contains(['map', 'flatMap', 'tap', 'as', 'andThen', 'catch', 'mapError', 'forEach'], method)) {
-			return inPipe || node.arguments.length >= 2
-		}
-		return method === 'asVoid' && (inPipe || Array.isReadonlyArrayNonEmpty(node.arguments))
-	})
+// Predicates and runners inspect or execute Effects; withSpan already supplies the boundary checked below.
+function effectCall(context: Context, node: ESTree.Node): boolean {
+	if (node.type === 'CallExpression') return effectCall(context, node.callee)
+	if (node.type !== 'MemberExpression' || !importedMember({context, importedName: 'Effect', node})) return false
+	return Option.exists(
+		memberName(node),
+		method => method !== 'withSpan' && Option.isNone(String.match(/^(?:is|run)(?:[A-Z]|$)/u)(method))
+	)
 }
 
 function returnsEffect(context: Context, value: ESTree.Node) {
 	const node = resolveBinding(context, value)
-	if (effectCall(context, node, false)) return true
+	if (effectCall(context, node)) return true
 	if (
 		node.type !== 'CallExpression' ||
 		node.callee.type !== 'Identifier' ||
@@ -55,7 +44,44 @@ function returnsEffect(context: Context, value: ESTree.Node) {
 	) {
 		return false
 	}
-	return Option.exists(last, step => effectCall(context, step, true))
+	return Option.exists(last, step => effectCall(context, step))
+}
+
+function returnValues(context: Context, node: ESTree.Node): ESTree.Node[] {
+	if (node.type === 'ReturnStatement') return Option.toArray(Option.fromNullishOr(node.argument))
+	if (isFunction(node)) return []
+	return Array.flatMap(childNodes(context, node), child => returnValues(context, child))
+}
+
+function spanNames(context: Context, value: ESTree.Node): ESTree.Node[] {
+	const node = resolveBinding(context, value)
+	if (node.type === 'ArrowFunctionExpression') {
+		if (node.body.type !== 'BlockStatement') return spanNames(context, node.body)
+		return Array.flatMap(returnValues(context, node.body), returned => spanNames(context, returned))
+	}
+	if (node.type !== 'CallExpression') return []
+	if (Option.contains(effectMethod({context, node}), 'withSpan')) return Option.toArray(Array.get(node.arguments, 1))
+	if (Option.contains(effectMethod({context, node}), 'fn')) return Option.toArray(Array.head(node.arguments))
+	if (node.callee.type === 'CallExpression' && Option.contains(effectMethod({context, node: node.callee}), 'fn')) {
+		return Option.toArray(Array.head(node.callee.arguments))
+	}
+	if (
+		node.callee.type !== 'Identifier' ||
+		!isImportBinding({context, importedName: 'pipe', node: node.callee, source: 'effect'})
+	) {
+		return []
+	}
+	return pipe(
+		node.arguments,
+		Array.last,
+		Option.flatMap(step => {
+			if (step.type !== 'CallExpression' || !Option.contains(effectMethod({context, node: step}), 'withSpan')) {
+				return Option.none()
+			}
+			return Array.head(step.arguments)
+		}),
+		Option.toArray
+	)
 }
 
 function untraced(context: Context, value: ESTree.Node) {
@@ -74,6 +100,7 @@ function untraced(context: Context, value: ESTree.Node) {
 	return Option.none<ESTree.MemberExpression>()
 }
 
+// Tick-rate methods need a site-local reasoned disable because animation-tick tracing is forbidden.
 function effectArrow(context: Context, value: ESTree.Node) {
 	const node = resolveBinding(context, value)
 	if (node.type !== 'ArrowFunctionExpression') return false
@@ -126,7 +153,7 @@ function serviceClass(context: Context, node: ESTree.Node): Option.Option<ESTree
 	return serviceClass(context, node.parent)
 }
 
-// Native effectFnOpportunity does not require public methods to trace; effect and stream values stay with review.
+// Review owns opaque calls, dynamic span names and effect/stream values; native effectFnOpportunity does not require spans.
 export const serviceMethodSpan = defineRule({
 	create: context => ({
 		Property: node => {
@@ -160,6 +187,18 @@ export const serviceMethodSpan = defineRule({
 					if (!factoryReturn(context, node.parent.parent)) return
 				}
 				const name = `${service.id.name}.${method}`
+				Array.forEach(spanNames(context, node.value), literal => {
+					if (literal.type !== 'Literal' || !Predicate.isString(literal.value) || literal.value === name) return
+					context.report({
+						// A bound function can serve other methods, so its shared definition needs a manual fix.
+						fix: fixer => {
+							if (literal.range[0] < node.value.range[0] || literal.range[1] > node.value.range[1]) return
+							return fixer.replaceText(literal, `'${name}'`)
+						},
+						message: `Name this public service span '${name}'.`,
+						node: literal
+					})
+				})
 				Option.match(untraced(context, node.value), {
 					onNone: () => {
 						if (!effectArrow(context, node.value)) return
@@ -167,10 +206,16 @@ export const serviceMethodSpan = defineRule({
 							fix: fixer =>
 								pipe(
 									effectImport({context, fixer, name: 'Effect', node}),
-									Option.map(imports => [
-										...imports,
-										fixer.replaceText(node.value, `Effect.fn('${name}')(${context.sourceCode.getText(node.value)})`)
-									]),
+									Option.map(imports => {
+										const wrapped = `Effect.fn('${name}')(${context.sourceCode.getText(node.value)})`
+										if (node.shorthand) {
+											return [
+												...imports,
+												fixer.replaceText(node, `${context.sourceCode.getText(node.key)}: ${wrapped}`)
+											]
+										}
+										return [...imports, fixer.replaceText(node.value, wrapped)]
+									}),
 									Option.getOrUndefined
 								),
 							message: `Trace this public service method with Effect.fn('${name}').`,

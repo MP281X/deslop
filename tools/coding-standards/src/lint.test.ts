@@ -135,12 +135,23 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'arrow: () => Effect.succeed(3), // reported',
 					'block: () => { return Effect.sync(() => 4) }, // reported',
 					'pipeline: () => pipe(Effect.succeed(1), Effect.map(value => value + 1)), // reported',
+					'fromOption: value => Effect.fromOption(value), // reported',
+					'timeout: effect => pipe(effect, Effect.timeout("1 second")), // reported',
+					'orDie: effect => pipe(effect, Effect.orDie), // reported',
+					'wrongFn: Effect.fn("Other.x")(function* () { return 1 }), // reported',
+					'wrongSpan: () => Effect.withSpan(Effect.succeed(1), "Other.x"), // reported',
+					'wrongPipe: () => pipe(Effect.succeed(1), Effect.withSpan("Other.x")), // reported',
 					'named: Effect.fn("Sessions.named")(function* () { return 5 }),',
 					'spanned: () => Effect.withSpan(Effect.succeed(6), "Sessions.spanned"),',
 					'tracedPipe: () => pipe(Effect.succeed(1), Effect.withSpan("Sessions.tracedPipe")),',
 					'plain: () => 7,',
 					'predicate: value => Effect.isEffect(value),',
-					'callback: () => Effect.map(value => value + 1)',
+					'runner: value => Effect.runSync(value),',
+					'predicatePipe: value => pipe(value, Effect.isEffect),',
+					'runnerPipe: value => pipe(value, Effect.runSync),',
+					'opaque: value => helper(value),',
+					'// oxlint-disable-next-line @deslop/coding-standards/service-method-span -- Cursor animation ticks must not create per-frame spans.',
+					'tick: () => Effect.succeed(1)',
 					'}) })',
 					'}',
 					'class Apps extends Context.Service<Apps>()("Apps", {make: pipe(Effect.gen(function* () {',
@@ -170,7 +181,69 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.write')")
 				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.arrow')")
 				assert.include(fixed.sources[0] ?? '', "Effect.fn('Apps.read')")
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Sessions.wrongFn')")
+				assert.include(fixed.sources[0] ?? '', "'Sessions.wrongSpan'")
+				assert.include(fixed.sources[0] ?? '', "'Sessions.wrongPipe'")
 				assert.deepStrictEqual(reportedLines(fixed, 'service-method-span').reported, [])
+			})
+		)
+		testApi.effect(
+			'fixes shorthand service arrows into properties and converges on the second fix',
+			Effect.fnUntraced(function* () {
+				const name = 'services/svc/service.ts'
+				const source = Array.join(
+					[
+						"import {Context, Effect} from 'effect'",
+						'class Svc extends Context.Service<Svc>()("Svc") {',
+						'static layer = Effect.gen(function* () {',
+						'const read = () => Effect.succeed(1)',
+						'return Svc.of({read}) // reported',
+						'})',
+						'}'
+					],
+					'\n'
+				)
+				const before = yield* lintSource({[name]: source})
+				assert.deepStrictEqual(
+					reportedLines(before, 'service-method-span').reported,
+					reportedLines(before, 'service-method-span').marked
+				)
+				const first = yield* lintSource({[name]: source}, ['--fix'])
+				assert.include(first.sources[0] ?? '', "read: Effect.fn('Svc.read')(read)")
+				assert.deepStrictEqual(reportedLines(first, 'service-method-span').reported, [])
+				const second = yield* lintSource({[name]: first.sources[0] ?? ''}, ['--fix'])
+				assert.deepStrictEqual(second.sources, first.sources)
+				assert.deepStrictEqual(customCodes(second.stdout), customCodes(first.stdout))
+			})
+		)
+		testApi.effect(
+			'reports a mismatched aliased span without renaming its shared function',
+			Effect.fnUntraced(function* () {
+				const name = 'services/svc/service.ts'
+				const fixed = yield* lintSource(
+					{
+						[name]: Array.join(
+							[
+								"import {Context, Effect} from 'effect'",
+								'const shared = Effect.fn("Other.read")(() => Effect.succeed(1))',
+								'class Svc extends Context.Service<Svc>()("Svc") {',
+								'static layer = Effect.gen(function* () { return Svc.of({read: shared}) })',
+								'}'
+							],
+							'\n'
+						)
+					},
+					['--fix']
+				)
+				assert.include(fixed.sources[0] ?? '', "Effect.fn('Other.read')")
+				assert.lengthOf(
+					Array.filter(
+						fixed.stdout.diagnostics,
+						diagnostic => diagnostic.code === '@deslop/coding-standards(service-method-span)'
+					),
+					1
+				)
+				assert.deepStrictEqual((yield* lintSource({[name]: fixed.sources[0] ?? ''}, ['--fix'])).sources, fixed.sources)
 			})
 		)
 		testApi.effect(
