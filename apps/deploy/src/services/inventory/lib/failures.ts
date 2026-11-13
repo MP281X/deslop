@@ -39,12 +39,12 @@ export function exitFailure(status: number) {
 // Why each failed unit stopped and when, by unit, from `systemctl show -p Id,Result,ExecMainCode,ExecMainStatus,StateChangeTimestamp --timestamp=unix`.
 export function unitFailures(text: string) {
 	return Record.fromEntries(
-		Array.map(Array.filter(String.split(String.trim(text), /\n\s*\n/u), String.isNonEmpty), block => {
+		pipe(String.trim(text), String.split(/\n\s*\n/u), pipelineSubject1579 => Array.filter(pipelineSubject1579, String.isNonEmpty), Array.map(block => {
 			const fields = Record.fromEntries(
-				Array.map(Array.filter(String.split(block, '\n'), String.includes('=')), line => {
+				pipe(block, String.split('\n'), pipelineSubject1769 => Array.filter(pipelineSubject1769, String.includes('=')), Array.map(line => {
 					const [key, ...value] = String.split(line, '=')
 					return [key, Array.join(value, '=')] as const
-				})
+				}))
 			)
 			return [
 				fields['Id'] ?? '',
@@ -61,6 +61,6 @@ export function unitFailures(text: string) {
 					)
 				}
 			] as const
-		})
+		}))
 	)
 }

@@ -132,21 +132,16 @@ export type App<A, E> = {
 }
 
 function server<A, E>(app: App<A, E>) {
-	const routes = pipe(
-		Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce),
-		Layer.provide(
-			Option.match(Option.fromUndefinedOr(app.middleware), {
+	const routes = Layer.provide(Layer.mergeAll(app.routes, layerRoutes, layerIcon(app.icon), layerWeb, layerAnnounce), Option.match(Option.fromUndefinedOr(app.middleware), {
 				onNone: () => Layer.empty,
 				onSome: middleware => HttpRouter.middleware()(middleware).layer
-			})
-		)
-	)
+			}))
 	return pipe(
 		HttpRouter.serve(
 			pipe(
 				Option.match(Option.fromUndefinedOr(app.auth), {
-					onNone: () => pipe(Layer.merge(routes, layerSessionRoutes), Layer.provide(Auth.layer)),
-					onSome: auth => pipe(routes, Layer.provide(auth))
+					onNone: () => pipe(routes, Layer.merge(layerSessionRoutes), pipelineSubject4548 => Layer.provide(pipelineSubject4548, Auth.layer)),
+					onSome: auth => Layer.provide(routes, auth)
 				}),
 				Layer.provideMerge(AiGateway.layer),
 				Layer.provide(Sessions.layer),

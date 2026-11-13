@@ -88,10 +88,7 @@ export function pageText(html: string, url: URL) {
 	)
 	// Whitespace stays only inside code blocks; elsewhere it is markup indentation.
 	const body = pipe(
-		Array.join(
-			Array.map(root.toArray(), node => markdown($, node, url)),
-			''
-		),
+		pipe(root.toArray(), Array.map(node => markdown($, node, url)), Array.join('')),
 		String.split('```'),
 		Array.map((part, index) =>
 			Boolean.match(index % 2 === 1, {

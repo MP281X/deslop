@@ -199,7 +199,7 @@ export class SignIns extends Context.Service<
 		readonly start: (delivery: Delivery, origin: Origin) => Effect.Effect<{code: string; receiver: string}, AuthError>
 		readonly status: (code: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
->()('@deslop/auth/services/sign-ins/service/SignIns') {
+>('@deslop/auth/services/sign-ins/service/SignIns') {
 	// Sign-ins live in memory: a restart ends the waiting ones, and their apps start again.
 	static readonly layer = Layer.effect(
 		SignIns,
@@ -217,11 +217,11 @@ export class SignIns extends Context.Service<
 			}
 			function watch(code: string) {
 				return Stream.switchMap(SubscriptionRef.changes(open), current =>
-					Option.match(HashMap.get(current, typedCode(code)), {
+					pipe(current, pipelineSubject7337 => HashMap.get(pipelineSubject7337, typedCode(code)), pipelineSubject7324 => Option.match(pipelineSubject7324, {
 						onNone: () =>
 							Stream.succeed(Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()),
 						onSome: signIn => Stream.map(signIn.ref.changes, snapshot => Option.some({signIn, state: snapshot.state}))
-					})
+					}))
 				)
 			}
 			// Only the browser or command that started a sign-in, holding its cookie, receives the answer.
@@ -235,14 +235,11 @@ export class SignIns extends Context.Service<
 			})
 			const delivered = Effect.fnUntraced(function* (signIn: Open, previous: string) {
 				yield* signIn.ref.send({_tag: 'Collect', previous})
-				const done = yield* pipe(
-					Machine.waitFor(
+				const done = yield* Effect.mapError(Machine.waitFor(
 						signIn.ref,
 						snapshot =>
 							!SignInStates.matches(snapshot.state, 'Open') || SignInStates.matches(snapshot.state, 'Open.Failed')
-					),
-					Effect.mapError(() => expired)
-				)
+					), () => expired)
 				return yield* Option.match(SignInStates.get(done.state, 'Delivered'), {
 					onNone: () =>
 						Option.match(SignInStates.get(done.state, 'Open.Failed'), {

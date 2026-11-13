@@ -84,14 +84,11 @@ export const imageAtom = Atom.family((id: Note['id']) =>
 
 export const regenerateAtom = Atom.keepAlive(
 	Atom.fn((id: Note['id'], get) =>
-		pipe(
-			provideRuntimeOnce(
+		(alertFailure('Not Regenerated'))(provideRuntimeOnce(
 				get,
 				RpcClient.runtime,
 				Effect.flatMap(RpcClient, client => client('notes.regenerate', {id}))
-			),
-			alertFailure('Not Regenerated')
-		)
+			))
 	)
 )
 

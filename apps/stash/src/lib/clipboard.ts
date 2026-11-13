@@ -27,8 +27,7 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 	const token = yield* session.bearer
 	const id = randomUUID()
 	const file = new File(Paths.cache, `${id}.jpg`)
-	const response = yield* pipe(
-		Effect.tryPromise({
+	const response = yield* Effect.ensuring(Effect.tryPromise({
 			catch: cause => NotesError.make({cause, message: 'The image could not be sent.'}),
 			try: () => {
 				file.writeSync(String.replace(/^data:[^,]*,/u, '')(image.data), {encoding: 'base64'})
@@ -37,9 +36,7 @@ const saveImage = Effect.fnUntraced(function* (count: string) {
 					httpMethod: 'POST'
 				})
 			}
-		}),
-		Effect.ensuring(Effect.sync(() => file.delete()))
-	)
+		}), Effect.sync(() => file.delete()))
 	if (response.status >= 300) {
 		return yield* NotesError.make({message: `The server refused the image with status ${response.status}.`})
 	}
@@ -82,7 +79,6 @@ export const clipboard = makeClipboard({
 	save: (copy, get) =>
 		Boolean.match(copy.kind === 'image', {
 			onFalse: () => provideRuntimeOnce(get, RpcClient.runtime, saveLink(copy.count)),
-			// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The RPC runtime exposes only its client, so the upload brings its own fetch.
 			onTrue: () => Effect.provide(saveImage(copy.count), FetchHttpClient.layer)
 		})
 })

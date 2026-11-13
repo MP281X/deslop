@@ -26,8 +26,7 @@ function reading(time: number) {
 it.effect(
 	'collects names with spaces, parent/RSS, cwd labels and masked arguments, and tolerates an exited process',
 	() =>
-		pipe(
-			Effect.gen(function* () {
+		Effect.provideService(Effect.gen(function* () {
 				const collected = yield* processes
 				assert.strictEqual(collected.total, 800)
 				assert.deepStrictEqual(collected.records, [
@@ -72,10 +71,7 @@ it.effect(
 						ticks: 10
 					}
 				])
-			}),
-			Effect.provideService(
-				FileSystem.FileSystem,
-				FileSystem.makeNoop({
+			}), FileSystem.FileSystem, FileSystem.makeNoop({
 					readDirectory: () => Effect.succeed(['42', '7', '99', 'self']),
 					readFileString: Effect.fnUntraced(function* (path) {
 						if (path === '/proc/stat') return 'cpu 100 0 100 600 0 0 0 0\n'
@@ -106,9 +102,7 @@ it.effect(
 							module: 'fixture'
 						})
 					})
-				})
-			)
-		)
+				}))
 )
 
 const labelCases = [

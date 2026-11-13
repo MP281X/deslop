@@ -58,7 +58,7 @@ export class Gateway extends Context.Service<
 		// A removed connection's tools leave the registry, and clients hear that their list changed.
 		readonly removed: Effect.Effect<void, AuthError>
 	}
->()('@deslop/gateway/services/gateway/service/Gateway') {
+>('@deslop/gateway/services/gateway/service/Gateway') {
 	static readonly layer = Layer.effect(Gateway)(
 		Effect.gen(function* () {
 			const registry = yield* McpServer.McpServer
@@ -101,10 +101,7 @@ export class Gateway extends Context.Service<
 			})
 			const updateVisible = Effect.fnUntraced(function* (server: ConnectionState, names: HashSet.HashSet<string>) {
 				const changed = yield* Ref.modify(visible, current => {
-					const next = HashSet.union(
-						HashSet.filter(current, name => !String.startsWith(`${server.id}__`)(name)),
-						names
-					)
+					const next = pipe(current, HashSet.filter(name => !String.startsWith(`${server.id}__`)(name)), pipelineSubject4540 => HashSet.union(pipelineSubject4540, names))
 					return [!Equal.equals(current, next), next]
 				})
 				if (changed) yield* registry.notifications['notifications/tools/list_changed']({})
@@ -151,14 +148,11 @@ export class Gateway extends Context.Service<
 								onUnauthorized: () =>
 									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider contract requires a Promise<void>.
 									Effect.runPromise(
-										pipe(
-											Effect.gen(function* () {
+										Effect.provideContext(Effect.gen(function* () {
 												if (server.mode === 'oauth') {
 													upstream.token = yield* connections.token(server.id, server.generation, upstream.token)
 												}
-											}),
-											Effect.provideContext(context)
-										)
+											}), context)
 									),
 								token: () =>
 									// oxlint-disable-next-line no-restricted-properties -- The MCP SDK's AuthProvider.token contract requires a Promise<string>.
@@ -203,9 +197,7 @@ export class Gateway extends Context.Service<
 				},
 				// The agent reads the failure as a tool result; the trace keeps its cause.
 				(effect, server) =>
-					Effect.catch(
-						Effect.tapCause(effect, cause => Effect.logWarning(`${server.name} call failed`, cause)),
-						cause =>
+					pipe(effect, Effect.tapCause(cause => Effect.logWarning(`${server.name} call failed`, cause)), Effect.catch(cause =>
 							Effect.succeed(
 								McpSchema.CallToolResult.make({
 									content: [
@@ -216,27 +208,22 @@ export class Gateway extends Context.Service<
 									],
 									isError: true
 								})
-							)
-					)
+							)))
 			)
 			const discover = Effect.fnUntraced(function* (server: ConnectionState, headers: Headers.Headers) {
 				if (server.status !== 'Connected') {
 					return yield* updateVisible(server, HashSet.empty())
 				}
-				const found = yield* pipe(
-					withClient(server, headers, client =>
+				const found = yield* Effect.timeout(withClient(server, headers, client =>
 						pipe(
 							Effect.tryPromise({
 								catch: connectionFailure(server.name),
 								try: signal => client.listTools(undefined, {signal})
 							}),
 							Effect.flatMap(result =>
-								pipe(
-									Schema.decodeUnknownEffect(RemoteTools)(
+								Effect.map(Schema.decodeUnknownEffect(RemoteTools)(
 										Array.filter(result.tools, tool => tool.execution?.taskSupport !== 'required')
-									),
-									Effect.map(tools => ({tools, upstreamTools: result.tools}))
-								)
+									), tools => ({tools, upstreamTools: result.tools}))
 							),
 							Effect.mapBoth({
 								onFailure: connectionFailure(server.name),
@@ -247,9 +234,7 @@ export class Gateway extends Context.Service<
 								})
 							})
 						)
-					),
-					Effect.timeout('20 seconds')
-				)
+					), '20 seconds')
 				const latest = yield* connections.get(server.id)
 				if (latest.generation !== server.generation || latest.status === 'Not connected') {
 					return yield* AuthError.make({

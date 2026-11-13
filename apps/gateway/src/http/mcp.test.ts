@@ -78,10 +78,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 						{part: 'call', value: result}
 					],
 					entry =>
-						pipe(
-							Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(entry.value),
-							Effect.flatMap(encoded => fs.writeFileString(`${capture}/${name}.${entry.part}.json`, encoded))
-						),
+						Effect.flatMap(Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(entry.value), encoded => fs.writeFileString(`${capture}/${name}.${entry.part}.json`, encoded)),
 					{concurrency: 1, discard: true}
 				)
 			}
@@ -102,10 +99,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 											tool: McpSchema.Tool.make({
 												inputSchema: {type: 'object'},
 												name: entry.name,
-												...Option.match(
-													Option.liftPredicate(OUTPUT, () => entry.name !== 'document'),
-													{onNone: () => ({}), onSome: outputSchema => ({outputSchema})}
-												)
+												...pipe(OUTPUT, Option.liftPredicate(() => entry.name !== 'document'), pipelineSubject3723 => Option.match(pipelineSubject3723, {onNone: () => ({}), onSome: outputSchema => ({outputSchema})}))
 											})
 										})
 									}
@@ -120,15 +114,12 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 			const auth = Layer.succeedContext(
 				Auth.makeContext(Auth.of({token: () => Effect.succeed('unused'), user: () => Effect.succeed(DEVELOPER)}))
 			)
-			const platform = pipe(
-				Layer.mergeAll(
+			const platform = Layer.provideMerge(Layer.mergeAll(
 					ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://gateway.example'})),
 					Layer.succeed(FetchHttpClient.Fetch, (input, init) => upstream.handler(new Request(input, init))),
 					layerDataStore(directory),
 					auth
-				),
-				Layer.provideMerge(NodeServices.layer)
-			)
+				), NodeServices.layer)
 			const services = yield* Layer.buildWithMemoMap(
 				pipe(
 					Gateway.layer,
@@ -159,10 +150,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer))('Gateway real MCP
 					() => new Client({name: 'Relay acceptance client', version: '1'}, {versionNegotiation: {mode: 'auto'}})
 				),
 				value =>
-					pipe(
-						Effect.promise(() => transport.terminateSession()),
-						Effect.andThen(Effect.promise(() => value.close()))
-					)
+					Effect.andThen(Effect.promise(() => transport.terminateSession()), Effect.promise(() => value.close()))
 			)
 			yield* Effect.promise(() => client.connect(transport))
 

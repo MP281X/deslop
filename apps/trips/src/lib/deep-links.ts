@@ -26,17 +26,14 @@ function tapped(response: NotificationResponse | null) {
 
 export const openedAtom = Atom.keepAlive(
 	Atom.make(
-		pipe(
-			Stream.merge(
-				Stream.fromEffect(
+		pipe(Stream.fromEffect(
 					Effect.map(
 						Effect.promise(() => Linking.getInitialURL()),
 						url =>
 							// A notification tapped while the app was closed launches it without a URL.
 							Option.orElse(bookingIn(url), () => tapped(getLastNotificationResponse()))
 					)
-				),
-				Stream.callback<Option.Option<string>>(queue =>
+				), pipelineSubject991 => Stream.merge(pipelineSubject991, Stream.callback<Option.Option<string>>(queue =>
 					Effect.gen(function* () {
 						yield* Effect.acquireRelease(
 							Effect.sync(() =>
@@ -53,9 +50,6 @@ export const openedAtom = Atom.keepAlive(
 							subscription => Effect.sync(() => subscription.remove())
 						)
 					})
-				)
-			),
-			Stream.flatMap(opened => Stream.fromIterable(Option.toArray(opened)))
-		)
+				)), Stream.flatMap(opened => Stream.fromIterable(Option.toArray(opened))))
 	)
 )

@@ -69,18 +69,12 @@ function layerSignIn(issuer: string) {
 				) => Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>
 			) {
 				return Effect.flatMap(HttpServerRequest.HttpServerRequest, request =>
-					Option.match(
-						Option.filter(
-							Option.liftThrowable(
+					pipe(Option.liftThrowable(
 								() => new URL(new URL(request.url, canonical).searchParams.get('next') ?? canonical, canonical)
-							)(),
-							next => next.origin === canonical
-						),
-						{
+							)(), Option.filter(next => next.origin === canonical), pipelineSubject2555 => Option.match(pipelineSubject2555, {
 							onNone: () => Effect.succeed(HttpServerResponse.empty({status: 400})),
 							onSome: next => handle(request, next)
-						}
-					)
+						}))
 				)
 			}
 			yield* router.add(
@@ -191,10 +185,7 @@ function layerSignIn(issuer: string) {
 			yield* router.add(
 				'POST',
 				'/auth/sign-out',
-				Effect.as(
-					Effect.flatMap(HttpServerRequest.HttpServerRequest, request => ended(request.headers)),
-					HttpServerResponse.empty({status: 204})
-				)
+				pipe(HttpServerRequest.HttpServerRequest, Effect.flatMap(request => ended(request.headers)), pipelineSubject6848 => Effect.as(pipelineSubject6848, HttpServerResponse.empty({status: 204})))
 			)
 		})
 	)

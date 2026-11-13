@@ -55,10 +55,7 @@ function randomIndex(length: number) {
 
 function randomSeed() {
 	const alphabet = '0123456789abcdef'
-	return pipe(
-		Array.makeBy(6, () => alphabet[randomIndex(String.length(alphabet))] ?? '0'),
-		Array.join('')
-	)
+	return pipe(6, Array.makeBy(() => alphabet[randomIndex(String.length(alphabet))] ?? '0'), Array.join(''))
 }
 
 function pickNextCursorColor(currentColor: PortfolioColor) {
@@ -78,7 +75,7 @@ function getIdentity() {
 
 	const seed = randomSeed()
 
-	const next = {color, id: `v-${seed}`, name: `Guest-${pipe(seed, String.slice(0, 3))}`}
+	const next = {color, id: `v-${seed}`, name: `Guest-${(String.slice(0, 3))(seed)}`}
 
 	sessionStorage.setItem('portfolio.id', next.id)
 	sessionStorage.setItem('portfolio.name', next.name)
@@ -99,23 +96,16 @@ const portfolioAtom = Atom.keepAlive(
 				(scene, update) => {
 					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						Array.map(Array.appendAll(scene.visitors, scene.bots), visitor =>
-							Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y)
-						)
+						pipe(scene.visitors, pipelineSubject3301 => Array.appendAll(pipelineSubject3301, scene.bots), Array.map(visitor =>
+							Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y)))
 					)
 					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
 					const next = {
 						bots: update.bots,
-						trails: Array.takeRight(
-							Array.appendAll(
-								scene.trails,
-								Array.filter(
+						trails: pipe(scene.trails, pipelineSubject3643 => Array.appendAll(pipelineSubject3643, Array.filter(
 									cursors,
 									visitor => !HashSet.has(positions, Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
-								)
-							),
-							180
-						),
+								)), Array.takeRight(180)),
 						visitors: update.visitors
 					}
 					return Tuple.make(next, [next])
@@ -136,10 +126,7 @@ const sendCursorAtom = RpcClient.runtime.atom(get =>
 		Stream.buffer({capacity: 1, strategy: 'sliding'}),
 		Stream.throttle({cost: Array.length, duration: '50 millis', units: 1}),
 		Stream.runForEach(cursor =>
-			Effect.ignore(
-				Effect.flatMap(RpcClient, client => client('presence.move', {...cursor, id: identity.id})),
-				{log: 'Debug', message: 'The cursor move did not reach the room'}
-			)
+			pipe(RpcClient, Effect.flatMap(client => client('presence.move', {...cursor, id: identity.id})), pipelineSubject4717 => Effect.ignore(pipelineSubject4717, {log: 'Debug', message: 'The cursor move did not reach the room'}))
 		)
 	)
 )
@@ -495,10 +482,7 @@ function ShortcutsOverlay(input: {open: boolean; onOpenChange: (open: boolean) =
 							</KbdGroup>
 						}
 						label="Jump to a section"
-						title={pipe(
-							Array.map(SECTION_NAMES, (name, index) => `${index + 1} ${name}`),
-							Array.join(' · ')
-						)}
+						title={pipe(SECTION_NAMES, Array.map((name, index) => `${index + 1} ${name}`), Array.join(' · '))}
 					/>
 					<ShortcutRow keys={<Kbd>r</Kbd>} label="Change cursor color" />
 					<ShortcutRow keys={<Kbd>?</Kbd>} label="Toggle this panel" />
@@ -515,10 +499,7 @@ function VisitorCount(props: {visitors: PortfolioVisitors}) {
 			<span
 				className="size-1.5 rounded-full bg-(--identity-color)"
 				style={{
-					'--identity-color': pipe(
-						Array.findFirst(props.visitors, visitor => visitor.id === identity.id),
-						Option.match({onNone: () => identity.color, onSome: visitor => visitor.color})
-					)
+					'--identity-color': pipe(props.visitors, Array.findFirst(visitor => visitor.id === identity.id), pipelineSubject17720 => Option.match(pipelineSubject17720, {onNone: () => identity.color, onSome: visitor => visitor.color}))
 				}}
 			/>
 			<span className="text-foreground tabular-nums">{Array.length(props.visitors)}</span>
@@ -594,21 +575,17 @@ function RealtimeLayer(input: {
 
 			<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
 				<OwnCursor
-					cursor={Option.getOrElse(
-						Array.findFirst(portfolio.value.visitors, visitor => visitor.id === identity.id),
-						() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5})
-					)}
+					cursor={pipe(portfolio.value.visitors, Array.findFirst(visitor => visitor.id === identity.id), Option.getOrElse(() => ({color: identity.color, id: identity.id, name: identity.name, x: 0.5, y: 0.5})))}
 					viewport={input.viewport}
 				/>
 			</div>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-					{Array.map(Array.appendAll(portfolio.value.visitors, portfolio.value.bots), cursor =>
+					{pipe(portfolio.value.visitors, pipelineSubject21034 => Array.appendAll(pipelineSubject21034, portfolio.value.bots), Array.map(cursor =>
 						Boolean.match(cursor.id === identity.id, {
 							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
 							onTrue: () => null
-						})
-					)}
+						})))}
 				</div>
 			</div>
 

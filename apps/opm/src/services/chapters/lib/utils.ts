@@ -44,16 +44,8 @@ export function keyOf(chapter: Pick<ChapterItem, 'number' | 'series'>) {
 export function revisionCandidates(posts: Post[], current: readonly Chapter[], deadLinks: readonly DeadLink[]) {
 	const known = HashMap.fromIterable(Array.map(current, chapter => [keyOf(chapter), chapter] as const))
 	const dead = HashSet.fromIterable(Array.map(deadLinks, item => `${item.key}\u0000${item.link}`))
-	return Array.filterMap(
-		Array.sort(
-			posts,
-			Order.mapInput(Order.Number, (post: Post) => post.postedAt)
-		),
-		post =>
-			Array.match(
-				Array.filter(
-					post.links,
-					link =>
+	return pipe(posts, pipelineSubject1709 => Array.sort(pipelineSubject1709, Order.mapInput(Order.Number, (post: Post) => post.postedAt)), Array.filterMap(post =>
+			pipe(post.links, Array.filter(link =>
 						!HashSet.has(dead, `${keyOf(post)}\u0000${link}`) &&
 						Option.match(HashMap.get(known, keyOf(post)), {
 							onNone: () => true,
@@ -61,11 +53,7 @@ export function revisionCandidates(posts: Post[], current: readonly Chapter[], d
 								post.revised &&
 								post.postedAt > Option.getOrElse(item.revisedAt, () => item.postedAt) &&
 								link !== item.source
-						})
-				),
-				{onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})}
-			)
-	)
+						})), pipelineSubject1846 => Array.match(pipelineSubject1846, {onEmpty: () => Result.failVoid, onNonEmpty: links => Result.succeed({links, post})}))))
 }
 
 // The whole numbers between a series' lowest and highest known chapter that no chapter fills, such as 231 and 232 before a source exists.
@@ -118,9 +106,7 @@ function seriesFromTags(tags: string) {
 
 // A Reddit post that links one English chapter; raws and discussion posts are not releases.
 export function postFrom(entry: {content: string; published: string; title: string}) {
-	return pipe(
-		Option.fromNullishOr(TITLE.exec(String.trim(entry.title))?.groups),
-		Option.flatMap(groups =>
+	return Option.flatMap(Option.fromNullishOr(TITLE.exec(String.trim(entry.title))?.groups), groups =>
 			Option.all({
 				links: Option.liftPredicate(
 					Array.dedupe(Array.map(Array.fromIterable(String.matchAll(CUBARI_LINKS)(entry.content)), match => match[0])),
@@ -130,9 +116,7 @@ export function postFrom(entry: {content: string; published: string; title: stri
 				postedAt: Option.map(DateTime.make(entry.published), DateTime.toEpochMillis),
 				revised: Option.some(String.includes('revised')(String.toLowerCase(groups['tags'] ?? ''))),
 				series: Option.some(seriesFromTags(groups['tags'] ?? ''))
-			})
-		)
-	) satisfies Option.Option<Post>
+			})) satisfies Option.Option<Post>
 }
 
 export function seriesOf(link: string) {
@@ -146,7 +130,7 @@ function unwrapped(link: string) {
 	return Option.match(Option.fromNullishOr(WRAPPED.exec(link)?.groups?.['encoded']), {
 		onNone: () => Option.some(link),
 		onSome: encoded =>
-			pipe(Result.getSuccess(Base64Url.decodeString(encoded)), Option.filter(String.startsWith('https://')))
+			Option.filter(Result.getSuccess(Base64Url.decodeString(encoded)), String.startsWith('https://'))
 	})
 }
 

@@ -85,24 +85,16 @@ it.layer(AtomRegistry.layer)(test => {
 				file.writeSync('[{"id":"old"}]')
 				const incoming = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError | string>>()
 				const list = Atom.make(get =>
-					pipe(
-						cachedList(
+					Stream.provideService(cachedList(
 							get,
 							file,
 							Schema.Struct({id: Schema.String}),
-							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)),
+							Stream.mapEffect(Stream.fromQueue(incoming), Function.identity),
 							stream =>
 								Stream.retry(stream, $ =>
-									pipe(
-										$(Schedule.spaced('1 second')),
-										Schedule.while(
-											metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant'
-										)
-									)
+									Schedule.while($(Schedule.spaced('1 second')), metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant')
 								)
-						),
-						Stream.provideService(Clock.Clock, clock)
-					)
+						), Clock.Clock, clock)
 				)
 				const registry = yield* AtomRegistry.AtomRegistry
 				yield* Atom.mount(list)
@@ -155,15 +147,12 @@ it.layer(AtomRegistry.layer)(test => {
 				file.writeSync('[{"id":"old"}]')
 				const incoming = yield* Queue.unbounded<Effect.Effect<{id: string}[], AuthError>>()
 				const list = Atom.make(get =>
-					pipe(
-						cachedList(
+					Stream.provideService(cachedList(
 							get,
 							file,
 							Schema.Struct({id: Schema.String}),
-							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity))
-						),
-						Stream.provideService(Clock.Clock, clock)
-					)
+							Stream.mapEffect(Stream.fromQueue(incoming), Function.identity)
+						), Clock.Clock, clock)
 				)
 				const registry = yield* AtomRegistry.AtomRegistry
 				yield* Atom.mount(list)
@@ -210,7 +199,7 @@ it.layer(AtomRegistry.layer)(test => {
 						get,
 						file,
 						Schema.Struct({id: Schema.String}),
-						pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity))
+						Stream.mapEffect(Stream.fromQueue(incoming), Function.identity)
 					)
 				)
 				const registry = yield* AtomRegistry.AtomRegistry
@@ -242,10 +231,7 @@ it.layer(AtomRegistry.layer)(test => {
 			assert.strictEqual(
 				yield* readClipboard(
 					'1',
-					Effect.as(
-						Ref.update(reads, count => count + 1),
-						'copy'
-					)
+					pipe(reads, Ref.update(count => count + 1), Effect.as('copy'))
 				),
 				'copy'
 			)
@@ -276,7 +262,7 @@ it.layer(AtomRegistry.layer)(test => {
 			const entered = yield* Queue.unbounded<void>()
 			const answer = yield* Queue.unbounded<string>()
 			const reading = yield* Effect.forkChild(
-				readClipboard('1', Effect.andThen(Queue.offer(entered, undefined), Queue.take(answer)))
+				readClipboard('1', pipe(entered, pipelineSubject9315 => Queue.offer(pipelineSubject9315, undefined), pipelineSubject9300 => Effect.andThen(pipelineSubject9300, Queue.take(answer))))
 			)
 			yield* Queue.take(entered)
 			clipboard.count = 2

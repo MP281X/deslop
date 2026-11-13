@@ -92,29 +92,20 @@ export class Organizer extends Context.Service<
 			input: {images: Picture[]; note: Note; tags: TagEntry[]}
 		) => Effect.Effect<Organization, NotesError>
 	}
->()('@deslop/stash/services/notes/lib/organization/Organizer') {
+>('@deslop/stash/services/notes/lib/organization/Organizer') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
 			const gateway = yield* AiGateway
 			const http = yield* HttpClient.HttpClient
 			const model = Effect.fnUntraced(function* (userId: string) {
-				return yield* pipe(
-					AnthropicLanguageModel.make({
+				return yield* Effect.provideServiceEffect(AnthropicLanguageModel.make({
 						config: {max_tokens: 32_000, output_config: {effort: 'high'}},
 						model: 'claude-haiku-5-5'
-					}),
-					Effect.provideServiceEffect(
-						AnthropicClient.AnthropicClient,
-						pipe(
-							AnthropicClient.make({
+					}), AnthropicClient.AnthropicClient, Effect.provideService(AnthropicClient.make({
 								apiUrl: yield* gateway.apiUrl('anthropic'),
 								transformClient: yield* gateway.authorize(userId)
-							}),
-							Effect.provideService(HttpClient.HttpClient, http)
-						)
-					)
-				)
+							}), HttpClient.HttpClient, http))
 			})
 
 			return Organizer.of({
@@ -132,14 +123,8 @@ export class Organizer extends Context.Service<
 									Array.take(input.tags, 150),
 									Option.liftPredicate(Array.isReadonlyArrayNonEmpty),
 									Option.map(entries =>
-										Array.join(
-											Array.map(
-												entries,
-												tag =>
-													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, () => 'no definition yet')}`
-											),
-											'\n'
-										)
+										pipe(entries, Array.map(tag =>
+													`- ${tag.name} (${tag.count}): ${Option.getOrElse(tag.definition, () => 'no definition yet')}`), Array.join('\n'))
 									),
 									Option.getOrElse(() => 'none')
 								)}`,

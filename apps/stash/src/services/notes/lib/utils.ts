@@ -32,17 +32,10 @@ function withoutTrailingPunctuation(link: string): string {
 
 // youtu.be, Shorts, live and embed links and the mobile site all name one video by its id.
 function youTubeId(url: URL) {
-	if (url.hostname === 'youtu.be') return Array.findFirst(String.split(url.pathname, '/'), String.isNonEmpty)
+	if (url.hostname === 'youtu.be') return pipe(url.pathname, String.split('/'), pipelineSubject963 => Array.findFirst(pipelineSubject963, String.isNonEmpty))
 	if (Option.isNone(String.match(/(?:^|\.)youtube\.com$/u)(url.hostname))) return Option.none<string>()
-	return pipe(
-		Option.fromNullishOr(url.searchParams.get('v')),
-		Option.orElse(() =>
-			pipe(
-				String.match(/^\/(?:shorts|live|embed)\/([\w-]+)/u)(url.pathname),
-				Option.flatMap(match => Array.get(match, 1))
-			)
-		)
-	)
+	return Option.orElse(Option.fromNullishOr(url.searchParams.get('v')), () =>
+			Option.flatMap(String.match(/^\/(?:shorts|live|embed)\/([\w-]+)/u)(url.pathname), match => Array.get(match, 1)))
 }
 
 export function sourceFor(url: string) {
@@ -110,10 +103,7 @@ export function tagCounts(notes: readonly Pick<NoteItem, 'tags'>[]) {
 		Record.toEntries,
 		Array.map(entry => ({count: entry[1].length, tag: entry[0]})),
 		Array.sort(
-			Order.combine(
-				Order.mapInput(Order.flip(Order.Number), (entry: {count: number; tag: string}) => entry.count),
-				Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag)
-			)
+			pipe(Order.flip(Order.Number), Order.mapInput((entry: {count: number; tag: string}) => entry.count), pipelineSubject3304 => Order.combine(pipelineSubject3304, Order.mapInput(Order.String, (entry: {count: number; tag: string}) => entry.tag)))
 		)
 	)
 }

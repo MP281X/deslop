@@ -57,10 +57,7 @@ const writeAgent = Effect.fnUntraced(function* (label: string, name: string, com
 	yield* fs.makeDirectory(directory, {recursive: true})
 	yield* fs.writeFileString(
 		file,
-		`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n<key>Label</key><string>${xml(label)}</string>\n<key>ProgramArguments</key>\n<array>\n${Array.join(
-			Array.map(args, arg => `<string>${xml(arg)}</string>`),
-			'\n'
-		)}\n</array>\n<key>EnvironmentVariables</key>\n<dict>\n<key>NODE_ENV</key><string>production</string>\n<key>PATH</key><string>${xml(`${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`)}</string>\n</dict>\n<key>Umask</key><integer>63</integer>\n${schedule}\n</dict>\n</plist>\n`,
+		`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n<key>Label</key><string>${xml(label)}</string>\n<key>ProgramArguments</key>\n<array>\n${pipe(args, Array.map(arg => `<string>${xml(arg)}</string>`), Array.join('\n'))}\n</array>\n<key>EnvironmentVariables</key>\n<dict>\n<key>NODE_ENV</key><string>production</string>\n<key>PATH</key><string>${xml(`${home}/.vite-plus/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`)}</string>\n</dict>\n<key>Umask</key><integer>63</integer>\n${schedule}\n</dict>\n</plist>\n`,
 		{mode: 0o600}
 	)
 	return file
@@ -106,23 +103,11 @@ export const uninstallAgents = Effect.fnUntraced(function* (name: string) {
 })
 
 export function agentStatus(name: string) {
-	return pipe(
-		launchctl('print', `${domain()}/deslop-${name}`),
-		Effect.map(
-			output =>
-				`${Array.join(
-					Array.map(
-						Array.filter(String.split(output, '\n'), line =>
-							Option.isSome(String.match(/^\s*(?:path|state|pid|last exit code|last terminating signal) =/u)(line))
-						),
-						String.trim
-					),
-					'\n'
-				)}\n`
-		)
-	)
+	return Effect.map(launchctl('print', `${domain()}/deslop-${name}`), output =>
+				`${pipe(output, String.split('\n'), Array.filter(line =>
+							Option.isSome(String.match(/^\s*(?:path|state|pid|last exit code|last terminating signal) =/u)(line))), pipelineSubject4395 => Array.map(pipelineSubject4395, String.trim), Array.join('\n'))}\n`)
 }
 
 export function restartAgent(name: string) {
-	return pipe(launchctl('kickstart', '-k', `${domain()}/deslop-${name}`), Effect.timeout('30 seconds'))
+	return Effect.timeout(launchctl('kickstart', '-k', `${domain()}/deslop-${name}`), '30 seconds')
 }

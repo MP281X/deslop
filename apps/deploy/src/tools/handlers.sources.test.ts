@@ -36,7 +36,7 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 }
 
 function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
-	return Effect.flatMap(Layer.build(pipe(ToolHandlers, Layer.provide(Layer.succeed(Fleet, fleet)))), context =>
+	return Effect.flatMap(Layer.build(Layer.provide(ToolHandlers, Layer.succeed(Fleet, fleet))), context =>
 		Effect.provideContext(ToolContracts, context)
 	)
 }

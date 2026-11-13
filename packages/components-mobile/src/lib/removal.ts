@@ -11,7 +11,7 @@ type RemovalError = {_tag: string; message: string}
 class Removal extends Context.Service<
 	Removal,
 	{readonly notRemoved: string; readonly remove: (id: string) => Effect.Effect<void, RemovalError>}
->()('@deslop/components-mobile/lib/removal') {}
+>('@deslop/components-mobile/lib/removal') {}
 
 // A removal reaches the server only after eight seconds; until then its row can restore it.
 export function makeRemoval<E extends {_tag: string; message: string}>(options: {

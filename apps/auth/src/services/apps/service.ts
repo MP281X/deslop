@@ -22,7 +22,7 @@ export class Apps extends Context.Service<
 		readonly catalog: Stream.Stream<readonly App[], AuthError>
 		readonly register: (origin: string) => Effect.Effect<App, AuthError>
 	}
->()('@deslop/auth/services/apps/service/Apps') {
+>('@deslop/auth/services/apps/service/Apps') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({

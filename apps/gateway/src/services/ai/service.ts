@@ -243,9 +243,8 @@ const make = Effect.gen(function* () {
 			}
 			const headers = Headers.removeMany(request.headers, [
 				...FORBIDDEN,
-				...Array.map(String.split(',')(request.headers['connection'] ?? ''), value =>
-					String.toLowerCase(String.trim(value))
-				)
+				...pipe(request.headers['connection'] ?? '', String.split(','), Array.map(value =>
+					String.toLowerCase(String.trim(value))))
 			])
 			const outgoing = {
 				model: Option.none<string>(),
@@ -293,15 +292,11 @@ const make = Effect.gen(function* () {
 				Effect.gen(function* () {
 					const state = {current: entry, pending: ''}
 					const updateUsage = Effect.fnUntraced(function* (text: string) {
-						state.current = yield* pipe(
-							Effect.fromResult(readUsage(text, state.current)),
-							Effect.catch(error =>
+						state.current = yield* Effect.catch(Effect.fromResult(readUsage(text, state.current)), error =>
 								Effect.as(
 									Effect.logWarning('AI usage was malformed; keeping previously read usage', error),
 									state.current
-								)
-							)
-						)
+								))
 					})
 					const sse = String.includes('text/event-stream')(response.headers['content-type'] ?? '')
 					const stream = Stream.fromReadableStream({
@@ -327,7 +322,7 @@ const make = Effect.gen(function* () {
 							Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'})
 						)
 						// A response cut after its last data line never sends the blank line that ends the event, and usage often arrives last.
-						yield* pipe(feed('\n\n'), Effect.ignore({log: 'Warn', message: 'AI usage response could not be read'}))
+						yield* Effect.ignore(feed('\n\n'), {log: 'Warn', message: 'AI usage response could not be read'})
 					} else {
 						const decoder = new TextDecoder()
 						yield* pipe(
@@ -351,47 +346,38 @@ const make = Effect.gen(function* () {
 				...HOP_BY_HOP,
 				'content-encoding',
 				'content-length',
-				...Array.map(String.split(',')(response.headers['connection'] ?? ''), name =>
-					String.toLowerCase(String.trim(name))
-				)
+				...pipe(response.headers['connection'] ?? '', String.split(','), Array.map(name =>
+					String.toLowerCase(String.trim(name))))
 			]
 			return HttpServerResponse.stream(
 				Stream.fromReadableStream({evaluate: () => forward, onError: Function.identity}),
 				{headers: Headers.removeMany(response.headers, responseBlocked), status: response.status}
 			)
 		}),
-		removeKey: (id: string, provider: AiProvider) => pipe(deleteKey({owner: id, provider}), storageFailed),
+		removeKey: (id: string, provider: AiProvider) => (storageFailed)(deleteKey({owner: id, provider})),
 		setKey: (id: string, provider: AiProvider, secret: Redacted.Redacted) =>
-			pipe(
-				saveKey({
+			(storageFailed)(saveKey({
 					last4: String.slice(-4)(Redacted.value(secret)),
 					lastStatus: Option.none(),
 					owner: id,
 					provider,
 					secret
-				}),
-				storageFailed
-			),
+				})),
 		// A person's report now and after each of their recorded calls.
 		usage: (id: string, period: Period) =>
 			usageWindow(period, range =>
-				pipe(
-					sql.reactive(
+				Stream.mapError(sql.reactive(
 						{aiUsage: [id]},
 						Effect.all(
 							{byProvider: listTotals({...range, owner: id}), series: listBuckets({...range, owner: id})},
 							{concurrency: 1}
 						)
-					),
-					Stream.mapError(storageFailure)
-				)
+					), storageFailure)
 			)
 	}
 })
 
-export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>()(
-	'@deslop/gateway/services/ai/service/AiProxy'
-) {
+export class AiProxy extends Context.Service<AiProxy, Effect.Success<typeof make>>('@deslop/gateway/services/ai/service/AiProxy') {
 	// The tables this service owns, made and changed at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({

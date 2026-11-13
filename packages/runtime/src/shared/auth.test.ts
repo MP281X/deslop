@@ -37,7 +37,7 @@ it('names an authorization outage apart from a refusal', () => {
 })
 
 function adminsWith(env: Record<string, string>) {
-	return pipe(adminIds, Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)))
+	return Effect.provideService(adminIds, ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env))
 }
 
 const readFixture = Effect.gen(function* () {
@@ -46,17 +46,11 @@ const readFixture = Effect.gen(function* () {
 	const empty = Atom.make(false)
 	const atom = Atom.make(get => {
 		if (get(empty)) return keepValueThroughOutages(get, Stream.empty)
-		return pipe(
-			keepValueThroughOutages(get, pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)), stream =>
+		return Stream.provideService(keepValueThroughOutages(get, Stream.mapEffect(Stream.fromQueue(incoming), Function.identity), stream =>
 				Stream.retry(stream, $ =>
-					pipe(
-						$(Schedule.spaced('1 second')),
-						Schedule.while(metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant')
-					)
+					Schedule.while($(Schedule.spaced('1 second')), metadata => Schema.is(AuthError)(metadata.input) && metadata.input.error === 'invalid_grant')
 				)
-			),
-			Stream.provideService(Clock.Clock, clock)
-		)
+			), Clock.Clock, clock)
 	})
 	const registry = yield* AtomRegistry.AtomRegistry
 	yield* Atom.mount(atom)
@@ -161,14 +155,11 @@ it.layer(AtomRegistry.layer)(test => {
 				const clock = yield* Clock.Clock
 				const incoming = yield* Queue.unbounded<Effect.Effect<string, string>>()
 				const atom = Atom.make(get =>
-					pipe(
-						keepValueThroughOutages(
+					Stream.provideService(keepValueThroughOutages(
 							get,
-							pipe(Stream.fromQueue(incoming), Stream.mapEffect(Function.identity)),
+							Stream.mapEffect(Stream.fromQueue(incoming), Function.identity),
 							stream => Stream.retry(stream, Schedule.spaced('1 second'))
-						),
-						Stream.provideService(Clock.Clock, clock)
-					)
+						), Clock.Clock, clock)
 				)
 				const registry = yield* AtomRegistry.AtomRegistry
 				yield* Atom.mount(atom)
@@ -219,9 +210,9 @@ it.effect(
 	'keeps an auth failure as it is and wraps anything else',
 	Effect.fnUntraced(function* () {
 		const signIn = AuthError.make({message: 'Sign in first'})
-		assert.strictEqual(yield* Effect.flip(pipe(Effect.fail(signIn), rejected('The app could not be read.'))), signIn)
+		assert.strictEqual(yield* Effect.flip((rejected('The app could not be read.'))(Effect.fail(signIn))), signIn)
 		const cause = {_tag: 'StorageError', message: 'The store is unreadable.'}
-		const error = yield* Effect.flip(pipe(Effect.fail(cause), rejected('The app could not be read.')))
+		const error = yield* Effect.flip((rejected('The app could not be read.'))(Effect.fail(cause)))
 		assert.instanceOf(error, AuthError)
 		assert.strictEqual(error.cause, cause)
 	})

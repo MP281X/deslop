@@ -97,7 +97,7 @@ function changed(chapters: readonly Chapter[], before: readonly Chapter[]) {
 	const previous = HashMap.fromIterable(Array.map(before, chapter => [keyOf(chapter), chapter] as const))
 	return Array.filter(
 		chapters,
-		chapter => !Option.exists(HashMap.get(previous, keyOf(chapter)), item => Equal.equals(item, chapter))
+		chapter => !pipe(previous, pipelineSubject2934 => HashMap.get(pipelineSubject2934, keyOf(chapter)), Option.exists(item => Equal.equals(item, chapter)))
 	)
 }
 
@@ -236,7 +236,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			// The index is read every round, so a gap left by a dead reader link fills once its archive entry appears.
 			yield* Effect.forEach(
 				Series.literals,
-				kind => pipe(backfill(kind), Effect.ignore({log: 'Warn', message: `The ${kind} community index was not read`})),
+				kind => Effect.ignore(backfill(kind), {log: 'Warn', message: `The ${kind} community index was not read`}),
 				{concurrency: 1, discard: true}
 			)
 			// One subreddit that does not answer leaves the other's releases for this round.
@@ -253,18 +253,13 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 										Effect.gen(function* () {
 											const session = `${yield* Random.nextIntBetween(10_000_000, 99_999_999)}`
 											const context = yield* Layer.build(
-												pipe(
-													NodeHttpClient.layerNodeHttpNoAgent,
-													Layer.provide(
-														NodeHttpClient.layerAgentOptions({
+												Layer.provide(NodeHttpClient.layerNodeHttpNoAgent, NodeHttpClient.layerAgentOptions({
 															proxyEnv: {
 																HTTP_PROXY: String.replaceAll('{session}', session)(proxy),
 																HTTPS_PROXY: String.replaceAll('{session}', session)(proxy),
 																NODE_ENV: 'production'
 															}
-														})
-													)
-												)
+														}))
 											)
 											return Context.get(context, HttpClient.HttpClient)
 										})
@@ -302,21 +297,14 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 						Effect.firstSuccessOf(
 							Array.flatMap(entry[1], candidate =>
 								Array.map(candidate.links, link =>
-									pipe(
-										resolve(candidate.post, link, now),
-										Effect.tapError(error =>
+									Effect.tapError(resolve(candidate.post, link, now), error =>
 											Boolean.match(HttpClientError.isHttpClientError(error) && error.response?.status === 404, {
 												onFalse: () => Effect.void,
 												onTrue: () =>
 													Ref.update(deadLinks, links =>
-														Boolean.match(
-															Array.some(links, item => item.key === entry[0] && item.link === link),
-															{onFalse: () => [...links, DeadLink.make({key: entry[0], link})], onTrue: () => links}
-														)
+														pipe(links, Array.some(item => item.key === entry[0] && item.link === link), pipelineSubject11148 => Boolean.match(pipelineSubject11148, {onFalse: () => [...links, DeadLink.make({key: entry[0], link})], onTrue: () => links}))
 													)
-											})
-										)
-									)
+											}))
 								)
 							)
 						),
@@ -329,24 +317,16 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const known = HashSet.fromIterable(Array.map(current, keyOf))
 			const loaded = Array.getSomes(found)
 			yield* pipe(
-				Effect.forEach(
-					Array.filter(loaded, chapter => !HashSet.has(known, keyOf(chapter))),
-					insertChapter,
-					{concurrency: 1, discard: true}
-				),
+				pipe(loaded, Array.filter(chapter => !HashSet.has(known, keyOf(chapter))), pipelineSubject11850 => Effect.forEach(pipelineSubject11850, insertChapter, {concurrency: 1, discard: true})),
 				Effect.andThen(
-					Effect.forEach(
-						Array.filter(loaded, chapter => HashSet.has(known, keyOf(chapter))),
-						chapter =>
+					pipe(loaded, Array.filter(chapter => HashSet.has(known, keyOf(chapter))), pipelineSubject12030 => Effect.forEach(pipelineSubject12030, chapter =>
 							revise({
 								number: chapter.number,
 								pages: chapter.pages,
 								revisedAt: Option.some(chapter.postedAt),
 								series: chapter.series,
 								source: chapter.source
-							}),
-						{concurrency: 1, discard: true}
-					)
+							}), {concurrency: 1, discard: true}))
 				),
 				Reactivity.mutation(['chapters']),
 				sql.withTransaction,
@@ -357,9 +337,8 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 				...Array.flatMap(Series.literals, kind =>
 					Array.map(missingNumbers(saved, kind), number => keyOf({number, series: kind}))
 				),
-				...Array.filterMap(Array.zip(groups, found), pair =>
-					Option.match(pair[1], {onNone: () => Result.succeed(pair[0][0]), onSome: () => Result.failVoid})
-				)
+				...pipe(groups, Array.zip(found), Array.filterMap(pair =>
+					Option.match(pair[1], {onNone: () => Result.succeed(pair[0][0]), onSome: () => Result.failVoid})))
 			])
 			if (Array.isReadonlyArrayNonEmpty(unreadable)) {
 				yield* Effect.logWarning(`No readable source for ${Array.join(unreadable, ', ')}`)
@@ -397,11 +376,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 			// Expo answers with one ticket per message; an uninstalled app's token never works again.
 			const tickets = Array.zip(devices, answer.data)
-			yield* Effect.forEach(
-				Array.filter(tickets, pair => pair[1].details?.error === 'DeviceNotRegistered'),
-				pair => storageFailed(removeDevice(pair[0])),
-				{concurrency: 1, discard: true}
-			)
+			yield* pipe(tickets, Array.filter(pair => pair[1].details?.error === 'DeviceNotRegistered'), pipelineSubject14230 => Effect.forEach(pipelineSubject14230, pair => storageFailed(removeDevice(pair[0])), {concurrency: 1, discard: true}))
 			// Any other refused message keeps the chapter in the outbox for the next round.
 			const refused = Array.filter(
 				tickets,
@@ -409,10 +384,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			)
 			if (Array.isReadonlyArrayNonEmpty(refused)) {
 				return yield* ChaptersError.make({
-					message: `Expo refused ${refused.length} messages: ${Array.join(
-						Array.map(refused, pair => pair[1].details?.error ?? 'unknown'),
-						', '
-					)}`
+					message: `Expo refused ${refused.length} messages: ${pipe(refused, Array.map(pair => pair[1].details?.error ?? 'unknown'), Array.join(', '))}`
 				})
 			}
 		})
@@ -422,14 +394,12 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 			const pending = Array.filter(yield* chapters, chapter => !chapter.notified)
 			if (Array.isReadonlyArrayEmpty(pending)) return
 			const devices = yield* storageFailed(listDevices())
-			yield* Effect.forEach(
-				Array.sort(pending, byNumber),
-				chapter =>
+			yield* pipe(pending, Array.sort(byNumber), pipelineSubject15268 => Effect.forEach(pipelineSubject15268, chapter =>
 					pipe(
-						Effect.forEach(Array.chunksOf(devices, 100), batch => send(chapter, batch), {
+						pipe(devices, Array.chunksOf(100), pipelineSubject15395 => Effect.forEach(pipelineSubject15395, batch => send(chapter, batch), {
 							concurrency: 1,
 							discard: true
-						}),
+						})),
 						Effect.andThen(
 							pipe(
 								announce({notified: true, number: chapter.number, series: chapter.series}),
@@ -439,9 +409,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 						),
 						Effect.andThen(Effect.logInfo(`Announced chapter ${keyOf(chapter)} to ${devices.length} iPhones`)),
 						Effect.ignore({log: 'Warn', message: `Chapter ${keyOf(chapter)} was not announced yet`})
-					),
-				{concurrency: 1, discard: true}
-			)
+					), {concurrency: 1, discard: true}))
 		})
 
 		// Announce in the discovering round, then wait an hour before reading both communities again.
@@ -459,10 +427,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 
 		return {
 			// What the iPhone watches: the whole list first, then only the chapters that changed, after each commit.
-			events: Stream.mapAccum(
-				Stream.mapError(sql.reactive(['chapters'], listChapters()), storageFailure),
-				() => Option.none<readonly Chapter[]>(),
-				(previous, current) =>
+			events: pipe(sql.reactive(['chapters'], listChapters()), pipelineSubject16520 => Stream.mapError(pipelineSubject16520, storageFailure), Stream.mapAccum(() => Option.none<readonly Chapter[]>(), (previous, current) =>
 					[
 						Option.some(current),
 						Option.match(previous, {
@@ -473,8 +438,7 @@ export class Chapters extends Context.Service<Chapters>()('@deslop/opm/services/
 									onNonEmpty: upserted => [{reset: false, upserted} satisfies ChaptersEvent]
 								})
 						})
-					] as const
-			),
+					] as const)),
 			read: Effect.fn('Chapters.read')(function* (update: ReadingUpdate) {
 				yield* pipe(
 					place({

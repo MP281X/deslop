@@ -86,9 +86,7 @@ function Body(props: {text: string}) {
 			spacing={space[3]}
 			modifiers={[frame({alignment: 'leading', maxWidth: Infinity}), tint(primary)]}
 		>
-			{Array.map(
-				Array.filter(Array.map(String.split(props.text, '\n'), String.trim), String.isNonEmpty),
-				(line, index) =>
+			{pipe(props.text, String.split('\n'), pipelineSubject2628 => Array.map(pipelineSubject2628, String.trim), pipelineSubject2615 => Array.filter(pipelineSubject2615, String.isNonEmpty), Array.map((line, index) =>
 					pipe(
 						Match.value(line),
 						// A heading's hashes are followed by a space; a line opening with a #hashtag is text.
@@ -133,8 +131,7 @@ function Body(props: {text: string}) {
 								{line}
 							</Text>
 						))
-					)
-			)}
+					)))}
 		</VStack>
 	)
 }
@@ -326,9 +323,7 @@ function NoteScreen(props: {
 }) {
 	const remove = useAtomSet(removal.removeAtom)
 	const regenerate = useAtomSet(regenerateAtom)
-	return Option.match(
-		Array.findFirst(props.notes, item => item.id === props.id),
-		{
+	return pipe(props.notes, Array.findFirst(item => item.id === props.id), pipelineSubject10185 => Option.match(pipelineSubject10185, {
 			onNone: () => <Empty systemImage="trash" label="Note Deleted" />,
 			onSome: item => (
 				<Toolbar>
@@ -382,8 +377,7 @@ function NoteScreen(props: {
 					</Toolbar.Content>
 				</Toolbar>
 			)
-		}
-	)
+		}))
 }
 
 export function NoteRoute(props: {id: string; onClose: () => void; onTag: (tag: string) => void}) {

@@ -45,10 +45,7 @@ export function ReaderSkeleton(props: {number: number}) {
 
 export function ReaderRoute(props: {chapters: ChapterList; number: number; series: Series; start?: number}) {
 	const reader = `${props.series}:${props.number}`
-	const following = pipe(
-		Array.sort(props.chapters, byNumber),
-		Array.filter(chapter => chapter.series === props.series && chapter.number >= props.number)
-	)
+	const following = pipe(props.chapters, Array.sort(byNumber), Array.filter(chapter => chapter.series === props.series && chapter.number >= props.number))
 	const [state, turn] = useAtom(readerAtom(reader))
 	const visible = Array.take(following, state.shown)
 	const gaveUp = AsyncResult.isSuccess(useAtomValue(unreachableAtom(reader)))

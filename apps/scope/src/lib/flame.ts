@@ -1,4 +1,4 @@
-import {Array, MutableList, Option, Order, Record} from 'effect'
+import {Array, MutableList, Option, Order, Record, pipe} from 'effect'
 
 export type FlameSpan = {depth: number; durationMs: number; offsetMs: number; spanId: string}
 
@@ -6,10 +6,7 @@ type Interval = {end: number; start: number}
 type Lane = {intervals: readonly Interval[]; lastEnd: number}
 
 function byStart<T extends FlameSpan>() {
-	return Order.combine(
-		Order.mapInput(Order.Number, (span: T) => span.offsetMs),
-		Order.mapInput(Order.flip(Order.Number), (span: T) => span.durationMs)
-	)
+	return pipe(Order.Number, Order.mapInput((span: T) => span.offsetMs), pipelineSubject319 => Order.combine(pipelineSubject319, Order.mapInput(Order.flip(Order.Number), (span: T) => span.durationMs)))
 }
 
 // A zero-length span occupies its instant, so it collides with an interval ending there.
@@ -28,14 +25,8 @@ function laneIsFree(lane: Lane, span: FlameSpan) {
 // The root's lane, then one lane per job, with the label's space kept free, then each deeper span in the first lane whose time is free; no two spans in a lane overlap.
 export function lanesOf<T extends FlameSpan>(spans: readonly T[], reservations: Record<string, number> = {}) {
 	const root = Option.getOrUndefined(Array.findFirst(spans, span => span.depth === 0))
-	const jobs = Array.sort(
-		Array.filter(spans, span => span.depth === 1),
-		byStart<T>()
-	)
-	const rest = Array.sort(
-		Array.filter(spans, span => span.depth > 1 || (span.depth === 0 && span !== root)),
-		byStart<T>()
-	)
+	const jobs = pipe(spans, Array.filter(span => span.depth === 1), pipelineSubject1658 => Array.sort(pipelineSubject1658, byStart<T>()))
+	const rest = pipe(spans, Array.filter(span => span.depth > 1 || (span.depth === 0 && span !== root)), pipelineSubject1751 => Array.sort(pipelineSubject1751, byStart<T>()))
 	const placed = MutableList.make<{lane: number; span: T}>()
 	const lanes = MutableList.make<Lane>()
 	function place(span: T, lane: number) {
@@ -43,10 +34,10 @@ export function lanesOf<T extends FlameSpan>(spans: readonly T[], reservations: 
 	}
 	function addLane(span: T) {
 		const interval = {end: span.offsetMs + span.durationMs, start: span.offsetMs}
-		const intervals = Option.match(Record.get(reservations, span.spanId), {
+		const intervals = pipe(reservations, pipelineSubject2196 => Record.get(pipelineSubject2196, span.spanId), pipelineSubject2183 => Option.match(pipelineSubject2183, {
 			onNone: () => Array.make(interval),
 			onSome: reserve => Array.make(interval, {end: interval.end + reserve, start: interval.end})
-		})
+		}))
 		MutableList.append(lanes, {intervals, lastEnd: -Infinity})
 		place(span, lanes.length - 1)
 	}
@@ -55,9 +46,7 @@ export function lanesOf<T extends FlameSpan>(spans: readonly T[], reservations: 
 	Array.forEach(rest, span => {
 		const existing = MutableList.toArray(lanes)
 		const end = span.offsetMs + span.durationMs
-		Option.match(
-			Array.findFirstIndex(existing, lane => laneIsFree(lane, span)),
-			{
+		pipe(existing, Array.findFirstIndex(lane => laneIsFree(lane, span)), pipelineSubject2666 => Option.match(pipelineSubject2666, {
 				onNone: () => {
 					MutableList.append(lanes, {intervals: [], lastEnd: end})
 					place(span, lanes.length - 1)
@@ -66,8 +55,7 @@ export function lanesOf<T extends FlameSpan>(spans: readonly T[], reservations: 
 					Array.getUnsafe(existing, lane).lastEnd = end
 					place(span, lane)
 				}
-			}
-		)
+			}))
 	})
 	return MutableList.toArray(placed)
 }

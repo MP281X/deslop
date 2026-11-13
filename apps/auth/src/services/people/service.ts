@@ -39,7 +39,7 @@ export class People extends Context.Service<
 		readonly register: (github: GitHubUser) => Effect.Effect<CredentialOwner, AuthError>
 		readonly remove: (id: string, user: User) => Effect.Effect<Person, AuthError>
 	}
->()('@deslop/auth/services/people/service/People') {
+>('@deslop/auth/services/people/service/People') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
@@ -181,8 +181,7 @@ export class People extends Context.Service<
 					account: headers =>
 						sql.reactive(
 							['people', 'tokens'],
-							pipe(
-								Effect.gen(function* () {
+							(rejected('Cannot read the account'))(Effect.gen(function* () {
 									const session = yield* tokens.browserSession(headers)
 									return Option.match(yield* currentOwner(session.owner), {
 										onNone: () =>
@@ -194,9 +193,7 @@ export class People extends Context.Service<
 										onSome: row =>
 											SignedAccount.make({...Struct.omit(personOf(admins, row), ['since']), via: session.via})
 									})
-								}),
-								rejected('Cannot read the account')
-							)
+								}))
 						),
 					admin,
 					// Each answer reads and changes the account in one transaction, so two answers to the same account cannot both apply.
@@ -287,15 +284,9 @@ export class People extends Context.Service<
 						rejected('Cannot remove this account')
 					)
 				})
-				return pipe(
-					Context.make(People, people),
-					Context.add(
-						RpcOwner,
-						RpcOwner.of((effect, request) =>
+				return Context.add(Context.make(People, people), RpcOwner, RpcOwner.of((effect, request) =>
 							Effect.flatMap(sessionOwner(request.headers), owner => Effect.provideService(effect, CurrentOwner, owner))
-						)
-					)
-				)
+						))
 			})
 		),
 		this.migrations

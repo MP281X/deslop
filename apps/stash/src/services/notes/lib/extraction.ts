@@ -101,10 +101,7 @@ const load = Effect.fnUntraced(function* <A, E>(
 	) {
 		return yield* NotesError.make({message: 'Only public web links can be read.'})
 	}
-	const addresses = yield* pipe(
-		(yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}),
-		Effect.mapError(cause => NotesError.make({cause, message: 'The link host could not be found.'}))
-	)
+	const addresses = yield* Effect.mapError((yield* Dns.Dns).lookup(url.hostname, {family: 'IPv4'}), cause => NotesError.make({cause, message: 'The link host could not be found.'}))
 	if (!Array.every(addresses, isPublicIp)) {
 		return yield* NotesError.make({message: 'The link points to a private network.'})
 	}
@@ -120,20 +117,17 @@ const load = Effect.fnUntraced(function* <A, E>(
 			}
 		}),
 		Effect.flatMap(response =>
-			Effect.map(Effect.when(read(response), Effect.succeed(response.status === 200)), body => ({
+			pipe(read(response), pipelineSubject3721 => Effect.when(pipelineSubject3721, Effect.succeed(response.status === 200)), Effect.map(body => ({
 				body,
 				location: response.headers['location'],
 				status: response.status,
 				type: response.headers['content-type'] ?? ''
-			}))
+			})))
 		),
 		Effect.scoped,
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each request owns an agent pinned to its checked address or its proxy.
 		Effect.provide(
-			pipe(
-				NodeHttpClient.layerNodeHttpNoAgent,
-				Layer.provide(
-					Option.match(proxy, {
+			Layer.provide(NodeHttpClient.layerNodeHttpNoAgent, Option.match(proxy, {
 						onNone: () =>
 							NodeHttpClient.layerAgentOptions({
 								autoSelectFamily: false,
@@ -145,16 +139,11 @@ const load = Effect.fnUntraced(function* <A, E>(
 							NodeHttpClient.layerAgentOptions({
 								proxyEnv: {HTTP_PROXY: exit, HTTPS_PROXY: exit, NODE_ENV: 'production'}
 							})
-					})
-				)
-			)
+					}))
 		),
 		Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
 		Effect.mapError(cause =>
-			pipe(
-				Option.liftPredicate(cause, Schema.is(NotesError)),
-				Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'}))
-			)
+			pipe(cause, pipelineSubject4873 => Option.liftPredicate(pipelineSubject4873, Schema.is(NotesError)), Option.getOrElse(() => NotesError.make({cause, message: UNREACHABLE, reason: 'Unreachable'})))
 		)
 	)
 })
@@ -198,10 +187,7 @@ const follow = Effect.fnUntraced(function* <A, E>(
 })
 
 const decode = Effect.fnUntraced(function* <S extends Schema.Constraint>(schema: S, url: URL) {
-	return yield* pipe(
-		Schema.decodeEffect(Schema.fromJsonString(schema))((yield* follow(url, api, 0)).body),
-		Effect.mapError(cause => NotesError.make({cause, message: 'The source answered in an unknown format.'}))
-	)
+	return yield* Effect.mapError(Schema.decodeEffect(Schema.fromJsonString(schema))((yield* follow(url, api, 0)).body), cause => NotesError.make({cause, message: 'The source answered in an unknown format.'}))
 })
 
 function fx<S extends Schema.Constraint>(schema: S, path: string) {
@@ -264,14 +250,10 @@ const xOEmbed = Effect.fnUntraced(function* (url: URL) {
 // A photo post has no oEmbed and yt-dlp cannot read it, but its page under /video/ holds every slide.
 const tikTokPhotos = Effect.fnUntraced(function* (url: URL) {
 	const html = yield* follow(new URL(String.replace('/photo/', '/video/')(url.href)), api, 0)
-	const item = (yield* pipe(
-		Schema.decodeEffect(Schema.fromJsonString(TikTokPage))(
+	const item = (yield* Effect.mapError(Schema.decodeEffect(Schema.fromJsonString(TikTokPage))(
 			cheerio.load(html.body)('#__UNIVERSAL_DATA_FOR_REHYDRATION__').text()
-		),
-		Effect.mapError(cause =>
-			NotesError.make({cause, message: 'The TikTok photo post is unreadable.', reason: 'UnreadablePhoto'})
-		)
-	)).__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct
+		), cause =>
+			NotesError.make({cause, message: 'The TikTok photo post is unreadable.', reason: 'UnreadablePhoto'}))).__DEFAULT_SCOPE__['webapp.video-detail'].itemInfo.itemStruct
 	return tikTokExtraction(item, url)
 })
 
@@ -329,8 +311,8 @@ const repository = Effect.fnUntraced(function* (url: URL, name: string) {
 })
 
 const gitHub = Effect.fnUntraced(function* (url: URL) {
-	const path = Array.filter(String.split(url.pathname, '/'), String.isNonEmpty)
-	const name = Array.join(Array.take(path, 2), '/')
+	const path = pipe(url.pathname, String.split('/'), pipelineSubject11879 => Array.filter(pipelineSubject11879, String.isNonEmpty))
+	const name = pipe(path, Array.take(2), Array.join('/'))
 	if (path.length === 2) return yield* repository(url, name)
 	return yield* pipe(
 		Option.all([Array.get(path, 2), Array.get(path, 3)]),
@@ -343,10 +325,7 @@ const gitHub = Effect.fnUntraced(function* (url: URL) {
 })
 
 const reader = Effect.fnUntraced(function* (url: URL) {
-	const answer = yield* pipe(
-		decode(Reader, new URL(`https://r.jina.ai/${url.href}`)),
-		timeLimit('30 seconds', 'The reader took too long.')
-	)
+	const answer = yield* (timeLimit('30 seconds', 'The reader took too long.'))(decode(Reader, new URL(`https://r.jina.ai/${url.href}`)))
 	if (CHALLENGE.test(answer.data.content) || String.isEmpty(String.trim(answer.data.content))) {
 		return yield* NotesError.make({message: 'The site blocks automated reading.'})
 	}
@@ -441,7 +420,7 @@ export class Sources extends Context.Service<
 		readonly image: (url: string) => Effect.Effect<Image, NotesError>
 		readonly resolve: (url: string) => Effect.Effect<string, NotesError>
 	}
->()('@deslop/stash/services/notes/lib/extraction/Sources') {
+>('@deslop/stash/services/notes/lib/extraction/Sources') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {

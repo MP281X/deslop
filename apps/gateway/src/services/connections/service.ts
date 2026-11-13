@@ -90,7 +90,7 @@ type Pending = {
 }
 
 function siteOf(url: URL) {
-	return Array.join(Array.drop(String.split('.')(url.hostname), 1), '.')
+	return pipe(String.split(url.hostname, '.'), Array.drop(1), Array.join('.'))
 }
 
 function failed(message: string) {
@@ -140,7 +140,7 @@ export class Connections extends Context.Service<
 		readonly usage: (period: Period) => Stream.Stream<{range: UsageRange; report: McpUsageReport}, AuthError>
 		readonly watch: (user: User) => Stream.Stream<ConnectionInfo[], AuthError>
 	}
->()('@deslop/gateway/services/connections/service/Connections') {
+>('@deslop/gateway/services/connections/service/Connections') {
 	static readonly make = Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
@@ -391,8 +391,7 @@ export class Connections extends Context.Service<
 			// The grant is read under its server's lock, so a call that waited sees the token the one before it saved.
 			return yield* Semaphore.withPermit(
 				yield* Cache.get(locks, id),
-				pipe(
-					Effect.gen(function* () {
+				Effect.timeout(Effect.gen(function* () {
 						const connection = yield* get(id)
 						if (connection.generation !== generation) {
 							return yield* AuthError.make({message: 'This MCP connection was replaced.'})
@@ -413,9 +412,7 @@ export class Connections extends Context.Service<
 								})
 							}
 						})
-					}),
-					Effect.timeout('20 seconds')
-				)
+					}), '20 seconds')
 			)
 		}, failed('Cannot refresh this MCP; reconnect it from the MCP page'))
 		const discover = Effect.fnUntraced(function* (
@@ -543,10 +540,7 @@ export class Connections extends Context.Service<
 					const taken = yield* storageFailed(findTaken({id: base, url}))
 					if (Array.some(taken, row => row.url === url)) return yield* added
 					const suffix = String.slice(0, 6)(String.toLowerCase(yield* nonce))
-					const id = Boolean.match(
-						Array.some(taken, row => row.id === base),
-						{onFalse: () => base, onTrue: () => `${base}_${suffix}`}
-					)
+					const id = pipe(taken, Array.some(row => row.id === base), pipelineSubject21597 => Boolean.match(pipelineSubject21597, {onFalse: () => base, onTrue: () => `${base}_${suffix}`}))
 					const connection = yield* discover(
 						{generation: yield* nonce, id, name: String.capitalize(base), url},
 						headers
@@ -727,8 +721,7 @@ export class Connections extends Context.Service<
 				if (Array.isReadonlyArrayEmpty(removed)) return yield* removedServer
 			}),
 			report: Effect.fnUntraced(function* (id, generation, outcome) {
-				yield* pipe(
-					change(id, generation, () =>
+				yield* Effect.ignore(change(id, generation, () =>
 						Match.valueTags(outcome, {
 							Discovered: discovered => ({
 								error: Option.none(),
@@ -738,9 +731,7 @@ export class Connections extends Context.Service<
 							}),
 							Failed: failure => ({error: Option.some(failure.error)})
 						})
-					),
-					Effect.ignore({log: 'Warn', message: 'Cannot save the MCP discovery outcome'})
-				)
+					), {log: 'Warn', message: 'Cannot save the MCP discovery outcome'})
 			}),
 			token,
 			usage: period =>
@@ -754,7 +745,7 @@ export class Connections extends Context.Service<
 						admin(user),
 						Stream.merge(
 							sql.reactive(['connections'], list),
-							Stream.mapEffect(Stream.drop(Stream.tick('1 minute'), 1), () => list)
+							pipe(Stream.tick('1 minute'), Stream.drop(1), Stream.mapEffect(() => list))
 						)
 					)
 				)

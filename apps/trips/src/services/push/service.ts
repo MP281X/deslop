@@ -235,7 +235,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const now = yield* Clock.currentTimeMillis
 			const key = notification ?? `${request.method} ${request.url} ${request.headers['apns-channel-id'] ?? ''}`
 			const deferred = Option.getOrUndefined(
-				Option.filter(HashMap.get(yield* Ref.get(retrying), key), pending => pending.until > now)
+				pipe(yield* Ref.get(retrying), HashMap.get(key), Option.filter(pending => pending.until > now))
 			)
 			if (deferred !== undefined) return deferred.answer
 			const response = yield* pipe(
@@ -373,7 +373,7 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		const launch = Effect.fnUntraced(function* (target: Device, showing: Showing) {
 			// Every trip uses the same push-to-start token, but a refusal belongs to this leg's notification only.
 			const notification = `start ${target.bundle} ${Redacted.value(target.token)} ${showing.journey.id} ${showing.leg}`
-			if (Option.exists(HashMap.get(yield* Ref.get(retrying), notification), pending => pending.until > showing.now)) {
+			if (pipe(yield* Ref.get(retrying), HashMap.get(notification), Option.exists(pending => pending.until > showing.now))) {
 				return
 			}
 			const started = yield* pushStart(target, showing, notification)
@@ -456,18 +456,11 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 		) {
 			const showing = {journey, leg: window.leg, now, props: activityProps(journey, all, now), window} satisfies Showing
 			// An activity that cannot cover the window ends, and the leg starts afresh.
-			yield* Effect.forEach(
-				Array.filter(
-					yield* readFailed(listActivities()),
-					activity =>
+			yield* pipe(yield* readFailed(listActivities()), Array.filter(activity =>
 						activity.bookingId === journey.id &&
 						activity.leg === window.leg &&
 						Option.isNone(activity.endedAt) &&
-						!holds(activity, window)
-				),
-				activity => finish(activity, now),
-				{concurrency: 1, discard: true}
-			)
+						!holds(activity, window)), pipelineSubject15929 => Effect.forEach(pipelineSubject15929, activity => finish(activity, now), {concurrency: 1, discard: true}))
 			yield* Effect.forEach(
 				showPlan(yield* readFailed(listDevices()), yield* readFailed(listActivities()), journey, window),
 				action => {
@@ -505,11 +498,8 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 			const done = yield* Effect.filter(
 				fresh,
 				alert =>
-					Effect.map(
-						Effect.forEach(devices, device => notify(device, alert, booking), {concurrency: 1}),
-						outcomes =>
-							!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry')
-					),
+					pipe(devices, pipelineSubject17824 => Effect.forEach(pipelineSubject17824, device => notify(device, alert, booking), {concurrency: 1}), Effect.map(outcomes =>
+							!Array.isReadonlyArrayNonEmpty(outcomes) || !Array.every(outcomes, outcome => outcome === 'retry'))),
 				{concurrency: 1}
 			)
 			yield* Array.match(done, {
@@ -532,17 +522,14 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 				yield* Effect.forEach(
 					all,
 					booking =>
-						pipe(
-							Effect.gen(function* () {
+						Effect.ignore(Effect.gen(function* () {
 								yield* announce(booking, now)
 								if (booking._tag === 'stay') return
 								yield* Option.match(activeWindow(booking, now), {
 									onNone: () => Effect.void,
 									onSome: window => show(booking, window, all, now)
 								})
-							}),
-							Effect.ignore({log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`})
-						),
+							}), {log: 'Warn', message: `The Live Activity of ${booking.id} was not updated`}),
 					{concurrency: 1, discard: true}
 				)
 				yield* Effect.forEach(

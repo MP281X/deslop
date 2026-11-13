@@ -435,10 +435,7 @@ export const FindTracesParams = Schema.Struct({
 
 export type ReadTraceParams = typeof ReadTraceParams.Type
 export const ReadTraceParams = Schema.Struct({
-	id: pipe(
-		TraceId,
-		Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or search_traces.'})
-	),
+	id: (Schema.annotateEncoded({description: 'The full 32-hex trace id from list_operations or search_traces.'}))(TraceId),
 	limit: pipe(
 		Schema.Int,
 		Schema.check(Schema.isBetween({maximum: 1000, minimum: 1})),

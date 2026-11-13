@@ -10,9 +10,5 @@ import {Presence} from '#services/presence/service.ts'
 
 CliRuntime.runApp({
 	icon,
-	routes: pipe(
-		// Every visitor sends a move each 50 ms; a span per move would bury Scope.
-		ServerRuntime.layerRpc({disableTracing: true, group: RpcContracts, handlers: RpcHandlers}),
-		Layer.provide(Presence.layer)
-	)
+	routes: Layer.provide(ServerRuntime.layerRpc({disableTracing: true, group: RpcContracts, handlers: RpcHandlers}), Presence.layer)
 })

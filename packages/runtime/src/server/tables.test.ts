@@ -24,7 +24,7 @@ const services = import.meta.glob<Record<string, unknown>>('../../../../apps/*/s
 const schemas = import.meta.glob<Record<string, unknown>>('../../../../apps/*/src/services/*/schema.ts', {eager: true})
 
 function appOf(file: string) {
-	return Option.getOrThrow(Array.get(String.split(file, '/'), 5))
+	return Option.getOrThrow(pipe(file, String.split('/'), Array.get(5)))
 }
 
 function exportsOf(modules: Record<string, Record<string, unknown>>, app: string) {
@@ -110,10 +110,7 @@ const checked = Effect.fnUntraced(function* (migrations: readonly Migrations[], 
 	`
 	assert.deepStrictEqual(
 		Array.map(tables, table => table.name),
-		Array.sort(
-			Array.map(models, model => model.table),
-			Order.String
-		),
+		pipe(models, Array.map(model => model.table), pipelineSubject4614 => Array.sort(pipelineSubject4614, Order.String)),
 		'one model per table'
 	)
 	yield* Effect.forEach(

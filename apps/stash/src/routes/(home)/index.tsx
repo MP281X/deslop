@@ -368,7 +368,7 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 											))}
 										</ToggleGroup>
 										{/* Plain rows, not List.ForEach: its row wrapper hides the row background and swipe actions. */}
-										{Array.map(Array.take(notes, limit), (note, position) => (
+										{pipe(notes, Array.take(limit), Array.map((note, position) => (
 											<NoteRow
 												key={note.id}
 												note={note}
@@ -378,7 +378,7 @@ function Notes(props: {kind?: Kind; onOpen: (id: Note['id']) => void; onTag: (na
 												onOpen={props.onOpen}
 												onRegenerate={id => regenerate(id)}
 											/>
-										))}
+										)))}
 									</ItemGroup>
 									{filtered && Array.isReadonlyArrayEmpty(notes) && (
 										<Overlay.Content>

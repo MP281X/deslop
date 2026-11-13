@@ -34,7 +34,7 @@ export class AiGateway extends Context.Service<
 			userId: string
 		) => Effect.Effect<(client: HttpClient.HttpClient) => HttpClient.HttpClient, AiUnavailable>
 	}
->()('@deslop/runtime/server/ai/AiGateway') {
+>('@deslop/runtime/server/ai/AiGateway') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {

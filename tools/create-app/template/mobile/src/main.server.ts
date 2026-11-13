@@ -17,7 +17,7 @@ CliRuntime.runApp({
 		ServerRuntime.layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 		ServerRuntime.layerMcp({
 			instructions: "Read the app's name with name.",
-			registrations: pipe(McpServer.toolkit(Tools), Layer.provide(ToolHandlers))
+			registrations: Layer.provide(McpServer.toolkit(Tools), ToolHandlers)
 		})
 	)
 })

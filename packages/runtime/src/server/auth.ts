@@ -50,16 +50,10 @@ export class Auth extends Context.Service<
 		readonly user: (headers: Headers.Headers) => Effect.Effect<User & {client?: string}, AuthError>
 		readonly token: (headers: Headers.Headers) => Effect.Effect<string, AuthError>
 	}
->()('@deslop/runtime/server/auth') {
+>('@deslop/runtime/server/auth') {
 	static readonly makeContext = (auth: typeof Auth.Service) =>
-		pipe(
-			Context.make(Auth, auth),
-			Context.add(
-				RpcAuth,
-				RpcAuth.of((effect, request) =>
-					pipe(
-						auth.user(request.headers),
-						Effect.flatMap(user =>
+		Context.add(Context.make(Auth, auth), RpcAuth, RpcAuth.of((effect, request) =>
+					Effect.flatMap(auth.user(request.headers), user =>
 							Effect.raceFirst(
 								Effect.provideService(effect, CurrentUser, user),
 								// A watch outlives its token, so it ends once the credentials expire or are revoked; an auth restart does not end it.
@@ -68,12 +62,8 @@ export class Auth extends Context.Service<
 									Effect.retry({while: error => error.error === 'temporarily_unavailable'}),
 									Effect.forever
 								)
-							)
-						)
-					)
-				)
-			)
-		)
+							))
+				))
 
 	static readonly layer = Layer.unwrap(
 		Effect.gen(function* () {
@@ -93,16 +83,10 @@ export class Auth extends Context.Service<
 					const sessions = yield* Sessions
 					const signature = yield* Signature.Signature
 					// The key set must come from Auth's own URL, so its client never follows a redirect.
-					const jwks = yield* pipe(
-						Jwks.makeRemote({url: new URL(JWKS_PATH, issuer).href}),
-						Effect.provideService(
-							HttpClient.HttpClient,
-							HttpClient.transform(
+					const jwks = yield* Effect.provideService(Jwks.makeRemote({url: new URL(JWKS_PATH, issuer).href}), HttpClient.HttpClient, HttpClient.transform(
 								yield* HttpClient.HttpClient,
 								Effect.provideService(FetchHttpClient.RequestInit, {redirect: 'manual'})
-							)
-						)
-					)
+							))
 					const verified = Effect.fn('Auth.verify')(function* (token: string) {
 						const access = yield* pipe(
 							Jwt.verifyWithKeySet(AccessClaims, token, {
@@ -136,15 +120,15 @@ export class Auth extends Context.Service<
 					return Auth.makeContext(
 						Auth.of({
 							token: headers =>
-								Option.match(Option.filter(bearerOf(headers), isJwt), {
+								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject4856 => Option.match(pipelineSubject4856, {
 									onNone: () => Effect.map(session(headers), current => current.token),
 									onSome: token => Effect.as(verified(token), token)
-								}),
+								})),
 							user: headers =>
-								Option.match(Option.filter(bearerOf(headers), isJwt), {
+								pipe(bearerOf(headers), Option.filter(isJwt), pipelineSubject5095 => Option.match(pipelineSubject5095, {
 									onNone: () => Effect.map(session(headers), current => current.user),
 									onSome: verified
-								})
+								}))
 						})
 					)
 				})
@@ -187,10 +171,10 @@ export function layerMcpAuth(resource: string) {
 						})
 					}
 					const user = yield* Effect.result(
-						Option.match(Option.filter(bearer, isJwt), {
+						pipe(bearer, Option.filter(isJwt), pipelineSubject6816 => Option.match(pipelineSubject6816, {
 							onNone: () => Effect.fail(signInFirst),
 							onSome: () => auth.user(headers)
-						})
+						}))
 					)
 					if (Result.isFailure(user)) {
 						if (user.failure.error === 'temporarily_unavailable') return unavailable

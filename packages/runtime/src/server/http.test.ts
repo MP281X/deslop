@@ -189,10 +189,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 				const context = Context.add(yield* Effect.context<FileSystem.FileSystem | Path.Path>(), FileSystem.FileSystem, {
 					...fs,
 					readFileString: () =>
-						Effect.andThen(
-							Ref.update(reads, count => count + 1),
-							Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}')
-						)
+						pipe(reads, Ref.update(count => count + 1), pipelineSubject6381 => Effect.andThen(pipelineSubject6381, Effect.succeed('{"config":{"port":5000},"name":"@deslop/fixture","version":"0.1.12"}')))
 				})
 				const web = yield* handler({APP_URL: 'http://localhost:5000'})
 				for (const path of ['/api/runtime', '/api/runtime']) {
@@ -360,10 +357,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 					),
 					authorize.searchParams.get('code_challenge')
 				)
-				const session = Array.join(
-					Array.filter(cookiePairs(finished), cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)),
-					'; '
-				)
+				const session = pipe(cookiePairs(finished), Array.filter(cookie => String.startsWith(`${SESSION_COOKIE}=`)(cookie)), Array.join('; '))
 				assert.isTrue(String.isNonEmpty(session))
 
 				const user = yield* send(web, `https://${host}/auth/user`, {cookie: session, host})

@@ -8,4 +8,4 @@ import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
 import {Chapters} from '#services/chapters/service.ts'
 
-runApp({icon, routes: pipe(layerRpc({group: RpcContracts, handlers: RpcHandlers}), Layer.provide(Chapters.layer))})
+runApp({icon, routes: Layer.provide(layerRpc({group: RpcContracts, handlers: RpcHandlers}), Chapters.layer)})

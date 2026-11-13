@@ -27,7 +27,7 @@ export class GitHub extends Context.Service<
 		readonly profile: (id: string) => Effect.Effect<GitHubUser, AuthError>
 		readonly start: (flow: SignInParams) => Effect.Effect<{state: string; url: string}, AuthError>
 	}
->()('@deslop/auth/services/github/service/GitHub') {
+>('@deslop/auth/services/github/service/GitHub') {
 	static readonly layer = Layer.effect(
 		GitHub,
 		Effect.gen(function* () {

@@ -134,7 +134,7 @@ export class Tokens extends Context.Service<
 		) => Effect.Effect<{seconds: number; token: string}, AuthError>
 		readonly verify: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 	}
->()('@deslop/auth/services/tokens/service/Tokens') {
+>('@deslop/auth/services/tokens/service/Tokens') {
 	// The tables this service owns, made at start in one transaction; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({
@@ -452,10 +452,7 @@ export class Tokens extends Context.Service<
 					owner: CredentialOwner,
 					origin: Origin
 				) {
-					const minted = yield* pipe(
-						mint(family, 0, owner, clientLabel(request.clientName), now),
-						rejected('Cannot sign the access token')
-					)
+					const minted = yield* (rejected('Cannot sign the access token'))(mint(family, 0, owner, clientLabel(request.clientName), now))
 					const grant = {
 						address: Option.fromUndefinedOr(origin.address),
 						client: clientLabel(request.clientName),
@@ -577,10 +574,7 @@ export class Tokens extends Context.Service<
 							}
 							const owner = credentialOwnerOf(grant)
 							yield* allowed(owner)
-							const minted = yield* pipe(
-								mint(grant.family, grant.generation + 1, owner, grant.client, now),
-								rejected('Cannot sign the access token')
-							)
+							const minted = yield* (rejected('Cannot sign the access token'))(mint(grant.family, grant.generation + 1, owner, grant.client, now))
 							yield* insertSpent({family: grant.family, hash: grant.hash})
 							yield* rotateGrant({
 								// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
@@ -606,7 +600,7 @@ export class Tokens extends Context.Service<
 					apps: owner =>
 						Stream.merge(
 							sql.reactive(['tokens'], listApps(owner)),
-							Stream.mapEffect(Stream.drop(Stream.tick('1 minute'), 1), () => listApps(owner))
+							pipe(Stream.tick('1 minute'), Stream.drop(1), Stream.mapEffect(() => listApps(owner)))
 						),
 					browserSession: browser,
 					client: Effect.fn('Tokens.client')(function* (asked: AuthorizeClient) {
@@ -701,11 +695,7 @@ export class Tokens extends Context.Service<
 						const key = yield* hash(code)
 						const now = yield* Clock.currentTimeMillis
 						yield* Ref.update(codes, current =>
-							HashMap.set(
-								HashMap.filter(current, entry => entry.expiresAt > now),
-								key,
-								{expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}}
-							)
+							pipe(current, HashMap.filter(entry => entry.expiresAt > now), pipelineSubject25899 => HashMap.set(pipelineSubject25899, key, {expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}}))
 						)
 						return code
 					}, rejected('Cannot issue the authorization code')),

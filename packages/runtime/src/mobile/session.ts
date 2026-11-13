@@ -48,7 +48,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 
 	// Unreadable JSON signs out rather than failing every launch.
 	const read = Effect.map(storage.read, text =>
-		Option.flatMap(Option.liftPredicate(text, String.isNonEmpty), Schema.decodeUnknownOption(SessionJson))
+		pipe(text, pipelineSubject1833 => Option.liftPredicate(pipelineSubject1833, String.isNonEmpty), pipelineSubject1818 => Option.flatMap(pipelineSubject1818, Schema.decodeUnknownOption(SessionJson)))
 	)
 
 	// The session id is the bearer of every request to the server; a missing one asks to sign in, while a Keychain that cannot be read yet is read again later.
@@ -195,7 +195,7 @@ export function makeSession(server: string, storage: SessionStorage) {
 		bearer,
 		machine,
 		protocol: pipe(
-			layerSocketProtocol(pipe(new URL(RPC_PATH, server).href, String.replace(/^http/u, 'ws'))),
+			layerSocketProtocol((String.replace(/^http/u, 'ws'))(new URL(RPC_PATH, server).href)),
 			Layer.provideMerge(layerRpcAuthClient(bearer)),
 			Layer.provide(FetchHttpClient.layer)
 		),

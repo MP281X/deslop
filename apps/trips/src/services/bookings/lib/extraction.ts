@@ -37,29 +37,20 @@ function bounded(text: string) {
 export class Extractor extends Context.Service<
 	Extractor,
 	{readonly read: (userId: string, source: BookingSource) => Effect.Effect<ExtractedItems, BookingsError>}
->()('@deslop/trips/services/bookings/lib/extraction/Extractor') {
+>('@deslop/trips/services/bookings/lib/extraction/Extractor') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
 			const gateway = yield* AiGateway
 			const http = yield* HttpClient.HttpClient
 			const model = Effect.fnUntraced(function* (userId: string) {
-				return yield* pipe(
-					AnthropicLanguageModel.make({
+				return yield* Effect.provideServiceEffect(AnthropicLanguageModel.make({
 						config: {max_tokens: 16_000, output_config: {effort: 'high'}},
 						model: 'claude-haiku-5-5'
-					}),
-					Effect.provideServiceEffect(
-						AnthropicClient.AnthropicClient,
-						pipe(
-							AnthropicClient.make({
+					}), AnthropicClient.AnthropicClient, Effect.provideService(AnthropicClient.make({
 								apiUrl: yield* gateway.apiUrl('anthropic'),
 								transformClient: yield* gateway.authorize(userId)
-							}),
-							Effect.provideService(HttpClient.HttpClient, http)
-						)
-					)
-				)
+							}), HttpClient.HttpClient, http))
 			})
 
 			return Extractor.of({

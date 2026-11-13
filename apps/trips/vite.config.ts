@@ -1,5 +1,5 @@
 import {defineConfig} from 'vite-plus'
 
-import * as ViteConfig from '@deslop/runtime/config/vite'
+import {pack} from '@deslop/runtime/config/vite'
 
-export default defineConfig({pack: ViteConfig.pack})
+export default defineConfig({pack})

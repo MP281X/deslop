@@ -1,4 +1,3 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- NodeHttpServer requires the native server constructor at the application boundary.
 import {createServer} from 'node:http'
 import {fileURLToPath} from 'node:url'
 
@@ -104,7 +103,7 @@ export const layerRoutes = HttpRouter.use(router =>
 	Effect.gen(function* () {
 		const auth = yield* Auth
 		const issuer = yield* Config.option(Config.String('AUTH_URL'))
-		const traces = yield* pipe(Config.String('OTEL_URL'), Config.withDefault(''))
+		const traces = yield* Config.withDefault(Config.String('OTEL_URL'), '')
 		const metadata = yield* Effect.cached(packageMetadata)
 		yield* router.add(
 			'GET',
@@ -233,8 +232,7 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 			const canonical = yield* Config.String('APP_URL')
 			const issuer = yield* Config.option(Config.String('AUTH_URL'))
 			const resource = new URL(MCP_PATH, canonical).href
-			const endpoint = pipe(
-				McpServer.layerHttp({
+			const endpoint = Layer.provide(McpServer.layerHttp({
 					allowSessionTermination: true,
 					icons: [{src: new URL('/icon', canonical).href}],
 					instructions: options.instructions,
@@ -243,9 +241,7 @@ export function layerMcp<E, R>(options: {instructions: string; registrations: La
 					protocols: [McpProtocol.v2026_07_28, McpProtocol.v2025_11_25, McpProtocol.v2025_06_18],
 					registrations: Layer.provide(options.registrations, layerStructuredTools),
 					version: metadata.version
-				}),
-				Layer.provide(layerMcpAuth(resource))
-			)
+				}), layerMcpAuth(resource))
 			return Option.match(issuer, {
 				onNone: () => endpoint,
 				onSome: origin =>

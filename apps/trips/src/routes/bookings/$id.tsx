@@ -1,6 +1,6 @@
 import {useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, DateTime, Option} from 'effect'
+import {Array, DateTime, Option, pipe} from 'effect'
 
 import {
 	Button,
@@ -236,9 +236,7 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 	const remove = useAtomSet(removal.removeAtom)
 	const refresh = useAtomSet(refreshAtom, {mode: 'promiseExit'})
 	const now = AsyncResult.getOrElse(useAtomValue(nowAtom), () => DateTime.toEpochMillis(DateTime.nowUnsafe()))
-	return Option.match(
-		Array.findFirst(props.bookings, booking => booking.id === props.id),
-		{
+	return pipe(props.bookings, Array.findFirst(booking => booking.id === props.id), pipelineSubject7867 => Option.match(pipelineSubject7867, {
 			onNone: () => (
 				<Empty
 					systemImage="trash"
@@ -308,6 +306,5 @@ export function BookingRoute(props: {bookings: BookingList; id: string; onClose:
 					</Toolbar>
 				)
 			}
-		}
-	)
+		}))
 }

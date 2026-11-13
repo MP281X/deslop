@@ -12,10 +12,7 @@ function guestAt(x: number, y: number) {
 }
 
 function idsOf(visitors: PortfolioVisitors) {
-	return Array.sort(
-		Array.map(visitors, visitor => visitor.id),
-		Order.String
-	)
+	return pipe(visitors, Array.map(visitor => visitor.id), pipelineSubject573 => Array.sort(pipelineSubject573, Order.String))
 }
 
 it.effect(

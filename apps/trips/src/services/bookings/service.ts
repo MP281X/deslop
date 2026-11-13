@@ -91,16 +91,10 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 		// Saved with its zone; an unplaced station of an Italian operator falls back to Italy's, another railway's fails the save.
 		const stationFor = Effect.fnUntraced(function* (name: string, operator: Train['operator']) {
 			const found = yield* Effect.option(places.station(name))
-			const timeZone = yield* Option.match(
-				Option.orElse(
-					Option.flatMap(found, place => Option.fromUndefinedOr(place.timeZone)),
-					() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')
-				),
-				{
+			const timeZone = yield* pipe(found, Option.flatMap(place => Option.fromUndefinedOr(place.timeZone)), Option.orElse(() => Option.liftPredicate('Europe/Rome', () => operator !== 'other')), pipelineSubject3522 => Option.match(pipelineSubject3522, {
 					onNone: () => BookingsError.make({message: `The station ${name} could not be placed.`}),
 					onSome: Effect.succeed
-				}
-			)
+				}))
 			return {...Option.getOrElse(found, () => Place.make({name})), timeZone}
 		})
 
@@ -164,11 +158,11 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			yield* Effect.forEach(
 				upsert(current, incoming),
 				booking =>
-					Option.match(Record.get(stored, booking.id), {
+					pipe(stored, pipelineSubject6165 => Record.get(pipelineSubject6165, booking.id), pipelineSubject6152 => Option.match(pipelineSubject6152, {
 						onNone: () => insert(booking),
 						onSome: before =>
-							Boolean.match(Equal.equals(before, booking), {onFalse: () => update(booking), onTrue: () => Effect.void})
-					}),
+							pipe(before, pipelineSubject6395 => Equal.equals(pipelineSubject6395, booking), pipelineSubject6381 => Boolean.match(pipelineSubject6381, {onFalse: () => update(booking), onTrue: () => Effect.void}))
+					})),
 				{concurrency: 1, discard: true}
 			)
 		})
@@ -192,10 +186,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				yield* pipe(
 					listAll,
 					Effect.flatMap(current =>
-						Boolean.match(
-							Array.some(current, row => Equal.equals(row, before)),
-							{onFalse: () => Effect.void, onTrue: () => update(after)}
-						)
+						pipe(current, Array.some(row => Equal.equals(row, before)), pipelineSubject7254 => Boolean.match(pipelineSubject7254, {onFalse: () => Effect.void, onTrue: () => update(after)}))
 					),
 					Reactivity.mutation(['bookings']),
 					sql.withTransaction,
@@ -214,10 +205,7 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 				const issues = Array.getFailures(resolved)
 				if (Array.isReadonlyArrayNonEmpty(issues)) {
 					return yield* BookingsError.make({
-						message: Array.join(
-							Array.map(issues, error => error.message),
-							' '
-						)
+						message: pipe(issues, Array.map(error => error.message), Array.join(' '))
 					})
 				}
 				yield* pipe(

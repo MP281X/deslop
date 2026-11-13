@@ -22,7 +22,7 @@ type Scan = {
 }
 
 function basename(value: string) {
-	return Option.getOrElse(Array.last(Array.filter(String.split(value, '/'), String.isNonEmpty)), () => value)
+	return Option.getOrElse(Array.last(pipe(value, String.split('/'), pipelineSubject1033 => Array.filter(pipelineSubject1033, String.isNonEmpty))), () => value)
 }
 
 function isFlag(token: string) {
@@ -55,20 +55,11 @@ function alias(value: string) {
 
 // A shell's script: an exec launcher continues with its arguments; otherwise the exec segment, else the first that isn't setup, is the command, without quotes, redirections, `eval` or leading assignments.
 function shellRest(tokens: readonly string[]) {
-	const script = Option.getOrElse(Array.get(tokens, 2), () => '')
+	const script = pipe(tokens, Array.get(2), Option.getOrElse(() => ''))
 	const shifts = Option.match(String.match(/\bshift\b/gu)(script), {onNone: () => 0, onSome: matches => matches.length})
 	if (String.includes('exec "$@"')(script)) return Array.drop(tokens, 4 + shifts)
-	const segments = Array.filter(
-		Array.map(
-			String.split(
-				String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, '')(String.replaceAll(/['"]/gu, '')(script)),
-				/\s*(?:\|\|?|;|&&)\s*/u
-			),
-			segment =>
-				Array.dropWhile(String.split(String.replace(/^eval\s+/u, '')(String.trim(segment)), /\s+/u), assignment)
-		),
-		words => String.isNonEmpty(words[0] ?? '')
-	)
+	const segments = pipe(String.replaceAll(/\d*[<>]+\|?\s*\S+/gu, '')(String.replaceAll(/['"]/gu, '')(script)), String.split(/\s*(?:\|\|?|;|&&)\s*/u), Array.map(segment =>
+				pipe(String.replace(/^eval\s+/u, '')(String.trim(segment)), String.split(/\s+/u), pipelineSubject2708 => Array.dropWhile(pipelineSubject2708, assignment))), Array.filter(words => String.isNonEmpty(words[0] ?? '')))
 	return pipe(
 		Array.findFirst(segments, words => words[0] === 'exec'),
 		Option.map(words => Array.drop(words, 1)),
@@ -87,14 +78,11 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 				Option.match({
 					onNone: () => {
 						const tail = Array.drop(tokens, 1)
-						return pipe(
-							Array.findFirstIndex(tail, token => !isFlag(token) && !assignment(token)),
-							Option.match({
+						return pipe(tail, Array.findFirstIndex(token => !isFlag(token) && !assignment(token)), pipelineSubject3576 => Option.match(pipelineSubject3576, {
 								onNone: () => Array.empty<string>(),
 								onSome: start =>
 									Array.filter(tail, (token, index) => index >= start && !isFlag(token) && !assignment(token))
-							})
-						)
+							}))
 					},
 					onSome: index => Array.drop(tokens, index + 1)
 				})
@@ -102,13 +90,11 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 			cwd
 		)
 	}
-	if (Array.contains(SHELLS, name) && Option.getOrElse(Array.get(tokens, 1), () => '') === '-c') {
+	if (Array.contains(SHELLS, name) && pipe(tokens, Array.get(1), Option.getOrElse(() => '')) === '-c') {
 		return unwrapTokens(shellRest(tokens), cwd)
 	}
 	if (Array.contains(RUNTIMES, name)) {
-		return pipe(
-			Array.findFirstIndex(tokens, (token, index) => index > 0 && !isFlag(token)),
-			Option.match({
+		return pipe(tokens, Array.findFirstIndex((token, index) => index > 0 && !isFlag(token)), pipelineSubject4136 => Option.match(pipelineSubject4136, {
 				onNone: () => tokens,
 				onSome: index => {
 					const script = Option.getOrElse(Array.get(tokens, index), () => '')
@@ -129,8 +115,7 @@ function unwrapTokens(tokens: readonly string[], cwd: Option.Option<string>): re
 						...Array.drop(tokens, index + 1)
 					]
 				}
-			})
-		)
+			}))
 	}
 	return tokens
 }
@@ -140,13 +125,7 @@ function unwrap(argv: readonly string[], cwd: Option.Option<string>) {
 	const tokens = Boolean.match(Array.length(argv) === 1, {
 		onFalse: () => argv,
 		onTrue: () =>
-			Array.filter(
-				String.split(
-					Option.getOrElse(Array.head(argv), () => ''),
-					/\s+/u
-				),
-				String.isNonEmpty
-			)
+			pipe(Array.head(argv), Option.getOrElse(() => ''), String.split(/\s+/u), pipelineSubject5185 => Array.filter(pipelineSubject5185, String.isNonEmpty))
 	})
 	return unwrapTokens(
 		[String.replace(/:$/u, '')(Option.getOrElse(Array.head(tokens), () => '')), ...Array.drop(tokens, 1)],
@@ -167,11 +146,8 @@ function scan(
 		onSome: token => {
 			if (isFlag(token)) {
 				const parsed = flagParts(token)
-				const next = Option.filter(Array.get(args, 1), value => !isFlag(value))
-				const value = pipe(
-					parsed.inline,
-					Option.orElse(() => next)
-				)
+				const next = pipe(args, Array.get(1), Option.filter(value => !isFlag(value)))
+				const value = Option.orElse(parsed.inline, () => next)
 				return scan(
 					name,
 					subject,
@@ -180,7 +156,7 @@ function scan(
 						onTrue: () => Array.drop(args, 2)
 					}),
 					words,
-					Boolean.match(Array.contains(subject, parsed.flag), {
+					pipe(subject, pipelineSubject6283 => Array.contains(pipelineSubject6283, parsed.flag), pipelineSubject6269 => Boolean.match(pipelineSubject6269, {
 						onFalse: () => values,
 						onTrue: () =>
 							Boolean.match(parsed.flag === 'resume', {
@@ -188,7 +164,7 @@ function scan(
 									Option.match(value, {onNone: () => values, onSome: given => Record.set(values, parsed.flag, given)}),
 								onTrue: () => Record.set(values, parsed.flag, 'resumed')
 							})
-					})
+					}))
 				)
 			}
 			if (name === 'ssh') {
@@ -218,11 +194,11 @@ function scan(
 export function commandLabel(argv: readonly string[], cwd: Option.Option<string>): ProcessLabel {
 	const [head = '', ...args] = unwrap(argv, cwd)
 	const name = alias(basename(head))
-	const subject = Option.getOrElse(Record.get(SUBJECT, name), () => Array.empty<string>())
+	const subject = pipe(SUBJECT, Record.get(name), Option.getOrElse(() => Array.empty<string>()))
 	const scanned = scan(name, subject, args, [], {})
 	// An interactive shell, such as a terminal tab, runs no script: where it sits tells it apart.
 	if (Array.contains(SHELLS, name) && Array.isReadonlyArrayEmpty(scanned.words)) {
-		return {detail: Option.getOrElse(Option.map(cwd, basename), () => ''), name}
+		return {detail: pipe(cwd, pipelineSubject7845 => Option.map(pipelineSubject7845, basename), Option.getOrElse(() => '')), name}
 	}
 	return Option.match(scanned.ssh, {
 		onNone: () => ({
@@ -241,16 +217,10 @@ export function commandLabel(argv: readonly string[], cwd: Option.Option<string>
 		onSome: ssh => {
 			const remote = commandLabel(ssh.remote, Option.none())
 			return {
-				detail: Array.join(
-					Array.filter(
-						[
+				detail: pipe([
 							ssh.host,
 							Boolean.match(String.isNonEmpty(remote.name), {onFalse: () => '', onTrue: () => `→ ${remote.name}`})
-						],
-						String.isNonEmpty
-					),
-					' '
-				),
+						], pipelineSubject8304 => Array.filter(pipelineSubject8304, String.isNonEmpty), Array.join(' ')),
 				name
 			}
 		}

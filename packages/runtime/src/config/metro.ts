@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/process-env -- Expo reads its release optimization flags from process.env. */
 import {getDefaultConfig} from 'expo/metro-config'
 
 process.env['EXPO_UNSTABLE_METRO_OPTIMIZE_GRAPH'] = '1'

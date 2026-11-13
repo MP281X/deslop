@@ -9,9 +9,7 @@ import {ClientInfo, User} from '@deslop/runtime/shared/auth'
 export type CredentialOwner = typeof CredentialOwner.Type
 export const CredentialOwner = Schema.Struct({incarnation: Schema.NonEmptyString, user: User})
 
-export class CurrentOwner extends Context.Service<CurrentOwner, CredentialOwner>()(
-	'@deslop/auth/services/tokens/schema/CurrentOwner'
-) {}
+export class CurrentOwner extends Context.Service<CurrentOwner, CredentialOwner>('@deslop/auth/services/tokens/schema/CurrentOwner') {}
 
 export type Registration = typeof Registration.Type
 export const Registration = Schema.Struct({

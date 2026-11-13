@@ -259,10 +259,7 @@ it.layer(NodeServices.layer)('Media fallback', test => {
 		'uses Whisper Turbo only as a fallback and offsets chunk timestamps by actual durations',
 		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
-			const speech = Array.join(
-				Array.makeBy(220, index => `word${index}`),
-				' '
-			)
+			const speech = pipe(220, Array.makeBy(index => `word${index}`), Array.join(' '))
 			const client = HttpClient.make(request =>
 				Effect.gen(function* () {
 					assert.strictEqual(request.url, `${GATEWAY}/audio/transcriptions`)

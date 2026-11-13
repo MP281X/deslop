@@ -1,4 +1,4 @@
-import {Array, Boolean, Option, Record, String} from 'effect'
+import {Array, Boolean, Option, Record, String, pipe} from 'effect'
 
 import {HardDrivesIcon, LockIcon} from '@phosphor-icons/react'
 
@@ -45,7 +45,7 @@ function ErrorText(props: {message: string}) {
 			return (
 				<span className="flex min-w-0 flex-wrap items-baseline gap-x-2 break-words">
 					<span className="font-medium">
-						{code} {Option.getOrElse(Record.get(STATUS, code), () => '')}
+						{code} {pipe(STATUS, Record.get(code), Option.getOrElse(() => ''))}
 					</span>
 					<span>{method}</span>
 					<span className="min-w-0 break-all">{String.replace(/^https?:\/\//u, '')(url)}</span>

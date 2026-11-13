@@ -1,4 +1,3 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- Exercise the real atom protocol with a scoped loopback server.
 import {createServer} from 'node:http'
 
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
@@ -38,7 +37,7 @@ const fixture = Effect.gen(function* () {
 		'exposures.hide': () => Effect.void,
 		'inventory.run': () => Effect.void,
 		'inventory.snapshot': () => Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
-		'inventory.watch': () => pipe(Stream.fromQueue(inventory), Stream.mapEffect(Function.identity)),
+		'inventory.watch': () => Stream.mapEffect(Stream.fromQueue(inventory), Function.identity),
 		'metrics.history': () => Effect.never,
 		'metrics.watch': query => {
 			const source = pipe(
@@ -47,38 +46,30 @@ const fixture = Effect.gen(function* () {
 				Match.when(1, () => Stream.fromQueue(minute)),
 				Match.orElse(() => Stream.never)
 			)
-			return pipe(
-				Stream.unwrap(
+			return Stream.mapEffect(Stream.unwrap(
 					Effect.as(
 						Effect.acquireRelease(Queue.offer(opened, query.minutes), () => Queue.offer(closed, query.minutes)),
 						source
 					)
-				),
-				Stream.mapEffect(values => {
+				), values => {
 					if (Array.isArrayEmpty(values)) return DeployError.make({message: 'Range unavailable'})
 					return Effect.succeed(values)
 				})
-			)
 		}
 	})
 	const context = yield* Layer.build(
 		pipe(
 			HttpRouter.serve(
-				pipe(
-					Layer.mergeAll(
+				Layer.provide(Layer.mergeAll(
 						ServerRuntime.layerRpc({group: RpcContracts, handlers}),
 						HttpRouter.add(
 							'GET',
 							'/api/runtime',
 							HttpServerResponse.jsonUnsafe({name: 'deploy', traces: '', version: '0.1.0'})
 						)
-					),
-					Layer.provide(
-						Layer.succeedContext(
+					), Layer.succeedContext(
 							Auth.makeContext(Auth.of({token: () => Effect.as(authenticate(), 'token'), user: authenticate}))
-						)
-					)
-				)
+						))
 			),
 			Layer.provide(ServerRuntime.layerProtocol),
 			Layer.provideMerge(NodeHttpServer.layer(createServer, {host: '127.0.0.1', port: 0}))

@@ -92,13 +92,10 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			probe.className = 'pointer-events-none invisible absolute text-xs whitespace-nowrap'
 			surface.current.appendChild(probe)
 			const widths = Record.fromEntries(
-				Array.map(
-					Array.filter(props.trace.spans, span => span.depth <= 1),
-					span => {
+				pipe(props.trace.spans, Array.filter(span => span.depth <= 1), Array.map(span => {
 						probe.textContent = labelOf(span)
 						return [span.spanId, probe.getBoundingClientRect().width] as const
-					}
-				)
+					}))
 			)
 			probe.remove()
 			setLabelWidths(widths)
@@ -111,16 +108,13 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 	const placed = lanesOf(
 		props.trace.spans,
 		Record.fromEntries(
-			Array.flatMap(
-				Array.filter(props.trace.spans, span => span.depth <= 1),
-				(span: TraceTree['spans'][number]) => {
-					const measured = Option.getOrElse(Record.get(labelWidths, span.spanId), () => 0)
+			pipe(props.trace.spans, Array.filter(span => span.depth <= 1), Array.flatMap((span: TraceTree['spans'][number]) => {
+					const measured = pipe(labelWidths, pipelineSubject4501 => Record.get(pipelineSubject4501, span.spanId), Option.getOrElse(() => 0))
 					const bar = Number.max((span.durationMs / total) * width, 2)
 					if (bar >= measured + FLAME_LABEL_PADDING) return []
 					if ((span.offsetMs / total) * width + bar + 4 + measured > width) return []
 					return [[span.spanId, ((measured + 8) / width) * total] as const]
-				}
-			)
+				}))
 		)
 	)
 	const spansById = Record.fromEntries(Array.map(props.trace.spans, span => [span.spanId, span] as const))
@@ -131,7 +125,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 		const duration = durationOf(span.durationMs)
 		const left = (span.offsetMs / total) * width
 		const bar = Number.max((span.durationMs / total) * width, 2)
-		const measured = Option.getOrElse(Record.get(labelWidths, span.spanId), () => 0)
+		const measured = pipe(labelWidths, pipelineSubject5390 => Record.get(pipelineSubject5390, span.spanId), Option.getOrElse(() => 0))
 		const inside = span.depth <= 1 && width > 0 && bar >= measured + FLAME_LABEL_PADDING
 		const labelLeft = left + bar + 4
 		const labelRight = labelLeft + measured
@@ -140,22 +134,16 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			!inside &&
 			width > 0 &&
 			labelRight <= width &&
-			Array.every(
-				Option.getOrElse(Record.get(placedByLane, `${entry.lane}`), () => []),
-				other => {
+			pipe(placedByLane, pipelineSubject5732 => Record.get(pipelineSubject5732, `${entry.lane}`), Option.getOrElse(() => []), Array.every(other => {
 					if (other.span.spanId === span.spanId) return true
 					const otherLeft = (other.span.offsetMs / total) * width
 					const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
 					return labelRight <= otherLeft || otherRight <= labelLeft
-				}
-			)
+				}))
 		return {
 			after,
 			bar,
-			description: Option.match(
-				Option.flatMap(span.parentSpanId, id => Record.get(spansById, id)),
-				{onNone: () => `${span.name} ${duration}`, onSome: parent => `${parent.name} · ${span.name} ${duration}`}
-			),
+			description: pipe(span.parentSpanId, Option.flatMap(id => Record.get(spansById, id)), pipelineSubject6128 => Option.match(pipelineSubject6128, {onNone: () => `${span.name} ${duration}`, onSome: parent => `${parent.name} · ${span.name} ${duration}`})),
 			duration,
 			hit: Number.max(bar + Boolean.match(after, {onFalse: () => 0, onTrue: () => measured + 4}), 12),
 			inside,
@@ -168,10 +156,7 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 	})
 	function moveFocus(span: TraceTree['spans'][number], key: string) {
 		const siblings = Array.filter(props.trace.spans, other => other.depth === span.depth)
-		const index = Option.getOrElse(
-			Array.findFirstIndex(siblings, other => other.spanId === span.spanId),
-			() => 0
-		)
+		const index = pipe(siblings, Array.findFirstIndex(other => other.spanId === span.spanId), Option.getOrElse(() => 0))
 		Option.match(
 			pipe(
 				Match.value(key),

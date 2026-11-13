@@ -32,18 +32,14 @@ it.effect('shares range reads between viewers, isolates ranges and restarts afte
 			})
 			const fleet = Fleet.of({
 				current: () =>
-					Effect.as(
-						Ref.update(currents, count => count + 1),
-						[history]
-					),
+					pipe(currents, Ref.update(count => count + 1), pipelineSubject1163 => Effect.as(pipelineSubject1163, [history])),
 				expose: () => Effect.succeed(''),
 				hide: () => Effect.void,
 				history: () => Effect.succeed(history),
 				local: Effect.succeed(Snapshot.make({items: [], sources: [], time: 1})),
 				metrics: query =>
-					Effect.onInterrupt(Effect.andThen(Queue.offer(entered, query.minutes), Effect.never), () =>
-						Queue.offer(closed, query.minutes)
-					),
+					pipe(entered, pipelineSubject1495 => Queue.offer(pipelineSubject1495, query.minutes), pipelineSubject1480 => Effect.andThen(pipelineSubject1480, Effect.never), Effect.onInterrupt(() =>
+						Queue.offer(closed, query.minutes))),
 				run: () => Effect.void,
 				snapshot: Effect.never
 			})
@@ -107,15 +103,11 @@ it.effect('collects inventory once for multiple viewers and stops after the last
 								expose: () => Effect.succeed(''),
 								hide: () => Effect.void,
 								history: () => Effect.never,
-								local: Effect.as(
-									Ref.update(locals, count => count + 1),
-									snapshot
-								),
+								local: pipe(locals, Ref.update(count => count + 1), Effect.as(snapshot)),
 								metrics: () => Effect.never,
 								run: () => Effect.void,
-								snapshot: Effect.onInterrupt(Effect.andThen(Queue.offer(entered, undefined), Effect.never), () =>
-									Queue.offer(closed, undefined)
-								)
+								snapshot: pipe(entered, pipelineSubject4334 => Queue.offer(pipelineSubject4334, undefined), pipelineSubject4319 => Effect.andThen(pipelineSubject4319, Effect.never), Effect.onInterrupt(() =>
+									Queue.offer(closed, undefined)))
 							})
 						)
 					),

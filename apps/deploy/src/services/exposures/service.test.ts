@@ -51,9 +51,8 @@ const tailscale = Effect.gen(function* () {
 				yield* Ref.update(stopped, n => n + 1)
 				yield* Ref.set(current, {})
 			}
-			const text = yield* pipe(
-				Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
-					yield* Boolean.match(Array.contains(command.args, 'serve'), {
+			const text = yield* Effect.mapError(Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(
+					yield* pipe(command.args, Array.contains('serve'), pipelineSubject1580 => Boolean.match(pipelineSubject1580, {
 						onFalse: () =>
 							Effect.succeed({
 								Self: {
@@ -65,10 +64,8 @@ const tailscale = Effect.gen(function* () {
 								}
 							}),
 						onTrue: () => Ref.get(current)
-					})
-				),
-				Effect.mapError(cause => PlatformError.badArgument({cause, method: 'encode', module: 'fixture'}))
-			)
+					}))
+				), cause => PlatformError.badArgument({cause, method: 'encode', module: 'fixture'}))
 			return ChildProcessSpawner.makeHandle({
 				all: Stream.empty,
 				exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),

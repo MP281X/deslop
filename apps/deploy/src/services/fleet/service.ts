@@ -95,7 +95,7 @@ export class Fleet extends Context.Service<
 		readonly metrics: (query: HistoryQuery) => Effect.Effect<MachineHistory[], DeployError>
 		readonly snapshot: Effect.Effect<Snapshot>
 	}
->()('@deslop/deploy/services/fleet/service/Fleet') {
+>('@deslop/deploy/services/fleet/service/Fleet') {
 	static readonly layer = Layer.effect(
 		this,
 		Effect.gen(function* () {
@@ -104,7 +104,7 @@ export class Fleet extends Context.Service<
 			const lastMetrics = yield* Ref.make<Record<string, MachineHistory>>({})
 			const exposures = yield* Exposures
 			const workers = yield* Effect.forEach(
-				yield* pipe(Config.Array(Schema.String, 'DEPLOY_WORKERS'), Config.withDefault([])),
+				yield* Config.withDefault(Config.Array(Schema.String, 'DEPLOY_WORKERS'), []),
 				entry => {
 					const [name, url] = String.split(entry, '=')
 					return Schema.decodeUnknownEffect(Worker)({name, url})
@@ -139,29 +139,19 @@ export class Fleet extends Context.Service<
 					const url = new URL(RPC_PATH, worker.url)
 					url.protocol = 'wss:'
 					if (new URL(worker.url).protocol === 'http:') url.protocol = 'ws:'
-					return yield* pipe(
-						Effect.flatMap(makeRemoteClient, client => use(client, peerHeaders)),
-						// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each remote poll owns its RPC socket and closes it on success, error or timeout.
-						Effect.provide(
-							pipe(
+					return yield* pipe(makeRemoteClient, Effect.flatMap(client => use(client, peerHeaders)), pipelineSubject5527 => Effect.provide(pipelineSubject5527, pipe(
 								RpcClient.layerProtocolSocket({pingTimeout: '15 seconds'}),
 								Layer.provide(NodeSocket.layerWebSocket(url.href)),
 								Layer.provide(RpcSerialization.layerSchemaBinary()),
 								Layer.provideMerge(layerRpcStreamClient)
-							)
-						)
-					)
+							)))
 				},
 				Effect.scoped,
 				Effect.timeout('15 seconds')
 			)
 			function selectedWorker(target: string) {
-				return pipe(
-					Effect.fromOption(Array.findFirst(workers, worker => worker.name === target)),
-					Effect.mapError(cause =>
-						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
-					)
-				)
+				return Effect.mapError(Effect.fromOption(Array.findFirst(workers, worker => worker.name === target)), cause =>
+						DeployError.make({cause, message: 'This worker is not configured on the control plane'}))
 			}
 			return Fleet.of({
 				current: Effect.fnUntraced(function* (query) {

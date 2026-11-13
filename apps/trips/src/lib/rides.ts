@@ -11,7 +11,7 @@ import type {Booking, BookingList, Place} from '#services/bookings/schema.ts'
 import {BookingsError} from '#services/bookings/schema.ts'
 
 export function placeLine(place: Place) {
-	return Array.join(Array.filter([place.name, place.address ?? place.city ?? ''], String.isNonEmpty), ', ')
+	return pipe([place.name, place.address ?? place.city ?? ''], pipelineSubject520 => Array.filter(pipelineSubject520, String.isNonEmpty), Array.join(', '))
 }
 
 type Coordinates = {latitude: number; longitude: number}
@@ -39,13 +39,10 @@ export function ridesFor(booking: Booking, bookings: BookingList, now: number) {
 		stayAfter(bookings, booking),
 		found => ({label: found.name, place: found.place}) satisfies Ride
 	)
-	return Option.match(
-		Option.filter(stay, () => now > departureOf(booking) - 30 * MINUTE),
-		{
+	return pipe(stay, Option.filter(() => now > departureOf(booking) - 30 * MINUTE), pipelineSubject1591 => Option.match(pipelineSubject1591, {
 			onNone: () => [{label: booking.from.name, place: booking.from}, ...Option.toArray(stay)] satisfies Ride[],
 			onSome: next => [next] satisfies Ride[]
-		}
-	)
+		}))
 }
 
 export const mapsAtom = Atom.fn((ride: Ride) =>

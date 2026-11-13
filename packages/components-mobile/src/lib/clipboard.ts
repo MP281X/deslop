@@ -47,7 +47,7 @@ class ClipboardOffer extends Context.Service<
 		readonly detect: Effect.Effect<Option.Option<ClipboardKind>>
 		readonly file: File
 	}
->()('@deslop/components-mobile/lib/clipboard/ClipboardOffer') {}
+>('@deslop/components-mobile/lib/clipboard/ClipboardOffer') {}
 
 // A copy is offered once: the change count it was answered at stays in the app's file, so a return offers only a newer copy.
 const clipboardMachine = Machine.make({

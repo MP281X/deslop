@@ -171,10 +171,7 @@ function RangeTabs(props: {onChange: (range: Range) => void; range: Range}) {
 			value={props.range}
 			options={RANGES}
 			onChange={value => {
-				Option.map(
-					Array.findFirst(RANGES, entry => entry.value === value),
-					entry => props.onChange(entry.value)
-				)
+				pipe(RANGES, Array.findFirst(entry => entry.value === value), Option.map(entry => props.onChange(entry.value)))
 			}}
 		/>
 	)
@@ -295,7 +292,7 @@ function OperationsPane(props: {
 														props.activeKey.runtime === row.operation.runtime &&
 														props.activeKey.name === row.operation.name
 													}
-													duplicate={Option.exists(Record.get(names, row.operation.name), group => group.length > 1)}
+													duplicate={pipe(names, pipelineSubject10861 => Record.get(pipelineSubject10861, row.operation.name), Option.exists(group => group.length > 1))}
 													failing={failing}
 													onSelect={() => props.onSelect(row.app.name, row.operation)}
 													operation={row.operation}

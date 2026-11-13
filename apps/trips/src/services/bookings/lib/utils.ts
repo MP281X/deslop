@@ -41,7 +41,7 @@ export function instantOf(time: LocalTime, timeZone: string) {
 		return Option.map(DateTime.make(time), DateTime.toEpochMillis)
 	}
 	// The wall-clock parts, read in the place's zone without dropping seconds or fractions.
-	return pipe(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), Option.map(DateTime.toEpochMillis))
+	return Option.map(DateTime.makeZoned(time, {adjustForTimeZone: true, timeZone}), DateTime.toEpochMillis)
 }
 
 export function clockAt(time: number, timeZone: string) {
@@ -95,9 +95,8 @@ export const byStart = Order.mapInput(Order.Number, startOf)
 export function titleOf(booking: Booking) {
 	if (booking._tag === 'stay') return booking.name
 	if (booking._tag === 'flight') return `${booking.airlineCode} ${booking.number}`
-	const brand = Option.getOrElse(Record.get(TRAIN_BRANDS, String.toLowerCase(String.trim(booking.operatorName))), () =>
-		String.toUpperCase(String.slice(0, 3)(booking.operatorName))
-	)
+	const brand = pipe(TRAIN_BRANDS, pipelineSubject3118 => Record.get(pipelineSubject3118, String.toLowerCase(String.trim(booking.operatorName))), Option.getOrElse(() =>
+		String.toUpperCase(String.slice(0, 3)(booking.operatorName))))
 	return `${brand} ${booking.number}`
 }
 
@@ -206,9 +205,7 @@ function combine(existing: Booking, incoming: Booking) {
 
 export function upsert(current: BookingList, incoming: BookingList) {
 	return Array.mapAccum(incoming, current, (bookings, booking) =>
-		Option.match(
-			Array.findFirst(bookings, existing => sameReservation(existing, booking)),
-			{
+		pipe(bookings, Array.findFirst(existing => sameReservation(existing, booking)), pipelineSubject7365 => Option.match(pipelineSubject7365, {
 				onNone: () => [[...bookings, booking], undefined] as const,
 				onSome: existing => {
 					const merged = combine(existing, booking)
@@ -217,8 +214,7 @@ export function upsert(current: BookingList, incoming: BookingList) {
 						undefined
 					] as const
 				}
-			}
-		)
+			}))
 	)[0]
 }
 
@@ -292,17 +288,11 @@ function flightHeadline(flight: Flight, phase: FlightPhase) {
 
 function flightDetail(flight: Flight, bookings: BookingList, phase: FlightPhase) {
 	if (phase === 'landed') {
-		return Option.getOrElse(
-			Option.orElse(
-				Option.map(stayAfter(bookings, flight), stay => `Next: ${stay.name}`),
-				() =>
+		return pipe(stayAfter(bookings, flight), Option.map(stay => `Next: ${stay.name}`), Option.orElse(() =>
 					labelled(
 						'Gate',
 						Option.flatMapNullishOr(flight.live, live => live.arrivalGate)
-					)
-			),
-			() => ''
-		)
+					)), Option.getOrElse(() => ''))
 	}
 	return line([
 		labelled('Group', flight.boardingGroup),
@@ -327,17 +317,8 @@ function flightChip(flight: Flight, phase: FlightPhase) {
 			text => chipOf(text, 'plain')
 		)
 	}
-	return Option.map(
-		Option.orElse(
-			Option.flatMapNullishOr(flight.live, live => live.departureGate),
-			() =>
-				Option.map(
-					Option.flatMapNullishOr(flight.live, live => live.departureTerminal),
-					terminal => `T${terminal}`
-				)
-		),
-		text => chipOf(text, 'warn')
-	)
+	return pipe(flight.live, Option.flatMapNullishOr(live => live.departureGate), Option.orElse(() =>
+				pipe(flight.live, Option.flatMapNullishOr(live => live.departureTerminal), Option.map(terminal => `T${terminal}`))), Option.map(text => chipOf(text, 'warn')))
 }
 
 function lateTone(late: boolean) {
@@ -388,13 +369,7 @@ function flightActivity(flight: Flight, bookings: BookingList, now: number) {
 			now,
 			phase !== 'landed' && phase !== 'cancelled' && phase !== 'diverted'
 		),
-		...Option.match(
-			Option.filter(
-				Option.flatMapNullishOr(flight.live, live => live.takeoffActual),
-				() => phase === 'airborne'
-			),
-			{onNone: () => ({}), onSome: progressFrom => ({progressFrom})}
-		),
+		...pipe(flight.live, Option.flatMapNullishOr(live => live.takeoffActual), Option.filter(() => phase === 'airborne'), pipelineSubject13212 => Option.match(pipelineSubject13212, {onNone: () => ({}), onSome: progressFrom => ({progressFrom})})),
 		arrivalNote: flight.to.city ?? flight.to.name,
 		arrivalTime: clockAt(arrivalOf(flight), flight.to.timeZone),
 		arrivalTone: 'plain',

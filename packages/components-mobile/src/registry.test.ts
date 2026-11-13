@@ -12,16 +12,13 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		for (const app of ['stash', 'trips', 'opm']) {
 			const require = createRequire(`${import.meta.dirname}/../../../apps/${app}/package.json`)
-			const hooks = yield* pipe(
-				Effect.promise(
+			const hooks = yield* Effect.flatMap(Effect.promise(
 					() =>
 						import(
 							/* @vite-ignore */
 							require.resolve('@effect/atom-react')
 						)
-				),
-				Effect.flatMap(Schema.decodeUnknownEffect(registryModule))
-			)
+				), Schema.decodeUnknownEffect(registryModule))
 			assert.isTrue(hooks.RegistryContext === RegistryContext, `${app}: shared controls must read the app's registry`)
 		}
 	})

@@ -1,4 +1,3 @@
-// oxlint-disable-next-line effecttsgo/node-builtin-import -- A scoped loopback server exercises the real socket protocol and its spans.
 import {createServer} from 'node:http'
 
 import {NodeHttpServer, NodeServices} from '@effect/platform-node'
@@ -145,7 +144,6 @@ it.layer(NodeServices.layer)('RPC streams', test => {
 						yield* Stream.runDrain(client('test.watch', 'tick'))
 						yield* client('test.echo', 'echo')
 					}),
-					// oxlint-disable-next-line effecttsgo/strict-effect-provide -- The test client owns its socket and closes it with the test's scope.
 					Effect.provide(protocol),
 					Effect.provideService(Tracer.Tracer, tracer)
 				)

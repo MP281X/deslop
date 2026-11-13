@@ -91,16 +91,11 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 						})}
 					>{`Chapter ${props.chapter.number}`}</ItemTitle>
 					<ItemDescription>
-						{Array.join(
-							Array.filter([props.chapter.title, postedOn(props.chapter.postedAt)], String.isNonEmpty),
-							' · '
-						)}
+						{pipe([props.chapter.title, postedOn(props.chapter.postedAt)], pipelineSubject3000 => Array.filter(pipelineSubject3000, String.isNonEmpty), Array.join(' · '))}
 					</ItemDescription>
 				</ItemContent>
 				{/* Weight already says unread or read, so progress shows only for a chapter left part-way; the pages before the one on screen are read. */}
-				{Option.match(
-					Option.filter(props.chapter.reading, reading => !reading.done && reading.page > 0),
-					{
+				{pipe(props.chapter.reading, Option.filter(reading => !reading.done && reading.page > 0), pipelineSubject3305 => Option.match(pipelineSubject3305, {
 						onNone: () => null,
 						onSome: reading => (
 							<ItemActions>
@@ -112,8 +107,7 @@ function ChapterRow(props: {chapter: ChapterItem; onOpen: (number: number) => vo
 								/>
 							</ItemActions>
 						)
-					}
-				)}
+					}))}
 			</Item>
 			<SwipeActions.Actions edge="leading">
 				<Button
@@ -146,16 +140,9 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 			{all => {
 				const chapters = Array.filter(all, chapter => chapter.series === props.series)
 				const needle = String.toLowerCase(String.trim(props.searched))
-				return Array.match(
-					pipe(
-						Array.sort(chapters, Order.flip(byNumber)),
-						Array.filter(
-							chapter =>
+				return pipe(chapters, pipelineSubject4852 => Array.sort(pipelineSubject4852, Order.flip(byNumber)), Array.filter(chapter =>
 								String.startsWith(needle)(`${chapter.number}`) ||
-								String.includes(needle)(String.toLowerCase(chapter.title))
-						)
-					),
-					{
+								String.includes(needle)(String.toLowerCase(chapter.title))), pipelineSubject4821 => Array.match(pipelineSubject4821, {
 						onEmpty: () =>
 							Boolean.match(String.isEmpty(needle), {
 								onFalse: () => <Empty systemImage="magnifyingglass" label="No chapters match" />,
@@ -170,8 +157,7 @@ function Chapters(props: {onOpen: (number: number, page?: number) => void; searc
 								</Section>
 							</ItemGroup>
 						)
-					}
-				)
+					}))
 			}}
 		</Loaded>
 	)

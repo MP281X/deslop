@@ -251,7 +251,7 @@ function fleetOf(overrides: Partial<Parameters<typeof Fleet.of>[0]>) {
 
 // The tool layer is the public seam: handlers and schemas as the agent receives them.
 function toolkitFor(fleet: Parameters<typeof Fleet.of>[0]) {
-	return Effect.flatMap(Layer.build(pipe(ToolHandlers, Layer.provide(Layer.succeed(Fleet, fleet)))), context =>
+	return Effect.flatMap(Layer.build(Layer.provide(ToolHandlers, Layer.succeed(Fleet, fleet))), context =>
 		Effect.provideContext(ToolContracts, context)
 	)
 }
@@ -413,7 +413,7 @@ it.effect('exposes and hides a port through the composed MCP tools', () =>
 			const hidden = yield* Ref.make(Option.none<HideRequest>())
 			const toolkit = yield* toolkitFor(
 				fleetOf({
-					expose: input => Effect.as(Ref.set(exposed, Option.some(input)), 'https://desktop.tailnet-8c4c.ts.net:4000'),
+					expose: input => pipe(exposed, pipelineSubject15352 => Ref.set(pipelineSubject15352, Option.some(input)), Effect.as('https://desktop.tailnet-8c4c.ts.net:4000')),
 					hide: input => Ref.set(hidden, Option.some(input)),
 					snapshot: Effect.succeed(Snapshot.make({items: [], sources: [], time: NOW, workers: ['dev', 'desktop']}))
 				})

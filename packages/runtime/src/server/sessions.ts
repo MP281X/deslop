@@ -59,10 +59,7 @@ const Refusal = Schema.Struct({error: Schema.String, error_description: Schema.o
 class Refused extends Schema.TaggedError<Refused>()('Refused', {message: Schema.String}) {}
 
 export function sessionIdOf(headers: Headers.Headers) {
-	return Option.orElse(
-		Option.filter(bearerOf(headers), token => !isJwt(token)),
-		() => Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE])
-	)
+	return pipe(bearerOf(headers), Option.filter(token => !isJwt(token)), Option.orElse(() => Option.fromUndefinedOr(Cookies.parseHeader(headers['cookie'] ?? '')[SESSION_COOKIE])))
 }
 
 export class Sessions extends Context.Service<
@@ -75,7 +72,7 @@ export class Sessions extends Context.Service<
 		readonly remember: (token: string, claims: AccessClaims) => Effect.Effect<void>
 		readonly tokenFor: (userId: string) => Effect.Effect<string, AuthError>
 	}
->()('@deslop/runtime/server/sessions') {
+>('@deslop/runtime/server/sessions') {
 	static readonly model = Session
 
 	// The table every app's database holds for its sign-ins, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
@@ -157,15 +154,12 @@ export class Sessions extends Context.Service<
 				}
 
 				const post = Effect.fnUntraced(function* (path: string, params: Record<string, string>) {
-					return yield* pipe(
-						client.execute(
+					return yield* Effect.timeout(client.execute(
 							HttpClientRequest.bodyUrlParams(
 								HttpClientRequest.post(new URL(path, yield* Effect.fromOption(issuer)).href),
 								params
 							)
-						),
-						Effect.timeout('10 seconds')
-					)
+						), '10 seconds')
 				})
 
 				// Auth refuses a code or refresh token with 400 or 401 and says why; any other failure is an outage.
@@ -173,12 +167,8 @@ export class Sessions extends Context.Service<
 					const response = yield* post(TOKEN_PATH, params)
 					if (response.status === 400 || response.status === 401) {
 						return yield* Refused.make({
-							message: Option.getOrElse(
-								Option.flatMap(yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)), body =>
-									Option.fromUndefinedOr(body.error_description)
-								),
-								() => 'Auth refused the sign-in'
-							)
+							message: pipe(yield* Effect.option(HttpClientResponse.schemaBodyJson(Refusal)(response)), Option.flatMap(body =>
+									Option.fromUndefinedOr(body.error_description)), Option.getOrElse(() => 'Auth refused the sign-in'))
 						})
 					}
 					return yield* HttpClientResponse.schemaBodyJson(TokenResponse)(
@@ -209,16 +199,12 @@ export class Sessions extends Context.Service<
 						Effect.gen(function* () {
 							const session = yield* Effect.fromOption(yield* findSession(idHash))
 							if (yield* fresh(session)) return session
-							const tokens = yield* pipe(
-								granted({
+							const tokens = yield* Effect.catchTag(granted({
 									client_id: session.clientId,
 									grant_type: 'refresh_token',
 									refresh_token: Redacted.value(session.refresh)
-								}),
-								Effect.catchTag('Refused', () =>
-									Effect.andThen(deleteSession(idHash), AuthError.make({message: 'Sign in first'}))
-								)
-							)
+								}), 'Refused', () =>
+									Effect.andThen(deleteSession(idHash), AuthError.make({message: 'Sign in first'})))
 							const next = yield* sessionOf(tokens, session.clientId, idHash)
 							yield* saveSession(next)
 							return next
@@ -261,10 +247,7 @@ export class Sessions extends Context.Service<
 						}),
 					// A new sign-in also drops the sessions whose refresh token Auth no longer accepts.
 					start: Effect.fn('Sessions.start')(function* (grant: CodeGrant) {
-						const tokens = yield* pipe(
-							granted({...grant, grant_type: 'authorization_code'}),
-							Effect.catchTag('Refused', refusal => AuthError.make({message: refusal.message}))
-						)
+						const tokens = yield* Effect.catchTag(granted({...grant, grant_type: 'authorization_code'}), 'Refused', refusal => AuthError.make({message: refusal.message}))
 						const id = Base64Url.encode(yield* random.randomBytes(32))
 						const session = yield* sessionOf(tokens, grant.client_id, yield* idHashOf(id))
 						yield* pipe(
@@ -278,7 +261,7 @@ export class Sessions extends Context.Service<
 						for (const session of yield* findSessionsOf(userId)) {
 							if (yield* fresh(session)) return Redacted.value(session.access)
 							const renewed = yield* Effect.result(
-								pipe(refreshed(session.idHash), rejected('AI access is temporarily unavailable'))
+								(rejected('AI access is temporarily unavailable'))(refreshed(session.idHash))
 							)
 							if (renewed._tag === 'Success') return Redacted.value(renewed.success.access)
 							if (Schema.is(AuthError)(renewed.failure) && renewed.failure.error === 'temporarily_unavailable') {

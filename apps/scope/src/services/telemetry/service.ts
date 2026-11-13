@@ -115,7 +115,7 @@ declare module 'effect/reactivity/Reactivity' {
 
 // Rows written in statements of 500, well under SQLite's limit on one statement's parameters.
 function chunked<A, E>(rows: readonly A[], save: (chunk: Array.NonEmptyReadonlyArray<A>) => Effect.Effect<void, E>) {
-	return Effect.forEach(Array.chunksOf(rows, 500), save, {concurrency: 1, discard: true})
+	return pipe(rows, Array.chunksOf(500), pipelineSubject2471 => Effect.forEach(pipelineSubject2471, save, {concurrency: 1, discard: true}))
 }
 
 function tracedOf(row: SettledTrace) {
@@ -137,7 +137,7 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 			operations: Array.map(app.operations, operation => ({
 				...operation,
 				traces: Array.map(operation.traces, trace =>
-					Option.match(Record.get(byId, trace.id), {
+					pipe(byId, pipelineSubject3288 => Record.get(pipelineSubject3288, trace.id), pipelineSubject3275 => Option.match(pipelineSubject3275, {
 						onNone: () => trace,
 						onSome: row => {
 							const error = diagnosis(row)
@@ -155,7 +155,7 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 								})
 							}
 						}
-					})
+					}))
 				)
 			}))
 		}))
@@ -163,10 +163,7 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 }
 
 // Failing traces above the rest, then the newest: the largest is an operation's newest failure when it has one.
-const newestFailureLast = Order.combine(
-	Order.mapInput(Order.Boolean, (trace: OperationTrace) => trace.failure !== undefined),
-	Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)
-)
+const newestFailureLast = pipe(Order.Boolean, Order.mapInput((trace: OperationTrace) => trace.failure !== undefined), pipelineSubject4002 => Order.combine(pipelineSubject4002, Order.mapInput(Order.Number, (trace: OperationTrace) => trace.start)))
 
 // The newest failing trace an operation keeps, whose span and message the tools show; its kept traces hold its newest failures.
 function latestFailure(operation: Operation) {
@@ -176,9 +173,7 @@ function latestFailure(operation: Operation) {
 
 // The page's own operations for one frame, in the overview's order, with the numbers the tools need.
 function operationsAnswer(overview: Overview, name?: string) {
-	const apps = Array.map(
-		Array.filter(overview.apps, app => name === undefined || app.name === name),
-		app => ({
+	const apps = pipe(overview.apps, Array.filter(app => name === undefined || app.name === name), Array.map(app => ({
 			app: app.name,
 			operations: Array.map(app.operations, operation => {
 				const side = sideFor(app.name, operation.runtime)
@@ -196,8 +191,7 @@ function operationsAnswer(overview: Overview, name?: string) {
 					...Option.match(latestFailure(operation), {onNone: () => ({}), onSome: failure => ({failure})})
 				} satisfies OperationRow
 			})
-		})
-	)
+		})))
 	return {apps: Array.filter(apps, app => Array.isReadonlyArrayNonEmpty(app.operations))} satisfies OperationsAnswer
 }
 
@@ -266,16 +260,10 @@ function compactSpan(span: TreeSpan) {
 
 // Where a tree starts: its earliest span, or its earliest log when no span arrived.
 function startOf(tree: TraceTree) {
-	return Option.getOrElse(
-		Array.match(
-			Array.map(tree.spans, span => span.start),
-			{
+	return pipe(tree.spans, Array.map(span => span.start), pipelineSubject8236 => Array.match(pipelineSubject8236, {
 				onEmpty: () => Option.map(Array.head(tree.logs), log => log.time),
 				onNonEmpty: starts => Option.some(Array.min(starts, Order.Number))
-			}
-		),
-		() => 0
-	)
+			}), Option.getOrElse(() => 0))
 }
 
 function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details: boolean, selectedSpanId?: string) {
@@ -283,26 +271,17 @@ function readTraceAnswer(tree: TraceTree, limit: number, offset: number, details
 	// The failing span and its parents up to the root, stopping at a parent already walked.
 	const ancestors = HashSet.fromIterable(
 		Array.unfold({id: Option.fromUndefinedOr(tree.failureSpanId), seen: HashSet.empty<string>()}, current =>
-			Option.flatMap(
-				Option.filter(current.id, id => !HashSet.has(current.seen, id)),
-				id =>
-					Option.map(Record.get(byId, id), found => [
+			pipe(current.id, Option.filter(id => !HashSet.has(current.seen, id)), Option.flatMap(id =>
+					pipe(byId, pipelineSubject9250 => Record.get(pipelineSubject9250, id), Option.map(found => [
 						found.spanId,
 						{id: found.parentSpanId, seen: HashSet.add(current.seen, id)}
-					])
-			)
+					]))))
 		)
 	)
-	const candidates = Array.filter(
-		Array.sort(
-			tree.spans,
-			Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)
-		),
-		span => !HashSet.has(ancestors, span.spanId)
-	)
+	const candidates = pipe(tree.spans, pipelineSubject9209 => Array.sort(pipelineSubject9209, Order.mapInput(Order.flip(Order.Number), (span: TreeSpan) => span.durationMs)), Array.filter(span => !HashSet.has(ancestors, span.spanId)))
 	const kept = HashSet.union(
 		ancestors,
-		HashSet.fromIterable(Array.map(Array.take(Array.drop(candidates, offset), limit), span => span.spanId))
+		HashSet.fromIterable(pipe(candidates, pipelineSubject9458 => Array.drop(pipelineSubject9458, offset), pipelineSubject9447 => Array.take(pipelineSubject9447, limit), Array.map(span => span.spanId)))
 	)
 	const spans = Array.flatMap(tree.spans, span => {
 		if (selectedSpanId !== undefined) {
@@ -626,10 +605,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 		const servicesOf = Effect.fnUntraced(function* (app?: string) {
 			if (app === undefined) return Option.none<readonly string[]>()
 			return Option.some(
-				Array.filter(
-					Array.map(yield* listServices(), row => row.service),
-					service => appName(service) === app
-				)
+				pipe(yield* listServices(), Array.map(row => row.service), Array.filter(service => appName(service) === app))
 			)
 		})
 		// What an older release sends is dropped; a newer release's first records delete everything its service's older ones sent.
@@ -646,14 +622,13 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			const superseded = supersededBy(newest)
 			const services = Array.dedupe([
 				...Array.map(changed, release => release.service),
-				...Array.map(Array.filter(senders, superseded), sender => sender.service)
+				...pipe(senders, Array.filter(superseded), Array.map(sender => sender.service))
 			])
 			if (Array.isReadonlyArrayEmpty(services)) return
 			yield* Array.match(
 				Array.getSomes(
-					Array.map(Array.filter(yield* listSenders(services), superseded), sender =>
-						Option.map(sender.version, version => ({service: sender.service, version}))
-					)
+					pipe(yield* listSenders(services), Array.filter(superseded), Array.map(sender =>
+						Option.map(sender.version, version => ({service: sender.service, version}))))
 				),
 				{onEmpty: () => Effect.void, onNonEmpty: deleteSuperseded}
 			)
@@ -713,7 +688,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 							app: appName(run.service),
 							entries: run.entries,
 							lastEvent: isoTime(run.lastEvent),
-							runStarted: isoTime(Option.getOrElse(Option.map(run.run, DateTime.toEpochMillis), () => 0)),
+							runStarted: isoTime(pipe(run.run, pipelineSubject26070 => Option.map(pipelineSubject26070, DateTime.toEpochMillis), Option.getOrElse(() => 0))),
 							...Option.match(Option.fromUndefinedOr(side), {onNone: () => ({}), onSome: value => ({side: value})}),
 							...Option.match(run.version, {onNone: () => ({}), onSome: release => ({release})})
 						}
@@ -739,10 +714,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				const rows = yield* pageTraces(query)
 				const page = Array.take(rows, input.limit)
 				return {
-					...Option.match(
-						Option.filter(Array.last(page), () => rows.length > input.limit),
-						{onNone: () => ({}), onSome: row => ({nextCursor: Struct.pick(row, ['duration', 'id', 'start'])})}
-					),
+					...pipe(Array.last(page), Option.filter(() => rows.length > input.limit), pipelineSubject27226 => Option.match(pipelineSubject27226, {onNone: () => ({}), onSome: row => ({nextCursor: Struct.pick(row, ['duration', 'id', 'start'])})})),
 					total: (yield* countTraces(query)).count,
 					traces: Array.map(page, traceRow)
 				} satisfies TracesAnswer
@@ -750,11 +722,8 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 			ingestLogs: Effect.fn('Telemetry.ingestLogs')(
 				function* (payload: LogsRequest) {
 					const receivedAt = yield* Clock.currentTimeMillis
-					const logs = yield* Effect.forEach(
-						Array.flatMap(payload.resourceLogs ?? [], group =>
-							Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))
-						),
-						Effect.fnUntraced(function* (item) {
+					const logs = yield* pipe(payload.resourceLogs ?? [], Array.flatMap(group =>
+							Array.flatMap(group.scopeLogs ?? [], scope => Array.map(scope.logRecords ?? [], log => ({group, log})))), pipelineSubject27731 => Effect.forEach(pipelineSubject27731, Effect.fnUntraced(function* (item) {
 							// A log record has no id of its own, so the identity is what it carries.
 							const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))({
 								attributes: item.log.attributes ?? [],
@@ -773,9 +742,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 								yield* digest.digestHex(Digest.sha256, utf8.encode(encoded)),
 								receivedAt
 							)
-						}),
-						{concurrency: 1}
-					)
+						}), {concurrency: 1}))
 					yield* chunked(logs, saveLogs)
 					yield* supersede(logs)
 				},
@@ -850,10 +817,7 @@ export class Telemetry extends Context.Service<Telemetry>()('@deslop/scope/servi
 				const rows = yield* pageLogs(query)
 				const page = Array.take(rows, input.limit)
 				return {
-					...Option.match(
-						Option.filter(Array.last(page), () => rows.length > input.limit),
-						{onNone: () => ({}), onSome: log => ({nextCursor: Struct.pick(log, ['id', 'time'])})}
-					),
+					...pipe(Array.last(page), Option.filter(() => rows.length > input.limit), pipelineSubject31797 => Option.match(pipelineSubject31797, {onNone: () => ({}), onSome: log => ({nextCursor: Struct.pick(log, ['id', 'time'])})})),
 					logs: Array.map(page, log => {
 						const attrs = attributesFlat(log.attributes, '', false)
 						const side = sideFor(log.service, log.runtime)

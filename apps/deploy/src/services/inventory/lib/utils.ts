@@ -43,22 +43,13 @@ export function processOwner(cgroup: string) {
 	)?.[1]
 	if (container !== undefined) return `container:${String.slice(0, 12)(container)}`
 	const segments = String.split(cgroup, /[/\n]/u)
-	const service = Option.getOrElse(Array.findLastIndex(segments, String.endsWith('.service')), () => -1)
-	const manager = Option.getOrElse(
-		Array.findFirstIndex(segments, segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))),
-		() => Infinity
-	)
-	return Option.match(
-		Option.flatMap(
-			Option.liftPredicate(Array.drop(segments, manager + 1), () => service <= manager),
-			below => Array.findFirst(below, segment => String.match(/^app-(.+)\.slice$/u)(segment))
-		),
-		{
+	const service = pipe(segments, pipelineSubject1304 => Array.findLastIndex(pipelineSubject1304, String.endsWith('.service')), Option.getOrElse(() => -1))
+	const manager = pipe(segments, Array.findFirstIndex(segment => Option.isSome(String.match(/^user@[0-9]+\.service$/u)(segment))), Option.getOrElse(() => Infinity))
+	return pipe(segments, pipelineSubject1603 => Array.drop(pipelineSubject1603, manager + 1), Option.liftPredicate(() => service <= manager), Option.flatMap(below => Array.findFirst(below, segment => String.match(/^app-(.+)\.slice$/u)(segment))), pipelineSubject1547 => Option.match(pipelineSubject1547, {
 			onNone: () =>
 				`service:${Boolean.match(service > manager, {onFalse: () => 'system', onTrue: () => 'user'})}:${segments[service] ?? ''}`,
 			onSome: match => `service:user:${match[1]}.service`
-		}
-	)
+		}))
 }
 
 // A loopback proxy can only reach these TCP listeners, not a tailnet-interface-only socket or UDP.
@@ -164,26 +155,18 @@ function socket(worker: string, binding: {address?: string; port?: number; proto
 
 export function workloads(items: readonly InventoryItem[]) {
 	const listeners = Array.filter(items, item => item.kind === 'port')
-	const byUnit = Record.map(
-		Array.groupBy(listeners, listener => listener.worker),
-		worker => Array.groupBy(worker, listener => listener.unit ?? '')
-	)
+	const byUnit = pipe(listeners, Array.groupBy(listener => listener.worker), Record.map(worker => Array.groupBy(worker, listener => listener.unit ?? '')))
 	const bySocket = HashMap.fromIterable(
 		Array.map(
 			Array.reverse(Array.filter(listeners, listener => listener.address !== 'container')),
 			listener => [socket(listener.worker, listener), listener] as const
 		)
 	)
-	const grouped = Array.map(
-		Array.filter(items, item => item.kind === 'service' || item.kind === 'container'),
-		item => {
+	const grouped = pipe(items, Array.filter(item => item.kind === 'service' || item.kind === 'container'), Array.map(item => {
 			const attached = Array.filter(byUnit[item.worker]?.[item.name] ?? [], listener => listener.unit === item.name)
 			const bindings = Array.map(item.bindings ?? [], binding => ({
 				...item,
-				...Option.getOrElse(
-					Option.filter(HashMap.get(bySocket, socket(item.worker, binding)), () => binding.address !== 'container'),
-					() => ({})
-				),
+				...pipe(bySocket, pipelineSubject6846 => HashMap.get(pipelineSubject6846, socket(item.worker, binding)), Option.filter(() => binding.address !== 'container'), Option.getOrElse(() => ({}))),
 				...binding,
 				bindings: [],
 				id: `${item.id}:port:${binding.address}`,
@@ -193,25 +176,18 @@ export function workloads(items: readonly InventoryItem[]) {
 				url: ''
 			}))
 			return {item, listeners: [...attached, ...bindings]}
-		}
-	)
+		}))
 	const services = HashSet.fromIterable(
-		Array.map(
-			Array.filter(grouped, row => row.item.kind === 'service'),
-			row => Tuple.make(row.item.worker, row.item.name)
-		)
+		pipe(grouped, Array.filter(row => row.item.kind === 'service'), Array.map(row => Tuple.make(row.item.worker, row.item.name)))
 	)
 	const represented = HashSet.fromIterable(
 		Array.flatMap(grouped, row =>
-			Array.map(
-				Array.filter(row.listeners, binding => binding.address !== 'container'),
-				binding =>
+			pipe(row.listeners, Array.filter(binding => binding.address !== 'container'), Array.map(binding =>
 					socket(row.item.worker, {
 						address: binding.address ?? '',
 						port: binding.port ?? 0,
 						protocol: binding.protocol ?? 'tcp'
-					})
-			)
+					})))
 		)
 	)
 	const loose = Array.filter(
@@ -225,18 +201,11 @@ export function workloads(items: readonly InventoryItem[]) {
 		...Array.filter(items, item => item.kind === 'exposure' && item.owned === true),
 		...Array.filter(items, item => item.kind === 'exposure' && item.owned !== true)
 	]
-	const exposuresBySocket = Array.groupBy(
-		Array.map(exposures, (item, index) => ({index, item})),
-		entry => `${entry.item.worker}:${entry.item.port ?? 0}`
-	)
+	const exposuresBySocket = pipe(exposures, Array.map((item, index) => ({index, item})), Array.groupBy(entry => `${entry.item.worker}:${entry.item.port ?? 0}`))
 	const linked = Array.map(rows, row => {
 		const reachable = Array.dedupe(
-			Array.map(
-				Array.filter(row.listeners, listener =>
-					sameSocket(listener, {address: `127.0.0.1:${listener.port}`, port: listener.port ?? 0, protocol: 'tcp'})
-				),
-				listener => listener.port ?? 0
-			)
+			pipe(row.listeners, Array.filter(listener =>
+					sameSocket(listener, {address: `127.0.0.1:${listener.port}`, port: listener.port ?? 0, protocol: 'tcp'})), Array.map(listener => listener.port ?? 0))
 		)
 		const exposed = pipe(
 			Array.flatMap(reachable, port => exposuresBySocket[`${row.item.worker}:${port}`] ?? []),
@@ -267,21 +236,10 @@ export function workloads(items: readonly InventoryItem[]) {
 	const linkedUrls = HashSet.fromIterable(
 		Array.flatMap(linked, row => Array.map(row.exposures, exposure => Tuple.make(exposure.worker, exposure.url)))
 	)
-	const remaining = Array.map(
-		Array.filter(
-			exposures,
-			item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, Tuple.make(item.worker, item.url))
-		),
-		item => ({exposures: [item], item, listeners: []})
-	)
-	return Array.map(
-		Array.filter(
-			[...linked, ...remaining],
-			row =>
+	const remaining = pipe(exposures, Array.filter(item => !HashSet.has(linkedIds, item.id) && !HashSet.has(linkedUrls, Tuple.make(item.worker, item.url))), Array.map(item => ({exposures: [item], item, listeners: []})))
+	return pipe([...linked, ...remaining], Array.filter(row =>
 				important(row.item) &&
-				(row.item.kind !== 'port' || (row.item.http === true && row.item.process !== '' && row.item.process !== 'node'))
-		),
-		row => {
+				(row.item.kind !== 'port' || (row.item.http === true && row.item.process !== '' && row.item.process !== 'node'))), Array.map(row => {
 			if (row.item.kind === 'container') return row
 			const candidates = ports(row.listeners)
 			const hasUi = Array.some(candidates, candidate => candidate.ui === true)
@@ -293,8 +251,7 @@ export function workloads(items: readonly InventoryItem[]) {
 					listener => !hasUi || listener.ui === true || HashSet.has(exposedPorts, listener.port)
 				)
 			}
-		}
-	)
+		}))
 }
 
 export type Row = ReturnType<typeof workloads>[number]
@@ -302,16 +259,10 @@ export type Row = ReturnType<typeof workloads>[number]
 export function availablePorts(rows: ReturnType<typeof workloads>) {
 	return ports(
 		Array.flatMap(rows, row =>
-			Array.map(
-				Array.filter(
-					row.listeners,
-					listener =>
+			pipe(row.listeners, Array.filter(listener =>
 						(!Array.some(row.listeners, candidate => candidate.ui === true) || listener.ui === true) &&
 						Array.isReadonlyArrayEmpty(row.item.links ?? []) &&
-						!Array.some(row.exposures, exposure => exposure.port === listener.port)
-				),
-				listener => ({...listener, process: workloadName(row.item)})
-			)
+						!Array.some(row.exposures, exposure => exposure.port === listener.port)), Array.map(listener => ({...listener, process: workloadName(row.item)})))
 		)
 	)
 }
@@ -387,17 +338,14 @@ function usage(nodes: readonly ProcessNode[]) {
 	}
 }
 
-const byUsage = Order.combine(
-	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.memory),
-	Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0)
-)
+const byUsage = pipe(Order.flip(Order.Number), Order.mapInput((node: ProcessNode) => node.memory), pipelineSubject13827 => Order.combine(pipelineSubject13827, Order.mapInput(Order.flip(Order.Number), (node: ProcessNode) => node.cpu ?? 0)))
 
 // Children heaviest first; below 2% of the app's memory and half a percent of the machine's CPU a process barely moves the usage, so it reads muted.
 function settle(children: readonly ProcessNode[], appMemory: number) {
-	return Array.map(Array.sort(children, byUsage), node => ({
+	return pipe(children, Array.sort(byUsage), Array.map(node => ({
 		...node,
 		small: node.memory < appMemory * 0.02 && (node.cpu ?? 0) < 0.5
-	}))
+	})))
 }
 
 function sameLabel(first: ProcessLabel, second: ProcessLabel) {
@@ -428,10 +376,7 @@ export function processTree(rows: readonly Process[]) {
 	const visited = MutableHashSet.empty<number>()
 	function build(row: Process): ProcessNode {
 		MutableHashSet.add(visited, row.pid)
-		const below = Array.map(
-			Array.filter(children[`${row.pid}`] ?? [], child => !MutableHashSet.has(visited, child.pid)),
-			build
-		)
+		const below = pipe(children[`${row.pid}`] ?? [], Array.filter(child => !MutableHashSet.has(visited, child.pid)), pipelineSubject15624 => Array.map(pipelineSubject15624, build))
 		const self: ProcessNode = {
 			children: [],
 			...Option.match(Option.fromUndefinedOr(row.command), {onNone: () => ({}), onSome: command => ({command})}),
@@ -471,10 +416,7 @@ function workerNames(snapshot: Snapshot) {
 }
 
 function sourceWorker(source: {readonly name: string}, workers: readonly string[], local: string) {
-	return Option.getOrElse(
-		Array.findFirst(workers, worker => sourceBelongsToWorker(source, worker)),
-		() => local
-	)
+	return pipe(workers, Array.findFirst(worker => sourceBelongsToWorker(source, worker)), Option.getOrElse(() => local))
 }
 
 function errorsOf(
@@ -483,10 +425,7 @@ function errorsOf(
 	worker: string
 ) {
 	const local = Option.match(Array.head(workers), {onNone: () => '', onSome: Function.identity})
-	return Array.map(
-		Array.filter(sources, source => source.error !== '' && sourceWorker(source, workers, local) === worker),
-		source => `${String.replace(`${worker} · `, '')(source.name)}: ${source.error}`
-	)
+	return pipe(sources, Array.filter(source => source.error !== '' && sourceWorker(source, workers, local) === worker), Array.map(source => `${String.replace(`${worker} · `, '')(source.name)}: ${source.error}`))
 }
 
 function portsOf(row: Row) {
@@ -522,10 +461,10 @@ function summaryOf(node: ProcessNode): ProcessSummary {
 			onTrue: () => ({children: Array.map(node.children, summaryOf)})
 		}),
 		...Record.getSomes({cpu: Option.map(Option.fromUndefinedOr(node.cpu), cpu => Number.round(cpu, 1))}),
-		...Option.match(Option.filter(Option.fromUndefinedOr(node.label.detail), String.isNonEmpty), {
+		...pipe(Option.fromUndefinedOr(node.label.detail), pipelineSubject18908 => Option.filter(pipelineSubject18908, String.isNonEmpty), pipelineSubject18895 => Option.match(pipelineSubject18895, {
 			onNone: () => ({}),
 			onSome: detail => ({detail})
-		}),
+		})),
 		mib: Number.round(node.memory / 1024 ** 2, 0),
 		name: node.label.name
 	}
@@ -587,23 +526,15 @@ function rank(row: Row) {
 	return 2
 }
 
-const appOrder = Order.combine(
-	Order.mapInput(Order.Number, rank),
-	Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)
-)
+const appOrder = pipe(Order.Number, pipelineSubject20761 => Order.mapInput(pipelineSubject20761, rank), pipelineSubject20745 => Order.combine(pipelineSubject20745, Order.mapInput(Order.flip(Order.Number), (row: Row) => appUsage(row.item.processes ?? []).memory)))
 
-const jobOrder = Order.combine(
-	Order.mapInput(Order.Number, rank),
-	Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)
-)
+const jobOrder = pipe(Order.Number, pipelineSubject20932 => Order.mapInput(pipelineSubject20932, rank), pipelineSubject20916 => Order.combine(pipelineSubject20916, Order.mapInput(Order.Number, (row: Row) => row.item.next ?? 0)))
 
 // The page's list per worker as compact JSON: its apps and scheduled jobs, the URLs it owns or can reach, and only the failures it would mark.
 export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 	const app = Option.getOrUndefined(Option.filter(Option.fromUndefinedOr(input.app), String.isNonEmpty))
 	const onlyFailing = input.failing === true
-	return pipe(
-		Array.filter(workerNames(snapshot), worker => input.worker === undefined || input.worker === worker),
-		Array.map(worker => {
+	return pipe(workerNames(snapshot), Array.filter(worker => input.worker === undefined || input.worker === worker), Array.map(worker => {
 			const own = Array.filter(workloads(snapshot.items), row => row.item.worker === worker)
 			const apps = pipe(
 				Array.filter(
@@ -638,8 +569,7 @@ export function listApps(snapshot: Snapshot, input: InventoryQuery) {
 				...Boolean.match(Array.isReadonlyArrayNonEmpty(jobs), {onFalse: () => ({}), onTrue: () => ({jobs})}),
 				worker
 			}
-		})
-	)
+		}))
 }
 
 // Each app's history name, keyed the way its samples are: `service:<scope>:<unit>` or `container:<short id>`, named as the page's rows name it.
@@ -652,10 +582,7 @@ export function ownerNames(snapshot: Snapshot) {
 				[
 					worker,
 					Record.fromEntries(
-						Array.flatMap(
-							Array.filter(byWorker[worker] ?? [], item => item.kind === 'service' || item.kind === 'container'),
-							(item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const]
-						)
+						pipe(byWorker[worker] ?? [], Array.filter(item => item.kind === 'service' || item.kind === 'container'), Array.flatMap((item: InventoryItem) => [[itemOwner(item), workloadName(item)] as const]))
 					)
 				] as const
 		)

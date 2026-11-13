@@ -168,29 +168,20 @@ export const catalogAtom = Atom.keepAlive(liveAtom(RpcClient, 'apps.watch'))
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
 export const minuteAtom = Atom.make(
-	pipe(
-		Stream.tick('1 minute'),
-		Stream.mapEffect(() => Clock.currentTimeMillis)
-	)
+	Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis)
 )
 
 // The time each second, for a waiting sign-in's countdown.
 export const secondAtom = Atom.make(
-	pipe(
-		Stream.tick('1 second'),
-		Stream.mapEffect(() => Clock.currentTimeMillis)
-	)
+	Stream.mapEffect(Stream.tick('1 second'), () => Clock.currentTimeMillis)
 )
 
 // Copies the code; the result waits a moment after, while the code shows it was copied.
 export const copyCodeAtom = Atom.fn((code: string) =>
-	pipe(
-		Effect.tryPromise({
+	Effect.andThen(Effect.tryPromise({
 			catch: cause => AuthError.make({cause, message: 'Cannot copy the code; type it in instead'}),
 			try: () => navigator.clipboard.writeText(code)
-		}),
-		Effect.andThen(Effect.sleep('1200 millis'))
-	)
+		}), Effect.sleep('1200 millis'))
 )
 
 // A sign-in as the lists name it: the app or browser, then where it runs.
@@ -199,10 +190,7 @@ export function signInLabel(client: string, device: string) {
 }
 
 export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
-	pipe(
-		Effect.flatMap(RpcClient, client => client('signins.answer', {accept: input.accept, request: input.request.id})),
-		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input})))
-	)
+	pipe(RpcClient, Effect.flatMap(client => client('signins.answer', {accept: input.accept, request: input.request.id})), pipelineSubject7126 => Effect.andThen(pipelineSubject7126, Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input}))))
 )
 
 // Closing the browser's passkey dialog is a normal choice, so it ends the attempt quietly instead of as an error.
@@ -222,8 +210,7 @@ const refused = Effect.fnUntraced(function* (response: HttpClientResponse.HttpCl
 })
 
 export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
-	pipe(
-		Effect.gen(function* () {
+	Effect.mapError(Effect.gen(function* () {
 			const client = yield* HttpClient.HttpClient
 			const offered = yield* client.get('/auth/passkey')
 			if (offered.status !== 200) return yield* refused(offered)
@@ -258,12 +245,10 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 					onSome: page => location.assign(page)
 				})
 			)
-		}),
-		Effect.mapError(cause => {
+		}), cause => {
 			if (Schema.is(AuthError)(cause)) return cause
 			return AuthError.make({cause, message: 'Cannot sign in with a passkey'})
 		})
-	)
 )
 
 export const passkeysAtom = Atom.keepAlive(liveAtom(RpcClient, 'passkeys.watch'))

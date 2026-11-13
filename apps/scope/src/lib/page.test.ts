@@ -525,7 +525,7 @@ it.effect(
 		)
 		assert.include(html, 'aria-label="Failed in Parser.decode"')
 		assert.include(html, 'title="Failed in Parser.decode"')
-		assert.strictEqual(Array.length(String.split('Failed in Parser.decode')(html)) - 1, 2)
+		assert.strictEqual(Array.length(String.split(html, 'Failed in Parser.decode')) - 1, 2)
 		assert.notInclude(html, '>Failed in Parser.decode<')
 	})
 )

@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, Boolean, Duration, Option, String} from 'effect'
+import {Array, Boolean, Duration, Option, String, pipe} from 'effect'
 
 import {navigationOf, nextSearch, selectionOf} from '#lib/utils.ts'
 import type {NavigationEvent, Search} from '#lib/utils.ts'
@@ -29,9 +29,9 @@ it('backs out one inspector level at a time without losing the selected operatio
 		{_tag: 'Span', selection: {operation: OPERATION, spanId: 'child', traceId: 'second'}}
 	])
 	assert.strictEqual(navigationOf(span).path, 'Span')
-	const backs = Array.scan(Array.replicate({_tag: 'Back'} as const, 4), span, nextSearch)
+	const backs = pipe({_tag: 'Back'} as const, Array.replicate(4), Array.scan(span, nextSearch))
 	assert.deepStrictEqual(
-		Array.map(Array.drop(backs, 1), search => navigationOf(search).path),
+		pipe(backs, Array.drop(1), Array.map(search => navigationOf(search).path)),
 		['Trace', 'Traces', 'Operations', 'Operations']
 	)
 	for (const search of backs) {

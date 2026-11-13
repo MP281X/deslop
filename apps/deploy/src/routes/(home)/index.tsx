@@ -1,6 +1,6 @@
 import {useAtomRefresh, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, Record, Schema, String} from 'effect'
+import {Array, Boolean, Option, Record, Schema, String, pipe} from 'effect'
 
 import {HardDrivesIcon, MonitorIcon, TerminalWindowIcon} from '@phosphor-icons/react'
 import {CatchBoundary, Link, createFileRoute, getRouteApi} from '@tanstack/react-router'
@@ -57,10 +57,7 @@ function RangeTabs(props: {
 			value={`${props.minutes}`}
 			options={Array.map(props.ranges, range => ({label: range.label, value: `${range.minutes}`}))}
 			onChange={value => {
-				Option.map(
-					Array.findFirst(props.ranges, range => `${range.minutes}` === value),
-					range => props.onChange(range.minutes)
-				)
+				pipe(props.ranges, Array.findFirst(range => `${range.minutes}` === value), Option.map(range => props.onChange(range.minutes)))
 			}}
 		/>
 	)
@@ -219,11 +216,8 @@ function DetailPane(props: {
 		<div className="flex h-full min-h-0 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone={false} minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
-					{Option.match(
-						Option.filter(Option.fromUndefinedOr(props.history), history =>
-							Array.isReadonlyArrayNonEmpty(history.samples)
-						),
-						{
+					{pipe(Option.fromUndefinedOr(props.history), Option.filter(history =>
+							Array.isReadonlyArrayNonEmpty(history.samples)), pipelineSubject7936 => Option.match(pipelineSubject7936, {
 							onNone: () => <EmptyChart worker={props.worker} />,
 							onSome: history => (
 								<ChartBlock
@@ -234,8 +228,7 @@ function DetailPane(props: {
 									selectedOwner={props.selectedOwner}
 								/>
 							)
-						}
-					)}
+						}))}
 				</MetricsContent>
 			</Suspense>
 			<div className="flex min-h-0 flex-1 flex-col">
@@ -261,11 +254,8 @@ function PhoneList(props: {
 		<div className="flex min-h-0 flex-1 flex-col">
 			<Suspense fallback={<ChartSkeleton isPhone minutes={props.minutes} />}>
 				<MetricsContent minutes={props.minutes}>
-					{Option.match(
-						Option.filter(Option.fromUndefinedOr(props.history), history =>
-							Array.isReadonlyArrayNonEmpty(history.samples)
-						),
-						{
+					{pipe(Option.fromUndefinedOr(props.history), Option.filter(history =>
+							Array.isReadonlyArrayNonEmpty(history.samples)), pipelineSubject9117 => Option.match(pipelineSubject9117, {
 							onNone: () => <EmptyChart />,
 							onSome: history => (
 								<ChartBlock
@@ -276,8 +266,7 @@ function PhoneList(props: {
 									selectedOwner={props.selectedOwner}
 								/>
 							)
-						}
-					)}
+						}))}
 				</MetricsContent>
 			</Suspense>
 			<ListPane
@@ -407,35 +396,22 @@ function HomeRoute() {
 	const shownHistories = AsyncResult.getOrElse(metrics, () => [])
 	const inventoryFailure = AsyncResult.isFailure(inventory)
 	// A revoked session shows the sign-in even while a cached snapshot remains.
-	const authFailure = Option.orElse(Option.filter(AsyncResult.error(inventory), isDenied), () =>
-		Option.filter(AsyncResult.error(metrics), isDenied)
-	)
+	const authFailure = pipe(AsyncResult.error(inventory), Option.filter(isDenied), Option.orElse(() =>
+		Option.filter(AsyncResult.error(metrics), isDenied)))
 	const refreshing = shownMinutes !== minutes
 	const inventoryPending = AsyncResult.isInitial(inventory)
 	const workers = Array.dedupe([
-		...Option.getOrElse(
-			Option.map(snapshot, value => value.workers ?? Array.map(value.items, item => item.worker)),
-			() => []
-		),
+		...pipe(snapshot, Option.map(value => value.workers ?? Array.map(value.items, item => item.worker)), Option.getOrElse(() => [])),
 		...Array.map(shownHistories, machine => machine.worker)
 	])
 	const active = search.machine ?? Option.getOrUndefined(Array.head(workers))
 	const history = Option.flatMap(Option.fromUndefinedOr(active), current =>
 		Array.findFirst(shownHistories, machine => machine.worker === current)
 	)
-	const rows = Option.getOrElse(
-		Option.map(snapshot, value => workloads(value.items)),
-		() => []
-	)
+	const rows = pipe(snapshot, Option.map(value => workloads(value.items)), Option.getOrElse(() => []))
 	const free = availablePorts(rows)
-	const sources = Option.getOrElse(
-		Option.map(snapshot, value => value.sources),
-		() => []
-	)
-	const now = Option.getOrElse(
-		Option.map(snapshot, value => value.time),
-		() => 0
-	)
+	const sources = pipe(snapshot, Option.map(value => value.sources), Option.getOrElse(() => []))
+	const now = pipe(snapshot, Option.map(value => value.time), Option.getOrElse(() => 0))
 	const activeRows = Option.match(Option.fromUndefinedOr(active), {
 		onNone: () => [],
 		onSome: current => Array.filter(rows, row => row.item.worker === current)

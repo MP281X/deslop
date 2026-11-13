@@ -109,12 +109,12 @@ function FirstImage(props: {sources: string[]}) {
 	const [failed, setFailed] = useState(0)
 	return (
 		<span className="flex size-4 shrink-0 items-center justify-center">
-			{Option.match(Array.get(props.sources, failed), {
+			{pipe(props.sources, Array.get(failed), pipelineSubject4466 => Option.match(pipelineSubject4466, {
 				onNone: () => <HardDrivesIcon className="text-muted-foreground size-4" />,
 				onSome: src => (
 					<img src={src} alt="" className="size-full object-contain" onError={() => setFailed(failed + 1)} />
 				)
-			})}
+			}))}
 		</span>
 	)
 }
@@ -123,13 +123,7 @@ function FirstImage(props: {sources: string[]}) {
 function ServerIcon(props: {server: ConnectionInfo}) {
 	const host = new URL(props.server.url).hostname
 	const sources = Array.dedupe([
-		...Array.map(
-			Array.sort(
-				props.server.icons,
-				Order.mapInput(Order.Boolean, (entry: ConnectionInfo['icons'][number]) => entry.theme !== 'dark')
-			),
-			entry => entry.src
-		),
+		...pipe(props.server.icons, pipelineSubject5051 => Array.sort(pipelineSubject5051, Order.mapInput(Order.Boolean, (entry: ConnectionInfo['icons'][number]) => entry.theme !== 'dark')), Array.map(entry => entry.src)),
 		`https://${host}/favicon.ico`,
 		`https://${String.replace(/^(?:api|app|mcp)\./u, '')(host)}/favicon.ico`
 	])
@@ -194,7 +188,7 @@ function ServerRows(props: {period: Period}) {
 	return (
 		<Loaded atom={serversAtom}>
 			{servers =>
-				Array.match(Array.sort(servers, byUrgency), {
+				pipe(servers, Array.sort(byUrgency), pipelineSubject7531 => Array.match(pipelineSubject7531, {
 					onEmpty: () => null,
 					onNonEmpty: ordered => (
 						<Suspense
@@ -213,7 +207,7 @@ function ServerRows(props: {period: Period}) {
 							</Loaded>
 						</Suspense>
 					)
-				})
+				}))
 			}
 		</Loaded>
 	)
@@ -285,9 +279,7 @@ function KeyRows(props: {period: Period}) {
 	return (
 		<Loaded atom={aiKeysAtom}>
 			{all =>
-				Array.match(
-					Array.filter(all, key => Array.contains(PROVIDERS, key.provider)),
-					{
+				pipe(all, Array.filter(key => Array.contains(PROVIDERS, key.provider)), pipelineSubject9992 => Array.match(pipelineSubject9992, {
 						onEmpty: () => null,
 						onNonEmpty: keys => (
 							<Suspense
@@ -300,8 +292,7 @@ function KeyRows(props: {period: Period}) {
 								<KeyUsage keys={keys} period={props.period} />
 							</Suspense>
 						)
-					}
-				)
+					}))
 			}
 		</Loaded>
 	)
@@ -346,18 +337,9 @@ function AddField(props: {onKey: (provider: AiProvider, secret: string) => void}
 	const send = useAtomSet(addAtom.send)
 	const editing = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Editing')), Option.none)
 	const adding = AsyncResult.getOrElse(useMachineResult(AtomMachine.select(addAtom, 'Adding')), Option.none)
-	const typed = Option.getOrElse(
-		Option.map(editing, state => state.url),
-		() =>
-			Option.getOrElse(
-				Option.map(adding, state => state.url),
-				() => ''
-			)
-	)
-	const error = Option.getOrElse(
-		Option.map(editing, state => state.error),
-		() => ''
-	)
+	const typed = pipe(editing, Option.map(state => state.url), Option.getOrElse(() =>
+			pipe(adding, Option.map(state => state.url), Option.getOrElse(() => ''))))
+	const error = pipe(editing, Option.map(state => state.error), Option.getOrElse(() => ''))
 	const busy = Option.isSome(adding)
 	function submit() {
 		const value = String.trim(typed)
@@ -407,10 +389,7 @@ function PeriodTabs(props: {onPeriod: (period: Period) => void; period: Period})
 			options={PERIODS}
 			value={props.period}
 			onChange={value =>
-				Option.map(
-					Array.findFirst(PERIODS, entry => entry.value === value),
-					entry => props.onPeriod(entry.value)
-				)
+				pipe(PERIODS, Array.findFirst(entry => entry.value === value), Option.map(entry => props.onPeriod(entry.value)))
 			}
 		/>
 	)

@@ -17,7 +17,7 @@ export const pack = {
 	target: 'node26'
 } satisfies UserConfig['pack']
 
-export const config = {
+export const webConfig = {
 	build: {
 		chunkSizeWarningLimit: 750,
 		modulePreload: {polyfill: false},

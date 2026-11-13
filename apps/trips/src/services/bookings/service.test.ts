@@ -156,10 +156,7 @@ it.layer(NodeCrypto.layer)('Bookings', test => {
 					return Option.getOrThrow(Array.head(written.upserted)).id
 				})
 			)
-			const rows = yield* Effect.provideContext(
-				Effect.flatMap(SqlClient.SqlClient, sql => sql<{id: string; number: string}>`SELECT id, number FROM flights`),
-				database
-			)
+			const rows = yield* pipe(SqlClient.SqlClient, Effect.flatMap(sql => sql<{id: string; number: string}>`SELECT id, number FROM flights`), Effect.provideContext(database))
 			assert.deepStrictEqual(rows, [{id, number: '553'}])
 			const bookings = yield* open(database, extractor)
 			const events = yield* watch(bookings)

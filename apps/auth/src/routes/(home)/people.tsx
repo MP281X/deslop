@@ -62,7 +62,7 @@ function Since(props: {since: number}) {
 	return (
 		<ItemActions>
 			<span className="text-muted-foreground w-16 shrink-0 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-				{pipe(DateTime.makeUnsafe(props.since), DateTime.formatLocal({month: 'short', year: 'numeric'}))}
+				{DateTime.formatLocal(DateTime.makeUnsafe(props.since), {month: 'short', year: 'numeric'})}
 			</span>
 		</ItemActions>
 	)

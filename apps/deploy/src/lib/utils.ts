@@ -30,24 +30,17 @@ export const inventoryAtom = Atom.keepAlive(
 	RpcClient.runtime.atom(get =>
 		keepValueThroughOutages(
 			get,
-			pipe(
-				liveStream(RpcClient, 'inventory.watch'),
-				Stream.tapCause(cause =>
+			Stream.tapCause(liveStream(RpcClient, 'inventory.watch'), cause =>
 					Effect.sync(() => {
 						if (isDeniedCause(cause)) get.set(exposeTargetAtom, Option.none())
-					})
-				)
-			),
+					})),
 			reconnectOnDrop
 		)
 	)
 )
 
 export const exposeAtom = RpcClient.runtime.fn((input: ExposeRequest, get) =>
-	pipe(
-		Effect.flatMap(RpcClient, client => client('exposures.expose', input)),
-		Effect.tap(() => Effect.sync(() => get.set(exposeTargetAtom, Option.none())))
-	)
+	pipe(RpcClient, Effect.flatMap(client => client('exposures.expose', input)), Effect.tap(() => Effect.sync(() => get.set(exposeTargetAtom, Option.none()))))
 )
 
 // Opens the Expose dialog on a port, clear of the last attempt's failure.
@@ -62,11 +55,7 @@ export const openExposeAtom = Atom.writable(
 // Starts a timer's job now; keyed by the job's row, so its failure shows there. It stays waiting at least ten seconds, the time the inventory takes to show the job running.
 export const runAtom = Atom.family((_id: string) =>
 	RpcClient.runtime.fn((input: RunRequest) =>
-		Effect.zip(
-			Effect.flatMap(RpcClient, client => client('inventory.run', input)),
-			Effect.sleep('10 seconds'),
-			{concurrent: true}
-		)
+		pipe(RpcClient, Effect.flatMap(client => client('inventory.run', input)), pipelineSubject2036 => Effect.zip(pipelineSubject2036, Effect.sleep('10 seconds'), {concurrent: true}))
 	)
 )
 

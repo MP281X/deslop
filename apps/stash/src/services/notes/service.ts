@@ -123,8 +123,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// Writes tell this Reactivity of their commits, so callers need none of their own.
 		const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
 
-		yield* pipe(fs.makeDirectory(images, {mode: 0o700, recursive: true}), storageFailed)
-		yield* pipe(fs.makeDirectory(files, {mode: 0o700, recursive: true}), storageFailed)
+		yield* (storageFailed)(fs.makeDirectory(images, {mode: 0o700, recursive: true}))
+		yield* (storageFailed)(fs.makeDirectory(files, {mode: 0o700, recursive: true}))
 
 		const notes = yield* SqlModel.makeRepository(Note, {idColumn: 'id', spanPrefix: 'Notes', tableName: Note.table})
 
@@ -251,7 +251,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		}
 
 		const storeImage = Effect.fnUntraced(function* (id: NoteId, image: Image) {
-			yield* pipe(fs.writeFile(path.join(images, id), image.bytes, {mode: 0o600}), storageFailed)
+			yield* (storageFailed)(fs.writeFile(path.join(images, id), image.bytes, {mode: 0o600}))
 			yield* change(id, () => ({image: Option.some(image.type)}))
 		})
 
@@ -318,7 +318,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					status: 'failed'
 				}))
 			}
-			const entries = yield* pipe(listTagEntries(), storageFailed)
+			const entries = yield* (storageFailed)(listTagEntries())
 			yield* Result.match(yield* Effect.result(organizer.organize(userId, {images: pictures, note, tags: entries})), {
 				onFailure: error => change(note.id, () => ({issue: Option.some(error.message), status: 'failed'})),
 				onSuccess: organization =>
@@ -345,14 +345,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		// TikTok's preview image links expire within days, so the server keeps the image; a regenerated note keeps its own.
 		const keepImages = Effect.fnUntraced(function* (note: Note, page: Extraction) {
-			yield* pipe(
-				Effect.forEach(
-					Option.toArray(Option.filter(page.image, () => Option.isNone(note.image))),
-					image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)),
-					{concurrency: 'unbounded', discard: true}
-				),
-				Effect.ignore({log: 'Warn', message: 'The preview image was not kept'})
-			)
+			yield* pipe(Option.toArray(Option.filter(page.image, () => Option.isNone(note.image))), pipelineSubject12160 => Effect.forEach(pipelineSubject12160, image => Effect.flatMap(sources.image(image), bytes => storeImage(note.id, bytes)), {concurrency: 'unbounded', discard: true}), pipelineSubject12146 => Effect.ignore(pipelineSubject12146, {log: 'Warn', message: 'The preview image was not kept'}))
 			const slides = yield* Effect.forEach(
 				page.slides ?? [],
 				(image, index) =>
@@ -387,10 +380,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								Effect.map(Option.flatten),
 								Effect.flatMap(transcript =>
 									change(note.id, item => ({
-										...Option.match(
-											Option.filter(read, () => sourceFor(input.url) !== 'X' || input.useInfo),
-											{onNone: () => ({}), onSome: details => ({content: details.info, issue: Option.none()})}
-										),
+										...pipe(read, Option.filter(() => sourceFor(input.url) !== 'X' || input.useInfo), pipelineSubject13782 => Option.match(pipelineSubject13782, {onNone: () => ({}), onSome: details => ({content: details.info, issue: Option.none()})})),
 										transcript: Option.orElse(transcript, () => item.transcript)
 									}))
 								)
@@ -414,7 +404,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 							onTrue: () => ({issue: Option.some(error.message)})
 						}),
 					onSuccess: page => ({
-						author: Option.orElse(Option.filter(page.author, String.isNonEmpty), () => item.author),
+						author: pipe(page.author, pipelineSubject14773 => Option.filter(pipelineSubject14773, String.isNonEmpty), Option.orElse(() => item.author)),
 						content: page.text,
 						issue: Option.none(),
 						title: Boolean.match(String.isNonEmpty(page.title) && Option.contains(item.url, item.title), {
@@ -454,24 +444,19 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			if (!isVideo(type)) return yield* tag(userId, note.id, [])
 			const stored = path.join(files, note.id)
 			const stills = yield* pipe(media.fileFrames(stored), optional('No video frames', Array.empty<Still>))
-			yield* pipe(
-				Option.match(Array.head(stills), {
+			yield* pipe(Array.head(stills), pipelineSubject16356 => Option.match(pipelineSubject16356, {
 					onNone: () => Effect.void,
 					onSome: frame => storeImage(note.id, {bytes: frame.bytes, type: 'image/jpeg'})
-				}),
-				Effect.ignore({log: 'Warn', message: 'The video preview was not kept'})
-			)
+				}), pipelineSubject16342 => Effect.ignore(pipelineSubject16342, {log: 'Warn', message: 'The video preview was not kept'}))
 			yield* Option.match(
 				yield* pipe(media.fileTranscript(userId, stored), optional('No transcript', Option.none<string>)),
 				{onNone: () => Effect.void, onSome: text => change(note.id, () => ({transcript: Option.some(text)}))}
 			)
-			yield* tag(userId, note.id, Array.map(Array.drop(stills, 1), still))
+			yield* tag(userId, note.id, pipe(stills, Array.drop(1), pipelineSubject16826 => Array.map(pipelineSubject16826, still)))
 		})
 
 		function start(userId: string, note: Note) {
-			return pipe(
-				Effect.option(Effect.currentSpan),
-				Effect.flatMap(request =>
+			return Effect.flatMap(Effect.option(Effect.currentSpan), request =>
 					pipe(
 						change(note.id, () => ({requester: userId})),
 						Effect.andThen(
@@ -487,8 +472,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						Effect.tapCause(cause =>
 							Boolean.match(Cause.hasInterruptsOnly(cause), {
 								onFalse: () =>
-									pipe(
-										change(note.id, item =>
+									Effect.ignore(change(note.id, item =>
 											Boolean.match(item.status === 'organizing', {
 												onFalse: () => ({}),
 												onTrue: () => ({
@@ -496,9 +480,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 													status: 'failed' as const
 												})
 											})
-										),
-										Effect.ignore({log: 'Warn', message: 'A stopped tagging run could not be recorded'})
-									),
+										), {log: 'Warn', message: 'A stopped tagging run could not be recorded'}),
 								onTrue: () => Effect.void
 							})
 						),
@@ -510,13 +492,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 						}),
 						effect => FiberMap.run(runs, note.id, effect),
 						Effect.asVoid
-					)
-				)
-			)
+					))
 		}
 
 		// A note a restart interrupted resumes for the person who saved it.
-		yield* Effect.forEach(yield* pipe(listOrganizing(), storageFailed), note => start(note.requester, note), {
+		yield* Effect.forEach(yield* (storageFailed)(listOrganizing()), note => start(note.requester, note), {
 			concurrency: 1,
 			discard: true
 		})
@@ -528,7 +508,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 		// The note just saved, or the one it joined, as the list shows it.
 		function savedItem(id: NoteId) {
 			return Effect.flatMap(
-				pipe(findItem(id), storageFailed),
+				(storageFailed)(findItem(id)),
 				Option.match({onNone: () => Effect.fail(missing), onSome: Effect.succeed})
 			)
 		}
@@ -552,12 +532,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				Effect.catchTag('PlatformError', cause =>
 					Effect.fail(NotesError.make({cause, message: 'The upload could not be written.'}))
 				),
-				Effect.andThen(pipe(fs.rename(partial, stored), storageFailed)),
+				Effect.andThen((storageFailed)(fs.rename(partial, stored))),
 				Effect.onError(() =>
-					pipe(
-						fs.remove(partial, {force: true}),
-						Effect.ignore({log: 'Warn', message: 'A broken upload stays on disk'})
-					)
+					Effect.ignore(fs.remove(partial, {force: true}), {log: 'Warn', message: 'A broken upload stays on disk'})
 				)
 			)
 			return yield* pipe(
@@ -614,14 +591,11 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 								),
 							// A share of a saved note adds its new words, unless it is the same capture sent again.
 							onSome: found =>
-								Option.match(
-									Option.filter(withWords(found, text), () => found.id !== input.id),
-									{
+								pipe(withWords(found, text), Option.filter(() => found.id !== input.id), pipelineSubject21971 => Option.match(pipelineSubject21971, {
 										onNone: () => Effect.succeed({fresh: false, note: found}),
 										onSome: merged =>
 											Effect.map(notes.update({...editable(found), text: merged}), note => ({fresh: false, note}))
-									}
-								)
+									}))
 						})
 					),
 					Reactivity.mutation(['notes']),
@@ -654,7 +628,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 					Effect.flatMap(Effect.fromOption),
 					Effect.mapError(() => NotesError.make({message: 'This note has no preview image.'}))
 				)
-				return {bytes: yield* pipe(fs.readFile(path.join(images, id)), storageFailed), type}
+				return {bytes: yield* (storageFailed)(fs.readFile(path.join(images, id))), type}
 			}),
 			item: savedItem,
 			// A page of the notes matching a query, newest first, and how many match in all.
@@ -664,15 +638,12 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 				query: string
 			}) {
 				const words = queryWords(input.query)
-				const found = yield* pipe(pageItems({...words, cursor: input.cursor, limit: input.limit + 1}), storageFailed)
-				const total = yield* pipe(countMatching(words), storageFailed)
+				const found = yield* (storageFailed)(pageItems({...words, cursor: input.cursor, limit: input.limit + 1}))
+				const total = yield* (storageFailed)(countMatching(words))
 				const page = Array.take(found, input.limit)
 				return {
 					items: page,
-					next: Option.map(
-						Option.filter(Array.last(page), () => found.length > input.limit),
-						note => NotesCursor.make({createdAt: note.createdAt, id: note.id})
-					),
+					next: pipe(Array.last(page), Option.filter(() => found.length > input.limit), Option.map(note => NotesCursor.make({createdAt: note.createdAt, id: note.id}))),
 					total: total.count
 				}
 			}),
@@ -684,8 +655,8 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 			remove: Effect.fn('Notes.remove')(function* (id: NoteId) {
 				yield* FiberMap.remove(runs, id)
 				yield* pipe(notes.delete(id), Reactivity.mutation(['notes']), storageFailed)
-				yield* pipe(fs.remove(path.join(images, id), {force: true}), storageFailed)
-				yield* pipe(fs.remove(path.join(files, id), {force: true}), storageFailed)
+				yield* (storageFailed)(fs.remove(path.join(images, id), {force: true}))
+				yield* (storageFailed)(fs.remove(path.join(files, id), {force: true}))
 			}, withReactivity),
 			// The ids matching a query, read again after each commit; `#word` names a tag.
 			search: (query: string) =>
@@ -754,15 +725,9 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 }
 
 // Reading sources and organizing notes are the notes' own internals; tests provide stand-ins to `Notes.layer` instead.
-export const layerNotes = pipe(
-	Layer.unwrap(
-		pipe(
-			dataDirectory,
-			Effect.mapBoth({
+export const layerNotes = Layer.provide(Layer.unwrap(
+		Effect.mapBoth(dataDirectory, {
 				onFailure: cause => NotesError.make({cause, message: 'The notes folder could not be read.'}),
 				onSuccess: Notes.layer
 			})
-		)
-	),
-	Layer.provide(Layer.mergeAll(Sources.layer, Organizer.layer))
-)
+	), Layer.mergeAll(Sources.layer, Organizer.layer))

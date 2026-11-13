@@ -152,7 +152,7 @@ export function failureOptions(error: unknown, status: number) {
 	return {status}
 }
 
-export class CurrentUser extends Context.Service<CurrentUser, User>()('@deslop/runtime/shared/auth/CurrentUser') {}
+export class CurrentUser extends Context.Service<CurrentUser, User>('@deslop/runtime/shared/auth/CurrentUser') {}
 
 export class RpcAuth extends RpcMiddleware.Service<RpcAuth, {provides: CurrentUser}>()(
 	'@deslop/runtime/shared/auth/RpcAuth',

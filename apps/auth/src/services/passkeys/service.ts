@@ -80,7 +80,7 @@ export class Passkeys extends Context.Service<
 		// The account the passkey belongs to; the caller checks it may still sign in.
 		readonly signIn: (response: Assertion) => Effect.Effect<CredentialOwner, AuthError>
 	}
->()('@deslop/auth/services/passkeys/service/Passkeys') {
+>('@deslop/auth/services/passkeys/service/Passkeys') {
 	// The table this service owns, made at start; one statement per `sql` call, since SQLite runs only the first statement of a string.
 	static readonly migrations = Layer.effectDiscard(
 		Migrator.make({})({

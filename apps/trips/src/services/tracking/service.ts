@@ -84,10 +84,7 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 		)
 
 		const flight = Effect.fnUntraced(function* (booking: Flight, now: number) {
-			const number = yield* pipe(
-				Schema.decodeEffect(TripNumber)(booking.number),
-				failed('This flight number is invalid. Add its ticket again.')
-			)
+			const number = yield* (failed('This flight number is invalid. Add its ticket again.'))(Schema.decodeEffect(TripNumber)(booking.number))
 			const apiKey = yield* Option.match(key, {
 				onNone: () => BookingsError.make({message: 'The server has no FlightAware key.'}),
 				onSome: Effect.succeed
@@ -138,10 +135,7 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 		}
 
 		const train = Effect.fnUntraced(function* (booking: Train, now: number) {
-			const number = yield* pipe(
-				Schema.decodeEffect(TripNumber)(booking.number),
-				failed('This train number is invalid. Add its ticket again.')
-			)
+			const number = yield* (failed('This train number is invalid. Add its ticket again.'))(Schema.decodeEffect(TripNumber)(booking.number))
 			// Today's run must be the booked one: it starts at most a day before the booked departure.
 			const run = Option.filter(yield* viaggiaTreno(`cercaNumeroTreno/${number}`, VtRun, booking), found =>
 				Option.exists(
@@ -193,39 +187,28 @@ export class Tracker extends Context.Service<Tracker>()('@deslop/trips/services/
 			admits: (booking: Booking, now: number, attempted: number) => boolean
 		) {
 			const now = yield* Clock.currentTimeMillis
-			const attempted = Option.getOrElse(Record.get(yield* Ref.get(attempts), id), () => 0)
-			yield* Option.match(
-				Array.findFirst(yield* bookings.list, item => item.id === id && admits(item, now, attempted)),
-				{onNone: () => Effect.void, onSome: booking => observe(booking, now)}
-			)
+			const attempted = pipe(yield* Ref.get(attempts), pipelineSubject7386 => Record.get(pipelineSubject7386, id), Option.getOrElse(() => 0))
+			yield* pipe(yield* bookings.list, Array.findFirst(item => item.id === id && admits(item, now, attempted)), pipelineSubject7447 => Option.match(pipelineSubject7447, {onNone: () => Effect.void, onSome: booking => observe(booking, now)}))
 		}, Semaphore.withPermit(turns))
 
 		const round = Effect.gen(function* () {
 			const now = yield* Clock.currentTimeMillis
 			const attempted = yield* Ref.get(attempts)
-			yield* Effect.forEach(
-				Array.filter(yield* bookings.list, booking =>
+			yield* pipe(yield* bookings.list, Array.filter(booking =>
 					isDue(
 						booking,
 						now,
-						Option.getOrElse(Record.get(attempted, booking.id), () => 0)
-					)
-				),
-				booking =>
+						pipe(attempted, pipelineSubject7983 => Record.get(pipelineSubject7983, booking.id), Option.getOrElse(() => 0))
+					)), pipelineSubject7818 => Effect.forEach(pipelineSubject7818, booking =>
 					pipe(
 						check(booking.id, isDue),
 						Effect.withSpan('Tracker.check'),
 						Effect.ignore({log: 'Warn', message: `The live status of ${booking.id} was not read`})
-					),
-				{concurrency: 1, discard: true}
-			)
+					), {concurrency: 1, discard: true}))
 		})
 
 		yield* Effect.forkScoped(
-			Effect.repeat(
-				Effect.ignore(round, {log: 'Warn', message: 'The bookings to track were not read'}),
-				Schedule.spaced('30 seconds')
-			)
+			pipe(round, pipelineSubject8299 => Effect.ignore(pipelineSubject8299, {log: 'Warn', message: 'The bookings to track were not read'}), pipelineSubject8280 => Effect.repeat(pipelineSubject8280, Schedule.spaced('30 seconds')))
 		)
 
 		return {

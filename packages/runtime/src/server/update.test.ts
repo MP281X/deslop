@@ -35,12 +35,8 @@ it.layer(NodeServices.layer)('Service update', test => {
 					const linked = yield* fs.readLink(`${root}/current`)
 					yield* Ref.update(commands, rows => [
 						...rows,
-						`${Array.join(
-							Array.map(command.args, arg =>
-								Option.getOrElse(Option.liftPredicate(arg, Predicate.isString), () => '<redacted>')
-							),
-							' '
-						)} → ${linked}`
+						`${pipe(command.args, Array.map(arg =>
+								pipe(arg, pipelineSubject1787 => Option.liftPredicate(pipelineSubject1787, Predicate.isString), Option.getOrElse(() => '<redacted>'))), Array.join(' '))} → ${linked}`
 					])
 					return ChildProcessSpawner.makeHandle({
 						all: Stream.empty,

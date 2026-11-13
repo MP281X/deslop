@@ -45,28 +45,23 @@ const fixture = Effect.gen(function* () {
 				Effect.gen(function* () {
 					yield* Queue.offer(opened, undefined)
 					if (yield* Ref.get(complete)) return Stream.empty
-					return pipe(Stream.fromQueue(answers), Stream.mapEffect(Function.identity))
+					return Stream.mapEffect(Stream.fromQueue(answers), Function.identity)
 				})
 			)
 	})
 	const context = yield* Layer.build(
 		pipe(
 			HttpRouter.serve(
-				pipe(
-					Layer.mergeAll(
+				Layer.provide(Layer.mergeAll(
 						ServerRuntime.layerRpc({group: RpcContracts, handlers}),
 						HttpRouter.add(
 							'GET',
 							'/api/runtime',
 							HttpServerResponse.jsonUnsafe({name: 'gateway', traces: '', version: '0.1.0'})
 						)
-					),
-					Layer.provide(
-						Layer.succeedContext(
+					), Layer.succeedContext(
 							Auth.makeContext(Auth.of({token: () => Effect.succeed('token'), user: () => Effect.succeed(DEVELOPER)}))
-						)
-					)
-				)
+						))
 			),
 			Layer.provide(ServerRuntime.layerProtocol),
 			Layer.provideMerge(NodeHttpServer.layerTest)

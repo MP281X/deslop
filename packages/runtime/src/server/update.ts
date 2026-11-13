@@ -42,8 +42,7 @@ export const update = Effect.fnUntraced(function* (name: string) {
 		return yield* AppError.make({message: 'This Node runtime does not include npm; install Node with Vite+'})
 	}
 	const directory = path.join(root, 'releases', latest)
-	yield* pipe(
-		execute(execPath, [
+	yield* Effect.timeout(execute(execPath, [
 			npm,
 			'install',
 			'--prefix',
@@ -56,17 +55,11 @@ export const update = Effect.fnUntraced(function* (name: string) {
 			'--prefer-online',
 			'--registry=https://registry.npmjs.org',
 			`@deslop/${name}@${latest}`
-		]),
-		Effect.timeout('5 minutes')
-	)
+		]), '5 minutes')
 	const previous = yield* Effect.option(fs.readLink(path.join(root, 'current')))
 	yield* activate(name, path.join(directory, 'node_modules', '@deslop', name))
 	yield* restart(name)
 	const kept = [latest, ...Option.toArray(Option.map(previous, link => path.basename(path.resolve(link, '../../..'))))]
-	yield* Effect.forEach(
-		Array.difference(yield* fs.readDirectory(path.join(root, 'releases')), kept),
-		entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}),
-		{concurrency: 1}
-	)
+	yield* pipe(yield* fs.readDirectory(path.join(root, 'releases')), Array.difference(kept), pipelineSubject2771 => Effect.forEach(pipelineSubject2771, entry => fs.remove(path.join(root, 'releases', entry), {recursive: true}), {concurrency: 1}))
 	return `Updated ${name} from ${running} to ${latest}\n`
 })

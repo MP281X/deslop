@@ -161,10 +161,10 @@ type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browse
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
-		return Option.match(Record.get(BROWSERS, props.client.name), {
+		return pipe(BROWSERS, pipelineSubject5749 => Record.get(pipelineSubject5749, props.client.name), pipelineSubject5736 => Option.match(pipelineSubject5736, {
 			onNone: () => <GlobeIcon />,
 			onSome: src => <img src={src} alt="" className="size-3.5" />
-		})
+		}))
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
 		return <img src={claude} alt="" className="size-3.5" />
@@ -228,23 +228,14 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 
 // The mark of the app or browser that is waiting, from the catalog when it is a Deslop app.
 function PendingMark(props: {catalog: readonly {name: string; origin: string}[]; request: PendingAuthorization}) {
-	return Option.match(
-		Option.map(
-			Array.findFirst(
-				props.catalog,
-				app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)
-			),
-			app => app.origin
-		),
-		{
+	return pipe(props.catalog, Array.findFirst(app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)), Option.map(app => app.origin), pipelineSubject8396 => Option.match(pipelineSubject8396, {
 			onNone: () =>
 				Boolean.match(props.request.kind === 'Browser', {
 					onFalse: () => <HardDrivesIcon />,
 					onTrue: () => <GlobeIcon />
 				}),
 			onSome: origin => <AppIcon origin={origin} />
-		}
-	)
+		}))
 }
 
 // A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
@@ -296,15 +287,9 @@ function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: str
 		Array.map(group => {
 			const lastActive = newest(group)
 			return {
-				address: pipe(
-					Array.findFirst(group, signIn => signIn.lastActive === lastActive),
-					Option.flatMap(signIn => signIn.address)
-				),
+				address: pipe(group, Array.findFirst(signIn => signIn.lastActive === lastActive), Option.flatMap(signIn => signIn.address)),
 				client: {
-					app: Option.map(
-						Option.filter(Array.head(byName[String.toLowerCase(group[0].client)] ?? []), () => group[0].kind === 'App'),
-						app => app.origin
-					),
+					app: pipe(Array.head(byName[String.toLowerCase(group[0].client)] ?? []), Option.filter(() => group[0].kind === 'App'), Option.map(app => app.origin)),
 					device: group[0].device,
 					kind: group[0].kind,
 					name: group[0].client

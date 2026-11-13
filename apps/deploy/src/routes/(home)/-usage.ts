@@ -1,4 +1,4 @@
-import {Array, Boolean, HashSet, Number, Option, Order, Record, String} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, Order, Record, String, pipe} from 'effect'
 
 import {APP_HUES} from '@deslop/components-web/apps'
 
@@ -20,13 +20,7 @@ export function bandFill(kind: Band['kind'] | 'disk', opacity: number, name: str
 	if (kind === 'other') return {color: 'var(--input)', opacity: 1}
 	if (kind === 'system') return {color: 'var(--muted)', opacity: 1}
 	if (kind === 'disk') return {color: 'var(--muted-foreground)', opacity: 0.6}
-	return Option.match(
-		Option.flatMap(
-			Array.findFirst(String.split(String.toLowerCase(name), /[^a-z0-9]+/u), word => Record.has(APP_HUES, word)),
-			word => Record.get(APP_HUES, word)
-		),
-		{onNone: () => ({color: 'var(--primary)', opacity}), onSome: color => ({color, opacity: 0.9})}
-	)
+	return pipe(pipe(String.toLowerCase(name), String.split(/[^a-z0-9]+/u), Array.findFirst(word => Record.has(APP_HUES, word))), Option.flatMap(word => Record.get(APP_HUES, word)), pipelineSubject1048 => Option.match(pipelineSubject1048, {onNone: () => ({color: 'var(--primary)', opacity}), onSome: color => ({color, opacity: 0.9})}))
 }
 
 function peak(values: readonly number[]) {
@@ -44,7 +38,7 @@ function total(
 function appSeries(history: MachineHistory) {
 	// One lookup per sample, so each app's series reads its entry directly.
 	const indexed = Array.map(history.samples, sample =>
-		Record.fromEntries(Array.map(Option.getOrElse(sample.apps, Array.empty), app => [app.id, app]))
+		Record.fromEntries(pipe(sample.apps, pipelineSubject1862 => Option.getOrElse(pipelineSubject1862, Array.empty), Array.map(app => [app.id, app])))
 	)
 	const ids = Array.dedupe(Array.flatMap(indexed, Record.keys))
 	// Apps' memory and the machine's used memory are measured apart, so together they can disagree by a little; the apps shrink to fit inside it.
@@ -74,16 +68,13 @@ function lowImpactApp(app: {cpu: readonly number[]; memory: readonly number[]}) 
 
 // The apps the chart folds into its low-impact band, which the list's divider uses too.
 export function lowImpactIds(history: MachineHistory) {
-	return HashSet.fromIterable(Array.map(Array.filter(appSeries(history), lowImpactApp), app => app.id))
+	return HashSet.fromIterable(pipe(appSeries(history), pipelineSubject3149 => Array.filter(pipelineSubject3149, lowImpactApp), Array.map(app => app.id)))
 }
 
 export function bands(history: MachineHistory) {
 	const apps = appSeries(history)
 	const lowImpact = Array.filter(apps, lowImpactApp)
-	const large = Array.sort(
-		Array.difference(apps, lowImpact),
-		Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory))
-	)
+	const large = pipe(apps, Array.difference(lowImpact), pipelineSubject3365 => Array.sort(pipelineSubject3365, Order.mapInput(Order.flip(Order.Number), (app: {memory: number[]}) => peak(app.memory))))
 	const ranked = Array.map(
 		large,
 		// The machine's hue, strongest for the heaviest app and fading evenly by size down to a fifth.
@@ -136,9 +127,7 @@ export function focusedBand(history: MachineHistory, selected: string) {
 // Each sample's place on the range's 0–100 time axis, split where the recording misses a slot, give or take a second of sampling, or a sample lacks the reading, so a gap stays blank.
 export function runs(history: MachineHistory, minutes: number, recorded: (sample: Sample) => boolean) {
 	const window = chartWindow(minutes, history.time)
-	return Array.match(
-		Array.filter(
-			Array.mapAccum(history.samples, {run: 0, time: -Infinity}, (last, sample, index) => {
+	return pipe(Array.mapAccum(history.samples, {run: 0, time: -Infinity}, (last, sample, index) => {
 				const run =
 					last.run +
 					Boolean.match(sample.time - last.time > resolution(minutes) * 1.5 + 1000 || !recorded(sample), {
@@ -154,9 +143,5 @@ export function runs(history: MachineHistory, minutes: number, recorded: (sample
 						x: ((sample.time - window.start) / (window.end - window.start)) * 100
 					}
 				]
-			})[1],
-			point => point.recorded
-		),
-		{onEmpty: () => [], onNonEmpty: all => Array.groupWith(all, (point, first) => point.run === first.run)}
-	)
+			})[1], Array.filter(point => point.recorded), pipelineSubject5661 => Array.match(pipelineSubject5661, {onEmpty: () => [], onNonEmpty: all => Array.groupWith(all, (point, first) => point.run === first.run)}))
 }

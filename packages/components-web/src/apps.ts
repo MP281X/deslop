@@ -1,4 +1,4 @@
-import {Array, Option, Record, String} from 'effect'
+import {Array, Option, Record, String, pipe} from 'effect'
 
 // Each Deslop app's icon hue, as the theme names it; a service without one stays zinc grey.
 export const APP_HUES: Record<string, string> = {
@@ -22,11 +22,7 @@ const icons = import.meta.glob<string>('../../../apps/*/src/routes/icon.svg', {
 // Every app's canonical mark, keyed by the folder its routes' icon lives in.
 export const appMarks: Record<string, string> = Record.fromEntries(
 	Array.flatMap(Record.toEntries(icons), entry =>
-		Option.match(
-			Option.flatMap(String.match(/\/(?<app>[^/]+)\/src\/routes\/icon\.svg$/u)(entry[0]), match =>
-				Option.fromUndefinedOr(match.groups?.['app'])
-			),
-			{onNone: () => [], onSome: app => [[app, entry[1]] as const]}
-		)
+		pipe(String.match(/\/(?<app>[^/]+)\/src\/routes\/icon\.svg$/u)(entry[0]), Option.flatMap(match =>
+				Option.fromUndefinedOr(match.groups?.['app'])), pipelineSubject828 => Option.match(pipelineSubject828, {onNone: () => [], onSome: app => [[app, entry[1]] as const]}))
 	)
 )

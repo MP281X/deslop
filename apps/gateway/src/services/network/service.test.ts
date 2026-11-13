@@ -9,12 +9,8 @@ import {AuthError} from '@deslop/runtime/shared/auth'
 
 import {layerUpstream} from '#services/network/service.ts'
 
-class Upstream extends Context.Service<Upstream, HttpClient.HttpClient>()(
-	'@deslop/gateway/services/network/service.test/Upstream'
-) {}
-class Ordinary extends Context.Service<Ordinary, HttpClient.HttpClient>()(
-	'@deslop/gateway/services/network/service.test/Ordinary'
-) {}
+class Upstream extends Context.Service<Upstream, HttpClient.HttpClient>('@deslop/gateway/services/network/service.test/Upstream') {}
+class Ordinary extends Context.Service<Ordinary, HttpClient.HttpClient>('@deslop/gateway/services/network/service.test/Ordinary') {}
 
 it.effect(
 	'keeps the upstream client guarded beside the ordinary one the gateway builds for Auth',
@@ -22,19 +18,14 @@ it.effect(
 		const requests = MutableList.make<{redirect: string; url: string}>()
 		const client = Effect.service(HttpClient.HttpClient)
 		const services = yield* Layer.build(
-			pipe(
-				Layer.mergeAll(
-					pipe(Layer.effect(Ordinary)(client), Layer.provide(NodeHttpClient.layerFetch)),
-					pipe(Layer.effect(Upstream)(client), Layer.provide(layerUpstream))
-				),
-				Layer.provide(
-					Layer.succeed(FetchHttpClient.Fetch, (input, init) => {
+			Layer.provide(Layer.mergeAll(
+					Layer.provide(Layer.effect(Ordinary)(client), NodeHttpClient.layerFetch),
+					Layer.provide(Layer.effect(Upstream)(client), layerUpstream)
+				), Layer.succeed(FetchHttpClient.Fetch, (input, init) => {
 						MutableList.append(requests, {redirect: init?.redirect ?? 'unset', url: new Request(input).url})
 						// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
 						return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
-					})
-				)
-			)
+					}))
 		)
 		const upstream = Context.get(services, Upstream)
 		assert.isTrue(Result.isFailure(yield* Effect.result(upstream.get('https://127.1/token'))))
@@ -53,16 +44,11 @@ it.effect(
 	Effect.fnUntraced(function* () {
 		const requests = MutableList.make<{init?: RequestInit}>()
 		const services = yield* Layer.build(
-			pipe(
-				layerUpstream,
-				Layer.provide(
-					Layer.succeed(FetchHttpClient.Fetch, (_input, init) => {
+			Layer.provide(layerUpstream, Layer.succeed(FetchHttpClient.Fetch, (_input, init) => {
 						MutableList.append(requests, {init})
 						// oxlint-disable-next-line no-restricted-properties -- The injected Fetch service must return a Promise<Response>.
 						return Effect.runPromise(Effect.succeed(Response.json({ok: true})))
-					})
-				)
-			)
+					}))
 		)
 		const fetch = Context.get(services, FetchHttpClient.Fetch)
 		for (const url of [

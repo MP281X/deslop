@@ -32,9 +32,7 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 			const started = yield* Queue.unbounded<void>()
 			const spawner = ChildProcessSpawner.make(() =>
 				Effect.acquireRelease(
-					Effect.as(
-						Queue.offer(started, undefined),
-						ChildProcessSpawner.makeHandle({
+					pipe(started, pipelineSubject831 => Queue.offer(pipelineSubject831, undefined), pipelineSubject814 => Effect.as(pipelineSubject814, ChildProcessSpawner.makeHandle({
 							all: Stream.empty,
 							exitCode: Effect.never,
 							getInputFd: () => Sink.drain,
@@ -46,8 +44,7 @@ it.effect('releases an interrupted command before its caller scope closes', () =
 							stdin: Sink.drain,
 							stdout: Stream.empty,
 							unref: Effect.succeed(Effect.void)
-						})
-					),
+						}))),
 					() => Ref.set(released, true)
 				)
 			)
@@ -79,7 +76,7 @@ it.layer(NodeServices.layer)('Service lifecycle', test => {
 							[
 								command.command,
 								...Array.map(command.args, arg =>
-									Option.getOrElse(Option.liftPredicate(arg, Predicate.isString), () => '<redacted>')
+									pipe(arg, pipelineSubject2346 => Option.liftPredicate(pipelineSubject2346, Predicate.isString), Option.getOrElse(() => '<redacted>'))
 								)
 							],
 							' '

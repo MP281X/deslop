@@ -49,15 +49,11 @@ export const addAtom = AtomMachine.bind(RpcClient.runtime).make(
 	Machine.make({
 		effects: {
 			add: Effect.fnUntraced(function* (url: string) {
-				yield* pipe(
-					Schema.decodeEffect(ServerUrl)(url),
-					Effect.mapError(cause =>
+				yield* Effect.mapError(Schema.decodeEffect(ServerUrl)(url), cause =>
 						AuthError.make({
 							cause,
 							message: 'Enter a public HTTPS MCP URL without credentials or a fragment, outside the gateway itself.'
-						})
-					)
-				)
+						}))
 				const server = yield* Effect.flatMap(RpcClient, client => client('connections.add', {url}))
 				if (server.status !== 'Connected') location.assign(connectUrl(server.id))
 			})

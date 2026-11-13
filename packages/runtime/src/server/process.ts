@@ -49,14 +49,10 @@ const tool = Effect.fnUntraced(function* (name: string) {
 			yield* fs.rename(temporary, target)
 		})
 	)
-	yield* Effect.forEach(
-		Array.filter(yield* fs.readDirectory(tools), entry => entry !== version),
-		entry => fs.remove(path.join(tools, entry), {recursive: true}),
-		{concurrency: 1}
-	)
+	yield* pipe(yield* fs.readDirectory(tools), Array.filter(entry => entry !== version), pipelineSubject1998 => Effect.forEach(pipelineSubject1998, entry => fs.remove(path.join(tools, entry), {recursive: true}), {concurrency: 1}))
 	return target
 })
 
-export class ToolPath extends Context.Service<ToolPath, typeof tool>()('@deslop/runtime/server/process/ToolPath') {
+export class ToolPath extends Context.Service<ToolPath, typeof tool>('@deslop/runtime/server/process/ToolPath') {
 	static readonly layer = Layer.succeed(this, tool)
 }

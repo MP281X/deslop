@@ -46,8 +46,7 @@ const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign:
 	const down = yield* Ref.make(false)
 	const sign: Sign = Effect.fnUntraced(function* (claims = {}) {
 		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-		const signed = yield* pipe(
-			Jwt.sign(
+		const signed = yield* Effect.provideService(Jwt.sign(
 				AnyClaims,
 				{
 					aud: 'deslop',
@@ -62,9 +61,7 @@ const issuer = Effect.fnUntraced(function* (token: (form: URLSearchParams, sign:
 				},
 				key,
 				{kid: 'fixture', typ: 'at+jwt'}
-			),
-			Effect.provideService(Signature.Signature, signature)
-		)
+			), Signature.Signature, signature)
 		return Redacted.value(signed)
 	})
 	const client = HttpClient.make(request =>
@@ -94,10 +91,7 @@ function layerAuth(client: HttpClient.HttpClient, settings: Record<string, strin
 			Layer.mergeAll(
 				Layer.provide(
 					Layer.unwrap(
-						Effect.map(
-							Effect.flatMap(FileSystem.FileSystem, fs => fs.makeTempDirectoryScoped()),
-							layerDataStore
-						)
+						pipe(FileSystem.FileSystem, Effect.flatMap(fs => fs.makeTempDirectoryScoped()), Effect.map(layerDataStore))
 					),
 					NodeServices.layer
 				),
@@ -144,19 +138,13 @@ const serve = Effect.fnUntraced(function* (client: HttpClient.HttpClient) {
 	const web = yield* Effect.acquireRelease(
 		Effect.sync(() =>
 			HttpRouter.toWebHandler(
-				pipe(
-					Layer.merge(
-						pipe(
+				pipe(pipe(
 							HttpRouter.add('POST', '/ingest', HttpServerResponse.empty({status: 200})),
 							Layer.provide(HttpAuth.layer)
-						),
-						pipe(
+						), pipelineSubject4599 => Layer.merge(pipelineSubject4599, pipe(
 							HttpRouter.add('GET', '/mcp', HttpServerResponse.empty({status: 200})),
 							Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
-						)
-					),
-					Layer.provide(layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
-				),
+						)), pipelineSubject4585 => Layer.provide(pipelineSubject4585, layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))),
 				{disableLogger: true}
 			)
 		),
@@ -352,35 +340,26 @@ it.layer(NodeCrypto.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const calls = yield* Ref.make(0)
 			const client = HttpClient.make(request =>
-				Effect.as(
-					Ref.update(calls, count => count + 1),
-					HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))
-				)
+				pipe(calls, Ref.update(count => count + 1), pipelineSubject13274 => Effect.as(pipelineSubject13274, HttpClientResponse.fromWeb(request, new Response(undefined, {status: 401}))))
 			)
 			const web = yield* Effect.acquireRelease(
 				Effect.sync(() =>
 					HttpRouter.toWebHandler(
-						pipe(
-							Layer.merge(
-								pipe(
+						pipe(pipe(
 									HttpRouter.add(
 										'GET',
 										'/me',
 										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
 									),
 									Layer.provide(HttpAuth.layer)
-								),
-								pipe(
+								), pipelineSubject13520 => Layer.merge(pipelineSubject13520, pipe(
 									HttpRouter.add(
 										'GET',
 										'/mcp',
 										Effect.map(CurrentUser, user => HttpServerResponse.text(user.name))
 									),
 									Layer.provide(layerMcpAuth('https://scope.mp281x.xyz/mcp'))
-								)
-							),
-							Layer.provide(layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'}))
-						),
+								)), pipelineSubject13506 => Layer.provide(pipelineSubject13506, layerAuth(client, {APP_URL: 'https://scope.mp281x.xyz'}))),
 						{disableLogger: true}
 					)
 				),

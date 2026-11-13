@@ -16,17 +16,14 @@ import {ToolHandlers} from '#tools/handlers.ts'
 // The receiver never exports its own spans or query traffic back into itself.
 runApp({
 	icon,
-	routes: pipe(
-		Layer.mergeAll(
+	routes: Layer.provide(Layer.mergeAll(
 			HttpHandlers,
 			layerRpc({group: RpcContracts, handlers: RpcHandlers}),
 			layerMcp({
 				instructions:
 					'For an overview use list_operations; if you have a trace id, read_trace directly. search_traces finds individual requests and search_logs finds uncorrelated causes.',
-				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
+				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			})
-		),
-		Layer.provide(Telemetry.layer)
-	),
+		), Telemetry.layer),
 	telemetry: false
 })

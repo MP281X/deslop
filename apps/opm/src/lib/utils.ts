@@ -92,15 +92,7 @@ const readerStateAtom = Atom.family((_reader: string) =>
 // The reading positions one page turn saves, in order, and the reader's next state; none for a page past the shown chapters. Passing into the next chapter finishes every page of the one before it, and reaching the last shown chapter adds the next.
 function turnPage(state: ReaderState, turn: PageTurn) {
 	const shown = Array.take(turn.following, state.shown)
-	return Option.map(
-		Array.findFirst(
-			Array.zip(
-				shown,
-				Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)
-			),
-			pair => turn.index < pair[1] + pair[0].pages.length
-		),
-		pair => {
+	return pipe(shown, pipelineSubject4141 => Array.zip(pipelineSubject4141, Array.scan(shown, 0, (total, chapter) => total + chapter.pages.length)), Array.findFirst(pair => turn.index < pair[1] + pair[0].pages.length), Option.map(pair => {
 			const chapter = pair[0]
 			const page = turn.index - pair[1]
 			const previous = Option.getOrElse(state.inView, () => turn.opened)
@@ -135,8 +127,7 @@ function turnPage(state: ReaderState, turn: PageTurn) {
 				})
 			}
 			return {next, saves}
-		}
-	)
+		}))
 }
 
 // Each page turn saves the reading position and moves the reader on.
@@ -162,8 +153,7 @@ setNotificationHandler({
 
 // Asked on the first launch, so a new chapter reaches the iPhone without a setting; a refused prompt stays refused.
 export const pushAtom = RpcClient.runtime.atom(get =>
-	pipe(
-		Effect.gen(function* () {
+	Effect.ignore(Effect.gen(function* () {
 			if (!session.signedIn(get)) return
 			yield* Effect.tryPromise({
 				catch: cause => ChaptersError.make({cause, message: 'The badge could not be cleared.'}),
@@ -185,9 +175,7 @@ export const pushAtom = RpcClient.runtime.atom(get =>
 				try: () => getExpoPushTokenAsync({projectId: extra.eas.projectId})
 			})
 			yield* Effect.flatMap(RpcClient, client => client('chapters.register', {token: Redacted.make(token.data)}))
-		}),
-		Effect.ignore({log: 'Warn', message: 'Notifications are not set up on this iPhone'})
-	)
+		}), {log: 'Warn', message: 'Notifications are not set up on this iPhone'})
 )
 
 const crashFile = new File(Paths.document, 'crash.txt')
@@ -209,8 +197,7 @@ ErrorUtils.setGlobalHandler((error, fatal) => {
 
 // A crash leaves no trace of its own, so the reports iOS and the handler above leave for a later launch go to the telemetry as errors.
 export const diagnosticsAtom = RpcClient.runtime.atom(get =>
-	pipe(
-		Effect.gen(function* () {
+	Effect.ignore(Effect.gen(function* () {
 			if (!session.signedIn(get)) return
 			if (crashFile.exists) {
 				yield* Effect.logError('A JavaScript error closed the app on an earlier run', crashFile.textSync())
@@ -224,9 +211,7 @@ export const diagnosticsAtom = RpcClient.runtime.atom(get =>
 				report => Effect.logError('iOS reported a crash or hang on an earlier run', report),
 				{concurrency: 1, discard: true}
 			)
-		}),
-		Effect.ignore({log: 'Warn', message: 'The crash reports were not read'})
-	)
+		}), {log: 'Warn', message: 'The crash reports were not read'})
 )
 
 export const openedAtom = Atom.keepAlive(

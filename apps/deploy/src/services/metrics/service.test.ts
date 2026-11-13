@@ -14,7 +14,7 @@ import {Metrics} from '#services/metrics/service.ts'
 // Metrics started over the worker's data directory, as a restart opens the database it left; its scope ends when the read is done.
 function restarted<A, E, R>(directory: string, use: (metrics: Metrics['Service']) => Effect.Effect<A, E, R>) {
 	return Effect.scoped(
-		Effect.flatMap(Layer.build(pipe(Metrics.layer, Layer.provide(layerDataStore(directory)))), context =>
+		Effect.flatMap(Layer.build(Layer.provide(Metrics.layer, layerDataStore(directory))), context =>
 			use(Context.get(context, Metrics))
 		)
 	)
@@ -24,7 +24,7 @@ function restarted<A, E, R>(directory: string, use: (metrics: Metrics['Service']
 function statement<A, E>(directory: string, run: (sql: SqlClient.SqlClient) => Effect.Effect<A, E>) {
 	return Effect.scoped(
 		Effect.flatMap(Layer.build(layerDataStore(directory)), context =>
-			Effect.flatMap(Effect.provideContext(SqlClient.SqlClient, context), run)
+			pipe(SqlClient.SqlClient, pipelineSubject1114 => Effect.provideContext(pipelineSubject1114, context), pipelineSubject1099 => Effect.flatMap(pipelineSubject1099, run))
 		)
 	)
 }
@@ -76,10 +76,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.lengthOf(seconds.samples, 2)
 			assert.isTrue(Option.isNone(seconds.samples[1]?.cpu ?? Option.none()))
 			assert.deepStrictEqual(
-				Array.map(
-					Array.filter(yield* stored(database), row => row.step === 10_000),
-					row => [row.since, row.time]
-				),
+				pipe(yield* stored(database), Array.filter(row => row.step === 10_000), Array.map(row => [row.since, row.time])),
 				[[0, 5000]]
 			)
 			yield* TestClock.adjust('35 seconds')
@@ -92,10 +89,7 @@ it.layer(NodeServices.layer)('Resource history', test => {
 			assert.strictEqual(second.samples[0]?.time, 40_000)
 			assert.strictEqual(second.samples[0]?.memoryTotal, first.samples[0]?.memoryTotal)
 			assert.deepStrictEqual(
-				Array.map(
-					Array.filter(yield* stored(database), row => row.step === 1000),
-					row => row.time
-				),
+				pipe(yield* stored(database), Array.filter(row => row.step === 1000), Array.map(row => row.time)),
 				[40_000, 90_000]
 			)
 		})

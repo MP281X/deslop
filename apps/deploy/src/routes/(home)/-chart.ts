@@ -1,4 +1,4 @@
-import {Array, DateTime} from 'effect'
+import {Array, DateTime, pipe} from 'effect'
 
 import {chartWindow} from '#services/metrics/lib/utils.ts'
 import type {HistoryQuery} from '#services/metrics/schema.ts'
@@ -29,17 +29,14 @@ export function chartTicks(minutes: number, now: number) {
 			})
 			return DateTime.toEpochMillis(DateTime.setParts(first, {hour: DateTime.toParts(first).hour + index * 6}))
 		}
-		return DateTime.toEpochMillis(DateTime.add(DateTime.startOf(start, 'day'), {days: index + 1}))
+		return DateTime.toEpochMillis(pipe(start, DateTime.startOf('day'), pipelineSubject1414 => DateTime.add(pipelineSubject1414, {days: index + 1})))
 	}
-	return Array.filter(
-		Array.makeBy(8, index => {
+	return pipe(8, Array.makeBy(index => {
 			const at = tick(index)
 			return {
 				at,
 				label: minutes !== 10_080 || index % 2 === 0,
 				x: ((at - window.start) / (window.end - window.start)) * 100
 			}
-		}),
-		value => value.at <= now
-	)
+		}), Array.filter(value => value.at <= now))
 }

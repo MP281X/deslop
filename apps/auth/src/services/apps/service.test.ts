@@ -35,17 +35,12 @@ const servers = HttpClient.make(request =>
 	})
 )
 
-const layer = pipe(
-	Apps.layer,
-	Layer.provide(
-		Layer.mergeAll(
+const layer = Layer.provide(Apps.layer, Layer.mergeAll(
 			SqliteClient.layer({filename: ':memory:'}),
 			Reactivity.layer,
 			Layer.succeed(HttpClient.HttpClient, servers),
 			ConfigProvider.layer(ConfigProvider.fromUnknown({APP_URL: 'https://auth.mp281x.xyz'}))
-		)
-	)
-)
+		))
 
 it.effect(
 	'keeps a restarting app announcement retryable',

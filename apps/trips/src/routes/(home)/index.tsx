@@ -80,7 +80,7 @@ function scheduleOf(booking: Booking) {
 // The schedule and the gate or platform it leaves from, each shown once.
 function lineOf(booking: Booking, status: ReturnType<typeof statusOf>) {
 	const where = Option.match(status.where, {onNone: () => '', onSome: found => found.text})
-	return Array.join(Array.filter([scheduleOf(booking), where], String.isNonEmpty), ' · ')
+	return pipe([scheduleOf(booking), where], pipelineSubject3091 => Array.filter(pipelineSubject3091, String.isNonEmpty), Array.join(' · '))
 }
 
 type Countdown = {_tag: 'Now'} | {_tag: 'Days'; days: number} | {_tag: 'SameDay'}
@@ -249,14 +249,14 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 								<BookingRow
 									key={booking.id}
 									booking={booking}
-									countdown={Option.match(Array.get(ahead, position - 1), {
+									countdown={pipe(ahead, pipelineSubject9506 => Array.get(pipelineSubject9506, position - 1), pipelineSubject9493 => Option.match(pipelineSubject9493, {
 										onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
 										onSome: before =>
 											Boolean.match(daysOf(before) === daysOf(booking), {
 												onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
 												onTrue: () => ({_tag: 'SameDay'}) as const
 											})
-									})}
+									}))}
 									now={now}
 									onOpen={props.onOpen}
 								/>

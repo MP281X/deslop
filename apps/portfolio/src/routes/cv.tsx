@@ -169,7 +169,7 @@ function CvRoute() {
 								key={project.name}
 								title={project.name}
 								details={[project.role]}
-								aside={pipe(project.href, String.replace('https://', ''))}
+								aside={(String.replace('https://', ''))(project.href)}
 							>
 								<p>{project.description}</p>
 							</Entry>

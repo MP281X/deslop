@@ -1,6 +1,6 @@
 import {useAtom, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, Option, String} from 'effect'
+import {Array, Boolean, Option, String, pipe} from 'effect'
 
 import {AsyncResult} from 'effect/reactivity'
 import {useState} from 'react'
@@ -29,10 +29,7 @@ function Expose(props: {items: readonly InventoryItem[]; port: InventoryItem}) {
 	const [kind, setKind] = useState<'tailnet' | 'public'>('tailnet')
 	const [hostname, setHostname] = useState('')
 	const tailnetHost = Option.getOrElse(
-		Option.map(
-			Array.findFirst(props.items, item => item.self === true && item.worker === props.port.worker),
-			item => item.hostname ?? ''
-		),
+		pipe(props.items, Array.findFirst(item => item.self === true && item.worker === props.port.worker), Option.map(item => item.hostname ?? '')),
 		() => ''
 	)
 	const pending = AsyncResult.isWaiting(result)

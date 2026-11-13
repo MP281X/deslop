@@ -30,22 +30,13 @@ import {DeployError, InventoryItem, Serve, Tailnet} from '#services/inventory/sc
 
 // A stop waits at most ten seconds for open connections such as WebSockets, never forever.
 function caddyConfig(rows: readonly Exposure[], storage: string) {
-	return `{\n\tadmin 127.0.0.1:20219\n\tgrace_period 10s\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${Array.join(
-		Array.map(
-			Array.filter(rows, row => row.kind === 'public'),
-			row => `${row.hostname} {\n\tencode\n\treverse_proxy 127.0.0.1:${row.port}\n}\n`
-		),
-		'\n'
-	)}`
+	return `{\n\tadmin 127.0.0.1:20219\n\tgrace_period 10s\n\tpersist_config off\n\tstorage file_system {\n\t\troot ${Schema.encodeSync(Schema.fromJsonString(Schema.String))(storage)}\n\t}\n}\n\n${pipe(rows, Array.filter(row => row.kind === 'public'), Array.map(row => `${row.hostname} {\n\tencode\n\treverse_proxy 127.0.0.1:${row.port}\n}\n`), Array.join('\n'))}`
 }
 
 function ownsMapping(status: Serve, row: Exposure) {
 	return (
 		status.AllowFunnel?.[`${row.hostname}:${row.port}`] !== true &&
-		Option.exists(
-			Record.get(status.Web ?? {}, `${row.hostname}:${row.port}`),
-			value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`
-		)
+		pipe(status.Web ?? {}, pipelineSubject1351 => Record.get(pipelineSubject1351, `${row.hostname}:${row.port}`), Option.exists(value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`))
 	)
 }
 
@@ -88,7 +79,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			Request: Exposure.fields.name,
 			execute: name => sql`DELETE FROM ${sql(Exposure.table)} WHERE name = ${name}`
 		})
-		const owned = pipe(listExposures(), storageFailed)
+		const owned = (storageFailed)(listExposures())
 		const lock = yield* Semaphore.make(1)
 		// Unpacked on the first public exposure, not on every start.
 		const caddy = pipe(
@@ -104,10 +95,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Effect.timeout('30 seconds')
 			)
 		}
-		const status = pipe(
-			run('tailscale', ['serve', 'status', '--json']),
-			Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Serve)))
-		)
+		const status = Effect.flatMap(run('tailscale', ['serve', 'status', '--json']), Schema.decodeUnknownEffect(Schema.fromJsonString(Serve)))
 		const checkTailnet = Effect.fnUntraced(function* (input: Exposure) {
 			const current = yield* status
 			if (
@@ -118,10 +106,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					message: 'This Tailscale port or Funnel permission already exists and is not owned by Deploy'
 				})
 			}
-			const tailnet = yield* pipe(
-				run('tailscale', ['status', '--json']),
-				Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Tailnet)))
-			)
+			const tailnet = yield* Effect.flatMap(run('tailscale', ['status', '--json']), Schema.decodeEffect(Schema.fromJsonString(Tailnet)))
 			if (String.replace(/\.$/u, '')(tailnet.Self?.DNSName ?? '') !== input.hostname) {
 				return yield* DeployError.make({
 					message: 'Use this worker’s Tailscale DNS name; Deploy never publishes another worker’s hostname'
@@ -140,10 +125,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 				Effect.provideService(FileSystem.FileSystem, fs),
 				Effect.provideService(Path.Path, path)
 			)
-			yield* pipe(
-				run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']),
-				Effect.retry({schedule: Schedule.spaced('200 millis'), times: 10})
-			)
+			yield* Effect.retry(run(binary, ['reload', '--address', '127.0.0.1:20219', '--config', configFile, '--adapter', 'caddyfile']), {schedule: Schedule.spaced('200 millis'), times: 10})
 		})
 
 		const rows = yield* owned
@@ -187,7 +169,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 						yield* checkTailnet(exposure)
 					}
 					// Ownership is kept before an external process changes, so an interrupted apply stays inspectable and removable.
-					yield* pipe(insertExposure(exposure), storageFailed)
+					yield* (storageFailed)(insertExposure(exposure))
 					if (exposure.kind === 'public') {
 						yield* caddyApply([...current, exposure])
 					} else {
@@ -207,10 +189,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			hide: Effect.fnUntraced(
 				function* (name: string) {
 					const current = yield* owned
-					const exposure = yield* pipe(
-						Effect.fromOption(Array.findFirst(current, row => row.name === name)),
-						Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
-					)
+					const exposure = yield* Effect.mapError(Effect.fromOption(Array.findFirst(current, row => row.name === name)), cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
 					if (exposure.kind === 'tailnet') {
 						const mappings = yield* status
 						if (Record.has(mappings.TCP ?? {}, `${exposure.port}`)) {
@@ -224,7 +203,7 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 					} else {
 						yield* caddyApply(Array.filter(current, row => row.name !== name))
 					}
-					yield* pipe(deleteExposure(name), storageFailed)
+					yield* (storageFailed)(deleteExposure(name))
 				},
 				Effect.scoped,
 				Semaphore.withPermit(lock),

@@ -1,6 +1,6 @@
 import {useAtom, useAtomSet, useAtomValue} from '@effect/atom-react'
 
-import {Array, Boolean, HashSet, Number, Option, Order, Stream, String} from 'effect'
+import {Array, Boolean, HashSet, Number, Option, Order, Stream, String, pipe} from 'effect'
 
 import {AppWindowIcon, ClockIcon, GaugeIcon, PlayIcon, StackIcon} from '@phosphor-icons/react'
 import {CatchBoundary} from '@tanstack/react-router'
@@ -72,13 +72,7 @@ function Endpoints(props: {free: readonly InventoryItem[]; row: Row}) {
 	return (
 		<>
 			{Array.map(
-				Array.dedupeWith(
-					Array.filter(
-						props.row.listeners,
-						listener => listener.address !== 'container' && !HashSet.has(exposedPorts, listener.port)
-					),
-					(first: InventoryItem, second: InventoryItem) => first.port === second.port
-				),
+				pipe(props.row.listeners, Array.filter(listener => listener.address !== 'container' && !HashSet.has(exposedPorts, listener.port)), Array.dedupeWith((first: InventoryItem, second: InventoryItem) => first.port === second.port)),
 				listener =>
 					Option.match(Array.head(freePorts[listener.id] ?? []), {
 						onNone: () => (

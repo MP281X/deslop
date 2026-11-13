@@ -145,10 +145,7 @@ export const HttpHandlers = HttpRouter.use(router =>
 									yield* Option.match(token, {
 										onNone: () => Effect.void,
 										onSome: Effect.fnUntraced(function* (credential) {
-											yield* pipe(
-												ingestJobLogs(event, credential),
-												Effect.ignore({log: 'Warn', message: 'A GitHub job log did not arrive'})
-											)
+											yield* Effect.ignore(ingestJobLogs(event, credential), {log: 'Warn', message: 'A GitHub job log did not arrive'})
 										})
 									})
 								}

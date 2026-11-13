@@ -21,24 +21,15 @@ const ToolHandlers = ToolContracts.toLayer(
 				const all = yield* connections.definitions
 				if (input.server !== undefined && !Array.some(all, server => server.id === input.server)) {
 					return yield* AuthError.make({
-						message: `Unknown server ${input.server}; valid servers: ${Array.join(
-							Array.map(all, server => server.id),
-							', '
-						)}. Nothing changed.`
+						message: `Unknown server ${input.server}; valid servers: ${pipe(all, Array.map(server => server.id), Array.join(', '))}. Nothing changed.`
 					})
 				}
 				return {
-					servers: Array.map(
-						Array.filter(all, server => input.server === undefined || server.id === input.server),
-						server => ({
+					servers: pipe(all, Array.filter(server => input.server === undefined || server.id === input.server), Array.map(server => ({
 							...Option.match(server.error, {onNone: () => ({}), onSome: error => ({error})}),
-							...Option.match(
-								Option.filter(server.instructions, () => input.server === server.id),
-								{onNone: () => ({}), onSome: instructions => ({instructions})}
-							),
+							...pipe(server.instructions, Option.filter(() => input.server === server.id), pipelineSubject1363 => Option.match(pipelineSubject1363, {onNone: () => ({}), onSome: instructions => ({instructions})})),
 							...Struct.pick(server, ['id', 'status', 'tools'])
-						})
-					)
+						})))
 				}
 			}),
 			remove_ai_key: Effect.fnUntraced(function* (input) {
@@ -71,7 +62,7 @@ export const GatewayMcp = Layer.unwrap(
 			layerMcp({
 				instructions:
 					'Tools use <server>__<tool>. Use list_mcp_connections for missing or failing tools; name a server to read its full instructions.',
-				registrations: pipe(McpServer.toolkit(ToolContracts), Layer.provide(ToolHandlers))
+				registrations: Layer.provide(McpServer.toolkit(ToolContracts), ToolHandlers)
 			}),
 			Layer.provide(GatewayDiscovery.layer),
 			Layer.provide(McpServer.McpServer.layer),
