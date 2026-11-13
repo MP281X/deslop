@@ -3,11 +3,12 @@ import {Array, Boolean, Effect, HashSet, Option, Order, String, Struct, pipe} fr
 import {Fleet} from '#services/fleet/service.ts'
 import {jobRequest, listApps, ownerNames} from '#services/inventory/lib/utils.ts'
 import {DeployError} from '#services/inventory/schema.ts'
-import type {ProcessSummary, WorkerInventory, WorkerId} from '#services/inventory/schema.ts'
+import type {ProcessSummary, Snapshot, WorkerInventory, WorkerId} from '#services/inventory/schema.ts'
 import {resourceHistory} from '#services/metrics/lib/utils.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
-function checkWorker(workers: readonly {worker: WorkerId}[], worker: Option.Option<WorkerId>) {
+function checkWorker(snapshot: Snapshot, worker: Option.Option<WorkerId>) {
+	const workers = listApps(snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()})
 	if (Option.exists(worker, selected => !Array.some(workers, row => row.worker === selected))) {
 		return Effect.fail(
 			DeployError.make({
@@ -152,20 +153,14 @@ export const ToolHandlers = ToolContracts.toLayer(
 	Effect.map(Fleet, fleet =>
 		ToolContracts.of({
 			create_exposure: Effect.fnUntraced(function* (input) {
-				yield* checkWorker(
-					listApps(yield* fleet.snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()}),
-					input.worker
-				)
+				yield* checkWorker(yield* fleet.snapshot, input.worker)
 				return {
 					url: yield* fleet.expose({...Struct.omit(input, ['worker']), target: Option.map(input.worker, Option.some)})
 				}
 			}),
 			list_apps: Effect.fnUntraced(function* (input) {
 				const snapshot = yield* fleet.snapshot
-				yield* checkWorker(
-					listApps(snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()}),
-					input.worker
-				)
+				yield* checkWorker(snapshot, input.worker)
 				return inventoryPage(focusedInventory(listApps(snapshot, input), input.app), input)
 			}),
 			read_resource_history: Effect.fnUntraced(function* (input) {
@@ -173,10 +168,7 @@ export const ToolHandlers = ToolContracts.toLayer(
 					{machines: fleet.metrics({minutes: input.minutes}), snapshot: fleet.snapshot},
 					{concurrency: 'unbounded'}
 				)
-				yield* checkWorker(
-					listApps(value.snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()}),
-					input.worker
-				)
+				yield* checkWorker(value.snapshot, input.worker)
 				return {
 					workers: Array.map(resourceHistory(value.machines, input, ownerNames(value.snapshot)), worker =>
 						Boolean.match(input.series, {
@@ -192,19 +184,13 @@ export const ToolHandlers = ToolContracts.toLayer(
 				}
 			}),
 			remove_exposure: Effect.fnUntraced(function* (input) {
-				yield* checkWorker(
-					listApps(yield* fleet.snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()}),
-					input.worker
-				)
+				yield* checkWorker(yield* fleet.snapshot, input.worker)
 				yield* fleet.hide({name: input.name, target: Option.map(input.worker, Option.some)})
 				return input
 			}),
 			run_job: Effect.fnUntraced(function* (input) {
 				const snapshot = yield* fleet.snapshot
-				yield* checkWorker(
-					listApps(snapshot, {app: Option.none(), failing: Option.none(), worker: Option.none()}),
-					input.worker
-				)
+				yield* checkWorker(snapshot, input.worker)
 				yield* fleet.run(yield* jobRequest(snapshot, input))
 				return {started: true as const}
 			})

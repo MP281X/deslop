@@ -53,15 +53,7 @@ function appSeries(history: MachineHistory) {
 			)
 		)
 	)
-	const ids = Array.dedupe(
-		Array.flatMap(history.samples, sample =>
-			pipe(
-				sample.apps,
-				Option.getOrElse(Array.empty),
-				Array.map(app => app.id)
-			)
-		)
-	)
+	const ids = pipe(indexed, Array.flatMap(Record.keys), Array.dedupe)
 	// Apps' memory and the machine's used memory are measured apart, so together they can disagree by a little; the apps shrink to fit inside it.
 	const fit = Array.map(history.samples, (sample, index) =>
 		Number.min(
