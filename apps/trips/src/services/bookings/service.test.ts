@@ -58,8 +58,8 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 				),
 				Bookings
 			)
-			const first = {text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'}
-			const second = {image: new Uint8Array([255, 216, 255, 217])}
+			const first: BookingSource = {_tag: 'text', text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00, seat 12A'}
+			const second: BookingSource = {_tag: 'image', image: new Uint8Array([255, 216, 255, 217])}
 			yield* bookings.save(USER, first)
 			yield* bookings.save(USER, second)
 			assert.deepStrictEqual(yield* Ref.get(seen), [first, second])
@@ -87,20 +87,22 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 				),
 				Bookings
 			)
-			yield* bookings.save(USER, {text: 'Existing booking'})
+			yield* bookings.save(USER, {_tag: 'text', text: 'Existing booking'})
 			const saved = yield* bookings.list
 			yield* Ref.set(items, [
 				{...FLIGHT, flightNumber: '554'},
 				{...FLIGHT, from: 'BAD'}
 			])
-			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save(USER, {image: new Uint8Array([1])}))))
+			assert.isTrue(
+				Result.isFailure(yield* Effect.result(bookings.save(USER, {_tag: 'image', image: new Uint8Array([1])})))
+			)
 			assert.deepStrictEqual(yield* bookings.list, saved)
 			yield* Ref.set(items, [])
-			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save(USER, {text: 'No booking'}))))
+			assert.isTrue(Result.isFailure(yield* Effect.result(bookings.save(USER, {_tag: 'text', text: 'No booking'}))))
 			assert.deepStrictEqual(yield* bookings.list, saved)
 			yield* Ref.set(rejected, true)
 			assert.deepStrictEqual(
-				yield* Effect.result(bookings.save(USER, {image: new Uint8Array([1])})),
+				yield* Effect.result(bookings.save(USER, {_tag: 'image', image: new Uint8Array([1])})),
 				Result.fail(failure)
 			)
 			assert.deepStrictEqual(yield* bookings.list, saved)
@@ -125,7 +127,7 @@ it.layer(Layer.mergeAll(NodeCrypto.layer, NodeServices.layer, KeyValueStore.laye
 			yield* Effect.scoped(
 				Effect.gen(function* () {
 					const bookings = Context.get(yield* open(directory), Bookings)
-					yield* bookings.save(USER, {text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00'})
+					yield* bookings.save(USER, {_tag: 'text', text: 'BA553 FCO LHR, 10 November 2026, 16:00–18:00'})
 					const saved = yield* bookings.list
 					assert.lengthOf(saved, 1)
 					yield* bookings.remove(Option.getOrThrow(Array.head(saved)).id)

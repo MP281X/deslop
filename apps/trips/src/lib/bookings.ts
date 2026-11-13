@@ -50,7 +50,7 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 		if (image.byteLength === 0 || image.byteLength > IMAGE_BYTES) {
 			return yield* BookingsError.make({message: 'Copy a screenshot smaller than 4 MB and try again.'})
 		}
-		return {image} satisfies BookingSource
+		return {_tag: 'image', image} satisfies BookingSource
 	}
 	const text = pipe(
 		yield* Effect.tryPromise({
@@ -61,7 +61,7 @@ const bookingFromClipboard = Effect.fnUntraced(function* (offer: ClipboardCopy) 
 		String.slice(0, 60_000)
 	)
 	if (String.isEmpty(text)) return yield* BookingsError.make({message: 'The clipboard no longer holds text.'})
-	return {text} satisfies BookingSource
+	return {_tag: 'text', text} satisfies BookingSource
 })
 
 export const clipboard = makeClipboard({
