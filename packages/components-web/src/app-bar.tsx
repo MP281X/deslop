@@ -190,10 +190,15 @@ export function AppBar(props: {
 		<header className="bg-background flex h-12 shrink-0 items-center gap-4 border-b px-4">
 			{Option.match(Option.fromUndefinedOr(props.heading), {
 				onNone: () => (
-					<a href="/" aria-label={props.name} className="flex shrink-0 items-center gap-2.5 max-sm:h-11">
+					<Button
+						variant="bare"
+						nativeButton={false}
+						render={<a href="/" aria-label={props.name} />}
+						className="-mx-2.75 shrink-0 max-sm:h-11"
+					>
 						<img src={props.icon} alt="" className="pixelated size-6" />
-						<span className="font-heading text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
-					</a>
+						<span className="font-heading ml-1 text-sm font-semibold capitalize max-sm:hidden">{props.name}</span>
+					</Button>
 				),
 				// The back caret sits on the rows' 16px mark column and the title on their name column, at 44px.
 				onSome: heading => (

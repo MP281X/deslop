@@ -88,11 +88,11 @@ function Problem(props: {label: string; reset?: () => void; since?: DateTime.Utc
 		>
 			<PopoverTrigger
 				id={id}
-				render={<Button variant="ghost" size="sm" />}
+				render={<Button variant="ghost" />}
 				openOnHover
 				delay={150}
 				aria-label={props.label}
-				className="h-8 w-16 max-sm:h-11"
+				className="w-16 max-sm:h-11"
 				onFocus={event => {
 					if (returning.current) {
 						returning.current = false

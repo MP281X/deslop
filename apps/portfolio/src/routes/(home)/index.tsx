@@ -573,17 +573,18 @@ function PresenceHud(input: {presence: PresenceState; onToggleShortcuts: () => v
 					<span className="hidden sm:inline">{LEGAL_LINE}</span>
 					<span className="sm:hidden">{LEGAL_LINE_NARROW}</span>
 				</span>
-				<Button
-					variant="ghost"
-					size="xs"
-					aria-expanded={input.shortcutsOpen}
-					aria-haspopup="dialog"
-					aria-label="Toggle keyboard shortcuts"
-					onClick={input.onToggleShortcuts}
-					className="pointer-events-auto -mr-1 pointer-coarse:hidden"
-				>
-					?
-				</Button>
+				<span className="pointer-events-auto -mr-1 flex pointer-coarse:hidden">
+					<Button
+						variant="ghost"
+						size="xs"
+						aria-expanded={input.shortcutsOpen}
+						aria-haspopup="dialog"
+						aria-label="Toggle keyboard shortcuts"
+						onClick={input.onToggleShortcuts}
+					>
+						?
+					</Button>
+				</span>
 			</div>
 		</div>
 	)

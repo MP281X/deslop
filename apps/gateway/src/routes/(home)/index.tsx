@@ -88,7 +88,9 @@ function RowBones(props: {tool?: boolean}) {
 			</ItemContent>
 			<ItemActions>
 				{props.tool === true && <Skeleton className="h-3.5 w-7" />}
-				<Skeleton className="h-3.5 w-16 max-sm:hidden" />
+				<div className="max-sm:hidden">
+					<Skeleton className="h-3.5 w-16" />
+				</div>
 				<Skeleton className="h-3 w-12" />
 			</ItemActions>
 		</>
@@ -391,8 +393,8 @@ function AddField(props: {onKey: (secret: string, url: string) => void}) {
 			}}
 		>
 			<Field data-invalid={Option.isSome(error)}>
-				<InputGroup className="h-9 max-sm:h-11">
-					<InputGroupAddon className="max-sm:hidden">
+				<InputGroup className="max-sm:h-11">
+					<InputGroupAddon>
 						<LinkIcon />
 					</InputGroupAddon>
 					<InputGroupInput

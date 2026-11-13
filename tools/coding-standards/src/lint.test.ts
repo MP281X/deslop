@@ -1218,7 +1218,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'export function parseOwned(value: string) { return owner.parse(value) }',
 							'const operations = {normalize: Array.reverse}',
 							'const recovered = Effect.gen(function* () { return yield* Effect.option(Effect.fail("missing")) })',
-							'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <input ref={ref} aria-label={props.label} /> }',
+							'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <span ref={ref} aria-label={props.label} /> }',
 							'export const primitiveFailure = Effect.gen(function* () { return yield* Effect.fail("missing") })',
 							'export {Field, cells, operations, recovered}'
 						],
@@ -1454,7 +1454,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
-			'reports native controls, discarded failures and React Query outside their owners',
+			'reports discarded failures and React Query outside their owners',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
 					'controls.test.ts': Array.join(
@@ -1480,9 +1480,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"export const curried = Effect.ignore({'log': 'Warn'})(load)",
 							'export const unset = Effect.ignore(load, {log: undefined})',
 							"export const overridden = Effect.ignore(load, {log: 'Warn', ...{log: false}})",
-							'export function Save() { return <button type="button" className="hover:bg-muted rounded-md px-2">Save</button> }',
-							'export function Row() { return <button type="button" className="min-w-0 bg-transparent p-0 text-left">Open</button> }',
-							'export function Pick() { return <select aria-label="Kind" /> }',
 							'export {useQuery}'
 						],
 						'\n'
@@ -1490,8 +1487,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.deepStrictEqual(customCodes(result.stdout), [
 					'@deslop/coding-standards(effect-call-form)',
-					'@deslop/coding-standards(no-native-control)',
-					'@deslop/coding-standards(no-native-control)',
 					...Array.replicate('@deslop/coding-standards(recover-named-failures)', 6)
 				])
 			})
@@ -1504,12 +1499,19 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					'primitives.tsx': Array.join(
 						[
 							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Badge} from '@deslop/components-web/ui/badge'",
+							"import {Skeleton} from '@deslop/components-web/ui/skeleton'",
 							"import {Card} from '#components/ui/card.tsx'",
 							"import {cn} from '#lib/utils.ts'",
 							"import {Widget} from 'some-lib'",
 							'',
 							'export function Painted() { return <Button className="mt-2 w-full hover:bg-muted sm:!px-2 data-[state=open]:text-red-500">Save</Button> } // reported',
-							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 relative z-10 self-center -mt-1 sm:inset-0 hidden md:block sm:flex shrink-0 -translate-x-1/2 pointer-events-auto [&_svg:not([class*=size-])]:size-4">Save</Button> }',
+							'export function Placed() { return <Button className="mt-2 w-full max-w-sm flex-1 shrink-0 self-center col-span-2 min-h-0 -mt-1 max-sm:h-11">Save</Button> }',
+							'export function Layered() { return <Button className="relative z-10 pointer-events-auto">Save</Button> } // reported',
+							'export function Sized() { return <Button className="h-9">Save</Button> } // reported',
+							'export function Skin() { return <Skeleton className="h-3 w-24 shrink-0" /> }',
+							'export function Chip() { return <Badge className="size-4">New</Badge> } // reported',
+							'export function Parent() { return <div className="relative z-10"><Button>Save</Button></div> }',
 							"export function Combined() { return <Card className={cn('mt-2', 'bg-red-500')}>Body</Card> } // reported",
 							'export function Templated() { return <Card className={`mt-2 text-lg`}>Body</Card> } // reported',
 							'export function Passed({className}: {className: string}) { return <Card className={className}>Body</Card> }',
@@ -1537,6 +1539,80 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 		)
 
 		testApi.effect(
+			'leaves buttons, links and fields to their primitives, whose render prop takes the raw element',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'controls.tsx': Array.join(
+						[
+							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Item} from '@deslop/components-web/ui/item'",
+							"import {NativeSelect} from '@deslop/components-web/ui/native-select'",
+							'',
+							'export function Bare() { return <button type="button" aria-label="Save" /> } // reported',
+							'export function Link() { return <a href="/docs" aria-label="Docs" /> } // reported',
+							'export function Field() { return <input aria-label="Name" /> } // reported',
+							'export function Pick() { return <select aria-label="Kind" /> } // reported',
+							'export function Notes() { return <textarea aria-label="Notes" /> } // reported',
+							'export function Inside() { return <Item render={<div><button type="button" aria-label="Open" /></div>} /> } // reported',
+							'export function Docs() { return <Button variant="link" nativeButton={false} render={<a href="/docs" aria-label="Docs" />}>Docs</Button> }',
+							'export function Row(props: {open: () => void}) { return <Item size="row" render={<button type="button" aria-label="Open" onClick={props.open} />} /> }',
+							'export function Lazy() { return <Item render={props => <button type="button" aria-label="Open" {...props} />} /> }',
+							'export function Kind() { return <NativeSelect aria-label="Kind" /> }'
+						],
+						'\n'
+					)
+				})
+				const bare = reportedLines(result, 'no-bare-control')
+				assert.deepStrictEqual(bare.reported, bare.marked)
+				// Every form its messages recommend passes the whole preset: nothing else is reported.
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => !String.startsWith('typescript(')(diagnostic.code)),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+						Array.dedupe,
+						Array.sort(Order.Number)
+					),
+					bare.marked
+				)
+			})
+		)
+
+		testApi.effect(
+			'keeps a click handler off badges and tabs',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'labels.tsx': Array.join(
+						[
+							"import {Badge} from '@deslop/components-web/ui/badge'",
+							"import {Button} from '@deslop/components-web/ui/button'",
+							"import {Tabs, TabsList, TabsTrigger} from '@deslop/components-web/ui/tabs'",
+							'',
+							'export function Pressed() { return <Badge variant="outline" onClick={() => undefined}>New</Badge> } // reported',
+							'export function Tab() { return <Tabs value="a"><TabsList><TabsTrigger value="a" onClick={() => undefined}>A</TabsTrigger></TabsList></Tabs> } // reported',
+							'export function Label() { return <Badge variant="outline">New</Badge> }',
+							'export function Action() { return <Button onClick={() => undefined}>Save</Button> }',
+							'export function Picker(props: {pick: (value: string) => void}) { return <Tabs value="a" onValueChange={props.pick}><TabsList><TabsTrigger value="a">A</TabsTrigger></TabsList></Tabs> }'
+						],
+						'\n'
+					)
+				})
+				const labels = reportedLines(result, 'no-handler-on-label')
+				assert.deepStrictEqual(labels.reported, labels.marked)
+				assert.deepStrictEqual(
+					pipe(
+						result.stdout.diagnostics,
+						Array.filter(diagnostic => !String.startsWith('typescript(')(diagnostic.code)),
+						Array.map(diagnostic => diagnostic.labels[0]?.span.line ?? 0),
+						Array.dedupe,
+						Array.sort(Order.Number)
+					),
+					labels.marked
+				)
+			})
+		)
+
+		testApi.effect(
 			'reports Phosphor weights outside the size band',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource(
@@ -1544,13 +1620,11 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 						'icons.tsx': Array.join(
 							[
 								"import {GearIcon, TrashIcon} from '@phosphor-icons/react'",
-								"import {Badge} from '@deslop/components-web/ui/badge'",
 								'',
 								'export function Large() { return <GearIcon className="size-6" /> }',
 								'export function LargeRegular() { return <GearIcon className="size-5" weight="regular" /> }',
 								'export function Small() { return <TrashIcon className="size-4" weight="light" /> }',
-								'export function Plain() { return <TrashIcon className="size-4" /> }',
-								'export function Labelled() { return <Badge onClick={() => undefined}>New</Badge> }'
+								'export function Plain() { return <TrashIcon className="size-4" /> }'
 							],
 							'\n'
 						)
@@ -1563,7 +1637,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 					),
 					3
 				)
-				assert.deepStrictEqual(reportedLines(result, 'no-clickable-badge').reported, [10])
+				assert.deepStrictEqual(reportedLines(result, 'no-handler-on-label').reported, [10])
 			})
 		)
 

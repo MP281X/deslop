@@ -34,12 +34,14 @@ export function SpansSkeleton(props: {label: string}) {
 						{left: 14, top: 72, width: 85}
 					],
 					(box, index) => (
-						<Skeleton
+						<div
 							key={index}
 							aria-hidden
 							className="absolute top-(--flame-top) left-(--flame-left) h-5.5 w-(--flame-width)"
 							style={{'--flame-left': `${box.left}%`, '--flame-top': `${box.top}px`, '--flame-width': `${box.width}%`}}
-						/>
+						>
+							<Skeleton className="size-full" />
+						</div>
 					)
 				)}
 			</div>
@@ -275,6 +277,7 @@ export function Flame(props: {focus?: SpanId; onPick: (id: SpanId) => void; trac
 								</span>
 							)
 						})}
+						{/* oxlint-disable-next-line @deslop/coding-standards/no-bare-control -- A flame-chart bar is a mark the chart draws, with a hit area over its own geometry; no primitive draws one. */}
 						<button
 							type="button"
 							aria-current={Boolean.match(row.picked, {

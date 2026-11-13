@@ -109,7 +109,7 @@ function UsageChart(props: {
 	const allRuns = Array.map(runs(props.history, props.minutes, props.recorded), widen)
 	return (
 		<TooltipProvider delay={0}>
-			<Tooltip open={Option.isSome(hovered)}>
+			<Tooltip open={Option.isSome(hovered)} disableHoverablePopup>
 				<figure className={cn('relative flex min-h-0 flex-col', props.className)} aria-label={props.label}>
 					<svg
 						viewBox={`0 0 100 ${HEIGHT}`}
@@ -239,7 +239,7 @@ function UsageChart(props: {
 				{Option.match(hovered, {
 					onNone: Function.constNull,
 					onSome: value => (
-						<TooltipContent side="top" sideOffset={6} align="start" className="pointer-events-none">
+						<TooltipContent side="top" sideOffset={6} align="start">
 							<span className="font-medium">{props.names(value[1].id)}</span>
 							<span className="opacity-70">
 								{pipe(

@@ -6,10 +6,23 @@ import {Array, Predicate, String} from 'effect'
 import {defineConfig} from 'vite-plus'
 
 import {lint, restrictedImports} from './tools/coding-standards/src/lint.ts'
+import {primitiveClasses} from './tools/coding-standards/src/lint/primitive-classes.ts'
 
 // The registry keeps every primitive as a file; these break AGENTS.md's Design rules (motion, spinners, toasts, context menus, a command palette, a destruction confirmation), so nothing outside it imports them by any spelling, nor the libraries they wrap.
 const BANNED_PRIMITIVES = ['alert-dialog', 'carousel', 'command', 'context-menu', 'drawer', 'spinner', 'toast']
 const SPINNER_ICONS = ['CircleNotch', 'Spinner', 'SpinnerBall', 'SpinnerGap']
+
+// The primitives carry no 44px phone height yet, so a screen adds it; the published preset allows only placement.
+const PHONE_HEIGHT = ['max-sm:h-11', 'max-sm:size-11', 'max-sm:group-data-horizontal/tabs:h-auto']
+
+const repositoryPrimitiveClasses = {
+	...primitiveClasses,
+	allow: [...primitiveClasses.allow, ...PHONE_HEIGHT],
+	contracts: Array.map(primitiveClasses.contracts, contract => ({
+		...contract,
+		allow: [...contract.allow, ...PHONE_HEIGHT]
+	}))
+}
 
 const repositoryRestrictedImports = {
 	paths: [
@@ -330,12 +343,18 @@ export default defineConfig({
 				}
 			},
 			{
+				// Portfolio is exempt from the Design rules: its links and buttons are its own artwork.
+				files: ['apps/portfolio/**'],
+				rules: {'@deslop/coding-standards/no-bare-control': 'off'}
+			},
+			{
 				// The web template is no workspace package, so its stylesheet cannot resolve the theme's own utilities.
 				files: ['tools/create-app/template/web/**'],
 				rules: {'shadcn/no-unknown-classes': 'off'}
 			}
 		],
 		rules: {
+			'shadcn/no-restyle': ['error', repositoryPrimitiveClasses],
 			'eslint/no-restricted-imports': ['error', repositoryRestrictedImports],
 			'eslint-js/no-restricted-syntax': [
 				...lint.rules['eslint-js/no-restricted-syntax'],

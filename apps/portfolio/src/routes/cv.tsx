@@ -92,17 +92,18 @@ function CvRoute() {
 				<span aria-hidden>←</span>
 				Portfolio
 			</a>
-			<Button
-				variant="outline"
-				size="icon-lg"
-				aria-label="Print or save as PDF"
-				onClick={() => {
-					print()
-				}}
-				className="mt-safe-top mr-safe-right fixed top-3 right-3 print:hidden"
-			>
-				<PrinterIcon className="size-4" />
-			</Button>
+			<div className="mt-safe-top mr-safe-right fixed top-3 right-3 flex print:hidden">
+				<Button
+					variant="outline"
+					size="icon-lg"
+					aria-label="Print or save as PDF"
+					onClick={() => {
+						print()
+					}}
+				>
+					<PrinterIcon className="size-4" />
+				</Button>
+			</div>
 
 			<article
 				lang="en"

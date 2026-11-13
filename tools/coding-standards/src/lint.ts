@@ -10,8 +10,8 @@ import {effectCallForm} from '#lint/effect-call-form.ts'
 import {explicitEffectConcurrency} from '#lint/explicit-effect-concurrency.ts'
 import {moduleConstant} from '#lint/module-constant.ts'
 import {noAccumulatingCopy} from '#lint/no-accumulating-copy.ts'
+import {noBareControl} from '#lint/no-bare-control.ts'
 import {noBarrelModule} from '#lint/no-barrel-module.ts'
-import {noClickableBadge} from '#lint/no-clickable-badge.ts'
 import {noCollectingLoop} from '#lint/no-collecting-loop.ts'
 import {noCompilerOptOut} from '#lint/no-compiler-opt-out.ts'
 import {noComponentAtomAllocation} from '#lint/no-component-atom-allocation.ts'
@@ -20,10 +20,10 @@ import {noDoubleNullishCheck} from '#lint/no-double-nullish-check.ts'
 import {noFakeRefState} from '#lint/no-fake-ref-state.ts'
 import {noFloatingDerivedType} from '#lint/no-floating-derived-type.ts'
 import {noHandWrittenHelper} from '#lint/no-hand-written-helper.ts'
+import {noHandlerOnLabel} from '#lint/no-handler-on-label.ts'
 import {noIntermediateCollection} from '#lint/no-intermediate-collection.ts'
 import {noMisleadingBooleanName} from '#lint/no-misleading-boolean-name.ts'
 import {noMultilineComment} from '#lint/no-multiline-comment.ts'
-import {noNativeControl} from '#lint/no-native-control.ts'
 import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
@@ -42,6 +42,7 @@ import {noUnvalidatedJsonDecode} from '#lint/no-unvalidated-json-decode.ts'
 import {noWallClock} from '#lint/no-wall-clock.ts'
 import {preferPredicate} from '#lint/prefer-predicate.ts'
 import {recoverNamedFailures} from '#lint/recover-named-failures.ts'
+import {primitiveClasses} from '#lint/primitive-classes.ts'
 import {schemaTypePair} from '#lint/schema-type-pair.ts'
 import {serviceMethodSpan} from '#lint/service-method-span.ts'
 import {serviceSchemaFile} from '#lint/service-schema-file.ts'
@@ -97,8 +98,8 @@ const RULES = {
 	'explicit-effect-concurrency': explicitEffectConcurrency,
 	'module-constant': moduleConstant,
 	'no-accumulating-copy': noAccumulatingCopy,
+	'no-bare-control': noBareControl,
 	'no-barrel-module': noBarrelModule,
-	'no-clickable-badge': noClickableBadge,
 	'no-collecting-loop': noCollectingLoop,
 	'no-compiler-opt-out': noCompilerOptOut,
 	'no-component-atom-allocation': noComponentAtomAllocation,
@@ -107,10 +108,10 @@ const RULES = {
 	'no-fake-ref-state': noFakeRefState,
 	'no-floating-derived-type': noFloatingDerivedType,
 	'no-hand-written-helper': noHandWrittenHelper,
+	'no-handler-on-label': noHandlerOnLabel,
 	'no-intermediate-collection': noIntermediateCollection,
 	'no-misleading-boolean-name': noMisleadingBooleanName,
 	'no-multiline-comment': noMultilineComment,
-	'no-native-control': noNativeControl,
 	'no-native-emptiness-check': noNativeEmptinessCheck,
 	'no-native-method-call': noNativeMethodCall,
 	'no-option-value-access': noOptionValueAccess,
@@ -194,8 +195,8 @@ export const lint: OxlintConfig & {
 		{
 			files: ['**/components/ui/**', '**/packages/ui/**'],
 			rules: {
+				'@deslop/coding-standards/no-bare-control': 'off',
 				'@deslop/coding-standards/no-destructured-parameter': 'off',
-				'@deslop/coding-standards/no-native-control': 'off',
 				'@deslop/coding-standards/no-renamed-import': 'off',
 				'jsx-a11y/click-events-have-key-events': 'off',
 				'jsx-a11y/label-has-associated-control': 'off'
@@ -773,19 +774,7 @@ export const lint: OxlintConfig & {
 		'shadcn/no-arbitrary-values': 'error',
 		'shadcn/no-inline-styles': 'error',
 		'shadcn/no-raw-colors': 'error',
-		'shadcn/no-restyle': [
-			'error',
-			{
-				allow: ['layout'],
-				// The rule's `ui` setting does not reach the JS plugin here, so the primitives' modules are named directly.
-				componentImports: ['^@deslop/components-web/ui(/|$)', '^#components/ui(/|$)'],
-				// Hairline rows: Items touch, with a separator between them and no margin around it.
-				contracts: [
-					{allow: ['layout', 'gap-0'], pattern: '^ItemGroup$'},
-					{allow: ['layout', 'my-0'], pattern: '^ItemSeparator$'}
-				]
-			}
-		],
+		'shadcn/no-restyle': ['error', primitiveClasses],
 		'shadcn/no-unknown-classes': 'error',
 		'shadcn/require-static-classes': 'error',
 

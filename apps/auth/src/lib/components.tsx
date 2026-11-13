@@ -62,7 +62,7 @@ function PendingRowSkeleton() {
 	return (
 		<div className="bg-primary/10">
 			<Item aria-hidden size="row">
-				<ItemMedia className="size-4">
+				<ItemMedia className="w-4">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -84,7 +84,7 @@ export function SignInRowsSkeleton(props: {pending?: boolean}) {
 		<Card size="list">
 			{props.pending === true && <PendingRowSkeleton />}
 			<RowsSkeleton label="Signed in" rows={9}>
-				<ItemMedia className="size-4">
+				<ItemMedia className="w-4">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -92,7 +92,9 @@ export function SignInRowsSkeleton(props: {pending?: boolean}) {
 				</ItemContent>
 				<ItemActions>
 					<Skeleton className="h-3 w-12 shrink-0" />
-					<Skeleton className="h-3 w-28 shrink-0 max-sm:hidden" />
+					<div className="shrink-0 max-sm:hidden">
+						<Skeleton className="h-3 w-28" />
+					</div>
 				</ItemActions>
 			</RowsSkeleton>
 		</Card>
@@ -104,7 +106,7 @@ export function PeopleRowsSkeleton() {
 	return (
 		<Card size="list">
 			<RowsSkeleton label="People" rows={3}>
-				<ItemMedia className="size-4">
+				<ItemMedia className="w-4">
 					<Skeleton className="size-4" />
 				</ItemMedia>
 				<ItemContent>
@@ -166,7 +168,7 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 				})}`}
 			>
 				{/* The browser or app is the mark alone, so every row's name starts at the same column. */}
-				<ItemMedia className="size-4" role="img" aria-label={props.client.client} title={props.client.client}>
+				<ItemMedia className="w-4" role="img" aria-label={props.client.client} title={props.client.client}>
 					<ClientIcon
 						client={{
 							app: props.client.icon,
@@ -206,7 +208,7 @@ function PendingRow(props: {request: PendingAuthorization}) {
 	return (
 		<div role="listitem" className="bg-primary/10">
 			<Item size="row">
-				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
+				<ItemMedia className="w-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
 					<RequestMark request={props.request} />
 				</ItemMedia>
 				<ItemContent>
