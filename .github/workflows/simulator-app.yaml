@@ -10,6 +10,11 @@ env:
   APP_VARIANT: development
   EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
+# bash -eo pipefail: a failed command inside a pipeline or an assignment fails its step.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   fingerprint:
     name: Fingerprint
@@ -27,9 +32,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          artifact="${{ inputs.app }}-simulator-$(eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)"
+          hash=$(eas fingerprint:generate --platform ios --build-profile simulator --json --non-interactive | jq -r .hash)
+          artifact="${{ inputs.app }}-simulator-$hash"
+          built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length > 0')
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
-          echo "built=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$artifact" --jq '[.artifacts[] | select(.expired | not)] | length > 0')" >> "$GITHUB_OUTPUT"
+          echo "built=$built" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build
