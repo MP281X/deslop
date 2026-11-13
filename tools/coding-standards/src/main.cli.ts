@@ -57,25 +57,18 @@ const cli = pipe(
 					),
 					ignore: pipe(
 						Flag.String('ignore'),
-						Flag.withDescription(
-							'A glob of changed files to leave out, as lint ignores them; known lockfiles are left out without one, and each path left out is reported'
-						),
+						Flag.withDescription('A glob of changed files to leave unjudged, as lint ignores them'),
 						Flag.atLeast(0)
 					),
 					maxCallTokens: pipe(
 						Flag.Int('max-call-tokens'),
-						Flag.withDescription('The most one call may send; a larger call is reported unjudged and not sent'),
+						Flag.withDescription('The most one call may send; a larger call is not sent and fails the run'),
 						Flag.withDefault(64_000)
-					),
-					maxRunTokens: pipe(
-						Flag.Int('max-run-tokens'),
-						Flag.withDescription('The most one run may send; a larger run fails before its first call'),
-						Flag.withDefault(1_000_000)
 					)
 				},
 				input => judge(input, input)
 			),
-			'Ask the change, and the functions, components and test cases it touches, the questions no remembered answer covers, and report what breaks one'
+			'Ask the functions, components and test cases a change touches the questions no remembered answer covers, and report what breaks one'
 		),
 		Command.withDescription(Command.make('sign-in', urls, signIn), 'Sign the judge in to Gateway once per machine')
 	]),
