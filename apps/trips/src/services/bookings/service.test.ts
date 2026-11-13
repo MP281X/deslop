@@ -59,7 +59,11 @@ const open = Effect.fnUntraced(function* (database: Context.Context<Database>, e
 // The events the phone reads, collected from now on.
 const watch = Effect.fnUntraced(function* (bookings: typeof Bookings.Service) {
 	const events = yield* Queue.unbounded<BookingsEvent>()
-	yield* Effect.forkScoped(Stream.runForEach(bookings.events, event => Queue.offer(events, event)))
+	yield* pipe(
+		bookings.events,
+		Stream.runForEach(event => Queue.offer(events, event)),
+		Effect.forkScoped
+	)
 	return events
 })
 

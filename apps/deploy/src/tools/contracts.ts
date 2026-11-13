@@ -1,4 +1,4 @@
-import {Effect, Schema} from 'effect'
+import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
@@ -28,13 +28,12 @@ export const ToolContracts = Toolkit.make(
 		parameters: Schema.Struct({
 			...InventoryQuery.fields,
 			cursor: Schema.optionalKey(Schema.String),
-			limit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1}))
+			limit: pipe(
+				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+				Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))
 			),
-			processLimit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))(
-				Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1}))
-			),
-			processOffset: Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0))(Schema.Natural)
+			processLimit: pipe(Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})), Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))),
+			processOffset: pipe(Schema.Natural, Schema.withDecodingDefaultTypeKey<typeof Schema.Natural>(Effect.succeed(0)))
 		}),
 		success: Schema.Struct({
 			nextCursor: Schema.optionalKey(Schema.String),
@@ -60,7 +59,7 @@ export const ToolContracts = Toolkit.make(
 		failure: DeployError,
 		parameters: Schema.Struct({
 			...HistoryToolInput.fields,
-			series: Schema.withDecodingDefaultTypeKey<typeof Schema.Boolean>(Effect.succeed(false))(Schema.Boolean)
+			series: pipe(Schema.Boolean, Schema.withDecodingDefaultTypeKey<typeof Schema.Boolean>(Effect.succeed(false)))
 		}),
 		success: Schema.Struct({workers: Schema.Array(Schema.Union([WorkerSummary, WorkerHistory]))})
 	})

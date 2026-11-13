@@ -119,12 +119,16 @@ const readSource = Effect.fnUntraced(function* <A, E>(
 			}
 		}),
 		Effect.flatMap(response =>
-			Effect.map(Effect.when(read(response), Effect.succeed(response.status === 200)), body => ({
-				body,
-				location: response.headers['location'],
-				status: response.status,
-				type: response.headers['content-type'] ?? ''
-			}))
+			pipe(
+				read(response),
+				Effect.when(Effect.succeed(response.status === 200)),
+				Effect.map(body => ({
+					body,
+					location: response.headers['location'],
+					status: response.status,
+					type: response.headers['content-type'] ?? ''
+				}))
+			)
 		),
 		Effect.scoped,
 		// oxlint-disable-next-line effecttsgo/strict-effect-provide -- Each request owns an agent pinned to its checked address or its proxy.

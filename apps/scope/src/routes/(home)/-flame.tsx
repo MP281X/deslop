@@ -116,7 +116,11 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 				props.trace.spans,
 				Array.filter(span => span.depth <= 1),
 				Array.flatMap((span: TraceTree['spans'][number]) => {
-					const measured = Option.getOrElse(Record.get(labelWidths, span.spanId), () => 0)
+					const measured = pipe(
+						labelWidths,
+						Record.get(span.spanId),
+						Option.getOrElse(() => 0)
+					)
 					const bar = Number.max((span.durationMs / total) * width, 2)
 					if (bar >= measured + FLAME_LABEL_PADDING) return []
 					if ((span.offsetMs / total) * width + bar + 4 + measured > width) return []
@@ -133,7 +137,11 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 		const duration = durationOf(span.durationMs)
 		const left = (span.offsetMs / total) * width
 		const bar = Number.max((span.durationMs / total) * width, 2)
-		const measured = Option.getOrElse(Record.get(labelWidths, span.spanId), () => 0)
+		const measured = pipe(
+			labelWidths,
+			Record.get(span.spanId),
+			Option.getOrElse(() => 0)
+		)
 		const inside = span.depth <= 1 && width > 0 && bar >= measured + FLAME_LABEL_PADDING
 		const labelLeft = left + bar + 4
 		const labelRight = labelLeft + measured
@@ -142,14 +150,16 @@ export function Flame(props: {focus?: string; onPick: (id: string) => void; trac
 			!inside &&
 			width > 0 &&
 			labelRight <= width &&
-			Array.every(
-				Option.getOrElse(Record.get(placedByLane, `${entry.lane}`), () => []),
-				other => {
+			pipe(
+				placedByLane,
+				Record.get(`${entry.lane}`),
+				Option.getOrElse(() => []),
+				Array.every(other => {
 					if (other.span.spanId === span.spanId) return true
 					const otherLeft = (other.span.offsetMs / total) * width
 					const otherRight = otherLeft + Number.max((other.span.durationMs / total) * width, 2)
 					return labelRight <= otherLeft || otherRight <= labelLeft
-				}
+				})
 			)
 		return {
 			after,

@@ -88,7 +88,11 @@ export function newestReleases(senders: readonly Sender[], known: Record<string,
 export function supersededBy(newest: Record<string, string>) {
 	return (sender: Sender) =>
 		Option.exists(releaseOf(sender.version), version =>
-			Option.exists(Record.get(newest, sender.service), latest => Order.isLessThan(byRelease)(version, latest))
+			pipe(
+				newest,
+				Record.get(sender.service),
+				Option.exists(latest => Order.isLessThan(byRelease)(version, latest))
+			)
 		)
 }
 
@@ -486,8 +490,11 @@ function linkedParents(spans: readonly Span[], links: readonly SpanLink[]) {
 			return pipe(
 				[root, ...group],
 				Array.findFirst(span =>
-					Array.findFirst(Option.getOrElse(Record.get(linksOf, `${span.traceId}:${span.spanId}`), Array.empty), link =>
-						HashSet.has(ids, link.linkedSpanId)
+					pipe(
+						linksOf,
+						Record.get(`${span.traceId}:${span.spanId}`),
+						Option.getOrElse(Array.empty),
+						Array.findFirst(link => HashSet.has(ids, link.linkedSpanId))
 					)
 				),
 				Option.match({onNone: () => [], onSome: link => [[root.spanId, link.linkedSpanId] as const]})
@@ -503,7 +510,11 @@ export function traceTree(id: string, spans: readonly Span[], logs: readonly Log
 	const byId = Record.fromEntries(Array.map(indexed, item => [item.span.spanId, item] as const))
 	const linked = linkedParents(ordered, links)
 	function parentOf(span: Span) {
-		return Option.orElse(Record.get(linked, span.spanId), () => span.parentSpanId)
+		return pipe(
+			linked,
+			Record.get(span.spanId),
+			Option.orElse(() => span.parentSpanId)
+		)
 	}
 	const sortedLogs = Array.sort(
 		logs,
@@ -544,7 +555,7 @@ export function traceTree(id: string, spans: readonly Span[], logs: readonly Log
 					...Struct.pick(item.span, Struct.keys(Span.json.fields)),
 					depth: ancestors.length,
 					durationMs: spanMs(item.span),
-					logs: Option.getOrElse(Record.get(bySpan, item.span.spanId), Array.empty),
+					logs: pipe(bySpan, Record.get(item.span.spanId), Option.getOrElse(Array.empty)),
 					offsetMs: item.span.start - timing.start,
 					parentSpanId: parentOf(item.span)
 				}
@@ -588,17 +599,7 @@ const slowestFirst = Order.mapInput(Order.flip(Duration.Order), (item: Traced) =
 // From an operation's traces slowest first: the slowest, with the newest failures always among them, since those are the traces worth opening.
 function keptTraces(slowest: Array.NonEmptyReadonlyArray<Traced>) {
 	const newestFailures = HashSet.fromIterable(
-		Array.map(
-			Array.take(
-				pipe(
-					slowest,
-					Array.filter(item => item.failed),
-					Array.sort(Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start))
-				),
-				KEEP / 2
-			),
-			item => item.trace.id
-		)
+		pipe(slowest, Array.filter(item => item.failed), Array.sort(Order.mapInput(Order.flip(Order.Number), (item: Traced) => item.trace.start)), Array.take(KEEP / 2), Array.map(item => item.trace.id))
 	)
 	// The newest failures, then the slowest of the rest: the sort is stable, so each part stays slowest first.
 	const chosenFirst = Array.sort(

@@ -42,15 +42,19 @@ function referenceLanesOf(spans: readonly Span[], reservations: Record<string, n
 	if (root !== undefined) add(root, 0)
 	Array.forEach(jobs, item => {
 		const lane = add(item, laneCount())
-		Option.match(Record.get(reservations, item.spanId), {
-			onNone: () => undefined,
-			onSome: reserve =>
-				MutableList.append(intervals, {
-					end: item.offsetMs + item.durationMs + reserve,
-					lane,
-					start: item.offsetMs + item.durationMs
-				})
-		})
+		pipe(
+			reservations,
+			Record.get(item.spanId),
+			Option.match({
+				onNone: () => undefined,
+				onSome: reserve =>
+					MutableList.append(intervals, {
+						end: item.offsetMs + item.durationMs + reserve,
+						lane,
+						start: item.offsetMs + item.durationMs
+					})
+			})
+		)
 	})
 	Array.forEach(rest, item => {
 		const end = item.offsetMs + item.durationMs
@@ -149,9 +153,13 @@ function assertLanesDisjoint(placed: readonly {lane: number; span: Span}[], lane
 			Array.map(entry => entry.span)
 		)
 		Array.forEach(laneSpans, (left, index) =>
-			Array.forEach(Array.drop(laneSpans, index + 1), right =>
-				assert.isFalse(
-					left.offsetMs < right.offsetMs + right.durationMs && right.offsetMs < left.offsetMs + left.durationMs
+			pipe(
+				laneSpans,
+				Array.drop(index + 1),
+				Array.forEach(right =>
+					assert.isFalse(
+						left.offsetMs < right.offsetMs + right.durationMs && right.offsetMs < left.offsetMs + left.durationMs
+					)
 				)
 			)
 		)

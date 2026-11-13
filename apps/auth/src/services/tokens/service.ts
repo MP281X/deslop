@@ -547,7 +547,11 @@ export class Tokens extends Context.Service<
 					origin: Origin,
 					allowed: (owner: CredentialOwner) => Effect.Effect<CredentialOwner, AuthError>
 				) {
-					const presented = yield* Effect.mapError(Effect.fromOption(parts(params.refresh_token)), () => expired)
+					const presented = yield* pipe(
+						parts(params.refresh_token),
+						Effect.fromOption,
+						Effect.mapError(() => expired)
+					)
 					const presentedHash = yield* hash(presented.secret)
 					return yield* pipe(
 						Effect.gen(function* () {
@@ -694,10 +698,10 @@ export class Tokens extends Context.Service<
 						const key = yield* hash(code)
 						const now = yield* Clock.currentTimeMillis
 						yield* Ref.update(codes, current =>
-							HashMap.set(
-								HashMap.filter(current, entry => entry.expiresAt > now),
-								key,
-								{expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}}
+							pipe(
+								current,
+								HashMap.filter(entry => entry.expiresAt > now),
+								HashMap.set(key, {expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}})
 							)
 						)
 						return code

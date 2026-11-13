@@ -115,7 +115,11 @@ export class Presence extends Context.Service<
 									tabs: {
 										...transition.state.tabs,
 										[transition.event.visitor.id]:
-											Option.getOrElse(Record.get(transition.state.tabs, transition.event.visitor.id), () => 0) + 1
+											pipe(
+												transition.state.tabs,
+												Record.get(transition.event.visitor.id),
+												Option.getOrElse(() => 0)
+											) + 1
 									},
 									visitors: upsertPortfolioVisitor(transition.state.visitors, transition.event.visitor)
 								}),
@@ -124,7 +128,12 @@ export class Presence extends Context.Service<
 							Left: {
 								branches: 'left',
 								resolve: transition => {
-									const open = Option.getOrElse(Record.get(transition.state.tabs, transition.event.id), () => 1) - 1
+									const open =
+										pipe(
+											transition.state.tabs,
+											Record.get(transition.event.id),
+											Option.getOrElse(() => 1)
+										) - 1
 									if (open > 0) {
 										return transition.select.open({
 											data: {...transition.state, tabs: {...transition.state.tabs, [transition.event.id]: open}}

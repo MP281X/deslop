@@ -151,9 +151,10 @@ const noKey = Organizer.of({
 function counting(calls: Ref.Ref<number>) {
 	return Organizer.of({
 		organize: Effect.fnUntraced(function* (_userId, input) {
-			return yield* Effect.as(
-				Ref.update(calls, count => count + 1),
-				{
+			return yield* pipe(
+				calls,
+				Ref.update(count => count + 1),
+				Effect.as({
 					body: '',
 					definitions: [{definition: 'Recipes and cooking techniques.', tag: 'cooking'}],
 					screenText: '',
@@ -161,7 +162,7 @@ function counting(calls: Ref.Ref<number>) {
 					tags: ['cooking', 'soup'],
 					title: 'Soup',
 					topics: 'lentils; cumin'
-				}
+				})
 			)
 		})
 	})
@@ -201,7 +202,11 @@ it.layer(NodeServices.layer)('Notes', test => {
 				sources: recipe
 			})
 			const updates = yield* Queue.unbounded<readonly string[]>()
-			yield* Effect.forkChild(Stream.runForEach(notes.search('secret'), ids => Queue.offer(updates, ids)))
+			yield* pipe(
+				notes.search('secret'),
+				Stream.runForEach(ids => Queue.offer(updates, ids)),
+				Effect.forkChild
+			)
 			assert.deepStrictEqual(yield* Queue.take(updates), [])
 			yield* notes.capture(USER, {id: IDS[0], text: 'https://example.com/soup'})
 			assert.deepStrictEqual(yield* Queue.take(updates), [IDS[0]])

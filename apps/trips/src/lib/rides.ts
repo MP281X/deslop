@@ -72,8 +72,10 @@ export const uberAtom = Atom.fn((ride: Ride) =>
 	pipe(
 		coordinatesOf(ride.place),
 		Effect.flatMap(coordinates =>
-			Effect.mapError(Effect.fromOption(coordinates), cause =>
-				BookingsError.make({cause, message: 'The place could not be found for Uber.'})
+			pipe(
+				coordinates,
+				Effect.fromOption,
+				Effect.mapError(cause => BookingsError.make({cause, message: 'The place could not be found for Uber.'}))
 			)
 		),
 		Effect.flatMap(found =>

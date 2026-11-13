@@ -41,12 +41,11 @@ function articleText(article: FxArticle) {
 	)
 	const lines = Array.filterMap(article.content.blocks, block => {
 		const attached = Array.filterMap(block.entityRanges, range =>
-			Result.fromOption(
-				Option.flatMapNullishOr(
-					HashMap.get(entities, `${range.key}`),
-					entity => entity.value.data.markdown ?? entity.value.data.url
-				),
-				() => undefined
+			pipe(
+				entities,
+				HashMap.get(`${range.key}`),
+				Option.flatMapNullishOr(entity => entity.value.data.markdown ?? entity.value.data.url),
+				Result.fromOption(() => undefined)
 			)
 		)
 		const text = pipe([String.trim(block.text), ...attached], Array.filter(String.isNonEmpty), Array.join(' '))

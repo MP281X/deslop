@@ -279,14 +279,18 @@ function Bookings(props: {onOpen: (id: string) => void; searched: string}) {
 								<BookingRow
 									key={booking.id}
 									booking={booking}
-									countdown={Option.match(Array.get(ahead, position - 1), {
-										onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-										onSome: before =>
-											Boolean.match(daysOf(before) === daysOf(booking), {
-												onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
-												onTrue: () => ({_tag: 'SameDay'}) as const
-											})
-									})}
+									countdown={pipe(
+										ahead,
+										Array.get(position - 1),
+										Option.match({
+											onNone: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+											onSome: before =>
+												Boolean.match(daysOf(before) === daysOf(booking), {
+													onFalse: () => ({_tag: 'Days', days: daysOf(booking)}) as const,
+													onTrue: () => ({_tag: 'SameDay'}) as const
+												})
+										})
+									)}
 									now={now}
 									onOpen={props.onOpen}
 								/>

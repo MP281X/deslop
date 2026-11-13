@@ -99,10 +99,14 @@ function operationPage(
 	const byApp = Array.groupBy(page, row => row.app)
 	return {
 		apps: Array.flatMap(answer.apps, app =>
-			Option.match(Record.get(byApp, app.app), {
-				onNone: () => [],
-				onSome: rows => [{app: app.app, operations: Array.map(rows, row => row.operation)}]
-			})
+			pipe(
+				byApp,
+				Record.get(app.app),
+				Option.match({
+					onNone: () => [],
+					onSome: rows => [{app: app.app, operations: Array.map(rows, row => row.operation)}]
+				})
+			)
 		),
 		...pipe(
 			page,
@@ -145,7 +149,7 @@ function traceResult(
 			onFalse: () => Array.flatMap(spans, span => span.logs ?? []),
 			onTrue: () => [...(answer.logs ?? []), ...Array.flatMap(spans, span => span.logs ?? [])]
 		})
-		const logs = Array.take(Array.drop(all, input.offset), input.logLimit)
+		const logs = pipe(all, Array.drop(input.offset), Array.take(input.logLimit))
 		return Result.succeed({
 			...metadata,
 			logs: Array.map(logs, log => ({

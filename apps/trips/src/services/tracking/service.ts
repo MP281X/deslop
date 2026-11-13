@@ -212,7 +212,11 @@ export class Tracking extends Context.Service<Tracking>()('@deslop/trips/service
 					isDue(
 						booking,
 						now,
-						Option.getOrElse(Record.get(attempted, booking.id), () => 0)
+						pipe(
+							attempted,
+							Record.get(booking.id),
+							Option.getOrElse(() => 0)
+						)
 					)
 				),
 				Effect.forEach(

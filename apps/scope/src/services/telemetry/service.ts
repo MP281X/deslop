@@ -137,25 +137,29 @@ function detailed(overview: Overview, rows: readonly TraceDetail[]) {
 			operations: Array.map(app.operations, operation => ({
 				...operation,
 				traces: Array.map(operation.traces, trace =>
-					Option.match(Record.get(byId, trace.id), {
-						onNone: () => trace,
-						onSome: row => {
-							const error = diagnosis(row)
-							return {
-								...trace,
-								...Option.match(row.label, {onNone: () => ({}), onSome: label => ({label})}),
-								...Option.match(row.broken, {
-									onNone: () => ({}),
-									onSome: span => ({
-										failure: {
-											span,
-											...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
-										}
+					pipe(
+						byId,
+						Record.get(trace.id),
+						Option.match({
+							onNone: () => trace,
+							onSome: row => {
+								const error = diagnosis(row)
+								return {
+									...trace,
+									...Option.match(row.label, {onNone: () => ({}), onSome: label => ({label})}),
+									...Option.match(row.broken, {
+										onNone: () => ({}),
+										onSome: span => ({
+											failure: {
+												span,
+												...Boolean.match(String.isNonEmpty(error), {onFalse: () => ({}), onTrue: () => ({error})})
+											}
+										})
 									})
-								})
+								}
 							}
-						}
-					})
+						})
+					)
 				)
 			}))
 		}))

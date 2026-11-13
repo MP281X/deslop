@@ -138,19 +138,18 @@ const fixture = Effect.fnUntraced(function* (compressed?: HttpClient.HttpClient)
 	const sql = Context.get(database, SqlClient.SqlClient)
 	// Alice's usage after the services made its table, then again after each call of hers is saved.
 	const saved = yield* Queue.unbounded<{costUsd: number; unknownCostCalls: number}>()
-	yield* Effect.forkScoped(
-		Stream.runForEach(
-			sql.reactive(
-				{aiUsage: ['alice']},
-				Effect.flatMap(
-					sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
-					Schema.decodeUnknownEffect(
-						Schema.Tuple([Schema.Struct({costUsd: Schema.Finite, unknownCostCalls: Schema.Finite})])
-					)
+	yield* pipe(
+		sql.reactive(
+			{aiUsage: ['alice']},
+			Effect.flatMap(
+				sql`SELECT total(costUsd) AS costUsd, total(unknownCostCalls) AS unknownCostCalls FROM ai_usage WHERE owner = 'alice'`,
+				Schema.decodeUnknownEffect(
+					Schema.Tuple([Schema.Struct({costUsd: Schema.Finite, unknownCostCalls: Schema.Finite})])
 				)
-			),
-			rows => Queue.offer(saved, rows[0])
-		)
+			)
+		),
+		Stream.runForEach(rows => Queue.offer(saved, rows[0])),
+		Effect.forkScoped
 	)
 	assert.deepStrictEqual(yield* Queue.take(saved), {costUsd: 0, unknownCostCalls: 0})
 	const web = yield* Effect.acquireRelease(

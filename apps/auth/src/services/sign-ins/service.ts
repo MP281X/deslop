@@ -59,7 +59,7 @@ const deliver = Effect.fnUntraced(function* (input: {
 	const tokens = yield* Tokens
 	const people = yield* People
 	const approver = yield* Effect.option(
-		Effect.flatMap(Effect.fromOption(Option.fromUndefinedOr(input.owner)), people.allowed)
+		pipe(Option.fromUndefinedOr(input.owner), Effect.fromOption, Effect.flatMap(people.allowed))
 	)
 	return yield* Match.valueTags(input.delivery, {
 		Browser: browser =>
@@ -260,7 +260,11 @@ export class SignIns extends Context.Service<
 					via: 'Session' | 'Token'
 				) {
 					yield* people.allowed(owner)
-					const signIn = yield* Effect.mapError(Effect.fromOption(yield* find(params.request)), () => notWaiting)
+					const signIn = yield* pipe(
+						yield* find(params.request),
+						Effect.fromOption,
+						Effect.mapError(() => notWaiting)
+					)
 					if (via === 'Token' && signIn.pending.kind === 'Browser') {
 						return yield* AuthError.make({
 							message: `A browser sign-in is approved only from a signed-in browser: ask the user to approve it at ${AUTH_URL}`
@@ -283,7 +287,11 @@ export class SignIns extends Context.Service<
 				}, asAuthError('Cannot answer the sign-in')),
 				collect: Effect.fn('SignIns.collect')(function* (code: string, headers: Headers.Headers) {
 					const signIn = yield* received(
-						yield* Effect.mapError(Effect.fromOption(yield* find(code)), () => expired),
+						yield* pipe(
+							yield* find(code),
+							Effect.fromOption,
+							Effect.mapError(() => expired)
+						),
 						headers
 					)
 					if (SignInStates.matches((yield* signIn.ref.snapshot).state, 'Open.Waiting')) {
@@ -300,11 +308,13 @@ export class SignIns extends Context.Service<
 				// RFC 8628 §3.5: the command asks again every few seconds until the code is answered or expires.
 				poll: Effect.fn('SignIns.poll')(function* (params: DeviceTokenParams) {
 					const receiver = yield* hash(params.device_code)
-					const signIn = yield* Effect.mapError(
-						Effect.fromOption(
-							Array.findFirst(HashMap.toValues(yield* SubscriptionRef.get(open)), entry => entry.receiver === receiver)
-						),
-						() => AuthError.make({error: 'expired_token', message: 'The device code expired; sign in again'})
+					const signIn = yield* pipe(
+						HashMap.toValues(yield* SubscriptionRef.get(open)),
+						Array.findFirst(entry => entry.receiver === receiver),
+						Effect.fromOption,
+						Effect.mapError(() =>
+							AuthError.make({error: 'expired_token', message: 'The device code expired; sign in again'})
+						)
 					)
 					const snapshot = yield* signIn.ref.snapshot
 					if (

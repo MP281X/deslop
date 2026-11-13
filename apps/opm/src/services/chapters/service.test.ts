@@ -136,10 +136,12 @@ function warningLayer(queue: Queue.Queue<void>, prefix: string) {
 // The events the iPhone reads, collected from now on as the wire carries them.
 const watch = Effect.fnUntraced(function* (chapters: typeof Chapters.Service) {
 	const events = yield* Queue.unbounded<typeof ChaptersEvent.Encoded>()
-	yield* Effect.forkScoped(
-		Stream.runForEach(chapters.events, event =>
+	yield* pipe(
+		chapters.events,
+		Stream.runForEach(event =>
 			Effect.flatMap(Schema.encodeEffect(ChaptersEvent)(event), encoded => Queue.offer(events, encoded))
-		)
+		),
+		Effect.forkScoped
 	)
 	return events
 })

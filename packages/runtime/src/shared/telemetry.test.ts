@@ -119,7 +119,7 @@ it.effect(
 				Effect.provideContext(services)
 			)
 		}
-		yield* (yield* Effect.fromOption(Context.getOption(services, OtlpExporter.Flusher))).flush
+		yield* (yield* pipe(services, Context.getOption(OtlpExporter.Flusher), Effect.fromOption)).flush
 		const packets = Array.join(MutableList.toArray(sent), '\n')
 		assert.include(packets, 'visible')
 		assert.include(packets, 'REDACTED')

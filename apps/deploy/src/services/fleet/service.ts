@@ -154,8 +154,13 @@ export class Fleet extends Context.Service<
 				Effect.timeout('15 seconds')
 			)
 			function selectedWorker(target: string) {
-				return Effect.mapError(Effect.fromOption(Array.findFirst(workers, worker => worker.name === target)), cause =>
-					DeployError.make({cause, message: 'This worker is not configured on the control plane'})
+				return pipe(
+					workers,
+					Array.findFirst(worker => worker.name === target),
+					Effect.fromOption,
+					Effect.mapError(cause =>
+						DeployError.make({cause, message: 'This worker is not configured on the control plane'})
+					)
 				)
 			}
 			return Fleet.of({

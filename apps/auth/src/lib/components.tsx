@@ -161,10 +161,11 @@ type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browse
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
-		return Option.match(Record.get(BROWSERS, props.client.name), {
-			onNone: () => <GlobeIcon />,
-			onSome: src => <img src={src} alt="" className="size-3.5" />
-		})
+		return pipe(
+			BROWSERS,
+			Record.get(props.client.name),
+			Option.match({onNone: () => <GlobeIcon />, onSome: src => <img src={src} alt="" className="size-3.5" />})
+		)
 	}
 	if (Option.isSome(String.match(/claude/iu)(props.client.name))) {
 		return <img src={claude} alt="" className="size-3.5" />

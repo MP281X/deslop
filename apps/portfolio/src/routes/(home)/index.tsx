@@ -100,8 +100,10 @@ const portfolioAtom = Atom.keepAlive(
 				(scene, update) => {
 					const cursors = Array.appendAll(update.visitors, update.bots)
 					const positions = HashSet.fromIterable(
-						Array.map(Array.appendAll(scene.visitors, scene.bots), visitor =>
-							Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y)
+						pipe(
+							scene.visitors,
+							Array.appendAll(scene.bots),
+							Array.map(visitor => Tuple.make(visitor.id, visitor.color, visitor.x, visitor.y))
 						)
 					)
 					// The latest 180 positions in the order cursors reached them; a recolour starts a new stretch where the cursor is.
@@ -609,11 +611,15 @@ function RealtimeLayer(input: {
 			</div>
 			<div className="max-sm:hidden print:hidden">
 				<div className="hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-					{Array.map(Array.appendAll(portfolio.value.visitors, portfolio.value.bots), cursor =>
-						Boolean.match(cursor.id === identity.id, {
-							onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
-							onTrue: () => null
-						})
+					{pipe(
+						portfolio.value.visitors,
+						Array.appendAll(portfolio.value.bots),
+						Array.map(cursor =>
+							Boolean.match(cursor.id === identity.id, {
+								onFalse: () => <VisitorCursor key={cursor.id} cursor={cursor} viewport={input.viewport} />,
+								onTrue: () => null
+							})
+						)
 					)}
 				</div>
 			</div>

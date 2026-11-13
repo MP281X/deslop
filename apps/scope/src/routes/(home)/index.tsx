@@ -291,7 +291,11 @@ function OperationsPane(props: {
 														props.activeKey.runtime === row.operation.runtime &&
 														props.activeKey.name === row.operation.name
 													}
-													duplicate={Option.exists(Record.get(names, row.operation.name), group => group.length > 1)}
+													duplicate={pipe(
+														names,
+														Record.get(row.operation.name),
+														Option.exists(group => group.length > 1)
+													)}
 													failing={failing}
 													onSelect={() => props.onSelect(row.app.name, row.operation)}
 													operation={row.operation}

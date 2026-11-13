@@ -221,11 +221,18 @@ export class Inventory extends Context.Service<
 						id: `${worker}:${scope}:${row.unit}`,
 						kind: 'service',
 						name: row.unit,
-						...Option.match(HashMap.get(scheduled, row.unit), {
-							onNone: () => ({}),
-							onSome: next =>
-								Option.match(next, {onNone: () => ({scheduled: true}), onSome: time => ({next: time, scheduled: true})})
-						}),
+						...pipe(
+							scheduled,
+							HashMap.get(row.unit),
+							Option.match({
+								onNone: () => ({}),
+								onSome: next =>
+									Option.match(next, {
+										onNone: () => ({scheduled: true}),
+										onSome: time => ({next: time, scheduled: true})
+									})
+							})
+						),
 						scope,
 						state: `${row.active} · ${row.sub}`,
 						url: '',

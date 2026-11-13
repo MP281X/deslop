@@ -1023,10 +1023,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			const added = yield* gateway.add('https://public.example.com/mcp')
 			yield* modern(gateway.web, TOKEN, 'tools/list')
 			const updates = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('connections.usage', '24h', {headers: {cookie: SESSION}}), value =>
-					Queue.offer(updates, value)
-				)
+			yield* pipe(
+				gateway.client('connections.usage', '24h', {headers: {cookie: SESSION}}),
+				Stream.runForEach(value => Queue.offer(updates, value)),
+				Effect.forkScoped
 			)
 			const first = yield* Queue.take(updates)
 			assert.deepStrictEqual(first, {
@@ -1074,10 +1074,10 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			])
 			// The page's day view sums the same hours into one day.
 			const daily = yield* Queue.unbounded<{range: UsageRange; report: McpUsageReport}>()
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('connections.usage', '30d', {headers: {cookie: SESSION}}), value =>
-					Queue.offer(daily, value)
-				)
+			yield* pipe(
+				gateway.client('connections.usage', '30d', {headers: {cookie: SESSION}}),
+				Stream.runForEach(value => Queue.offer(daily, value)),
+				Effect.forkScoped
 			)
 			assert.deepStrictEqual((yield* Queue.take(daily)).report, [{id: added.id, series: [{at: 0, calls: 3}]}])
 		})
@@ -1089,15 +1089,15 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			yield* gateway.setKey('session=stranger', 'anthropic', 'sk-stranger')
 			const mine = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
 			const theirs = yield* Queue.unbounded<{range: UsageRange; report: AiUsageReport}>()
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('ai-proxy.usage', '24h', {headers: {cookie: SESSION}}), value =>
-					Queue.offer(mine, value)
-				)
+			yield* pipe(
+				gateway.client('ai-proxy.usage', '24h', {headers: {cookie: SESSION}}),
+				Stream.runForEach(value => Queue.offer(mine, value)),
+				Effect.forkScoped
 			)
-			yield* Effect.forkScoped(
-				Stream.runForEach(gateway.client('ai-proxy.usage', '24h', {headers: {cookie: 'session=stranger'}}), value =>
-					Queue.offer(theirs, value)
-				)
+			yield* pipe(
+				gateway.client('ai-proxy.usage', '24h', {headers: {cookie: 'session=stranger'}}),
+				Stream.runForEach(value => Queue.offer(theirs, value)),
+				Effect.forkScoped
 			)
 			assert.deepStrictEqual((yield* Queue.take(mine)).report.byProvider, [])
 			assert.deepStrictEqual((yield* Queue.take(theirs)).report.byProvider, [])

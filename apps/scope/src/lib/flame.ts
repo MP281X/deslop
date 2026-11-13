@@ -44,10 +44,14 @@ export function lanesOf<T extends FlameSpan>(spans: readonly T[], reservations: 
 	}
 	function addLane(span: T) {
 		const interval = {end: span.offsetMs + span.durationMs, start: span.offsetMs}
-		const intervals = Option.match(Record.get(reservations, span.spanId), {
-			onNone: () => Array.make(interval),
-			onSome: reserve => Array.make(interval, {end: interval.end + reserve, start: interval.end})
-		})
+		const intervals = pipe(
+			reservations,
+			Record.get(span.spanId),
+			Option.match({
+				onNone: () => Array.make(interval),
+				onSome: reserve => Array.make(interval, {end: interval.end + reserve, start: interval.end})
+			})
+		)
 		MutableList.append(lanes, {intervals, lastEnd: -Infinity})
 		place(span, lanes.length - 1)
 	}

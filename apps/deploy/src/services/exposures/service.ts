@@ -41,9 +41,12 @@ function caddyConfig(rows: readonly Exposure[], storage: string) {
 function ownsMapping(status: Serve, row: Exposure) {
 	return (
 		status.AllowFunnel?.[`${row.hostname}:${row.port}`] !== true &&
-		Option.exists(
-			Record.get(status.Web ?? {}, `${row.hostname}:${row.port}`),
-			value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`
+		pipe(
+			status.Web ?? {},
+			Record.get(`${row.hostname}:${row.port}`),
+			Option.exists(
+				value => Record.size(value.Handlers) === 1 && value.Handlers['/']?.Proxy === `http://127.0.0.1:${row.port}`
+			)
 		)
 	)
 }
@@ -208,9 +211,11 @@ export class Exposures extends Context.Service<Exposures>()('@deslop/deploy/serv
 			hide: Effect.fnUntraced(
 				function* (name: string) {
 					const current = yield* owned
-					const exposure = yield* Effect.mapError(
-						Effect.fromOption(Array.findFirst(current, row => row.name === name)),
-						cause => DeployError.make({cause, message: 'Deploy does not own this exposure'})
+					const exposure = yield* pipe(
+						current,
+						Array.findFirst(row => row.name === name),
+						Effect.fromOption,
+						Effect.mapError(cause => DeployError.make({cause, message: 'Deploy does not own this exposure'}))
 					)
 					if (exposure.kind === 'tailnet') {
 						const mappings = yield* status

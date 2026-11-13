@@ -1,4 +1,4 @@
-import {Effect, Schema} from 'effect'
+import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
@@ -11,8 +11,9 @@ import {CurrentOwner} from '#services/tokens/schema.ts'
 type Page = typeof Page.Type
 const Page = Schema.Struct({
 	cursor: Schema.optionalKey(Schema.NonEmptyString),
-	limit: Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))(
-		Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1}))
+	limit: pipe(
+		Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
+		Schema.withDecodingDefaultTypeKey<typeof Schema.Int>(Effect.succeed(30))
 	)
 })
 

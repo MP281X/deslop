@@ -905,9 +905,17 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				const apps = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
 					yield* Effect.promise(() => list.text())
 				)
-				const browser = yield* Effect.fromOption(Array.findFirst(apps, app => app.kind === 'Browser'))
+				const browser = yield* pipe(
+					apps,
+					Array.findFirst(app => app.kind === 'Browser'),
+					Effect.fromOption
+				)
 				assert.deepStrictEqual(
-					(yield* Effect.fromOption(Array.findFirst(apps, app => app.client === 'Scope'))).parent,
+					(yield* pipe(
+						apps,
+						Array.findFirst(app => app.client === 'Scope'),
+						Effect.fromOption
+					)).parent,
 					Option.some(browser.family)
 				)
 				const unspent = yield* authorizeWeb(web.issuer, session)
@@ -1601,7 +1609,11 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 				),
 				[200, 400]
 			)
-			const winner = yield* Effect.fromOption(Array.findFirst(responses, response => response.status === 200))
+			const winner = yield* pipe(
+				responses,
+				Array.findFirst(response => response.status === 200),
+				Effect.fromOption
+			)
 			const token = yield* Schema.decodeEffect(Schema.fromJsonString(TokenResponse))(
 				yield* Effect.promise(() => winner.text())
 			)
@@ -2133,13 +2145,12 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			)
 			// The approved browser is listed among the account's sign-ins, and signing it out there ends its session.
 			const listed = yield* send(web.issuer, '/apps', {headers: {cookie: admin}})
-			const browserApp = yield* Effect.fromOption(
-				Array.findFirst(
-					yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
-						yield* Effect.promise(() => listed.text())
-					),
-					app => app.client === 'Safari' && app.device === 'iPhone'
-				)
+			const browserApp = yield* pipe(
+				yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Array(SignedInApp.json)))(
+					yield* Effect.promise(() => listed.text())
+				),
+				Array.findFirst(app => app.client === 'Safari' && app.device === 'iPhone'),
+				Effect.fromOption
 			)
 			assert.strictEqual(
 				(yield* send(web.issuer, `/disconnect?family=${browserApp.family}`, {headers: {cookie: admin}, method: 'POST'}))
@@ -2247,12 +2258,16 @@ it.layer(Layer.merge(NodeCrypto.layer, NodeServices.layer))(test => {
 			assert.isTrue(
 				Array.every(listed.sessions, session => session.device === undefined || session.device !== session.address)
 			)
-			const command = yield* Effect.fromOption(
-				Array.findFirst(listed.sessions, session => session.client === 'Opencode')
+			const command = yield* pipe(
+				listed.sessions,
+				Array.findFirst(session => session.client === 'Opencode'),
+				Effect.fromOption
 			)
 			assert.deepStrictEqual([command.address, command.device], ['93.184.216.34', undefined])
-			const browser = yield* Effect.fromOption(
-				Array.findFirst(listed.sessions, session => session.client === 'Browser')
+			const browser = yield* pipe(
+				listed.sessions,
+				Array.findFirst(session => session.client === 'Browser'),
+				Effect.fromOption
 			)
 			assert.strictEqual((yield* callTool(web.issuer, agent, 'sign_out_session', {id: browser.id})).status, 200)
 			assert.deepStrictEqual(

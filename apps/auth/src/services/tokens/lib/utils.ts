@@ -54,7 +54,11 @@ export function withChildActivity(signIns: readonly SignedInApp[]) {
 		Array.filter(signIn => Option.isNone(signIn.parent)),
 		Array.map(signIn => {
 			const latest = Array.reduce(
-				Option.getOrElse(Record.get(children, signIn.family), () => []),
+				pipe(
+					children,
+					Record.get(signIn.family),
+					Option.getOrElse(() => [])
+				),
 				signIn,
 				Order.max(Order.mapInput(Order.Number, (app: SignedInApp) => app.lastActive))
 			)

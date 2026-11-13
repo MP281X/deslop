@@ -191,15 +191,22 @@ function scan(
 						onTrue: () => Array.drop(args, 2)
 					}),
 					words,
-					Boolean.match(Array.contains(subject, parsed.flag), {
-						onFalse: () => values,
-						onTrue: () =>
-							Boolean.match(parsed.flag === 'resume', {
-								onFalse: () =>
-									Option.match(value, {onNone: () => values, onSome: given => Record.set(values, parsed.flag, given)}),
-								onTrue: () => Record.set(values, parsed.flag, 'resumed')
-							})
-					})
+					pipe(
+						subject,
+						Array.contains(parsed.flag),
+						Boolean.match({
+							onFalse: () => values,
+							onTrue: () =>
+								Boolean.match(parsed.flag === 'resume', {
+									onFalse: () =>
+										Option.match(value, {
+											onNone: () => values,
+											onSome: given => Record.set(values, parsed.flag, given)
+										}),
+									onTrue: () => Record.set(values, parsed.flag, 'resumed')
+								})
+						})
+					)
 				)
 			}
 			if (name === 'ssh') {

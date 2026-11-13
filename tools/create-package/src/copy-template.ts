@@ -1,4 +1,4 @@
-import {Array, Console, Effect, FileSystem, Path, String} from 'effect'
+import {Array, Console, Effect, FileSystem, Path, String, pipe} from 'effect'
 
 import {CliError} from 'effect/cli'
 
@@ -17,7 +17,12 @@ export const copyTemplate = Effect.fnUntraced(function* (input: {
 	}
 	const entries = Array.filter(
 		yield* fs.readDirectory(input.from, {recursive: true}),
-		entry => !Array.some(String.split(entry, path.sep), segment => Array.contains(SKIPPED, segment))
+		entry =>
+			!pipe(
+				entry,
+				String.split(path.sep),
+				Array.some(segment => Array.contains(SKIPPED, segment))
+			)
 	)
 	yield* Effect.forEach(
 		entries,

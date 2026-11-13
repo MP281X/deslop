@@ -189,9 +189,10 @@ export function signInLabel(client: string, device: string) {
 }
 
 export const consentAtom = RpcClient.runtime.fn((input: {accept: boolean; request: PendingAuthorization}, get) =>
-	Effect.andThen(
-		Effect.flatMap(RpcClient, client => client('sign-ins.answer', {accept: input.accept, request: input.request.id})),
-		Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input}))
+	pipe(
+		RpcClient,
+		Effect.flatMap(client => client('sign-ins.answer', {accept: input.accept, request: input.request.id})),
+		Effect.andThen(Effect.sync(() => get.set(codeAtom.send, {_tag: 'Answered', ...input})))
 	)
 )
 

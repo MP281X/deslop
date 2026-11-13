@@ -308,8 +308,10 @@ export class Push extends Context.Service<Push>()('@deslop/trips/services/push/s
 					)
 				)
 			)
-			return yield* Effect.mapError(Effect.fromOption(answer.channel), () =>
-				PushError.make({message: `APNs created no channel: ${answer.status}`})
+			return yield* pipe(
+				answer.channel,
+				Effect.fromOption,
+				Effect.mapError(() => PushError.make({message: `APNs created no channel: ${answer.status}`}))
 			)
 		})
 

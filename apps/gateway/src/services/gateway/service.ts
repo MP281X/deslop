@@ -354,9 +354,10 @@ export class Gateway extends Context.Service<
 				if (Option.isNone(last)) return
 				// An agent lists tools far more often than upstreams change, so a registry younger than 30 seconds answers alone.
 				if (now - Option.getOrThrow(last) < 30_000) return
-				yield* Effect.forkIn(
-					Effect.withSpan(refreshes.withPermitsIfAvailable(1)(read(headers)), 'Gateway.refresh'),
-					scope
+				yield* pipe(
+					refreshes.withPermitsIfAvailable(1)(read(headers)),
+					Effect.withSpan('Gateway.refresh'),
+					Effect.forkIn(scope)
 				)
 			})
 			return Gateway.of({

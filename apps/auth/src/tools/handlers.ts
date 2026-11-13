@@ -97,10 +97,11 @@ export const ToolHandlers = ToolContracts.toLayer(
 					sessions: Array.map(found.items, app => ({
 						...Option.match(app.address, {onNone: () => ({}), onSome: address => ({address})}),
 						client: app.client,
-						...Boolean.match(Option.contains(app.address, app.device), {
-							onFalse: () => ({device: app.device}),
-							onTrue: () => ({})
-						}),
+						...pipe(
+							app.address,
+							Option.contains(app.device),
+							Boolean.match({onFalse: () => ({device: app.device}), onTrue: () => ({})})
+						),
 						id: app.family,
 						lastActive: pipe(app.lastActive, DateTime.makeUnsafe, DateTime.formatIso)
 					}))

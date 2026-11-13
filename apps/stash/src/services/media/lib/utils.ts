@@ -146,19 +146,23 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 							)
 						)
 					)
-					return Array.map(Array.drop(lines, index + 1), line => ({
-						end: Array.lastNonEmpty(times),
-						start: Array.headNonEmpty(times),
-						text: pipe(
-							line,
-							String.replaceAll(/<[^>]+>/gu, ''),
-							String.replaceAll('&nbsp;', ' '),
-							String.replaceAll('&lt;', '<'),
-							String.replaceAll('&gt;', '>'),
-							String.replaceAll('&amp;', '&'),
-							String.trim
-						)
-					}))
+					return pipe(
+						lines,
+						Array.drop(index + 1),
+						Array.map(line => ({
+							end: Array.lastNonEmpty(times),
+							start: Array.headNonEmpty(times),
+							text: pipe(
+								line,
+								String.replaceAll(/<[^>]+>/gu, ''),
+								String.replaceAll('&nbsp;', ' '),
+								String.replaceAll('&lt;', '<'),
+								String.replaceAll('&gt;', '>'),
+								String.replaceAll('&amp;', '&'),
+								String.trim
+							)
+						}))
+					)
 				}),
 				Option.getOrElse(Array.empty)
 			)
@@ -169,17 +173,21 @@ export function captionTranscript(input: {authored: boolean; vtt: string}) {
 	return pipe(
 		cues,
 		Array.filter((cue, index) =>
-			Option.match(Array.get(cues, index - 1), {
-				onNone: () => true,
-				onSome: previous =>
-					input.authored ||
-					previous.text !== cue.text ||
-					pipe(
-						Option.all([previous.end, cue.start]),
-						Option.map(times => times[0] < times[1]),
-						Option.getOrElse(() => true)
-					)
-			})
+			pipe(
+				cues,
+				Array.get(index - 1),
+				Option.match({
+					onNone: () => true,
+					onSome: previous =>
+						input.authored ||
+						previous.text !== cue.text ||
+						pipe(
+							Option.all([previous.end, cue.start]),
+							Option.map(times => times[0] < times[1]),
+							Option.getOrElse(() => true)
+						)
+				})
+			)
 		),
 		Array.map(
 			cue =>

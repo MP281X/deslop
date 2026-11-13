@@ -163,15 +163,19 @@ export class Bookings extends Context.Service<Bookings>()('@deslop/trips/service
 			yield* Effect.forEach(
 				upsert(current, incoming),
 				booking =>
-					Option.match(Record.get(stored, booking.id), {
-						onNone: () => insert(booking),
-						onSome: before =>
-							pipe(
-								before,
-								Equal.equals(booking),
-								Boolean.match({onFalse: () => update(booking), onTrue: () => Effect.void})
-							)
-					}),
+					pipe(
+						stored,
+						Record.get(booking.id),
+						Option.match({
+							onNone: () => insert(booking),
+							onSome: before =>
+								pipe(
+									before,
+									Equal.equals(booking),
+									Boolean.match({onFalse: () => update(booking), onTrue: () => Effect.void})
+								)
+						})
+					),
 				{concurrency: 1, discard: true}
 			)
 		})

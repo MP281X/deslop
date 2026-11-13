@@ -336,12 +336,7 @@ export class Notes extends Context.Service<Notes>()('@deslop/stash/services/note
 
 		// One note at a time, so two notes read together cannot create rival tags for the same topic.
 		function tag(userId: string, id: NoteId, stills: Picture[]) {
-			return Effect.withSpan('Notes.tag', {attributes: {'note.id': id}})(
-				Effect.flatMap(
-					findNote(id),
-					Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})
-				)
-			)
+			return pipe(findNote(id), Effect.flatMap(Option.match({onNone: () => Effect.void, onSome: note => tagging.withPermit(tagNote(userId, note, stills))})), Effect.withSpan('Notes.tag', {attributes: {'note.id': id}}))
 		}
 
 		// TikTok's preview image links expire within days, so the server keeps the image; a regenerated note keeps its own.
