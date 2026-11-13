@@ -34,11 +34,39 @@ export function Failures() {
 	)
 }
 
-export function SignIn() {
+// The two ways to sign this browser in, worded for the page: continuing to Auth, or approving a waiting sign-in here.
+export function Providers(props: {verb: 'Approve here' | 'Continue'}) {
 	const next = route.useSearch({select: search => search.next})
 	const [signIn, startSignIn] = useAtom(signInAtom)
-	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
+	return (
+		<>
+			<Button
+				size="lg"
+				className="w-full max-sm:h-11"
+				disabled={AsyncResult.isWaiting(signIn)}
+				onClick={() => startSignIn()}
+			>
+				<GitHubIcon />
+				{props.verb} with GitHub
+			</Button>
+			<Button
+				size="lg"
+				variant="outline"
+				className="w-full max-sm:h-11"
+				disabled={AsyncResult.isWaiting(passkey)}
+				onClick={() => startPasskey(next)}
+			>
+				<KeyIcon />
+				{props.verb} with a passkey
+			</Button>
+		</>
+	)
+}
+
+export function SignIn() {
+	const next = route.useSearch({select: search => search.next})
+	const [codeSignIn, startCodeSignIn] = useAtom(codeSignInAtom)
 	return (
 		<section
 			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
@@ -46,25 +74,7 @@ export function SignIn() {
 		>
 			<h1 className="sr-only">Sign in</h1>
 			<div className="flex flex-col gap-2">
-				<Button
-					size="lg"
-					className="w-full max-sm:h-11"
-					disabled={AsyncResult.isWaiting(signIn)}
-					onClick={() => startSignIn()}
-				>
-					<GitHubIcon />
-					Continue with GitHub
-				</Button>
-				<Button
-					size="lg"
-					variant="outline"
-					className="w-full max-sm:h-11"
-					disabled={AsyncResult.isWaiting(passkey)}
-					onClick={() => startPasskey(next)}
-				>
-					<KeyIcon />
-					Continue with a passkey
-				</Button>
+				<Providers verb="Continue" />
 				<Button
 					size="lg"
 					variant="ghost"

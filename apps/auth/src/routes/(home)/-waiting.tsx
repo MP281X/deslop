@@ -1,36 +1,22 @@
-import {useAtom, useAtomSuspense} from '@effect/atom-react'
+import {useAtomSuspense} from '@effect/atom-react'
 
 import {Array, DateTime, Duration, Match, Option, pipe} from 'effect'
 
-import {ArrowRightIcon, HourglassIcon, KeyIcon} from '@phosphor-icons/react'
-import {getRouteApi} from '@tanstack/react-router'
-import {AsyncResult} from 'effect/reactivity'
+import {ArrowRightIcon, HourglassIcon} from '@phosphor-icons/react'
 import {Suspense} from 'react'
 import {toQR} from 'toqr'
 
 import {CopyButton} from '@deslop/components-web/copy-button'
 import {EmptyState} from '@deslop/components-web/fallbacks'
-import {GitHubIcon} from '@deslop/components-web/icons'
 import {StatusDot} from '@deslop/components-web/status-dot'
 import {Button} from '@deslop/components-web/ui/button'
-import {Card} from '@deslop/components-web/ui/card'
 import {timerOf} from '@deslop/runtime/shared/format'
 
-import {
-	approveLink,
-	passkeySignInAtom,
-	requestAtom,
-	requestCode,
-	secondAtom,
-	signInAtom,
-	signInLabel
-} from '#lib/auth.ts'
-import {SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
-import {Failures} from '#routes/(home)/-sign-in.tsx'
+import {approveLink, requestAtom, requestCode, secondAtom, signInLabel} from '#lib/auth.ts'
+import {RequestMark, SignInList, SignInRowsSkeleton} from '#lib/components.tsx'
+import {Failures, Providers} from '#routes/(home)/-sign-in.tsx'
 import type {SignedAccount} from '#services/people/schema.ts'
 import type {PendingAuthorization, SignInCode} from '#services/sign-ins/schema.ts'
-
-const route = getRouteApi('/(home)')
 
 // The link as a QR code, one square per dark module, inside the quiet zone scanners need.
 function QrCode(props: {className?: string; text: string}) {
@@ -72,60 +58,47 @@ function Countdown(props: {expiresAt: DateTime.Utc}) {
 	)
 }
 
-function CodeCard(props: {request: PendingAuthorization}) {
-	const next = route.useSearch({select: search => search.next})
-	const [signIn, startSignIn] = useAtom(signInAtom)
-	const [passkey, startPasskey] = useAtom(passkeySignInAtom)
+// The sign-in page's column and buttons, under one line naming who asks and for how long; another device's way in closes it.
+function Request(props: {request: PendingAuthorization}) {
+	const code = requestCode(props.request.id)
 	return (
-		<Card className="m-auto w-full" aria-labelledby="waiting-title">
-			<div className="flex flex-col gap-5 px-4">
-				<h1 id="waiting-title" className="font-heading text-3xl leading-none tracking-tight">
-					{signInLabel(props.request.clientName, props.request.device)}
-				</h1>
-				<div className="flex items-start gap-5">
-					{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
-					<span className="bg-background text-foreground shrink-0 border p-2">
-						<QrCode text={approveLink(props.request.id)} className="size-32" />
-					</span>
-					<div className="flex min-w-0 flex-col gap-2">
-						<CopyButton
-							label={`Copy the code ${requestCode(props.request.id)}`}
-							value={requestCode(props.request.id)}
-							failure="Cannot copy the code; type it in instead"
-						>
-							{requestCode(props.request.id)}
-						</CopyButton>
-						<Countdown expiresAt={props.request.expiresAt} />
-					</div>
-				</div>
-				{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
-				{props.request.kind === 'App' && (
-					<div className="flex flex-col gap-2 border-t pt-4">
-						<Button
-							variant="outline"
-							size="sm"
-							className="w-full max-sm:h-11"
-							disabled={AsyncResult.isWaiting(passkey)}
-							onClick={() => startPasskey(next)}
-						>
-							<KeyIcon />
-							Approve here with a passkey
-						</Button>
-						<Button
-							variant="ghost"
-							size="sm"
-							className="w-full max-sm:h-11"
-							disabled={AsyncResult.isWaiting(signIn)}
-							onClick={() => startSignIn()}
-						>
-							<GitHubIcon />
-							Approve here with GitHub
-						</Button>
-					</div>
-				)}
-				<Failures />
+		<section
+			className="m-auto flex w-full -translate-y-2 flex-col gap-5 sm:max-w-80 lg:-translate-y-3"
+			aria-label="Sign-in request"
+		>
+			<h1 className="sr-only">Approve a sign-in</h1>
+			<div className="flex items-center gap-2 text-sm">
+				<span className="flex size-4 shrink-0 items-center justify-center [&_svg]:size-4">
+					<RequestMark request={props.request} />
+				</span>
+				<p className="min-w-0 flex-1 truncate">{signInLabel(props.request.clientName, props.request.device)}</p>
+				<Countdown expiresAt={props.request.expiresAt} />
 			</div>
-		</Card>
+			{/* Signing this browser in turns the page into the approver's, where the sign-in waits to be approved. */}
+			{props.request.kind === 'App' && (
+				<div className="flex flex-col gap-2">
+					<Providers verb="Approve here" />
+				</div>
+			)}
+			<Failures />
+			<div className="flex items-center gap-4 border-t pt-5">
+				{/* The theme's own colours, so the dark theme shows light modules on a dark tile. */}
+				<span className="bg-background text-foreground shrink-0 border p-1.5">
+					<QrCode text={approveLink(props.request.id)} className="size-24 sm:size-28" />
+				</span>
+				<div className="flex min-w-0 flex-col items-start gap-1">
+					<p className="text-muted-foreground text-xs/relaxed">On a device signed in to Auth, scan this or enter</p>
+					<CopyButton
+						label={`Copy the code ${code}`}
+						value={code}
+						className="-ml-2.5"
+						failure="Cannot copy the code; type it in instead"
+					>
+						{code}
+					</CopyButton>
+				</div>
+			</div>
+		</section>
 	)
 }
 
@@ -153,7 +126,7 @@ export function Waiting(props: {account: Option.Option<SignedAccount>; id: SignI
 					props.account,
 					Option.filter(signed => signed.role !== 'Waiting'),
 					Option.match({
-						onNone: () => <CodeCard request={value.request} />,
+						onNone: () => <Request request={value.request} />,
 						onSome: () => (
 							<Suspense fallback={<SignInRowsSkeleton pending />}>
 								<SignInList pending={Option.some(value.request)} />

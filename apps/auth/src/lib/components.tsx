@@ -184,6 +184,15 @@ function ClientRow(props: {client: SignedInApp; now: DateTime.Utc}) {
 	)
 }
 
+// A waiting sign-in's mark: the app's own icon from its registered callback, else a browser or a host.
+export function RequestMark(props: {request: PendingAuthorization}) {
+	return Option.match(props.request.icon, {
+		onNone: () =>
+			Boolean.match(props.request.kind === 'Browser', {onFalse: () => <HardDrivesIcon />, onTrue: () => <GlobeIcon />}),
+		onSome: origin => <AppIcon origin={origin} />
+	})
+}
+
 // A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
 function PendingRow(props: {request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
@@ -192,14 +201,7 @@ function PendingRow(props: {request: PendingAuthorization}) {
 		<div role="listitem" className="bg-primary/10">
 			<Item size="row">
 				<ItemMedia className="size-4" role="img" aria-label={props.request.clientName} title={props.request.clientName}>
-					{Option.match(props.request.icon, {
-						onNone: () =>
-							Boolean.match(props.request.kind === 'Browser', {
-								onFalse: () => <HardDrivesIcon />,
-								onTrue: () => <GlobeIcon />
-							}),
-						onSome: origin => <AppIcon origin={origin} />
-					})}
+					<RequestMark request={props.request} />
 				</ItemMedia>
 				<ItemContent>
 					<ItemTitle>{props.request.device}</ItemTitle>
