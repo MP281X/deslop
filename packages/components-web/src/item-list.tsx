@@ -16,4 +16,3 @@ export function RowsSkeleton(props: {children: ReactNode; label: string; rows: n
 		</div>
 	)
 }
-

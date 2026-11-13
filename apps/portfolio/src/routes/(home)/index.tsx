@@ -30,8 +30,8 @@ import {
 } from '@phosphor-icons/react'
 import {useHotkeys} from '@tanstack/react-hotkeys'
 import {createFileRoute} from '@tanstack/react-router'
-import {KeyValueStore} from 'effect/persistence'
 import {SecureRandom} from 'effect/crypto'
+import {KeyValueStore} from 'effect/persistence'
 import {Atom} from 'effect/reactivity'
 import {Suspense, useRef, useState} from 'react'
 
@@ -292,7 +292,11 @@ function Cursor(input: {cursor: Visitor; own: boolean; viewport: {width: number;
 function OwnCursor(input: {viewport: {width: number; height: number}}) {
 	return (
 		<div className="hidden print:hidden [@media(hover:hover)_and_(pointer:fine)]:contents">
-			<Cursor own cursor={{...useAtomValue(ownCursorAtom), id: VisitorId.make('own'), name: 'You'}} viewport={input.viewport} />
+			<Cursor
+				own
+				cursor={{...useAtomValue(ownCursorAtom), id: VisitorId.make('own'), name: 'You'}}
+				viewport={input.viewport}
+			/>
 		</div>
 	)
 }

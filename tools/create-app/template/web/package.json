@@ -20,8 +20,7 @@
 		"#routeTree.gen.ts": "./src/routeTree.gen.ts",
 		"#routes/*": "./src/routes/*",
 		"#rpcs/*": "./src/rpcs/*",
-		"#services/*": "./src/services/*",
-		"#tools/*": "./src/tools/*"
+		"#services/*": "./src/services/*"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -33,7 +32,6 @@
 	"devDependencies": {
 		"@deslop/components-web": "workspace:*",
 		"@deslop/runtime": "workspace:*",
-		"@effect/atom-react": "latest",
 		"@tanstack/react-router": "latest",
 		"effect": "latest",
 		"react": "latest",

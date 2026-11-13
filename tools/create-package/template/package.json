@@ -6,7 +6,7 @@
 		"#*": "./src/*"
 	},
 	"exports": {
-		"./service": "./src/service.ts"
+		"./shared/*": "./src/shared/*.ts"
 	},
 	"scripts": {
 		"test": "vp test --config ../../vite.config.ts"

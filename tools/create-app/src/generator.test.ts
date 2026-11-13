@@ -1,59 +1,175 @@
+// oxlint-disable-next-line effecttsgo/node-builtin-import -- Effect Path has no glob matcher; compare the workspace's actual Fallow zone patterns.
+import {matchesGlob} from 'node:path'
+
 import {NodeServices} from '@effect/platform-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, Effect, FileSystem, Path, Schema} from 'effect'
+import {Array, Boolean, Effect, FileSystem, Option, Path, Record, Schema, String, Struct, pipe} from 'effect'
 
+import {Jsonc} from 'effect/encoding'
 import {ChildProcess} from 'effect/process'
+
+type Manifest = typeof Manifest.Type
+const Manifest = Schema.fromJsonString(
+	Schema.Struct({
+		bin: Schema.Record(Schema.String, Schema.String),
+		dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+		devDependencies: Schema.Record(Schema.String, Schema.String),
+		engines: Schema.Struct({node: Schema.String}),
+		files: Schema.Array(Schema.String),
+		imports: Schema.Record(Schema.String, Schema.String),
+		main: Schema.optionalKey(Schema.String),
+		name: Schema.String,
+		publishConfig: Schema.Struct({access: Schema.String}),
+		repository: Schema.Struct({directory: Schema.String, type: Schema.String, url: Schema.String}),
+		scripts: Schema.Record(Schema.String, Schema.String),
+		sideEffects: Schema.Boolean,
+		type: Schema.String
+	})
+)
 
 it.layer(NodeServices.layer)(test => {
 	test.effect(
-		'creates and typechecks repository-relative apps from the workspace command directory without substituting names twice',
+		'generates web and mobile apps with real-app structure, boundaries, lint and types',
 		Effect.fnUntraced(function* () {
 			const fs = yield* FileSystem.FileSystem
 			const path = yield* Path.Path
 			const root = path.resolve(import.meta.dirname, '../../..')
-			const temporary = yield* fs.makeTempDirectoryScoped()
-			yield* fs.symlink(path.join(root, 'node_modules'), path.join(temporary, 'node_modules'))
+			const policy = yield* Schema.decodeUnknownEffect(
+				Schema.Struct({
+					boundaries: Schema.Struct({
+						zones: Schema.Array(Schema.Struct({name: Schema.String, patterns: Schema.Array(Schema.String)}))
+					})
+				})
+			)(yield* Effect.fromResult(Jsonc.parse(yield* fs.readFileString(path.join(root, '.fallowrc.json')))))
 			for (const app of [
-				{donor: 'portfolio', kind: 'web'},
-				{donor: 'stash', kind: 'mobile'}
+				{donor: 'scope', kind: 'web'},
+				{donor: 'opm', kind: 'mobile'}
 			]) {
-				const names = ['template-app', 'my-template-app', 'template-app-x'] as const
-				for (const name of names) {
-					const target = path.join(temporary, app.kind, name)
-					const child = yield* ChildProcess.make(
-						'node',
-						[
-							path.join(root, 'tools/create-app/bin/index.ts'),
-							'--kind',
-							app.kind,
-							'--name',
-							name,
-							'--directory',
-							path.relative(root, target)
-						],
-						{cwd: path.join(root, 'tools'), stderr: 'inherit', stdout: 'inherit'}
-					)
-					assert.strictEqual(yield* child.exitCode, 0)
-					assert.deepStrictEqual(
-						yield* Schema.decodeEffect(
-							Schema.fromJsonString(
-								Schema.Struct({name: Schema.String, repository: Schema.Struct({directory: Schema.String})})
-							)
-						)(yield* fs.readFileString(path.join(target, 'package.json'))),
-						{name: `@deslop/${name}`, repository: {directory: path.relative(root, target)}}
+				const name = `template-app-${String.toLowerCase(path.basename(yield* fs.makeTempDirectoryScoped()))}`
+				const target = path.join(root, 'apps', name)
+				// Use the public command's destination, not a test-only directory option.
+				yield* Effect.addFinalizer(() => Effect.orDie(fs.remove(target, {force: true, recursive: true})))
+				assert.strictEqual(
+					yield* Effect.flatMap(
+						ChildProcess.make(
+							'node',
+							[path.join(root, 'tools/create-app/bin/index.ts'), '--name', name, '--kind', app.kind],
+							{cwd: path.join(root, 'tools'), stderr: 'inherit', stdout: 'inherit'}
+						),
+						child => child.exitCode
+					),
+					0
+				)
+				const donor = path.join(root, 'apps', app.donor)
+				const actual = yield* Schema.decodeEffect(Manifest)(yield* fs.readFileString(path.join(target, 'package.json')))
+				const reference = yield* Schema.decodeEffect(Manifest)(
+					String.replaceAll(app.donor, name)(yield* fs.readFileString(path.join(donor, 'package.json')))
+				)
+				assert.deepStrictEqual(
+					Struct.omit(actual, ['dependencies', 'devDependencies', 'imports']),
+					Struct.omit(reference, ['dependencies', 'devDependencies', 'imports'])
+				)
+				for (const entry of Record.toEntries(actual.imports)) assert.strictEqual(reference.imports[entry[0]], entry[1])
+				for (const entry of Record.toEntries({...actual.dependencies, ...actual.devDependencies})) {
+					assert.strictEqual({...reference.dependencies, ...reference.devDependencies}[entry[0]], entry[1], entry[0])
+				}
+				for (const file of Array.appendAll(
+					['tsconfig.json', 'vite.config.ts', 'src/main.client.tsx'],
+					Boolean.match(app.kind === 'web', {
+						onFalse: () => ['metro.config.ts', 'fingerprint.config.js', 'src/routes/app.icon/icon.json'],
+						onTrue: () => ['index.html', 'src/routes/__root.tsx']
+					})
+				)) {
+					const source = Boolean.match(app.kind === 'web' && file === 'src/main.client.tsx', {
+						onFalse: () => path.join(donor, file),
+						onTrue: () => path.join(root, 'apps/portfolio', file)
+					})
+					assert.strictEqual(
+						yield* fs.readFileString(path.join(target, file)),
+						pipe(
+							yield* fs.readFileString(source),
+							String.replaceAll(String.capitalize(app.donor), name),
+							String.replaceAll(app.donor, name)
+						),
+						file
 					)
 				}
-				// One typecheck per kind: the name variants only change package.json, which the assertions above cover.
-				const target = path.join(temporary, app.kind, Array.headNonEmpty(names))
-				yield* fs.remove(path.join(target, 'node_modules'), {force: true, recursive: true})
-				yield* fs.symlink(path.join(root, 'apps', app.donor, 'node_modules'), path.join(target, 'node_modules'))
-				const checked = yield* ChildProcess.make(
-					path.join(root, 'node_modules/.bin/tsrs'),
-					['--noEmit', '--fast', '-p', path.join(target, 'tsconfig.json')],
-					{cwd: root, stderr: 'inherit', stdout: 'inherit'}
-				)
-				assert.strictEqual(yield* checked.exitCode, 0)
+				if (app.kind === 'mobile') {
+					const eas = Schema.fromJsonString(Schema.Struct({build: Schema.Unknown, cli: Schema.Unknown}))
+					assert.deepStrictEqual(
+						yield* Schema.decodeEffect(eas)(yield* fs.readFileString(path.join(target, 'eas.json'))),
+						yield* Schema.decodeEffect(eas)(yield* fs.readFileString(path.join(donor, 'eas.json')))
+					)
+				}
+				assert.isTrue(yield* fs.exists(path.join(target, 'README.md')))
+				assert.isTrue(yield* fs.exists(path.join(target, 'AGENTS.md')))
+				// Compile the real service tree in the generated shell too: its schemas, helpers, numbered SQLite migrations and spans are the fixture, never a second handwritten implementation.
+				for (const file of yield* fs.readDirectory(path.join(donor, 'src/services'), {recursive: true})) {
+					if (String.endsWith('.ts')(file) && !String.endsWith('.test.ts')(file)) {
+						yield* fs.makeDirectory(path.dirname(path.join(target, 'src/services', file)), {recursive: true})
+						yield* fs.writeFileString(
+							path.join(target, 'src/services', file),
+							String.replaceAll(
+								`@deslop/${app.donor}`,
+								`@deslop/${name}`
+							)(yield* fs.readFileString(path.join(donor, 'src/services', file)))
+						)
+					}
+				}
+				for (const file of yield* fs.readDirectory(path.join(target, 'src'), {recursive: true})) {
+					if (
+						(yield* fs.stat(path.join(target, 'src', file))).type !== 'Directory' &&
+						!String.endsWith('.gen.ts')(file)
+					) {
+						function zoneOf(slug: string) {
+							return pipe(
+								policy.boundaries.zones,
+								Array.findFirst(zone =>
+									Array.some(zone.patterns, pattern => matchesGlob(`apps/${slug}/src/${file}`, pattern))
+								),
+								Option.map(zone => zone.name)
+							)
+						}
+						assert.isTrue(Option.isSome(zoneOf(name)), file)
+						assert.deepStrictEqual(zoneOf(name), zoneOf(app.donor), file)
+					}
+				}
+				// A real install supplies exactly these package dependencies; the full public-command journey installs them too.
+				if (yield* fs.exists(path.join(target, 'node_modules'))) {
+					yield* fs.remove(path.join(target, 'node_modules'), {recursive: true})
+				}
+				yield* fs.symlink(path.join(donor, 'node_modules'), path.join(target, 'node_modules'))
+				for (const check of [
+					['vp', ['exec', 'tsrs', '--noEmit', '--fast', '-p', path.join(target, 'tsconfig.json')]],
+					[
+						'vp',
+						[
+							'exec',
+							'effect-tsgo',
+							'--tsrs-lint',
+							'vp',
+							'lint',
+							'--type-aware',
+							'--type-check',
+							path.relative(root, target)
+						]
+					]
+				] as const) {
+					assert.strictEqual(
+						yield* Effect.flatMap(
+							ChildProcess.make(check[0], check[1], {
+								cwd: root,
+								env: {TSRS_FAST: '1'},
+								extendEnv: true,
+								stderr: 'inherit',
+								stdout: 'inherit'
+							}),
+							child => child.exitCode
+						),
+						0
+					)
+				}
 			}
 		})
 	)
