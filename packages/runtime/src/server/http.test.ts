@@ -14,6 +14,7 @@ import {
 	Record,
 	Redacted,
 	Ref,
+	Schema,
 	String,
 	pipe
 } from 'effect'
@@ -280,7 +281,7 @@ it.layer(Layer.merge(NodeServices.layer, NodeCrypto.layer))('Server guard', test
 			Effect.gen(function* () {
 				const access = Redacted.value(
 					yield* Jwt.sign(
-						AccessClaims,
+						Schema.toEncoded(AccessClaims),
 						{
 							aud: 'deslop',
 							azp: 'Fixture',

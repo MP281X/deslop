@@ -2,7 +2,7 @@ import {NodeCrypto} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Effect, Layer, String, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, Option, Schema, String, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -12,13 +12,14 @@ import {Reactivity} from 'effect/reactivity'
 import {SqlClient} from 'effect/sql'
 import {TestClock} from 'effect/testing'
 
-import {AccessClaims, SESSION_COOKIE, UserId} from '@deslop/runtime/shared/auth'
+import {AccessClaims, ClientId, SESSION_COOKIE} from '@deslop/runtime/shared/auth'
 
-import {AppGrant} from '#services/tokens/schema.ts'
+import {AppGrant, CredentialOwner, Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-const USER = {incarnation: 'fixture', user: {id: UserId.make('github:42'), name: 'octocat'}}
+const USER = Schema.decodeSync(CredentialOwner)({incarnation: 'fixture', user: {id: 'github:42', name: 'octocat'}})
+const ORIGIN = Schema.decodeSync(Origin)({})
 
 const open = Effect.gen(function* () {
 	const context = yield* Layer.build(
@@ -34,16 +35,24 @@ const open = Effect.gen(function* () {
 	const code = yield* tokens.issue(
 		{
 			challenge: Base64Url.encode(yield* digest.digest(Digest.sha256, new TextEncoder().encode(VERIFIER))),
-			clientId: 'fixture',
+			clientId: ClientId.make('fixture'),
 			clientName: 'Fixture',
-			redirectUri: 'http://127.0.0.1/callback'
+			parent: Option.none(),
+			redirectUri: 'http://127.0.0.1/callback',
+			state: Option.none()
 		},
 		USER
 	)
 	return {
 		exchange: tokens.exchange(
-			{client_id: 'fixture', code, code_verifier: VERIFIER, grant_type: 'authorization_code'},
-			{},
+			{
+				client_id: ClientId.make('fixture'),
+				code,
+				code_verifier: VERIFIER,
+				grant_type: 'authorization_code',
+				redirect_uri: Option.none()
+			},
+			ORIGIN,
 			user => Effect.succeed(user)
 		),
 		// The database refuses one kind of write to the app grants, as a full disk would, until `recover`.
@@ -81,7 +90,7 @@ it.layer(NodeCrypto.layer)(test => {
 		'accepts only a matching browser credential for replacement or sign-out',
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
-			const browser = yield* fixture.tokens.startSession(USER, {}, 'GitHub', '')
+			const browser = yield* fixture.tokens.startSession(USER, ORIGIN, 'GitHub', Option.none())
 			const granted = yield* fixture.exchange
 			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
 			for (const previous of [
@@ -89,7 +98,7 @@ it.layer(NodeCrypto.layer)(test => {
 				granted.tokens.access_token,
 				granted.tokens.refresh_token
 			]) {
-				yield* fixture.tokens.startSession(USER, {}, 'Passkey', previous)
+				yield* fixture.tokens.startSession(USER, ORIGIN, 'Passkey', Option.some(previous))
 				yield* fixture.tokens.endSession(Headers.fromInput({cookie: `${SESSION_COOKIE}=${previous}`}))
 				assert.deepStrictEqual(
 					yield* fixture.tokens.session(Headers.fromInput({cookie: `${SESSION_COOKIE}=${browser.token}`})),

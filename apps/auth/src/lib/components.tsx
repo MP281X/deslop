@@ -1,6 +1,6 @@
 import {useAtom} from '@effect/atom-react'
 
-import {Array, Boolean, DateTime, Duration, Number, Option, Order, Record, String, pipe} from 'effect'
+import {Array, Boolean, DateTime, Duration, Option, Order, Record, String, pipe} from 'effect'
 
 import {AppWindowIcon, GlobeIcon, GraphIcon, HardDrivesIcon} from '@phosphor-icons/react'
 import {AsyncResult, Atom} from 'effect/reactivity'
@@ -14,6 +14,7 @@ import {Button} from '@deslop/components-web/ui/button'
 import {Card} from '@deslop/components-web/ui/card'
 import {Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle} from '@deslop/components-web/ui/item'
 import {Skeleton} from '@deslop/components-web/ui/skeleton'
+import type {UserId} from '@deslop/runtime/shared/auth'
 
 import {appsAtom, catalogAtom, consentAtom, minuteAtom, requestCode, signInLabel} from '#lib/auth.ts'
 import android from '#lib/brands/android.svg'
@@ -24,6 +25,7 @@ import codex from '#lib/brands/codex.svg'
 import edge from '#lib/brands/edge.svg'
 import firefox from '#lib/brands/firefox.svg'
 import safari from '#lib/brands/safari.svg'
+import type {AppOrigin, Catalog} from '#services/apps/schema.ts'
 import type {PendingAuthorization} from '#services/sign-ins/schema.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
@@ -35,12 +37,12 @@ function ageLabel(minutes: number) {
 	return `${Math.floor(minutes / 1440)}d`
 }
 
-function newest(apps: readonly SignedInApp[]) {
-	return Array.reduce(apps, 0, (latest, app) => Number.max(latest, app.lastActive))
+function newest(apps: readonly [SignedInApp, ...SignedInApp[]]) {
+	return Array.reduce(apps, apps[0].lastActive, (latest, app) => DateTime.max(latest, app.lastActive))
 }
 
 // A GitHub account's picture, or its first letter until the picture loads; a row's picture sits at 16px.
-export function AccountAvatar(props: {id: string; name: string; small?: boolean}) {
+export function AccountAvatar(props: {id: UserId; name: string; small?: boolean}) {
 	return (
 		<Avatar
 			size={Boolean.match(props.small === true, {onFalse: () => 'sm', onTrue: () => 'default'})}
@@ -57,7 +59,7 @@ export function AccountAvatar(props: {id: string; name: string; small?: boolean}
 }
 
 // A glyph until the app's own icon loads, so a missing icon never draws the browser's broken image; no tile behind either.
-export function AppIcon(props: {origin: string}) {
+export function AppIcon(props: {origin: AppOrigin}) {
 	const [state, setState] = useState<'failed' | 'loaded' | 'loading'>('loading')
 	return (
 		<span className="text-muted-foreground relative flex size-4 shrink-0 items-center justify-center">
@@ -157,7 +159,7 @@ export function PeopleRowsSkeleton() {
 
 const BROWSERS: Record<string, string> = {Chrome: chrome, Edge: edge, Firefox: firefox, Safari: safari}
 
-type Client = {app: Option.Option<string>; device: string; kind: 'App' | 'Browser'; name: string}
+type Client = {app: Option.Option<AppOrigin>; device: string; kind: 'App' | 'Browser'; name: string}
 
 function Brand(props: {client: Client}) {
 	if (props.client.kind === 'Browser') {
@@ -189,16 +191,10 @@ function ClientIcon(props: {client: Client}) {
 	})
 }
 
-type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: number}
+type SignedInClient = {address: Option.Option<string>; client: Client; label: string; lastActive: DateTime.Utc}
 
-function ClientRow(props: {client: SignedInClient; now: number}) {
-	const active = ageLabel(
-		Math.floor(
-			Duration.toMinutes(
-				DateTime.distance(DateTime.makeUnsafe(props.client.lastActive), DateTime.makeUnsafe(props.now))
-			)
-		)
-	)
+function ClientRow(props: {client: SignedInClient; now: DateTime.Utc}) {
+	const active = ageLabel(Math.floor(Duration.toMinutes(DateTime.distance(props.client.lastActive, props.now))))
 	const address = Option.filter(props.client.address, value => value !== props.client.client.device)
 	return (
 		<div role="listitem">
@@ -228,7 +224,7 @@ function ClientRow(props: {client: SignedInClient; now: number}) {
 }
 
 // The mark of the app or browser that is waiting, from the catalog when it is a Deslop app.
-function PendingMark(props: {catalog: readonly {name: string; origin: string}[]; request: PendingAuthorization}) {
+function PendingMark(props: {catalog: Catalog; request: PendingAuthorization}) {
 	return pipe(
 		props.catalog,
 		Array.findFirst(app => String.toLowerCase(app.name) === String.toLowerCase(props.request.clientName)),
@@ -245,7 +241,7 @@ function PendingMark(props: {catalog: readonly {name: string; origin: string}[];
 }
 
 // A waiting sign-in leads the card, tinted, its code under the label; its answer stays on the row.
-function PendingRow(props: {catalog: readonly {name: string; origin: string}[]; request: PendingAuthorization}) {
+function PendingRow(props: {catalog: Catalog; request: PendingAuthorization}) {
 	const [consent, respond] = useAtom(consentAtom)
 	const waiting = AsyncResult.isWaiting(consent)
 	return (
@@ -283,19 +279,19 @@ function PendingRow(props: {catalog: readonly {name: string; origin: string}[]; 
 	)
 }
 
-function clientsOf(signIns: readonly SignedInApp[], catalog: readonly {name: string; origin: string}[]) {
+function clientsOf(signIns: readonly SignedInApp[], catalog: Catalog) {
 	const byName = Array.groupBy(catalog, app => String.toLowerCase(app.name))
 	return pipe(
 		Array.groupBy(withChildActivity(signIns), signIn => signInLabel(signIn.client, signIn.device)),
 		Record.values,
 		Array.filter(Array.isReadonlyArrayNonEmpty),
-		Array.sort(Order.flip(Order.mapInput(Order.Number, newest))),
+		Array.sort(Order.flip(Order.mapInput(DateTime.Order, newest))),
 		Array.map(group => {
 			const lastActive = newest(group)
 			return {
 				address: pipe(
 					group,
-					Array.findFirst(signIn => signIn.lastActive === lastActive),
+					Array.findFirst(signIn => DateTime.Equivalence(signIn.lastActive, lastActive)),
 					Option.flatMap(signIn => signIn.address)
 				),
 				client: {

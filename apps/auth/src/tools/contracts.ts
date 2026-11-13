@@ -2,15 +2,16 @@ import {Effect, Schema, pipe} from 'effect'
 
 import {Tool, Toolkit} from 'effect/ai'
 
-import {AuthError} from '@deslop/runtime/shared/auth'
+import {AuthError, SignInFamily} from '@deslop/runtime/shared/auth'
 
 import {Passkey} from '#services/passkeys/schema.ts'
 import {Role} from '#services/people/schema.ts'
+import {SignInCode} from '#services/sign-ins/schema.ts'
 import {CurrentOwner} from '#services/tokens/schema.ts'
 
 type Page = typeof Page.Type
 const Page = Schema.Struct({
-	cursor: Schema.optionalKey(Schema.NonEmptyString),
+	cursor: Schema.OptionFromOptionalKey(Schema.NonEmptyString),
 	limit: pipe(
 		Schema.Int.check(Schema.isBetween({maximum: 100, minimum: 1})),
 		Schema.withDecodingDefaultTypeKey(Effect.succeed(30))
@@ -26,7 +27,7 @@ export const ToolContracts = Toolkit.make(
 		failure: AuthError,
 		parameters: Schema.Struct({
 			accept: Schema.Boolean.annotate({description: 'True to approve, false to deny.'}),
-			request: Schema.NonEmptyString.check(Schema.isMaxLength(20)).annotate({
+			request: SignInCode.check(Schema.isNonEmpty(), Schema.isMaxLength(20)).annotate({
 				description: 'The code the sign-in shows (WDJB-MJHT).'
 			})
 		}),
@@ -41,14 +42,14 @@ export const ToolContracts = Toolkit.make(
 		failure: AuthError,
 		parameters: Page,
 		success: Schema.Struct({
-			nextCursor: Schema.optionalKey(Schema.String),
+			nextCursor: Schema.OptionFromOptionalKey(Schema.String),
 			sessions: Schema.Array(
 				Schema.Struct({
-					address: Schema.optionalKey(Schema.String),
+					address: Schema.OptionFromOptionalKey(Schema.String),
 					client: Schema.String,
-					device: Schema.optionalKey(Schema.String),
-					id: Schema.NonEmptyString,
-					lastActive: Schema.String
+					device: Schema.OptionFromOptionalKey(Schema.String),
+					id: SignInFamily,
+					lastActive: Schema.DateTimeUtcFromString
 				})
 			)
 		})
@@ -60,8 +61,8 @@ export const ToolContracts = Toolkit.make(
 		description:
 			'Use when the user asks to sign out a device or app; signs it out of every Deslop app by the id list_sessions returns.',
 		failure: AuthError,
-		parameters: Schema.Struct({id: Schema.NonEmptyString.annotate({description: 'A session id from list_sessions.'})}),
-		success: Schema.Struct({id: Schema.NonEmptyString})
+		parameters: Schema.Struct({id: SignInFamily.annotate({description: 'A session id from list_sessions.'})}),
+		success: Schema.Struct({id: SignInFamily})
 	})
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true),
@@ -71,7 +72,10 @@ export const ToolContracts = Toolkit.make(
 			'List sign-in passkeys; addedFrom is their registration origin, not their current location, and synced distinguishes device-bound credentials. Continue with nextCursor or use remove_passkey(id) for an explicit removal request.',
 		failure: AuthError,
 		parameters: Page,
-		success: Schema.Struct({nextCursor: Schema.optionalKey(Schema.String), passkeys: Schema.Array(Passkey.json)})
+		success: Schema.Struct({
+			nextCursor: Schema.OptionFromOptionalKey(Schema.String),
+			passkeys: Schema.Array(Passkey.json)
+		})
 	})
 		.annotate(Tool.Readonly, true)
 		.annotate(Tool.Strict, true),
@@ -79,8 +83,8 @@ export const ToolContracts = Toolkit.make(
 		dependencies: [CurrentOwner],
 		description: 'Use when the user asks to remove a passkey; removes it by the id list_passkeys returns.',
 		failure: AuthError,
-		parameters: Schema.Struct({id: Schema.NonEmptyString.annotate({description: 'A passkey id from list_passkeys.'})}),
-		success: Schema.Struct({id: Schema.NonEmptyString})
+		parameters: Schema.Struct({id: Passkey.fields.id.annotate({description: 'A passkey id from list_passkeys.'})}),
+		success: Schema.Struct({id: Passkey.fields.id})
 	})
 		.annotate(Tool.Destructive, true)
 		.annotate(Tool.Strict, true),
@@ -91,7 +95,7 @@ export const ToolContracts = Toolkit.make(
 		failure: AuthError,
 		parameters: Page,
 		success: Schema.Struct({
-			nextCursor: Schema.optionalKey(Schema.String),
+			nextCursor: Schema.OptionFromOptionalKey(Schema.String),
 			people: Schema.Array(Schema.Struct({login: Schema.NonEmptyString, role: Role}))
 		})
 	})

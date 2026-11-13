@@ -57,7 +57,7 @@ export const RUNTIME_PATH = '/api/runtime'
 
 export type RuntimeConfig = typeof RuntimeConfig.Type
 export const RuntimeConfig = Schema.Struct({
-	auth: Schema.optionalKey(Origin),
+	auth: Schema.OptionFromOptionalKey(Origin),
 	name: Schema.String,
 	traces: Schema.String,
 	version: AppVersion

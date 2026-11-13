@@ -2,7 +2,7 @@ import {DateTime, Option, Schema, SchemaGetter, pipe} from 'effect'
 
 import {Model} from 'effect/schema'
 
-import {User, UserId} from '@deslop/runtime/shared/auth'
+import {GitHubId, User, UserId} from '@deslop/runtime/shared/auth'
 
 import {CredentialOwner, SessionVia} from '#services/tokens/schema.ts'
 
@@ -58,7 +58,7 @@ export class Member extends Model.Class<Member>('Member')({
 
 export type GitHubUser = typeof GitHubUser.Type
 export const GitHubUser = Schema.Struct({
-	id: Schema.Int,
+	id: GitHubId,
 	login: Schema.NonEmptyString,
 	name: Schema.OptionFromOptionalNullOr(Schema.String)
 })

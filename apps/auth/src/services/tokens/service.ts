@@ -1,13 +1,13 @@
 import {
 	Array,
-	Clock,
 	Config,
 	Context,
+	DateTime,
+	Duration,
 	Effect,
 	HashMap,
 	Layer,
 	Match,
-	Number,
 	Option,
 	Redacted,
 	Ref,
@@ -27,11 +27,12 @@ import {Reactivity} from 'effect/reactivity'
 import {Migrator, SqlClient, SqlSchema} from 'effect/sql'
 
 import {
-	ACCESS_SECONDS,
+	ACCESS_LIFETIME,
 	AccessClaims,
 	AuthError,
 	ISSUER_PATH,
-	REFRESH_SECONDS,
+	REFRESH_LIFETIME,
+	SignInFamily,
 	bearerOf,
 	asAuthError
 } from '@deslop/runtime/shared/auth'
@@ -79,21 +80,24 @@ declare module 'effect/reactivity/Reactivity' {
 
 // An authorization code lives 60 seconds in memory; once redeemed it names the family it gave, so a replay ends it.
 type Code = {
-	expiresAt: number
-	state: {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: string}
+	expiresAt: DateTime.Utc
+	state: {_tag: 'Fresh'; request: ClientRequest; owner: CredentialOwner} | {_tag: 'Used'; family: SignInFamily}
 }
 
 const expired = AuthError.make({error: 'invalid_grant', message: 'The authorization expired. Sign in again.'})
 
 // A token is its grant's family, a dot and its secret; a refresh token also names its generation.
 function parts(token: string) {
-	return Option.map(
+	return Option.flatMap(
 		String.match(/^(?<family>[\w-]{16,64})\.(?:(?<generation>\d{1,9})\.)?(?<secret>[\w-]{16,64})$/u)(token),
-		found => ({
-			family: found.groups?.['family'] ?? '',
-			generation: Option.getOrElse(Number.parse(found.groups?.['generation'] ?? ''), () => -1),
-			secret: found.groups?.['secret'] ?? ''
-		})
+		found =>
+			Schema.decodeUnknownOption(
+				Schema.Struct({
+					family: SignInFamily,
+					generation: Schema.OptionFromOptional(Schema.FiniteFromString),
+					secret: Schema.NonEmptyString
+				})
+			)(found.groups)
 	)
 }
 
@@ -108,7 +112,7 @@ export class Tokens extends Context.Service<
 			owner: CredentialOwner,
 			origin: Origin
 		) => Effect.Effect<TokenResponse, AuthError>
-		readonly disconnect: (family: string, owner: CredentialOwner) => Effect.Effect<void, AuthError>
+		readonly disconnect: (family: SignInFamily, owner: CredentialOwner) => Effect.Effect<void, AuthError>
 		readonly endSession: (headers: Headers.Headers) => Effect.Effect<void, AuthError>
 		// Tokens go only to an account `allowed` still accepts, so a removal between approval and exchange takes effect.
 		readonly exchange: (
@@ -125,13 +129,13 @@ export class Tokens extends Context.Service<
 		readonly sessionVia: (headers: Headers.Headers) => Effect.Effect<SessionVia, AuthError>
 		readonly browserSession: (
 			headers: Headers.Headers
-		) => Effect.Effect<{family: string; owner: CredentialOwner; via: SessionVia}, AuthError>
+		) => Effect.Effect<{family: SignInFamily; owner: CredentialOwner; via: SessionVia}, AuthError>
 		readonly startSession: (
 			owner: CredentialOwner,
 			origin: Origin,
 			via: SessionVia,
-			previous: string
-		) => Effect.Effect<{seconds: number; token: string}, AuthError>
+			previous: Option.Option<string>
+		) => Effect.Effect<{seconds: Duration.Duration; token: string}, AuthError>
 		readonly verify: (headers: Headers.Headers) => Effect.Effect<CredentialOwner, AuthError>
 	}
 >()('@deslop/auth/services/tokens/service/Tokens') {
@@ -276,15 +280,15 @@ export class Tokens extends Context.Service<
 				})
 				// Touch a grant at most once a minute, so a token's last use shows without a write per tool call.
 				const touchGrant = SqlSchema.void({
-					Request: SignInLookup,
+					Request: Schema.Struct({...SignInLookup.fields, before: Schema.DateTimeUtcFromMillis}),
 					execute: request => sql`
 						UPDATE ${sql(AppGrant.table)} SET lastActive = ${request.now}
-						WHERE family = ${request.family} AND lastActive < ${request.now - 60_000}
+						WHERE family = ${request.family} AND lastActive < ${request.before}
 					`
 				})
 				// Ending a browser session ends the web app sign-ins it started.
 				const deleteFamily = SqlSchema.void({
-					Request: Schema.String,
+					Request: SignInFamily,
 					execute: family =>
 						Effect.andThen(
 							sql`DELETE FROM ${sql(BrowserSession.table)} WHERE family = ${family}`,
@@ -306,7 +310,7 @@ export class Tokens extends Context.Service<
 				})
 				// Expired sign-ins leave the tables whenever a new one is made, so they never pile up.
 				const deleteExpired = SqlSchema.void({
-					Request: Schema.Int,
+					Request: Schema.DateTimeUtcFromMillis,
 					execute: now =>
 						Effect.andThen(
 							sql`DELETE FROM ${sql(BrowserSession.table)} WHERE expiresAt <= ${now}`,
@@ -324,7 +328,7 @@ export class Tokens extends Context.Service<
 				})
 				// RFC 7009: only the client's own live refresh token ends its sign-in.
 				const deleteRevoked = SqlSchema.void({
-					Request: Schema.Struct({clientId: AppGrant.fields.clientId, family: Schema.String, hash: Schema.String}),
+					Request: Schema.Struct({clientId: AppGrant.fields.clientId, family: SignInFamily, hash: Schema.String}),
 					execute: request => sql`
 						DELETE FROM ${sql(AppGrant.table)}
 						WHERE family = ${request.family} AND clientId = ${request.clientId} AND hash = ${request.hash}
@@ -366,9 +370,9 @@ export class Tokens extends Context.Service<
 				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
 				const hash = hashOf(yield* Digest.Digest)
 				const browser = Effect.fn('Tokens.browserSession')(function* (headers: Headers.Headers) {
-					const found = yield* Effect.fromOption(parts(browserToken(headers)))
+					const found = yield* pipe(browserToken(headers), Option.flatMap(parts), Effect.fromOption)
 					const session = yield* Effect.flatMap(
-						findSession({family: found.family, now: yield* Clock.currentTimeMillis}),
+						findSession({family: found.family, now: yield* DateTime.now}),
 						Effect.fromOption
 					)
 					if (session.hash !== (yield* hash(found.secret))) return yield* AuthError.make({message: 'Sign in first'})
@@ -391,12 +395,12 @@ export class Tokens extends Context.Service<
 							Signature.Signature,
 							signature
 						)
-						const now = yield* Clock.currentTimeMillis
+						const now = yield* DateTime.now
 						const grant = yield* Effect.flatMap(findGrant({family: verified.claims.sid, now}), Effect.fromOption)
 						if (grant.userId !== verified.claims.sub) return yield* AuthError.make({message: 'Sign in first'})
-						if (now - grant.lastActive > 60_000) {
+						if (DateTime.isGreaterThan(now, DateTime.addDuration(grant.lastActive, Duration.minutes(1)))) {
 							yield* pipe(
-								touchGrant({family: grant.family, now}),
+								touchGrant({before: DateTime.subtractDuration(now, Duration.minutes(1)), family: grant.family, now}),
 								Reactivity.mutation(['tokens']),
 								Effect.ignore({log: 'Warn', message: 'The token’s last use could not be saved'})
 							)
@@ -407,21 +411,21 @@ export class Tokens extends Context.Service<
 					asAuthError('Sign in first')
 				)
 				const mint = Effect.fnUntraced(function* (
-					family: string,
+					family: SignInFamily,
 					generation: number,
 					owner: CredentialOwner,
 					client: string,
-					now: number
+					now: DateTime.Utc
 				) {
 					const refreshSecret = yield* randomToken(32)
-					const iat = Math.floor(now / 1000)
+					const iat = DateTime.startOf(now, 'second')
 					const access = yield* Effect.provideService(
 						Jwt.sign(
 							AccessClaims,
 							{
 								aud: 'deslop',
 								azp: client,
-								exp: iat + ACCESS_SECONDS,
+								exp: DateTime.addDuration(iat, ACCESS_LIFETIME),
 								iat,
 								iss: issuer,
 								name: owner.user.name,
@@ -435,10 +439,10 @@ export class Tokens extends Context.Service<
 						signature
 					)
 					return {
-						refresh: {expiresAt: now + REFRESH_SECONDS * 1000, hash: yield* hash(refreshSecret)},
+						refresh: {expiresAt: DateTime.addDuration(now, REFRESH_LIFETIME), hash: yield* hash(refreshSecret)},
 						tokens: {
 							access_token: Redacted.value(access),
-							expires_in: ACCESS_SECONDS,
+							expires_in: ACCESS_LIFETIME,
 							refresh_token: `${family}.${generation}.${refreshSecret}`,
 							scope: 'deslop' as const,
 							token_type: 'Bearer' as const
@@ -447,9 +451,9 @@ export class Tokens extends Context.Service<
 				})
 				// A new app sign-in, written inside the caller's transaction.
 				const signIn = Effect.fnUntraced(function* (
-					now: number,
-					family: string,
-					request: DeviceRequest & {parent?: string},
+					now: DateTime.Utc,
+					family: SignInFamily,
+					request: DeviceRequest & {parent: Option.Option<SignInFamily>},
 					owner: CredentialOwner,
 					origin: Origin
 				) {
@@ -457,7 +461,7 @@ export class Tokens extends Context.Service<
 						mint(family, 0, owner, clientLabel(request.clientName), now)
 					)
 					const grant = {
-						address: Option.fromUndefinedOr(origin.address),
+						address: origin.address,
 						client: clientLabel(request.clientName),
 						clientId: request.clientId,
 						device: deviceLabel(origin),
@@ -465,7 +469,7 @@ export class Tokens extends Context.Service<
 						generation: 0,
 						incarnation: owner.incarnation,
 						lastActive: now,
-						parent: Option.fromUndefinedOr(request.parent),
+						parent: request.parent,
 						userId: owner.user.id,
 						userName: owner.user.name,
 						...minted.refresh
@@ -483,14 +487,14 @@ export class Tokens extends Context.Service<
 					) {
 						const key = yield* hash(params.code)
 						const verifier = yield* hash(params.code_verifier)
-						const family = yield* randomToken(16)
+						const family = SignInFamily.make(yield* randomToken(16))
 						// The grant commits before its code is marked used; concurrent redemptions take turns through both steps.
 						const result = yield* pipe(
 							Effect.gen(function* () {
-								const now = yield* Clock.currentTimeMillis
+								const now = yield* DateTime.now
 								const code = yield* pipe(
 									HashMap.get(yield* Ref.get(codes), key),
-									Option.filter(entry => entry.expiresAt > now),
+									Option.filter(entry => DateTime.isGreaterThan(entry.expiresAt, now)),
 									Effect.fromOption,
 									Effect.mapError(() => expired)
 								)
@@ -513,15 +517,17 @@ export class Tokens extends Context.Service<
 									})
 								}
 								yield* allowed(fresh.owner)
-								if (fresh.request.parent !== undefined) {
-									if (
-										!Option.exists(yield* findSession({family: fresh.request.parent, now}), found =>
-											sameOwner(credentialOwnerOf(found), fresh.owner)
+								yield* Option.match(fresh.request.parent, {
+									onNone: () => Effect.void,
+									onSome: Effect.fnUntraced(function* (parent) {
+										if (
+											!Option.exists(yield* findSession({family: parent, now}), found =>
+												sameOwner(credentialOwnerOf(found), fresh.owner)
+											)
 										)
-									) {
-										return yield* expired
-									}
-								}
+											{return yield* expired}
+									})
+								})
 								return Exchange.cases.Granted.make({
 									tokens: yield* signIn(now, family, fresh.request, fresh.owner, origin)
 								})
@@ -555,7 +561,7 @@ export class Tokens extends Context.Service<
 					const presentedHash = yield* hash(presented.secret)
 					return yield* pipe(
 						Effect.gen(function* () {
-							const now = yield* Clock.currentTimeMillis
+							const now = yield* DateTime.now
 							const grant = yield* Effect.flatMap(
 								findGrant({family: presented.family, now}),
 								Option.match({onNone: () => Effect.fail(expired), onSome: Effect.succeed})
@@ -568,7 +574,7 @@ export class Tokens extends Context.Service<
 							}
 							// Only a spent token's secret proves a replay; a guess at the family ends nothing.
 							if (
-								presented.generation < grant.generation &&
+								Option.exists(presented.generation, generation => generation < grant.generation) &&
 								Option.isSome(yield* isSpent({family: grant.family, hash: presentedHash}))
 							) {
 								yield* deleteFamily(grant.family)
@@ -576,7 +582,7 @@ export class Tokens extends Context.Service<
 									message: 'This refresh token was already used, so its sign-in is revoked; sign in again'
 								})
 							}
-							if (presented.generation !== grant.generation || presentedHash !== grant.hash) {
+							if (!Option.contains(presented.generation, grant.generation) || presentedHash !== grant.hash) {
 								return yield* expired
 							}
 							const owner = credentialOwnerOf(grant)
@@ -587,7 +593,7 @@ export class Tokens extends Context.Service<
 							yield* insertSpent({family: grant.family, hash: grant.hash})
 							yield* rotateGrant({
 								// Recomputed, so a sign-in labelled by an older rule takes the current one on its next refresh.
-								address: Option.fromUndefinedOr(origin.address),
+								address: origin.address,
 								device: deviceLabel(origin),
 								family: grant.family,
 								generation: grant.generation + 1,
@@ -601,7 +607,7 @@ export class Tokens extends Context.Service<
 					)
 				})
 				const listApps = Effect.fnUntraced(function* (owner: CredentialOwner) {
-					return yield* listSignedIn({now: yield* Clock.currentTimeMillis, owner})
+					return yield* listSignedIn({now: yield* DateTime.now, owner})
 				}, asAuthError('Cannot read the sign-ins'))
 
 				return Tokens.of({
@@ -628,9 +634,11 @@ export class Tokens extends Context.Service<
 					}),
 					device: Effect.fn('Tokens.device')(
 						function* (request: DeviceRequest, owner: CredentialOwner, origin: Origin) {
-							const family = yield* randomToken(16)
+							const family = SignInFamily.make(yield* randomToken(16))
 							return yield* pipe(
-								Effect.flatMap(Clock.currentTimeMillis, now => signIn(now, family, request, owner, origin)),
+								Effect.flatMap(DateTime.now, now =>
+									signIn(now, family, {...request, parent: Option.none()}, owner, origin)
+								),
 								Reactivity.mutation(['tokens']),
 								sql.withTransaction
 							)
@@ -639,10 +647,10 @@ export class Tokens extends Context.Service<
 						asAuthError('Cannot sign the command in')
 					),
 					disconnect: Effect.fn('Tokens.disconnect')(
-						function* (family: string, owner: CredentialOwner) {
+						function* (family: SignInFamily, owner: CredentialOwner) {
 							yield* pipe(
 								Effect.gen(function* () {
-									const now = yield* Clock.currentTimeMillis
+									const now = yield* DateTime.now
 									const signedIn = [
 										...Option.toArray(yield* findSession({family, now})),
 										...Option.toArray(yield* findGrant({family, now}))
@@ -696,12 +704,15 @@ export class Tokens extends Context.Service<
 					issue: Effect.fn('Tokens.issue')(function* (request: ClientRequest, owner: CredentialOwner) {
 						const code = yield* randomToken(32)
 						const key = yield* hash(code)
-						const now = yield* Clock.currentTimeMillis
+						const now = yield* DateTime.now
 						yield* Ref.update(codes, current =>
 							pipe(
 								current,
-								HashMap.filter(entry => entry.expiresAt > now),
-								HashMap.set<string, Code>(key, {expiresAt: now + 60_000, state: {_tag: 'Fresh', owner, request}})
+								HashMap.filter(entry => DateTime.isGreaterThan(entry.expiresAt, now)),
+								HashMap.set<string, Code>(key, {
+									expiresAt: DateTime.addDuration(now, Duration.minutes(1)),
+									state: {_tag: 'Fresh', owner, request}
+								})
 							)
 						)
 						return code
@@ -726,26 +737,30 @@ export class Tokens extends Context.Service<
 					session,
 					sessionVia,
 					startSession: Effect.fn('Tokens.startSession')(
-						function* (owner: CredentialOwner, origin: Origin, via: SessionVia, previousToken: string) {
-							const family = yield* randomToken(16)
+						function* (owner: CredentialOwner, origin: Origin, via: SessionVia, previousToken: Option.Option<string>) {
+							const family = SignInFamily.make(yield* randomToken(16))
 							const sessionSecret = yield* randomToken(32)
 							const seconds = pipe(
 								Match.value(via),
-								Match.when('Code', () => 30 * 86_400),
-								Match.when('GitHub', () => 365 * 86_400),
-								Match.when('Passkey', () => 365 * 86_400),
+								Match.when('Code', () => Duration.days(30)),
+								Match.when('GitHub', () => Duration.days(365)),
+								Match.when('Passkey', () => Duration.days(365)),
 								Match.exhaustive
 							)
 							const sessionHash = yield* hash(sessionSecret)
 							const previous = yield* Effect.transposeOption(
-								Option.map(parts(previousToken), prior =>
-									Effect.map(hash(prior.secret), presented => ({family: prior.family, hash: presented}))
+								pipe(
+									previousToken,
+									Option.flatMap(parts),
+									Option.map(prior =>
+										Effect.map(hash(prior.secret), presented => ({family: prior.family, hash: presented}))
+									)
 								)
 							)
 							// Retire only the browser session presented here, in the same transaction as its replacement.
 							yield* pipe(
 								Effect.gen(function* () {
-									const now = yield* Clock.currentTimeMillis
+									const now = yield* DateTime.now
 									yield* deleteExpired(now)
 									yield* Option.match(previous, {
 										onNone: () => Effect.void,
@@ -761,10 +776,10 @@ export class Tokens extends Context.Service<
 										})
 									})
 									yield* insertSession({
-										address: Option.fromUndefinedOr(origin.address),
+										address: origin.address,
 										client: browserLabel(origin),
 										device: deviceLabel(origin),
-										expiresAt: now + seconds * 1000,
+										expiresAt: DateTime.addDuration(now, seconds),
 										family,
 										hash: sessionHash,
 										incarnation: owner.incarnation,

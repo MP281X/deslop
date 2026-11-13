@@ -112,7 +112,7 @@ export const layerRoutes = HttpRouter.use(router =>
 			Effect.gen(function* () {
 				const release = yield* metadata
 				return yield* HttpServerResponse.schemaJson(RuntimeConfig)({
-					...Option.match(issuer, {onNone: () => ({}), onSome: origin => ({auth: origin})}),
+					auth: issuer,
 					name: String.replace('@deslop/', '')(release.name),
 					traces,
 					version: release.version

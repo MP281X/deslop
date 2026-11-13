@@ -1,5 +1,7 @@
 import {Array, Duration, Option, String, pipe} from 'effect'
 
+import {SignInCode} from '#services/sign-ins/schema.ts'
+
 // A sign-in's code is its id, in RFC 8628's user-code letters: no vowels and no letters that read alike.
 const CODE_LETTERS = 'BCDFGHJKLMNPQRSTVWXZ'
 
@@ -12,15 +14,17 @@ export function typedCode(text: string) {
 }
 
 export function codeFrom(bytes: Uint8Array) {
-	return pipe(
-		Array.fromIterable(bytes),
-		Array.map(byte =>
-			pipe(
-				CODE_LETTERS,
-				String.charAt(byte % CODE_LETTERS.length),
-				Option.getOrElse(() => '')
-			)
-		),
-		Array.join('')
+	return SignInCode.make(
+		pipe(
+			Array.fromIterable(bytes),
+			Array.map(byte =>
+				pipe(
+					CODE_LETTERS,
+					String.charAt(byte % CODE_LETTERS.length),
+					Option.getOrElse(() => '')
+				)
+			),
+			Array.join('')
+		)
 	)
 }

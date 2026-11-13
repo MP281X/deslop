@@ -1,4 +1,4 @@
-import {Clock, Effect, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
+import {DateTime, Effect, Match, Option, Predicate, Schema, Stream, String, pipe} from 'effect'
 
 import {startAuthentication, startRegistration} from '@simplewebauthn/browser'
 import {Machine} from '@typeonce/effect-machine'
@@ -13,10 +13,10 @@ import {RpcStream} from '@deslop/runtime/shared/rpc'
 import {addPageTelemetry, layerPageProtocol} from '@deslop/runtime/web/client'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
-import {PasskeySignIn, Registration, RequestOptions} from '#services/passkeys/schema.ts'
+import {CreationOptions, PasskeySignIn, Registration, RequestOptions} from '#services/passkeys/schema.ts'
 import type {SignedAccount} from '#services/people/schema.ts'
 import {CODE_LENGTH, typedCode} from '#services/sign-ins/lib/utils.ts'
-import {PendingAuthorization} from '#services/sign-ins/schema.ts'
+import {PendingAuthorization, SignInCode} from '#services/sign-ins/schema.ts'
 import {returnable} from '#services/tokens/lib/utils.ts'
 import type {SessionVia} from '#services/tokens/schema.ts'
 
@@ -27,11 +27,11 @@ const authRuntime = Atom.runtime(FetchHttpClient.layer)
 
 export type Search = typeof Search.Type
 export const Search = Schema.Struct({
-	code: Schema.optionalKey(Schema.String),
-	error: Schema.optionalKey(Schema.String),
-	next: Schema.optionalKey(Schema.String),
-	request: Schema.optionalKey(Schema.String),
-	'sign-out': Schema.optionalKey(Schema.String)
+	code: Schema.OptionFromOptionalKey(Schema.String),
+	error: Schema.OptionFromOptionalKey(Schema.String),
+	next: Schema.OptionFromOptionalKey(Schema.String),
+	request: Schema.OptionFromOptionalKey(SignInCode),
+	'sign-out': Schema.OptionFromOptionalKey(Schema.String)
 })
 
 addPageTelemetry('@deslop/auth')
@@ -64,7 +64,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 			states: {
 				// A full code reads its sign-in live, so a request answered elsewhere or expired leaves the list.
 				Code: {
-					fields: {code: Schema.String},
+					fields: {code: SignInCode},
 					states: {
 						// The lookup itself failed, which says nothing about the code.
 						Failed: {fields: {message: Schema.String}},
@@ -73,21 +73,21 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 						Missing: {}
 					}
 				},
-				Typing: {fields: {answered: Schema.optionalKey(Schema.Struct(Answered)), typed: Schema.String}}
+				Typing: {fields: {answered: Schema.OptionFromOptionalKey(Schema.Struct(Answered)), typed: Schema.String}}
 			}
 		}),
-		streams: {lookup: (code: string) => reconnectOnDrop(liveStream(RpcClient, 'sign-ins.lookup', {code}))}
+		streams: {lookup: (code: SignInCode) => reconnectOnDrop(liveStream(RpcClient, 'sign-ins.lookup', {code}))}
 	}).handle({
-		initial: {data: {typed: ''}, target: 'Typing'},
+		initial: {data: {answered: Option.none(), typed: ''}, target: 'Typing'},
 		on: {
 			Answered: {
 				data: transition => ({
-					answered: {accept: transition.event.accept, request: transition.event.request},
+					answered: Option.some({accept: transition.event.accept, request: transition.event.request}),
 					typed: ''
 				}),
 				target: 'Typing'
 			},
-			Typed: {data: transition => ({typed: transition.event.typed}), target: 'Typing'}
+			Typed: {data: transition => ({answered: Option.none(), typed: transition.event.typed}), target: 'Typing'}
 		},
 		states: {
 			Code: {
@@ -110,7 +110,7 @@ export const codeAtom = AtomMachine.bind(RpcClient.runtime).make(
 			},
 			Typing: {
 				always: {
-					data: transition => ({code: transition.state.typed}),
+					data: transition => ({code: SignInCode.make(transition.state.typed)}),
 					guard: transition => String.length(transition.state.typed) >= CODE_LENGTH,
 					target: 'Code'
 				}
@@ -136,7 +136,7 @@ export const admitAtom = Atom.family((id: UserId) =>
 	RpcClient.runtime.fn((allow: boolean) => Effect.flatMap(RpcClient, client => client('people.admit', {allow, id})))
 )
 
-export const requestAtom = Atom.family((request: string) =>
+export const requestAtom = Atom.family((request: SignInCode) =>
 	RpcClient.runtime.atom(
 		pipe(
 			liveStream(RpcClient, 'sign-ins.status', {request}),
@@ -155,12 +155,12 @@ export const requestAtom = Atom.family((request: string) =>
 )
 
 // WDJBMJHT reads WDJB-MJHT.
-export function requestCode(id: string) {
+export function requestCode(id: SignInCode) {
 	return `${String.slice(0, 4)(id)}-${String.slice(4)(id)}`
 }
 
 // The link RFC 8628 calls verification_uri_complete: it opens the approve page with the code filled in.
-export function approveLink(id: string) {
+export function approveLink(id: SignInCode) {
 	return `${location.origin}/?code=${id}`
 }
 
@@ -168,10 +168,10 @@ export function approveLink(id: string) {
 export const catalogAtom = Atom.keepAlive(liveAtom(RpcClient, 'apps.watch'))
 
 // The time once a minute, so "4m" labels keep counting on an idle page.
-export const minuteAtom = Atom.make(Stream.mapEffect(Stream.tick('1 minute'), () => Clock.currentTimeMillis))
+export const minuteAtom = Atom.make(Stream.mapEffect(Stream.tick('1 minute'), () => DateTime.now))
 
 // The time each second, for a waiting sign-in's countdown.
-export const secondAtom = Atom.make(Stream.mapEffect(Stream.tick('1 second'), () => Clock.currentTimeMillis))
+export const secondAtom = Atom.make(Stream.mapEffect(Stream.tick('1 second'), () => DateTime.now))
 
 // Copies the code; the result waits a moment after, while the code shows it was copied.
 export const copyCodeAtom = Atom.fn((code: string) =>
@@ -220,10 +220,11 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 			const offered = yield* client.get('/auth/passkey')
 			if (offered.status !== 200) return yield* refused(offered)
 			const options = yield* HttpClientResponse.schemaBodyJson(RequestOptions)(offered)
+			const encoded = yield* Schema.encodeEffect(RequestOptions)(options)
 			const response = yield* Effect.catchIf(
 				Effect.tryPromise({
 					catch: cause => AuthError.make({cause, message: 'No passkey was used'}),
-					try: () => startAuthentication({optionsJSON: options})
+					try: () => startAuthentication({optionsJSON: encoded})
 				}),
 				cancelled,
 				() => Effect.interrupt
@@ -231,24 +232,21 @@ export const passkeySignInAtom = authRuntime.fn((next: Search['next']) =>
 			const answer = yield* pipe(
 				HttpClientRequest.post('/auth/passkey'),
 				HttpClientRequest.schemaBodyJson(PasskeySignIn)({
-					...Option.match(Option.fromUndefinedOr(next), {onNone: () => ({}), onSome: page => ({next: page})}),
-					response
+					next,
+					response: yield* Schema.decodeEffect(PasskeySignIn.fields.response)(response)
 				}),
 				Effect.flatMap(request => client.execute(request)),
 				Effect.flatMap(
 					Effect.fnUntraced(function* (signedIn) {
 						if (signedIn.status !== 200) return yield* refused(signedIn)
-						return yield* HttpClientResponse.schemaBodyJson(Schema.Struct({next: Schema.optionalKey(Schema.String)}))(
-							signedIn
-						)
+						return yield* HttpClientResponse.schemaBodyJson(
+							Schema.Struct({next: Schema.OptionFromOptionalKey(Schema.String)})
+						)(signedIn)
 					})
 				)
 			)
 			yield* Effect.sync(() =>
-				Option.match(Option.fromUndefinedOr(answer.next), {
-					onNone: () => location.reload(),
-					onSome: page => location.assign(page)
-				})
+				Option.match(answer.next, {onNone: () => location.reload(), onSome: page => location.assign(page)})
 			)
 		}),
 		cause => {
@@ -266,10 +264,11 @@ export const addPasskeyAtom = Atom.keepAlive(
 		Effect.fnUntraced(function* () {
 			const client = yield* RpcClient
 			const options = yield* client('passkeys.registration', undefined)
+			const encoded = yield* Schema.encodeEffect(CreationOptions)(options)
 			const response = yield* pipe(
 				Effect.tryPromise({
 					catch: cause => AuthError.make({cause, message: 'No passkey was added'}),
-					try: () => startRegistration({optionsJSON: options})
+					try: () => startRegistration({optionsJSON: encoded})
 				}),
 				Effect.catchIf(cancelled, () => Effect.interrupt),
 				Effect.flatMap(Schema.decodeUnknownEffect(Registration))
@@ -316,7 +315,7 @@ export const codeSignInAtom = Atom.fn((next: Search['next']) =>
 		catch: cause => AuthError.make({cause, message: 'Cannot start the sign-in'}),
 		try: () =>
 			location.assign(
-				Option.match(Option.fromUndefinedOr(next), {
+				Option.match(next, {
 					onNone: () => '/auth/code',
 					onSome: page => `/auth/code?${new URLSearchParams({next: page})}`
 				})
@@ -331,7 +330,7 @@ function signOut(next: Search['next']) {
 			Effect.sync(() =>
 				location.replace(
 					pipe(
-						Option.fromUndefinedOr(next),
+						next,
 						Option.filter(page => returnable(page, AUTH_URL)),
 						Option.getOrElse(() => location.pathname)
 					)

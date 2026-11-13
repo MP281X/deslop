@@ -1,4 +1,4 @@
-import {Array, Boolean, DateTime, Effect, Layer, Option, Order, Stream, String, Struct, pipe} from 'effect'
+import {Array, Boolean, Effect, Layer, Option, Order, Stream, String, Struct, pipe} from 'effect'
 
 import {McpSchema, McpServer} from 'effect/ai'
 
@@ -10,25 +10,25 @@ import {Passkeys} from '#services/passkeys/service.ts'
 import {People} from '#services/people/service.ts'
 import {SignIns} from '#services/sign-ins/service.ts'
 import {withChildActivity} from '#services/tokens/lib/utils.ts'
-import {CurrentOwner} from '#services/tokens/schema.ts'
+import {CurrentOwner, IncarnationId} from '#services/tokens/schema.ts'
 import type {SignedInApp} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 import {ToolContracts} from '#tools/contracts.ts'
 
-function page<A>(rows: readonly A[], key: (row: A) => string, input: {cursor?: string; limit: number}) {
+function page<A>(rows: readonly A[], key: (row: A) => string, input: {cursor: Option.Option<string>; limit: number}) {
 	const remaining = pipe(
 		rows,
 		Array.sort(Order.mapInput(Order.String, key)),
-		Array.filter(row => input.cursor === undefined || key(row) > input.cursor)
+		Array.filter(row => Option.match(input.cursor, {onNone: () => true, onSome: cursor => key(row) > cursor}))
 	)
 	const items = Array.take(remaining, input.limit)
 	return {
 		items,
-		...pipe(
+		nextCursor: pipe(
 			items,
 			Array.last,
 			Option.filter(() => remaining.length > input.limit),
-			Option.match({onNone: () => ({}), onSome: last => ({nextCursor: key(last)})})
+			Option.map(key)
 		)
 	}
 }
@@ -43,7 +43,7 @@ export const layerMcpOwner = Layer.unwrap(
 				local,
 				Boolean.match({
 					onFalse: () => Effect.flatMap(tokens.verify(request.headers), people.allowed),
-					onTrue: () => Effect.succeed({incarnation: 'local', user: DEVELOPER})
+					onTrue: () => Effect.succeed({incarnation: IncarnationId.make('local'), user: DEVELOPER})
 				}),
 				// oxlint-disable-next-line @deslop/coding-standards/preserve-error-cause -- MCP's wire error exposes no internal authorization cause.
 				Effect.mapError((error: AuthError) =>
@@ -95,15 +95,11 @@ export const ToolHandlers = ToolContracts.toLayer(
 				return {
 					...Struct.omit(found, ['items']),
 					sessions: Array.map(found.items, app => ({
-						...Option.match(app.address, {onNone: () => ({}), onSome: address => ({address})}),
+						address: app.address,
 						client: app.client,
-						...pipe(
-							app.address,
-							Option.contains(app.device),
-							Boolean.match({onFalse: () => ({device: app.device}), onTrue: () => ({})})
-						),
+						device: Option.liftPredicate(app.device, device => !Option.contains(app.address, device)),
 						id: app.family,
-						lastActive: pipe(app.lastActive, DateTime.makeUnsafe, DateTime.formatIso)
+						lastActive: app.lastActive
 					}))
 				}
 			}),

@@ -33,6 +33,7 @@ import {layerDataStore} from '#server/store.ts'
 import {
 	AccessClaims,
 	AuthError,
+	ClientId,
 	CurrentUser,
 	DEVELOPER,
 	RpcAuth,
@@ -44,7 +45,7 @@ import {
 const AUTH = 'https://auth.mp281x.xyz'
 
 type AnyClaims = typeof AnyClaims.Type
-const AnyClaims = Schema.Struct({...AccessClaims.fields, aud: Schema.String})
+const AnyClaims = Schema.toEncoded(Schema.Struct({...AccessClaims.fields, aud: Schema.String}))
 
 type Sign = (claims?: Partial<AnyClaims>) => Effect.Effect<string, Jwt.JwtError>
 
@@ -270,14 +271,14 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.deepEqual(yield* authorization(), {authorization: `Bearer ${bearer}`})
 			assert.instanceOf(yield* Effect.flip(gateway.authorize(UserId.make('github:43'))), AiUnavailableError)
 			const first = yield* sessions.start({
-				client_id: 'stash',
+				client_id: ClientId.make('stash'),
 				code: 'first',
 				code_verifier: 'verifier',
 				redirect_uri: 'https://stash.mp281x.xyz/auth/callback'
 			})
 			yield* TestClock.adjust('1 second')
 			const second = yield* sessions.start({
-				client_id: 'stash',
+				client_id: ClientId.make('stash'),
 				code: 'second',
 				code_verifier: 'verifier',
 				redirect_uri: 'https://stash.mp281x.xyz/auth/callback'
@@ -325,7 +326,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const context = yield* Layer.build(layerAuth(auth.client, {APP_URL: 'https://scope.mp281x.xyz', AUTH_URL: AUTH}))
 			const service = Context.get(context, Auth)
 			const id = yield* Context.get(context, Sessions).start({
-				client_id: 'scope',
+				client_id: ClientId.make('scope'),
 				code: 'approved',
 				code_verifier: 'verifier',
 				redirect_uri: 'https://scope.mp281x.xyz/auth/callback'

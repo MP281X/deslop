@@ -22,7 +22,7 @@ import {TestClock} from 'effect/testing'
 
 import {keepValueThroughOutages} from '#client/live-stream.ts'
 import {adminIds} from '#server/auth.ts'
-import {AuthError, isAdmin, isDenied, needsSignIn, asAuthError} from '#shared/auth.ts'
+import {AuthError, GitHubId, UserId, isAdmin, isDenied, needsSignIn, asAuthError} from '#shared/auth.ts'
 
 function namesOf(error: AuthError) {
 	return Array.map(Cause.prettyErrors(Cause.fail(error)), rendered => rendered.name)
@@ -204,15 +204,15 @@ it('redirects missing credentials, not authorization outages or denied access', 
 it.effect(
 	'names the local developer as admin unless GITHUB_ADMINS says otherwise',
 	Effect.fnUntraced(function* () {
-		assert.deepStrictEqual(yield* adminsWith({}), ['0'])
-		assert.deepStrictEqual(yield* adminsWith({GITHUB_ADMINS: '7,9'}), ['7', '9'])
+		assert.deepStrictEqual(yield* adminsWith({}), [GitHubId.make(0)])
+		assert.deepStrictEqual(yield* adminsWith({GITHUB_ADMINS: '7,9'}), [GitHubId.make(7), GitHubId.make(9)])
 		assert.isTrue(Exit.isFailure(yield* Effect.exit(adminsWith({AUTH_URL: 'https://auth.example'}))))
 	})
 )
 
 it('reads a user’s admin standing from their bare GitHub id', () => {
-	assert.isTrue(isAdmin(['7', '9'], 'github:9'))
-	assert.isFalse(isAdmin(['7', '9'], 'github:0'))
+	assert.isTrue(isAdmin([GitHubId.make(7), GitHubId.make(9)], UserId.make('github:9')))
+	assert.isFalse(isAdmin([GitHubId.make(7), GitHubId.make(9)], UserId.make('github:0')))
 })
 
 it.effect(

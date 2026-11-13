@@ -1,4 +1,4 @@
-import {Config, Context, Effect, Layer, Option, Result, Schema, pipe} from 'effect'
+import {Config, Context, Effect, Layer, Option, Result, pipe} from 'effect'
 
 import {Signature} from 'effect/crypto'
 import type {Headers} from 'effect/http'
@@ -11,6 +11,8 @@ import {
 	AuthError,
 	CurrentUser,
 	DEVELOPER,
+	GitHubId,
+	GitHubIdFromString,
 	ISSUER_PATH,
 	JWKS_PATH,
 	RpcAuth,
@@ -26,12 +28,12 @@ export const localAuth = Config.map(Config.option(Config.String('AUTH_URL')), Op
 
 // Admins come from GITHUB_ADMINS; a local install with no issuer falls back to the developer account when none are named.
 export const adminIds = Effect.gen(function* () {
-	const listed = Config.Array(Schema.String, 'GITHUB_ADMINS')
-	if (yield* localAuth) return yield* Config.withDefault(listed, ['0'])
+	const listed = Config.Array(GitHubIdFromString, 'GITHUB_ADMINS')
+	if (yield* localAuth) return yield* Config.withDefault(listed, [GitHubId.make(0)])
 	return yield* listed
 })
 
-export function requireAdmin(admins: readonly string[], user: User, message: string) {
+export function requireAdmin(admins: readonly GitHubId[], user: User, message: string) {
 	if (isAdmin(admins, user.id)) return Effect.void
 	return Effect.fail(AuthError.make({error: 'access_denied', message}))
 }

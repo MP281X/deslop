@@ -1,7 +1,7 @@
 import {
 	Array,
-	Clock,
 	Context,
+	DateTime,
 	Duration,
 	Effect,
 	Exit,
@@ -27,7 +27,7 @@ import {AUTH_URL, AuthError, asAuthError} from '@deslop/runtime/shared/auth'
 
 import {People} from '#services/people/service.ts'
 import {CODE_LENGTH, SIGN_IN_LIFETIME, codeFrom, typedCode} from '#services/sign-ins/lib/utils.ts'
-import type {AnswerParams, Delivery} from '#services/sign-ins/schema.ts'
+import type {AnswerParams, Delivery, SignInCode} from '#services/sign-ins/schema.ts'
 import {AuthorizationStatus, Collected, PendingAuthorization, SignInInput} from '#services/sign-ins/schema.ts'
 import {
 	addressGroup,
@@ -53,43 +53,45 @@ const notWaiting = AuthError.make({
 const deliver = Effect.fnUntraced(function* (input: {
 	delivery: Delivery
 	origin: Origin
-	owner?: CredentialOwner
-	previous: string
+	owner: Option.Option<CredentialOwner>
+	previous: Option.Option<string>
 }) {
 	const tokens = yield* Tokens
-	const people = yield* People
-	const approver = yield* Effect.option(
-		pipe(Option.fromUndefinedOr(input.owner), Effect.fromOption, Effect.flatMap(people.allowed))
-	)
-	return yield* Match.valueTags(input.delivery, {
-		Browser: browser =>
-			Option.match(approver, {
-				onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
-				onSome: user =>
-					Effect.map(tokens.startSession(user, input.origin, 'Code', input.previous), started =>
-						Collected.cases.Session.make({...started, ...Struct.pick(browser, ['next'])})
-					)
-			}),
-		Client: client =>
-			Option.match(approver, {
-				onNone: () =>
-					Effect.succeed(
-						Collected.cases.Redirect.make({url: callbackUrl(client.request, {error: 'access_denied'}, tokens.issuer)})
-					),
-				onSome: user =>
-					Effect.map(tokens.issue(client.request, user), code =>
-						Collected.cases.Redirect.make({url: callbackUrl(client.request, {code}, tokens.issuer)})
-					)
-			}),
-		Device: device =>
-			Option.match(approver, {
-				onNone: () => Effect.succeed(Collected.cases.Denied.make({})),
-				onSome: user =>
-					Effect.map(tokens.device(device.request, user, input.origin), granted =>
-						Collected.cases.Granted.make({tokens: granted})
-					)
+	return yield* Effect.flatMap(
+		Effect.option(pipe(input.owner, Effect.fromOption, Effect.flatMap((yield* People).allowed))),
+		approver =>
+			Match.valueTags(input.delivery, {
+				Browser: browser =>
+					Option.match(approver, {
+						onNone: () => Effect.succeed(Collected.cases.Redirect.make({url: '/'})),
+						onSome: user =>
+							Effect.map(tokens.startSession(user, input.origin, 'Code', input.previous), started =>
+								Collected.cases.Session.make({...started, ...Struct.pick(browser, ['next'])})
+							)
+					}),
+				Client: client =>
+					Option.match(approver, {
+						onNone: () =>
+							Effect.succeed(
+								Collected.cases.Redirect.make({
+									url: callbackUrl(client.request, {error: 'access_denied'}, tokens.issuer)
+								})
+							),
+						onSome: user =>
+							Effect.map(tokens.issue(client.request, user), code =>
+								Collected.cases.Redirect.make({url: callbackUrl(client.request, {code}, tokens.issuer)})
+							)
+					}),
+				Device: device =>
+					Option.match(approver, {
+						onNone: () => Effect.succeed(Collected.cases.Denied.make({})),
+						onSome: user =>
+							Effect.map(tokens.device(device.request, user, input.origin), granted =>
+								Collected.cases.Granted.make({tokens: granted})
+							)
+					})
 			})
-	})
+	)
 })
 
 const SignInStates = Machine.state({
@@ -100,9 +102,14 @@ const SignInStates = Machine.state({
 			fields: SignInInput.fields,
 			states: {
 				Approved: {fields: {owner: CredentialOwner}},
-				Delivering: {fields: {owner: Schema.optionalKey(CredentialOwner), previous: Schema.String}},
+				Delivering: {
+					fields: {
+						owner: Schema.OptionFromOptionalKey(CredentialOwner),
+						previous: Schema.OptionFromOptionalKey(Schema.String)
+					}
+				},
 				Denied: {},
-				Failed: {fields: {message: Schema.String, owner: Schema.optionalKey(CredentialOwner)}},
+				Failed: {fields: {message: Schema.String, owner: Schema.OptionFromOptionalKey(CredentialOwner)}},
 				Waiting: {}
 			}
 		}
@@ -115,7 +122,7 @@ const SignIn = Machine.make({
 	effects: {deliver},
 	events: Machine.events({
 		Answered: {accept: Schema.Boolean, owner: CredentialOwner},
-		Collect: {previous: Schema.String}
+		Collect: {previous: Schema.OptionFromOptionalKey(Schema.String)}
 	}),
 	input: SignInInput,
 	root: SignInStates,
@@ -132,7 +139,7 @@ const SignIn = Machine.make({
 				Approved: {
 					on: {
 						Collect: {
-							data: transition => ({owner: transition.state.owner, previous: transition.event.previous}),
+							data: transition => ({owner: Option.some(transition.state.owner), previous: transition.event.previous}),
 							target: 'Open.Delivering'
 						}
 					}
@@ -152,7 +159,12 @@ const SignIn = Machine.make({
 					}
 				},
 				Denied: {
-					on: {Collect: {data: transition => ({previous: transition.event.previous}), target: 'Open.Delivering'}}
+					on: {
+						Collect: {
+							data: transition => ({owner: Option.none(), previous: transition.event.previous}),
+							target: 'Open.Delivering'
+						}
+					}
 				},
 				Failed: {
 					on: {
@@ -193,11 +205,14 @@ export class SignIns extends Context.Service<
 			owner: CredentialOwner,
 			via: 'Session' | 'Token'
 		) => Effect.Effect<{clientName: string}, AuthError>
-		readonly collect: (code: string, headers: Headers.Headers) => Effect.Effect<Collected, AuthError>
-		readonly lookup: (code: string) => Stream.Stream<Option.Option<PendingAuthorization>>
+		readonly collect: (code: SignInCode, headers: Headers.Headers) => Effect.Effect<Collected, AuthError>
+		readonly lookup: (code: SignInCode) => Stream.Stream<Option.Option<PendingAuthorization>>
 		readonly poll: (params: DeviceTokenParams) => Effect.Effect<TokenResponse, AuthError>
-		readonly start: (delivery: Delivery, origin: Origin) => Effect.Effect<{code: string; receiver: string}, AuthError>
-		readonly status: (code: string, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
+		readonly start: (
+			delivery: Delivery,
+			origin: Origin
+		) => Effect.Effect<{code: SignInCode; receiver: string}, AuthError>
+		readonly status: (code: SignInCode, headers: Headers.Headers) => Stream.Stream<AuthorizationStatus, AuthError>
 	}
 >()('@deslop/auth/services/sign-ins/service/SignIns') {
 	// Sign-ins live in memory: a restart ends the waiting ones, and their apps start again.
@@ -210,16 +225,23 @@ export class SignIns extends Context.Service<
 			const randomToken = randomTokenOf(random)
 			const hash = hashOf(yield* Digest.Digest)
 			const scope = yield* Effect.scope
-			const open = yield* SubscriptionRef.make(HashMap.empty<string, Open>())
+			const open = yield* SubscriptionRef.make(HashMap.empty<SignInCode, Open>())
 			const answering = yield* Semaphore.make(1)
-			function find(code: string) {
-				return Effect.map(SubscriptionRef.get(open), HashMap.get(typedCode(code)))
+			function find(code: SignInCode) {
+				return Effect.map(SubscriptionRef.get(open), current =>
+					Option.flatMap(Schema.decodeOption(PendingAuthorization.fields.id)(typedCode(code)), id =>
+						HashMap.get(current, id)
+					)
+				)
 			}
-			function watch(code: string) {
+			function watch(code: SignInCode) {
 				return Stream.switchMap(SubscriptionRef.changes(open), current =>
 					pipe(
 						current,
-						HashMap.get(typedCode(code)),
+						entries =>
+							Option.flatMap(Schema.decodeOption(PendingAuthorization.fields.id)(typedCode(code)), id =>
+								HashMap.get(entries, id)
+							),
 						Option.match({
 							onNone: () =>
 								Stream.succeed(Option.none<{signIn: Open; state: Effect.Success<Open['ref']['snapshot']>['state']}>()),
@@ -237,7 +259,7 @@ export class SignIns extends Context.Service<
 				}
 				return signIn
 			})
-			const delivered = Effect.fnUntraced(function* (signIn: Open, previous: string) {
+			const delivered = Effect.fnUntraced(function* (signIn: Open, previous: Option.Option<string>) {
 				yield* signIn.ref.send({_tag: 'Collect', previous})
 				const done = yield* Effect.mapError(
 					Machine.waitFor(
@@ -289,7 +311,7 @@ export class SignIns extends Context.Service<
 					)
 					return {clientName: signIn.pending.clientName}
 				}, asAuthError('Cannot answer the sign-in')),
-				collect: Effect.fn('SignIns.collect')(function* (code: string, headers: Headers.Headers) {
+				collect: Effect.fn('SignIns.collect')(function* (code: SignInCode, headers: Headers.Headers) {
 					const signIn = yield* received(
 						yield* pipe(
 							yield* find(code),
@@ -336,7 +358,7 @@ export class SignIns extends Context.Service<
 					if (SignInStates.matches(snapshot.state, 'Open.Waiting')) {
 						return yield* AuthError.make({error: 'authorization_pending', message: 'Waiting for approval'})
 					}
-					const answer = yield* delivered(signIn, '')
+					const answer = yield* delivered(signIn, Option.none())
 					if (answer._tag !== 'Granted') {
 						return yield* AuthError.make({error: 'access_denied', message: 'The sign-in was denied'})
 					}
@@ -344,7 +366,7 @@ export class SignIns extends Context.Service<
 				}, asAuthError('Cannot complete the sign-in')),
 				start: Effect.fn('SignIns.start')(function* (delivery: Delivery, origin: Origin) {
 					const code = codeFrom(yield* random.randomBytes(CODE_LENGTH))
-					const now = yield* Clock.currentTimeMillis
+					const now = yield* DateTime.now
 					const receiver = yield* randomToken(32)
 					const owned = yield* Scope.fork(scope)
 					const ref = yield* pipe(
@@ -355,10 +377,7 @@ export class SignIns extends Context.Service<
 					)
 					const signIn = {
 						pending: PendingAuthorization.make({
-							...Option.match(Option.fromUndefinedOr(origin.address), {
-								onNone: () => ({}),
-								onSome: address => ({address})
-							}),
+							address: origin.address,
 							...Match.valueTags(delivery, {
 								Browser: () => ({
 									clientName: browserLabel(origin),
@@ -377,7 +396,7 @@ export class SignIns extends Context.Service<
 								})
 							}),
 							// The machine's lifetime timer.
-							expiresAt: now + Duration.toMillis(SIGN_IN_LIFETIME),
+							expiresAt: DateTime.addDuration(now, SIGN_IN_LIFETIME),
 							id: code
 						}),
 						receiver: yield* hash(receiver),
@@ -386,9 +405,12 @@ export class SignIns extends Context.Service<
 					// Anyone can start a sign-in, so one address (an IPv6 /64) keeps at most 20 waiting and everyone 1000; checked and taken in one step.
 					const admitted = yield* SubscriptionRef.modify(open, current => {
 						// Sign-ins without a known address share one group.
-						const group = addressGroup(origin.address ?? 'unknown')
+						const group = addressGroup(Option.getOrElse(origin.address, () => 'unknown'))
 						const fromGroup = HashMap.size(
-							HashMap.filter(current, other => addressGroup(other.pending.address ?? 'unknown') === group)
+							HashMap.filter(
+								current,
+								other => addressGroup(Option.getOrElse(other.pending.address, () => 'unknown')) === group
+							)
 						)
 						if (HashMap.size(current) >= 1000 || fromGroup >= 20 || HashMap.has(current, code)) return [false, current]
 						return [true, HashMap.set(current, code, signIn)]

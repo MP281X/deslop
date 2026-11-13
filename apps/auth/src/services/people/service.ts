@@ -16,7 +16,7 @@ import {listPeople, ownerOf, personOf, roleOf} from '#services/people/lib/utils.
 import type {AdmitParams, GitHubUser, Person} from '#services/people/schema.ts'
 import {Member, SignedAccount} from '#services/people/schema.ts'
 import {randomTokenOf} from '#services/tokens/lib/utils.ts'
-import {CurrentOwner} from '#services/tokens/schema.ts'
+import {CurrentOwner, IncarnationId} from '#services/tokens/schema.ts'
 import type {CredentialOwner} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
@@ -72,7 +72,7 @@ export class People extends Context.Service<
 				const local = yield* localAuth
 				const randomToken = randomTokenOf(yield* SecureRandom.SecureRandom)
 				const withReactivity = Effect.provideService(Reactivity.Reactivity, yield* Reactivity.Reactivity)
-				const developer = {incarnation: 'local', user: DEVELOPER}
+				const developer = {incarnation: IncarnationId.make('local'), user: DEVELOPER}
 				const members = yield* SqlModel.makeRepository(Member, {
 					idColumn: 'id',
 					spanPrefix: 'People',
@@ -113,7 +113,7 @@ export class People extends Context.Service<
 				// A local install's developer account keeps the one registration its sessions name; any other gets a fresh one.
 				function incarnationOf(profile: GitHubUser) {
 					if (local && profile.id === 0) return Effect.succeed(developer.incarnation)
-					return randomToken(32)
+					return Effect.map(randomToken(32), id => IncarnationId.make(id))
 				}
 				function existing(id: UserId) {
 					return Effect.flatMap(member(id), Effect.fromOption)

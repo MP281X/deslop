@@ -2,7 +2,7 @@ import {NodeCrypto} from '@effect/platform-node'
 import {SqliteClient} from '@effect/sql-sqlite-node'
 import {assert, it} from '@effect/vitest'
 
-import {Array, ConfigProvider, Context, Effect, Layer, Option, Stream, pipe} from 'effect'
+import {Array, ConfigProvider, Context, Effect, Layer, Option, Schema, Stream, pipe} from 'effect'
 
 import {Digest} from 'effect/crypto'
 import {Base64Url} from 'effect/encoding'
@@ -12,7 +12,7 @@ import {RpcTest} from 'effect/rpc'
 import {SqlClient} from 'effect/sql'
 
 import {Auth} from '@deslop/runtime/server/auth'
-import {SESSION_COOKIE, UserId, isDenied} from '@deslop/runtime/shared/auth'
+import {ClientId, GitHubId, SESSION_COOKIE, UserId, isDenied} from '@deslop/runtime/shared/auth'
 
 import {RpcContracts} from '#rpcs/contracts.ts'
 import {RpcHandlers} from '#rpcs/handlers.ts'
@@ -23,12 +23,13 @@ import {Member} from '#services/people/schema.ts'
 import {People, layerIssuerAuth} from '#services/people/service.ts'
 import {REQUEST_COOKIE, SignIns} from '#services/sign-ins/service.ts'
 import type {ClientRequest} from '#services/tokens/schema.ts'
-import {BrowserSession} from '#services/tokens/schema.ts'
+import {BrowserSession, Origin} from '#services/tokens/schema.ts'
 import {Tokens} from '#services/tokens/service.ts'
 
 const VERIFIER = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 const ADMIN = {id: UserId.make('github:42'), name: 'admin'}
-const PROFILE = {id: 7, login: 'member', name: Option.none<string>()}
+const PROFILE = {id: GitHubId.make(7), login: 'member', name: Option.none<string>()}
+const ORIGIN = Schema.decodeSync(Origin)({})
 
 const open = Effect.gen(function* () {
 	const database = yield* Layer.build(Layer.merge(SqliteClient.layer({filename: ':memory:'}), Reactivity.layer))
@@ -47,7 +48,7 @@ const open = Effect.gen(function* () {
 					GitHub.of({
 						cancel: () => Effect.die('Unused GitHub cancellation'),
 						finish: () => Effect.die('Unused GitHub callback'),
-						profile: () => Effect.succeed({id: 42, login: 'admin', name: Option.none()}),
+						profile: () => Effect.succeed({id: GitHubId.make(42), login: 'admin', name: Option.none()}),
 						start: () => Effect.die('Unused GitHub redirect')
 					})
 				)
@@ -93,9 +94,11 @@ const request = Effect.gen(function* () {
 		challenge: Base64Url.encode(
 			yield* (yield* Digest.Digest).digest(Digest.sha256, new TextEncoder().encode(VERIFIER))
 		),
-		clientId: 'fixture',
+		clientId: ClientId.make('fixture'),
 		clientName: 'Fixture',
-		redirectUri: 'http://127.0.0.1/callback'
+		parent: Option.none(),
+		redirectUri: 'http://127.0.0.1/callback',
+		state: Option.none()
 	} satisfies ClientRequest
 })
 
@@ -109,12 +112,12 @@ it.layer(NodeCrypto.layer)(test => {
 		Effect.fnUntraced(function* () {
 			const fixture = yield* open
 			const member = yield* fixture.people.register(PROFILE)
-			const other = yield* fixture.people.register({id: 9, login: 'another', name: Option.none()})
+			const other = yield* fixture.people.register({id: GitHubId.make(9), login: 'another', name: Option.none()})
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(member, {}, 'GitHub', '')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(member, ORIGIN, 'GitHub', Option.none())).token}`
 			})
 			const otherHeaders = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(other, {}, 'GitHub', '')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(other, ORIGIN, 'GitHub', Option.none())).token}`
 			})
 			const client = yield* fixture.client
 			assert.strictEqual((yield* first(client['people.account'](undefined, {headers}))).role, 'Waiting')
@@ -126,7 +129,7 @@ it.layer(NodeCrypto.layer)(test => {
 			yield* fixture.people.admit({allow: true, id: other.user.id}, ADMIN)
 			assert.strictEqual((yield* first(client['tokens.watchApps'](undefined, {headers}))).length, 1)
 			assert.strictEqual((yield* first(client['tokens.watchApps'](undefined, {headers: otherHeaders}))).length, 1)
-			const pending = yield* fixture.signIns.start({_tag: 'Browser'}, {})
+			const pending = yield* fixture.signIns.start({_tag: 'Browser', next: Option.none()}, ORIGIN)
 			yield* client['sign-ins.answer']({accept: true, request: pending.code}, {headers})
 			yield* fixture.people.remove(member.user.id, ADMIN)
 			yield* fixture.people.admit({allow: true, id: (yield* fixture.people.register(PROFILE)).user.id}, ADMIN)
@@ -146,7 +149,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, ORIGIN, 'GitHub', Option.none())).token}`
 			})
 			assert.strictEqual((yield* first(fixture.people.account(headers))).role, 'Waiting')
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
@@ -158,9 +161,10 @@ it.layer(NodeCrypto.layer)(test => {
 					client_id: asked.clientId,
 					code: yield* fixture.tokens.issue(asked, owner),
 					code_verifier: VERIFIER,
-					grant_type: 'authorization_code'
+					grant_type: 'authorization_code',
+					redirect_uri: Option.none()
 				},
-				{},
+				ORIGIN,
 				fixture.people.allowed
 			)
 			if (granted._tag !== 'Granted') return assert.fail('Expected a grant')
@@ -181,8 +185,14 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.strictEqual(
 				(yield* Effect.flip(
 					fixture.tokens.exchange(
-						{client_id: asked.clientId, code: unspent, code_verifier: VERIFIER, grant_type: 'authorization_code'},
-						{},
+						{
+							client_id: asked.clientId,
+							code: unspent,
+							code_verifier: VERIFIER,
+							grant_type: 'authorization_code',
+							redirect_uri: Option.none()
+						},
+						ORIGIN,
 						fixture.people.allowed
 					)
 				)).error,
@@ -199,8 +209,8 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.strictEqual(
 				(yield* Effect.flip(
 					restarted.tokens.exchange(
-						{grant_type: 'refresh_token', refresh_token: granted.tokens.refresh_token},
-						{},
+						{client_id: Option.none(), grant_type: 'refresh_token', refresh_token: granted.tokens.refresh_token},
+						ORIGIN,
 						restarted.people.allowed
 					)
 				)).error,
@@ -210,7 +220,7 @@ it.layer(NodeCrypto.layer)(test => {
 			assert.deepStrictEqual(
 				yield* restarted.auth.user(
 					Headers.fromInput({
-						cookie: `${SESSION_COOKIE}=${(yield* restarted.tokens.startSession(renewed, {}, 'GitHub', '')).token}`
+						cookie: `${SESSION_COOKIE}=${(yield* restarted.tokens.startSession(renewed, ORIGIN, 'GitHub', Option.none())).token}`
 					})
 				),
 				renewed.user
@@ -224,7 +234,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
-			const pending = yield* fixture.signIns.start({_tag: 'Browser'}, {})
+			const pending = yield* fixture.signIns.start({_tag: 'Browser', next: Option.none()}, ORIGIN)
 			yield* fixture.signIns.answer({accept: true, request: pending.code}, owner, 'Session')
 			yield* fixture.people.remove(owner.user.id, ADMIN)
 			const fresh = yield* fixture.people.register(PROFILE)
@@ -263,14 +273,14 @@ it.layer(NodeCrypto.layer)(test => {
 			const fixture = yield* open
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
-			const old = yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')
+			const old = yield* fixture.tokens.startSession(owner, ORIGIN, 'GitHub', Option.none())
 			yield* fixture.people.remove(owner.user.id, ADMIN)
 			const fresh = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: fresh.user.id}, ADMIN)
 			assert.isTrue(
 				isDenied(yield* Effect.flip(fixture.auth.user(Headers.fromInput({cookie: `${SESSION_COOKIE}=${old.token}`}))))
 			)
-			const started = yield* fixture.tokens.startSession(fresh, {}, 'GitHub', '')
+			const started = yield* fixture.tokens.startSession(fresh, ORIGIN, 'GitHub', Option.none())
 			// The removed registration's cleanup, run again late, leaves every credential of the new one alone.
 			yield* fixture.tokens.forget(owner)
 			yield* fixture.passkeys.forget(owner)
@@ -289,7 +299,7 @@ it.layer(NodeCrypto.layer)(test => {
 			const owner = yield* fixture.people.register(PROFILE)
 			yield* fixture.people.admit({allow: true, id: owner.user.id}, ADMIN)
 			const headers = Headers.fromInput({
-				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, {}, 'GitHub', '')).token}`
+				cookie: `${SESSION_COOKIE}=${(yield* fixture.tokens.startSession(owner, ORIGIN, 'GitHub', Option.none())).token}`
 			})
 			yield* fixture.fail(Member.table)
 			assert.strictEqual(

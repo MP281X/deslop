@@ -91,8 +91,8 @@ function TabsControl() {
 // A signed-in account switches between its sign-ins and people; the page waits for the account under the mounted bar.
 function ShellPage() {
 	const search = route.useSearch()
-	const requestId = Option.fromUndefinedOr(search.request)
-	const signingOut = search['sign-out'] !== undefined
+	const requestId = search.request
+	const signingOut = Option.isSome(search['sign-out'])
 	const account = useAtomSuspense(accountAtom).value
 	return (
 		<Page>
