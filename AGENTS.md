@@ -46,6 +46,7 @@
 - **Behavior.** No web removal controls or context menus; iOS keeps native long-press menus and swipes. No command palette or hotkeys. Never confirm destruction.
 - **Recovery.** Leave stale rows and panes unmarked; no toasts or page-moving banners. Destructive failures say whether they committed.
 - **Components.** Nothing animates; pending actions have no spinners.
+- **Tracing.** Background work rounds are traced; animation ticks, including Portfolio's occupied-room wandering, are not.
 - **Artwork.** Canonical and transparent; never redraw or recolour in a UI pass. Copy Kanagawa pixel art unchanged: `crispEdges`, integer scaling; indexed touch icons crop 192 to 180px on `#0d0c0c`.
 
 ## Documents

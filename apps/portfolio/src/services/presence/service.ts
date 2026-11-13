@@ -66,9 +66,7 @@ export class Presence extends Context.Service<
 				}),
 				streams: {
 					wander: Stream.fromEffectSchedule(
-						pipe(
-							Clock.currentTimeMillis,
-							Effect.map(now =>
+						Effect.map(Clock.currentTimeMillis, now =>
 								Array.map(SERVER_BOTS, bot =>
 									PortfolioVisitor.make({
 										color: bot.color,
@@ -83,10 +81,7 @@ export class Presence extends Context.Service<
 											minimum: 0.005
 										})
 									})
-								)
-							),
-							Effect.withSpan('Presence.wander', {attributes: {bots: SERVER_BOTS.length}})
-						),
+								)),
 						Schedule.spaced('55 millis')
 					)
 				}
