@@ -67,21 +67,22 @@ export class Presence extends Context.Service<
 				streams: {
 					wander: Stream.fromEffectSchedule(
 						Effect.map(Clock.currentTimeMillis, now =>
-								Array.map(SERVER_BOTS, bot =>
-									PortfolioVisitor.make({
-										color: bot.color,
-										id: bot.id,
-										name: bot.name,
-										x: Number.clamp(0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase), {
-											maximum: 0.995,
-											minimum: 0.005
-										}),
-										y: Number.clamp(0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase), {
-											maximum: 0.995,
-											minimum: 0.005
-										})
+							Array.map(SERVER_BOTS, bot =>
+								PortfolioVisitor.make({
+									color: bot.color,
+									id: bot.id,
+									name: bot.name,
+									x: Number.clamp(0.5 + 0.4 * Math.sin(((now - start) / 1000) * bot.xFreq + bot.xPhase), {
+										maximum: 0.995,
+										minimum: 0.005
+									}),
+									y: Number.clamp(0.5 + 0.4 * Math.cos(((now - start) / 1000) * bot.yFreq + bot.yPhase), {
+										maximum: 0.995,
+										minimum: 0.005
 									})
-								)),
+								})
+							)
+						),
 						Schedule.spaced('55 millis')
 					)
 				}

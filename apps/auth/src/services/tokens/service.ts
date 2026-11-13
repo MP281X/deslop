@@ -524,8 +524,9 @@ export class Tokens extends Context.Service<
 											!Option.exists(yield* findSession({family: parent, now}), found =>
 												sameOwner(credentialOwnerOf(found), fresh.owner)
 											)
-										)
-											{return yield* expired}
+										) {
+											return yield* expired
+										}
 									})
 								})
 								return Exchange.cases.Granted.make({
