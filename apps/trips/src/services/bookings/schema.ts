@@ -12,9 +12,7 @@ export const IMAGE_BYTES = 4_000_000
 export type BookingSource = typeof BookingSource.Type
 export const BookingSource = Schema.Union([
 	Schema.TaggedStruct('text', {text: Schema.NonEmptyString.check(Schema.isMaxLength(60_000))}),
-	Schema.TaggedStruct('image', {
-		image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))
-	})
+	Schema.TaggedStruct('image', {image: Schema.Uint8Array.check(Schema.isMinLength(1), Schema.isMaxLength(IMAGE_BYTES))})
 ])
 
 export type BookingId = typeof BookingId.Type
