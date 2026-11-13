@@ -1,4 +1,4 @@
-import {Array, Option} from 'effect'
+import {Array, Option, Predicate} from 'effect'
 
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree} from 'vite-plus/lint/plugins'
@@ -10,6 +10,7 @@ import {
 	isImportBinding,
 	matches,
 	memberName,
+	resolveBinding,
 	typeWrapped,
 	variableFromScope
 } from '#lib/ast.ts'
@@ -54,12 +55,31 @@ function receiverName(node: ESTree.Node) {
 	return memberName(node)
 }
 
-function isErrorMessage(context: Context, node?: ESTree.Node | null) {
+function errorValue(context: Context, node: ESTree.Node) {
 	return (
-		node?.type === 'MemberExpression' &&
-		Option.contains(memberName(node), 'message') &&
-		(Option.exists(receiverName(node.object), matches(/^(?:e|err|error|failure|cause|exception)$|Error$/iu)) ||
-			failureValue(context, node.object))
+		Option.exists(receiverName(node), matches(/^(?:e|err|error|failure|cause|exception)$|Error$/iu)) ||
+		failureValue(context, node)
+	)
+}
+
+function isErrorMessage(context: Context, node?: ESTree.Node | null) {
+	if (Predicate.isNullish(node)) return false
+	const value = resolveBinding(context, node)
+	if (value.type === 'CallExpression') {
+		if (value.callee.type === 'Identifier' && value.callee.name === 'String') {
+			const argument = value.arguments[0]
+			return argument !== undefined && errorValue(context, argument)
+		}
+		return (
+			value.callee.type === 'MemberExpression' &&
+			Option.contains(memberName(value.callee), 'toString') &&
+			errorValue(context, value.callee.object)
+		)
+	}
+	return (
+		value.type === 'MemberExpression' &&
+		Option.contains(memberName(value), 'message') &&
+		errorValue(context, value.object)
 	)
 }
 
@@ -70,7 +90,8 @@ function assertsMessage(context: Context, node: ESTree.CallExpression) {
 		node.callee.type === 'MemberExpression' &&
 		node.callee.object.type === 'Identifier' &&
 		isErrorMessage(context, actual) &&
-		(expected?.type === 'Literal' || expected?.type === 'TemplateLiteral')
+		expected !== undefined &&
+		Array.contains(['Literal', 'TemplateLiteral'], resolveBinding(context, expected).type)
 	)
 }
 

@@ -2,7 +2,7 @@ import {assert, it} from '@effect/vitest'
 
 import {Array, Option} from 'effect'
 
-import {nameOf, notificationOf, postFrom, seriesOf} from '#services/chapters/lib/utils.ts'
+import {notificationOf, postFrom} from '#services/chapters/lib/utils.ts'
 import {ChapterNumber} from '#services/chapters/schema.ts'
 
 const LINK = '<a href="https://cubari.moe/read/imgchest/abc123xyz/1/1/">[link]</a>'
@@ -67,17 +67,4 @@ it('classifies English manga and webcomic releases, preserving revisions and ski
 			Option.none()
 		]
 	)
-	assert.deepStrictEqual(
-		seriesOf('https://cubari.moe/read/gist/OPM/225/1/'),
-		Option.some({api: 'https://cubari.moe/read/api/gist/series/OPM/', chapter: '225'})
-	)
-})
-
-it('extracts chapter names without release labels', () => {
-	assert.strictEqual(nameOf('Chapter 225: New Blood 3'), 'New Blood 3')
-	assert.strictEqual(nameOf('One Punch Man Chapter 242'), '')
-	assert.strictEqual(nameOf('Translated'), '')
-	assert.strictEqual(nameOf('ONE PUNCH MAN CHAPTER 233 - ENGLISH TRANSLATIONS'), '')
-	assert.strictEqual(nameOf('OPM WC 160'), '')
-	assert.strictEqual(nameOf('OPM (Webcomic) - Chapter 158 - The Koi Pond'), 'The Koi Pond')
 })

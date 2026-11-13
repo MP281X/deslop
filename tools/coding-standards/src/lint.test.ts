@@ -896,7 +896,6 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const result = yield* lintSource({
 					'valid.tsx': Array.join(
 						[
-							"import {it as test} from '@effect/vitest'",
 							"import {Array, Context, Effect, Layer, Result, Schema, SchemaGetter, SchemaTransformation, identity, pipe} from 'effect'",
 							"import {useState} from 'react'",
 							"import * as EffectArray from 'effect/Array'",
@@ -1016,7 +1015,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'declare function createRoute(options: {validateSearch: (value: unknown) => User}): void',
 							'createRoute({validateSearch: Schema.decodeUnknownSync(User)})',
 							'const added = Effect.fn("added")(function* (value: number) { const ledger = yield* Ledger; return yield* ledger.add(value) })',
-							'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, test, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
+							'export {added, Annotated, CallStep, hasWindow, route, stubs, CodeStep, Decoded, DefaultInput, Encoded, Formatter, Ledger, LinearIssue, Listed, Normalized, Step, circle, circles, constants, countdown, counter, counts, curried, annotate, annotateString, decoded, decodedMany, echo, encoded, ensured, flags, depth, identify, isCall, isUser, labels, layers, limits, loadName, loose, mappedOutcome, measure, missing, namespaced, nestedFailure, annotatedName, nickname, noUser, payload, odd, parseWith, ping, readSnapshot, singleName, snapshots, swap, thunks, Walker, transform, tuple, version, versionPatterns, withDefault}'
 						],
 						'\n'
 					)
@@ -1030,7 +1029,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 			'reports runtime typeof and error wording assertions',
 			Effect.fnUntraced(function* () {
 				const result = yield* lintSource({
-					'assertions.ts': Array.join(
+					'assertions.test.ts': Array.join(
 						[
 							"import {assert} from '@effect/vitest'",
 							"import {Predicate} from 'effect'",
@@ -1066,12 +1065,10 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				const result = yield* lintSource({
 					'behavior.tsx': Array.join(
 						[
-							"import {assert, it} from '@effect/vitest'",
 							"import {Array, Effect, MutableRef, pipe} from 'effect'",
 							"import type {Ref} from 'react'",
 							"import {owner} from './owner.ts'",
 							'',
-							'declare const ticket: {message: string}',
 							'function cell() { return MutableRef.make(0) }',
 							'const cells = [cell(), cell()]',
 							'function allocate() { return owner.cell }',
@@ -1083,11 +1080,12 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'const recovered = Effect.gen(function* () { return yield* Effect.catch(Effect.fail("missing"), () => Effect.succeed(1)) })',
 							'function Field({ref, ...props}: {ref?: Ref<HTMLInputElement>; label: string}) { return <input ref={ref} aria-label={props.label} /> }',
 							'export const primitiveFailure = Effect.gen(function* () { return yield* Effect.fail("missing") })',
-							'it("keeps the trimmed message", () => { assert.strictEqual(ticket.message, "hello") })',
 							'export {Field, cells, operations, recovered}'
 						],
 						'\n'
 					),
+					'messages.test.ts':
+						"import {assert, it} from '@effect/vitest'\ndeclare const ticket: {message: string}\nit('keeps the trimmed message', () => { assert.strictEqual(ticket.message, 'hello') })",
 					'owner.ts':
 						"import {MutableRef} from 'effect'\nexport const owner = {get cell() { return MutableRef.make(0) }, parse(value: string) { return this.prefix + value }, prefix: 'id'}"
 				})
@@ -3399,10 +3397,24 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							"import {ChildProcess} from 'effect/process' // reported",
 							"import {handlers} from './handlers.ts' // reported",
 							"import {view} from './view.tsx' // reported",
+							"import * as V from '@effect/vitest' // reported",
+							"import {NodeHttpClient, NodeHttpServer} from '@effect/platform-node' // reported",
+							"import {'NodeHttpClient' as literalClient} from '@effect/platform-node' // reported",
+							"import {HttpClient as clientModule} from 'effect/http/HttpClient' // reported",
+							"import {it as subtest} from 'vite-plus/test/utils' // reported",
+							"import {fake} from './__mocks__/service.ts' // reported",
+							"import {lookup} from 'node:dns' // reported",
+							"import {createSocket} from 'node:dgram' // reported",
+							"import {connect} from 'node:tls' // reported",
+							"import {Worker} from 'node:worker_threads' // reported",
+							"import {request as h2} from 'node:http2' // reported",
+							"import {runInContext} from 'node:vm' // reported",
 							'declare const fs: {readFileString: (path: string) => string}',
 							"export const source = fs.readFileString('src/service.ts') // reported",
 							"export const request = new Request('https://example.com') // reported",
 							"export const response = new Response('ok') // reported",
+							"export const fetched = globalThis.fetch('https://example.com') // reported",
+							'export const json = Response.json({answer: 42}) // reported',
 							"export const deferred = import('./service.ts') // reported",
 							"it('computes the charge', () => assert.strictEqual(handlers.charge(2), 4))",
 							'export {Atom, AtomRegistry, ChildProcess, HttpClient, McpServer, RpcServer, SqlClient, Tracer, createServer, renderToStaticMarkup, vi, view}'
@@ -3425,7 +3437,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'declare function answer(): string',
 							"it('no longer sends the removed field', () => assert.strictEqual(answer(), 'ok')) // reported",
 							"it('fixes issue #123', () => assert.strictEqual(answer(), 'ok')) // reported",
-							"it('uses the current answer instead of the old answer', () => assert.strictEqual(answer(), 'ok')) // reported",
+							"it('drops removed devices', () => assert.strictEqual(answer(), 'ok'))",
 							"it('answers callers', () => { assert.notInclude(answer(), 'old') })",
 							"it('answers another caller', () => { assert.notMatch(answer(), /old/u) })",
 							"it('answers callers with a literal', () => assert.strictEqual(answer(), 'ok'))",
@@ -3452,7 +3464,7 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 							'',
 							'declare function permits(amount: number): boolean',
 							'',
-							"it('refuses spending over the quota', () => {",
+							"it('has no credit above the quota', () => {",
 							'  assert.isFalse(permits(11))',
 							'})'
 						],
@@ -3485,6 +3497,83 @@ describe('deslop Oxlint plugin', {concurrent: true}, () => {
 				})
 				assert.deepStrictEqual(result.stdout.diagnostics, [])
 				assert.strictEqual(result.exitCode, 0)
+			})
+		)
+
+		testApi.effect(
+			'checks helper imports and grants only the requested inspection capability',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'packages/runtime/src/server/tables.test.ts': Array.join(
+						[
+							"import {SqlClient} from 'effect/sql'",
+							"export const models = import.meta.glob('src/schema.ts')",
+							'declare const fs: {readFileString: (path: string) => string}',
+							"export const source = fs.readFileString('src/service.ts') // reported",
+							"export const request = globalThis.fetch('https://example.com') // reported",
+							'export const reply = Response.json({}) // reported',
+							'export {SqlClient}'
+						],
+						'\n'
+					),
+					'support.ts':
+						"import {assert} from '@effect/vitest' // reported\nimport {it} from 'vitest' // reported\nimport {test} from 'vite-plus/test/extra' // reported\nexport {assert, it, test}",
+					'tools/coding-standards/src/lint.test.ts': Array.join(
+						[
+							'declare const fs: {readFileString: (path: string) => string}',
+							"export const source = fs.readFileString('src/service.ts')",
+							"export const request = globalThis.fetch('https://example.com') // reported",
+							'export const reply = Response.json({}) // reported',
+							"export const modules = import.meta.glob('src/*.ts') // reported"
+						],
+						'\n'
+					)
+				})
+				assert.strictEqual(
+					Array.countBy(
+						result.stdout.diagnostics,
+						diagnostic => diagnostic.code === '@deslop/coding-standards(test-boundaries)'
+					),
+					9
+				)
+			})
+		)
+
+		testApi.effect(
+			'asserts failures by stable identity and runs each assertion once',
+			Effect.fnUntraced(function* () {
+				const result = yield* lintSource({
+					'failure.test.ts': Array.join(
+						[
+							"import {assert, it} from '@effect/vitest'",
+							"import {Effect, Schedule, pipe} from 'effect'",
+							'declare const error: Error',
+							"const WORDING = 'offline'",
+							'const description = error.message',
+							'assert.strictEqual(description, WORDING) // reported',
+							'assert.strictEqual(String(error), WORDING) // reported',
+							'assert.strictEqual(error.toString(), WORDING) // reported',
+							'const check = Effect.sync(() => assert.instanceOf(error, Error))',
+							"it.effect('asserts a failure', () => Effect.retry(check, {times: 3}))",
+							"it.effect('asserts on a recurring schedule', () => pipe(check, Effect.schedule(Schedule.recurs(3))))"
+						],
+						'\n'
+					)
+				})
+				assert.strictEqual(
+					Array.countBy(
+						result.stdout.diagnostics,
+						diagnostic => diagnostic.code === '@deslop/coding-standards(test-assertions)'
+					),
+					3
+				)
+				assert.strictEqual(
+					Array.countBy(
+						result.stdout.diagnostics,
+						diagnostic => diagnostic.code === '@deslop/coding-standards(test-synchronization)'
+					),
+					2
+				)
 			})
 		)
 

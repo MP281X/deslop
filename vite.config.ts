@@ -230,12 +230,12 @@ export default defineConfig({
 		ignorePatterns: ['**/*.gen.ts', 'packages/components-web/src/ui/**'],
 		overrides: [
 			{
-				files: ['tools/coding-standards/src/lint.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'source-fixtures']}
+				files: ['**/tools/coding-standards/src/lint.test.ts'],
+				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'read-source-text', 'execute-program']}
 			},
 			{
-				files: ['packages/runtime/src/server/tables.test.ts'],
-				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'model-migrations']}
+				files: ['**/packages/runtime/src/server/tables.test.ts'],
+				rules: {'@deslop/coding-standards/test-boundaries': ['error', 'inspect-database']}
 			},
 			// The judge's program harness is owned by the separate judge overhaul.
 			{

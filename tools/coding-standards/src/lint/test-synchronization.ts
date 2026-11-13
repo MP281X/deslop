@@ -156,6 +156,25 @@ function inside(node: ESTree.Node, ancestor: ESTree.Node): boolean {
 	return inside(node.parent, ancestor)
 }
 
+function assertionIn(context: Context, node: ESTree.Node, seen: ESTree.Node[] = []): boolean {
+	if (Array.contains(seen, node)) return false
+	return containsNode({
+		context,
+		matches: child => {
+			const bound = resolveBinding(context, child)
+			if (bound !== child && bound.type === 'CallExpression') return assertionIn(context, bound, [...seen, node])
+			return (
+				child.type === 'CallExpression' &&
+				child.callee.type === 'MemberExpression' &&
+				child.callee.object.type === 'Identifier' &&
+				isImportBinding({context, importedName: 'assert', node: child.callee.object, source: '@effect/vitest'})
+			)
+		},
+		node: resolveBinding(context, node),
+		throughFunctions: true
+	})
+}
+
 export const testSynchronization = defineRule({
 	create: context => {
 		if (!isTestFile(context)) return {}
@@ -188,6 +207,19 @@ export const testSynchronization = defineRule({
 					MutableList.append(findings, {message: MESSAGE, node})
 				}
 				const method = effectMethod({context, node})
+				if (
+					Option.exists(method, name =>
+						Array.contains(['retry', 'retryOrElse', 'repeat', 'repeatOrElse', 'schedule'], name)
+					) &&
+					assertionIn(context, pipedFrom(node))
+				) {
+					MutableList.append(findings, {
+						message:
+							'Run each assertion once. Exercise retries in the service under test and assert its final answer after a milestone or TestClock adjustment.',
+						node
+					})
+					return
+				}
 				if (Option.contains(method, 'eventually')) {
 					MutableList.append(findings, {message: MESSAGE, node})
 					return

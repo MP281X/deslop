@@ -76,12 +76,11 @@ export const testRegistration = defineRule({
 			if (title === undefined) return
 			if (
 				matches(
-					/\b(?:regression|no longer|anymore|instead of|used to|legacy|superseded|removed|previous implementation)\b|(?:#|\b(?:issue|pr)\s*#?)\d+|\b(?:has|there is|there are) no\b|\bdoes not\b/iu
+					/\b(?:regression|no longer|anymore|legacy|previous implementation)\b|(?:#|\b(?:issue|pr|pull request)\s*#?)\d+/iu
 				)(titleOf(resolveBinding(context, title)))
 			) {
 				context.report({
-					message:
-						'Delete tests of superseded code or absence; keep one scenario proving a current rule through its observable answer.',
+					message: 'State the current rule in the present tense; delete scenarios about superseded code.',
 					node: title
 				})
 				return

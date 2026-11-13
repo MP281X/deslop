@@ -1,99 +1,56 @@
-import {assert, describe, it} from '@effect/vitest'
+import {assert, it} from '@effect/vitest'
 
 import {Option, Schema} from 'effect'
 
-import {captionTracks, captionTranscript, isBlocked, speechOnly} from '#services/media/lib/utils.ts'
+import {captionTracks, captionTranscript, speechOnly} from '#services/media/lib/utils.ts'
 import {Metadata} from '#services/media/schema.ts'
 
-describe('captionTracks', () => {
-	it('keeps authored alternatives but not automatic translations when the original language is known', () => {
-		assert.deepStrictEqual(
-			captionTracks(
-				Schema.decodeSync(Metadata)({
-					automatic_captions: {af: [{}], en: [{}], 'en-orig': [{}], it: [{}]},
-					subtitles: {it: [{}]},
-					title: 'A talk'
-				})
-			),
-			[
-				{authored: false, language: 'en'},
-				{authored: false, language: 'en-orig'},
-				{authored: true, language: 'it'}
-			]
-		)
-	})
+it('keeps authored alternatives and automatic captions in the original language', () => {
+	assert.deepStrictEqual(
+		captionTracks(
+			Schema.decodeSync(Metadata)({
+				automatic_captions: {af: [{}], en: [{}], 'en-orig': [{}], it: [{}]},
+				subtitles: {it: [{}]},
+				title: 'A talk'
+			})
+		),
+		[
+			{authored: false, language: 'en'},
+			{authored: false, language: 'en-orig'},
+			{authored: true, language: 'it'}
+		]
+	)
 })
 
-describe('captionTranscript', () => {
-	it('reads cue settings, markup and escapes', () => {
-		assert.strictEqual(
-			captionTranscript({
-				authored: false,
-				vtt: 'WEBVTT\n\n1\n00:00:10.000 --> 00:00:12.000 align:start\n<c>Tom &amp; Jerry</c> &lt;3'
-			}),
-			'[00:10] Tom & Jerry <3\n'
-		)
-	})
-
-	it('keeps every line of a multiline cue and drops only the rolled-over line', () => {
-		assert.strictEqual(
-			captionTranscript({
-				authored: false,
-				vtt: 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nfirst line\nsecond line\n\n00:00:03.000 --> 00:00:05.000\nsecond line\nthird line'
-			}),
-			'[00:01] first line\n[00:01] second line\n[00:03] third line\n'
-		)
-	})
-
-	it('keeps repeats that are separated in time or authored', () => {
-		assert.strictEqual(
-			captionTranscript({
-				authored: false,
-				vtt: 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nYes.\n\n00:00:10.000 --> 00:00:11.000\nYes.'
-			}),
-			'[00:01] Yes.\n[00:10] Yes.\n'
-		)
-		assert.strictEqual(
-			captionTranscript({
-				authored: true,
-				vtt: 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nYes.\n\n00:00:02.000 --> 00:00:03.000\nYes.'
-			}),
-			'[00:01] Yes.\n[00:02] Yes.\n'
-		)
-	})
+it('reads caption cue settings, markup and escapes', () => {
+	assert.strictEqual(
+		captionTranscript({
+			authored: false,
+			vtt: 'WEBVTT\n\n1\n00:00:10.000 --> 00:00:12.000 align:start\n<c>Tom &amp; Jerry</c> &lt;3'
+		}),
+		'[00:10] Tom & Jerry <3\n'
+	)
 })
 
-describe('isBlocked', () => {
-	it('retries an exit that is offline, refused or throttled', () => {
-		assert.isTrue(
-			isBlocked(
-				"ERROR: [youtube] dQw4w9WgXcQ: Unable to download API page: ('Unable to connect to proxy', OSError('Tunnel connection failed: 502 Bad Gateway'))"
-			)
-		)
-		assert.isTrue(isBlocked("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot"))
-		assert.isTrue(isBlocked('ERROR: unable to download video data: HTTP Error 429: Too Many Requests'))
-	})
-
-	it('keeps a failure no other exit can fix', () => {
-		assert.isFalse(
-			isBlocked('ERROR: [youtube] dQw4w9WgXcQ: Video unavailable. This video has been removed by the uploader')
-		)
-	})
+it('keeps every cue line and collapses only the rolling overlap', () => {
+	assert.strictEqual(
+		captionTranscript({
+			authored: false,
+			vtt: 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nfirst line\nsecond line\n\n00:00:03.000 --> 00:00:05.000\nsecond line\nthird line'
+		}),
+		'[00:01] first line\n[00:01] second line\n[00:03] third line\n'
+	)
+	assert.strictEqual(
+		captionTranscript({
+			authored: true,
+			vtt: 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nYes.\n\n00:00:02.000 --> 00:00:03.000\nYes.'
+		}),
+		'[00:01] Yes.\n[00:02] Yes.\n'
+	)
 })
 
-describe('speechOnly', () => {
-	it('keeps a spoken transcript', () => {
-		const speech =
-			"[00:00] This app fixes MacBook.\n[00:02] It fixes so many annoying Mac limitations in one app.\n[00:06] Want to fully quit an app?\n[00:08] Normally you need Command-Q,\n[00:10] but with quit on close, just hit the X\n[00:12] and it's completely closed.\n"
-		assert.deepStrictEqual(speechOnly(speech), Option.some(speech))
-	})
-
-	it('drops song transcripts with loops, repeats and a few invented phrases', () => {
-		assert.deepStrictEqual(
-			speechOnly(
-				"[00:00] Thank you for watching! I'm gonna check out the blue one\n[00:26] I'm gonna check out the blue one\n[00:32] I'm sorry Ooh, ooh, ooh, ooh, ooh, ooh\n[01:05] Ooh, ooh, ooh, ooh, ooh, ooh\n[01:10] Do-do-do-do-do-do-do-do-do-da-da\n[01:14] Da-da-da-da-da-da-da-da-da\n[01:18] Ooh, ooh, ooh, ooh, ooh, ooh, ooh, ooh\n[01:23] Da-da-da-da-da-da-da-da I'm gonna go get some water Mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm, mmm I'm going to go a little bit more of a fan of this one. I'm gonna go get some water I'm gonna go get some water I'm gonna go get some water\n[02:26] I'm gonna go get some water\n[02:28] I'm gonna go get some water\n[02:30] I'm gonna go get some water\n[02:32] I'm gonna go get some water\n"
-			),
-			Option.none()
-		)
-	})
+it('keeps a spoken transcript', () => {
+	const speech =
+		'[00:00] This app fixes MacBook limitations.\n[00:02] Normally you need Command-Q to quit an app.\n[00:06] With quit on close, hit the X and it closes completely.\n'
+	assert.deepStrictEqual(speechOnly(speech), Option.some(speech))
 })

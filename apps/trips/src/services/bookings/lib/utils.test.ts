@@ -1,6 +1,6 @@
 import {assert, it} from '@effect/vitest'
 
-import {Array, DateTime, Duration, Option, Schema, Struct} from 'effect'
+import {Array, DateTime, Duration, Option, Schema} from 'effect'
 
 import {activeWindow, instantOf, upsert} from '#services/bookings/lib/utils.ts'
 import {BookingId, Flight, FlightTracking} from '#services/bookings/schema.ts'
@@ -50,8 +50,10 @@ it('merges tickets for the same leg and retains live data only while its schedul
 				[tracked],
 				[
 					Flight.make({
-						...Struct.pick(again, Struct.keys(Flight.fields)),
-						departs: DateTime.addDuration(DEPARTS, Duration.hours(3))
+						...FLIGHT,
+						departs: DateTime.addDuration(DEPARTS, Duration.hours(3)),
+						id: again.id,
+						seat: again.seat
 					})
 				]
 			),
