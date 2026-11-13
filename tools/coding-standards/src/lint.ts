@@ -35,14 +35,11 @@ import {noNativeEmptinessCheck} from '#lint/no-native-emptiness-check.ts'
 import {noNativeMethodCall} from '#lint/no-native-method-call.ts'
 import {noOptionValueAccess} from '#lint/no-option-value-access.ts'
 import {noPropertyAlias} from '#lint/no-property-alias.ts'
-import {noRedundantStateType} from '#lint/no-redundant-state-type.ts'
-import {noRedundantUseRefNullType} from '#lint/no-redundant-use-ref-null-type.ts'
-import {noRedundantVariableAnnotation} from '#lint/no-redundant-variable-annotation.ts'
+import {noRedundantAnnotation} from '#lint/no-redundant-annotation.ts'
 import {noReinventedSchema} from '#lint/no-reinvented-schema.ts'
 import {noRenamedImport} from '#lint/no-renamed-import.ts'
 import {noRepeatedGuard} from '#lint/no-repeated-guard.ts'
 import {noRepeatedSearch} from '#lint/no-repeated-search.ts'
-import {noReturnType} from '#lint/no-return-type.ts'
 import {noSingleUseValue} from '#lint/no-single-use-value.ts'
 import {noStoredJsx} from '#lint/no-stored-jsx.ts'
 import {noStoredSchemaOperation} from '#lint/no-stored-schema-operation.ts'
@@ -133,14 +130,11 @@ const RULES = {
 	'no-native-method-call': noNativeMethodCall,
 	'no-option-value-access': noOptionValueAccess,
 	'no-property-alias': noPropertyAlias,
-	'no-redundant-state-type': noRedundantStateType,
-	'no-redundant-use-ref-null-type': noRedundantUseRefNullType,
-	'no-redundant-variable-annotation': noRedundantVariableAnnotation,
+	'no-redundant-annotation': noRedundantAnnotation,
 	'no-reinvented-schema': noReinventedSchema,
 	'no-renamed-import': noRenamedImport,
 	'no-repeated-guard': noRepeatedGuard,
 	'no-repeated-search': noRepeatedSearch,
-	'no-return-type': noReturnType,
 	'no-single-use-value': noSingleUseValue,
 	'no-stored-jsx': noStoredJsx,
 	'no-stored-schema-operation': noStoredSchemaOperation,

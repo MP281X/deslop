@@ -3,12 +3,27 @@ import {Array, Equivalence, Option, Predicate, String, pipe} from 'effect'
 import {defineRule} from 'vite-plus/lint/plugins'
 import type {Context, ESTree, Reference, Variable} from 'vite-plus/lint/plugins'
 
-import {bindingName, importedMember, matches, variableFromScope} from '#lib/ast.ts'
+import {
+	bindingName,
+	effectImport,
+	importedMember,
+	isImportBinding,
+	isReactUseState,
+	matches,
+	variableFromScope
+} from '#lib/ast.ts'
 
 // Not boolean: without its annotation, `return part.type === 'text'` is inferred as a type predicate that narrows callers.
 const KEYWORD_TYPES = ['TSBigIntKeyword', 'TSNumberKeyword', 'TSStringKeyword']
 
 type FunctionNode = ESTree.ArrowFunctionExpression | ESTree.Function
+
+function elementType(node: ESTree.TSType) {
+	if (node.type === 'TSArrayType') return Option.some(node.elementType)
+	if (node.type === 'TSTypeReference' && node.typeName.type === 'Identifier' && node.typeName.name === 'Array')
+		return Option.fromNullishOr(node.typeArguments?.params[0])
+	return Option.none()
+}
 
 function boundName(node: FunctionNode) {
 	if (
@@ -89,7 +104,7 @@ function recursive(input: {context: Context; node: FunctionNode}) {
 	)
 }
 
-export const noReturnType = defineRule({
+export const noRedundantAnnotation = defineRule({
 	create: context => {
 		function check(node: FunctionNode) {
 			if (
@@ -114,7 +129,87 @@ export const noReturnType = defineRule({
 				node: returnType
 			})
 		}
-		return {ArrowFunctionExpression: check, FunctionDeclaration: check, FunctionExpression: check}
+		return {
+			ArrowFunctionExpression: check,
+			CallExpression: node => {
+				const argument = node.arguments[0]
+				const types = node.typeArguments
+				const type = types?.params[0]
+				if (node.arguments.length !== 1 || types?.params.length !== 1 || argument?.type !== 'Literal' || !type) return
+				if (
+					node.callee.type === 'Identifier' &&
+					isImportBinding({context, importedName: 'useRef', node: node.callee, source: 'react'}) &&
+					argument.value === null &&
+					type.type === 'TSUnionType'
+				) {
+					pipe(
+						type.types,
+						Array.findFirst(member => member.type === 'TSNullKeyword'),
+						Option.match({
+							onNone: () => undefined,
+							onSome: member =>
+								context.report({
+									fix: fixer => {
+										const before = context.sourceCode.getTokenBefore(member)
+										const after = context.sourceCode.getTokenAfter(member)
+										if (before?.value === '|') return fixer.removeRange([before.range[0], member.range[1]])
+										if (after?.value === '|') return fixer.removeRange([member.range[0], after.range[1]])
+										return []
+									},
+									message: 'Remove null from the useRef type; its initializer already supplies it.',
+									node: member
+								})
+						})
+					)
+					return
+				}
+				if (
+					!(
+						isReactUseState({context, node}) ||
+						Array.some(['MutableRef', 'Ref', 'SubscriptionRef'], importedName =>
+							importedMember({context, importedName, node: node.callee, propertyName: 'make'})
+						)
+					)
+				)
+					return
+				if (
+					(Predicate.isString(argument.value) && type.type === 'TSStringKeyword') ||
+					(Predicate.isNumber(argument.value) && type.type === 'TSNumberKeyword') ||
+					(Predicate.isBoolean(argument.value) && type.type === 'TSBooleanKeyword')
+				) {
+					context.report({
+						fix: fixer => fixer.remove(types),
+						message: 'Drop the state type; its initializer supplies it.',
+						node: type
+					})
+				}
+			},
+			FunctionDeclaration: check,
+			FunctionExpression: check,
+			VariableDeclarator: node => {
+				const annotation = node.id.typeAnnotation
+				const init = node.init
+				if (init?.type !== 'ArrayExpression' || Array.isArrayNonEmpty(init.elements) || !annotation) return
+				Option.match(elementType(annotation.typeAnnotation), {
+					onNone: () => undefined,
+					onSome: element =>
+						context.report({
+							fix: fixer =>
+								pipe(
+									effectImport({context, fixer, name: 'Array', node}),
+									Option.map(imports => [
+										...imports,
+										fixer.remove(annotation),
+										fixer.replaceText(init, `Array.empty<${context.sourceCode.getText(element)}>()`)
+									]),
+									Option.getOrElse(() => [])
+								),
+							message: 'Write Array.empty<T>(); its initializer supplies the collection type.',
+							node: annotation
+						})
+				})
+			}
+		}
 	},
 	meta: {fixable: 'code', type: 'problem'}
 })
